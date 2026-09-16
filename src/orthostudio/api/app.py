@@ -1,0 +1,1376 @@
+"""The local HTTP API of the page (spec ``docs/specs/api.md``).
+
+``create_app`` returns a FastAPI application bound to nothing yet (``serve.py`` binds
+``127.0.0.1``); tests drive it through ``httpx.ASGITransport``. Every error is one JSON
+shape: ``{"error": {code, message, remedy, severity, action, ...}}``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import os
+import subprocess
+import time
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from orthostudio import __version__, config
+from orthostudio.airports import default_index as default_airport_index
+from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
+from orthostudio.api.map_api import TileClient, TileFetch, map_router
+from orthostudio.api.models import (
+    ChooseFolderRequest,
+    CleanRequest,
+    DeleteRequest,
+    ImportRequest,
+    InstallRequest,
+    JobRequest,
+    OverlaysRequest,
+    PlanRequest,
+    QuitRequest,
+    RetryRequest,
+    RevealRequest,
+    SourceRequest,
+    SourceTestRequest,
+    UninstallRequest,
+)
+from orthostudio.api.serve import package_root
+from orthostudio.api.specs import check_ortho4xp_folder, make_specs, plan_answer, resolve_xplane
+from orthostudio.api.zones_api import zones_router
+from orthostudio.clean import clean, disk_bytes
+from orthostudio.doctor import run_doctor
+from orthostudio.errors import Action, OsxpError, Severity
+from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
+from orthostudio.graph import Store
+from orthostudio.imagery.grid import wgs84_to_tile
+from orthostudio.imagery.providers import (
+    USER_SOURCE_IN_FLIGHT,
+    Provider,
+    load_registry,
+    new_source_code,
+    read_user_sources,
+    save_user_sources,
+    tile_url,
+)
+from orthostudio.install import (
+    Library,
+    custom_scenery_dir,
+    default_library_path,
+    install_pack,
+    is_link,
+    xplane_running,
+)
+from orthostudio.model import TileRef, pack_dir_name
+from orthostudio.net.fetch import FetchRequest
+from orthostudio.pipeline.build import BuildEnv
+from orthostudio.pipeline.home import (
+    check_data_dir,
+    data_root,
+    data_root_missing,
+    default_chunks_root,
+    default_mapcache_root,
+    default_store_root,
+    default_tiles_root,
+    osxp_home,
+)
+from orthostudio.pipeline.pack import (
+    LEFT_OVERLAY,
+    MANIFEST_NAME,
+    delete_receipt,
+    install_receipt,
+    is_installed,
+    leave_overlay,
+    library_pack,
+    links_to,
+    overlay_link,
+    overlay_states,
+    pack_to_delete,
+    take_back_overlay,
+    uninstall_receipt,
+)
+from orthostudio.zones import default_zones_path, read_saved_zones
+
+__all__ = [
+    "ALLOWED_FETCH_SITES",
+    "API_LEVEL",
+    "DEFAULT_ALLOWED_HOSTS",
+    "MAX_BODY_BYTES",
+    "create_app",
+    "sse_message",
+]
+
+API_LEVEL = 13
+"""What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
+(``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
+library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
+the job list (``POST /api/jobs/clear``), 6 = the setting ``essential.overlays`` (an older engine
+refuses a settings document that holds it), 7 = ``POST /api/library/import-ortho4xp`` and
+``built_by = "ortho4xp"``, 8 = ``POST /api/quit``, ``POST /api/reveal`` and ``platform`` in the
+status, 9 = the ``zOrthoStudio_`` pack names (decision 0011), the import's ``folder`` and the
+settings schema's ``ortho4xp`` key, 10 = builds that wait in a queue (``queue`` in ``POST
+/api/jobs`` and in a retry, ``queue_position`` in their answer) and ``SYS_TILE_IN_BUILD``, 11 = what
+each imagery source covers in ``GET /api/providers`` (``extent``, ``extent_bounds``, ``same_as``,
+``custom``) and the sources a user adds (``/api/sources``), 12 = the overlays of other packs
+(``overlay`` in the library, ``POST /api/library/overlays``) and ``POST /api/choose-folder``, 13 =
+the setting ``essential.data_dir`` (an older engine refuses a settings document that holds it),
+``data_dir`` in the status and ``CFG_DATA_DIR_*``. A page
+served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
+are read from disk at each load, the routes were imported at start) asks the user to restart
+OrthoStudio XP instead of showing "Not Found"."""
+
+PAGE_CACHE_CONTROL = "no-cache"
+"""The page's files are revalidated on every load (ETag / Last-Modified make it cheap). Without
+it a browser kept an old ``geo.js`` next to a new ``map.js`` after an update, and the page did not
+start: an ES module import of a missing export fails the whole page."""
+
+
+class _RevalidatedStaticFiles(StaticFiles):
+    """``StaticFiles`` answering with ``Cache-Control: no-cache`` (``PAGE_CACHE_CONTROL``)."""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Any:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = PAGE_CACHE_CONTROL
+        return response
+
+
+MAX_BODY_BYTES = 4 * 1024 * 1024
+"""Largest request body: a zones document of hundreds of detailed polygons (``map-zones.md`` 3)."""
+DEFAULT_ALLOWED_HOSTS: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
+ALLOWED_FETCH_SITES: frozenset[str] = frozenset({"same-origin", "none"})
+"""``Sec-Fetch-Site`` values accepted under ``/api/``: the page itself, or a URL the user typed."""
+JSON_MEDIA_TYPE = "application/json"
+BODY_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+"""Methods whose ``Content-Type`` under ``/api/`` must be JSON when there is one (section 3)."""
+DOCTOR_TTL_S = 60.0
+SSE_POLL_MIN_S = 0.05
+SSE_POLL_MAX_S = 0.25
+SSE_KEEPALIVE_S = 15.0
+
+_STATUS_BY_CODE = {
+    "SYS_RESOURCE_MISSING": 503,
+    "XP_RUNNING": 409,
+    "XP_PACK_CONFLICT": 409,
+    "ZONE_CONFLICT": 409,
+    "SYS_PACK_NOT_OSXP": 409,
+    "SYS_INTERNAL_ERROR": 500,
+}
+
+
+def _http_status(code: str) -> int:
+    if code in _STATUS_BY_CODE:
+        return _STATUS_BY_CODE[code]
+    if code.startswith(("CFG_", "ZONE_")) or code in (
+        "XP_DIR_NOT_FOUND",
+        "XP_GLOBAL_SCENERY_NOT_FOUND",
+        "SYS_WORKING_DIR_INVALID",
+    ):
+        return 422
+    if code.startswith("NET_"):
+        return 502
+    return 400
+
+
+def _error_response(err: OsxpError | dict[str, Any], status: int | None = None) -> JSONResponse:
+    body = error_json(err)
+    return JSONResponse({"error": body}, status_code=status or _http_status(str(body["code"])))
+
+
+def _plain_error(
+    code: str,
+    message: str,
+    remedy: str,
+    *,
+    status: int,
+    severity: str = "blocking",
+    context: Mapping[str, Any] | None = None,
+) -> JSONResponse:
+    """An API-only error whose code is not in the registry (``SYS_BUSY``, ``SYS_FORBIDDEN_*``)."""
+    body = {
+        "schema": 1,
+        "code": code,
+        "domain": code.split("_", 1)[0],
+        "severity": severity,
+        "action": "stop",
+        "message": message,
+        "remedy": remedy,
+        "context": dict(context or {}),
+        "cause": None,
+    }
+    return _error_response(body, status)
+
+
+def sse_message(entry: dict[str, Any]) -> str:
+    """One SSE message: ``id``, ``event``, ``data`` (JSON on one line)."""
+    data = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
+    return f"id: {entry['seq']}\nevent: {entry['event']}\ndata: {data}\n\n"
+
+
+class _GuardMiddleware(BaseHTTPMiddleware):
+    """DNS-rebinding guard (``Host`` allow-list), cross-site guard of the API (``Sec-Fetch-Site``
+    and JSON-only bodies) and request-body cap (spec section 3)."""
+
+    def __init__(self, app: Any, *, allowed_hosts: Iterable[str]) -> None:
+        super().__init__(app)
+        self.allowed = {h.lower() for h in allowed_hosts}
+
+    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Any:
+        host = request.headers.get("host", "")
+        if host.startswith("["):
+            name = host.split("]")[0].lower() + "]"
+        else:
+            name = host.rsplit(":", 1)[0].lower()
+        if name not in self.allowed:
+            return _plain_error(
+                "SYS_FORBIDDEN_HOST",
+                f"Request refused: the Host header {host[:64]!r} is not an address OrthoStudio XP "
+                "answers to.",
+                "Open OrthoStudio XP at the address osxp serve prints (http://127.0.0.1 and its "
+                "port).",
+                status=400,
+            )
+        # A browser says where a request comes from: another website (an <img>, a form, a script,
+        # another server on localhost) must not make OrthoStudio XP fetch map tiles, start a build
+        # or rewrite the zones. A request without Sec-Fetch-Site (curl, a script) is let through.
+        site = request.headers.get("sec-fetch-site")
+        if (
+            site is not None
+            and request.url.path.startswith("/api/")
+            and site.strip().lower() not in ALLOWED_FETCH_SITES
+        ):
+            return _plain_error(
+                "SYS_FORBIDDEN_ORIGIN",
+                f"Request from another website refused (Sec-Fetch-Site: {site[:32]}).",
+                "Use OrthoStudio XP from its own page, at the address osxp serve prints; other "
+                "websites cannot use its API.",
+                status=403,
+            )
+        # A form on another website can post to OrthoStudio XP without any script, in a browser that
+        # sends no Sec-Fetch-Site; it cannot send JSON. The page always does, or sends no body
+        # at all.
+        media = request.headers.get("content-type")
+        if (
+            media is not None
+            and request.method in BODY_METHODS
+            and request.url.path.startswith("/api/")
+            and media.split(";", 1)[0].strip().lower() != JSON_MEDIA_TYPE
+        ):
+            return _plain_error(
+                "SYS_BAD_CONTENT_TYPE",
+                "Request refused: OrthoStudio XP's API reads JSON only, and this one came as "
+                f"{media[:64]!r}.",
+                "Use OrthoStudio XP from its own page; a script sends its request body as "
+                "application/json.",
+                status=415,
+            )
+        length = request.headers.get("content-length")
+        if length is not None and length.isdigit() and int(length) > MAX_BODY_BYTES:
+            return _plain_error(
+                "CFG_VALUE_INVALID",
+                f"Request body above {MAX_BODY_BYTES} bytes.",
+                "Send fewer tiles or overrides.",
+                status=413,
+            )
+        return await call_next(request)
+
+
+def _dir_bytes(path: Path) -> int:
+    """Bytes of the files under ``path`` on the disk (``orthostudio.clean.disk_bytes``); 0
+    if unreadable."""
+    try:
+        return disk_bytes([path])
+    except OSError:
+        return 0
+
+
+def _store_bytes(root: Path) -> int:
+    """The store's size on the disk: each file once, however many artefacts hard-link it.
+
+    The index's sum counted a DDS once per artefact linking it (``texture.dds`` and
+    ``tile.textures``): 50.3 GB for a store ``du`` measured at 24 GB. It remains the answer
+    when the folder cannot be read. The index is opened only when the folder exists (opening
+    creates it).
+    """
+    if not root.is_dir():
+        return 0
+    try:
+        return disk_bytes([root])
+    except OSError:
+        pass
+    try:
+        with Store(root) as st:
+            return st.total_size()
+    except Exception:
+        return 0
+
+
+def _language(request: Request) -> str:
+    header = request.headers.get("accept-language", "")
+    first = header.split(",", 1)[0].strip().lower() if header else ""
+    return "fr" if first.startswith("fr") else "en"
+
+
+def _display_zl(kind: str, zl: int | None) -> int | None:
+    """Zoom level to show, ``None`` when the row has none (dette D4).
+
+    Only an ``ortho`` pack has a zoom level; an overlays pack carries ``0`` in
+    the library, which the page used to render as "ZL 0". ``None`` is rendered as an em dash.
+    """
+    return zl if kind == "ortho" and zl else None
+
+
+def _pack_bytes(path: Path) -> int | None:
+    """``size_bytes`` of an ortho row whose folder exists: its files on the disk, each inode
+    once. A DDS hard-linked from the store counts in full although deleting the pack alone does
+    not free it (the store clean after a delete does). ``None`` when the folder cannot be read."""
+    try:
+        return disk_bytes([path])
+    except OSError:
+        return None
+
+
+def _installed(target: Path | None, pack: Path) -> bool:
+    """Whether ``target``, the row's name in Custom Scenery, is this row's pack.
+
+    A link counts only when it leads to this pack (or to where it was, once deleted by hand): two
+    builds of a tile in two output folders share the name, and only one of them is linked. A real
+    folder of that name tells nothing of its origin: it counts for every row of the name, as it
+    always did.
+    """
+    if target is None:
+        return False
+    if is_link(target):
+        return links_to(target, pack)
+    return target.exists()
+
+
+def _overlay_json(state: Any) -> dict[str, Any]:
+    return {"state": state.state, "others": list(state.others)}
+
+
+def _same_pack(state: Any, path: Path) -> bool:
+    """Whether the overlay state is that of the pack at ``path`` (the one X-Plane shows)."""
+    return state is not None and os.path.realpath(path) == os.path.realpath(state.pack)
+
+
+def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
+    with Library(default_library_path()) as lib:
+        rows = lib.list()
+    # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
+    states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
+    shared_links: dict[Path, Path] = {}
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        state = states.get(r.tile.name) if r.kind == "ortho" else None
+        target = None if cs is None else cs / r.path.name
+        if cs is not None and r.kind == "overlay" and r.built_by == "osxp":
+            # an overlays pack is in X-Plane under yOrthoStudio_Overlays, or _2... beside another
+            if r.path not in shared_links:
+                shared_links[r.path] = overlay_link(cs, r.path) or cs / r.path.name
+            target = shared_links[r.path]
+        installed = _installed(target, r.path)
+        present = r.path.is_dir()
+        # an overlay pack is shared by the tiles: no size of its own
+        size = _pack_bytes(r.path) if present and r.kind == "ortho" else None
+        out.append(
+            {
+                "tile": r.tile.name,
+                "kind": r.kind,
+                "provider": r.provider,
+                "zl": _display_zl(r.kind, r.zl),
+                "path": str(r.path),
+                "name": r.path.name,
+                "built_by": r.built_by,
+                "installed": installed,
+                "keys": r.keys,
+                "registered_at": r.registered_at,
+                "updated_at": r.updated_at,
+                "size_bytes": size,
+                "present": present,
+                "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
+            }
+        )
+    return out
+
+
+def provider_json(p: Provider) -> dict[str, Any]:
+    """A provider as ``GET /api/providers`` gives it: the page groups them by what they cover."""
+    doc: dict[str, Any] = {
+        "code": p.code,
+        "name": p.name or p.attribution or p.code,
+        "max_zl": p.max_zl,
+        "attribution": p.attribution,
+        "terms_url": p.terms_url,
+        "alive": None,
+        "extent": p.extent,
+        "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,
+        "same_as": p.same_as,
+        "custom": p.custom,
+    }
+    if p.custom:
+        doc["url_template"] = p.url_template  # shown in the list of the sources the user added
+    return doc
+
+
+_TILE_PLACE = (("{x}",), ("{y}", "{-y}", "{|y|}"), ("{zoom}", "{zoom:02d}"))
+
+
+def check_source_template(template: str) -> Provider:
+    """An address the user typed, as a provider (``CFG_VALUE_INVALID`` when it cannot be one):
+    http(s), and the tile's place given by ``{x}`` ``{y}`` ``{zoom}`` or by ``{quadkey}``."""
+    template = template.strip()
+
+    def refuse(reason: str) -> OsxpError:
+        return OsxpError(
+            "CFG_VALUE_INVALID",
+            context={
+                "name": "url_template",
+                "value": template[:120],
+                "type": "tile address",
+                "range": "http(s) with {x} {y} {zoom}, or {quadkey}",
+            },
+            message=f"The address of the source {reason}.",
+            remedy="Give the address of one tile with {x}, {y} and {zoom} (or {quadkey}) in "
+            "place of its numbers, for example https://host/tiles/{zoom}/{x}/{y}.jpg.",
+        )
+
+    if not template.startswith(("https://", "http://")):
+        raise refuse("does not start with https:// or http://")
+    if "{quadkey}" not in template and not all(
+        any(p in template for p in group) for group in _TILE_PLACE
+    ):
+        raise refuse("does not say where the tile's numbers go")
+    try:
+        return Provider(code="Test", url_template=template, max_zl=19, custom=True)
+    except ValidationError as exc:
+        reason = str(exc.errors()[0].get("msg", "")).removeprefix("Value error, ")
+        raise refuse(f"has a placeholder it cannot use ({reason})") from exc
+
+
+def image_kind(body: bytes) -> str | None:
+    """``jpeg``, ``png`` or ``webp`` from the first bytes of an answer, else ``None``."""
+    if body.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+IN_BUILD_PACK = "the end of that build decides what X-Plane shows of it: its pack stays as it is."
+"""Why a pack OrthoStudio XP built is not added to or taken out of X-Plane while its tile builds."""
+
+
+def _find_pack(name: str, path: str | None = None) -> tuple[Path, Any]:
+    """The library row of ``name`` (a tile ``+43+005`` or ``zOrthoStudio_+43+005``) at ``path``, the
+    row the page's button belongs to; without ``path``, the newest (``pack.library_pack``)."""
+    entry = library_pack(name, path=path, library_path=default_library_path())
+    return entry.path, entry.tile
+
+
+def create_app(
+    *,
+    env_factory: Callable[..., Any] | None = BuildEnv.create,
+    jobs: JobManager | None = None,
+    ui_dir: Path | None = None,
+    airports: Any = None,
+    settings_path: Path | None = None,
+    allowed_hosts: Iterable[str] = DEFAULT_ALLOWED_HOSTS,
+    map_fetch: Any = None,
+    shutdown: Callable[[], None] | None = None,
+    reveal: Callable[[Path], None] | None = None,
+    source_fetch: TileFetch | None = None,
+    folder_dialog: Callable[[str, Path | None], Path | None] | None = None,
+) -> FastAPI:
+    """The application (spec section 2). ``jobs`` defaults to a manager on ``env_factory``.
+
+    ``map_fetch`` replaces the base map's upstream fetch (``map_api.map_router``); tests pass a stub
+    so that no request leaves the machine. ``shutdown`` stops the server (``osxp serve`` gives it;
+    without it the page cannot quit OrthoStudio XP); ``reveal`` shows a path in the file manager
+    (tests pass a recorder); ``source_fetch`` asks for the tile of a source the user tries
+    (tests pass a stub, so that no request leaves the machine); ``folder_dialog`` asks for a folder
+    in the platform's own dialog (tests pass a stub: no dialog opens).
+    """
+    app = FastAPI(title="osxp", version=__version__, docs_url=None, redoc_url=None)
+    app.add_middleware(_GuardMiddleware, allowed_hosts=tuple(allowed_hosts))
+    # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
+    # its own lifespan, which closes its upstream fetchers when the server stops.
+    app.include_router(zones_router())
+    app.include_router(map_router(fetch=map_fetch))
+    manager = jobs if jobs is not None else JobManager(env_factory=env_factory)
+    # Held while a tile is deleted: deletes run one at a time, and no build starts meanwhile, since
+    # the store clean that ends a delete could take an artefact a new build is about to reuse.
+    deleting = asyncio.Lock()
+
+    def busy_deleting() -> JSONResponse:
+        return _plain_error(
+            "SYS_BUSY",
+            "A tile is being deleted, and a build starts only once that is done.",
+            "Try again in a moment.",
+            status=409,
+        )
+
+    def tile_in_build(err: TileInBuildError, why: str) -> JSONResponse:
+        tiles = " ".join(err.tiles)
+        verb = "is" if len(err.tiles) == 1 else "are"
+        return _plain_error(
+            "SYS_TILE_IN_BUILD",
+            f"{tiles} {verb} in a build already, running or queued "
+            f"({' '.join(err.job_ids)}): {why}",
+            "Wait for that build to end (see Works), or cancel it, then try again.",
+            status=409,
+            context={"tiles": err.tiles, "jobs": err.job_ids},
+        )
+
+    def refuse_tile_in_build(pack_dir: Path, tile: Any) -> None:
+        """A pack OrthoStudio XP built stays as it is while its tile is in a build, running or
+        queued: the build's end decides what X-Plane shows of the tile."""
+        job_id = manager.building_tiles().get(tile.name)
+        if job_id is not None and (pack_dir / MANIFEST_NAME).is_file():
+            raise TileInBuildError([tile.name], [job_id])
+
+    state: dict[str, Any] = {
+        "jobs": manager,
+        "env_factory": env_factory,
+        "airports": airports,
+        "airports_tried": airports is not None,
+        "settings_path": settings_path,
+        "doctor": None,
+        "doctor_at": 0.0,
+        "ui_dir": Path(ui_dir) if ui_dir is not None else None,
+    }
+    app.state.orthostudio = state
+
+    # -- errors ------------------------------------------------------------------------------
+
+    @app.exception_handler(OsxpError)
+    async def _osxp_error(_request: Request, exc: OsxpError) -> JSONResponse:
+        return _error_response(exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        loc = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
+        return _plain_error(
+            "CFG_VALUE_INVALID",
+            f"Field {loc or 'body'}: {first.get('msg', 'invalid value')}.",
+            "Fix the field and send the request again.",
+            status=422,
+        )
+
+    # -- helpers -----------------------------------------------------------------------------
+
+    def settings() -> Any:
+        return config.load_settings(state["settings_path"])
+
+    def xplane_dir(explicit: str | None = None) -> Path | None:
+        return resolve_xplane(explicit, settings().essential.xplane_dir)
+
+    def airport_index() -> Any:
+        if state["airports"] is None and not state["airports_tried"]:
+            state["airports_tried"] = True
+            # The tests never build the 383 MB index of a real X-Plane.
+            if not os.environ.get("OSXP_API_NO_AIRPORTS"):
+                state["airports"] = default_airport_index(xplane_dir())
+        return state["airports"]
+
+    def doctor_checks() -> list[dict[str, Any]]:
+        now = time.monotonic()
+        if state["doctor"] is None or now - state["doctor_at"] > DOCTOR_TTL_S:
+            report = run_doctor(offline=True, xplane=xplane_dir())
+            state["doctor"] = [c.to_dict() for c in report.checks]
+            state["doctor_at"] = now
+        return list(state["doctor"])
+
+    def job_or_404(job_id: str) -> Job | JSONResponse:
+        job = manager.get(job_id)
+        if job is None:
+            return _plain_error(
+                "SYS_WORKING_DIR_INVALID",
+                f"No job {job_id}.",
+                "List the jobs with GET /api/jobs.",
+                status=404,
+            )
+        return job
+
+    # -- status, providers -------------------------------------------------------------------
+
+    @app.get("/api/status")
+    async def status(request: Request) -> dict[str, Any]:
+        xp = await asyncio.to_thread(xplane_dir)
+        checks = await asyncio.to_thread(doctor_checks)
+        home = osxp_home()
+        lib = default_library_path()
+        count = 0
+        if lib.is_file():
+            # tiles, not rows: an installed OrthoStudio XP tile has an ortho row and an overlay row
+            with Library(lib) as library:
+                count = len({r.tile for r in library.list(kind="ortho")})
+        active = manager.active()
+        root = data_root()
+        return {
+            "version": __version__,
+            "api_level": API_LEVEL,
+            "xplane": {
+                "path": None if xp is None else str(xp),
+                "detected": xp is not None,
+                "running": xplane_running() if xp is not None else False,
+            },
+            "doctor": checks,
+            "home": str(home),
+            # where the tiles and the downloads go: an external disk may be unplugged
+            "data_dir": {
+                "path": str(root),
+                "chosen": root != home,
+                "present": await asyncio.to_thread(data_root_missing) is None,
+            },
+            "store_bytes": await asyncio.to_thread(_store_bytes, default_store_root()),
+            "chunks_bytes": await asyncio.to_thread(_dir_bytes, default_chunks_root()),
+            "library_count": count,
+            "language": _language(request),
+            "active_job": None if active is None else active.id,
+            "platform": platform_name(),
+            "can_quit": shutdown is not None,
+            # which installation serves: a second launch of the same one shows its page, another
+            # (the app and a checkout) takes its place (serve.take_over)
+            "engine": {"root": str(package_root()), "pid": os.getpid()},
+        }
+
+    @app.post("/api/quit")
+    async def quit_engine(req: QuitRequest) -> Any:
+        """Stop OrthoStudio XP from the page: a running build only when the page confirmed
+        it (``force``)."""
+        if shutdown is None:
+            return _plain_error(
+                "SYS_NOT_STOPPABLE",
+                "This OrthoStudio XP was not started by osxp serve: the page cannot stop it.",
+                "Stop it where it was started.",
+                status=409,
+            )
+        active = manager.active()
+        if active is not None and not req.force:
+            return _plain_error(
+                "SYS_BUSY",
+                f"A build is running ({active.id}): quitting OrthoStudio XP stops it.",
+                "Wait for the build to finish, or confirm that it may stop.",
+                status=409,
+            )
+        # the queued builds first, so that none starts when the running one stops
+        cancelled = manager.cancel_all() if active is not None else []
+        active_id = None if active is None else active.id
+        # after the answer has left: the page learns that OrthoStudio XP is stopping
+        asyncio.get_running_loop().call_later(0.3, shutdown)
+        return {
+            "stopping": True,
+            "cancelled": active_id,
+            "queued_cancelled": [job_id for job_id in cancelled if job_id != active_id],
+        }
+
+    def reveal_roots() -> list[Path]:
+        """What the page may show in the file manager: OrthoStudio XP's folder, its data folder,
+        the X-Plane folder and the folders of the library's tiles (an Ortho4XP tile lives
+        elsewhere)."""
+        roots = [osxp_home(), data_root()]
+        xp = xplane_dir()
+        if xp is not None:
+            roots.append(xp)
+        lib = default_library_path()
+        if lib.is_file():
+            with Library(lib) as library:
+                roots.extend(r.path for r in library.list())
+        return roots
+
+    @app.post("/api/reveal")
+    async def reveal_path(req: RevealRequest) -> Any:
+        """Show a folder or a file of OrthoStudio XP, of X-Plane or of a library tile in the
+        file manager."""
+        target = Path(req.path).expanduser()
+        roots = await asyncio.to_thread(reveal_roots)
+
+        def within(root: Path) -> bool:
+            try:
+                target.resolve().relative_to(root.expanduser().resolve())
+            except (OSError, ValueError):
+                return False
+            return True
+
+        if not target.is_absolute() or not any(within(r) for r in roots):
+            return _plain_error(
+                "SYS_FORBIDDEN_PATH",
+                f"{target} is not a folder of OrthoStudio XP, of X-Plane or of a tile of the "
+                "library.",
+                "The page only shows the folders OrthoStudio XP works with.",
+                status=403,
+            )
+        if not target.exists():
+            return _plain_error(
+                "SYS_WORKING_DIR_INVALID",
+                f"{target} does not exist (any more).",
+                "Refresh the page: the folder may have been moved or deleted.",
+                status=404,
+            )
+        show = reveal if reveal is not None else reveal_in_file_manager
+        await asyncio.to_thread(show, target)
+        return {"revealed": str(target)}
+
+    dialog_open = asyncio.Lock()
+
+    @app.post("/api/choose-folder")
+    async def choose_folder_route(req: ChooseFolderRequest) -> Any:
+        """Ask for a folder in the Finder, the File Explorer or the Linux file manager's dialog, on
+        the computer OrthoStudio XP runs on (a user asked for a button instead of typing the X-Plane
+        folder, 2026-09-15). ``{path}``, ``null`` when the user cancelled."""
+        if dialog_open.locked():
+            return _plain_error(
+                "SYS_BUSY",
+                "A folder dialog is already open.",
+                "Answer it (it may be behind another window), then try again.",
+                status=409,
+            )
+        start = Path(req.start).expanduser() if req.start else None
+        if start is not None and not start.is_dir():
+            start = None
+        ask = folder_dialog if folder_dialog is not None else choose_folder
+        async with dialog_open:
+            try:
+                chosen = await asyncio.to_thread(ask, req.prompt, start)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return _plain_error(
+                    "SYS_NO_FOLDER_DIALOG",
+                    f"No folder dialog could be opened on this computer ({exc}).",
+                    "Type the folder's path in the field (on Linux, installing zenity gives the "
+                    "button its dialog).",
+                    status=501,
+                )
+        return {"path": None if chosen is None else str(chosen)}
+
+    @app.get("/api/providers")
+    async def providers() -> list[dict[str, Any]]:
+        # the registry's order (Bing Maps, then Esri), then the sources the user added
+        return [provider_json(p) for p in (await asyncio.to_thread(load_registry)).values()]
+
+    # -- the sources a user adds (docs/specs/imagery-providers.md) ---------------------------
+
+    @app.post("/api/sources", status_code=201)
+    async def add_source(req: SourceRequest) -> Any:
+        """Add an imagery source of the user's to ``$OSXP_HOME/sources.toml``: OrthoStudio XP does
+        not ship it, and its terms of use apply to that user."""
+
+        def run() -> dict[str, Any]:
+            checked = check_source_template(req.url_template)
+            sources, _problems = read_user_sources()
+            code = new_source_code(req.name, sources)
+            name = req.name.strip()
+            source = Provider(
+                code=code,
+                name=name,
+                attribution=name,
+                url_template=checked.url_template,
+                max_zl=req.max_zl,
+                max_in_flight=USER_SOURCE_IN_FLIGHT,
+                custom=True,
+            )
+            save_user_sources({**sources, code: source})
+            return provider_json(source)
+
+        return await asyncio.to_thread(run)
+
+    @app.post("/api/sources/test")
+    async def try_source(req: SourceTestRequest) -> Any:
+        """Ask for one tile through an address before it is added: at zoom 15 (or the source's
+        maximum) at ``lat``/``lon``, the place the page is looking at."""
+        checked = check_source_template(req.url_template)
+        zl = min(15, req.max_zl)
+        x, y = wgs84_to_tile(req.lat, req.lon, zl)
+        url = tile_url(checked, int(x), int(y), zl)
+        request = FetchRequest(key="source-test", url=url, host_group="source-test")
+        if source_fetch is not None:
+            result = await source_fetch(request)
+        else:
+            client = TileClient()
+            try:
+                result = await client.fetch(request)
+            finally:
+                await client.aclose()
+        kind = image_kind(result.body) if result.status == 200 else None
+        return {
+            "ok": kind is not None,
+            "status": result.status,
+            "image": kind,
+            "bytes": len(result.body),
+            "url": url,
+            "error": result.error,
+        }
+
+    @app.delete("/api/sources/{code}")
+    async def remove_source(code: str) -> Any:
+        """Remove a source the user added. Refused while a build under way or waiting uses it,
+        or a zone does; step 1's saved source goes back to Bing Maps when it was this one."""
+
+        def run() -> dict[str, Any] | JSONResponse:
+            sources, _problems = read_user_sources()
+            if code not in sources:
+                return _plain_error(
+                    "CFG_PROVIDER_UNKNOWN",
+                    f"{code} is not a source you added.",
+                    "Only the sources you added can be removed; list them in the Plan, step 1.",
+                    status=404,
+                )
+            for job in manager.list():
+                if job.finished:
+                    continue
+                used = any(
+                    spec.provider == code
+                    or any(entry[2] == code for entry in spec.config.get("zone_list") or [])
+                    for spec in job.specs
+                )
+                if used:
+                    return _plain_error(
+                        "SYS_BUSY",
+                        f"The build {job.id} uses the source {code}.",
+                        "Wait for that build to end (see Works), or cancel it, then remove the "
+                        "source again.",
+                        status=409,
+                    )
+            saved = read_saved_zones(default_zones_path())
+            zones = [zone.name or zone.id for zone in saved.zones if zone.provider == code]
+            if zones:
+                return _plain_error(
+                    "SYS_SOURCE_IN_USE",
+                    f"The source {code} is the imagery of zone(s) {', '.join(zones)}.",
+                    "Give those zones another source (the Plan, step 2), then remove it again.",
+                    status=409,
+                    context={"zones": zones},
+                )
+            save_user_sources({k: v for k, v in sources.items() if k != code})
+            reset = None
+            current = settings()
+            if current.essential.provider == code:
+                data = current.model_dump(mode="json")
+                data["essential"]["provider"] = "BI"
+                config.save_settings(config.settings_from_dict(data), state["settings_path"])
+                reset = "BI"
+            return {"removed": code, "settings_provider": reset}
+
+        return await asyncio.to_thread(run)
+
+    # -- settings ----------------------------------------------------------------------------
+
+    def new_data_dir(value: str | None, xplane: str | None) -> str | None:
+        """The data folder to save: ``None`` for OrthoStudio XP's own folder, else a folder
+        ``check_data_dir`` accepts. Nothing is moved: what was downloaded before stays where it is
+        (the user who asked would delete it, 2026-09-15)."""
+        if value is None:
+            return None
+        xp = resolve_xplane(None, xplane)
+        scenery = None if xp is None else custom_scenery_dir(xp)
+        folder = check_data_dir(value, custom_scenery=scenery)
+        home = osxp_home()
+        with contextlib.suppress(OSError):
+            home = home.resolve()
+        return None if folder == home else str(folder)
+
+    @app.get("/api/settings")
+    async def get_settings() -> Any:
+        return settings().model_dump(mode="json")
+
+    @app.put("/api/settings")
+    async def put_settings(body: dict[str, Any]) -> Any:
+        try:
+            s = config.settings_from_dict(body)
+        except ValueError as exc:
+            raise OsxpError(
+                "CFG_VALUE_INVALID",
+                context={"name": "settings", "value": "-", "type": "-", "range": "-"},
+                message=f"Settings rejected: {exc}",
+                remedy="See GET /api/settings/schema for the accepted values.",
+            ) from None
+        previous = settings().essential
+        before = previous.xplane_dir
+        # checked when it changes: the other settings save while the disk of X-Plane is unplugged
+        if s.essential.xplane_dir and s.essential.xplane_dir != before:
+            from orthostudio.api.specs import check_xplane_dir
+
+            xp = str(check_xplane_dir(s.essential.xplane_dir))
+            essential = s.essential.model_copy(update={"xplane_dir": xp})
+            s = s.model_copy(update={"essential": essential})
+        data_dir = (s.essential.data_dir or "").strip() or None
+        if data_dir != previous.data_dir:
+            if manager.active() is not None:
+                return _plain_error(
+                    "SYS_BUSY",
+                    "A build is running or waiting, and the data folder changes between builds.",
+                    "Wait for the builds to finish, or cancel them, then save again.",
+                    status=409,
+                )
+            data_dir = await asyncio.to_thread(new_data_dir, data_dir, s.essential.xplane_dir)
+        s = s.model_copy(
+            update={"essential": s.essential.model_copy(update={"data_dir": data_dir})}
+        )
+        config.save_settings(s, state["settings_path"])
+        state["doctor"] = None
+        if s.essential.xplane_dir != before and state["airports"] is None:
+            # The airport search failed without X-Plane: it tries again with the folder just chosen.
+            state["airports_tried"] = False
+        return s.model_dump(mode="json")
+
+    @app.get("/api/settings/schema")
+    async def settings_schema() -> Any:
+        return config.settings_schema()
+
+    # -- airports ----------------------------------------------------------------------------
+
+    def _no_index() -> JSONResponse:
+        return _plain_error(
+            "SYS_RESOURCE_MISSING",
+            "The airport index is not available on this machine.",
+            "Set the X-Plane folder in Settings (apt.dat is needed), or give tiles.",
+            status=503,
+        )
+
+    @app.get("/api/airports")
+    async def airports_search(q: str = "", limit: int = 10) -> Any:
+        q = q.strip()[:64]
+        limit = max(1, min(50, limit))
+        index = await asyncio.to_thread(airport_index)
+        if index is None:
+            return _no_index()
+        if not q:
+            return []
+        rows = await asyncio.to_thread(index.search, q, limit)
+        return [{"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon} for a in rows]
+
+    @app.get("/api/airports/{icao}")
+    async def airport_get(icao: str) -> Any:
+        index = await asyncio.to_thread(airport_index)
+        if index is None:
+            return _no_index()
+        a = await asyncio.to_thread(index.get, icao.strip().upper()[:7])
+        if a is None:
+            return _plain_error(
+                "CFG_LATLON_INVALID", f"Airport {icao} is unknown.", "Check the ICAO code.",
+                status=404,
+            )  # fmt: skip
+        return {"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon}
+
+    # -- plan, jobs --------------------------------------------------------------------------
+
+    def _specs(req: PlanRequest, *, install: bool) -> list[Any]:
+        return make_specs(
+            req,
+            settings=settings(),
+            install=install,
+            airports=airport_index() if req.airport is not None else None,
+            config_module=config,
+        )
+
+    @app.post("/api/plan")
+    async def plan(req: PlanRequest) -> Any:
+        from orthostudio.estimate import estimate
+
+        def run() -> dict[str, Any]:
+            specs = _specs(req, install=False)
+            factory = state["env_factory"]
+            env = None
+            if factory is not None:
+                from orthostudio.api.jobs import _call_env_factory
+
+                env = _call_env_factory(factory, specs)
+            est = estimate(specs, online=req.online, env=env)
+            return plan_answer(est, specs)
+
+        return await asyncio.to_thread(run)
+
+    @app.post("/api/jobs", status_code=201)
+    async def post_job(req: JobRequest) -> Any:
+        specs = await asyncio.to_thread(_specs, req, install=req.install)
+        if deleting.locked():
+            return busy_deleting()
+        try:
+            job = manager.start(
+                specs,
+                install=req.install,
+                request=req.model_dump(mode="json", exclude={"queue"}),
+                queue=req.queue,
+            )
+        except JobBusyError as busy:
+            return _plain_error(
+                "SYS_BUSY",
+                f"A build is already running ({busy}).",
+                "Wait for it to finish, or cancel it.",
+                status=409,
+            )
+        except TileInBuildError as err:
+            return tile_in_build(err, "a tile is in one build at a time.")
+        position = manager.queue_position(job.id)
+        return {"job_id": job.id, "status": job.status, "queue_position": position}
+
+    @app.get("/api/jobs")
+    async def list_jobs() -> list[dict[str, Any]]:
+        return [j.summary() for j in manager.list()]
+
+    @app.post("/api/jobs/clear")
+    async def clear_jobs() -> dict[str, Any]:
+        return {"removed": await asyncio.to_thread(manager.forget_finished)}
+
+    @app.get("/api/jobs/{job_id}")
+    async def get_job(job_id: str) -> Any:
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        return job.state()
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    async def cancel_job(job_id: str) -> Any:
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        if not manager.cancel(job_id):
+            return _plain_error(
+                "SYS_BUSY", f"Job {job_id} is already {job.status}.", "Nothing to cancel.",
+                status=409,
+            )  # fmt: skip
+        return {"job_id": job.id, "status": job.status, "cancel_requested": True}
+
+    @app.post("/api/jobs/{job_id}/retry", status_code=201)
+    async def retry_job(job_id: str, req: RetryRequest | None = None) -> Any:
+        req = req or RetryRequest()
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        if deleting.locked():
+            return busy_deleting()
+        try:
+            new = manager.retry(job_id, queue=req.queue)
+        except JobBusyError as busy:
+            return _plain_error(
+                "SYS_BUSY",
+                f"A build is already running ({busy}).",
+                "Wait for it to finish, or cancel it.",
+                status=409,
+            )
+        except TileInBuildError as err:
+            return tile_in_build(err, "a tile is in one build at a time.")
+        return {
+            "job_id": new.id,
+            "status": new.status,
+            "retry_of": job.id,
+            "queue_position": manager.queue_position(new.id),
+        }
+
+    async def _stream(job: Job, after: int) -> AsyncIterator[str]:
+        yield "retry: 2000\n\n"
+        seq = after
+        last = time.monotonic()
+        delay = SSE_POLL_MIN_S
+        while True:
+            finished = job.finished
+            events = job.events(seq)
+            if events:
+                for e in events:
+                    seq = e["seq"]
+                    yield sse_message(e)
+                last = time.monotonic()
+                delay = SSE_POLL_MIN_S
+                if events[-1]["event"] == "finished":
+                    return
+                continue
+            if finished:
+                return
+            if time.monotonic() - last >= SSE_KEEPALIVE_S:
+                yield ": keepalive\n\n"
+                last = time.monotonic()
+            await asyncio.sleep(delay)
+            delay = min(SSE_POLL_MAX_S, delay * 1.5)
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def job_events(job_id: str, request: Request, after: int = 0) -> Any:
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        header = request.headers.get("last-event-id")
+        if header is not None and header.strip().isdigit():
+            after = int(header.strip())
+        return StreamingResponse(
+            _stream(job, max(0, after)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # -- library -----------------------------------------------------------------------------
+
+    @app.get("/api/library")
+    async def library(xplane_dir_q: str | None = Query(default=None, alias="xplane_dir")) -> Any:
+        """The library. ``installed`` is read against ``xplane_dir``, else the settings, else
+        the detected X-Plane, so a page pointed at another install reports the truth."""
+        xp = await asyncio.to_thread(xplane_dir, xplane_dir_q)
+        cs = custom_scenery_dir(xp) if xp is not None else None
+        return await asyncio.to_thread(_library_rows, cs)
+
+    @app.post("/api/library/import-ortho4xp")
+    async def import_ortho4xp(req: ImportRequest) -> Any:
+        folder = check_ortho4xp_folder(req.folder)
+
+        def run() -> list[dict[str, Any]]:
+            with Library(default_library_path()) as lib:
+                rows = lib.import_ortho4xp(folder)
+            return [
+                {
+                    "tile": r.tile.name,
+                    "kind": r.kind,
+                    "provider": r.provider,
+                    "zl": _display_zl(r.kind, r.zl),
+                    "path": str(r.path),
+                    "name": r.path.name,
+                    "built_by": r.built_by,
+                }
+                for r in rows
+            ]
+
+        return await asyncio.to_thread(run)
+
+    @app.post("/api/library/{name}/install")
+    async def library_install(name: str, req: InstallRequest | None = None) -> Any:
+        req = req or InstallRequest()
+
+        def run() -> dict[str, Any]:
+            xp = xplane_dir(req.xplane_dir)
+            if xp is None:
+                raise OsxpError(
+                    "XP_DIR_NOT_FOUND",
+                    context={"path": "<not detected>"},
+                    remedy="Choose the X-Plane 12 folder in Settings.",
+                )
+            pack_dir, tile = _find_pack(name, req.path)
+            refuse_tile_in_build(pack_dir, tile)
+            cs = custom_scenery_dir(xp)
+            if (pack_dir / MANIFEST_NAME).is_file():
+                return install_receipt(
+                    pack_dir, cs, tile=tile, link=req.link, library_path=default_library_path()
+                )
+            target = install_pack(pack_dir, cs, link=req.link)
+            return {"pack": str(pack_dir), "target": str(target), "custom_scenery": str(cs)}
+
+        try:
+            return await asyncio.to_thread(run)
+        except TileInBuildError as err:
+            return tile_in_build(err, IN_BUILD_PACK)
+
+    @app.post("/api/library/{name}/uninstall")
+    async def library_uninstall(name: str, req: UninstallRequest | None = None) -> Any:
+        req = req or UninstallRequest()
+
+        def run() -> dict[str, Any]:
+            xp = xplane_dir(req.xplane_dir)
+            if xp is None:
+                raise OsxpError(
+                    "XP_DIR_NOT_FOUND",
+                    context={"path": "<not detected>"},
+                    remedy="Choose the X-Plane 12 folder in Settings.",
+                )
+            pack_dir, tile = _find_pack(name, req.path)
+            refuse_tile_in_build(pack_dir, tile)
+            cs = custom_scenery_dir(xp)
+            target = cs / pack_dir.name
+            if (
+                req.path is not None
+                and os.path.lexists(target)
+                and not is_installed(pack_dir, cs, library_path=default_library_path())
+            ):
+                # The row clicked is not what X-Plane shows under its name: two builds of a tile
+                # in two output folders share the name, and only one of them is in Custom Scenery.
+                if is_link(target):
+                    what = f"its link leads to {os.path.realpath(target)}"
+                else:
+                    what = f"{target} is another folder"
+                raise OsxpError(
+                    "XP_PACK_CONFLICT",
+                    context={"tile": pack_dir.name, "pack": str(target), "reason": "other pack"},
+                    message=f"X-Plane shows another {pack_dir.name} than {pack_dir}: {what}. "
+                    "Nothing was changed.",
+                    remedy="If it belongs to another row of the library, use that row's button; "
+                    "otherwise take it out of Custom Scenery by hand.",
+                    severity=Severity.BLOCKING,
+                    action=Action.STOP,
+                )
+            # the tile's overlay DSF goes with it (uninstall_receipt), else X-Plane keeps it
+            return uninstall_receipt(pack_dir.name, cs)
+
+        try:
+            return await asyncio.to_thread(run)
+        except TileInBuildError as err:
+            return tile_in_build(err, IN_BUILD_PACK)
+
+    @app.post("/api/library/overlays")
+    async def library_overlays(req: OverlaysRequest) -> Any:
+        """Leave the roads, forests and buildings of squares to the other packs' overlays
+        (AutoOrtho's, XPME's, Ortho4XP's), or draw the tiles' own again (``install.md`` 4.3).
+        Refused while X-Plane runs, and for a tile in a build under way or waiting."""
+
+        def run() -> dict[str, Any]:
+            xp = xplane_dir(req.xplane_dir)
+            if xp is None:
+                raise OsxpError(
+                    "XP_DIR_NOT_FOUND",
+                    context={"path": "<not detected>"},
+                    remedy="Choose the X-Plane 12 folder in Settings.",
+                )
+            cs = custom_scenery_dir(xp)
+            building = manager.building_tiles()
+            busy = sorted({name for name in req.tiles if name in building})
+            if busy:
+                raise TileInBuildError(busy, sorted({building[name] for name in busy}))
+            changed: list[str] = []
+            for name in dict.fromkeys(req.tiles):
+                tile = TileRef.parse(name)
+                link = cs / pack_dir_name(tile)
+                if not is_link(link):
+                    continue
+                pack_dir = Path(os.path.realpath(link))
+                if not (pack_dir / MANIFEST_NAME).is_file():
+                    continue
+                if req.use == "others":
+                    if leave_overlay(pack_dir, tile):
+                        changed.append(name)
+                elif (pack_dir / LEFT_OVERLAY).is_file():
+                    take_back_overlay(pack_dir, cs, tile=tile, library_path=default_library_path())
+                    changed.append(name)
+            states = overlay_states(cs)
+            return {
+                "changed": changed,
+                "states": {n: _overlay_json(s) for n, s in states.items() if n in req.tiles},
+            }
+
+        try:
+            return await asyncio.to_thread(run)
+        except TileInBuildError as err:
+            return tile_in_build(err, IN_BUILD_PACK)
+
+    @app.post("/api/library/{name}/delete")
+    async def library_delete(name: str, req: DeleteRequest | None = None) -> Any:
+        """Delete a tile OrthoStudio XP built, for good (``delete_receipt``): out of X-Plane when it
+        is installed there, its folder, its library rows, and the store space no pack needs."""
+        req = req or DeleteRequest()
+
+        def run() -> dict[str, Any]:
+            xp = xplane_dir(req.xplane_dir)
+            entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
+            return delete_receipt(
+                entry.path,
+                tile=entry.tile,
+                custom_scenery=None if xp is None else custom_scenery_dir(xp),
+                library_path=default_library_path(),
+            )
+
+        async with deleting:  # a second delete waits for this one
+            if manager.active() is not None:
+                # the store clean that follows could take an artefact the build is about to reuse
+                return _plain_error(
+                    "SYS_BUSY",
+                    "A build is running, and OrthoStudio XP deletes tiles only between builds.",
+                    "Wait for the build to finish, or cancel it, then delete the tile again.",
+                    status=409,
+                )
+            return await asyncio.to_thread(run)
+
+    # -- disk space (the Library's "Free space") ---------------------------------------------
+
+    def other_builds() -> set[int]:
+        """Processes other than this one building into the store now (a CLI build)."""
+        root = default_store_root()
+        if not root.is_dir():
+            return set()
+        with Store(root) as st:
+            return st.building_pids()
+
+    def collect(*, images: bool, dry_run: bool) -> Any:
+        # No grace period: the callers check first that nothing is building (osxp clean --all).
+        return clean(
+            default_store_root(),
+            default_chunks_root(),
+            library_path=default_library_path(),
+            tiles_root=default_tiles_root(),
+            images=images,
+            dry_run=dry_run,
+            grace_s=0.0,
+            mapcache_root=default_mapcache_root(),
+        )
+
+    def busy_building(other: bool) -> JSONResponse:
+        where = "in a terminal" if other else "in OrthoStudio XP"
+        return _plain_error(
+            "SYS_BUSY",
+            f"A build is running {where}, and OrthoStudio XP frees space only between builds.",
+            "Wait for the build to finish, or stop it, then try again.",
+            status=409,
+        )
+
+    @app.get("/api/disk")
+    async def disk() -> Any:
+        """What the Library's "Free space" would give back, measured without deleting anything:
+        the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
+        image pieces and the map background."""
+
+        def run() -> dict[str, Any]:
+            report = collect(images=True, dry_run=True)
+            return {
+                "store_bytes": _store_bytes(default_store_root()),
+                "unused_bytes": report.freed_bytes,
+                "images_bytes": report.images_bytes - report.mapcache_bytes,
+                "mapcache_bytes": report.mapcache_bytes,
+                "tiles": len(report.packs),
+                "building": manager.active() is not None or bool(other_builds()),
+            }
+
+        return await asyncio.to_thread(run)
+
+    @app.post("/api/clean")
+    async def free_space(req: CleanRequest | None = None) -> Any:
+        """Free the space: every piece of tile data no tile on disk needs, and with ``images``
+        the downloaded image pieces and the map background. Refused while a build runs, here or
+        in another process, since nothing protects what a build is about to use otherwise."""
+        req = req or CleanRequest()
+        async with deleting:  # no build starts meanwhile, and deletes wait
+            if manager.active() is not None:
+                return busy_building(other=False)
+            if await asyncio.to_thread(other_builds):
+                return busy_building(other=True)
+            report = await asyncio.to_thread(collect, images=req.images, dry_run=False)
+            return {
+                "format": "osxp-clean-1",
+                "freed_bytes": report.freed_bytes,
+                "images_freed_bytes": report.images_bytes if req.images else 0,
+                "removed": report.removed,
+            }
+
+    # -- the page ----------------------------------------------------------------------------
+
+    ui = state["ui_dir"]
+    if ui is not None and ui.is_dir():
+        app.mount("/static", _RevalidatedStaticFiles(directory=str(ui)), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def index() -> Any:
+        if ui is None or not (ui / "index.html").is_file():
+            return _plain_error(
+                "SYS_RESOURCE_MISSING",
+                "The page (src/orthostudio/ui) is not installed.",
+                "Use the API (/api/status) or reinstall OrthoStudio XP.",
+                status=503,
+            )
+        return FileResponse(
+            ui / "index.html", media_type="text/html", headers={"Cache-Control": PAGE_CACHE_CONTROL}
+        )
+
+    return app

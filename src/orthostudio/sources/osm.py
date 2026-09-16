@@ -1,0 +1,1224 @@
+"""OpenStreetMap vector data: Overpass mirrors and OrthoStudio XP snapshots.
+
+Specification: ``docs/specs/osm-source.md``. Policy already fixed by ADR 0005 decision 4
+(mirror order) and ``docs/specs/net-download.md`` section 5.5 (two requests in flight per
+cluster, health check, three attempts across mirrors, never the 2^n back-off of Ortho4XP).
+
+Two independent pieces live here:
+
+- the **client**: a mirror registry declared by machine, a circuit breaker, fail-over, and
+  ``[out:json]`` queries built from the selectors of ``O4_Vector_Map.py``;
+- the **snapshot**: OrthoStudio XP's own content-keyed record of one layer (zstd + orjson), the
+  input of the vector stage and the source of the snapshot label.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import datetime as dt
+import os
+import threading
+import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal, Protocol
+
+import blake3
+import orjson
+import zstandard
+
+from orthostudio.errors import OsxpError
+from orthostudio.home import data_root
+from orthostudio.model import TileRef
+
+__all__ = [
+    "ATTEMPT_DELAY_S",
+    "CONNECT_TIMEOUT_S",
+    "COOLDOWN_S",
+    "DEFAULT_QUERY_TIMEOUT_S",
+    "HEALTH_TIMEOUT_S",
+    "LAYERS",
+    "MAX_ATTEMPTS",
+    "MAX_IN_FLIGHT",
+    "MIRRORS",
+    "PROGRESS_PERIOD_S",
+    "SNAPSHOT_FORMAT",
+    "USER_AGENT",
+    "Attempt",
+    "CurlTransport",
+    "HttpReply",
+    "LayerSpec",
+    "Mirror",
+    "MirrorBoard",
+    "MirrorHealth",
+    "OsmMember",
+    "OsmNode",
+    "OsmRelation",
+    "OsmSnapshot",
+    "OsmWay",
+    "OverpassClient",
+    "SnapshotStore",
+    "Transport",
+    "layers_for",
+    "osm_progress_message",
+    "overpass_query",
+    "parse_overpass_json",
+    "shared_board",
+    "snapshot_from_overpass",
+    "snapshot_label",
+    "split_elements",
+]
+
+SNAPSHOT_FORMAT = "osxp-osm-snapshot-1"
+USER_AGENT = "orthostudio/0.0.1 (+OSM vector data for X-Plane scenery)"
+
+DEFAULT_QUERY_TIMEOUT_S = 120
+"""``[out:json][timeout:n]``: what the server is told it may spend (spec section 3)."""
+
+CONNECT_TIMEOUT_S = 5.0
+HEALTH_TIMEOUT_S = 5.0
+COOLDOWN_S = 600.0
+MAX_COOLDOWN_S = 3600.0
+MAX_ATTEMPTS = 3
+ATTEMPT_DELAY_S = 5.0
+MAX_IN_FLIGHT = 2
+MIN_INTERVAL_S = 1.0
+PROGRESS_PERIOD_S = 1.0
+"""Seconds between two progress reports of a tile while its layers are in flight."""
+
+
+# -- mirrors -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Mirror:
+    """One Overpass *machine* (never a round-robin name: ``net-download.md`` section 5.5)."""
+
+    code: str
+    interpreter: str
+    cluster: str
+    status_url: str | None = None
+    last_resort: bool = False
+    note: str = ""
+
+
+MIRRORS: tuple[Mirror, ...] = (
+    Mirror(
+        code="lz4",
+        interpreter="https://lz4.overpass-api.de/api/interpreter",
+        cluster="de",
+        status_url="https://lz4.overpass-api.de/api/status",
+        note="65.109.112.52; shares the per-IP quota of 2 with z.overpass-api.de",
+    ),
+    Mirror(
+        code="fr",
+        interpreter="https://overpass.openstreetmap.fr/api/interpreter",
+        cluster="fr",
+        status_url="https://overpass.openstreetmap.fr/api/status",
+        note="/api/status answers 403 while queries work; a 403 never disqualifies alone",
+    ),
+    Mirror(
+        code="mailru",
+        interpreter="https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        cluster="mailru",
+        status_url="https://maps.mail.ru/osm/tools/overpass/api/status",
+        last_resort=True,
+        note="third-party clone, last resort only (ADR 0005 decision 4)",
+    ),
+)
+"""Registry of ADR 0005 decision 4, in order. A caller may pass its own tuple."""
+
+
+# -- layers and queries --------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LayerSpec:
+    """One vector layer of a tile and its Overpass selectors."""
+
+    name: str
+    selectors: tuple[str, ...]
+    tags_of_interest: tuple[str, ...]
+    origin: str
+    min_road_level: int = 0
+
+
+_SMALL_ROAD_SELECTORS: tuple[tuple[int, str], ...] = (
+    (2, 'way["highway"="tertiary"]'),
+    (3, 'way["highway"="unclassified"]'),
+    (3, 'way["highway"="residential"]'),
+    (4, 'way["highway"="service"]'),
+    (5, 'way["highway"="track"]'),
+)
+"""``O4_Vector_Map.py:290-299``: the selectors added at each ``road_level``."""
+
+_CANCEL_POLL_S = 0.1
+"""How often :meth:`OverpassClient.fetch_tile` polls its cancellation token."""
+
+LAYERS: Mapping[str, LayerSpec] = {
+    spec.name: spec
+    for spec in (
+        LayerSpec(
+            name="airports",
+            selectors=('node["aeroway"]', 'way["aeroway"]', 'rel["aeroway"]'),
+            tags_of_interest=("all",),
+            origin="O4_Vector_Map.py:185-193",
+        ),
+        LayerSpec(
+            name="big_roads",
+            selectors=(
+                'way["highway"="motorway"]',
+                'way["highway"="trunk"]',
+                'way["highway"="primary"]',
+                'way["highway"="secondary"]',
+                'way["railway"="rail"]',
+                'way["railway"="narrow_gauge"]',
+            ),
+            tags_of_interest=("bridge", "tunnel"),
+            origin="O4_Vector_Map.py:261-275",
+            min_road_level=1,
+        ),
+        LayerSpec(
+            name="small_roads",
+            selectors=tuple(sel for _, sel in _SMALL_ROAD_SELECTORS),
+            tags_of_interest=("bridge", "tunnel"),
+            origin="O4_Vector_Map.py:290-306",
+            min_road_level=2,
+        ),
+        LayerSpec(
+            name="coastline",
+            selectors=('way["natural"="coastline"]',),
+            tags_of_interest=(),
+            origin="O4_Vector_Map.py:391-399",
+        ),
+        LayerSpec(
+            name="water",
+            selectors=(
+                'rel["natural"="water"]',
+                'rel["waterway"="riverbank"]',
+                'way["natural"="water"]',
+                'way["waterway"="riverbank"]',
+                'way["waterway"="dock"]',
+            ),
+            tags_of_interest=("name",),
+            origin="O4_Vector_Map.py:525-539",
+        ),
+    )
+}
+"""The five Ortho4XP layers, selectors copied verbatim (spec section 3)."""
+
+
+def layers_for(road_level: int = 1) -> tuple[LayerSpec, ...]:
+    """The layers a tile needs at ``road_level`` (four at the Ortho4XP default of 1).
+
+    ``small_roads`` appears at ``road_level >= 2`` and grows with it
+    (``O4_Vector_Map.py:288-299``); ``big_roads`` disappears at ``road_level = 0``
+    (``:253-254``: stage 1 skips the roads entirely).
+    """
+    out: list[LayerSpec] = []
+    for spec in LAYERS.values():
+        if road_level < spec.min_road_level:
+            continue
+        if spec.name == "small_roads":
+            selectors = tuple(sel for level, sel in _SMALL_ROAD_SELECTORS if road_level >= level)
+            out.append(
+                LayerSpec(
+                    name=spec.name,
+                    selectors=selectors,
+                    tags_of_interest=spec.tags_of_interest,
+                    origin=spec.origin,
+                    min_road_level=spec.min_road_level,
+                )
+            )
+        else:
+            out.append(spec)
+    return tuple(out)
+
+
+def _bbox(tile: TileRef, *, spaces: bool = False) -> str:
+    sep = ", " if spaces else ","
+    return "(" + sep.join(str(v) for v in (tile.lat, tile.lon, tile.lat + 1, tile.lon + 1)) + ")"
+
+
+def overpass_query(
+    selectors: Sequence[str], tile: TileRef, timeout_s: int = DEFAULT_QUERY_TIMEOUT_S
+) -> str:
+    """The OrthoStudio XP query for one layer: JSON, children recursed, ``qt`` order (spec
+    section 3)."""
+    box = _bbox(tile)
+    union = "".join(f"{sel}{box};" for sel in selectors)
+    return f"[out:json][timeout:{timeout_s}];({union});(._;>>;);out body qt;"
+
+
+# -- elements and snapshot -----------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class OsmNode:
+    """An OSM node: real id, WGS84 degrees, tags as delivered (never escaped)."""
+
+    id: int
+    lat: float
+    lon: float
+    tags: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class OsmWay:
+    """An OSM way: ordered node ids."""
+
+    id: int
+    nodes: tuple[int, ...]
+    tags: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class OsmMember:
+    """One member of a relation."""
+
+    type: str
+    ref: int
+    role: str
+
+
+@dataclass(frozen=True, slots=True)
+class OsmRelation:
+    """An OSM relation: members in order, tags."""
+
+    id: int
+    members: tuple[OsmMember, ...]
+    tags: Mapping[str, str] = field(default_factory=dict)
+
+
+def _coord(value: float) -> str:
+    """``"{:.7f}"``: the coordinate format of ``O4_OSM_Utils.py:302-303``."""
+    return f"{value:.7f}"
+
+
+def parse_overpass_json(body: bytes) -> tuple[list[OsmNode], list[OsmWay], list[OsmRelation]]:
+    """Split an Overpass JSON document into nodes, ways and relations, order preserved.
+
+    Raises :class:`ValueError` when the document is not an Overpass answer; the caller turns
+    that into ``OSM_RESPONSE_TRUNCATED``.
+    """
+    doc = orjson.loads(body)
+    if not isinstance(doc, dict) or not isinstance(doc.get("elements"), list):
+        raise ValueError("not an Overpass JSON document (no 'elements' list)")
+    return split_elements(doc["elements"])
+
+
+def split_elements(
+    elements: Sequence[Mapping[str, Any]],
+) -> tuple[list[OsmNode], list[OsmWay], list[OsmRelation]]:
+    """Typed nodes, ways and relations of a list of Overpass JSON elements, order preserved."""
+    nodes: list[OsmNode] = []
+    ways: list[OsmWay] = []
+    relations: list[OsmRelation] = []
+    for el in elements:
+        kind = el.get("type")
+        tags = {str(k): str(v) for k, v in (el.get("tags") or {}).items()}
+        if kind == "node":
+            nodes.append(OsmNode(int(el["id"]), float(el["lat"]), float(el["lon"]), tags))
+        elif kind == "way":
+            ways.append(OsmWay(int(el["id"]), tuple(int(n) for n in el.get("nodes") or ()), tags))
+        elif kind == "relation":
+            members = tuple(
+                OsmMember(str(m.get("type", "")), int(m["ref"]), str(m.get("role", "")))
+                for m in el.get("members") or ()
+            )
+            relations.append(OsmRelation(int(el["id"]), members, tags))
+    return nodes, ways, relations
+
+
+def _canonical(
+    nodes: Sequence[OsmNode], ways: Sequence[OsmWay], relations: Sequence[OsmRelation]
+) -> bytes:
+    """Mirror-, date- and order-independent bytes of the data (spec section 5, content key)."""
+    doc: list[dict[str, Any]] = []
+    for n in sorted(nodes, key=lambda x: x.id):
+        doc.append(
+            {
+                "t": "n",
+                "i": n.id,
+                "y": _coord(n.lat),
+                "x": _coord(n.lon),
+                "g": dict(sorted(n.tags.items())),
+            }
+        )
+    for w in sorted(ways, key=lambda x: x.id):
+        doc.append({"t": "w", "i": w.id, "n": list(w.nodes), "g": dict(sorted(w.tags.items()))})
+    for r in sorted(relations, key=lambda x: x.id):
+        doc.append(
+            {
+                "t": "r",
+                "i": r.id,
+                "m": [[m.type, m.ref, m.role] for m in r.members],
+                "g": dict(sorted(r.tags.items())),
+            }
+        )
+    return orjson.dumps(doc, option=orjson.OPT_SORT_KEYS)
+
+
+@dataclass(frozen=True, slots=True)
+class OsmSnapshot:
+    """One layer of one tile as OrthoStudio XP keeps it (format ``osxp-osm-snapshot-1``)."""
+
+    tile: TileRef
+    layer: str
+    selectors: tuple[str, ...]
+    query: str
+    mirror: str
+    fetched_at: str
+    generator: str
+    osm_base: str
+    nodes: tuple[OsmNode, ...]
+    ways: tuple[OsmWay, ...]
+    relations: tuple[OsmRelation, ...]
+    digest: str
+
+    @property
+    def counts(self) -> dict[str, int]:
+        """``{"nodes": .., "ways": .., "relations": ..}``."""
+        return {
+            "nodes": len(self.nodes),
+            "ways": len(self.ways),
+            "relations": len(self.relations),
+        }
+
+    def meta(self) -> dict[str, Any]:
+        """Everything but the elements (what the ``.meta.json`` sidecar holds)."""
+        return {
+            "format": SNAPSHOT_FORMAT,
+            "tile": self.tile.name,
+            "layer": self.layer,
+            "selectors": list(self.selectors),
+            "query": self.query,
+            "mirror": self.mirror,
+            "fetched_at": self.fetched_at,
+            "generator": self.generator,
+            "osm_base": self.osm_base,
+            "digest": self.digest,
+            "counts": self.counts,
+        }
+
+    def elements(self) -> list[dict[str, Any]]:
+        """The elements in the Overpass JSON shape, in the order the mirror sent them."""
+        out: list[dict[str, Any]] = []
+        for n in self.nodes:
+            el: dict[str, Any] = {"type": "node", "id": n.id, "lat": n.lat, "lon": n.lon}
+            if n.tags:
+                el["tags"] = dict(n.tags)
+            out.append(el)
+        for w in self.ways:
+            el = {"type": "way", "id": w.id, "nodes": list(w.nodes)}
+            if w.tags:
+                el["tags"] = dict(w.tags)
+            out.append(el)
+        for r in self.relations:
+            el = {
+                "type": "relation",
+                "id": r.id,
+                "members": [{"type": m.type, "ref": m.ref, "role": m.role} for m in r.members],
+            }
+            if r.tags:
+                el["tags"] = dict(r.tags)
+            out.append(el)
+        return out
+
+    def to_json(self) -> bytes:
+        """The whole document (metadata + elements), uncompressed."""
+        doc = self.meta()
+        doc["elements"] = self.elements()
+        return orjson.dumps(doc)
+
+    @classmethod
+    def from_json(cls, raw: bytes) -> OsmSnapshot:
+        """Inverse of :meth:`to_json`; raises :class:`ValueError` on a foreign document."""
+        doc = orjson.loads(raw)
+        if not isinstance(doc, dict) or doc.get("format") != SNAPSHOT_FORMAT:
+            raise ValueError(f"not a {SNAPSHOT_FORMAT} document")
+        nodes, ways, relations = split_elements(doc["elements"])
+        return cls(
+            tile=TileRef.parse(str(doc["tile"])),
+            layer=str(doc["layer"]),
+            selectors=tuple(str(s) for s in doc.get("selectors", ())),
+            query=str(doc.get("query", "")),
+            mirror=str(doc.get("mirror", "")),
+            fetched_at=str(doc.get("fetched_at", "")),
+            generator=str(doc.get("generator", "")),
+            osm_base=str(doc.get("osm_base", "")),
+            nodes=tuple(nodes),
+            ways=tuple(ways),
+            relations=tuple(relations),
+            digest=str(doc["digest"]),
+        )
+
+
+def _utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def snapshot_from_overpass(
+    tile: TileRef,
+    layer: LayerSpec | str,
+    body: bytes,
+    *,
+    mirror: str = "",
+    query: str = "",
+    fetched_at: str | None = None,
+) -> OsmSnapshot:
+    """Build a snapshot from one Overpass JSON answer (spec section 5)."""
+    spec = LAYERS[layer] if isinstance(layer, str) else layer
+    doc = orjson.loads(body)
+    nodes, ways, relations = parse_overpass_json(body)
+    osm3s = doc.get("osm3s") or {}
+    return OsmSnapshot(
+        tile=tile,
+        layer=spec.name,
+        selectors=tuple(spec.selectors),
+        query=query or overpass_query(spec.selectors, tile),
+        mirror=mirror,
+        fetched_at=fetched_at or _utc_now(),
+        generator=str(doc.get("generator", "")),
+        osm_base=str(osm3s.get("timestamp_osm_base", "")),
+        nodes=tuple(nodes),
+        ways=tuple(ways),
+        relations=tuple(relations),
+        digest=blake3.blake3(_canonical(nodes, ways, relations)).hexdigest(),
+    )
+
+
+def snapshot_label(snapshots: Iterable[OsmSnapshot]) -> str:
+    """``osm-<12 hex>``: the stable content label of a tile's OSM data (arbitration A4).
+
+    An opaque string naming the state of the OSM data behind a tile, content-based: a refetch
+    of unchanged data gives the same label.
+    """
+    lines = sorted(f"{s.layer}:{s.digest}" for s in snapshots)
+    if not lines:
+        return "osm-empty"
+    return "osm-" + blake3.blake3("\n".join(lines).encode()).hexdigest()[:12]
+
+
+# -- snapshot store ------------------------------------------------------------------------
+
+
+class SnapshotStore:
+    """Where the OrthoStudio XP snapshots
+    live: ``<root>/osm/<folder>/<tile>/<tile>_<layer>.osm.json.zst``."""
+
+    def __init__(self, root: Path | None = None, *, level: int = 10) -> None:
+        self.root = Path(root) if root is not None else data_root()
+        self.level = level
+
+    def path_for(self, tile: TileRef, layer: str) -> Path:
+        """Canonical path of the compressed snapshot."""
+        return self.root / "osm" / tile.folder / tile.name / f"{tile.name}_{layer}.osm.json.zst"
+
+    def meta_path_for(self, tile: TileRef, layer: str) -> Path:
+        """Sidecar with the metadata only (digest, counts, mirror, date): cheap to read."""
+        return self.path_for(tile, layer).with_suffix("").with_suffix(".meta.json")
+
+    def save(self, snapshot: OsmSnapshot) -> Path:
+        """Write the snapshot and its sidecar atomically; raises ``OSM_CACHE_WRITE_FAILED``."""
+        path = self.path_for(snapshot.tile, snapshot.layer)
+        blob = zstandard.ZstdCompressor(level=self.level).compress(snapshot.to_json())
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write(path, blob)
+            _atomic_write(
+                self.meta_path_for(snapshot.tile, snapshot.layer),
+                orjson.dumps(snapshot.meta(), option=orjson.OPT_INDENT_2),
+            )
+        except OSError as exc:
+            raise OsxpError(
+                "OSM_CACHE_WRITE_FAILED", context={"path": path, "reason": str(exc)}
+            ) from exc
+        return path
+
+    def load(self, tile: TileRef, layer: str) -> OsmSnapshot | None:
+        """The stored snapshot, or ``None`` when there is none.
+
+        A file that exists but cannot be read raises ``OSM_CACHE_UNREADABLE``: the caller
+        deletes it and downloads the layer again.
+        """
+        path = self.path_for(tile, layer)
+        if not path.is_file():
+            return None
+        try:
+            raw = zstandard.ZstdDecompressor().decompress(path.read_bytes())
+            return OsmSnapshot.from_json(raw)
+        except (OSError, ValueError, KeyError, zstandard.ZstdError, orjson.JSONDecodeError) as exc:
+            raise OsxpError(
+                "OSM_CACHE_UNREADABLE", context={"path": path, "reason": str(exc)}
+            ) from exc
+
+    def digest_for(self, tile: TileRef, layer: str) -> str | None:
+        """Content key of the stored layer, read from the sidecar; ``None`` when absent."""
+        meta = self.meta_path_for(tile, layer)
+        if not meta.is_file():
+            return None
+        try:
+            doc = orjson.loads(meta.read_bytes())
+            return str(doc["digest"])
+        except (OSError, KeyError, orjson.JSONDecodeError) as exc:
+            raise OsxpError(
+                "OSM_CACHE_UNREADABLE", context={"path": meta, "reason": str(exc)}
+            ) from exc
+
+
+def _atomic_write(path: Path, blob: bytes) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_bytes(blob)
+    os.replace(tmp, path)
+
+
+# -- transport -----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class HttpReply:
+    """One HTTP answer, or a transport failure (``status = 0`` and ``error`` set)."""
+
+    status: int
+    body: bytes
+    headers: Mapping[str, str]
+    elapsed_s: float
+    error: str | None = None
+    wire_bytes: int = 0
+    """Bytes received for the body, as sent (gzip); 0 when the transport does not say: the
+    body's length then stands for them."""
+
+
+class Transport(Protocol):
+    """What :class:`OverpassClient` needs from an HTTP client (tests inject their own)."""
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        data: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+        connect_timeout_s: float = CONNECT_TIMEOUT_S,
+        read_timeout_s: float = float(DEFAULT_QUERY_TIMEOUT_S),
+    ) -> HttpReply: ...
+
+    async def aclose(self) -> None: ...
+
+
+class CurlTransport:
+    """Default transport: one long-lived ``curl_cffi`` session (ADR 0005 decision 2)."""
+
+    def __init__(self) -> None:
+        self._session: Any | None = None
+
+    def _get_session(self) -> Any:
+        if self._session is None:
+            from curl_cffi.requests import AsyncSession
+
+            self._session = AsyncSession()
+        return self._session
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        data: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+        connect_timeout_s: float = CONNECT_TIMEOUT_S,
+        read_timeout_s: float = float(DEFAULT_QUERY_TIMEOUT_S),
+    ) -> HttpReply:
+        session = self._get_session()
+        t0 = time.perf_counter()
+        try:
+            r = await session.request(
+                method,
+                url,
+                data=dict(data) if data else None,
+                headers=dict(headers) if headers else None,
+                timeout=(connect_timeout_s, read_timeout_s),
+            )
+        except Exception as exc:  # any transport failure is one outcome here
+            return HttpReply(0, b"", {}, time.perf_counter() - t0, f"{type(exc).__name__}: {exc}")
+        body = bytes(r.content)
+        return HttpReply(
+            status=int(r.status_code),
+            body=body,
+            headers={k.lower(): v for k, v in r.headers.items()},
+            elapsed_s=time.perf_counter() - t0,
+            wire_bytes=int(getattr(r, "download_size", 0) or 0) or len(body),
+        )
+
+    async def aclose(self) -> None:
+        if self._session is not None:
+            with contextlib.suppress(Exception):
+                await self._session.close()
+            self._session = None
+
+
+# -- client --------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorHealth:
+    """What the client knows about one mirror."""
+
+    code: str
+    healthy: bool
+    state: Literal["closed", "half-open", "open"]
+    status: int | None = None
+    elapsed_s: float = 0.0
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Attempt:
+    """One query sent to one mirror, kept for the UI and the logs."""
+
+    layer: str
+    mirror: str
+    ok: bool
+    status: int
+    elapsed_s: float
+    bytes: int
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class _MirrorState:
+    mirror: Mirror
+    open_until: float = 0.0
+    cooldown_s: float = COOLDOWN_S
+    failures: int = 0
+    successes: int = 0
+    requests: int = 0
+    last_error: str | None = None
+    last_request_at: float = -1e9
+
+    def state(self, now: float) -> Literal["closed", "half-open", "open"]:
+        if self.open_until <= 0.0:
+            return "closed"
+        return "open" if now < self.open_until else "half-open"
+
+
+class MirrorBoard:
+    """The breaker state of every mirror, shared by the clients given the same board.
+
+    A build downloads each tile with a client of its own, in a thread and an event loop of its
+    own. With a board per client every tile found a dead mirror again by its timeouts: on
+    2026-09-14 ``lz4`` refused connections and each tile lost 10 s to it (``osm-source.md`` 8).
+    The builds of one process share :func:`shared_board`, so a mirror put aside stays aside for
+    its cooldown, whatever tile or build comes next; a client made without a board keeps one to
+    itself. Thread-safe: the clients of a batch run in different threads.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._states: dict[str, _MirrorState] = {}
+
+    def register(self, mirrors: Iterable[Mirror], cooldown_s: float) -> None:
+        """Give a state to the mirrors the board does not know yet (known ones keep theirs)."""
+        with self._lock:
+            for m in mirrors:
+                if m.code not in self._states:
+                    self._states[m.code] = _MirrorState(m, cooldown_s=cooldown_s)
+
+    def state(self, code: str, now: float) -> Literal["closed", "half-open", "open"]:
+        with self._lock:
+            return self._states[code].state(now)
+
+    def health(self, code: str, now: float) -> MirrorHealth:
+        with self._lock:
+            st = self._states[code]
+            state = st.state(now)
+            return MirrorHealth(
+                code=code, healthy=state != "open", state=state, error=st.last_error
+            )
+
+    def open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
+        with self._lock:
+            st = self._states[code]
+            st.failures += 1
+            st.last_error = reason
+            cooldown = st.cooldown_s if seconds is None else max(st.cooldown_s, seconds)
+            st.open_until = time.monotonic() + cooldown
+            st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
+
+    def close(self, code: str, cooldown_s: float) -> None:
+        with self._lock:
+            st = self._states[code]
+            st.open_until = 0.0
+            st.failures = 0
+            st.cooldown_s = cooldown_s
+            st.successes += 1
+            st.last_error = None
+
+    def failure(self, code: str) -> None:
+        with self._lock:
+            self._states[code].failures += 1
+
+    def request(self, code: str) -> None:
+        with self._lock:
+            self._states[code].requests += 1
+
+
+_SHARED_BOARD = MirrorBoard()
+
+
+def shared_board() -> MirrorBoard:
+    """The board of this process, which the builds' clients share (:class:`MirrorBoard`)."""
+    return _SHARED_BOARD
+
+
+def osm_progress_message(
+    tile: TileRef, done: int, total: int, wire_bytes: int, elapsed_s: float
+) -> str:
+    """The progress line of a tile's download, ``+46+006: 2/4 OSM layers (1.4 MB/s)``.
+
+    The layers received so far, and the download rate since the tile started in the brackets
+    where the Works page reads the rate of any step (``ui.md`` 2.2). No rate before the first
+    answer: nothing was received yet.
+    """
+    text = f"{tile.name}: {done}/{total} OSM layers"
+    if wire_bytes > 0 and elapsed_s > 0:
+        text += f" ({wire_bytes / 1e6 / elapsed_s:.1f} MB/s)"
+    return text
+
+
+class OverpassClient:
+    """Downloads OSM layers from the mirror registry, with a breaker and fail-over.
+
+    Policy: ``docs/specs/osm-source.md`` section 4 and ``docs/specs/net-download.md`` 5.5.
+    At most ``max_in_flight`` requests per *cluster*, ``min_interval_s`` between two of them,
+    each layer to the least busy cluster, ``max_attempts`` attempts across mirrors (waiting
+    ``attempt_delay_s`` only before another machine of the cluster that just failed), and a
+    circuit breaker, kept on ``board``, that puts a mirror aside for ``cooldown_s`` (doubling,
+    capped).
+    """
+
+    def __init__(
+        self,
+        mirrors: Sequence[Mirror] = MIRRORS,
+        transport: Transport | None = None,
+        *,
+        query_timeout_s: int = DEFAULT_QUERY_TIMEOUT_S,
+        connect_timeout_s: float = CONNECT_TIMEOUT_S,
+        health_timeout_s: float = HEALTH_TIMEOUT_S,
+        cooldown_s: float = COOLDOWN_S,
+        max_attempts: int = MAX_ATTEMPTS,
+        attempt_delay_s: float = ATTEMPT_DELAY_S,
+        max_in_flight: int = MAX_IN_FLIGHT,
+        min_interval_s: float = MIN_INTERVAL_S,
+        allow_last_resort: bool = True,
+        user_agent: str = USER_AGENT,
+        board: MirrorBoard | None = None,
+    ) -> None:
+        if not mirrors:
+            raise ValueError("at least one mirror is needed")
+        if max_attempts < 1 or max_in_flight < 1:
+            raise ValueError("max_attempts and max_in_flight must be >= 1")
+        self.mirrors = tuple(mirrors)
+        self.transport: Transport = transport if transport is not None else CurlTransport()
+        self._owns_transport = transport is None
+        self.query_timeout_s = query_timeout_s
+        self.connect_timeout_s = connect_timeout_s
+        self.health_timeout_s = health_timeout_s
+        self.cooldown_s = cooldown_s
+        self.max_attempts = max_attempts
+        self.attempt_delay_s = attempt_delay_s
+        self.max_in_flight = max_in_flight
+        self.min_interval_s = min_interval_s
+        self.allow_last_resort = allow_last_resort
+        self.headers = {
+            "User-Agent": user_agent,
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+        }
+        self.attempts: list[Attempt] = []
+        self._board = board if board is not None else MirrorBoard()
+        self._board.register(self.mirrors, cooldown_s)
+        self._order = {m.code: i for i, m in enumerate(self.mirrors)}
+        self._clusters = {m.cluster for m in self.mirrors}
+        self._busy: dict[str, int] = dict.fromkeys(self._clusters, 0)
+        """Requests given to each cluster and not ended, waiting for its slot or in flight: the
+        next layer goes to the least busy cluster."""
+        self._gates: dict[str, asyncio.Semaphore] = {}
+        self._cluster_last: dict[str, float] = dict.fromkeys(self._clusters, -1e9)
+        self._cluster_locks: dict[str, asyncio.Lock] = {}
+
+    # -- lifecycle ---------------------------------------------------------------------
+
+    async def __aenter__(self) -> OverpassClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        """Close the transport when this client created it."""
+        if self._owns_transport:
+            await self.transport.aclose()
+
+    # -- breaker -----------------------------------------------------------------------
+
+    def health_snapshot(self) -> dict[str, MirrorHealth]:
+        """The breaker state of every mirror, without sending anything."""
+        now = time.monotonic()
+        return {m.code: self._board.health(m.code, now) for m in self.mirrors}
+
+    def _open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
+        self._board.open(code, reason=reason, seconds=seconds)
+
+    def _open_cluster(self, cluster: str, *, reason: str, seconds: float | None = None) -> None:
+        for m in self.mirrors:
+            if m.cluster == cluster:
+                self._open(m.code, reason=reason, seconds=seconds)
+
+    def _close(self, code: str) -> None:
+        self._board.close(code, self.cooldown_s)
+
+    def _pick(self, tried: set[str]) -> Mirror | None:
+        """The mirror of the next attempt: not tried yet for this layer, its breaker not open,
+        the last resort only when no other is left. Among them the least busy cluster, then the
+        registry's order: with two clusters healthy, four layers are in flight at once instead
+        of two (``osm-source.md`` 4)."""
+        now = time.monotonic()
+        usable = [
+            m
+            for m in self.mirrors
+            if m.code not in tried and self._board.state(m.code, now) != "open"
+        ]
+        ordinary = [m for m in usable if not m.last_resort]
+        pool = ordinary if ordinary else (usable if self.allow_last_resort else [])
+        if not pool:
+            return None
+        return min(
+            pool,
+            key=lambda m: (
+                self._busy[m.cluster] >= self.max_in_flight,
+                self._busy[m.cluster],
+                self._order[m.code],
+            ),
+        )
+
+    # -- one request -------------------------------------------------------------------
+
+    def _gate(self, cluster: str) -> asyncio.Semaphore:
+        gate = self._gates.get(cluster)
+        if gate is None:
+            gate = asyncio.Semaphore(self.max_in_flight)
+            self._gates[cluster] = gate
+        return gate
+
+    def _lock(self, cluster: str) -> asyncio.Lock:
+        lock = self._cluster_locks.get(cluster)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._cluster_locks[cluster] = lock
+        return lock
+
+    async def _send(
+        self,
+        mirror: Mirror,
+        query: str,
+        *,
+        read_timeout_s: float | None = None,
+        recheck: bool = True,
+    ) -> HttpReply | None:
+        """POST one query, respecting the per-cluster quota and the minimum interval.
+
+        ``None`` (nothing sent) when ``recheck`` and the mirror's breaker opened while the query
+        waited for its slot: another layer found it dead meanwhile, and the query goes elsewhere
+        instead of waiting for the same timeout (four layers did, on 2026-09-14).
+        """
+        async with self._gate(mirror.cluster):
+            async with self._lock(mirror.cluster):
+                wait = self._cluster_last[mirror.cluster] + self.min_interval_s - time.monotonic()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                if recheck and self._board.state(mirror.code, time.monotonic()) == "open":
+                    return None
+                self._cluster_last[mirror.cluster] = time.monotonic()
+            self._board.request(mirror.code)
+            return await self.transport.request(
+                "POST",
+                mirror.interpreter,
+                data={"data": query},
+                headers=self.headers,
+                connect_timeout_s=self.connect_timeout_s,
+                read_timeout_s=(
+                    float(self.query_timeout_s + 30) if read_timeout_s is None else read_timeout_s
+                ),
+            )
+
+    # -- health ------------------------------------------------------------------------
+
+    async def check_health(self) -> dict[str, MirrorHealth]:
+        """Probe every mirror once (spec section 4, health check) and update the breakers.
+
+        ``GET <status_url>`` with a 5 s timeout, or a minimal query when no status URL is
+        declared. A 403 alone does not disqualify (``overpass.openstreetmap.fr`` refuses the
+        status endpoint while serving queries); no answer or a 5xx opens the breaker.
+        """
+        results = await asyncio.gather(*(self._probe(m) for m in self.mirrors))
+        return {h.code: h for h in results}
+
+    async def _probe(self, mirror: Mirror) -> MirrorHealth:
+        if mirror.status_url:
+            reply = await self.transport.request(
+                "GET",
+                mirror.status_url,
+                headers=self.headers,
+                connect_timeout_s=self.connect_timeout_s,
+                read_timeout_s=self.health_timeout_s,
+            )
+        else:
+            sent = await self._send(
+                mirror,
+                "[out:json][timeout:10];node(id:1);out ids;",
+                read_timeout_s=self.health_timeout_s,
+                recheck=False,
+            )
+            assert sent is not None
+            reply = sent
+        healthy = reply.error is None and (reply.status < 500 and reply.status != 429)
+        if healthy:
+            if reply.status == 200:
+                self._close(mirror.code)
+        elif reply.status == 429:
+            self._open_cluster(mirror.cluster, reason="health: HTTP 429")
+        else:
+            self._open(mirror.code, reason=reply.error or f"health: HTTP {reply.status}")
+        now = time.monotonic()
+        return MirrorHealth(
+            code=mirror.code,
+            healthy=healthy,
+            state=self._board.state(mirror.code, now),
+            status=reply.status or None,
+            elapsed_s=reply.elapsed_s,
+            error=reply.error,
+        )
+
+    # -- layers ------------------------------------------------------------------------
+
+    async def fetch_layer(
+        self,
+        tile: TileRef,
+        layer: LayerSpec | str,
+        *,
+        road_level: int = 1,
+        on_reply: Callable[[HttpReply], None] | None = None,
+    ) -> OsmSnapshot:
+        """One layer of one tile, from the first mirror that answers (spec section 4).
+
+        ``on_reply`` sees every answer (the tile counts the bytes received). Raises
+        ``OsxpError("OSM_LAYER_UNAVAILABLE")`` when every attempt failed.
+        """
+        spec = self._resolve(layer, road_level)
+        query = overpass_query(spec.selectors, tile, self.query_timeout_s)
+        tried: set[str] = set()
+        reasons: list[str] = []
+        attempt = 0
+        failed_cluster: str | None = None
+        while attempt < self.max_attempts:
+            mirror = self._pick(tried)
+            if mirror is None:
+                reasons.append("no mirror available (every breaker open)")
+                break
+            if mirror.cluster == failed_cluster:
+                # another machine of the cluster that just failed: give the cluster a moment;
+                # a mirror elsewhere is asked at once
+                await asyncio.sleep(self.attempt_delay_s)
+            self._busy[mirror.cluster] += 1
+            try:
+                sent = await self._send(mirror, query)
+            finally:
+                self._busy[mirror.cluster] -= 1
+            if sent is None:
+                continue  # its breaker opened while this layer waited: no attempt spent
+            reply = sent
+            attempt += 1
+            tried.add(mirror.code)
+            if on_reply is not None:
+                on_reply(reply)
+            outcome = self._classify(mirror, reply)
+            if outcome is None:
+                self._close(mirror.code)
+                self.attempts.append(
+                    Attempt(
+                        spec.name, mirror.code, True, reply.status, reply.elapsed_s, len(reply.body)
+                    )
+                )
+                return snapshot_from_overpass(
+                    tile, spec, reply.body, mirror=mirror.code, query=query
+                )
+            code, reason = outcome
+            failed_cluster = mirror.cluster
+            reasons.append(f"{mirror.code}: {code} ({reason})")
+            self.attempts.append(
+                Attempt(
+                    spec.name,
+                    mirror.code,
+                    False,
+                    reply.status,
+                    reply.elapsed_s,
+                    len(reply.body),
+                    code,
+                )
+            )
+        raise OsxpError(
+            "OSM_LAYER_UNAVAILABLE",
+            context={"layer": spec.name, "tile": tile.name, "attempts": "; ".join(reasons)},
+        )
+
+    async def fetch_tile(
+        self,
+        tile: TileRef,
+        *,
+        road_level: int = 1,
+        layers: Sequence[LayerSpec | str] | None = None,
+        cancel: threading.Event | None = None,
+        timeout_s: float | None = None,
+        progress: Callable[[float, str], None] | None = None,
+    ) -> dict[str, OsmSnapshot]:
+        """Every layer the tile needs, concurrently within the per-cluster quotas.
+
+        ``cancel`` is the caller's (thread-based) cancellation token: it is polled while the
+        layers are in flight, and a set token cancels the in-flight requests and raises
+        ``SYS_CANCELLED``. ``timeout_s`` bounds the whole tile the same way
+        (``NET_TIMEOUT``). Without them a Ctrl-C left the node downloading (review 4, C3).
+        ``progress(fraction, message)`` hears of each layer received, and every
+        :data:`PROGRESS_PERIOD_S` meanwhile: the layers received out of the tile's
+        (:func:`osm_progress_message`) and the download rate so far.
+        """
+        specs = (
+            layers_for(road_level)
+            if layers is None
+            else tuple(self._resolve(x, road_level) for x in layers)
+        )
+        if cancel is not None and cancel.is_set():
+            raise OsxpError("SYS_CANCELLED", context={"stage": "osm", "tile": tile.name})
+        t0 = time.monotonic()
+        received = [0, 0]  # layers, bytes
+
+        def count(reply: HttpReply) -> None:
+            received[1] += reply.wire_bytes or len(reply.body)
+
+        def report() -> None:
+            if progress is not None:
+                total = len(specs)
+                message = osm_progress_message(
+                    tile, received[0], total, received[1], time.monotonic() - t0
+                )
+                progress(received[0] / total if total else 1.0, message)
+
+        async def one(spec: LayerSpec) -> OsmSnapshot:
+            snap = await self.fetch_layer(tile, spec, on_reply=count)
+            received[0] += 1
+            report()
+            return snap
+
+        gather = asyncio.gather(*(one(s) for s in specs))
+        if cancel is None and timeout_s is None and progress is None:
+            return {s.layer: s for s in await gather}
+        task = asyncio.ensure_future(gather)
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
+        reported = time.monotonic()
+        while True:
+            done, _ = await asyncio.wait([task], timeout=_CANCEL_POLL_S)
+            if done:
+                return {s.layer: s for s in await task}
+            if time.monotonic() - reported >= PROGRESS_PERIOD_S:
+                reported = time.monotonic()
+                report()
+            if cancel is not None and cancel.is_set():
+                reason: tuple[str, dict[str, Any]] = (
+                    "SYS_CANCELLED",
+                    {"stage": "osm", "tile": tile.name},
+                )
+            elif deadline is not None and time.monotonic() >= deadline:
+                reason = ("NET_TIMEOUT", {"host": "overpass", "timeout": timeout_s})
+            else:
+                continue
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, OsxpError):
+                await task
+            raise OsxpError(reason[0], context=reason[1])
+
+    def fetch_tile_sync(
+        self,
+        tile: TileRef,
+        *,
+        road_level: int = 1,
+        layers: Sequence[LayerSpec | str] | None = None,
+        cancel: threading.Event | None = None,
+        timeout_s: float | None = None,
+        progress: Callable[[float, str], None] | None = None,
+    ) -> dict[str, OsmSnapshot]:
+        """Synchronous wrapper of :meth:`fetch_tile` for callers outside an event loop."""
+
+        async def run() -> dict[str, OsmSnapshot]:
+            try:
+                return await self.fetch_tile(
+                    tile,
+                    road_level=road_level,
+                    layers=layers,
+                    cancel=cancel,
+                    timeout_s=timeout_s,
+                    progress=progress,
+                )
+            finally:
+                await self.aclose()
+
+        return asyncio.run(run())
+
+    # -- helpers -----------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve(layer: LayerSpec | str, road_level: int) -> LayerSpec:
+        if isinstance(layer, LayerSpec):
+            return layer
+        for spec in layers_for(max(road_level, LAYERS[layer].min_road_level)):
+            if spec.name == layer:
+                return spec
+        return LAYERS[layer]
+
+    def _classify(self, mirror: Mirror, reply: HttpReply) -> tuple[str, str] | None:
+        """``None`` when the answer is usable, else ``(error code, reason)`` (spec 4)."""
+        if reply.error is not None:
+            self._open(mirror.code, reason=reply.error)
+            return "OSM_MIRROR_UNREACHABLE", reply.error
+        if reply.status == 429:
+            delay = _retry_after(reply.headers)
+            self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay)
+            return "OSM_MIRROR_REJECTED", "HTTP 429"
+        if reply.status != 200:
+            self._open(mirror.code, reason=f"HTTP {reply.status}")
+            return "OSM_MIRROR_REJECTED", f"HTTP {reply.status}"
+        try:
+            doc = orjson.loads(reply.body)
+        except orjson.JSONDecodeError:
+            self._board.failure(mirror.code)
+            return "OSM_RESPONSE_TRUNCATED", "body is not JSON"
+        if not isinstance(doc, dict) or not isinstance(doc.get("elements"), list):
+            self._board.failure(mirror.code)
+            return "OSM_RESPONSE_TRUNCATED", "no 'elements' list"
+        remark = doc.get("remark")
+        if remark:
+            self._board.failure(mirror.code)
+            return "OSM_RESPONSE_ERROR", str(remark)[:200]
+        return None
+
+
+def _retry_after(headers: Mapping[str, str]) -> float | None:
+    raw = headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return float(int(raw.strip()))
+    except ValueError:
+        return None

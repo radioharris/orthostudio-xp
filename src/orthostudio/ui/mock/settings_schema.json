@@ -1,0 +1,666 @@
+{
+  "additionalProperties": false,
+  "description": "The whole configuration (``~/.orthostudio/config.toml``).",
+  "properties": {
+    "essential": {
+      "additionalProperties": false,
+      "description": "The essential parameters: the questions the Settings screen asks first.",
+      "properties": {
+        "provider": {
+          "default": "BI",
+          "description": "Code of the imagery provider (see `osxp doctor --providers` for the ones alive and their maximum zoom level).",
+          "hint": "Code of the imagery provider (see `osxp doctor --providers` for the ones alive and their maximum zoom level).",
+          "ortho4xp": "default_website",
+          "level": "essential",
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string",
+          "unit": ""
+        },
+        "zoom_level": {
+          "default": 16,
+          "description": "Zoom level of the imagery over the whole tile: ZL16 is about 2.4 m/px at mid latitudes, each level doubles the resolution and quadruples the download; mesh_zl caps it.",
+          "hint": "Zoom level of the imagery over the whole tile: ZL16 is about 2.4 m/px at mid latitudes, each level doubles the resolution and quadruples the download; mesh_zl caps it.",
+          "ortho4xp": "default_zl",
+          "level": "essential",
+          "maximum": 20,
+          "minimum": 10,
+          "title": "Zoom Level",
+          "type": "integer",
+          "unit": "ZL"
+        },
+        "airports": {
+          "additionalProperties": false,
+          "description": "Higher-resolution imagery over airports.",
+          "properties": {
+            "mode": {
+              "default": "off",
+              "description": "When set, textures above airports will be upgraded to a higher zoomlevel, the imagery being the same as the one they would otherwise receive. Can be limited to airports with an ICAO code for tiles with so many airports. Exceptional: use \"Existing\" to (try to) derive custom zl zones from the textures directory of an existing tile.",
+              "enum": [
+                "off",
+                "on",
+                "icao",
+                "existing"
+              ],
+              "hint": "When set, textures above airports will be upgraded to a higher zoomlevel, the imagery being the same as the one they would otherwise receive. Can be limited to airports with an ICAO code for tiles with so many airports. Exceptional: use \"Existing\" to (try to) derive custom zl zones from the textures directory of an existing tile.",
+              "ortho4xp": "cover_airports_with_highres",
+              "level": "essential",
+              "title": "Mode",
+              "type": "string",
+              "unit": ""
+            },
+            "zoom_level": {
+              "default": 18,
+              "description": "The zoomlevel with which to cover the airports zone when high_zl_airports is set. Note that if the cover_zl is lower than the zoomlevel which would otherwise be applied on a specific zone, the latter is used.",
+              "hint": "The zoomlevel with which to cover the airports zone when high_zl_airports is set. Note that if the cover_zl is lower than the zoomlevel which would otherwise be applied on a specific zone, the latter is used.",
+              "ortho4xp": "cover_zl",
+              "level": "essential",
+              "maximum": 20,
+              "minimum": 14,
+              "title": "Zoom Level",
+              "type": "integer",
+              "unit": "ZL"
+            },
+            "extent_km": {
+              "default": 1.0,
+              "description": "The extent (in km) past the airport boundary taken into account for higher ZL. Note that for VRAM efficiency higher ZL textures are fully used on their whole extent as soon as part of them are needed.",
+              "hint": "The extent (in km) past the airport boundary taken into account for higher ZL. Note that for VRAM efficiency higher ZL textures are fully used on their whole extent as soon as part of them are needed.",
+              "ortho4xp": "cover_extent",
+              "level": "essential",
+              "minimum": 0,
+              "title": "Extent Km",
+              "type": "number",
+              "unit": "km"
+            }
+          },
+          "title": "AirportCoverage",
+          "type": "object",
+          "level": "essential"
+        },
+        "coast_transition": {
+          "additionalProperties": false,
+          "description": "Profile and width of the sea masks along the coastline.",
+          "properties": {
+            "profile": {
+              "default": "sand",
+              "description": "A selection of three tentative masking algorithms (still looking for the Holy Grail...). The first two (sand and rocks) requires masks_width to be a single value; the third one (3steps) requires a list of the form [a,b,c] for masks width: \"a\" is the length in meters of a first transition from plain imagery at the shoreline towards ratio_water transparency, \"b\" is the second extent zone where transparency level is kept constant equal to ratio_water, and \"c\" is the last extent where the masks eventually fade to nothing. The transition with rocks is more abrupt than with sand.",
+              "enum": [
+                "sand",
+                "rocks",
+                "3steps"
+              ],
+              "hint": "A selection of three tentative masking algorithms (still looking for the Holy Grail...). The first two (sand and rocks) requires masks_width to be a single value; the third one (3steps) requires a list of the form [a,b,c] for masks width: \"a\" is the length in meters of a first transition from plain imagery at the shoreline towards ratio_water transparency, \"b\" is the second extent zone where transparency level is kept constant equal to ratio_water, and \"c\" is the last extent where the masks eventually fade to nothing. The transition with rocks is more abrupt than with sand.",
+              "ortho4xp": "masking_mode",
+              "level": "essential",
+              "title": "Profile",
+              "type": "string",
+              "unit": ""
+            },
+            "width_m": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                }
+              ],
+              "default": 100.0,
+              "description": "Maximum extent of the masks perpendicularly to the coastline (rough definition). NOTE: The value is now in meters, it used to be in ZL14 pixel size in earlier verions, the scale is roughly one to ten between both.",
+              "hint": "Maximum extent of the masks perpendicularly to the coastline (rough definition). NOTE: The value is now in meters, it used to be in ZL14 pixel size in earlier verions, the scale is roughly one to ten between both.",
+              "ortho4xp": "masks_width",
+              "level": "essential",
+              "title": "Width M",
+              "unit": "m"
+            }
+          },
+          "title": "CoastTransition",
+          "type": "object",
+          "level": "essential"
+        },
+        "water_rendering": {
+          "default": "XP11 + bathy",
+          "description": "Water tech type. XP12 uses a new (partly in construction) rendering tech, XP11 + bathy uses a more traditionnal blend. Both allows for 3D water.",
+          "enum": [
+            "XP11 + bathy",
+            "XP12"
+          ],
+          "hint": "Water tech type. XP12 uses a new (partly in construction) rendering tech, XP11 + bathy uses a more traditionnal blend. Both allows for 3D water.",
+          "ortho4xp": "water_tech",
+          "level": "essential",
+          "title": "Water Rendering",
+          "type": "string",
+          "unit": ""
+        },
+        "relief": {
+          "additionalProperties": false,
+          "description": "Elevation source: the global DEM, or a local raster file.",
+          "properties": {
+            "source": {
+              "default": "auto",
+              "description": "Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). The raster must be in geopgraphical coordinates (EPSG:4326) but the extent need not match the tile boundary (requires Gdal). Regions of the tile that are not covered by the raster are mapped to zero altitude (can be useful for high resolution data over islands in particular).",
+              "enum": [
+                "auto",
+                "file"
+              ],
+              "hint": "Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). The raster must be in geopgraphical coordinates (EPSG:4326) but the extent need not match the tile boundary (requires Gdal). Regions of the tile that are not covered by the raster are mapped to zero altitude (can be useful for high resolution data over islands in particular).",
+              "ortho4xp": "custom_dem",
+              "level": "essential",
+              "title": "Source",
+              "type": "string",
+              "unit": ""
+            },
+            "file": {
+              "default": "",
+              "description": "Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). The raster must be in geopgraphical coordinates (EPSG:4326) but the extent need not match the tile boundary (requires Gdal). Regions of the tile that are not covered by the raster are mapped to zero altitude (can be useful for high resolution data over islands in particular).",
+              "hint": "Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). The raster must be in geopgraphical coordinates (EPSG:4326) but the extent need not match the tile boundary (requires Gdal). Regions of the tile that are not covered by the raster are mapped to zero altitude (can be useful for high resolution data over islands in particular).",
+              "ortho4xp": "custom_dem",
+              "level": "essential",
+              "title": "File",
+              "type": "string",
+              "unit": ""
+            },
+            "fill_nodata": {
+              "default": "nearest",
+              "description": "When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data).",
+              "enum": [
+                "nearest",
+                "zero"
+              ],
+              "hint": "When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data).",
+              "ortho4xp": "fill_nodata",
+              "level": "essential",
+              "title": "Fill Nodata",
+              "type": "string",
+              "unit": ""
+            }
+          },
+          "title": "Relief",
+          "type": "object",
+          "level": "essential"
+        },
+        "overlays": {
+          "default": "xplane",
+          "description": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+          "enum": [
+            "xplane",
+            "none"
+          ],
+          "hint": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+          "ortho4xp": null,
+          "level": "essential",
+          "title": "Overlays",
+          "type": "string",
+          "unit": ""
+        },
+        "xplane_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Your X-Plane Custom Scenery. Used only for \"1-click\" creation (or deletion) of symbolic links from Ortho4XP tiles to there.",
+          "hint": "Your X-Plane Custom Scenery. Used only for \"1-click\" creation (or deletion) of symbolic links from Ortho4XP tiles to there.",
+          "ortho4xp": "custom_scenery_dir",
+          "level": "essential",
+          "title": "Xplane Dir",
+          "unit": ""
+        },
+        "data_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its caches, several GB per tile: on an external disk, for instance. Empty: OrthoStudio XP's own folder (~/.orthostudio). Its disk must hard-link files (APFS, Mac OS Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where it is.",
+          "hint": "The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its caches, several GB per tile: on an external disk, for instance. Empty: OrthoStudio XP's own folder (~/.orthostudio). Its disk must hard-link files (APFS, Mac OS Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where it is.",
+          "level": "essential",
+          "ortho4xp": null,
+          "title": "Data Dir",
+          "unit": ""
+        }
+      },
+      "title": "Essential",
+      "type": "object",
+      "level": "essential"
+    },
+    "advanced": {
+      "additionalProperties": false,
+      "description": "The 14 advanced parameters.",
+      "properties": {
+        "curvature_tol": {
+          "default": 2.0,
+          "description": "This parameter is intrinsically linked the mesh final density. Mesh refinement is mostly based on curvature computations on the elevation data (the exact decision rule can be found in _ triunsuitable() _ in Utils/Triangle4XP.c). A higher curvature tolerance yields fewer triangles.",
+          "exclusiveMinimum": 0,
+          "hint": "This parameter is intrinsically linked the mesh final density. Mesh refinement is mostly based on curvature computations on the elevation data (the exact decision rule can be found in _ triunsuitable() _ in Utils/Triangle4XP.c). A higher curvature tolerance yields fewer triangles.",
+          "ortho4xp": "curvature_tol",
+          "level": "advanced",
+          "title": "Curvature Tol",
+          "type": "number",
+          "unit": ""
+        },
+        "limit_tris": {
+          "default": 3.0,
+          "description": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
+          "hint": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
+          "ortho4xp": "limit_tris",
+          "level": "advanced",
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Limit Tris",
+          "type": "number",
+          "unit": "M"
+        },
+        "road_level": {
+          "default": 1,
+          "description": "Allows to level the mesh along roads and railways. Zero means nothing such is included; \"1\" looks for banking ways among motorways, primary and secondary roads and railway tracks; \"2\" adds tertiary roads; \"3\" brings residential and unclassified roads; \"4\" takes service roads, and 5 finishes with tracks. Purge the small_roads.osm cached data if you change your mind in between the levels 2-5.",
+          "enum": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "hint": "Allows to level the mesh along roads and railways. Zero means nothing such is included; \"1\" looks for banking ways among motorways, primary and secondary roads and railway tracks; \"2\" adds tertiary roads; \"3\" brings residential and unclassified roads; \"4\" takes service roads, and 5 finishes with tracks. Purge the small_roads.osm cached data if you change your mind in between the levels 2-5.",
+          "ortho4xp": "road_level",
+          "level": "advanced",
+          "title": "Road Level",
+          "type": "integer",
+          "unit": ""
+        },
+        "min_area": {
+          "default": 0.001,
+          "description": "Minimum area (in km^2) a water patch needs to be in order to be included in the mesh as such. Contiguous water patches are merged before area computation.",
+          "hint": "Minimum area (in km^2) a water patch needs to be in order to be included in the mesh as such. Contiguous water patches are merged before area computation.",
+          "ortho4xp": "min_area",
+          "level": "advanced",
+          "minimum": 0,
+          "title": "Min Area",
+          "type": "number",
+          "unit": "km²"
+        },
+        "max_area": {
+          "default": 200.0,
+          "description": "Any water patch larger than this quantity (in km^2) will be masked like the sea.",
+          "hint": "Any water patch larger than this quantity (in km^2) will be masked like the sea.",
+          "ortho4xp": "max_area",
+          "level": "advanced",
+          "minimum": 0,
+          "title": "Max Area",
+          "type": "number",
+          "unit": "km²"
+        },
+        "sea_smoothing_mode": {
+          "default": "zero",
+          "description": "Zero means that all nodes of sea triangles are set to zero elevation. With mean, some kind of smoothing occurs (triangles are levelled one at a time to their mean elevation), None (a value mostly appropriate for DEM resolution of 10m and less), positive altitudes of sea nodes are kept intact, only negative ones are brought back to zero, this avoids to create unrealistic vertical cliffs if the coastline vector data was lower res.",
+          "enum": [
+            "zero",
+            "mean",
+            "none"
+          ],
+          "hint": "Zero means that all nodes of sea triangles are set to zero elevation. With mean, some kind of smoothing occurs (triangles are levelled one at a time to their mean elevation), None (a value mostly appropriate for DEM resolution of 10m and less), positive altitudes of sea nodes are kept intact, only negative ones are brought back to zero, this avoids to create unrealistic vertical cliffs if the coastline vector data was lower res.",
+          "ortho4xp": "sea_smoothing_mode",
+          "level": "advanced",
+          "title": "Sea Smoothing Mode",
+          "type": "string",
+          "unit": ""
+        },
+        "water_smoothing": {
+          "default": 10,
+          "description": "Number of smoothing passes over all inland water triangles (sequentially set to their mean elevation).",
+          "hint": "Number of smoothing passes over all inland water triangles (sequentially set to their mean elevation).",
+          "ortho4xp": "water_smoothing",
+          "level": "advanced",
+          "minimum": 0,
+          "title": "Water Smoothing",
+          "type": "integer",
+          "unit": "passes"
+        },
+        "apt_smoothing_pix": {
+          "default": 8,
+          "description": "How much gaussian blur is applied to the elevation raster for the look up of altitude over airports. Unit is the evelation raster pixel size.",
+          "hint": "How much gaussian blur is applied to the elevation raster for the look up of altitude over airports. Unit is the evelation raster pixel size.",
+          "ortho4xp": "apt_smoothing_pix",
+          "level": "advanced",
+          "minimum": 0,
+          "title": "Apt Smoothing Pix",
+          "type": "integer",
+          "unit": "px"
+        },
+        "ratio_water_pct": {
+          "default": 25.0,
+          "description": "Inland water rendering is made of two layers : one bottom layer of \"X-Plane water\" and one overlay layer of orthophoto with constant level of transparency applied. The parameter ratio_water (values between 0 and 1) determines how much transparency is applied to the orthophoto. At zero, the orthophoto is fully opaque and X-Plane water cannot be seen ; at 1 the orthophoto is fully transparent and only the X-Plane water is seen.",
+          "hint": "Inland water rendering is made of two layers : one bottom layer of \"X-Plane water\" and one overlay layer of orthophoto with constant level of transparency applied. The parameter ratio_water (values between 0 and 1) determines how much transparency is applied to the orthophoto. At zero, the orthophoto is fully opaque and X-Plane water cannot be seen ; at 1 the orthophoto is fully transparent and only the X-Plane water is seen.",
+          "ortho4xp": "ratio_water",
+          "level": "advanced",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Ratio Water Pct",
+          "type": "number",
+          "unit": "%"
+        },
+        "ratio_bathy": {
+          "default": 1.0,
+          "description": "Bathymetry multiplier for near shore vertices. In the range [0,1].",
+          "hint": "Bathymetry multiplier for near shore vertices. In the range [0,1].",
+          "ortho4xp": "ratio_bathy",
+          "level": "advanced",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Ratio Bathy",
+          "type": "number",
+          "unit": ""
+        },
+        "use_masks_for_inland": {
+          "default": false,
+          "description": "Will use masks for the inland water (lakes, rivers, etc) too, instead of the default constant transparency level determined by ratio_water. This is VRAM expensive and presumably not really worth the price.",
+          "hint": "Will use masks for the inland water (lakes, rivers, etc) too, instead of the default constant transparency level determined by ratio_water. This is VRAM expensive and presumably not really worth the price.",
+          "ortho4xp": "use_masks_for_inland",
+          "level": "advanced",
+          "title": "Use Masks For Inland",
+          "type": "boolean",
+          "unit": ""
+        },
+        "imprint_masks_to_dds": {
+          "default": true,
+          "description": "Will apply masking directly to dds textures (at the Build Imagery/DSF step) rather than using external png files. This doubles the file size of masked textures (dxt5 vs dxt1) but reduce the overall VRAM footprint (a matter of choice!)",
+          "hint": "Will apply masking directly to dds textures (at the Build Imagery/DSF step) rather than using external png files. This doubles the file size of masked textures (dxt5 vs dxt1) but reduce the overall VRAM footprint (a matter of choice!)",
+          "ortho4xp": "imprint_masks_to_dds",
+          "level": "advanced",
+          "title": "Imprint Masks To Dds",
+          "type": "boolean",
+          "unit": ""
+        },
+        "terrain_casts_shadows": {
+          "default": true,
+          "description": "If unset, the terrain itself will not cast (but still receive!) shadows. This option is only meaningful if scenery shadows are opted for in the X-Plane graphics settings.",
+          "hint": "If unset, the terrain itself will not cast (but still receive!) shadows. This option is only meaningful if scenery shadows are opted for in the X-Plane graphics settings.",
+          "ortho4xp": "terrain_casts_shadows",
+          "level": "advanced",
+          "title": "Terrain Casts Shadows",
+          "type": "boolean",
+          "unit": ""
+        },
+        "overlay_lod_km": {
+          "default": 25.0,
+          "description": "Distance until which overlay imageries (that is orthophotos over water) are drawn. Lower distances have a positive impact on frame rate and VRAM usage, and IFR flyers will probably need a higher value than VFR ones.",
+          "hint": "Distance until which overlay imageries (that is orthophotos over water) are drawn. Lower distances have a positive impact on frame rate and VRAM usage, and IFR flyers will probably need a higher value than VFR ones.",
+          "ortho4xp": "overlay_lod",
+          "level": "advanced",
+          "minimum": 0,
+          "title": "Overlay Lod Km",
+          "type": "number",
+          "unit": "km"
+        }
+      },
+      "title": "Advanced",
+      "type": "object",
+      "level": "advanced"
+    },
+    "expert": {
+      "additionalProperties": false,
+      "description": "The expert parameters, under *For experts* on the Settings screen.",
+      "properties": {
+        "mesh_zl": {
+          "default": 19,
+          "description": "The mesh will be preprocessed to accept later any combination of imageries up to and including a zoomlevel equal to mesh_zl. Lower value could save a few tens of thousands triangles, but put a limitation on the maximum allowed imagery zoomlevel.",
+          "enum": [
+            16,
+            17,
+            18,
+            19,
+            20
+          ],
+          "hint": "The mesh will be preprocessed to accept later any combination of imageries up to and including a zoomlevel equal to mesh_zl. Lower value could save a few tens of thousands triangles, but put a limitation on the maximum allowed imagery zoomlevel.",
+          "ortho4xp": "mesh_zl",
+          "level": "expert",
+          "title": "Mesh Zl",
+          "type": "integer",
+          "unit": "ZL"
+        },
+        "mask_zl": {
+          "default": 14,
+          "description": "The zoomlevel at which the (sea) water masks are built. Masks are used for alpha channel, and this channel usually requires less resolution than the RGB ones, the reason for this (VRAM saving) parameter. If the coastline and elevation data are very detailed, it might be interesting to lift this parameter up so that the masks can reproduce this complexity.",
+          "enum": [
+            14,
+            15,
+            16
+          ],
+          "hint": "The zoomlevel at which the (sea) water masks are built. Masks are used for alpha channel, and this channel usually requires less resolution than the RGB ones, the reason for this (VRAM saving) parameter. If the coastline and elevation data are very detailed, it might be interesting to lift this parameter up so that the masks can reproduce this complexity.",
+          "ortho4xp": "mask_zl",
+          "level": "expert",
+          "title": "Mask Zl",
+          "type": "integer",
+          "unit": "ZL"
+        },
+        "apt_curv_tol": {
+          "default": 0.5,
+          "description": "If smaller, it supersedes curvature_tol over airports neighbourhoods.",
+          "exclusiveMinimum": 0,
+          "hint": "If smaller, it supersedes curvature_tol over airports neighbourhoods.",
+          "ortho4xp": "apt_curv_tol",
+          "level": "expert",
+          "title": "Apt Curv Tol",
+          "type": "number",
+          "unit": ""
+        },
+        "apt_curv_ext": {
+          "default": 0.5,
+          "description": "Extent (in km) around the airports where apt_curv_tol applies.",
+          "hint": "Extent (in km) around the airports where apt_curv_tol applies.",
+          "ortho4xp": "apt_curv_ext",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Apt Curv Ext",
+          "type": "number",
+          "unit": "km"
+        },
+        "coast_curv_tol": {
+          "default": 1.0,
+          "description": "If smaller, it supersedes curvature_tol along the coastline.",
+          "exclusiveMinimum": 0,
+          "hint": "If smaller, it supersedes curvature_tol along the coastline.",
+          "ortho4xp": "coast_curv_tol",
+          "level": "expert",
+          "title": "Coast Curv Tol",
+          "type": "number",
+          "unit": ""
+        },
+        "coast_curv_ext": {
+          "default": 0.5,
+          "description": "Extent (in km) around the coastline where coast_curv_tol applies.",
+          "hint": "Extent (in km) around the coastline where coast_curv_tol applies.",
+          "ortho4xp": "coast_curv_ext",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Coast Curv Ext",
+          "type": "number",
+          "unit": "km"
+        },
+        "min_angle": {
+          "default": 10.0,
+          "description": "The mesh algorithm will try to not have mesh triangles with (smallest for water / second smallest for regular land) angle less than the value (in deg) of min_angle.",
+          "hint": "The mesh algorithm will try to not have mesh triangles with (smallest for water / second smallest for regular land) angle less than the value (in deg) of min_angle.",
+          "ortho4xp": "min_angle",
+          "level": "expert",
+          "maximum": 30,
+          "minimum": 0,
+          "title": "Min Angle",
+          "type": "number",
+          "unit": "°"
+        },
+        "road_banking_limit": {
+          "default": 0.5,
+          "description": "How much sloped does a roads need to be to be in order to be included in the mesh levelling process. The value is in meters, measuring the height difference between a point in the center of a road node and its closest point on the side of the road.",
+          "hint": "How much sloped does a roads need to be to be in order to be included in the mesh levelling process. The value is in meters, measuring the height difference between a point in the center of a road node and its closest point on the side of the road.",
+          "ortho4xp": "road_banking_limit",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Road Banking Limit",
+          "type": "number",
+          "unit": "m"
+        },
+        "lane_width": {
+          "default": 4.0,
+          "description": "With (in meters) to be used for buffering that part of the road network that requires levelling.",
+          "exclusiveMinimum": 0,
+          "hint": "With (in meters) to be used for buffering that part of the road network that requires levelling.",
+          "ortho4xp": "lane_width",
+          "level": "expert",
+          "title": "Lane Width",
+          "type": "number",
+          "unit": "m"
+        },
+        "max_levelled_segs": {
+          "default": 200000,
+          "description": "This limits the total number of roads segments included for mesh levelling, in order to keep triangle count under control in case of abundant OSM data.",
+          "hint": "This limits the total number of roads segments included for mesh levelling, in order to keep triangle count under control in case of abundant OSM data.",
+          "ortho4xp": "max_levelled_segs",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Max Levelled Segs",
+          "type": "integer",
+          "unit": "segments"
+        },
+        "water_simplification": {
+          "default": 0.0,
+          "description": "In case the OSM data for water areas would become too large, this parameter (in meter) can be used for node simplification.",
+          "hint": "In case the OSM data for water areas would become too large, this parameter (in meter) can be used for node simplification.",
+          "ortho4xp": "water_simplification",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Water Simplification",
+          "type": "number",
+          "unit": "m"
+        },
+        "masks_use_dem_too": {
+          "default": false,
+          "description": "If you have acces to high resolutions DEMs (really shines with 5m or lower), you can use the elevation in addition to the vector data in order to draw masks with higher precision. If the DEM is not high res, this option will yield unpleasant pixellisation.",
+          "hint": "If you have acces to high resolutions DEMs (really shines with 5m or lower), you can use the elevation in addition to the vector data in order to draw masks with higher precision. If the DEM is not high res, this option will yield unpleasant pixellisation.",
+          "ortho4xp": "masks_use_DEM_too",
+          "level": "expert",
+          "title": "Masks Use Dem Too",
+          "type": "boolean",
+          "unit": ""
+        },
+        "masks_custom_extent": {
+          "default": "",
+          "description": "Yet another tentative to draw masks with maximizing the use of the good imagery part. Requires to draw (JOSM) the \"good imagery\" threshold first, but it could be one order of magnitude faster to do compared to hand tweaking the masks and the imageries one by one.",
+          "hint": "Yet another tentative to draw masks with maximizing the use of the good imagery part. Requires to draw (JOSM) the \"good imagery\" threshold first, but it could be one order of magnitude faster to do compared to hand tweaking the masks and the imageries one by one.",
+          "ortho4xp": "masks_custom_extent",
+          "level": "expert",
+          "title": "Masks Custom Extent",
+          "type": "string",
+          "unit": ""
+        },
+        "distance_masks_too": {
+          "default": false,
+          "description": "This will additionally build distance to coastline masks that are used in Step 3 in order to improve the bathymetric profile (otherwise too low res) and avoid steep walls close to piers or rocks. Masks_zl should not be too low to grab these details.",
+          "hint": "This will additionally build distance to coastline masks that are used in Step 3 in order to improve the bathymetric profile (otherwise too low res) and avoid steep walls close to piers or rocks. Masks_zl should not be too low to grab these details.",
+          "ortho4xp": "distance_masks_too",
+          "level": "expert",
+          "title": "Distance Masks Too",
+          "type": "boolean",
+          "unit": ""
+        },
+        "sea_texture_blur": {
+          "default": 0.0,
+          "description": "For layers of type \"mask\" in combined providers imageries, determines the extent (in meters) of the blur radius applied. This allows to smoothen some sea imageries where the wave or reflection pattern was too much present.",
+          "hint": "For layers of type \"mask\" in combined providers imageries, determines the extent (in meters) of the blur radius applied. This allows to smoothen some sea imageries where the wave or reflection pattern was too much present.",
+          "ortho4xp": "sea_texture_blur",
+          "level": "expert",
+          "minimum": 0,
+          "title": "Sea Texture Blur",
+          "type": "number",
+          "unit": "m"
+        },
+        "normal_map_strength": {
+          "default": 1.0,
+          "description": "Orthophotos by essence already contain the part of the shading burned in (here by shading we mean the amount of reflected light in the camera direction as a function of the terrain slope, not the shadows). This option allows to tweak the normal coordinates of the mesh in the DSF to avoid \"overshading\", but it has side effects on the way X-Plane computes scenery shadows. Used to be 0.3 by default in earlier versions, the default is now 1 which means exact normals.},",
+          "hint": "Orthophotos by essence already contain the part of the shading burned in (here by shading we mean the amount of reflected light in the camera direction as a function of the terrain slope, not the shadows). This option allows to tweak the normal coordinates of the mesh in the DSF to avoid \"overshading\", but it has side effects on the way X-Plane computes scenery shadows. Used to be 0.3 by default in earlier versions, the default is now 1 which means exact normals.},",
+          "ortho4xp": "normal_map_strength",
+          "level": "expert",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Normal Map Strength",
+          "type": "number",
+          "unit": ""
+        },
+        "use_decal_on_terrain": {
+          "default": false,
+          "description": "Terrain files for all but water triangles will contain the maquify_1_green_key.dcl decal directive. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
+          "hint": "Terrain files for all but water triangles will contain the maquify_1_green_key.dcl decal directive. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
+          "ortho4xp": "use_decal_on_terrain",
+          "level": "expert",
+          "title": "Use Decal On Terrain",
+          "type": "boolean",
+          "unit": ""
+        },
+        "ovl_exclude_pol": {
+          "default": [
+            0
+          ],
+          "description": "Indices of polygon types which one would like to left aside in the extraction of overlays. The list of these indices in front of their name can be obtained by running the \"extract overlay\" process with verbosity = 2 (skip facades that can be numerous) or 3. Index 0 corresponds to beaches in Global and HD sceneries. Strings can be used in places of indices, in that case any polygon_def that contains that string is excluded, and the string can begin with a ! to invert the matching. As an exmaple, [\"!.for\"] would exclude everything but forests.",
+          "hint": "Indices of polygon types which one would like to left aside in the extraction of overlays. The list of these indices in front of their name can be obtained by running the \"extract overlay\" process with verbosity = 2 (skip facades that can be numerous) or 3. Index 0 corresponds to beaches in Global and HD sceneries. Strings can be used in places of indices, in that case any polygon_def that contains that string is excluded, and the string can begin with a ! to invert the matching. As an exmaple, [\"!.for\"] would exclude everything but forests.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "ortho4xp": "ovl_exclude_pol",
+          "level": "expert",
+          "title": "Ovl Exclude Pol",
+          "type": "array",
+          "unit": ""
+        },
+        "ovl_exclude_net": {
+          "default": [],
+          "description": "Indices of road types which one would like to left aside in the extraction of overlays. The list of these indices is can be in the roads.net file within X-Plane Resources, but some sceneries use their own corresponding net definition file. Powerlines have index 22001 in XP11 roads.net default file.",
+          "hint": "Indices of road types which one would like to left aside in the extraction of overlays. The list of these indices is can be in the roads.net file within X-Plane Resources, but some sceneries use their own corresponding net definition file. Powerlines have index 22001 in XP11 roads.net default file.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "ortho4xp": "ovl_exclude_net",
+          "level": "expert",
+          "title": "Ovl Exclude Net",
+          "type": "array",
+          "unit": ""
+        }
+      },
+      "title": "Expert",
+      "type": "object",
+      "level": "expert"
+    }
+  },
+  "title": "Settings",
+  "type": "object",
+  "x-levels": [
+    "essential",
+    "advanced",
+    "expert"
+  ]
+}

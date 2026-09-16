@@ -1,0 +1,53 @@
+{
+  "id": "20260913-101500-a000",
+  "status": "running",
+  "created_at": 1789290900.0,
+  "started_at": 1789290900.0,
+  "finished_at": null,
+  "install": true,
+  "tiles": [
+    {
+      "tile": "+43+005",
+      "provider": "BI",
+      "zl": 16,
+      "status": "pending",
+      "stages": {
+        "data": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/osm", "role": "osm", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 26.0},
+          {"node": "+43+005/dem", "role": "dem", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 6.2},
+          {"node": "+43+005/coastline", "role": "coastline", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.05},
+          {"node": "+43+005/vectors", "role": "vectors", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 11.1}
+        ]},
+        "terrain": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/mesh", "role": "mesh", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/masks", "role": "masks", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/BI16/textures", "role": "textures", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 65.7}
+        ]},
+        "assembly": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/xp12", "role": "xp12", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.4},
+          {"node": "+43+005/BI16/dsf", "role": "dsf", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 5.5},
+          {"node": "+43+005/overlay", "role": "overlay", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 2.8},
+          {"node": "+43+005/BI16/pack", "role": "pack", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.8}
+        ]},
+        "install": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/BI16/install", "role": "install", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.15}
+        ]}
+      },
+      "errors": []
+    }
+  ],
+  "provider": "BI",
+  "zl": 16,
+  "ok": false,
+  "request": {"tiles": ["+43+005"], "airport": null, "provider": "BI", "zoom_level": 16, "overrides": {}, "xplane_dir": null, "overlay": true, "xp12_rasters": true, "online": false, "zones": [], "install": true},
+  "errors": [],
+  "stats": {"running": 0, "pending": 12, "done": 0, "failed": 0, "hits": 0, "elapsed_s": 0.0, "progress": 0.0, "eta_low_s": null, "eta_high_s": null, "phase": "data"},
+  "eta": null,
+  "last_seq": 1,
+  "report": null,
+  "decisions": []
+}

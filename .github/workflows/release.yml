@@ -1,0 +1,76 @@
+name: release
+# The installers of OrthoStudio XP (tools/package/build.py, docs/specs/packaging.md): each built and
+# checked on its own system. A tag v* publishes them as a GitHub release; a manual run only keeps
+# them as the run's artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  package:
+    name: installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS 14 on Apple Silicon: the wheels chosen there run on macOS 14 and later. Ubuntu 22.04:
+        # Triangle4XP compiled there runs on the older glibc of the distributions still in use.
+        os: [macos-14, windows-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build Triangle4XP
+        run: |
+          cmake -S native/triangle4xp -B native/triangle4xp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/triangle4xp/build --config Release
+      - run: uv sync --frozen --no-dev
+      - run: uv run --no-sync python tools/package/build.py --check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            dist/OrthoStudio-XP-*.dmg
+            dist/OrthoStudio-XP-*-setup.exe
+            dist/OrthoStudio-XP-*.zip
+            dist/OrthoStudio-XP-*.tar.gz
+          if-no-files-found: error
+  publish:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: docs/releases
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # the notes of the version (docs/releases/<version>.md) when written, else a line
+          notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+          if [ -f "$notes" ]; then
+            set -- --notes-file "$notes"
+          else
+            set -- --notes "Installers of OrthoStudio XP $GITHUB_REF_NAME, not signed: README.md says how to open them the first time."
+          fi
+          # a plain version tag (v0.1.1) makes a release, a tag with a suffix (v0.2.0-rc.1) a pre-release
+          case "$GITHUB_REF_NAME" in *-*) set -- "$@" --prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "OrthoStudio XP $GITHUB_REF_NAME" "$@"

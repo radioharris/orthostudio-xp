@@ -1,0 +1,158 @@
+"""The installers' build script, ``tools/package/build.py`` (pure parts, and the pruning on a fake
+Python): ``docs/specs/packaging.md``."""
+
+from __future__ import annotations
+
+import plistlib
+import sys
+from pathlib import Path
+
+import pytest
+
+PACKAGE = Path(__file__).resolve().parents[1] / "tools" / "package"
+sys.path.insert(0, str(PACKAGE))
+
+import build  # noqa: E402
+import icon  # noqa: E402
+
+MAC = build.Target("macos", "arm64")
+WINDOWS = build.Target("windows", "x64")
+LINUX = build.Target("linux", "x86_64")
+
+
+def test_the_installer_names() -> None:
+    assert build.artefact_name("0.1.0", MAC) == "OrthoStudio-XP-0.1.0-macos-arm64.dmg"
+    assert build.artefact_name("0.1.0", WINDOWS) == "OrthoStudio-XP-0.1.0-windows-x64-setup.exe"
+    assert build.artefact_name("0.1.0", LINUX) == "OrthoStudio-XP-0.1.0-linux-x86_64.tar.gz"
+
+
+def test_the_launchers_run_the_python_inside_by_a_relative_path() -> None:
+    for text in (build.macos_launcher(), build.linux_launcher()):
+        assert "-m orthostudio.desktop" in text and '"$@"' in text
+        assert "/Users/" not in text and "/home/" not in text
+    assert "$CONTENTS/Resources/python/bin/python3" in build.macos_launcher()
+    assert '"$HERE/python/bin/python3"' in build.linux_launcher()
+
+
+def test_the_app_bundle_describes_itself() -> None:
+    info = build.macos_info_plist("0.1.0", "14.0")
+    assert plistlib.loads(plistlib.dumps(info))["CFBundleExecutable"] == "orthostudio"
+    assert (
+        info["LSMinimumSystemVersion"] == "14.0" and info["CFBundleShortVersionString"] == "0.1.0"
+    )
+
+
+def test_the_oldest_macos_is_the_most_demanding_wheel() -> None:
+    tags = ["cp314-cp314-macosx_14_0_arm64", "py3-none-any", "cp310-abi3-macosx_11_0_arm64"]
+    assert build.minimum_macos(tags) == "14.0"
+    assert build.minimum_macos(["cp314-cp314-macosx_10_15_universal2"]) == "11.0"
+    assert build.minimum_macos([*tags, "cp314-cp314-macosx_15_0_arm64"]) == "15.0"
+
+
+def test_the_windows_installer_needs_no_administrator(tmp_path: Path) -> None:
+    script = build.inno_setup_script(
+        "0.1.0", tmp_path / "bundle", tmp_path / "orthostudio.ico", tmp_path, "setup"
+    )
+    assert "PrivilegesRequired=lowest" in script
+    # the app its last page opens would inherit RedirectionGuard, and install no tile (2026-09-15)
+    assert "\nRedirectionGuard=no\n" in script
+    assert "AppId={{7C8E0F52-3B1D-4E4A-9B67-2D4F1A6C9E31}" in script
+    assert r"DefaultDirName={localappdata}\Programs\OrthoStudio XP" in script
+    assert r'Filename: "{app}\python\pythonw.exe"; Parameters: "-m orthostudio.desktop"' in script
+    assert "{cm:LaunchProgram,OrthoStudio XP}" in script
+
+
+def test_the_windows_installer_stops_the_app_it_replaces(tmp_path: Path) -> None:
+    """A user installing again read "DeleteFile failed; code 5" on python3.dll: the app was
+    still running. The setup program and the uninstaller ask it to quit through the API the page
+    quits with, on the engine's own port, then end what still runs from the folder."""
+    from orthostudio.api.serve import DEFAULT_PORT
+
+    script = build.inno_setup_script(
+        "0.1.0", tmp_path / "bundle", tmp_path / "orthostudio.ico", tmp_path, "setup"
+    )
+    code = script[script.index("\n[Code]\n") :]
+    assert build.ENGINE_PORT == DEFAULT_PORT and "%PORT%" not in script
+    assert f"'http://127.0.0.1:{DEFAULT_PORT}/api/quit'" in code
+    assert "Http.Open('POST', EngineQuitUrl, False)" in code and "'{\"force\": true}'" in code
+    assert "function PrepareToInstall(var NeedsRestart: Boolean): String;" in code
+    assert "function InitializeUninstall(): Boolean;" in code
+    assert code.count("StopOrthoStudio(ExpandConstant('{app}'))") == 2
+    assert "Terminate()" in code and "python\\" in code  # only what runs from the folder
+    check = build.check_installer.__code__.co_names
+    assert "start_engine" in check and "engine_stopped" in check  # checked on Windows by CI
+
+
+def test_the_linux_menu_entry_can_be_removed() -> None:
+    script = build.linux_install_script()
+    assert script.startswith("#!/bin/sh") and "--remove" in script
+    assert 'Exec="$HERE/orthostudio-xp"' in script
+
+
+def test_every_licence_file_exists() -> None:
+    for source, _name in build.LICENCE_FILES:
+        assert (build.REPO / source).is_file(), source
+
+
+def _script(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
+
+
+def test_the_pruning_keeps_what_the_app_runs(tmp_path: Path) -> None:
+    root = tmp_path / "python"
+    site = root / "lib" / "python3.14" / "site-packages"
+    package = _script(site / "orthostudio" / "__init__.py", "").parent
+    _script(site / "orthostudio" / "tilefiles" / "tests" / "keep.py", "")
+    _script(site / "pip" / "__init__.py", "")
+    (site / "pip-26.2.1.dist-info").mkdir()
+    _script(site / "scipy" / "linalg" / "tests" / "test_x.py", "")
+    _script(site / "scipy" / "linalg" / "__init__.py", "")
+    _script(root / "bin" / "pip3", "#!/bin/sh\n'''exec' \"$(dirname -- \"$0\")/python3\"\n")
+    _script(root / "bin" / "osxp", f"#!/bin/sh\n'''exec' '{root}/bin/python3' \"$0\" \"$@\"\n")
+    _script(root / "bin" / "idle3", "#!/bin/sh\n'''exec' \"$(dirname -- \"$0\")/python3\"\n")
+
+    build.prune(package)
+
+    assert not (site / "pip").exists() and not (site / "pip-26.2.1.dist-info").exists()
+    assert not (site / "scipy" / "linalg" / "tests").exists()
+    assert (site / "scipy" / "linalg" / "__init__.py").is_file()
+    assert (site / "orthostudio" / "tilefiles" / "tests" / "keep.py").is_file()
+    assert sorted(p.name for p in (root / "bin").iterdir()) == ["idle3"]
+    assert build.python_root_of(site) == root
+
+
+@pytest.mark.parametrize("size", [16, 256])
+def test_the_icons_are_drawn(tmp_path: Path, size: int) -> None:
+    icon.make_png(tmp_path / "icon.png", size)
+    icon.make_ico(tmp_path / "icon.ico")
+    assert (tmp_path / "icon.png").stat().st_size > 0 and (tmp_path / "icon.ico").stat().st_size > 0
+
+
+def test_the_standalone_python_is_the_newest_patch_not_the_minor_link(tmp_path: Path) -> None:
+    for name in ("cpython-3.14.6-macos-aarch64-none", "cpython-3.14.7-macos-aarch64-none"):
+        (tmp_path / name / "bin").mkdir(parents=True)
+    (tmp_path / "cpython-3.15.0-macos-aarch64-none").mkdir()
+    (tmp_path / "cpython-3.14-macos-aarch64-none").symlink_to(
+        tmp_path / "cpython-3.14.6-macos-aarch64-none", target_is_directory=True
+    )
+
+    assert build.standalone_root(tmp_path, "3.14").name == "cpython-3.14.7-macos-aarch64-none"
+    with pytest.raises(SystemExit):
+        build.standalone_root(tmp_path, "3.13")
+
+
+def test_the_uv_environment_is_never_the_one_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VIRTUAL_ENV", "/somewhere/.venv")
+    assert "VIRTUAL_ENV" not in build.clean_env()
+
+
+def test_the_check_reads_the_last_start_of_the_log(tmp_path: Path) -> None:
+    log = tmp_path / "serve.log"
+    log.write_text(
+        '--- 2026-09-14 OrthoStudio XP: old\n{"old": 1}\n--- 2026-09-15 again\n{"new": 2}\n'
+    )
+    assert build.last_run(log) == '{"new": 2}'
+    log.write_text("no header\n")
+    assert build.last_run(log) == ""

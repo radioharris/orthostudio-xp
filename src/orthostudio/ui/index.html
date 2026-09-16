@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OrthoStudio XP</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="nav.skip">Skip to content</a>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M3 12h6l3-4 3 6 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">OrthoStudio XP</span>
+    <span class="brand-version num" id="brand-version"></span>
+    <span class="mock-badge" id="mock-badge" hidden data-i18n="app.mock">mock mode</span>
+  </div>
+  <nav class="nav" aria-label="Screens" id="nav">
+    <button type="button" class="nav-btn" data-screen="plan" data-i18n="nav.plan">Plan</button>
+    <button type="button" class="nav-btn" data-screen="works" data-i18n="nav.works">Works</button>
+    <button type="button" class="nav-btn" data-screen="library" data-i18n="nav.library">Library</button>
+    <button type="button" class="nav-btn" data-screen="settings" data-i18n="nav.settings">Settings</button>
+  </nav>
+  <div class="topbar-tools">
+    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
+    <select id="lang-select" class="tool-select">
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+    </select>
+    <button type="button" id="theme-btn" class="tool-btn" data-i18n-title="app.theme" title="Light / dark theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>
+      </svg>
+    </button>
+    <button type="button" id="quit-btn" class="btn btn-small quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3v8M7.1 6.2a7 7 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span data-i18n="quit.button">Quit</span>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="main">
+
+  <!-- ================================================================ Plan -->
+  <section id="screen-plan" class="screen" hidden aria-labelledby="plan-title">
+    <div class="screen-head">
+      <h1 id="plan-title" data-i18n="plan.title">Plan</h1>
+      <p class="lead" data-i18n="plan.lead">Four steps: choose the tiles, add detail where you want it, check the cost, then build.</p>
+    </div>
+
+    <div class="plan-flow">
+      <div class="map-col">
+        <div class="map-wrap" id="map-wrap">
+          <div id="plan-map" class="plan-map"></div>
+          <div class="map-banner" id="map-banner" role="status" hidden>
+            <p class="map-banner-text" id="map-banner-text"></p>
+            <div class="map-banner-actions">
+              <button type="button" class="btn btn-small" id="draw-center" data-i18n="draw.center">Point at the map centre</button>
+              <button type="button" class="btn btn-small" id="draw-undo" data-i18n="draw.undo">Remove the last point</button>
+              <button type="button" class="btn btn-small btn-primary" id="draw-finish" data-i18n="draw.finish">Finish</button>
+              <button type="button" class="btn btn-small" id="draw-cancel" data-i18n="draw.cancel">Cancel</button>
+            </div>
+          </div>
+          <div class="map-hint" id="map-hint" hidden>
+            <span data-i18n="map.first_hint">Zoom to the area you want, then click squares to choose tiles.</span>
+            <button type="button" class="btn btn-small" id="map-hint-close" data-i18n="map.hint_ok">Got it</button>
+          </div>
+          <p class="map-notice" id="map-notice" role="status" hidden></p>
+          <div class="map-legend" id="map-legend"></div>
+        </div>
+      </div>
+
+      <div class="plan-steps">
+        <!-- Step 1 -->
+        <section class="plan-step" id="tiles-panel" tabindex="-1" aria-labelledby="step1-title">
+          <h2 class="plan-step-title" id="step1-title"><span class="plan-step-num" aria-hidden="true">1</span><span data-i18n="step1.title">Choose the tiles</span></h2>
+          <p class="plan-step-lead" data-i18n="step1.lead">Click squares on the map to choose tiles; a tile is a piece of X-Plane scenery one degree on a side.</p>
+          <div class="chips" id="tile-chips" aria-live="polite"></div>
+          <div class="tile-count-row">
+            <p class="help" id="tile-count"></p>
+            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="tiles-clear" data-i18n-title="plan.tiles_clear" title="Unselect all tiles" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="sr-only" data-i18n="plan.tiles_clear">Unselect all tiles</span>
+            </button>
+          </div>
+          <p class="plan-step-size" id="selection-size" aria-live="polite"></p>
+          <div class="field-row field-stack">
+            <div class="field">
+              <label for="provider-select" data-i18n="plan.provider">Imagery source</label>
+              <select id="provider-select"></select>
+              <small class="help is-fail" id="provider-coverage" role="status" hidden></small>
+              <small class="help" id="provider-attribution"></small>
+              <button type="button" class="btn btn-small btn-quiet sources-open" id="sources-open" data-i18n="sources.open">My sources…</button>
+            </div>
+            <div class="field">
+              <label for="zl-select" data-i18n="plan.quality">Detail level</label>
+              <select id="zl-select"></select>
+              <small class="help" id="zl-help"></small>
+            </div>
+          </div>
+          <details class="more">
+            <summary data-i18n="step1.more">Other ways: airport, tile names, coordinates</summary>
+            <div class="field-row">
+              <div class="field field-combo">
+                <label for="icao-input" data-i18n="plan.icao">ICAO code</label>
+                <input id="icao-input" type="text" autocomplete="off" spellcheck="false" maxlength="24" placeholder="LFML" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="icao-list">
+                <ul id="icao-list" class="combo-list" role="listbox" hidden></ul>
+              </div>
+              <div class="field field-narrow">
+                <label for="radius-input" data-i18n="plan.radius">Radius</label>
+                <div class="with-unit">
+                  <input id="radius-input" type="number" min="1" max="300" step="1" value="15" inputmode="numeric">
+                  <span class="unit">km</span>
+                </div>
+              </div>
+              <button type="button" class="btn" id="icao-add" data-i18n="plan.add">Add</button>
+            </div>
+            <div class="field field-spaced">
+              <label for="tiles-text" data-i18n="plan.tiles_text">Tile names</label>
+              <input id="tiles-text" type="text" autocomplete="off" spellcheck="false" placeholder="+43+005 +43+006" data-i18n-placeholder="plan.tiles_text_ph">
+              <small class="help" data-i18n="plan.tiles_text_help">Separated by spaces, commas or new lines. Enter adds.</small>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="lat-input" data-i18n="plan.lat">Latitude</label>
+                <input id="lat-input" type="number" min="-90" max="90" step="0.0001" inputmode="decimal" placeholder="43.4">
+              </div>
+              <div class="field">
+                <label for="lon-input" data-i18n="plan.lon">Longitude</label>
+                <input id="lon-input" type="number" min="-180" max="180" step="0.0001" inputmode="decimal" placeholder="5.2">
+              </div>
+              <button type="button" class="btn" id="latlon-add" data-i18n="plan.add">Add</button>
+            </div>
+          </details>
+        </section>
+
+        <!-- Step 2 -->
+        <section class="plan-step" id="zones-panel" tabindex="-1" aria-labelledby="step2-title">
+          <h2 class="plan-step-title" id="step2-title"><span class="plan-step-num" aria-hidden="true">2</span><span data-i18n="step2.title">Add more detail where you want it</span><span class="plan-step-optional" data-i18n="step2.optional">optional</span></h2>
+          <p class="plan-step-lead" data-i18n="step2.lead">Draw a zone around an airport or anywhere you fly low: the imagery will be sharper there.</p>
+          <div class="field-row field-stack">
+            <div class="field">
+              <label for="zone-zl-select" data-i18n="zones.next_zl">Detail level of new zones</label>
+              <select id="zone-zl-select"></select>
+            </div>
+            <div class="field">
+              <label for="zone-provider-select" data-i18n="zones.next_provider">Imagery source of new zones</label>
+              <select id="zone-provider-select"></select>
+            </div>
+          </div>
+          <div class="actions draw-actions">
+            <button type="button" class="btn" id="draw-rect" aria-pressed="false" data-i18n="draw.rect">Add detail: rectangle</button>
+            <button type="button" class="btn" id="draw-shape" aria-pressed="false" data-i18n="draw.shape">Add detail: free shape</button>
+          </div>
+          <div class="zones-status" id="zones-status" hidden>
+            <span id="zones-status-text"></span>
+            <button type="button" class="btn btn-small" id="zones-retry" data-i18n="zones.retry" hidden>Retry</button>
+          </div>
+          <div class="zones-problems" id="zones-problems" hidden></div>
+          <p class="plan-step-size" id="zones-total" aria-live="polite"></p>
+          <p class="placeholder zones-empty" id="zones-empty" data-i18n="zones.empty" hidden>No zone yet: use one of the buttons above, then click on the map.</p>
+          <div class="zone-list-head" id="zone-list-head" hidden>
+            <p class="help zones-priority" id="zones-priority" data-i18n="zones.priority" hidden>Where zones overlap, the one higher in the list wins.</p>
+            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="zones-clear" data-i18n-title="zones.clear" title="Delete all zones">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="sr-only" data-i18n="zones.clear">Delete all zones</span>
+            </button>
+          </div>
+          <ol class="zone-list" id="zone-list"></ol>
+          <details class="more">
+            <summary data-i18n="zones.shortcuts">Shortcuts</summary>
+            <ul class="shortcut-list" id="zones-help"></ul>
+          </details>
+        </section>
+
+        <!-- Step 3 -->
+        <section class="plan-step" aria-labelledby="step3-title">
+          <h2 class="plan-step-title" id="step3-title"><span class="plan-step-num" aria-hidden="true">3</span><span data-i18n="step3.title">Check what it will cost</span></h2>
+          <p class="plan-step-lead" data-i18n="step3.lead">Disk space, download and time, worked out before anything is built.</p>
+          <div class="plan-xplane" id="plan-xplane" role="status" hidden>
+            <p id="plan-xplane-text"></p>
+            <button type="button" class="btn btn-small" id="plan-xplane-choose" data-i18n="plan.xplane_choose">Choose the X-Plane 12 folder</button>
+          </div>
+          <div class="plan-settings">
+            <p class="help" id="plan-settings-summary" aria-live="polite"></p>
+            <button type="button" class="btn btn-small" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
+          </div>
+          <div class="actions estimate-actions">
+            <button type="button" class="btn btn-small" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
+            <span class="spinner" id="estimate-spinner" hidden aria-hidden="true"></span>
+            <span class="help" id="estimate-status"></span>
+          </div>
+          <div class="plan-error" id="plan-error" role="alert" hidden></div>
+          <div id="plan-panel" class="plan-panel">
+            <p class="placeholder" data-i18n="plan.empty">Choose tiles: what they cost shows here by itself.</p>
+          </div>
+        </section>
+
+        <!-- Step 4 -->
+        <section class="plan-step" aria-labelledby="step4-title">
+          <h2 class="plan-step-title" id="step4-title"><span class="plan-step-num" aria-hidden="true">4</span><span data-i18n="step4.title">Build and install</span></h2>
+          <p class="plan-step-lead" data-i18n="step4.lead">OrthoStudio XP builds the tiles, then adds them to X-Plane's Custom Scenery.</p>
+          <div class="actions actions-build" id="build-actions">
+            <button type="button" class="btn btn-primary" id="build-install-btn" data-i18n="plan.build_install" disabled>Build and install</button>
+            <button type="button" class="btn" id="build-only-btn" data-i18n="plan.build_only" disabled>Build only</button>
+          </div>
+          <p class="help" id="build-note" aria-live="polite"></p>
+          <p class="help" id="build-queue" hidden></p>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================================== Works -->
+  <section id="screen-works" class="screen" hidden aria-labelledby="works-title">
+    <div class="screen-head">
+      <h1 id="works-title" data-i18n="works.title">Works</h1>
+    </div>
+    <div class="cols cols-works">
+      <aside class="col col-jobs">
+        <div class="jobs-head">
+          <h2 class="h2" id="jobs-title" tabindex="-1" data-i18n="works.jobs">Jobs</h2>
+          <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear" data-i18n-title="works.clear" title="Clear the job list" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sr-only" data-i18n="works.clear">Clear the job list</span>
+          </button>
+        </div>
+        <ul id="job-list" class="job-list"></ul>
+      </aside>
+      <div class="col col-job">
+        <div id="job-detail">
+          <p class="placeholder" data-i18n="works.empty">No job. Start a build from the Plan.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= Library -->
+  <section id="screen-library" class="screen" hidden aria-labelledby="library-title">
+    <div class="screen-head">
+      <h1 id="library-title" tabindex="-1" data-i18n="library.title">Library</h1>
+      <p class="lead" data-i18n="library.lead">The tiles on this computer, and whether X-Plane shows them. Removing a tile from X-Plane keeps its files, so you can add it back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).</p>
+    </div>
+    <div class="toolbar">
+      <form id="import-form" class="field-row">
+        <div class="field field-wide">
+          <label for="import-path" data-i18n="library.import_path">Ortho4XP folder</label>
+          <div class="path-row">
+            <input id="import-path" type="text" spellcheck="false" placeholder="/Users/…/Ortho4XP">
+            <button type="button" class="btn" id="import-choose" data-i18n="library.import_choose">Choose…</button>
+          </div>
+        </div>
+        <button type="submit" class="btn" data-i18n="library.import">Import my Ortho4XP tiles</button>
+      </form>
+      <p class="help" id="import-result" aria-live="polite"></p>
+    </div>
+    <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
+    <div class="library-overlays" id="library-overlays" role="status" hidden></div>
+    <div class="table-wrap">
+      <table class="table library-table" id="library-table">
+        <thead>
+          <tr>
+            <th scope="col" data-i18n="library.tile">Tile</th>
+            <th scope="col" data-i18n="library.imagery">Imagery</th>
+            <th scope="col" data-i18n="library.in_xplane">In X-Plane</th>
+            <th scope="col" class="num" data-i18n="library.size" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache (Store, in the status bar): it is not on the disk twice.">Size</th>
+            <th scope="col" data-i18n="library.built_by">Built by</th>
+            <th scope="col" colspan="3"><span class="sr-only" data-i18n="library.actions">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="library-body"></tbody>
+      </table>
+    </div>
+    <div id="library-errors" class="error-list" aria-live="polite"></div>
+
+    <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
+      <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>
+      <dl class="disk-list" id="disk-list"></dl>
+      <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
+      <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
+      <div class="disk-actions">
+        <button type="button" class="btn" id="disk-free" data-i18n="disk.free">Free space…</button>
+        <button type="button" class="btn btn-quiet reveal-btn" id="disk-reveal" hidden>Show OrthoStudio XP's folder</button>
+        <span class="help" id="disk-note" aria-live="polite"></span>
+      </div>
+      <div id="disk-errors" class="error-list" aria-live="polite"></div>
+    </section>
+  </section>
+
+  <!-- ============================================================ Settings -->
+  <section id="screen-settings" class="screen" hidden aria-labelledby="settings-title">
+    <div class="screen-head">
+      <h1 id="settings-title" data-i18n="settings.title">Settings</h1>
+      <p class="lead" data-i18n="settings.lead">Answer in plain words what you want to see in X-Plane. The recommended answer is marked.</p>
+    </div>
+    <form id="settings-form" class="settings-form" novalidate>
+      <div id="settings-presets" class="settings-presets"></div>
+      <div id="settings-questions" class="settings-questions"></div>
+      <details class="settings-experts" id="settings-experts">
+        <summary data-i18n="settings.experts">For experts</summary>
+        <p class="help" data-i18n="settings.experts_lead">Every other setting, in plain words. The small grey name is the setting's name in Ortho4XP.</p>
+        <div id="settings-expert-fields"></div>
+      </details>
+      <div class="actions settings-actions">
+        <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
+        <button type="button" class="btn" id="settings-reset" data-i18n="settings.reset">Undo my changes</button>
+        <button type="button" class="btn btn-quiet" id="settings-defaults" data-i18n="settings.defaults">Default values</button>
+        <span class="help settings-status" id="settings-status" aria-live="polite"></span>
+      </div>
+      <p class="error-inline" id="settings-error" role="alert" hidden></p>
+    </form>
+    <p class="help settings-credits" data-i18n="settings.credits">Map data © OpenStreetMap contributors (ODbL). Imagery © its providers, for your own use.</p>
+  </section>
+</main>
+
+<footer class="statusbar" id="statusbar">
+  <span class="status-item" id="status-xplane"></span>
+  <span class="status-item" id="status-doctor"></span>
+  <span class="status-item num" id="status-store"></span>
+  <span class="status-item num" id="status-library"></span>
+  <span class="status-item status-home" id="status-home"></span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- The Library's delete confirmation (app.js confirmDelete): a native modal dialog, outside the
+     screens so that it stays visible whatever screen is shown. "Keep it" has the focus first. -->
+<dialog id="library-delete" class="dialog" role="alertdialog" aria-labelledby="library-delete-title" aria-describedby="library-delete-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="library-delete-title"></h2>
+    <div class="dialog-text" id="library-delete-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="keep" autofocus data-i18n="library.delete_keep">Keep it</button>
+      <button type="submit" class="btn btn-danger-solid" value="delete" data-i18n="library.delete_confirm">Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The Library's "Free space" confirmation (app.js confirmFreeSpace), like the delete one. -->
+<dialog id="disk-confirm" class="dialog" role="alertdialog" aria-labelledby="disk-confirm-title" aria-describedby="disk-confirm-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="disk-confirm-title"></h2>
+    <div class="dialog-text" id="disk-confirm-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="keep" autofocus data-i18n="disk.cancel">Cancel</button>
+      <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Free space</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The job list's trash on Works (app.js confirmClearJobs), like the zones one. -->
+<dialog id="jobs-clear-confirm" class="dialog" role="alertdialog" aria-labelledby="jobs-clear-title" aria-describedby="jobs-clear-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="jobs-clear-title" data-i18n="works.clear_title">Clear the job list?</h2>
+    <div class="dialog-text" id="jobs-clear-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="keep" autofocus data-i18n="works.clear_keep">Keep them</button>
+      <button type="submit" class="btn btn-danger-solid" value="clear" data-i18n="works.clear_confirm">Clear the list</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Quit OrthoStudio XP (app.js confirmQuit). -->
+<dialog id="quit-confirm" class="dialog" role="alertdialog" aria-labelledby="quit-confirm-title" aria-describedby="quit-confirm-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="quit-confirm-title" data-i18n="quit.title">Quit OrthoStudio XP?</h2>
+    <div class="dialog-text" id="quit-confirm-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="stay" autofocus data-i18n="quit.stay">Stay</button>
+      <button type="submit" class="btn btn-danger-solid" value="quit" data-i18n="quit.confirm">Quit OrthoStudio XP</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Shown once OrthoStudio XP has stopped: the page cannot do anything any more. -->
+<div class="stopped" id="stopped" role="alert" hidden>
+  <div class="stopped-card">
+    <h2 data-i18n="quit.stopped_title">OrthoStudio XP is stopped</h2>
+    <p data-i18n="quit.stopped_text">You can close this tab. To use it again, open the OrthoStudio XP app.</p>
+  </div>
+</div>
+
+<!-- The zone list's trash (map.js confirmRemoveAll), like the Library's delete. -->
+<dialog id="zones-clear-confirm" class="dialog" role="alertdialog" aria-labelledby="zones-clear-title" aria-describedby="zones-clear-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="zones-clear-title" data-i18n="zones.clear_title">Delete all the zones?</h2>
+    <div class="dialog-text" id="zones-clear-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="keep" autofocus data-i18n="zones.clear_keep">Keep them</button>
+      <button type="submit" class="btn btn-danger-solid" value="clear" data-i18n="zones.clear_confirm">Delete all</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Step 1's "My sources…" (app.js openSources): the imagery sources a user adds, at their own risk. -->
+<dialog id="sources-dialog" class="dialog dialog-wide" aria-labelledby="sources-title">
+  <h2 class="dialog-title" id="sources-title" data-i18n="sources.title">My imagery sources</h2>
+  <p class="dialog-text" data-i18n="sources.lead">Add a source OrthoStudio XP does not ship: the address of one of its tiles, with {x}, {y} and {zoom} (or {quadkey}) in place of its numbers.</p>
+  <p class="sources-warning" data-i18n="sources.warning">You add this source yourself: its terms of use apply to you. OrthoStudio XP does not ship it, and does not check that you may download its images.</p>
+  <ul class="sources-list" id="sources-list"></ul>
+  <form id="sources-form" class="sources-form" novalidate>
+    <div class="field">
+      <label for="source-name" data-i18n="sources.name">Name</label>
+      <input id="source-name" type="text" maxlength="80" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="source-url" data-i18n="sources.url">Address of a tile</label>
+      <input id="source-url" type="text" maxlength="2000" spellcheck="false" autocomplete="off" placeholder="…/{zoom}/{x}/{y}.jpg">
+    </div>
+    <div class="field field-narrow">
+      <label for="source-zl" data-i18n="sources.max_zl">Highest detail level</label>
+      <input id="source-zl" type="number" min="1" max="22" step="1" value="19" inputmode="numeric">
+    </div>
+    <p class="help source-result" id="source-result" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-quiet" id="sources-close" data-i18n="sources.close">Close</button>
+      <button type="button" class="btn" id="source-try" data-i18n="sources.try">Try</button>
+      <button type="submit" class="btn btn-primary" data-i18n="sources.add">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Templates -->
+<template id="tpl-folder-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 7.5h6l2 2h9v9.5h-17z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></template>
+<template id="tpl-error-card">
+  <article class="error-card">
+    <header class="error-head">
+      <code class="error-code"></code>
+      <span class="sev"></span>
+      <span class="error-where num"></span>
+    </header>
+    <p class="error-msg"></p>
+    <p class="error-remedy"></p>
+    <div class="error-actions"></div>
+  </article>
+</template>
+
+<!-- Leaflet 1.9.4, vendored (docs/specs/map-zones.md decision M1): a classic script defining L. -->
+<script src="static/vendor/leaflet/leaflet.js"></script>
+<script type="module" src="static/app.js"></script>
+</body>
+</html>

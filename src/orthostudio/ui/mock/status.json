@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "api_level": 13,
+  "platform": "mac",
+  "can_quit": true,
+  "xplane": {
+    "path": "/Users/pilot/X-Plane 12",
+    "detected": true,
+    "running": false
+  },
+  "doctor": [
+    {"name": "python", "status": "ok", "summary": "Python 3.14.0", "details": {}},
+    {"name": "encoder", "status": "ok", "summary": "ispc_texcomp 1.1 (in-process)", "details": {}},
+    {"name": "http_client", "status": "ok", "summary": "curl_cffi 0.13 (HTTP/2)", "details": {}},
+    {"name": "triangle", "status": "ok", "summary": "Triangle4XP binary I/O", "details": {}},
+    {"name": "xplane", "status": "ok", "summary": "X-Plane at /Users/pilot/X-Plane 12", "details": {}},
+    {"name": "disk", "status": "warn", "summary": "56 GB free on the store volume", "details": {}},
+    {"name": "bing", "status": "skip", "summary": "network probe skipped", "details": {}},
+    {"name": "store", "status": "ok", "summary": "0 artefacts", "details": {}},
+    {"name": "chunks", "status": "ok", "summary": "0 chunks", "details": {}}
+  ],
+  "home": "/Users/pilot/.orthostudio",
+  "data_dir": {"path": "/Users/pilot/.orthostudio", "chosen": false, "present": true},
+  "store_bytes": 1830000000,
+  "chunks_bytes": 412000000,
+  "library_count": 5,
+  "language": "fr"
+}

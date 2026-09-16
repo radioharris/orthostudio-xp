@@ -1,0 +1,50 @@
+{
+  "essential": {
+    "provider": "BI",
+    "zoom_level": 16,
+    "airports": {"mode": "off", "zoom_level": 18, "extent_km": 1.0},
+    "coast_transition": {"profile": "sand", "width_m": 100},
+    "water_rendering": "XP11 + bathy",
+    "relief": {"source": "auto", "file": "", "fill_nodata": "nearest"},
+    "overlays": "xplane",
+    "xplane_dir": "/Users/pilot/X-Plane 12",
+    "data_dir": null
+  },
+  "advanced": {
+    "curvature_tol": 2.0,
+    "limit_tris": 3.0,
+    "road_level": 1,
+    "min_area": 0.001,
+    "max_area": 200.0,
+    "sea_smoothing_mode": "zero",
+    "water_smoothing": 10,
+    "apt_smoothing_pix": 8,
+    "ratio_water_pct": 25.0,
+    "ratio_bathy": 1.0,
+    "use_masks_for_inland": false,
+    "imprint_masks_to_dds": true,
+    "terrain_casts_shadows": true,
+    "overlay_lod_km": 25.0
+  },
+  "expert": {
+    "mesh_zl": 19,
+    "mask_zl": 14,
+    "apt_curv_tol": 0.5,
+    "apt_curv_ext": 0.5,
+    "coast_curv_tol": 1.0,
+    "coast_curv_ext": 0.5,
+    "min_angle": 10.0,
+    "road_banking_limit": 0.5,
+    "lane_width": 4.0,
+    "max_levelled_segs": 200000,
+    "water_simplification": 0.0,
+    "masks_use_dem_too": false,
+    "masks_custom_extent": "",
+    "distance_masks_too": false,
+    "sea_texture_blur": 0.0,
+    "normal_map_strength": 1.0,
+    "use_decal_on_terrain": false,
+    "ovl_exclude_pol": [0],
+    "ovl_exclude_net": []
+  }
+}

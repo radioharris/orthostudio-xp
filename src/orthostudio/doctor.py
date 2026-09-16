@@ -1,0 +1,423 @@
+"""``osxp doctor``: is this machine ready to build a tile?
+
+Checks (spec ``docs/specs/pipeline-textures.md`` section 9): Python, the DDS encoder, the
+HTTP client (curl_cffi, libcurl, HTTP/2), free disk at the store root, the X-Plane 12 folder
+(found as every command finds it), the Triangle4XP binary, one Bing tile (skipped offline), the
+store and chunk roots.
+Every check is data (``Check``) so the CLI can print it or emit JSON.
+"""
+
+from __future__ import annotations
+
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+from orthostudio import __version__
+from orthostudio.fsutil import NO_CONSOLE_WINDOW, REDIRECTION_GUARD_REMEDY, redirection_guard
+from orthostudio.install.xplane import is_xplane_dir, xplane_candidates
+from orthostudio.pipeline.home import data_root_missing, default_chunks_root, default_store_root
+from orthostudio.programs import installed_program
+
+__all__ = ["Check", "DoctorReport", "render_text", "run_doctor"]
+
+MIN_PYTHON = (3, 12)
+DISK_WARN_GB = 20.0
+DISK_FAIL_GB = 5.0
+TRIANGLE_ENV = "OSXP_TRIANGLE4XP"
+BING_PROBE = (8424, 5992, 14)  # a land tile of the reference cell (+43+005, Marseille)
+
+
+@dataclass(slots=True)
+class Check:
+    name: str
+    status: str
+    """``ok`` | ``warn`` | ``fail`` | ``skip``."""
+    summary: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class DoctorReport:
+    checks: list[Check] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return all(c.status != "fail" for c in self.checks)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": 1,
+            "osxp": __version__,
+            "ok": self.ok,
+            "checks": [c.to_dict() for c in self.checks],
+        }
+
+
+def _python() -> Check:
+    v = sys.version_info
+    ok = (v.major, v.minor) >= MIN_PYTHON
+    return Check(
+        "python",
+        "ok" if ok else "fail",
+        f"Python {platform.python_version()} ({platform.machine()}, {platform.system()})",
+        {"version": platform.python_version(), "executable": sys.executable},
+    )
+
+
+def _encoder() -> Check:
+    from orthostudio.textures.encode import available_encoders, find_nvcompress
+
+    available = available_encoders()
+    details: dict[str, Any] = {"available": available}
+    if "ispc" in available:
+        import ispc_texcomp
+
+        details["ispc_texcomp"] = str(getattr(ispc_texcomp, "__version__", "unknown"))
+    binary = find_nvcompress()
+    if binary is not None:
+        details["nvcompress"] = str(binary)
+    if not available:
+        return Check(
+            "encoder",
+            "fail",
+            "no BC1/BC3 encoder: pip install ispc-texcomp (or put nvcompress on PATH)",
+            details,
+        )
+    active = available[0]
+    label = (
+        f"ispc_texcomp {details.get('ispc_texcomp', '')}".strip()
+        if active == "ispc"
+        else str(binary)
+    )
+    fallback = f", fallback {available[1]}" if len(available) > 1 else ""
+    return Check("encoder", "ok", f"{label} (in-process){fallback}", details)
+
+
+def _network_client() -> Check:
+    try:
+        import curl_cffi
+    except ImportError:
+        return Check("http_client", "fail", "curl_cffi is not installed", {})
+    curl_version = str(getattr(curl_cffi, "__curl_version__", ""))
+    http2 = "nghttp2" in curl_version or "HTTP2" in curl_version
+    details = {"curl_cffi": str(getattr(curl_cffi, "__version__", "?")), "libcurl": curl_version}
+    status = "ok" if http2 else "warn"
+    summary = f"curl_cffi {details['curl_cffi']}, {curl_version.split(' ')[0] or 'libcurl'}"
+    summary += ", HTTP/2" if http2 else ", HTTP/2 support not detected"
+    return Check("http_client", status, summary, details)
+
+
+def _existing_parent(path: Path) -> Path:
+    p = Path(path).expanduser()
+    while not p.exists() and p != p.parent:
+        p = p.parent
+    return p
+
+
+def _disk(store_root: Path, extra: dict[str, Path], missing: Path | None = None) -> Check:
+    if missing is not None:  # the free space of the disk it is on cannot be known
+        return Check(
+            "disk",
+            "fail",
+            f"the data folder {missing} was not found: plug in its disk, or choose another "
+            "folder in Settings",
+            {"path": str(missing), "exists": False},
+        )
+    probe = _existing_parent(store_root)
+    usage = shutil.disk_usage(probe)
+    free_gb = usage.free / 1e9
+    status = "ok" if free_gb >= DISK_WARN_GB else ("warn" if free_gb >= DISK_FAIL_GB else "fail")
+    details: dict[str, Any] = {
+        "probe": str(probe),
+        "free_gb": round(free_gb, 1),
+        "total_gb": round(usage.total / 1e9, 1),
+    }
+    for name, path in extra.items():
+        u = shutil.disk_usage(_existing_parent(path))
+        details[f"{name}_free_gb"] = round(u.free / 1e9, 1)
+    return Check(
+        "disk",
+        status,
+        f"{free_gb:.0f} GB free at {probe} (a ZL16 tile needs about 3 GB)",
+        details,
+    )
+
+
+def _xplane(explicit: Path | None) -> Check:
+    """The X-Plane 12 folder given, else the one ``detect_xplane`` finds, in its order: the page,
+    the build and the doctor never disagree on where X-Plane is (the doctor had its own list, no
+    installer's list, and called X-Plane optional)."""
+    tried = [Path(explicit).expanduser()] if explicit is not None else []
+    tried += xplane_candidates()
+    for candidate in tried:
+        if is_xplane_dir(candidate):
+            global_scenery = candidate / "Global Scenery"
+            details = {
+                "path": str(candidate),
+                "global_scenery": global_scenery.is_dir(),
+                "scenery_packs_ini": (candidate / "Custom Scenery" / "scenery_packs.ini").is_file(),
+            }
+            status = "ok" if details["global_scenery"] else "warn"
+            note = (
+                ""
+                if details["global_scenery"]
+                else " (no Global Scenery folder: XP12 sea level needs it)"
+            )
+            return Check("xplane", status, f"X-Plane at {candidate}{note}", details)
+    return Check(
+        "xplane",
+        "warn",
+        "X-Plane 12 not found: choose its folder in Settings, or give --xplane (OrthoStudio XP "
+        "takes the relief, roads, forests and buildings from it, and adds the tiles to it)",
+        {"tried": [str(c) for c in tried]},
+    )
+
+
+def _triangle_candidates() -> list[Path]:
+    out: list[Path] = []
+    env = os.environ.get(TRIANGLE_ENV)
+    if env:
+        out.append(Path(env).expanduser())
+    installed = installed_program("Triangle4XP")
+    if installed is not None:
+        out.append(installed)
+    on_path = shutil.which("Triangle4XP")
+    if on_path:
+        out.append(Path(on_path))
+    exe = "Triangle4XP.exe" if sys.platform.startswith("win") else "Triangle4XP"
+    out.append(Path(__file__).resolve().parents[2] / "native" / "triangle4xp" / "build" / exe)
+    return out
+
+
+def _architecture() -> Check:
+    """On a Mac with Apple Silicon: whether the programs OrthoStudio XP starts run natively.
+
+    ``sysctl.proc_translated`` of a child process says it. An app whose launcher macOS started
+    under Rosetta passes the Intel preference on to every universal program below it, though the
+    engine's own Python has no Intel code: DSFTool and Triangle4XP then run translated, slower, and
+    macOS warns that the app "includes a component that will not work with a future release"
+    (found on the first installed app, 2026-09-14; ``docs/specs/packaging.md`` section 2).
+    """
+    if sys.platform != "darwin" or platform.machine() != "arm64":
+        return Check("architecture", "skip", "not a Mac with Apple Silicon", {})
+    try:
+        done = subprocess.run(
+            ["/usr/sbin/sysctl", "-n", "sysctl.proc_translated"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            creationflags=NO_CONSOLE_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return Check("architecture", "skip", f"could not be checked ({exc})", {})
+    if done.stdout.strip() == "1":
+        return Check(
+            "architecture",
+            "warn",
+            "the programs OrthoStudio XP starts run under Rosetta (Intel): quit OrthoStudio XP, "
+            "install its latest version, and untick Open using Rosetta in the app's Get Info",
+            {"translated": True},
+        )
+    return Check(
+        "architecture",
+        "ok",
+        "the programs it starts run natively (Apple Silicon)",
+        {"translated": False},
+    )
+
+
+def _junctions() -> Check:
+    """On Windows: whether the app may follow the junctions it makes in Custom Scenery, what an
+    install makes when the account may not make symbolic links. Windows' RedirectionGuard forbids
+    it: the app opened by the last page of an Inno Setup 6.7 installer had it, and every install of
+    a user's tiles failed (2026-09-15; ``fsutil.redirection_guard``)."""
+    if not sys.platform.startswith("win"):
+        return Check("junctions", "skip", "not Windows", {})
+    if redirection_guard():
+        return Check(
+            "junctions",
+            "fail",
+            "OrthoStudio XP runs with Windows' junction protection (RedirectionGuard): it cannot "
+            f"install tiles. {REDIRECTION_GUARD_REMEDY}",
+            {"redirection_guard": True},
+        )
+    return Check(
+        "junctions",
+        "ok",
+        "the junctions of installed tiles can be followed",
+        {"redirection_guard": False},
+    )
+
+
+def _triangle() -> Check:
+    tried = _triangle_candidates()
+    for candidate in tried:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return Check(
+                "triangle4xp", "ok", f"Triangle4XP at {candidate}", {"path": str(candidate)}
+            )
+    return Check(
+        "triangle4xp",
+        "warn",
+        "Triangle4XP not found: the mesh needs it (build native/triangle4xp, or set "
+        "$OSXP_TRIANGLE4XP)",
+        {"tried": [str(c) for c in tried]},
+    )
+
+
+def _bing(offline: bool) -> Check:
+    if offline:
+        return Check("bing", "skip", "network probe skipped (pass --online to run it)", {})
+    from orthostudio.imagery.providers import is_placeholder, load_registry, tile_url
+    from orthostudio.net import FetchRequest, fetch_all
+
+    provider = load_registry()["BI"]
+    x, y, zl = BING_PROBE
+    url = tile_url(provider, x, y, zl)
+    t0 = time.perf_counter()
+    try:
+        result = fetch_all(
+            [FetchRequest(key="probe", url=url, headers=dict(provider.headers), host_group="BI")],
+            max_in_flight=1,
+            start_in_flight=1,
+            hedge_after_s=3.0,
+            timeout_s=10.0,
+            max_attempts=2,
+        )[0]
+    except Exception as exc:  # the probe must never crash the doctor
+        return Check(
+            "bing", "fail", f"Bing probe failed: {type(exc).__name__}: {exc}", {"url": url}
+        )
+    elapsed = time.perf_counter() - t0
+    details: dict[str, Any] = {
+        "url": url,
+        "status": result.status,
+        "bytes": len(result.body),
+        "elapsed_s": round(elapsed, 3),
+        "error": result.error,
+        "content_type": result.headers.get("content-type"),
+    }
+    if result.error is not None:
+        return Check("bing", "fail", f"Bing unreachable ({result.error})", details)
+    if result.status != 200:
+        return Check("bing", "fail", f"Bing answered HTTP {result.status}", details)
+    if is_placeholder(provider, result.headers, result.body):
+        return Check(
+            "bing",
+            "warn",
+            "Bing answered a placeholder for a land tile (provider changed?)",
+            details,
+        )
+    return Check(
+        "bing",
+        "ok",
+        f"Bing tile {x}/{y}@{zl}: {len(result.body)} bytes in {elapsed * 1000:.0f} ms (HTTP/2)",
+        details,
+    )
+
+
+def _store(store_root: Path) -> Check:
+    root = Path(store_root).expanduser()
+    if not (root / "index.sqlite").exists():
+        return Check(
+            "store",
+            "ok",
+            f"artefact store {root} (empty, created on first build)",
+            {"path": str(root), "exists": False},
+        )
+    from orthostudio.graph import Store
+
+    try:
+        with Store(root) as store:
+            count, size = len(store), store.total_size()
+    except Exception as exc:
+        return Check(
+            "store", "fail", f"artefact store {root} unreadable: {exc}", {"path": str(root)}
+        )
+    return Check(
+        "store",
+        "ok",
+        f"artefact store {root}: {count} artefact(s), {size / 1e9:.2f} GB",
+        {"path": str(root), "artifacts": count, "bytes": size},
+    )
+
+
+def _chunks(chunks_root: Path) -> Check:
+    root = Path(chunks_root).expanduser()
+    if not root.is_dir():
+        return Check(
+            "chunks",
+            "ok",
+            f"tile store {root} (empty, created on first build)",
+            {"path": str(root), "exists": False},
+        )
+    files = list(root.rglob("*.chunks"))
+    size = sum(f.stat().st_size for f in files)
+    return Check(
+        "chunks",
+        "ok",
+        f"tile store {root}: {len(files)} texture container(s), {size / 1e9:.2f} GB",
+        {"path": str(root), "containers": len(files), "bytes": size},
+    )
+
+
+def run_doctor(
+    *,
+    offline: bool = False,
+    xplane: Path | None = None,
+    store_root: Path | None = None,
+    chunks_root: Path | None = None,
+) -> DoctorReport:
+    """Run every check; never raises."""
+    missing = data_root_missing() if store_root is None else None
+    store_root = Path(store_root) if store_root is not None else default_store_root()
+    chunks_root = Path(chunks_root) if chunks_root is not None else default_chunks_root()
+    report = DoctorReport()
+    for fn in (
+        _python,
+        _encoder,
+        _network_client,
+        lambda: _disk(store_root, {"chunks": chunks_root}, missing),
+        lambda: _xplane(xplane),
+        _triangle,
+        _architecture,
+        _junctions,
+        lambda: _bing(offline),
+        lambda: _store(store_root),
+        lambda: _chunks(chunks_root),
+    ):
+        try:
+            report.checks.append(fn())
+        except Exception as exc:  # a broken check is reported, not raised
+            report.checks.append(
+                Check(
+                    getattr(fn, "__name__", "check").strip("_"),
+                    "fail",
+                    f"{type(exc).__name__}: {exc}",
+                )
+            )
+    return report
+
+
+_MARK = {"ok": "ok  ", "warn": "warn", "fail": "FAIL", "skip": "skip"}
+
+
+def render_text(report: DoctorReport) -> str:
+    lines = [f"OrthoStudio XP {__version__} doctor"]
+    for c in report.checks:
+        lines.append(f"  [{_MARK[c.status]}] {c.name:<12} {c.summary}")
+    lines.append(
+        "everything needed for osxp textures is present" if report.ok else "some checks failed"
+    )
+    return "\n".join(lines)

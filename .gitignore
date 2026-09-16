@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+dist/
+build/
+*.egg-info/
+.DS_Store
+# local data of the former Ortho4XP comparisons (decision 0010): kept on disk, never in git
+fixtures/
+.orthostudio/
+*.log
+.vscode/

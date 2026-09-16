@@ -1,0 +1,397 @@
+{
+  "id": "20260912-174000-7a3c",
+  "status": "failed",
+  "created_at": 1789227599.095,
+  "started_at": 1789227599.095,
+  "finished_at": 1789228137.198,
+  "install": true,
+  "tiles": [
+    {
+      "tile": "+46+006", "provider": "BI", "zl": 16, "status": "done",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 15.517, "nodes": [
+          {"node": "+46+006/osm", "role": "osm", "status": "hit", "key": null, "hit": true, "wall_s": 0.0, "fraction": 1.0, "weight_s": 0.0},
+          {"node": "+46+006/dem", "role": "dem", "status": "done", "key": "6e0bd039f540", "hit": false, "wall_s": 4.035, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+006/vectors", "role": "vectors", "status": "done", "key": "3fe9380ac6ec", "hit": false, "wall_s": 11.471, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+006/coastline", "role": "coastline", "status": "done", "key": "31cf8486f487", "hit": false, "wall_s": 0.011, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 6.686, "nodes": [
+          {"node": "+46+006/mesh", "role": "mesh", "status": "done", "key": "13db8c1f1dd8", "hit": false, "wall_s": 6.686, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 1.446, "nodes": [
+          {"node": "+46+006/masks", "role": "masks", "status": "done", "key": "c46d342e7b37", "hit": false, "wall_s": 1.446, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "done", "fraction": 1.0, "wall_s": 14.624, "nodes": [
+          {"node": "+46+006/BI16/textures", "role": "textures", "status": "done", "key": "3aba2dc16f56", "hit": false, "wall_s": 14.624, "fraction": 1.0, "weight_s": 14.8}
+        ]},
+        "assembly": {"status": "done", "fraction": 1.0, "wall_s": 8.779, "nodes": [
+          {"node": "+46+006/xp12", "role": "xp12", "status": "done", "key": "20ecb88d773a", "hit": false, "wall_s": 0.442, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+006/BI16/dsf", "role": "dsf", "status": "done", "key": "57cfdfbdfab6", "hit": false, "wall_s": 2.829, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+006/overlay", "role": "overlay", "status": "done", "key": "6cb7e3e66dcf", "hit": false, "wall_s": 3.645, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+006/BI16/pack", "role": "pack", "status": "done", "key": "64b3dfb81586", "hit": false, "wall_s": 1.863, "fraction": 1.0, "weight_s": 0.8}
+        ]},
+        "install": {"status": "done", "fraction": 1.0, "wall_s": 0.215, "nodes": [
+          {"node": "+46+006/BI16/install", "role": "install", "status": "done", "key": "85a42d38da45", "hit": false, "wall_s": 0.215, "fraction": 1.0, "weight_s": 0.15}
+        ]}
+      },
+      "errors": []
+    },
+    {
+      "tile": "+46+007", "provider": "BI", "zl": 16, "status": "done",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 37.874, "nodes": [
+          {"node": "+46+007/osm", "role": "osm", "status": "done", "key": "4b40c0a128bf", "hit": false, "wall_s": 25.184, "fraction": 1.0, "weight_s": 26.0},
+          {"node": "+46+007/dem", "role": "dem", "status": "done", "key": "20f848f992a0", "hit": false, "wall_s": 5.056, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+007/vectors", "role": "vectors", "status": "done", "key": "d1dc83fa7077", "hit": false, "wall_s": 7.623, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+007/coastline", "role": "coastline", "status": "done", "key": "f68065df9af0", "hit": false, "wall_s": 0.011, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 8.549, "nodes": [
+          {"node": "+46+007/mesh", "role": "mesh", "status": "done", "key": "c0df20a8a079", "hit": false, "wall_s": 8.549, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 4.036, "nodes": [
+          {"node": "+46+007/masks", "role": "masks", "status": "done", "key": "61ca3da74d8c", "hit": false, "wall_s": 4.036, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "done", "fraction": 1.0, "wall_s": 65.803, "nodes": [
+          {"node": "+46+007/BI16/textures", "role": "textures", "status": "done", "key": "4cdb30c3e8a6", "hit": false, "wall_s": 65.803, "fraction": 1.0, "weight_s": 65.7}
+        ]},
+        "assembly": {"status": "done", "fraction": 1.0, "wall_s": 13.254, "nodes": [
+          {"node": "+46+007/xp12", "role": "xp12", "status": "done", "key": "32a95e65a27a", "hit": false, "wall_s": 0.428, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+007/BI16/dsf", "role": "dsf", "status": "done", "key": "e9bbb2ae326b", "hit": false, "wall_s": 9.069, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+007/overlay", "role": "overlay", "status": "done", "key": "47ddd3d60abe", "hit": false, "wall_s": 3.314, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+007/BI16/pack", "role": "pack", "status": "done", "key": "90328d4cabb0", "hit": false, "wall_s": 0.443, "fraction": 1.0, "weight_s": 0.8}
+        ]},
+        "install": {"status": "done", "fraction": 1.0, "wall_s": 0.127, "nodes": [
+          {"node": "+46+007/BI16/install", "role": "install", "status": "done", "key": "47e2e233263c", "hit": false, "wall_s": 0.127, "fraction": 1.0, "weight_s": 0.15}
+        ]}
+      },
+      "errors": []
+    },
+    {
+      "tile": "+46+008", "provider": "BI", "zl": 16, "status": "failed",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 44.61, "nodes": [
+          {"node": "+46+008/osm", "role": "osm", "status": "done", "key": "2bb2d1bf9da8", "hit": false, "wall_s": 26.844, "fraction": 1.0, "weight_s": 26.0},
+          {"node": "+46+008/dem", "role": "dem", "status": "done", "key": "afe457cd3433", "hit": false, "wall_s": 8.56, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+008/vectors", "role": "vectors", "status": "done", "key": "17e3405cd972", "hit": false, "wall_s": 9.201, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+008/coastline", "role": "coastline", "status": "done", "key": "91434e56bc88", "hit": false, "wall_s": 0.005, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 8.576, "nodes": [
+          {"node": "+46+008/mesh", "role": "mesh", "status": "done", "key": "706fee11b9a3", "hit": false, "wall_s": 8.576, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 2.076, "nodes": [
+          {"node": "+46+008/masks", "role": "masks", "status": "done", "key": "1bc39df27e30", "hit": false, "wall_s": 2.076, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "failed", "fraction": 1.0, "wall_s": 90.022, "nodes": [
+          {"node": "+46+008/BI16/textures", "role": "textures", "status": "failed", "key": "1c6f4162312f", "hit": null, "wall_s": 90.022, "fraction": 0.9977, "weight_s": 60.8}
+        ]},
+        "assembly": {"status": "skipped", "fraction": 1.0, "wall_s": 10.576, "nodes": [
+          {"node": "+46+008/xp12", "role": "xp12", "status": "done", "key": "3edbf451f898", "hit": false, "wall_s": 0.341, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+008/BI16/dsf", "role": "dsf", "status": "done", "key": "3b23d4ea416e", "hit": false, "wall_s": 7.603, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+008/overlay", "role": "overlay", "status": "done", "key": "ff8acab3dbca", "hit": false, "wall_s": 2.632, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+008/BI16/pack", "role": "pack", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]},
+        "install": {"status": "skipped", "fraction": 1.0, "wall_s": 0.0, "nodes": [
+          {"node": "+46+008/BI16/install", "role": "install", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]}
+      },
+      "errors": [
+        {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "1 of 216 BI16 texture(s) of tile +46+008 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 1, "tile": "+46+008", "codes": ["IMG_TILE_MISSING"], "textures": ["23280_34352_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+008/BI16/textures", "stage": "imagery", "tile": "+46+008"}
+      ]
+    },
+    {
+      "tile": "+46+009", "provider": "BI", "zl": 16, "status": "failed",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 38.999, "nodes": [
+          {"node": "+46+009/osm", "role": "osm", "status": "done", "key": "33e5290eb248", "hit": false, "wall_s": 25.265, "fraction": 1.0, "weight_s": 26.0},
+          {"node": "+46+009/dem", "role": "dem", "status": "done", "key": "17f7de7b72d8", "hit": false, "wall_s": 6.597, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+009/vectors", "role": "vectors", "status": "done", "key": "8f5bb31503ff", "hit": false, "wall_s": 7.135, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+009/coastline", "role": "coastline", "status": "done", "key": "8f90e8284b18", "hit": false, "wall_s": 0.002, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 12.432, "nodes": [
+          {"node": "+46+009/mesh", "role": "mesh", "status": "done", "key": "a734764c6fa0", "hit": false, "wall_s": 12.432, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 1.652, "nodes": [
+          {"node": "+46+009/masks", "role": "masks", "status": "done", "key": "022e18731156", "hit": false, "wall_s": 1.652, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "failed", "fraction": 1.0, "wall_s": 110.287, "nodes": [
+          {"node": "+46+009/BI16/textures", "role": "textures", "status": "failed", "key": "5652ae6ab403", "hit": null, "wall_s": 110.287, "fraction": 0.9977, "weight_s": 60.8}
+        ]},
+        "assembly": {"status": "skipped", "fraction": 1.0, "wall_s": 7.839, "nodes": [
+          {"node": "+46+009/xp12", "role": "xp12", "status": "done", "key": "2198c3a2b2a4", "hit": false, "wall_s": 0.309, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+009/BI16/dsf", "role": "dsf", "status": "done", "key": "ee628530d0a5", "hit": false, "wall_s": 5.314, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+009/overlay", "role": "overlay", "status": "done", "key": "cedb802ae236", "hit": false, "wall_s": 2.216, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+009/BI16/pack", "role": "pack", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]},
+        "install": {"status": "skipped", "fraction": 1.0, "wall_s": 0.0, "nodes": [
+          {"node": "+46+009/BI16/install", "role": "install", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]}
+      },
+      "errors": [
+        {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "2 of 216 BI16 texture(s) of tile +46+009 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 2, "tile": "+46+009", "codes": ["IMG_TILE_MISSING"], "textures": ["23232_34416_BI16", "23280_34560_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+009/BI16/textures", "stage": "imagery", "tile": "+46+009"}
+      ]
+    },
+    {
+      "tile": "+46+005", "provider": "BI", "zl": 16, "status": "done",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 20.702, "nodes": [
+          {"node": "+46+005/osm", "role": "osm", "status": "hit", "key": null, "hit": true, "wall_s": 0.0, "fraction": 1.0, "weight_s": 0.0},
+          {"node": "+46+005/dem", "role": "dem", "status": "done", "key": "70ad95bd8939", "hit": false, "wall_s": 5.625, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+005/vectors", "role": "vectors", "status": "done", "key": "32caa8570db2", "hit": false, "wall_s": 15.072, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+005/coastline", "role": "coastline", "status": "done", "key": "b5ba391cd18e", "hit": false, "wall_s": 0.005, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 4.976, "nodes": [
+          {"node": "+46+005/mesh", "role": "mesh", "status": "done", "key": "277c8e3fba1f", "hit": false, "wall_s": 4.976, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 0.809, "nodes": [
+          {"node": "+46+005/masks", "role": "masks", "status": "done", "key": "2ea49a16eb12", "hit": false, "wall_s": 0.809, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "done", "fraction": 1.0, "wall_s": 11.223, "nodes": [
+          {"node": "+46+005/BI16/textures", "role": "textures", "status": "done", "key": "6a848074011f", "hit": false, "wall_s": 11.223, "fraction": 1.0, "weight_s": 11.7}
+        ]},
+        "assembly": {"status": "done", "fraction": 1.0, "wall_s": 6.177, "nodes": [
+          {"node": "+46+005/xp12", "role": "xp12", "status": "done", "key": "ea4f95147cdc", "hit": false, "wall_s": 0.37, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+005/BI16/dsf", "role": "dsf", "status": "done", "key": "8d5e5dcf2799", "hit": false, "wall_s": 2.32, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+005/overlay", "role": "overlay", "status": "done", "key": "ea122f689e21", "hit": false, "wall_s": 2.89, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+005/BI16/pack", "role": "pack", "status": "done", "key": "084895247a50", "hit": false, "wall_s": 0.597, "fraction": 1.0, "weight_s": 0.8}
+        ]},
+        "install": {"status": "done", "fraction": 1.0, "wall_s": 0.13, "nodes": [
+          {"node": "+46+005/BI16/install", "role": "install", "status": "done", "key": "d35e6cff3c3d", "hit": false, "wall_s": 0.13, "fraction": 1.0, "weight_s": 0.15}
+        ]}
+      },
+      "errors": []
+    },
+    {
+      "tile": "+46+010", "provider": "BI", "zl": 16, "status": "failed",
+      "stages": {
+        "data": {"status": "done", "fraction": 1.0, "wall_s": 50.389, "nodes": [
+          {"node": "+46+010/osm", "role": "osm", "status": "done", "key": "38013ca2342f", "hit": false, "wall_s": 28.079, "fraction": 1.0, "weight_s": 26.0},
+          {"node": "+46+010/dem", "role": "dem", "status": "done", "key": "d5d889dd4644", "hit": false, "wall_s": 6.636, "fraction": 1.0, "weight_s": 6.2},
+          {"node": "+46+010/vectors", "role": "vectors", "status": "done", "key": "e96a7e07b0bc", "hit": false, "wall_s": 15.673, "fraction": 1.0, "weight_s": 11.1},
+          {"node": "+46+010/coastline", "role": "coastline", "status": "done", "key": "f3799891b9a2", "hit": false, "wall_s": 0.001, "fraction": 1.0, "weight_s": 0.05}
+        ]},
+        "terrain": {"status": "done", "fraction": 1.0, "wall_s": 9.746, "nodes": [
+          {"node": "+46+010/mesh", "role": "mesh", "status": "done", "key": "dc87695bbd73", "hit": false, "wall_s": 9.746, "fraction": 1.0, "weight_s": 8.4}
+        ]},
+        "coast": {"status": "done", "fraction": 1.0, "wall_s": 0.213, "nodes": [
+          {"node": "+46+010/masks", "role": "masks", "status": "done", "key": "16ab58b66a76", "hit": false, "wall_s": 0.213, "fraction": 1.0, "weight_s": 1.7}
+        ]},
+        "imagery": {"status": "failed", "fraction": 1.0, "wall_s": 92.737, "nodes": [
+          {"node": "+46+010/BI16/textures", "role": "textures", "status": "failed", "key": "370979f95193", "hit": null, "wall_s": 92.737, "fraction": 0.9979, "weight_s": 65.7}
+        ]},
+        "assembly": {"status": "skipped", "fraction": 1.0, "wall_s": 8.305, "nodes": [
+          {"node": "+46+010/xp12", "role": "xp12", "status": "done", "key": "7d75d9e48ead", "hit": false, "wall_s": 0.265, "fraction": 1.0, "weight_s": 0.4},
+          {"node": "+46+010/BI16/dsf", "role": "dsf", "status": "done", "key": "3f67ede4f02e", "hit": false, "wall_s": 6.015, "fraction": 1.0, "weight_s": 5.5},
+          {"node": "+46+010/overlay", "role": "overlay", "status": "done", "key": "68f50f7714aa", "hit": false, "wall_s": 2.025, "fraction": 1.0, "weight_s": 2.8},
+          {"node": "+46+010/BI16/pack", "role": "pack", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]},
+        "install": {"status": "skipped", "fraction": 1.0, "wall_s": 0.0, "nodes": [
+          {"node": "+46+010/BI16/install", "role": "install", "status": "skipped", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.0}
+        ]}
+      },
+      "errors": [
+        {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "1 of 234 BI16 texture(s) of tile +46+010 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 1, "tile": "+46+010", "codes": ["IMG_TILE_MISSING"], "textures": ["23248_34608_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+010/BI16/textures", "stage": "imagery", "tile": "+46+010"}
+      ]
+    }
+  ],
+  "provider": "BI",
+  "zl": 16,
+  "ok": false,
+  "request": {"tiles": ["+46+006", "+46+007", "+46+008", "+46+009", "+46+005", "+46+010"], "airport": null, "provider": "BI", "zoom_level": 16, "overrides": {}, "xplane_dir": null, "overlay": true, "xp12_rasters": true, "online": false, "zones": [], "install": true},
+  "errors": [
+    {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "1 of 216 BI16 texture(s) of tile +46+008 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 1, "tile": "+46+008", "codes": ["IMG_TILE_MISSING"], "textures": ["23280_34352_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+008/BI16/textures", "stage": "imagery", "tile": "+46+008"},
+    {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "2 of 216 BI16 texture(s) of tile +46+009 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 2, "tile": "+46+009", "codes": ["IMG_TILE_MISSING"], "textures": ["23232_34416_BI16", "23280_34560_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+009/BI16/textures", "stage": "imagery", "tile": "+46+009"},
+    {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "retry", "message": "1 of 234 BI16 texture(s) of tile +46+010 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Use Retry missing textures; the DSF is installed only once every texture exists.", "context": {"count": 1, "tile": "+46+010", "codes": ["IMG_TILE_MISSING"], "textures": ["23248_34608_BI16"]}, "cause": null, "node_action": "stop", "node": "+46+010/BI16/textures", "stage": "imagery", "tile": "+46+010"}
+  ],
+  "stats": {"running": 0, "pending": 0, "done": 63, "failed": 9, "hits": 2, "elapsed_s": 538.116, "progress": 1.0, "eta_low_s": 0.0, "eta_high_s": 0.0, "phase": "build"},
+  "eta": null,
+  "last_seq": 1817,
+  "report": {
+    "schema": 1,
+    "ok": false,
+    "elapsed_s": 538.06,
+    "built": 57,
+    "hits": 0,
+    "failed": 9,
+    "cancelled": false,
+    "store_root": "/Users/pilot/.orthostudio/store",
+    "out_dir": "/Users/pilot/.orthostudio/tiles",
+    "tiles": [
+      {
+        "tile": "+46+006",
+        "provider": "BI",
+        "zl": 16,
+        "ok": true,
+        "pack_dir": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+006",
+        "overlay_dsf": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays/Earth nav data/+40+000/+46+006.dsf",
+        "installed": true,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-5b1f0c2d9e47", "wall_s": 0.0, "status": "hit", "skipped": "stored snapshot reused"},
+        "nodes": [
+          {"id": "+46+006/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "6e0bd039f540", "status": "built", "wall_s": 4.035, "error": null, "cause": null},
+          {"id": "+46+006/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "31cf8486f487", "status": "built", "wall_s": 0.011, "error": null, "cause": null},
+          {"id": "+46+006/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "3fe9380ac6ec", "status": "built", "wall_s": 11.471, "error": null, "cause": null},
+          {"id": "+46+006/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "13db8c1f1dd8", "status": "built", "wall_s": 6.686, "error": null, "cause": null},
+          {"id": "+46+006/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "c46d342e7b37", "status": "built", "wall_s": 1.446, "error": null, "cause": null},
+          {"id": "+46+006/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "20ecb88d773a", "status": "built", "wall_s": 0.442, "error": null, "cause": null},
+          {"id": "+46+006/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "57cfdfbdfab6", "status": "built", "wall_s": 2.829, "error": null, "cause": null},
+          {"id": "+46+006/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": "3aba2dc16f56", "status": "built", "wall_s": 14.624, "error": null, "cause": null},
+          {"id": "+46+006/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "6cb7e3e66dcf", "status": "built", "wall_s": 3.645, "error": null, "cause": null},
+          {"id": "+46+006/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": "64b3dfb81586", "status": "built", "wall_s": 1.863, "error": null, "cause": null},
+          {"id": "+46+006/BI16/install", "role": "install", "rule": "tile.install@1", "key": "85a42d38da45", "status": "built", "wall_s": 0.215, "error": null, "cause": null}
+        ]
+      },
+      {
+        "tile": "+46+007",
+        "provider": "BI",
+        "zl": 16,
+        "ok": true,
+        "pack_dir": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+007",
+        "overlay_dsf": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays/Earth nav data/+40+000/+46+007.dsf",
+        "installed": true,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-3d4e72ca4c41", "wall_s": 25.184, "status": "built"},
+        "nodes": [
+          {"id": "+46+007/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "20f848f992a0", "status": "built", "wall_s": 5.056, "error": null, "cause": null},
+          {"id": "+46+007/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "f68065df9af0", "status": "built", "wall_s": 0.011, "error": null, "cause": null},
+          {"id": "+46+007/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "d1dc83fa7077", "status": "built", "wall_s": 7.623, "error": null, "cause": null},
+          {"id": "+46+007/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "c0df20a8a079", "status": "built", "wall_s": 8.549, "error": null, "cause": null},
+          {"id": "+46+007/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "61ca3da74d8c", "status": "built", "wall_s": 4.036, "error": null, "cause": null},
+          {"id": "+46+007/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "32a95e65a27a", "status": "built", "wall_s": 0.428, "error": null, "cause": null},
+          {"id": "+46+007/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "e9bbb2ae326b", "status": "built", "wall_s": 9.069, "error": null, "cause": null},
+          {"id": "+46+007/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": "4cdb30c3e8a6", "status": "built", "wall_s": 65.803, "error": null, "cause": null},
+          {"id": "+46+007/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "47ddd3d60abe", "status": "built", "wall_s": 3.314, "error": null, "cause": null},
+          {"id": "+46+007/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": "90328d4cabb0", "status": "built", "wall_s": 0.443, "error": null, "cause": null},
+          {"id": "+46+007/BI16/install", "role": "install", "rule": "tile.install@1", "key": "47e2e233263c", "status": "built", "wall_s": 0.127, "error": null, "cause": null}
+        ]
+      },
+      {
+        "tile": "+46+008",
+        "provider": "BI",
+        "zl": 16,
+        "ok": false,
+        "pack_dir": null,
+        "overlay_dsf": null,
+        "installed": false,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-c0e8a29a2b6c", "wall_s": 26.844, "status": "built"},
+        "nodes": [
+          {"id": "+46+008/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "afe457cd3433", "status": "built", "wall_s": 8.56, "error": null, "cause": null},
+          {"id": "+46+008/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "91434e56bc88", "status": "built", "wall_s": 0.005, "error": null, "cause": null},
+          {"id": "+46+008/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "17e3405cd972", "status": "built", "wall_s": 9.201, "error": null, "cause": null},
+          {"id": "+46+008/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "706fee11b9a3", "status": "built", "wall_s": 8.576, "error": null, "cause": null},
+          {"id": "+46+008/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "1bc39df27e30", "status": "built", "wall_s": 2.076, "error": null, "cause": null},
+          {"id": "+46+008/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "3edbf451f898", "status": "built", "wall_s": 0.341, "error": null, "cause": null},
+          {"id": "+46+008/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "3b23d4ea416e", "status": "built", "wall_s": 7.603, "error": null, "cause": null},
+          {"id": "+46+008/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": null, "status": "failed", "wall_s": 0.0, "error": {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "stop", "message": "1 of 216 BI16 texture(s) of tile +46+008 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Run osxp build again: only the missing tiles are downloaded and only the missing textures encoded. Details: /Users/pilot/.orthostudio/work/logs.", "context": {"count": 1, "tile": "+46+008", "codes": ["IMG_TILE_MISSING"], "textures": ["23280_34352_BI16"]}, "cause": null}, "cause": null},
+          {"id": "+46+008/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "ff8acab3dbca", "status": "built", "wall_s": 2.632, "error": null, "cause": null},
+          {"id": "+46+008/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+008/BI16/pack skipped: +46+008/BI16/textures failed with TEX_MISSING.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+008/BI16/textures", "root": "+46+008/BI16/textures", "code": "TEX_MISSING"}, "cause": null}, "cause": "+46+008/BI16/textures"},
+          {"id": "+46+008/BI16/install", "role": "install", "rule": "tile.install@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+008/BI16/install skipped: +46+008/BI16/textures failed with SYS_UPSTREAM_FAILED.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+008/BI16/pack", "root": "+46+008/BI16/textures", "code": "SYS_UPSTREAM_FAILED"}, "cause": null}, "cause": "+46+008/BI16/textures"}
+        ]
+      },
+      {
+        "tile": "+46+009",
+        "provider": "BI",
+        "zl": 16,
+        "ok": false,
+        "pack_dir": null,
+        "overlay_dsf": null,
+        "installed": false,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-ae6de7417598", "wall_s": 25.265, "status": "built"},
+        "nodes": [
+          {"id": "+46+009/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "17f7de7b72d8", "status": "built", "wall_s": 6.597, "error": null, "cause": null},
+          {"id": "+46+009/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "8f90e8284b18", "status": "built", "wall_s": 0.002, "error": null, "cause": null},
+          {"id": "+46+009/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "8f5bb31503ff", "status": "built", "wall_s": 7.135, "error": null, "cause": null},
+          {"id": "+46+009/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "a734764c6fa0", "status": "built", "wall_s": 12.432, "error": null, "cause": null},
+          {"id": "+46+009/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "022e18731156", "status": "built", "wall_s": 1.652, "error": null, "cause": null},
+          {"id": "+46+009/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "2198c3a2b2a4", "status": "built", "wall_s": 0.309, "error": null, "cause": null},
+          {"id": "+46+009/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "ee628530d0a5", "status": "built", "wall_s": 5.314, "error": null, "cause": null},
+          {"id": "+46+009/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": null, "status": "failed", "wall_s": 0.0, "error": {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "stop", "message": "2 of 216 BI16 texture(s) of tile +46+009 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Run osxp build again: only the missing tiles are downloaded and only the missing textures encoded. Details: /Users/pilot/.orthostudio/work/logs.", "context": {"count": 2, "tile": "+46+009", "codes": ["IMG_TILE_MISSING"], "textures": ["23232_34416_BI16", "23280_34560_BI16"]}, "cause": null}, "cause": null},
+          {"id": "+46+009/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "cedb802ae236", "status": "built", "wall_s": 2.216, "error": null, "cause": null},
+          {"id": "+46+009/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+009/BI16/pack skipped: +46+009/BI16/textures failed with TEX_MISSING.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+009/BI16/textures", "root": "+46+009/BI16/textures", "code": "TEX_MISSING"}, "cause": null}, "cause": "+46+009/BI16/textures"},
+          {"id": "+46+009/BI16/install", "role": "install", "rule": "tile.install@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+009/BI16/install skipped: +46+009/BI16/textures failed with SYS_UPSTREAM_FAILED.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+009/BI16/pack", "root": "+46+009/BI16/textures", "code": "SYS_UPSTREAM_FAILED"}, "cause": null}, "cause": "+46+009/BI16/textures"}
+        ]
+      },
+      {
+        "tile": "+46+005",
+        "provider": "BI",
+        "zl": 16,
+        "ok": true,
+        "pack_dir": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+005",
+        "overlay_dsf": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays/Earth nav data/+40+000/+46+005.dsf",
+        "installed": true,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-a07c3e91d25b", "wall_s": 0.0, "status": "hit", "skipped": "stored snapshot reused"},
+        "nodes": [
+          {"id": "+46+005/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "70ad95bd8939", "status": "built", "wall_s": 5.625, "error": null, "cause": null},
+          {"id": "+46+005/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "b5ba391cd18e", "status": "built", "wall_s": 0.005, "error": null, "cause": null},
+          {"id": "+46+005/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "32caa8570db2", "status": "built", "wall_s": 15.072, "error": null, "cause": null},
+          {"id": "+46+005/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "277c8e3fba1f", "status": "built", "wall_s": 4.976, "error": null, "cause": null},
+          {"id": "+46+005/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "2ea49a16eb12", "status": "built", "wall_s": 0.809, "error": null, "cause": null},
+          {"id": "+46+005/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "ea4f95147cdc", "status": "built", "wall_s": 0.37, "error": null, "cause": null},
+          {"id": "+46+005/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "8d5e5dcf2799", "status": "built", "wall_s": 2.32, "error": null, "cause": null},
+          {"id": "+46+005/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": "6a848074011f", "status": "built", "wall_s": 11.223, "error": null, "cause": null},
+          {"id": "+46+005/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "ea122f689e21", "status": "built", "wall_s": 2.89, "error": null, "cause": null},
+          {"id": "+46+005/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": "084895247a50", "status": "built", "wall_s": 0.597, "error": null, "cause": null},
+          {"id": "+46+005/BI16/install", "role": "install", "rule": "tile.install@1", "key": "d35e6cff3c3d", "status": "built", "wall_s": 0.13, "error": null, "cause": null}
+        ]
+      },
+      {
+        "tile": "+46+010",
+        "provider": "BI",
+        "zl": 16,
+        "ok": false,
+        "pack_dir": null,
+        "overlay_dsf": null,
+        "installed": false,
+        "repaired": [],
+        "stages": {"dem": "vectors"},
+        "osm": {"label": "osm-bfe226e60d4a", "wall_s": 28.079, "status": "built"},
+        "nodes": [
+          {"id": "+46+010/dem", "role": "dem", "rule": "orthostudio.dem@1", "key": "d5d889dd4644", "status": "built", "wall_s": 6.636, "error": null, "cause": null},
+          {"id": "+46+010/coastline", "role": "coastline", "rule": "orthostudio.coastline@1", "key": "f3799891b9a2", "status": "built", "wall_s": 0.001, "error": null, "cause": null},
+          {"id": "+46+010/vectors", "role": "vectors", "rule": "orthostudio.vectors@1", "key": "e96a7e07b0bc", "status": "built", "wall_s": 15.673, "error": null, "cause": null},
+          {"id": "+46+010/mesh", "role": "mesh", "rule": "orthostudio.mesh@1", "key": "dc87695bbd73", "status": "built", "wall_s": 9.746, "error": null, "cause": null},
+          {"id": "+46+010/masks", "role": "masks", "rule": "orthostudio.masks@1", "key": "16ab58b66a76", "status": "built", "wall_s": 0.213, "error": null, "cause": null},
+          {"id": "+46+010/xp12", "role": "xp12", "rule": "xp12.rasters@1", "key": "7d75d9e48ead", "status": "built", "wall_s": 0.265, "error": null, "cause": null},
+          {"id": "+46+010/BI16/dsf", "role": "dsf", "rule": "tile.dsf@1", "key": "3f67ede4f02e", "status": "built", "wall_s": 6.015, "error": null, "cause": null},
+          {"id": "+46+010/BI16/textures", "role": "textures", "rule": "tile.textures@1", "key": null, "status": "failed", "wall_s": 0.0, "error": {"schema": 1, "code": "TEX_MISSING", "domain": "TEX", "severity": "blocking", "action": "stop", "message": "1 of 234 BI16 texture(s) of tile +46+010 could not be built (IMG_TILE_MISSING); nothing is committed.", "remedy": "Run osxp build again: only the missing tiles are downloaded and only the missing textures encoded. Details: /Users/pilot/.orthostudio/work/logs.", "context": {"count": 1, "tile": "+46+010", "codes": ["IMG_TILE_MISSING"], "textures": ["23248_34608_BI16"]}, "cause": null}, "cause": null},
+          {"id": "+46+010/overlay", "role": "overlay", "rule": "tile.overlay@1", "key": "68f50f7714aa", "status": "built", "wall_s": 2.025, "error": null, "cause": null},
+          {"id": "+46+010/BI16/pack", "role": "pack", "rule": "tile.pack@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+010/BI16/pack skipped: +46+010/BI16/textures failed with TEX_MISSING.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+010/BI16/textures", "root": "+46+010/BI16/textures", "code": "TEX_MISSING"}, "cause": null}, "cause": "+46+010/BI16/textures"},
+          {"id": "+46+010/BI16/install", "role": "install", "rule": "tile.install@1", "key": null, "status": "skipped", "wall_s": 0.0, "error": {"schema": 1, "code": "SYS_UPSTREAM_FAILED", "domain": "SYS", "severity": "info", "action": "stop", "message": "Node +46+010/BI16/install skipped: +46+010/BI16/textures failed with SYS_UPSTREAM_FAILED.", "remedy": "Fix the upstream failure and relaunch; finished nodes are reused.", "context": {"upstream": "+46+010/BI16/pack", "root": "+46+010/BI16/textures", "code": "SYS_UPSTREAM_FAILED"}, "cause": null}, "cause": "+46+010/BI16/textures"}
+        ]
+      }
+    ]
+  },
+  "decisions": [
+    {"tile": "+46+006", "kind": "nodes", "hit": 0, "built": 11, "failed": 0, "skipped": 0},
+    {"tile": "+46+006", "kind": "stage_time", "seconds": {"data": 15.52, "terrain": 6.69, "coast": 1.45, "imagery": 14.62, "assembly": 8.78, "install": 0.21}},
+    {"tile": "+46+006", "kind": "textures", "total": 213, "built": 213, "hits": 0, "missing": 0, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+006-BI16-3aba2dc16f56.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+007", "kind": "nodes", "hit": 0, "built": 12, "failed": 0, "skipped": 0},
+    {"tile": "+46+007", "kind": "stage_time", "seconds": {"data": 37.87, "terrain": 8.55, "coast": 4.04, "imagery": 65.8, "assembly": 13.25, "install": 0.13}},
+    {"tile": "+46+007", "kind": "textures", "total": 234, "built": 217, "hits": 17, "missing": 0, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+007-BI16-4cdb30c3e8a6.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+008", "kind": "nodes", "hit": 0, "built": 9, "failed": 1, "skipped": 2},
+    {"tile": "+46+008", "kind": "stage_time", "seconds": {"data": 44.61, "terrain": 8.58, "coast": 2.08, "imagery": 90.02, "assembly": 10.57, "install": 0.0}},
+    {"tile": "+46+008", "kind": "degraded", "code": "SYS_UPSTREAM_FAILED", "count": 2, "message": "Node +46+008/BI16/pack skipped: +46+008/BI16/textures failed with TEX_MISSING."},
+    {"tile": "+46+008", "kind": "textures", "total": 216, "built": 197, "hits": 18, "missing": 1, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+008-BI16-1c6f4162312f.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+009", "kind": "nodes", "hit": 0, "built": 9, "failed": 1, "skipped": 2},
+    {"tile": "+46+009", "kind": "stage_time", "seconds": {"data": 39.0, "terrain": 12.43, "coast": 1.65, "imagery": 110.29, "assembly": 7.84, "install": 0.0}},
+    {"tile": "+46+009", "kind": "degraded", "code": "SYS_UPSTREAM_FAILED", "count": 2, "message": "Node +46+009/BI16/pack skipped: +46+009/BI16/textures failed with TEX_MISSING."},
+    {"tile": "+46+009", "kind": "textures", "total": 216, "built": 196, "hits": 18, "missing": 2, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+009-BI16-5652ae6ab403.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+005", "kind": "nodes", "hit": 0, "built": 11, "failed": 0, "skipped": 0},
+    {"tile": "+46+005", "kind": "stage_time", "seconds": {"data": 20.7, "terrain": 4.98, "coast": 0.81, "imagery": 11.22, "assembly": 6.18, "install": 0.13}},
+    {"tile": "+46+005", "kind": "textures", "total": 234, "built": 216, "hits": 18, "missing": 0, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+005-BI16-6a848074011f.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+010", "kind": "nodes", "hit": 0, "built": 9, "failed": 1, "skipped": 2},
+    {"tile": "+46+010", "kind": "stage_time", "seconds": {"data": 50.39, "terrain": 9.75, "coast": 0.21, "imagery": 92.74, "assembly": 8.31, "install": 0.0}},
+    {"tile": "+46+010", "kind": "degraded", "code": "SYS_UPSTREAM_FAILED", "count": 2, "message": "Node +46+010/BI16/pack skipped: +46+010/BI16/textures failed with TEX_MISSING."},
+    {"tile": "+46+010", "kind": "textures", "total": 234, "built": 215, "hits": 18, "missing": 1, "parent_fallback": 0, "placeholders": 0, "report": "/Users/pilot/.orthostudio/work/logs/textures-+46+010-BI16-370979f95193.json", "second_pass": 0, "recovered": 0},
+    {"tile": "+46+006", "kind": "pack", "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+006", "bytes": 2878302369, "installed": true},
+    {"tile": "+46+007", "kind": "pack", "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+007", "bytes": 2720626360, "installed": true},
+    {"tile": "+46+005", "kind": "pack", "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+005", "bytes": 2656881226, "installed": true}
+  ]
+}

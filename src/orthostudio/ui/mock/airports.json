@@ -1,0 +1,16 @@
+[
+  {"icao": "LFML", "name": "Marseille Provence", "lat": 43.4367, "lon": 5.2150},
+  {"icao": "LFMN", "name": "Nice Côte d'Azur", "lat": 43.6584, "lon": 7.2159},
+  {"icao": "LFMT", "name": "Montpellier Méditerranée", "lat": 43.5762, "lon": 3.9630},
+  {"icao": "LFMD", "name": "Cannes Mandelieu", "lat": 43.5420, "lon": 6.9535},
+  {"icao": "LFMQ", "name": "Le Castellet", "lat": 43.2525, "lon": 5.7852},
+  {"icao": "LFLL", "name": "Lyon Saint-Exupéry", "lat": 45.7256, "lon": 5.0811},
+  {"icao": "LFPG", "name": "Paris Charles de Gaulle", "lat": 49.0097, "lon": 2.5479},
+  {"icao": "LFPO", "name": "Paris Orly", "lat": 48.7233, "lon": 2.3794},
+  {"icao": "LFBO", "name": "Toulouse Blagnac", "lat": 43.6291, "lon": 1.3638},
+  {"icao": "LFKJ", "name": "Ajaccio Napoléon Bonaparte", "lat": 41.9236, "lon": 8.8029},
+  {"icao": "LFTZ", "name": "La Môle Saint-Tropez", "lat": 43.2054, "lon": 6.4820},
+  {"icao": "EGLL", "name": "London Heathrow", "lat": 51.4706, "lon": -0.4619},
+  {"icao": "KJFK", "name": "New York John F Kennedy Intl", "lat": 40.6398, "lon": -73.7789},
+  {"icao": "LSZH", "name": "Zürich", "lat": 47.4647, "lon": 8.5492}
+]

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "network": {
+    "requests": 37900,
+    "mb": 610.0,
+    "seconds_low": 100.0,
+    "seconds_high": 180.0,
+    "mbps_measured": 9.8
+  },
+  "compute": {
+    "seconds": 25.0,
+    "textures": 148,
+    "cached": 41
+  },
+  "disk": {
+    "free_gb": 56.0,
+    "dds_gb": 2.1,
+    "needed_gb": 2.71,
+    "ok": true
+  },
+  "tiles": [
+    {
+      "tile": "+43+005",
+      "provider": "BI",
+      "zl": 16,
+      "hits": 3,
+      "builds": 6,
+      "textures": {"total": 148, "exact": true, "masked": 41},
+      "requests": 37900,
+      "download_mb": 610.0,
+      "dds_gb": 2.1,
+      "compute_s": 25.0,
+      "network_s": 140.0,
+      "notes": []
+    }
+  ],
+  "warnings": [
+    "DEM_VOIDS_FILLED_WITH_ZERO",
+    {"code": "OSM_LAKE_TREATED_AS_SEA", "message": "Étang de Berre (155 km²) exceeds max_area", "remedy": "Raise max_area in Advanced if unwanted."}
+  ]
+}
