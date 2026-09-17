@@ -169,6 +169,7 @@ def _build_specs(
     from orthostudio.pipeline.build import BuildSpec, resolve_global_scenery
     from orthostudio.pipeline.home import (
         default_chunks_root,
+        default_patches_dir,
         default_store_root,
         default_tiles_root,
         require_data_root,
@@ -233,7 +234,7 @@ def _build_specs(
             overlay=overlay,
             xp12_rasters=xp12_rasters,
             creation_agent=creation_agent,
-            patches_dir=patches,
+            patches_dir=patches if patches is not None else default_patches_dir(),
             store_root=store or default_store_root(),
             chunks_root=chunks or default_chunks_root(),
             workers=workers,
@@ -383,7 +384,10 @@ _AGENT_OPT = typer.Option("--creation-agent", help="sim/creation_agent of the DS
 _LINK_OPT = typer.Option("--link/--copy", help="hard links (or copies) in the pack")
 _PATCHES_OPT = typer.Option(
     "--patches",
-    help="folder of hand-made mesh patches (<tile>/*.patch.osm, as Ortho4XP holds them)",
+    help=(
+        "folder of hand-made mesh patches (<tile>/*.patch.osm); "
+        "default: the patches folder of $OSXP_HOME"
+    ),
 )
 _ENCODER_OPT = typer.Option("--encoder", help="DDS encoder (auto, ispc, nvcompress)")
 _JSON_FLAG = typer.Option("--json", help="machine-readable output on stdout")

@@ -188,6 +188,13 @@ def default_tiles_root() -> Path:
     return data_root() / "tiles"
 
 
+def default_patches_dir() -> Path | None:
+    """``~/.orthostudio/patches`` when the user made it: the hand-made mesh patches, one folder
+    per tile, used when Settings names no other (``expert.patches_dir``, 2026-09-17)."""
+    folder = osxp_home() / "patches"
+    return folder if folder.is_dir() else None
+
+
 def default_work_root() -> Path:
     """The builds' work folder (logs, temporary files): ``<data>/work``."""
     return data_root() / "work"

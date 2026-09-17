@@ -238,9 +238,10 @@ class Expert(BaseModel):
         None,
         "",
         hint=(
-            "Folder of hand-made mesh patches, as Ortho4XP reads them: it must hold one "
-            "directory per tile (<tile>/*.patch.osm, JOSM files). A tile with no directory "
-            "there is built without any."
+            "Folder of hand-made mesh patches: one directory per tile "
+            "(<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit "
+            "as they are). Left empty, the patches folder of OrthoStudio XP's own folder is "
+            "used when it exists."
         ),
     )
     ovl_exclude_pol: list[int | str] = _field([0], "expert", "ovl_exclude_pol", "")

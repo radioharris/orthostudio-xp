@@ -177,10 +177,12 @@ the computer's own disk instead.
 `tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
 
-**Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes the folder
-Ortho4XP calls `Patches`: one directory per tile (`+46+006/*.patch.osm`, the files JOSM writes, as
-published by their authors). A tile that has one there is built with it, and editing a patch builds
-that tile again by itself; a tile without one is built as before.
+**Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
+of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes (patches
+published for Ortho4XP fit as they are). *Choose…* opens the folder dialog; left empty, OrthoStudio
+XP reads its own `patches` folder (`~/.orthostudio/patches`) when you made one. A tile that has a
+directory there is built with its patches, and editing a patch builds that tile again by itself; a
+tile without one is built as before.
 
 **With AutoOrtho, XPME or Ortho4XP tiles.** For each square X-Plane shows the ground of one pack
 only: the OrthoStudio XP tile, listed above AutoOrtho, XPME and the other base meshes. But it draws

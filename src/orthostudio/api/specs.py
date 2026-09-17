@@ -28,6 +28,7 @@ from orthostudio.pipeline.build import (
 )
 from orthostudio.pipeline.home import (
     default_chunks_root,
+    default_patches_dir,
     default_store_root,
     default_tiles_root,
     require_data_root,
@@ -238,7 +239,7 @@ def make_specs(
         )
     # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
     patches = str(getattr(settings.expert, "patches_dir", "") or "").strip()
-    patches_dir = Path(patches).expanduser() if patches else None
+    patches_dir = Path(patches).expanduser() if patches else default_patches_dir()
     max_zl = reg[provider].max_zl
     if zl > max_zl:
         raise OsxpError(

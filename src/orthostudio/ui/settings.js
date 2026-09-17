@@ -362,8 +362,18 @@ export function settingsSummary(settings) {
 
 // ---------------------------------------------------------------- for experts
 
+/** The one expert field that holds a folder: it gets a placeholder and the folder dialog. */
+const PATCHES_DIR = "expert.patches_dir";
+
+/** The folder a build reads when the patches field is left empty: ``<home>/patches``. */
+function patchesDefault(view) {
+  const home = view.home;
+  if (!home) return "";
+  return `${home}${home.includes("\\") ? "\\" : "/"}patches`;
+}
+
 /** The expert control over the fade in three steps (``coast_transition`` profile and widths). */
-export const THREE_STEPS = "coast.three_steps";
+const THREE_STEPS = "coast.three_steps";
 
 export const EXPERT_GROUPS = [
   { id: "airports", title: () => t("settings.x.group_airports"), fields: ["essential.airports.zoom_level", "essential.airports.extent_km"] },
@@ -809,6 +819,13 @@ function expertField(view, path, prop) {
       setPath(d, path, parseList(control.value));
       view.changed();
     });
+  } else if (path === PATCHES_DIR) {
+    control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", placeholder: t("settings.x.patches_placeholder", { path: patchesDefault(view) }), dataset: key });
+    control.value = getPath(d, path) ?? "";
+    control.addEventListener("change", () => {
+      setPath(d, path, control.value.trim());
+      view.changed();
+    });
   } else {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = getPath(d, path) ?? "";
@@ -817,12 +834,24 @@ function expertField(view, path, prop) {
       view.changed();
     });
   }
+  // The folder field gets the platform's own dialog, like the X-Plane and data folders: a user
+  // did not know what to type in it (2026-09-17).
+  const choose = path === PATCHES_DIR && view.chooseFolder
+    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: `x:${path}-choose` }, onclick: async () => {
+        const picked = await view.chooseFolder(t("settings.x.patches_prompt"), control.value.trim() || null);
+        if (!picked) return;
+        control.value = picked;
+        setPath(d, path, picked);
+        view.changed();
+      } }, t("settings.x.patches_choose"))
+    : null;
   const unit = UNIT_TEXT[path] ? UNIT_TEXT[path]() : prop.unit || "";
   const labelRow = h("div", { class: "label-row" }, h("label", { for: id }, fieldLabel(path)));
   if (prop.ortho4xp) labelRow.append(h("span", { class: "badge-ortho4xp", title: t("settings.ortho4xp", { name: prop.ortho4xp }) }, prop.ortho4xp));
-  const field = h("div", { class: "field gen-field" }, labelRow);
+  const field = h("div", { class: choose ? "field gen-field field-span2" : "field gen-field" }, labelRow);
   if (control.type === "checkbox") field.append(h("label", { class: "switch", for: id }, control, h("span", { class: "help" }, t("settings.x.on"))));
   else if (unit && control.tagName === "INPUT") field.append(h("div", { class: "with-unit" }, control, h("span", { class: "unit" }, unit)));
+  else if (choose) field.append(h("div", { class: "path-row" }, control, choose));
   else field.append(control);
   field.append(h("div", { class: "hint" }, fieldHint(path)));
   return field;

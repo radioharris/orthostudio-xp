@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import test_api_fakes as fakes
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import patches_ref
+
+home = fakes.home
+xplane = fakes.xplane
 
 TILE = TileRef(43, 5)
 OTHER = TileRef(46, 6)
@@ -57,3 +61,41 @@ def test_the_input_is_the_tile_folder_keyed_by_what_it_holds(tmp_path: Path) -> 
     assert patches_ref(tmp_path / "Patches", TILE).digest != edited.digest  # type: ignore[union-attr]
     (folder / "b.patch.osm").unlink()
     assert patches_ref(tmp_path / "Patches", TILE).digest == edited.digest  # type: ignore[union-attr]
+
+
+def test_the_default_folder_is_the_one_of_osxp_home(tmp_path: Path, monkeypatch) -> None:
+    """Settings left empty: the ``patches`` folder of ``$OSXP_HOME``, once the user made it.
+
+    A user of the X-Plane.Org page did not know what to type in the field (2026-09-17), so a
+    folder OrthoStudio XP names itself answers for those who make it.
+    """
+    from orthostudio.home import OSXP_HOME_ENV, default_patches_dir
+
+    monkeypatch.setenv(OSXP_HOME_ENV, str(tmp_path / "home"))
+    assert default_patches_dir() is None  # nothing made: no folder, no patches
+    (tmp_path / "home" / "patches").mkdir(parents=True)
+    assert default_patches_dir() == tmp_path / "home" / "patches"
+    # and that folder is read like any other
+    _patch(tmp_path / "home" / "patches" / TILE.name)
+    ref = patches_ref(default_patches_dir(), TILE)
+    assert ref is not None and ref.path == tmp_path / "home" / "patches" / TILE.name
+
+
+def test_the_page_uses_the_default_folder_when_settings_names_none(
+    home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """``make_specs``: the setting wins, an empty setting falls back to ``$OSXP_HOME/patches``."""
+    from orthostudio import config
+    from orthostudio.api.models import PlanRequest
+    from orthostudio.api.specs import make_specs
+
+    req = PlanRequest.model_validate(
+        {"tiles": ["+46+006"], "zoom_level": 16, "overlay": False, "xp12_rasters": False}
+    )
+    settings = config.Settings()
+    assert make_specs(req, settings=settings)[0].patches_dir is None  # no folder made
+    (home / "patches").mkdir(parents=True)
+    assert make_specs(req, settings=settings)[0].patches_dir == home / "patches"
+    mine = tmp_path / "my patches"
+    named = config.Settings.model_validate({"expert": {"patches_dir": str(mine)}})
+    assert make_specs(req, settings=named)[0].patches_dir == mine

@@ -652,6 +652,10 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    longer offers (`ratio_bathy`, `imprint_masks_to_dds`, `mesh_zl`, `masks_custom_extent`, and
    `masks_use_dem_too`, which needs Ortho4XP's own coast step now that OrthoStudio XP ships no
    Ortho4XP) appear under *No longer offered* only when their value is not the default.
+   *Folder of hand-made mesh patches* (`expert.patches_dir`) is the one expert field holding a
+   folder: it takes two columns, its placeholder is the folder used when it is left empty
+   (`<status.home>/patches`) and *Choose…* beside it opens the platform's dialog (a user of the
+   X-Plane.Org page asked what to type in it, 2026-09-17).
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the
 schema's leaves, so a setting added to the engine cannot be left out of the page.
@@ -660,8 +664,9 @@ Layout of the expert fields (user request, 2026-09-13: a hint clamped to three l
 opened on hover pushed the fields around it, and controls did not line up): a grid of equal
 columns (`minmax(260px, 1fr)`); each field spans three rows shared with the fields beside it
 (`grid-template-rows: subgrid`: label line, control, note), so the controls of a row line up
-even when a label wraps; every control fills its column, its unit inside. Nothing changes size on
-hover. *Save* → `PUT /api/settings` with the whole document; *Reset* reloads
+even when a label wraps; every control fills its column, its unit inside. A field holding a folder
+takes two columns (`.field-span2`, one column again under 700 px): a path and its *Choose…* button
+do not fit in one. Nothing changes size on hover. *Save* → `PUT /api/settings` with the whole document; *Reset* reloads
 `GET /api/settings` (or the schema defaults on the *Defaults* button). Validation errors
 from the engine (`422`) are shown next to the form, in the page's words for the code with its remedy:
 `XP_DIR_NOT_FOUND` names the folder and, for one that exists, the subfolders it lacks (`Resources`,
@@ -713,7 +718,8 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), and *Choose…* beside the Ortho4XP folder of the Library,
+label for both read as the same button), *Choose…* beside the Ortho4XP folder of the Library and
+*Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in
 the folder typed or detected. The folder chosen fills the field, as if typed (Settings still saves
