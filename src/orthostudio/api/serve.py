@@ -15,6 +15,7 @@ from typing import Any
 
 from orthostudio.api import presence
 from orthostudio.errors import OsxpError
+from orthostudio.home import make_patches_dir
 
 __all__ = [
     "DEFAULT_PORT",
@@ -205,6 +206,7 @@ def serve(
                 webbrowser.open(url)
             return
     ui = Path(ui_dir) if ui_dir is not None else default_ui_dir()
+    make_patches_dir()
     holder: dict[str, uvicorn.Server] = {}
 
     def shutdown() -> None:

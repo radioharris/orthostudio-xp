@@ -201,7 +201,7 @@ rejected ways are counted and reported, not inserted).
 
 ## 4. Rules of the patch builder (`:639-968`)
 
-Patches are `Patches/<tile>/*.patch.osm` files (JOSM XML, read with every tag kept) and
+Patches are `<tile>/*.patch.osm` files (JOSM XML, read with every tag kept; Ortho4XP holds them under `Patches/<10° cell>/<tile>`, and `pipeline.build.patches_folder` reads either tree) and
 directories of OBJ8 files. Ortho4XP calls them from `include_airports`, before the runways, so
 that a patched airport is skipped by the airport builder (`patches_list`, `:1045-1046`).
 Wave 1 delivered the reader and the layers; the build wires them since 2026-09-17, from the

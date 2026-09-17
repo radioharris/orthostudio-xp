@@ -31,9 +31,11 @@ __all__ = [
     "data_root_missing",
     "default_chunks_root",
     "default_mapcache_root",
+    "default_patches_dir",
     "default_store_root",
     "default_tiles_root",
     "default_work_root",
+    "make_patches_dir",
     "osxp_home",
     "require_data_root",
 ]
@@ -189,10 +191,24 @@ def default_tiles_root() -> Path:
 
 
 def default_patches_dir() -> Path | None:
-    """``~/.orthostudio/patches`` when the user made it: the hand-made mesh patches, one folder
+    """``~/.orthostudio/patches`` when it is there: the hand-made mesh patches, one folder
     per tile, used when Settings names no other (``expert.patches_dir``, 2026-09-17)."""
     folder = osxp_home() / "patches"
     return folder if folder.is_dir() else None
+
+
+def make_patches_dir() -> Path:
+    """Make ``$OSXP_HOME/patches`` if it is missing, and answer it.
+
+    The page names that folder as the one a build reads when Settings names none, and a user
+    went looking for it and found nothing: nothing had ever made it (2026-09-17). The engine
+    makes it empty when it starts, so there is a folder to drop ``+46+006/...`` into; empty, it
+    holds no tile, so it changes no build.
+    """
+    folder = osxp_home() / "patches"
+    with contextlib.suppress(OSError):
+        folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def default_work_root() -> Path:

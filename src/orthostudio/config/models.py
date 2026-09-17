@@ -240,8 +240,8 @@ class Expert(BaseModel):
         hint=(
             "Folder of hand-made mesh patches: one directory per tile "
             "(<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit "
-            "as they are). Left empty, the patches folder of OrthoStudio XP's own folder is "
-            "used when it exists."
+            "as they are, with their Patches/<10 degree cell>/<tile> tree). Left empty, the "
+            "patches folder of OrthoStudio XP's own folder is used when it exists."
         ),
     )
     ovl_exclude_pol: list[int | str] = _field([0], "expert", "ovl_exclude_pol", "")

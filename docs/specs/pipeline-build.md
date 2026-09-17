@@ -469,10 +469,14 @@ coastline now has no source.
   points at `--osm-refresh` (or at `--no-osm-fetch` when the build forbade the download).
   `patches` is the tile's folder of hand-made patches (`expert.patches_dir`, a patch author of
   the X-Plane.Org page asked, 2026-09-17): the folder Settings names, or, when the setting is
-  empty, `$OSXP_HOME/patches` if the user made it (`default_patches_dir`, the same fallback for
-  `osxp build --patches`). `patches_ref` gives `<patches_dir>/<tile>` as a source input keyed by
-  the names and contents of its `*.patch.osm` files, so editing a patch builds the tile again; no
-  folder, or a tile without its own directory, keeps the input absent, as decision 0010 left it; `airports` stays absent (the stage builds the
+  empty, `$OSXP_HOME/patches` (`default_patches_dir`, the same fallback for
+  `osxp build --patches`; `serve` makes that folder empty at start, `make_patches_dir`, so
+  that a pilot looking for it finds it). `patches_folder` finds the tile's directory in either layout, `<tile>`
+  or Ortho4XP's `[Patches/]<10° cell>/<tile>` (`O4_File_Names.long_latlon`; the SBCF patch a user
+  sent is `Ortho4XP/Patches/-20-050/-20-044/SBCF.patch.osm`), and `patches_ref` gives it as a
+  source input keyed by the names and contents of its `*.patch.osm` files and of the OBJ8
+  objects in its subdirectories, so editing a patch builds the tile again; no folder, or a tile
+  without its own directory, keeps the input absent, as decision 0010 left it; `airports` stays absent (the stage builds the
   aerodromes from the `airports` layer, `airports-integration.md` 1);
 * `road_level`, `road_banking_limit`, `lane_width`, `max_levelled_segs`, `water_simplification`,
   `min_area`, `max_area`, `clean_bad_geometries`, `mesh_zl`, `apt_smoothing_pix`,

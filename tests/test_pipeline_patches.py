@@ -11,7 +11,7 @@ from pathlib import Path
 
 import test_api_fakes as fakes
 from orthostudio.model import TileRef
-from orthostudio.pipeline.build import patches_ref
+from orthostudio.pipeline.build import patches_folder, patches_ref
 
 home = fakes.home
 xplane = fakes.xplane
@@ -99,3 +99,50 @@ def test_the_page_uses_the_default_folder_when_settings_names_none(
     mine = tmp_path / "my patches"
     named = config.Settings.model_validate({"expert": {"patches_dir": str(mine)}})
     assert make_specs(req, settings=named)[0].patches_dir == mine
+
+
+def test_the_tree_ortho4xp_publishes_is_read_wherever_it_is_named(tmp_path: Path) -> None:
+    """``Patches/<10° cell>/<tile>``, the layout of the packs their authors publish.
+
+    A user sent ``SBCF - November Lima - Ortho4XP Patch/Ortho4XP/Patches/-20-050/-20-044/
+    SBCF.patch.osm`` (2026-09-17): the folder named in Settings can be any of the three levels
+    above the tile's own directory, since none of them tells which one a pilot kept.
+    """
+    tile = TileRef(-20, -44)
+    assert tile.folder == "-20-050"
+    root = tmp_path / "SBCF patch" / "Ortho4XP"
+    folder = root / "Patches" / tile.folder / tile.name
+    _patch(folder, name="SBCF.patch.osm")
+    for named in (root, root / "Patches", root / "Patches" / tile.folder, folder.parent):
+        ref = patches_ref(named, tile)
+        assert ref is not None and ref.path == folder, named
+    # the flat layout still wins when both are there, and another tile is left alone
+    _patch(root / tile.name, name="mine.patch.osm")
+    assert patches_ref(root, tile).path == root / tile.name  # type: ignore[union-attr]
+    assert patches_ref(root, TILE) is None
+
+
+def test_an_obj8_folder_counts_and_keys_the_input(tmp_path: Path) -> None:
+    """``build_patch_layers`` reads the objects of the subdirectories: they belong to the key."""
+    folder = tmp_path / "patches" / TILE.name
+    objects = folder / "objects"
+    objects.mkdir(parents=True)
+    (objects / "tower.obj").write_text("ANCHOR 43.2 5.2 0 0\n", encoding="utf-8")
+    ref = patches_ref(tmp_path / "patches", TILE)
+    assert ref is not None and ref.path == folder  # objects alone are patches too
+    (objects / "tower.obj").write_text("ANCHOR 43.2 5.2 10 0\n", encoding="utf-8")
+    assert patches_ref(tmp_path / "patches", TILE).digest != ref.digest  # type: ignore[union-attr]
+    assert patches_folder(tmp_path / "nowhere", TILE) is None
+
+
+def test_the_engine_makes_the_folder_so_it_can_be_found(tmp_path: Path, monkeypatch) -> None:
+    """``serve`` makes ``$OSXP_HOME/patches``: a user looked for it and it was not there."""
+    from orthostudio.home import OSXP_HOME_ENV, default_patches_dir, make_patches_dir
+
+    monkeypatch.setenv(OSXP_HOME_ENV, str(tmp_path / "home"))
+    assert default_patches_dir() is None
+    assert make_patches_dir() == tmp_path / "home" / "patches"
+    assert default_patches_dir() == tmp_path / "home" / "patches"
+    assert make_patches_dir() == tmp_path / "home" / "patches"  # twice over is no error
+    # empty, it holds no tile: a build reads no patch from it
+    assert patches_ref(default_patches_dir(), TILE) is None

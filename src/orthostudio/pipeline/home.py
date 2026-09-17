@@ -19,6 +19,7 @@ from orthostudio.home import (
     default_store_root,
     default_tiles_root,
     default_work_root,
+    make_patches_dir,
     osxp_home,
     require_data_root,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "default_store_root",
     "default_tiles_root",
     "default_work_root",
+    "make_patches_dir",
     "osxp_home",
     "require_data_root",
 ]

@@ -289,8 +289,9 @@ class BuildSpec:
     osm_refresh: str = ""
     """Free label entering the OSM key: change it to ask for fresh OSM data."""
     patches_dir: Path | None = None
-    """Folder of hand-made mesh patches, as Ortho4XP holds them: ``<patches_dir>/<tile>`` with
-    its ``*.patch.osm`` files (a user of the X-Plane.Org page publishes such patches and asked,
+    """Folder of hand-made mesh patches: ``<patches_dir>/<tile>`` with its ``*.patch.osm``
+    files, or the tree Ortho4XP uses, ``<patches_dir>/[Patches/]<10° cell>/<tile>``
+    (:func:`patches_folder`; a user of the X-Plane.Org page publishes such patches and asked,
     2026-09-17). ``None``, or a tile without its own directory, builds without any."""
     relief: str = field(default_factory=default_relief)
     """``xplane`` / ``view`` (:data:`RELIEF_SOURCES`): the relief of the elevation stage when
@@ -462,20 +463,48 @@ def _active() -> _Active:
 # -- sources -------------------------------------------------------------------------------------
 
 
-def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
-    """The tile's patch folder as a graph input, keyed by what the files hold.
+def patches_folder(patches_dir: Path | None, tile: TileRef) -> Path | None:
+    """The tile's own directory inside a folder of patches, whichever layout it has.
 
-    ``<patches_dir>/<tile>``, when it holds at least one ``*.patch.osm``: the digest covers
-    every such file, name and content, so that editing a patch builds the tile again and
-    removing it comes back to the tile without patches.
+    Ortho4XP keeps its patches under ``Patches/<10° cell>/<tile>``
+    (``O4_File_Names.long_latlon``), and a pack published for it keeps that tree: the patch of
+    SBCF a user sent is ``Ortho4XP/Patches/-20-050/-20-044/SBCF.patch.osm`` (2026-09-17). A
+    folder made by hand is usually just ``<tile>``. Both are read, and so is a folder holding
+    the ``Patches`` directory itself, which is what an unzipped pack gives.
     """
     if patches_dir is None:
         return None
-    folder = Path(patches_dir).expanduser() / tile.name
+    root = Path(patches_dir).expanduser()
+    found = [
+        folder
+        for base in (root, root / "Patches")
+        for folder in (base / tile.name, base / tile.folder / tile.name)
+        if folder.is_dir()
+    ]
+    # a directory that holds something wins over an empty one left beside it
+    with_files = [
+        f for f in found if any(f.glob("*.patch.osm")) or any(p.is_dir() for p in f.iterdir())
+    ]
+    return (with_files or found or [None])[0]
+
+
+def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
+    """The tile's patch folder as a graph input, keyed by what the files hold.
+
+    The folder :func:`patches_folder` finds, when it holds at least one ``*.patch.osm`` or one
+    directory of OBJ8 objects (``vectors/patches.py`` reads both): the digest covers every such
+    file, name and content, so that editing a patch builds the tile again and removing it comes
+    back to the tile without patches.
+    """
+    folder = patches_folder(patches_dir, tile)
+    if folder is None:
+        return None
     files = sorted(p for p in folder.glob("*.patch.osm") if p.is_file())
+    objects = sorted(p for d in folder.iterdir() if d.is_dir() for p in sorted(d.rglob("*")))
+    files += [p for p in objects if p.is_file()]
     if not files:
         return None
-    listing = "\n".join(f"{p.name} {digest_file(p)}" for p in files)
+    listing = "\n".join(f"{p.relative_to(folder)} {digest_file(p)}" for p in files)
     digest = digest_bytes(listing.encode("utf-8"))
     return ArtifactRef(
         digest, digest, folder, "patches", "dir", sum(p.stat().st_size for p in files)

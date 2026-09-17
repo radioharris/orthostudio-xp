@@ -178,9 +178,12 @@ the computer's own disk instead.
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
-of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes (patches
-published for Ortho4XP fit as they are). *Choose…* opens the folder dialog; left empty, OrthoStudio
-XP reads its own `patches` folder (`~/.orthostudio/patches`) when you made one. A tile that has a
+of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
+published for Ortho4XP fits as it is, with the tree it comes in
+(`Patches/-20-050/-20-044/SBCF.patch.osm`): name that folder, or its `Patches`, or the tile's own
+directory, whichever you have. *Choose…* opens the folder dialog; left empty, OrthoStudio
+XP reads its own `patches` folder, `~/.orthostudio/patches`, which it makes empty when it starts
+so that there is somewhere to drop them. A tile that has a
 directory there is built with its patches, and editing a patch builds that tile again by itself; a
 tile without one is built as before.
 

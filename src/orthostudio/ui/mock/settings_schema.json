@@ -621,8 +621,8 @@
         },
         "patches_dir": {
           "default": "",
-          "description": "Folder of hand-made mesh patches: one directory per tile (<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit as they are). Left empty, the patches folder of OrthoStudio XP's own folder is used when it exists.",
-          "hint": "Folder of hand-made mesh patches: one directory per tile (<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit as they are). Left empty, the patches folder of OrthoStudio XP's own folder is used when it exists.",
+          "description": "Folder of hand-made mesh patches: one directory per tile (<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit as they are, with their Patches/<10 degree cell>/<tile> tree). Left empty, the patches folder of OrthoStudio XP's own folder is used when it exists.",
+          "hint": "Folder of hand-made mesh patches: one directory per tile (<tile>/*.patch.osm, files written with JOSM; patches published for Ortho4XP fit as they are, with their Patches/<10 degree cell>/<tile> tree). Left empty, the patches folder of OrthoStudio XP's own folder is used when it exists.",
           "level": "expert",
           "ortho4xp": null,
           "title": "Patches Dir",
