@@ -43,6 +43,7 @@ from orthostudio.graph import (
     RuleParams,
     RunContext,
     Store,
+    digest_bytes,
     digest_file,
     key_for,
     rule,
@@ -287,6 +288,10 @@ class BuildSpec:
     """Download the OSM layers the tile does not have yet (spec 8.3)."""
     osm_refresh: str = ""
     """Free label entering the OSM key: change it to ask for fresh OSM data."""
+    patches_dir: Path | None = None
+    """Folder of hand-made mesh patches, as Ortho4XP holds them: ``<patches_dir>/<tile>`` with
+    its ``*.patch.osm`` files (a user of the X-Plane.Org page publishes such patches and asked,
+    2026-09-17). ``None``, or a tile without its own directory, builds without any."""
     relief: str = field(default_factory=default_relief)
     """``xplane`` / ``view`` (:data:`RELIEF_SOURCES`): the relief of the elevation stage when
     ``custom_dem`` is empty."""
@@ -455,6 +460,26 @@ def _active() -> _Active:
 
 
 # -- sources -------------------------------------------------------------------------------------
+
+
+def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
+    """The tile's patch folder as a graph input, keyed by what the files hold.
+
+    ``<patches_dir>/<tile>``, when it holds at least one ``*.patch.osm``: the digest covers
+    every such file, name and content, so that editing a patch builds the tile again and
+    removing it comes back to the tile without patches.
+    """
+    if patches_dir is None:
+        return None
+    folder = Path(patches_dir).expanduser() / tile.name
+    files = sorted(p for p in folder.glob("*.patch.osm") if p.is_file())
+    if not files:
+        return None
+    listing = "\n".join(f"{p.name} {digest_file(p)}" for p in files)
+    digest = digest_bytes(listing.encode("utf-8"))
+    return ArtifactRef(
+        digest, digest, folder, "patches", "dir", sum(p.stat().st_size for p in files)
+    )
 
 
 def source_ref(path: Path, *, label: str = "source") -> ArtifactRef:
@@ -1383,9 +1408,9 @@ def declare(
             {
                 "osm": osm_input,
                 "dem": dem,
-                # Ortho4XP's hand-written patches came from its own folder, which the build no
-                # longer reads (decision 0010): the input keeps its place in the key, absent.
-                "patches": None,
+                # Hand-made patches: the folder the user names in Settings, tile by tile
+                # (decision 0010 stopped reading Ortho4XP's own folder; this one is chosen).
+                "patches": patches_ref(spec.patches_dir, spec.tile),
                 # Wave 2 builds the airports inside the stage, from the aeroway layer of
                 # ``osm`` (``airports-integration.md`` 1); the input keeps its place in the key
                 # and stays absent.

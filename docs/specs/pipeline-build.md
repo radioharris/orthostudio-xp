@@ -467,8 +467,11 @@ coastline now has no source.
 * the `osm` input of the vector node is the phase-0 snapshot, which must hold *every* layer of the
   tile's `road_level`; when it does not, `OSM_LAYER_UNAVAILABLE` names the missing layers and
   points at `--osm-refresh` (or at `--no-osm-fetch` when the build forbade the download).
-  `patches` stays absent: Ortho4XP's `Patches/` folder is not read (decision 0010), and the stage
-  builds the family only from a folder it is given; `airports` stays absent (the stage builds the
+  `patches` is the tile's folder of hand-made patches when Settings names one
+  (`expert.patches_dir`, a patch author of the X-Plane.Org page asked, 2026-09-17):
+  `patches_ref` gives `<patches_dir>/<tile>` as a source input keyed by the names and contents of
+  its `*.patch.osm` files, so editing a patch builds the tile again; no folder, or a tile without
+  its own directory, keeps the input absent, as decision 0010 left it; `airports` stays absent (the stage builds the
   aerodromes from the `airports` layer, `airports-integration.md` 1);
 * `road_level`, `road_banking_limit`, `lane_width`, `max_levelled_segs`, `water_simplification`,
   `min_area`, `max_area`, `clean_bad_geometries`, `mesh_zl`, `apt_smoothing_pix`,

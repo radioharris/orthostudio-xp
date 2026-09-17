@@ -232,6 +232,17 @@ class Expert(BaseModel):
         hint="The decals go on land only. With this on they go on the sea as well, as Ortho4XP "
         "writes them; lakes and rivers never have them.",
     )
+    patches_dir: str = _field(
+        "",
+        "expert",
+        None,
+        "",
+        hint=(
+            "Folder of hand-made mesh patches, as Ortho4XP reads them: it must hold one "
+            "directory per tile (<tile>/*.patch.osm, JOSM files). A tile with no directory "
+            "there is built without any."
+        ),
+    )
     ovl_exclude_pol: list[int | str] = _field([0], "expert", "ovl_exclude_pol", "")
     ovl_exclude_net: list[int | str] = _field([], "expert", "ovl_exclude_net", "")
 

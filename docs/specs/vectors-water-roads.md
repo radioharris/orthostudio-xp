@@ -204,7 +204,8 @@ rejected ways are counted and reported, not inserted).
 Patches are `Patches/<tile>/*.patch.osm` files (JOSM XML, read with every tag kept) and
 directories of OBJ8 files. Ortho4XP calls them from `include_airports`, before the runways, so
 that a patched airport is skipped by the airport builder (`patches_list`, `:1045-1046`).
-Wave 1 delivers the reader and the layers; the wiring stays for wave 2.
+Wave 1 delivered the reader and the layers; the build wires them since 2026-09-17, from the
+folder Settings names (`expert.patches_dir`, `pipeline-build.md`), not from Ortho4XP's own.
 
 0. **Coordinates** (`:681-684`): a patch way is *not* rounded to 7 decimals, unlike every
    other OSM way (`vectors-osm-layers.md` 5); the reader subtracts the tile origin and keeps

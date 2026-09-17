@@ -157,6 +157,7 @@ def _build_specs(
     creation_agent: str,
     link: bool,
     encoder: str,
+    patches: Path | None = None,
     dem: str = "vectors",
     osm_fetch: bool = True,
     osm_refresh: str = "",
@@ -232,6 +233,7 @@ def _build_specs(
             overlay=overlay,
             xp12_rasters=xp12_rasters,
             creation_agent=creation_agent,
+            patches_dir=patches,
             store_root=store or default_store_root(),
             chunks_root=chunks or default_chunks_root(),
             workers=workers,
@@ -379,6 +381,10 @@ _XP12_OPT = typer.Option(
 )
 _AGENT_OPT = typer.Option("--creation-agent", help="sim/creation_agent of the DSF")
 _LINK_OPT = typer.Option("--link/--copy", help="hard links (or copies) in the pack")
+_PATCHES_OPT = typer.Option(
+    "--patches",
+    help="folder of hand-made mesh patches (<tile>/*.patch.osm, as Ortho4XP holds them)",
+)
 _ENCODER_OPT = typer.Option("--encoder", help="DDS encoder (auto, ispc, nvcompress)")
 _JSON_FLAG = typer.Option("--json", help="machine-readable output on stdout")
 _ZONES_OPT = typer.Option(
@@ -423,6 +429,7 @@ def build(
     overlay: Annotated[bool, _OVERLAY_OPT] = True,
     xp12_rasters: Annotated[bool, _XP12_OPT] = True,
     creation_agent: Annotated[str, _AGENT_OPT] = "osxp",
+    patches: Annotated[Path | None, _PATCHES_OPT] = None,
     link: Annotated[bool, _LINK_OPT] = True,
     encoder: Annotated[str, _ENCODER_OPT] = "auto",
     dem: Annotated[str, _DEM_OPT] = "vectors",
@@ -447,8 +454,8 @@ def build(
             global_scenery=global_scenery, store=store, chunks=chunks,
             workers=workers, sets=sets or [], overlay=overlay,
             xp12_rasters=xp12_rasters, creation_agent=creation_agent, link=link,
-            encoder=encoder, dem=dem, osm_fetch=osm_fetch, osm_refresh=osm_refresh,
-            relief=relief, zones=zones,
+            encoder=encoder, patches=patches, dem=dem, osm_fetch=osm_fetch,
+            osm_refresh=osm_refresh, relief=relief, zones=zones,
         )  # fmt: skip
         if dry_run:
             _plan(specs, online=online, json_output=json_output)

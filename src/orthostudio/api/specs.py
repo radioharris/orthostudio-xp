@@ -236,6 +236,9 @@ def make_specs(
             "CFG_PROVIDER_OUT_OF_COVERAGE",
             context={"provider": provider, "extent": source.extent, "tiles": " ".join(uncovered)},
         )
+    # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
+    patches = str(getattr(settings.expert, "patches_dir", "") or "").strip()
+    patches_dir = Path(patches).expanduser() if patches else None
     max_zl = reg[provider].max_zl
     if zl > max_zl:
         raise OsxpError(
@@ -295,6 +298,7 @@ def make_specs(
                 xp12_rasters=req.xp12_rasters,
                 store_root=default_store_root(),
                 chunks_root=default_chunks_root(),
+                patches_dir=patches_dir,
             )
         )
     return specs
