@@ -111,7 +111,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 15
+API_LEVEL = 16
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -127,7 +127,8 @@ each imagery source covers in ``GET /api/providers`` (``extent``, ``extent_bound
 the setting ``essential.data_dir`` (an older engine refuses a settings document that holds it),
 ``data_dir`` in the status and ``CFG_DATA_DIR_*``, 14 = ``GET /api/engine`` (who serves the
 port, answered at once) and ``POST /api/presence`` (a page is open), 15 = ``others`` in the
-status's ``xplane`` (the other X-Plane 12 folders of the machine). A page
+status's ``xplane`` (the other X-Plane 12 folders of the machine), 16 = ``relief`` in a job
+(which relief its tiles are built on). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""

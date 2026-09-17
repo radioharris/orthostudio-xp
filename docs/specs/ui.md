@@ -692,6 +692,10 @@ cancelled too; *Stay* has the focus), then
 `POST /api/quit` (`force` when a job runs) and covers the page with "OrthoStudio XP is stopped. You
 can close this tab. To use OrthoStudio XP again, open the OrthoStudio XP app."
 
+**The line under a job's title** gives the provider and the zoom level, the relief the tiles are
+built on (`relief` of the job: *X-Plane relief*, *Copernicus relief*, *own relief file*; nothing
+from an engine that does not say), then whether the build installs.
+
 **Presence** (2026-09-17): the page says it is open, `POST /api/presence`, at load, every 30 s and
 when it shows again. When the engine does not answer twice, 3 s apart (an answer with an error does
 not count), the page covers itself with the same stopped screen, whose text says that OrthoStudio XP

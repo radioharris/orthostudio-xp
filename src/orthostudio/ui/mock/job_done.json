@@ -195,6 +195,7 @@
   ],
   "provider": "BI",
   "zl": 16,
+  "relief": "xplane",
   "ok": false,
   "request": {"tiles": ["+46+006", "+46+007", "+46+008", "+46+009", "+46+005", "+46+010"], "airport": null, "provider": "BI", "zoom_level": 16, "overrides": {}, "xplane_dir": null, "overlay": true, "xp12_rasters": true, "online": false, "zones": [], "install": true},
   "errors": [

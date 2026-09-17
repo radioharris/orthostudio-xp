@@ -306,7 +306,7 @@ def test_mock_jobs_follow_the_engine_state() -> None:
     from orthostudio.api.stages import ROLE_STAGE
 
     summary = {"id", "status", "created_at", "started_at", "finished_at", "install", "tiles"}
-    summary |= {"provider", "zl", "ok"}
+    summary |= {"provider", "zl", "relief", "ok"}
     state = summary | {"request", "errors", "stats", "eta", "last_seq", "report", "decisions"}
     for name in ("job", "job_done"):
         doc = _mock_json(name)

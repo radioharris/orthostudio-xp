@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
-  "api_level": 15,
+  "api_level": 16,
   "platform": "mac",
   "can_quit": true,
   "xplane": {

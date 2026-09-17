@@ -285,6 +285,15 @@ def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
 # -- job ------------------------------------------------------------------------------------------
 
 
+def _relief_of(spec: Any) -> str:
+    """Where the tiles of ``spec`` take their heights: ``xplane`` (X-Plane 12's own relief, or
+    ``view`` in the test suite), ``copernicus`` (``COP30``), or ``file`` (the user's own)."""
+    custom = str(spec.config.get("custom_dem", "") or "").strip()
+    if not custom:
+        return str(spec.relief)
+    return "copernicus" if custom == "COP30" else "file"
+
+
 class Job:
     """One build: its specs, its journal and its aggregated state (thread-safe)."""
 
@@ -852,6 +861,9 @@ class Job:
                 "tiles": [t.tile for t in self._tiles.values()],
                 "provider": self.specs[0].provider if self.specs else None,
                 "zl": self.specs[0].zl if self.specs else None,
+                # which relief the tiles are built on, so that Works says it while it builds
+                # (a user missed it during a build, 2026-09-17)
+                "relief": _relief_of(self.specs[0]) if self.specs else None,
                 "ok": self.status == "done",
             }
 

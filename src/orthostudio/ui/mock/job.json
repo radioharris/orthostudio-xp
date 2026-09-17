@@ -42,6 +42,7 @@
   ],
   "provider": "BI",
   "zl": 16,
+  "relief": "xplane",
   "ok": false,
   "request": {"tiles": ["+43+005"], "airport": null, "provider": "BI", "zoom_level": 16, "overrides": {}, "xplane_dir": null, "overlay": true, "xp12_rasters": true, "online": false, "zones": [], "install": true},
   "errors": [],

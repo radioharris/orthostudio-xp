@@ -1905,7 +1905,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 15;
+const PAGE_API_LEVEL = 16;
 
 async function loadStatus() {
   try {
@@ -3107,13 +3107,22 @@ function buildJobView(box, job, previous) {
   return v;
 }
 
+/** What the build takes its heights from, for the line under a job's title. */
+function reliefWords(relief) {
+  if (relief === "copernicus") return t("works.relief_cop30");
+  if (relief === "file") return t("works.relief_file");
+  if (relief === "xplane") return t("works.relief_xplane");
+  return "";  // an older engine says nothing, and the line keeps its other parts
+}
+
 function updateJobView(v, job) {
   const active = jobActive(job);
   if (v.status !== job.status) {
     clear(v.pill).append(jobStatusPill(job.status));
     v.status = job.status;
   }
-  setText(v.meta, `${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""} · ${job.install ? t("works.install") : t("works.no_install")}`);
+  const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, reliefWords(job.relief), job.install ? t("works.install") : t("works.no_install")];
+  setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
   setText(v.stop, waiting ? t("works.unqueue") : t("works.stop"));
