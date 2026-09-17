@@ -263,6 +263,8 @@ def test_ter_text_equals_create_terrain_file_for_every_kind_and_hemisphere(
                 imprint_masks_to_dds=imprint,
                 mask_zl=mask_zl,
                 use_decal_on_terrain=decal,
+                # Ortho4XP writes the decal on the sea too; OrthoStudio XP does it when asked
+                decal_on_sea=True,
                 terrain_casts_shadows=shadows,
                 use_test_texture=test_texture,
             )

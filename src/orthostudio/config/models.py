@@ -224,6 +224,14 @@ class Expert(BaseModel):
     sea_texture_blur: float = _field(0.0, "expert", "sea_texture_blur", "m", ge=0)
     normal_map_strength: float = _field(1.0, "expert", "normal_map_strength", "", ge=0, le=1)
     use_decal_on_terrain: bool = _field(False, "expert", "use_decal_on_terrain", "")
+    decal_on_sea: bool = _field(
+        False,
+        "expert",
+        None,
+        "",
+        hint="The decals go on land only. With this on they go on the sea as well, as Ortho4XP "
+        "writes them; lakes and rivers never have them.",
+    )
     ovl_exclude_pol: list[int | str] = _field([0], "expert", "ovl_exclude_pol", "")
     ovl_exclude_net: list[int | str] = _field([], "expert", "ovl_exclude_net", "")
 

@@ -119,6 +119,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `sea_texture_blur` | float `>= 0` | m | 0 | `sea_texture_blur` | For layers of type "mask" in combined providers imageries, determines the extent (in meters) of the blur radius applied. [...] |
 | `normal_map_strength` | float `[0, 1]` | - | 1 | `normal_map_strength` | Orthophotos by essence already contain the part of the shading burned in [...] the default is now 1 which means exact normals. |
 | `use_decal_on_terrain` | bool | - | false | `use_decal_on_terrain` | Terrain files for all but water triangles will contain the maquify_1_green_key.dcl decal directive. [...] |
+| `decal_on_sea` | bool | - | false | – | The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them. |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
 | `ovl_exclude_net` | list of int or str | - | `[]` | `ovl_exclude_net` | Indices of road types which one would like to left aside in the extraction of overlays. [...] |
 

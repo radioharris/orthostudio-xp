@@ -371,7 +371,7 @@ export const EXPERT_GROUPS = [
     fields: ["advanced.curvature_tol", "advanced.limit_tris", "expert.min_angle", "expert.apt_curv_tol", "expert.apt_curv_ext", "expert.coast_curv_tol", "expert.coast_curv_ext", "advanced.apt_smoothing_pix"],
   },
   { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
-  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain"] },
+  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
 ];
 
@@ -409,6 +409,7 @@ const FIELD_TEXT = {
   "advanced.terrain_casts_shadows": [() => t("settings.x.shadows"), () => t("settings.x.shadows_hint")],
   "expert.normal_map_strength": [() => t("settings.x.normals"), () => t("settings.x.normals_hint")],
   "expert.use_decal_on_terrain": [() => t("settings.x.decal"), () => t("settings.x.decal_hint")],
+  "expert.decal_on_sea": [() => t("settings.x.decal_sea"), () => t("settings.x.decal_sea_hint")],
   "expert.ovl_exclude_pol": [() => t("settings.x.exclude_pol"), () => t("settings.x.exclude_pol_hint")],
   "expert.ovl_exclude_net": [() => t("settings.x.exclude_net"), () => t("settings.x.exclude_net_hint")],
   "advanced.ratio_bathy": [() => t("settings.x.ratio_bathy"), () => t("settings.x.ratio_bathy_hint")],

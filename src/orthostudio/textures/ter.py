@@ -84,6 +84,7 @@ class TerParams:
     imprint_masks_to_dds: bool = True
     mask_zl: int = 14
     use_decal_on_terrain: bool = False
+    decal_on_sea: bool = False
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
     """Ortho4XP module global ``use_test_texture``: every terrain points at ``test_texture.dds``."""
@@ -141,8 +142,10 @@ def ter_text(
         border = 4096 // 2 ** (t.zl - params.mask_zl)
         lines.append(f"LOAD_CENTER_BORDER {lat_med:.5f} {lon_med:.5f} {size} {border}")
         lines.append(f"BORDER_TEX ../textures/{border_mask_filename(t)}")
-    # Ortho4XP writes the decal on land and sea alike (tri_type != 1), despite its own comment.
-    if tri != 1 and params.use_decal_on_terrain:
+    # Ortho4XP writes the decal on land and sea alike (tri_type != 1), despite its own comment. A
+    # user asked for the land alone (2026-09-17): the sea has it only with ``decal_on_sea``, and
+    # inland water never, as in Ortho4XP.
+    if params.use_decal_on_terrain and (tri == 0 or (tri == 2 and params.decal_on_sea)):
         lines.append(f"DECAL_LIB {DECAL_LIB}")
     lines.append("WET" if kind.is_water else "NO_ALPHA")
     if kind.is_water or not params.terrain_casts_shadows:

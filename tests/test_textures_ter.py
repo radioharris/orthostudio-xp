@@ -118,14 +118,18 @@ def test_external_mask_when_not_imprinted() -> None:
     assert "BORDER_TEX ../textures/23936_33664_ZL16.png" in text
 
 
-def test_decal_on_land_and_sea_but_not_inland_water() -> None:
+def test_decal_on_land_only_unless_the_sea_is_asked_for() -> None:
+    """Ortho4XP writes the decal on land and sea alike; a user asked for the land alone
+    (2026-09-17), so the sea has it only with ``decal_on_sea``. Inland water never has it."""
     decal = "DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl"
     assert _text(TerKind.LAND, use_decal_on_terrain=True)[6:] == [decal, "NO_ALPHA", ""]
-    assert decal in _text(TerKind.SEA_OVERLAY, use_decal_on_terrain=True)
-    assert decal in _text(TerKind.SEA, use_decal_on_terrain=True, water_tech="XP12")
-    assert decal not in _text(TerKind.WATER_OVERLAY, use_decal_on_terrain=True)
-    # order: after BORDER_TEX / WATER_COLOR_MASK, before WET
-    lines = _text(TerKind.SEA, use_decal_on_terrain=True, water_tech="XP12")
+    assert decal not in _text(TerKind.SEA_OVERLAY, use_decal_on_terrain=True)
+    assert decal not in _text(TerKind.SEA, use_decal_on_terrain=True, water_tech="XP12")
+    assert decal not in _text(TerKind.WATER_OVERLAY, use_decal_on_terrain=True, decal_on_sea=True)
+    assert decal in _text(TerKind.SEA_OVERLAY, use_decal_on_terrain=True, decal_on_sea=True)
+    assert decal in _text(TerKind.LAND, use_decal_on_terrain=True, decal_on_sea=True)
+    # the sea asked for, order: after BORDER_TEX / WATER_COLOR_MASK, before WET
+    lines = _text(TerKind.SEA, use_decal_on_terrain=True, decal_on_sea=True, water_tech="XP12")
     assert lines[6:9] == ["WATER_COLOR_MASK", decal, "WET"]
 
 

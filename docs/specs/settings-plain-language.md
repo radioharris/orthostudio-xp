@@ -114,7 +114,8 @@ Findings that change what the page may say (details in section 6):
 | 40 | `expert.distance_masks_too` | `distance_masks_too` | false | Folded | Shallow water near the shore |
 | 41 | `expert.sea_texture_blur` | `sea_texture_blur` | 0 | Folded | Blur the photo over the sea |
 | 42 | `expert.normal_map_strength` | `normal_map_strength` | 1 | Folded | Sun shading of slopes |
-| 43 | `expert.use_decal_on_terrain` | `use_decal_on_terrain` | false | Folded | Fine ground detail at very low height |
+| 43 | `expert.use_decal_on_terrain` | `use_decal_on_terrain` | false | Folded | Fine ground detail at very low height (decals) |
+| 43b | `expert.decal_on_sea` | – | false | Folded | Fine ground detail on the sea too |
 | 44 | `expert.ovl_exclude_pol` | `ovl_exclude_pol` | `[0]` | Folded (checklist) | X-Plane objects to remove |
 | 45 | `expert.ovl_exclude_net` | `ovl_exclude_net` | `[]` | Folded | X-Plane networks to remove |
 
@@ -1086,8 +1087,20 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 - **In X-Plane.** Expected: fine grain on the ground seen from very low; whether X-Plane 12 still
   ships that decal is Q5.
 - **Recommendation. Folded.**
-- **Expert label.** EN *Fine ground detail at very low height (X-Plane 12 support unknown)* · FR
-  *Grain du sol à très basse hauteur (prise en charge par X-Plane 12 inconnue)*.
+- **Expert label.** EN *Fine ground detail at very low height (decals)* · FR *Grain du sol à très
+  basse hauteur (decals)*. X-Plane 12 does ship the decal
+  (`Resources/default scenery/1000 decals`), checked 2026-09-17, and the label names it "decals"
+  since a user could not find the setting.
+
+### 4.17b `expert.decal_on_sea` (OrthoStudio XP only)
+
+`–` · false · bool.
+
+- **Does.** Puts the decal on the masked sea too, as Ortho4XP does. Off, the decal goes on land
+  alone: a user found the grain wrong on the sea and asked for the land alone (2026-09-17).
+  Inland water never has it, in either case.
+- **Recommendation. Folded**, next to the decal setting it completes.
+- **Expert label.** EN *Fine ground detail on the sea too* · FR *Grain du sol aussi sur la mer*.
 
 ### 4.18 `expert.ovl_exclude_pol`
 

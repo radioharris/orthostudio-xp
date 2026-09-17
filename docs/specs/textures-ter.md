@@ -13,6 +13,7 @@ names the file (`terrain/<name>.ter`) and the file names the texture (`../textur
 
 Inputs: `tri_type` (0 land, 1 inland water, 2 sea), `is_overlay`, the texture attributes
 and the tile parameters `water_tech`, `imprint_masks_to_dds`, `mask_zl`, `use_decal_on_terrain`,
+`decal_on_sea`,
 `terrain_casts_shadows`, plus the module global `use_test_texture`.
 
 | Line | Directive | Condition |
@@ -25,7 +26,7 @@ and the tile parameters `water_tech`, `imprint_masks_to_dds`, `mask_zl`, `use_de
 | 305-307 | `WATER_COLOR_MASK` | `tri_type in (1, 2)` and not overlay (XP12 water) |
 | 308-317 | `BORDER_TEX ../textures/water_transition.png` (+ copy of `Utils/water_transition.png` into `textures/`) | `tri_type == 1` (overlay), or `tri_type == 2 and is_overlay == "ratio_water"` — the latter is dead code: `is_overlay` is a bool |
 | 319-336 | `LOAD_CENTER_BORDER {lat_med:.5f} {lon_med:.5f} {size} {4096 // 2**(zl - mask_zl)}` then `BORDER_TEX ../textures/<til_y>_<til_x>_ZL<zl>.png` | `tri_type == 2` and not `imprint_masks_to_dds` (mask kept as an external PNG) |
-| 341-344 | `DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl` | `tri_type != 1` and `use_decal_on_terrain` (the hint says `maquify_1`, the code writes `maquify_2`) |
+| 341-344 | `DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl` | `use_decal_on_terrain` and land (`tri_type == 0`), the sea (2) only with `decal_on_sea`, inland water (1) never. Ortho4XP writes it on land and sea alike (`tri_type != 1`), which `decal_on_sea` restores: a user asked for the land alone, 2026-09-17. The hint says `maquify_1`, the code writes `maquify_2` |
 | 346-349 | `WET` / `NO_ALPHA` | `tri_type in (1, 2)` / land |
 | 351-352 | `NO_SHADOW` | `tri_type in (1, 2)` or not `terrain_casts_shadows` |
 

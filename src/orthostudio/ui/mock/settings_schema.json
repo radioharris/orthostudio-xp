@@ -608,6 +608,16 @@
           "type": "boolean",
           "unit": ""
         },
+        "decal_on_sea": {
+          "default": false,
+          "description": "The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them.",
+          "hint": "The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them.",
+          "ortho4xp": null,
+          "level": "expert",
+          "title": "Decal On Sea",
+          "type": "boolean",
+          "unit": ""
+        },
         "ovl_exclude_pol": {
           "default": [
             0

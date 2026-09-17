@@ -36,6 +36,7 @@ class DsfParams(RuleParams):
     normal_map_strength: float = 1.0
     terrain_casts_shadows: bool = True
     use_decal_on_terrain: bool = False
+    decal_on_sea: bool = False
     imprint_masks_to_dds: bool = True
     use_masks_for_inland: bool = False
     mesh_zl: int = 19
@@ -59,6 +60,7 @@ class DsfParams(RuleParams):
             imprint_masks_to_dds=self.imprint_masks_to_dds,
             mask_zl=self.mask_zl,
             use_decal_on_terrain=self.use_decal_on_terrain,
+            decal_on_sea=self.decal_on_sea,
             terrain_casts_shadows=self.terrain_casts_shadows,
             use_test_texture=self.use_test_texture,
         )
