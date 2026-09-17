@@ -11,7 +11,7 @@ and on Windows with its installer (tried on Windows 11 on ARM, where the x64 app
 emulation, more slowly; not yet on a PC with an Intel or AMD processor). Its Linux installer is
 built and checked automatically, but nobody has built a tile with it yet; a first try on Linux will
 probably come later. The installer for Intel Macs is built and checked automatically too, on an
-Apple Silicon Mac under Rosetta, but nobody has tried it on an Intel Mac yet.
+Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an Intel Mac yet.
 
 ![The Plan page: the tiles already installed in green around Majorca and Minorca, two more selected in blue, and the steps to build them](docs/images/plan.jpg)
 

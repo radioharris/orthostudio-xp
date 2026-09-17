@@ -1123,7 +1123,7 @@ wheels = [
 
 [[package]]
 name = "orthostudio-xp"
-version = "0.1.2rc1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "blake3" },
