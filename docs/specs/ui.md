@@ -618,13 +618,17 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    with one sentence on what it changes and radio choices (the recommended one tagged *recommended*,
    a note under a choice when it helps). First what OrthoStudio XP needs to know of the user's
    X-Plane (user request, 2026-09-13): the X-Plane 12 folder (the detected one from `/api/status`,
-   and a field for another), then where the tiles and the downloaded imagery go
+   the other X-Plane 12 of the machine named under it when the status gives any (`xplane.others`:
+   a user's tile went into an X-Plane 12 he had forgotten, 2026-09-17), and a field for another),
+   then where the tiles and the downloaded imagery go
    (`essential.data_dir`, user request 2026-09-15: an external disk): the folder in use from the
    status's `data_dir`, warned when its disk is unplugged, a field for another with *Choose the
    folder for the tiles…*, and two notes, that the tiles already built stay where they are and keep working
    (a user did not understand the first wording, which asked to delete them before building into
    the new folder, 2026-09-15: that step is gone), and which disk formats can hold the data on the
-   engine's platform (exFAT and FAT32 are refused), then roads,
+   engine's platform (exFAT and FAT32 are refused), and that the folder must be outside X-Plane's
+   Custom Scenery, where OrthoStudio XP puts its own links (a user typed his Custom Scenery there
+   and was only refused once he had saved, 2026-09-17), then roads,
    forests and buildings (X-Plane's / none,
    `essential.overlays`, whose sentence starts "Using simHeaven X-World? Choose “None from
    OrthoStudio XP”", since a user looked for the simHeaven option and did not find it at the end of

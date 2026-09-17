@@ -42,7 +42,10 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         assert r.status_code == 200, r.text
         doc = r.json()
         assert doc["version"] and doc["home"] == str(home) and doc["language"] == "fr"
-        assert doc["xplane"] == {"path": str(xplane), "detected": True, "running": False}
+        xp_status = doc["xplane"]
+        assert xp_status["path"] == str(xplane) and xp_status["detected"] is True
+        # the other X-Plane 12 of the machine, for the page to name them
+        assert xp_status["running"] is False and isinstance(xp_status["others"], list)
         assert doc["store_bytes"] == 0 and doc["chunks_bytes"] == 0 and doc["library_count"] == 0
         names = {c["name"] for c in doc["doctor"]}
         assert {"python", "encoder", "xplane", "disk"} <= names

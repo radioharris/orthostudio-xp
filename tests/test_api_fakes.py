@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 import httpx
 import pytest
 
+from orthostudio.api import app as api_app
 from orthostudio.api.jobs import _expected_nodes
 from orthostudio.errors import OsxpError
 from orthostudio.install import packs
@@ -188,6 +189,8 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def xplane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A fake X-Plane 12 with a Global Scenery DSF of +43+005 and a scenery_packs.ini."""
     monkeypatch.setattr(packs, "xplane_running", lambda: False)
+    # the status reads it too: the tests say what it answers, whatever runs on the machine
+    monkeypatch.setattr(api_app, "xplane_running", lambda: False)
     xp = tmp_path / "X-Plane 12"
     (xp / "Resources").mkdir(parents=True)
     cs = xp / "Custom Scenery"

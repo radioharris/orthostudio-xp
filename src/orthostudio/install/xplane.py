@@ -30,6 +30,7 @@ __all__ = [
     "detect_xplane",
     "global_scenery_dir",
     "is_xplane_dir",
+    "other_xplane_dirs",
     "process_names",
     "xplane_candidates",
     "xplane_running",
@@ -118,6 +119,37 @@ def xplane_candidates(
     tried.extend(_install_file_entries(install_file))
     tried.extend(default_candidates(env) if candidates is None else candidates)
     return tried
+
+
+def other_xplane_dirs(
+    used: Path | None,
+    *,
+    install_file: Path | None = None,
+    candidates: Iterable[Path] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """The X-Plane 12 folders of this machine, other than ``used``, in the order tried.
+
+    A user installed a tile, saw "Yes" in the Library and found nothing in the Custom Scenery of
+    the X-Plane he flies: OrthoStudio XP had taken another X-Plane 12 of his Mac, one he had
+    forgotten (2026-09-17). The page says which ones it found, so the choice is his.
+    """
+    seen: set[Path] = set()
+    if used is not None:
+        with contextlib.suppress(OSError):
+            seen.add(Path(used).resolve())
+    out: list[Path] = []
+    for candidate in xplane_candidates(install_file=install_file, candidates=candidates, env=env):
+        if not is_xplane_dir(candidate):
+            continue
+        real = candidate
+        with contextlib.suppress(OSError):
+            real = candidate.resolve()
+        if real in seen:
+            continue
+        seen.add(real)
+        out.append(candidate)
+    return out
 
 
 def detect_xplane(

@@ -15,6 +15,7 @@ from orthostudio.install.xplane import (
     detect_xplane,
     global_scenery_dir,
     is_xplane_dir,
+    other_xplane_dirs,
     xplane_running,
 )
 
@@ -66,6 +67,25 @@ def test_detect_prefers_first_valid_line_of_install_file(tmp_path: Path) -> None
     install_file = tmp_path / "x-plane_install_12.txt"
     install_file.write_text(f"{gone}/\n{good}/\n", encoding="utf-8")
     assert detect_xplane(install_file=install_file, candidates=[], env={}) == good
+
+
+def test_other_xplane_dirs_names_the_ones_not_used(tmp_path: Path) -> None:
+    """A user had a second X-Plane 12 he had forgotten, and his tile went there (2026-09-17): the
+    page names the other X-Plane 12 of the machine, each one once."""
+    used = _make_xp(tmp_path / "Desktop" / "X-Plane 12")
+    other = _make_xp(tmp_path / "X-Plane 12")
+    gone = tmp_path / "Old X-Plane 12"  # listed but deleted
+    install_file = tmp_path / "x-plane_install_12.txt"
+    install_file.write_text(f"{gone}/\n{other}/\n{used}/\n", encoding="utf-8")
+    assert other_xplane_dirs(used, install_file=install_file, candidates=[], env={}) == [other]
+    assert other_xplane_dirs(None, install_file=install_file, candidates=[], env={}) == [
+        other,
+        used,
+    ]
+    # the same folder listed twice (the installer's list and a usual place) is named once
+    assert other_xplane_dirs(used, install_file=install_file, candidates=[other, used], env={}) == [
+        other
+    ]
 
 
 def test_detect_falls_back_to_candidates_then_none(tmp_path: Path) -> None:

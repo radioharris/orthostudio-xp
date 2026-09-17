@@ -97,7 +97,10 @@ nothing to press first. *Build* waits only when the disk cannot hold the build, 
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its
 Custom Scenery. It finds X-Plane by itself, first in the list X-Plane's installer keeps, then in the
 usual folders (`~/X-Plane 12` or `/Applications/X-Plane 12` on a Mac; `C:\X-Plane 12`, or
-`X-Plane 12` on the desktop or in your user folder, on Windows). When it finds none, for example in
+`X-Plane 12` on the desktop or in your user folder, on Windows). With more than one X-Plane 12 on
+the computer it takes the first, names the others in Settings, and the Library says which one its
+*In X-Plane* column speaks of: a user installed a tile into an X-Plane 12 he had forgotten, and
+found nothing in the Custom Scenery of the one he flies. When it finds none, for example in
 a virtual machine whose X-Plane is installed on the host, step 3 of the Plan says so before any
 estimate, and its button opens the Settings question *Where is X-Plane 12 installed?*, where
 *Choose the X-Plane folder…* opens the Finder's (or the File Explorer's) folder window: nothing is estimated

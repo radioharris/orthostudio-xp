@@ -69,6 +69,7 @@ from orthostudio.install import (
     default_library_path,
     install_pack,
     is_link,
+    other_xplane_dirs,
     xplane_running,
 )
 from orthostudio.model import TileRef, pack_dir_name
@@ -110,7 +111,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 14
+API_LEVEL = 15
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -125,7 +126,8 @@ each imagery source covers in ``GET /api/providers`` (``extent``, ``extent_bound
 (``overlay`` in the library, ``POST /api/library/overlays``) and ``POST /api/choose-folder``, 13 =
 the setting ``essential.data_dir`` (an older engine refuses a settings document that holds it),
 ``data_dir`` in the status and ``CFG_DATA_DIR_*``, 14 = ``GET /api/engine`` (who serves the
-port, answered at once) and ``POST /api/presence`` (a page is open). A page
+port, answered at once) and ``POST /api/presence`` (a page is open), 15 = ``others`` in the
+status's ``xplane`` (the other X-Plane 12 folders of the machine). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -630,6 +632,8 @@ def create_app(
                 "path": None if xp is None else str(xp),
                 "detected": xp is not None,
                 "running": xplane_running() if xp is not None else False,
+                # a user installed a tile into an X-Plane 12 he had forgotten (2026-09-17)
+                "others": [str(p) for p in await asyncio.to_thread(other_xplane_dirs, xp)],
             },
             "doctor": checks,
             "home": str(home),

@@ -24,6 +24,7 @@ from orthostudio.install.xplane import (
     detect_xplane,
     global_scenery_dir,
     is_xplane_dir,
+    other_xplane_dirs,
     xplane_running,
 )
 
@@ -42,6 +43,7 @@ __all__ = [
     "install_pack",
     "is_link",
     "is_xplane_dir",
+    "other_xplane_dirs",
     "pack_kind",
     "pack_tile",
     "tile_from_name",

@@ -652,8 +652,14 @@ function renderQuestions(box, view) {
   const showXp = view.reveal && xp && xp.detected && xp.path
     ? h("button", { type: "button", class: "btn btn-small btn-quiet reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
     : null;
+  // More than one X-Plane 12 on the machine: a user installed a tile into the one he had
+  // forgotten, and found nothing in the Custom Scenery of the one he flies (2026-09-17).
+  const others = found && xp.others && xp.others.length
+    ? h("p", { class: "question-help" }, t("settings.q.xplane_others", { paths: xp.others.join(", ") }))
+    : null;
   box.append(questionBox(view, "xplane",
     h("p", { class: "question-detected" }, detected, showXp ? [" ", showXp] : null),
+    others,
     h("div", { class: "sub-question" }, h("label", { class: "sub-question-title", for: "q-xplane-dir" }, t("settings.q.xplane_other")),
       h("div", { class: "path-row" }, folder, choose))));
   box.append(dataQuestion(view));
@@ -729,7 +735,9 @@ function dataQuestion(view) {
     h("div", { class: "sub-question" }, h("label", { class: "sub-question-title", for: "q-data-dir" }, t("settings.q.data_other")),
       h("div", { class: "path-row" }, field, choose)),
     h("p", { class: "question-help" }, t("settings.q.data_kept")),
-    h("p", { class: "question-help" }, t("settings.q.data_disk", { formats: dataFormats(view.platform) })));
+    h("p", { class: "question-help" }, t("settings.q.data_disk", { formats: dataFormats(view.platform) })),
+    // A user typed his Custom Scenery there and was refused once he had saved (2026-09-17).
+    h("p", { class: "question-help" }, t("settings.q.data_outside")));
 }
 
 function renderExperts(box, view) {

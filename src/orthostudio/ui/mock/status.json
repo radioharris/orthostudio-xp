@@ -1,12 +1,13 @@
 {
   "version": "0.0.1",
-  "api_level": 14,
+  "api_level": 15,
   "platform": "mac",
   "can_quit": true,
   "xplane": {
     "path": "/Users/pilot/X-Plane 12",
     "detected": true,
-    "running": false
+    "running": false,
+    "others": []
   },
   "doctor": [
     {"name": "python", "status": "ok", "summary": "Python 3.14.0", "details": {}},

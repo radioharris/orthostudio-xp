@@ -1905,7 +1905,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 14;
+const PAGE_API_LEVEL = 15;
 
 async function loadStatus() {
   try {
@@ -3366,9 +3366,18 @@ function renderReport(job) {
     [t("works.size"), totals.bytes != null ? fmtBytes(totals.bytes) : "—"],
     [t("step.install"), job.install ? `${fmtInt(totals.installed)} / ${fmtInt(totals.tiles)}` : t("works.no_install")],
   ]);
+  // Built only: the tiles are on the disk, not in X-Plane. A user looked for a way to "import"
+  // them, and found the Ortho4XP import instead (2026-09-17).
+  const notInstalled = !job.install && rep.failed === 0
+    ? h("p", { class: "report-note" },
+        t("works.not_installed_yet"),
+        " ",
+        h("button", { type: "button", class: "btn btn-small", onclick: () => showScreen("library") }, t("works.open_library")))
+    : null;
   return h("section", { class: "report" },
     h("h3", null, t("works.report")),
-    h("div", { class: "report-grid" }, summary, table, h("div", null, h("h3", { class: "section-title" }, t("works.decisions")), decisions)));
+    h("div", { class: "report-grid" }, summary, table, h("div", null, h("h3", { class: "section-title" }, t("works.decisions")), decisions)),
+    notInstalled);
 }
 
 async function cancelJob() {
@@ -3733,6 +3742,12 @@ async function setOverlays(tiles, use) {
 
 function renderLibrary() {
   const body = $("library-body");
+  // Which X-Plane the "In X-Plane" column speaks of: a user found nothing in the Custom Scenery of
+  // the X-Plane he flies, since OrthoStudio XP used another one of his Mac (2026-09-17).
+  const xplane = $("library-xplane");
+  const path = state.status?.xplane?.path;
+  xplane.hidden = !path;
+  if (path) xplane.textContent = t("library.xplane", { path });
   // New buttons replace the old ones: a focused button's successor, same row and column, keeps it.
   const cell = body.contains(document.activeElement) ? document.activeElement.closest("td") : null;
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;
