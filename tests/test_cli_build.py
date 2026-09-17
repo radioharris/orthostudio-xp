@@ -205,3 +205,28 @@ def test_why_a_pack_directory(home: Path, tmp_path: Path) -> None:
     assert out.exit_code == 0, out.output
     assert "[dsf]" in out.stdout and "tile.dsf@1" in out.stdout
     assert "[mesh]" in out.stdout and "no longer in the store" in out.stdout
+
+
+def test_relief_copernicus_is_a_command_line_choice_too(home: Path, tmp_path: Path) -> None:
+    """``--relief copernicus`` is the page's third relief, refused on the command line before.
+
+    It is a DEM source, so it goes to ``custom_dem`` like the page's override does; ``--set
+    custom_dem=`` still wins, and the two other names stay reliefs of the elevation stage.
+    """
+    from orthostudio.cli import _build_specs
+    from orthostudio.pipeline.build import default_relief
+
+    def specs(*args: str):
+        return _build_specs(
+            tiles=["+43+005"], provider="BI", zl=14, out=tmp_path / "out", install=False,
+            xplane=None, global_scenery=None, store=None, chunks=None, workers=None,
+            sets=list(args[1:]), overlay=False, xp12_rasters=False, creation_agent="osxp",
+            link=True, encoder="auto", relief=args[0],
+        )  # fmt: skip
+
+    (cop,) = specs("copernicus")
+    assert cop.config["custom_dem"] == "COP30" and cop.relief == default_relief()
+    (mine,) = specs("COP30", "custom_dem=/tmp/mine.tif")
+    assert mine.config["custom_dem"] == "/tmp/mine.tif"  # --set wins over the name
+    (view,) = specs("view")
+    assert view.relief == "view" and not view.config.get("custom_dem")

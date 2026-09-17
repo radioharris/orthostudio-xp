@@ -40,6 +40,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
   For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept) or
   your own elevation file.
+- **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
+  and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
+  as they are, in the tree they come in.
 - **A cache.** Every step's result is kept under a fingerprint of what produced it: an unchanged
   tile builds again in a second, a new zone rebuilds only what it touches, and imagery is never
   downloaded twice. `osxp clean --all` gives the space back when you want it.

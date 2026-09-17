@@ -220,6 +220,14 @@ def _build_specs(
             )
         raise OsxpError("XP_GLOBAL_SCENERY_NOT_FOUND", context={"path": str(xp)}, remedy=remedy)
     out_dir = Path(out).expanduser() if out is not None else default_tiles_root()
+    # The page offers three reliefs and the command line only had two: --relief copernicus was
+    # refused while the page built with it (2026-09-17). Copernicus is a DEM source, so it goes
+    # where Ortho4XP puts one (``config.overrides._custom_dem``); --set custom_dem wins.
+    choice = relief.strip().lower() if relief is not None else None
+    if choice in ("copernicus", "cop30"):
+        if not str(config.get("custom_dem", "") or "").strip():
+            config = {**config, "custom_dem": "COP30"}
+        choice = None
     specs = []
     for tile, ref in zip(tiles, tile_refs, strict=True):
         spec = BuildSpec(
@@ -244,8 +252,8 @@ def _build_specs(
             osm_fetch=osm_fetch,
             osm_refresh=osm_refresh,
         )
-        if relief is not None:
-            spec.relief = relief.strip().lower()
+        if choice is not None:
+            spec.relief = choice
         specs.append(spec)
     return specs
 
@@ -413,7 +421,8 @@ _OSM_REFRESH_OPT = typer.Option(
 _RELIEF_OPT = typer.Option(
     "--relief",
     help="relief of the elevation stage: xplane (X-Plane 12's own, read from its Global "
-    "Scenery; the default) or view (viewfinderpanoramas, for comparisons)",
+    "Scenery; the default), copernicus (downloaded and kept) or view (viewfinderpanoramas, "
+    "for comparisons)",
 )
 
 

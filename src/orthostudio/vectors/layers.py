@@ -244,6 +244,18 @@ def build_layers(request: object) -> LayerBuild:
         patch_names = patched.names
         patches_area = patched.area
         counts["patches"] = dict(patched.counts)
+        used = patched.counts["polygons"] + patched.counts["lines"] + patched.counts["objects"]
+        if used:
+            # Silence read as "the patches do not work": what was used is said, and a file none of
+            # whose ways could be used says so itself (``patches.py``, 2026-09-17).
+            log.warning(
+                "%s: %d patch polygon(s), %d line(s) and %d object(s) from %s",
+                tile.name,
+                patched.counts["polygons"],
+                patched.counts["lines"],
+                patched.counts["objects"],
+                ", ".join(patched.names),
+            )
     timing.patches_s = time.perf_counter() - patch_started
 
     # -- airports, steps 11 to 15 (:215-222) -----------------------------------------------

@@ -267,3 +267,23 @@ def test_objects_of_a_subdirectory_join_the_layers(tmp_path: Path) -> None:
 
 
 # -- the one real patch of the reference machine --------------------------------------------
+
+
+def test_a_file_whose_ways_are_all_unusable_says_so(tmp_path: Path) -> None:
+    """A patch that changes nothing was silent: the tile came out as if none had been given.
+
+    Found on a file written by hand whose ``<nd>`` elements were all on one line, which this
+    reader (like Ortho4XP's) does not see: 2026-09-17.
+    """
+    events: list = []
+    directory = patch(
+        tmp_path,
+        "  <node id='-1' lat='43.2' lon='5.2' />\n"
+        "  <way id='-1'><nd ref='-1'/><tag k='altitude' v='500'/></way>\n",
+    )
+    result = build_patch_layers(directory, TILE, None, on_event=events.append)
+    assert result.counts["files"] == 1 and not result.counts["polygons"]
+    (event,) = events
+    assert event.code == "OSM_PATCH_INVALID"
+    assert event.context["reason"] == "no way of this file could be used"
+    assert event.context["path"].endswith("test.patch.osm")

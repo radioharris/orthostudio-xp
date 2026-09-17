@@ -435,13 +435,33 @@ def build_patch_layers(
     for path in sorted(p for p in root.iterdir() if p.name.endswith(PATCH_SUFFIX)):
         names.append(path.name[: -len(PATCH_SUFFIX)])
         counts["files"] += 1
+        said = 0
+
+        def watch(error: OsxpError) -> None:
+            nonlocal said
+            said += 1
+            if on_event is not None:
+                on_event(error)
+
         runs, file_seeds, file_area, file_counts = read_patch_file(
-            path, tile, dem, runs=runs, on_event=on_event
+            path, tile, dem, runs=runs, on_event=watch
         )
         seeds.extend(file_seeds)
         area = area.union(file_area)
         for key, value in file_counts.items():
             counts[key] += value
+        used = file_counts["polygons"] + file_counts["lines"]
+        if not used and not said and on_event is not None:
+            # A file that changes nothing was silent: its ways were counted as skipped and the
+            # tile came out as if no patch had been given (found while trying a patch written by
+            # hand whose <nd> elements were all on one line, which this reader does not see,
+            # 2026-09-17). A file that already said what it refused is not repeated.
+            on_event(
+                OsxpError(
+                    "OSM_PATCH_INVALID",
+                    context={"path": str(path), "reason": "no way of this file could be used"},
+                )
+            )
     for folder in sorted(p for p in root.iterdir() if p.is_dir()):
         names.append(folder.name)
         for path in sorted(folder.iterdir()):

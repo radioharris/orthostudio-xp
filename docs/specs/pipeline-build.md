@@ -482,6 +482,9 @@ coastline now has no source.
   `min_area`, `max_area`, `clean_bad_geometries`, `mesh_zl`, `apt_smoothing_pix`,
   `exact_grid_order` -> `orthostudio.vectors` and everything below it (`road_level` also changes
   the layers `orthostudio.osm` downloads);
+* `--relief xplane|copernicus|view` names the same three reliefs as the page: `copernicus` is
+  a DEM source, so it goes to `custom_dem` (`COP30`) as the page's override does, and an
+  explicit `--set custom_dem=` wins over it (2026-09-17: the command line offered two);
 * `custom_dem`, `fill_nodata` -> `orthostudio.dem`, then through its digest the vector stage and
   the mesh. They are nobody else's params (`mesh-build.md` 9);
 * `curvature_tol`, `apt_curv_*`, `coast_curv_*`, `limit_tris`, `min_angle`, `sea_smoothing_mode`,
