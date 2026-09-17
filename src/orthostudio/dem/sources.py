@@ -29,6 +29,7 @@ from orthostudio.errors import OsxpError
 
 __all__ = [
     "ALPHABET",
+    "COP30_BASE_URL",
     "DEM1_BLOCKS",
     "DEM1_CELLS",
     "FULL_HGT_SIZE",
@@ -40,6 +41,8 @@ __all__ = [
     "NegativeMemo",
     "Source",
     "base_file_name",
+    "cop30_name",
+    "cop30_url",
     "default_elevation_dir",
     "default_memo_path",
     "elevation_path",
@@ -51,12 +54,13 @@ __all__ = [
     "view_url",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3"]
+Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3")
-"""The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names)."""
+SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30")
+"""The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), and
+``COP30``, the Copernicus DEM GLO-30 of OrthoStudio XP (a user asked, 2026-09-17)."""
 
-GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS")
+GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -65,6 +69,9 @@ FULL_HGT_SIZE = 25934402
 """Size a ``.hgt`` must reach to count as 1" (``O4_DEM_Utils.py:672``); 3601^2 * 2 + 2."""
 
 VIEW_BASE_URL = "http://viewfinderpanoramas.org"
+COP30_BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
+"""Copernicus DEM GLO-30, 1 arc-second, on the public store of the Open Data programme: one
+GeoTIFF of 3600x3600 posts per cell, 20 to 40 MB, no account (checked 2026-09-17)."""
 NED_BASE_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation"
 
 DEM1_CELLS: frozenset[tuple[int, int]] = frozenset(
@@ -134,6 +141,7 @@ def base_file_name(elevation_dir: Path, lat: int, lon: int) -> Path:
 
 _SUFFIX: dict[str, str] = {
     "View": ".hgt",
+    "COP30": "_COP30.tif",
     "SRTM": "_SRTMv3.hgt",
     "ALOS": "_ALOS3W30.tif",
     "NED1/3": "_NED13.tif",
@@ -429,6 +437,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
     """
     if source == "View":
         return _ensure_view(lat, lon, opts)
+    if source == "COP30":
+        return _ensure_cop30(lat, lon, opts)
     if source in ("SRTM", "ALOS"):
         return _ensure_manual(source, lat, lon, opts)
     if source in ("NED1", "NED1/3"):
@@ -457,6 +467,44 @@ def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     if got.final:
         opts.memo.record(url)
     return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
+
+
+def cop30_name(lat: int, lon: int) -> str:
+    """``Copernicus_DSM_COG_10_N46_00_E006_00_DEM``: the name of a GLO-30 cell."""
+    ns = "N" if lat >= 0 else "S"
+    ew = "E" if lon >= 0 else "W"
+    return f"Copernicus_DSM_COG_10_{ns}{abs(lat):02d}_00_{ew}{abs(lon):03d}_00_DEM"
+
+
+def cop30_url(lat: int, lon: int) -> str:
+    """Where the GLO-30 cell is downloaded from; a cell all at sea has no file (404)."""
+    name = cop30_name(lat, lon)
+    return f"{COP30_BASE_URL}/{name}/{name}.tif"
+
+
+def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """One GLO-30 cell, downloaded once into the elevation folder.
+
+    Cells with no land have no file: the 404 is remembered like any other, and the caller
+    degrades the cell to 0 m, as it does for a missing viewfinderpanoramas cell.
+    """
+    path = _local("COP30", lat, lon, opts)
+    url = cop30_url(lat, lon)
+    if path.is_file() and path.stat().st_size > 0:
+        return EnsureResult(lat, lon, CellState.LOCAL, path, url)
+    if opts.memo.is_missing(url):
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, "in the negative memo")
+    opts.check_cancelled()
+    got = opts.download(url)
+    if got.ok:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".part")
+        tmp.write_bytes(got.body)
+        tmp.replace(path)
+        return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+    if got.final:
+        opts.memo.record(url)
+    return EnsureResult(lat, lon, CellState.MISSING, None, url, got.error or f"HTTP {got.status}")
 
 
 def _view_fallback(

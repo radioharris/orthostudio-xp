@@ -41,6 +41,7 @@ OrthoStudio XP adds nothing to that list. It changes *how*, not *what* (section 
 | `elevation_path("View", ...)` | `<base>.hgt` |
 | `elevation_path("SRTM", ...)` | `<base>_SRTMv3.hgt` |
 | `elevation_path("ALOS", ...)` | `<base>_ALOS3W30.tif` |
+| `elevation_path("COP30", ...)` | `<base>_COP30.tif` (OrthoStudio XP's own, 3.0) |
 | `elevation_path("NED1", ...)` | `<base>_NED1.tif` |
 | `elevation_path("NED1/3", ...)` | `<base>_NED13.tif` |
 | `generic_tif(43, 5)` | `<base>.tif` (implicit source when no `custom_dem` is set) |
@@ -51,7 +52,21 @@ as it was; it no longer reads one.
 
 ## 3. Sources
 
-### 3.1 `View` (viewfinderpanoramas, J. de Ferranti) — the only one that still downloads
+### 3.0 `COP30` (Copernicus DEM GLO-30) — OrthoStudio XP's own
+
+Added for a user who asked for a finer mesh than X-Plane's (2026-09-17). One GeoTIFF of
+3600 x 3600 posts per one-degree cell, 1 arc-second, on the public store of the Open Data
+programme, without an account:
+`https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_<N46>_00_<E006>_00_DEM/<same>.tif`
+(`sources.cop30_url`). Measured 2026-09-17: 20 to 40 MB a cell, 1.7 s to fetch and 0.3 s to read
+on a 130 Mbit/s line. The file is kept as `<cell>_COP30.tif` in the elevation folder, and a cell
+all at sea has no file: its 404 goes to the negative memo and the cell degrades to 0 m, as a
+missing `View` cell does. Its geometry is `ALOS`'s (posts at the centre of each arc-second cell),
+and it is assembled from the 3 x 3 block like the other global sources, so that tile borders meet.
+The files declare no nodata value and have none (their voids are filled at the source):
+`Dem.load` drops `DEM_NODATA_UNDECLARED` for this source.
+
+### 3.1 `View` (viewfinderpanoramas, J. de Ferranti) — Ortho4XP's default
 
 `O4_DEM_Utils.py:595-735`. Two resolutions:
 

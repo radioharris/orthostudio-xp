@@ -109,7 +109,7 @@ class Relief(BaseModel):
 
     model_config = _FROZEN
 
-    source: Literal["auto", "file"] = _field("auto", "essential", "custom_dem", "")
+    source: Literal["auto", "file", "copernicus"] = _field("auto", "essential", "custom_dem", "")
     file: str = _field("", "essential", "custom_dem", "")
     fill_nodata: Literal["nearest", "zero"] = _field("nearest", "essential", "fill_nodata", "")
 

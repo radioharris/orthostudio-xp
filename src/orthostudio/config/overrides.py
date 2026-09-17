@@ -67,6 +67,19 @@ def _masks_width(width: float | list[float]) -> int | float | list[float]:
     return int(width) if float(width).is_integer() else float(width)
 
 
+def _custom_dem(relief: Any) -> str:
+    """Ortho4XP's ``custom_dem``: a file, the name of a source, or empty for the default relief.
+
+    ``copernicus`` is OrthoStudio XP's own source (``dem/sources.py``, a user asked 2026-09-17):
+    the name goes where Ortho4XP puts a source name.
+    """
+    if relief.source == "file":
+        return str(relief.file)
+    if relief.source == "copernicus":
+        return "COP30"
+    return ""
+
+
 def to_build_overrides(settings: Settings) -> dict[str, Any]:
     """The tile variables and overlay settings of ``settings`` under their Ortho4XP names."""
     e, a, x = settings.essential, settings.advanced, settings.expert
@@ -77,7 +90,7 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
         "masking_mode": e.coast_transition.profile,
         "masks_width": _masks_width(e.coast_transition.width_m),
         "water_tech": e.water_rendering,
-        "custom_dem": e.relief.file if e.relief.source == "file" else "",
+        "custom_dem": _custom_dem(e.relief),
         "fill_nodata": e.relief.fill_nodata == "nearest",
         "ratio_water": float(a.ratio_water_pct) / 100.0,
         "overlay_lod": float(a.overlay_lod_km) * 1000.0,

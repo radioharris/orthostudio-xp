@@ -87,7 +87,8 @@ of use apply to you. It is kept in `sources.toml` in OrthoStudio XP's folder.
 
 **Settings.** The Settings screen asks what you want to see in X-Plane rather than naming technical
 parameters: how much detail, sharper airports or not, how the coast fades into the sea, which water,
-how much photo on lakes, where the relief comes from, and whether OrthoStudio XP adds X-Plane's
+how much photo on lakes, where the relief comes from (X-Plane 12's own, the Copernicus relief at
+1 arc-second, downloaded and kept, or your own file), and whether OrthoStudio XP adds X-Plane's
 roads, forests and buildings. Three presets answer several questions at once; every other setting is
 under *For experts*, with its name in Ortho4XP. The Plan recalls the answers in one sentence before
 you build, and works out the cost by itself as you choose: disk space, download and time, with

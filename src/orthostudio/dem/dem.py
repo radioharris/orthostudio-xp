@@ -138,6 +138,10 @@ class Dem:
         events: list[OsxpError] = []
 
         def record(err: OsxpError) -> None:
+            # Copernicus GLO-30 files declare no nodata value, and have none: their voids are
+            # filled at the source. Saying so on every cell would be noise (2026-09-17).
+            if err.code == "DEM_NODATA_UNDECLARED" and "COP30" in sources:
+                return
             events.append(err)
             if on_event is not None:
                 on_event(err)

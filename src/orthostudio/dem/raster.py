@@ -94,10 +94,12 @@ GEOMETRY: dict[str, Geometry] = {
     "View": _view_geometry(),
     "SRTM": _view_geometry(),
     "ALOS": _alos_geometry(),
+    "COP30": _alos_geometry(),
     XP12_SOURCE: _view_geometry(),
 }
 """Per-source geometry of the 3x3 assembly. ``x0 == y0`` and ``x1 == y1`` in every case.
-``XP12`` (OrthoStudio XP only) shares ``View``'s: its posts are those of a 3" ``.hgt`` cell."""
+``XP12`` (OrthoStudio XP only) shares ``View``'s: its posts are those of a 3" ``.hgt`` cell;
+``COP30`` shares ``ALOS``'s, 3600 posts at the centre of each arc-second cell."""
 
 UNREADABLE_CODES = frozenset(
     {"DEM_FILE_UNREADABLE", "DEM_RASTER_LIBRARY_MISSING", "DEM_EPSG_UNSUPPORTED"}

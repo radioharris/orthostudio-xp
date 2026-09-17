@@ -70,7 +70,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `coast_transition.profile` | E `sand` / `rocks` / `3steps` | - | `sand` | `masking_mode` | A selection of three tentative masking algorithms (still looking for the Holy Grail...). [...] The transition with rocks is more abrupt than with sand. |
 | `coast_transition.width_m` | float `>= 0`, or a list of three floats `>= 0` when the profile is `3steps` (a scalar is required by `sand` / `rocks`) | m | 100 | `masks_width` | Maximum extent of the masks perpendicularly to the coastline (rough definition). NOTE: The value is now in meters, it used to be in ZL14 pixel size in earlier verions, the scale is roughly one to ten between both. |
 | `water_rendering` | E `XP11 + bathy` / `XP12` | - | `XP11 + bathy` | `water_tech` | Water tech type. XP12 uses a new (partly in construction) rendering tech, XP11 + bathy uses a more traditionnal blend. Both allows for 3D water. |
-| `relief.source` | E `auto` / `file` | - | `auto` | `custom_dem` (empty = auto) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
+| `relief.source` | E `auto` / `file` / `copernicus` | - | `auto` | `custom_dem` (empty = auto) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
 | `relief.file` | str (path; required non-empty when `source` is `file`) | - | `""` | `custom_dem` | same hint |
 | `relief.fill_nodata` | E `nearest` / `zero` | - | `nearest` | `fill_nodata` (`True` = nearest) | When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data). |
 | `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 3). |
@@ -204,7 +204,8 @@ expects them (`pipeline/build.py`, `BuildSpec.tile_config`):
 - `cover_airports_with_highres` in `{"False", "True", "ICAO", "Existing"}` from `airports.mode`;
   `cover_zl`, `cover_extent`;
 - `masking_mode`, `masks_width` (an int/float, or the list of three for `3steps`);
-- `water_tech`; `custom_dem` (`""` when `relief.source == "auto"`); `fill_nodata` (bool);
+- `water_tech`; `custom_dem` (`""` when `relief.source == "auto"`, `"COP30"` when `copernicus`);
+  `fill_nodata` (bool);
 - `ratio_water = ratio_water_pct / 100`; `overlay_lod = overlay_lod_km * 1000`;
 - every other advanced/expert field under its Ortho4XP name (`masks_use_DEM_too`);
 - `ovl_exclude_pol` / `ovl_exclude_net` as lists.

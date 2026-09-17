@@ -22,6 +22,8 @@ from orthostudio.dem.sources import (
     NegativeMemo,
     base_file_name,
     cells_of_block,
+    cop30_name,
+    cop30_url,
     elevation_path,
     ensure_elevation,
     extract_view_zip,
@@ -191,6 +193,47 @@ def test_memo_without_a_path_is_in_memory_only(tmp_path: Path) -> None:
 
 def _opts(tmp_path: Path, download, **kw) -> EnsureOptions:  # type: ignore[no-untyped-def]
     return EnsureOptions(elevation_dir=tmp_path, download=download, **kw)
+
+
+def test_copernicus_cell_name_url_and_download(tmp_path: Path) -> None:
+    """GLO-30, the source a user asked for (2026-09-17): one GeoTIFF per cell on the public
+    store, kept in the elevation folder, and a cell all at sea has none."""
+    assert cop30_name(46, 6) == "Copernicus_DSM_COG_10_N46_00_E006_00_DEM"
+    assert cop30_name(-1, -78) == "Copernicus_DSM_COG_10_S01_00_W078_00_DEM"
+    url = cop30_url(46, 6)
+    assert url == (
+        "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N46_00_E006_00_DEM"
+        "/Copernicus_DSM_COG_10_N46_00_E006_00_DEM.tif"
+    )
+    calls: list[str] = []
+
+    def download(asked: str) -> Download:
+        calls.append(asked)
+        return Download(asked, status=200, body=b"II*\x00 not really a tiff")
+
+    opts = _opts(tmp_path, download, memo=NegativeMemo())
+    got = ensure_elevation("COP30", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED and got.path is not None
+    assert got.path == elevation_path("COP30", tmp_path, 46, 6)
+    assert got.path.name == "N46E006_COP30.tif" and got.path.read_bytes().startswith(b"II*")
+    assert calls == [url]
+    # the file is there: the next build reads it without asking again
+    again = ensure_elevation("COP30", 46, 6, opts)
+    assert again.state is CellState.LOCAL and len(calls) == 1
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_a_copernicus_cell_all_at_sea_is_remembered_as_missing(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def download(asked: str) -> Download:
+        calls.append(asked)
+        return Download(asked, status=404)
+
+    opts = _opts(tmp_path, download, memo=NegativeMemo())
+    assert ensure_elevation("COP30", 30, -40, opts).state is CellState.MISSING
+    assert ensure_elevation("COP30", 30, -40, opts).state is CellState.MISSING
+    assert len(calls) == 1  # the 404 is remembered, as for the other sources
 
 
 def test_recycles_a_3sec_file_without_asking_the_network(tmp_path: Path) -> None:
