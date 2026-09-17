@@ -322,7 +322,15 @@ async def test_http_409_while_running_cancel_and_retry(home: Path, xplane: Path)
         assert r.status_code == 409
         r = await c.get("/api/status")
         assert r.json()["active_job"] == job_id
-        await asyncio.sleep(0.15)  # let the first nodes of the first tile commit
+        # Wait for the first tile's data stage instead of sleeping: 0.15 s was not always enough
+        # on the Windows runner, and the retry then found nothing to hit (CI, 2026-09-18).
+        for _ in range(400):
+            r = await c.get(f"/api/jobs/{job_id}")
+            if r.json()["tiles"][0]["stages"]["data"]["status"] in ("done", "hit"):
+                break
+            await asyncio.sleep(0.05)
+        else:
+            pytest.fail("the data stage of the first tile never committed")
         r = await c.post(f"/api/jobs/{job_id}/cancel")
         assert r.status_code == 200 and r.json()["cancel_requested"]
         assert mgr.get(job_id).wait(10.0)  # type: ignore[union-attr]
