@@ -8,7 +8,9 @@ What goes in (``docs/specs/packaging.md``): the standalone CPython uv installs
 ``server`` extra), OrthoStudio XP's wheel, Triangle4XP and DSFTool in ``orthostudio/bin``, and the
 licences. What comes out, in ``dist/``:
 
-- macOS: ``OrthoStudio-XP-<version>-macos-arm64.dmg``, the app and a link to Applications;
+- macOS: ``OrthoStudio-XP-<version>-macos-arm64.dmg``, the app and a link to Applications, and
+  with ``--machine x86_64`` ``OrthoStudio-XP-<version>-macos-x86_64.dmg``, the app for Intel Macs
+  (built and checked under Rosetta on Apple Silicon);
 - Windows: ``OrthoStudio-XP-<version>-windows-x64-setup.exe`` (Inno Setup, for the current user,
   no administrator) and the same files as a ``.zip``;
 - Linux: ``OrthoStudio-XP-<version>-linux-x86_64.tar.gz``, whose ``install.sh`` adds the menu entry.
@@ -96,15 +98,40 @@ class Target:
         """The interpreter of a standalone CPython installed at ``root``."""
         return root / "python.exe" if self.system == "windows" else root / "bin" / "python3"
 
+    def python_request(self, version: str) -> str:
+        """What ``uv python install`` is asked for. The version alone gives the Python of the
+        machine uv runs on; on macOS the architecture is named, so that an Apple Silicon Mac
+        installs the Intel Python of the Intel app."""
+        if self.system != "macos":
+            return version
+        return f"cpython-{version}-macos-{MAC_UV_ARCH[self.machine]}-none"
 
-def this_target() -> Target:
+
+MAC_UV_ARCH = {"arm64": "aarch64", "x86_64": "x86_64"}
+"""The machines of the macOS apps, and uv's name for each (a user asked for Intel Macs,
+2026-09-17)."""
+MAC_OLDEST = {"arm64": "14.0", "x86_64": "15.0"}
+"""The oldest macOS the README gives for each app. The wheels are chosen for the macOS the build
+runs on, and pyproj's Intel wheels ask for macOS 15: the Intel app is built on macOS 15."""
+
+
+def this_target(machine: str | None = None) -> Target:
+    """The system this runs on and its machine; on macOS, ``machine`` may name the other one: an
+    Apple Silicon Mac builds the Intel app too, and runs it under Rosetta to check it."""
     system = {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
-    machine = platform.machine().lower()
-    machine = {"amd64": "x64", "x86_64": "x86_64" if system == "linux" else "x64"}.get(
-        machine, machine
-    )
-    if system == "macos" and machine == "x64":
-        raise SystemExit("OrthoStudio XP is built for Apple Silicon on macOS (arm64).")
+    host = platform.machine().lower()
+    host = {"amd64": "x64", "x86_64": "x64" if system == "windows" else "x86_64"}.get(host, host)
+    if machine is None or machine == host:
+        return Target(system, host)
+    if system != "macos" or machine not in MAC_UV_ARCH:
+        raise SystemExit(f"--machine {machine}: only macOS builds for another machine")
+    if host == "arm64" and machine == "x86_64":
+        rosetta = subprocess.run(["arch", "-x86_64", "/usr/bin/true"], check=False)
+        if rosetta.returncode:
+            raise SystemExit(
+                "The Intel app is built and checked under Rosetta: "
+                "softwareupdate --install-rosetta --agree-to-license"
+            )
     return Target(system, machine)
 
 
@@ -134,8 +161,8 @@ def macos_launcher() -> str:
     )
 
 
-def macos_info_plist(version: str, minimum_macos: str) -> dict[str, object]:
-    return {
+def macos_info_plist(version: str, minimum_macos: str, machine: str = "arm64") -> dict[str, object]:
+    info: dict[str, object] = {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": BUNDLE_ID,
@@ -145,13 +172,17 @@ def macos_info_plist(version: str, minimum_macos: str) -> dict[str, object]:
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
         "LSMinimumSystemVersion": minimum_macos,
-        # the launcher is a script: without these, macOS starts it under Rosetta, and every
+        # the launcher is a script: without the priority, macOS starts it under Rosetta, and every
         # universal program the engine runs (DSFTool, Triangle4XP) inherits the Intel preference
-        "LSArchitecturePriority": ["arm64"],
-        "LSRequiresNativeExecution": True,
+        "LSArchitecturePriority": [machine],
         "LSApplicationCategoryType": "public.app-category.utilities",
         "NSHighResolutionCapable": True,
     }
+    if machine == "arm64":
+        info["LSRequiresNativeExecution"] = True
+    # the Intel app may run under Rosetta on Apple Silicon: its check does, and so does a user who
+    # took the other installer
+    return info
 
 
 def minimum_macos(wheel_tags: Iterable[str], floor: str = "11.0") -> str:
@@ -163,6 +194,21 @@ def minimum_macos(wheel_tags: Iterable[str], floor: str = "11.0") -> str:
         if m:
             best = max(best, (int(m.group(1)), int(m.group(2))))
     return ".".join(str(p) for p in best)
+
+
+def check_oldest_macos(machine: str, minimum: str) -> None:
+    """Fails when the wheels of the ``machine`` app ask for a newer macOS than the README gives
+    (:data:`MAC_OLDEST`): built on a newer macOS, the app would refuse the Macs it promises."""
+
+    def version(text: str) -> tuple[int, ...]:
+        return tuple(int(p) for p in text.split("."))
+
+    promised = MAC_OLDEST[machine]
+    if version(minimum) > version(promised):
+        raise SystemExit(
+            f"the {machine} app's wheels ask for macOS {minimum}, the README gives {promised}: "
+            f"build it on macOS {promised}, where uv chooses wheels for that version"
+        )
 
 
 def linux_launcher() -> str:
@@ -305,8 +351,9 @@ def standalone_root(cache: Path, version: str) -> Path:
 
 def install_python(target: Target, dest: Path) -> Path:
     """The standalone CPython of ``.python-version``, copied to ``dest``; its interpreter."""
-    cache = WORK / "python-cache"
-    install = ["uv", "python", "install", "--no-bin", "--install-dir", cache, PYTHON_VERSION]
+    cache = WORK / f"python-cache-{target.machine}"
+    request = target.python_request(PYTHON_VERSION)
+    install = ["uv", "python", "install", "--no-bin", "--install-dir", cache, request]
     run(install, env=clean_env())
     root = standalone_root(cache, PYTHON_VERSION)
     if (root / "pyvenv.cfg").exists() or not target.python_in(root).is_file():
@@ -437,6 +484,12 @@ def install_programs(target: Target, package: Path) -> None:
             "native/triangle4xp/build --config Release)."
         )
     dsftool = REPO / "native" / "dsftool" / target.dsftool_dir / target.exe("DSFTool")
+    if target.system == "macos":
+        # both are universal binaries (Triangle4XP's CMakeLists.txt asks for arm64 and x86_64)
+        for program in (triangle, dsftool):
+            archs = run(["lipo", "-archs", program]).split()
+            if target.machine not in archs:
+                raise SystemExit(f"{program} has no {target.machine} code ({' '.join(archs)})")
     bin_dir = package / "bin"
     bin_dir.mkdir()
     for program in (triangle, dsftool):
@@ -479,8 +532,10 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     launcher.write_text(macos_launcher(), encoding="utf-8")
     launcher.chmod(0o755)
     make_icns(resources / "orthostudio.icns")
-    plist = macos_info_plist(version, minimum_macos(wheel_tags(package)))
-    print(f"the app runs on macOS {plist['LSMinimumSystemVersion']} and later", flush=True)
+    oldest = minimum_macos(wheel_tags(package))
+    print(f"the app runs on macOS {oldest} and later", flush=True)
+    check_oldest_macos(target.machine, oldest)
+    plist = macos_info_plist(version, oldest, target.machine)
     with (app / "Contents" / "Info.plist").open("wb") as f:
         plistlib.dump(plist, f)
     image = stage / "image"
@@ -677,11 +732,12 @@ LSREGISTER = Path(
 )
 
 
-def check_native_launch(app: Path, home: Path) -> None:
-    """The app opened by macOS itself, as a double-click opens it: the programs it starts must not
-    run under Rosetta (the doctor's ``architecture`` check). Started from a terminal the launcher
-    is always native; opened by macOS, a script launcher ran under Rosetta until the app declared
-    ``LSArchitecturePriority`` (``macos_info_plist``).
+def check_native_launch(app: Path, home: Path, machine: str = "arm64") -> None:
+    """The app opened by macOS itself, as a double-click opens it. The Apple Silicon app's programs
+    must not run under Rosetta (the doctor's ``architecture`` check): started from a terminal the
+    launcher is always native; opened by macOS, a script launcher ran under Rosetta until the app
+    declared ``LSArchitecturePriority`` (``macos_info_plist``). The Intel app, whose Python has no
+    Apple Silicon code, only has to start and run its doctor.
 
     macOS opens a copy under another bundle identifier: given the path of an app whose identifier
     and version an installed app shares, ``open`` started the installed one."""
@@ -702,6 +758,9 @@ def check_native_launch(app: Path, home: Path) -> None:
         run([LSREGISTER, "-u", copy], check=False)
     log = home / "Library" / "Logs" / APP_NAME / "serve.log"
     checks = {c["name"]: c for c in json.loads(last_run(log))["checks"]}
+    if machine != "arm64":
+        print(f"check: opened by macOS, the {machine} app starts", flush=True)
+        return
     arch = checks.get("architecture")
     if arch is None or arch["status"] != "ok":
         raise SystemExit(f"opened by macOS, the app runs its programs under Rosetta: {arch}")
@@ -723,7 +782,7 @@ def check_installer(target: Target, artefact: Path) -> None:
                 app = mount / f"{APP_NAME}.app"
                 env["HOME"] = str(tmp)
                 check_launch([app / "Contents" / "MacOS" / "orthostudio"], app, env)
-                check_native_launch(app, tmp)
+                check_native_launch(app, tmp, target.machine)
             finally:
                 run(["hdiutil", "detach", "-force", mount], check=False)
         elif target.system == "windows":
@@ -770,10 +829,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--offline", action="store_true", help="take the packages from uv's cache only"
     )
+    parser.add_argument(
+        "--machine",
+        choices=sorted(MAC_UV_ARCH),
+        help="macOS only: the machine of the app (x86_64: the Intel app, on Apple Silicon too)",
+    )
     args = parser.parse_args(argv)
     if args.offline:
         UV_OFFLINE.append("--offline")
-    target = this_target()
+    target = this_target(args.machine)
     version = project_version()
     shutil.rmtree(WORK / target.system, ignore_errors=True)
     DIST.mkdir(exist_ok=True)

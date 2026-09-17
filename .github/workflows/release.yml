@@ -13,15 +13,22 @@ permissions:
   contents: write
 jobs:
   package:
-    name: installer (${{ matrix.os }})
+    name: installer (${{ matrix.os }}${{ matrix.machine && format(' {0}', matrix.machine) || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        # macOS 14 on Apple Silicon: the wheels chosen there run on macOS 14 and later. Ubuntu 22.04:
-        # Triangle4XP compiled there runs on the older glibc of the distributions still in use.
-        os: [macos-14, windows-latest, ubuntu-22.04]
+        # macOS 14 on Apple Silicon: the wheels chosen there run on macOS 14 and later. The Intel
+        # app on macOS 15 (Apple Silicon too, checked under Rosetta): pyproj's Intel wheels ask for
+        # macOS 15. Ubuntu 22.04: Triangle4XP compiled there runs on the older glibc of the
+        # distributions still in use.
+        include:
+          - os: macos-14
+          - os: macos-15
+            machine: x86_64
+          - os: windows-latest
+          - os: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
@@ -31,15 +38,20 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
+      - name: Install Rosetta
+        if: matrix.machine == 'x86_64'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
       - name: Build Triangle4XP
         run: |
           cmake -S native/triangle4xp -B native/triangle4xp/build -DCMAKE_BUILD_TYPE=Release
           cmake --build native/triangle4xp/build --config Release
       - run: uv sync --frozen --no-dev
-      - run: uv run --no-sync python tools/package/build.py --check
+      - run: >-
+          uv run --no-sync python tools/package/build.py --check
+          ${{ matrix.machine && format('--machine {0}', matrix.machine) || '' }}
       - uses: actions/upload-artifact@v7
         with:
-          name: installer-${{ matrix.os }}
+          name: installer-${{ matrix.os }}${{ matrix.machine && format('-{0}', matrix.machine) || '' }}
           path: |
             dist/OrthoStudio-XP-*.dmg
             dist/OrthoStudio-XP-*-setup.exe

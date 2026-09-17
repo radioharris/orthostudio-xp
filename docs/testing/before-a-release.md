@@ -9,6 +9,7 @@ tile and what you saw, and keep screenshots of anything wrong.
 
 - [ ] **Windows 10 or 11 PC with X-Plane 12** (the systems most pilots fly on).
 - [ ] **Mac** (Apple Silicon, macOS 14 or later), from the `.dmg`.
+- [ ] **Intel Mac** (macOS 15 or later), from the `macos-x86_64.dmg`, when someone has one.
 - [ ] **Linux** (optional for a beta: announced as experimental).
 
 On each one:

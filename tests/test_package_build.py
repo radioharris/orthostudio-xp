@@ -16,12 +16,14 @@ import build  # noqa: E402
 import icon  # noqa: E402
 
 MAC = build.Target("macos", "arm64")
+INTEL_MAC = build.Target("macos", "x86_64")
 WINDOWS = build.Target("windows", "x64")
 LINUX = build.Target("linux", "x86_64")
 
 
 def test_the_installer_names() -> None:
     assert build.artefact_name("0.1.0", MAC) == "OrthoStudio-XP-0.1.0-macos-arm64.dmg"
+    assert build.artefact_name("0.1.0", INTEL_MAC) == "OrthoStudio-XP-0.1.0-macos-x86_64.dmg"
     assert build.artefact_name("0.1.0", WINDOWS) == "OrthoStudio-XP-0.1.0-windows-x64-setup.exe"
     assert build.artefact_name("0.1.0", LINUX) == "OrthoStudio-XP-0.1.0-linux-x86_64.tar.gz"
 
@@ -40,6 +42,66 @@ def test_the_app_bundle_describes_itself() -> None:
     assert (
         info["LSMinimumSystemVersion"] == "14.0" and info["CFBundleShortVersionString"] == "0.1.0"
     )
+
+
+def test_the_intel_app_may_run_under_rosetta_and_the_apple_silicon_one_may_not() -> None:
+    """A user asked for Intel Macs (2026-09-17). The Apple Silicon app declares its architecture
+    and refuses Rosetta, whose Intel preference its universal programs would inherit; the Intel
+    app runs under Rosetta on Apple Silicon, where its check runs."""
+    arm = build.macos_info_plist("0.1.0", "14.0", "arm64")
+    assert arm["LSArchitecturePriority"] == ["arm64"] and arm["LSRequiresNativeExecution"] is True
+    assert build.macos_info_plist("0.1.0", "14.0") == arm
+    intel = build.macos_info_plist("0.1.0", "14.0", "x86_64")
+    assert (
+        intel["LSArchitecturePriority"] == ["x86_64"] and "LSRequiresNativeExecution" not in intel
+    )
+
+
+def test_the_python_asked_of_uv_names_the_mac_architecture() -> None:
+    assert MAC.python_request("3.14") == "cpython-3.14-macos-aarch64-none"
+    assert INTEL_MAC.python_request("3.14") == "cpython-3.14-macos-x86_64-none"
+    assert WINDOWS.python_request("3.14") == "3.14" and LINUX.python_request("3.14") == "3.14"
+
+
+def test_only_macos_builds_for_another_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    import platform
+    import subprocess
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    assert build.this_target() == WINDOWS
+    with pytest.raises(SystemExit, match="only macOS"):
+        build.this_target("x86_64")
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    assert build.this_target() == INTEL_MAC  # an Intel Mac builds its own app
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    assert build.this_target() == MAC
+
+    def rosetta(returncode: int):  # type: ignore[no-untyped-def]
+        def fake(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            assert cmd == ["arch", "-x86_64", "/usr/bin/true"]
+            return subprocess.CompletedProcess(cmd, returncode)
+
+        return fake
+
+    monkeypatch.setattr(build.subprocess, "run", rosetta(0))
+    assert build.this_target("x86_64") == INTEL_MAC
+    monkeypatch.setattr(build.subprocess, "run", rosetta(1))
+    with pytest.raises(SystemExit, match="install-rosetta"):
+        build.this_target("x86_64")
+
+
+def test_an_app_whose_wheels_ask_for_a_newer_macos_than_the_readme_is_refused() -> None:
+    """Built on macOS 26, the Intel app took pyproj's wheel for macOS 15 (2026-09-17): each app is
+    held to the macOS the README gives."""
+    build.check_oldest_macos("arm64", "14.0")
+    build.check_oldest_macos("x86_64", "15.0")
+    build.check_oldest_macos("x86_64", "11.0")
+    with pytest.raises(SystemExit, match=r"build it on macOS 14\.0"):
+        build.check_oldest_macos("arm64", "15.0")
+    with pytest.raises(SystemExit, match=r"ask for macOS 15\.1"):
+        build.check_oldest_macos("x86_64", "15.1")
 
 
 def test_the_oldest_macos_is_the_most_demanding_wheel() -> None:

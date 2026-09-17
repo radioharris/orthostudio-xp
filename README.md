@@ -10,7 +10,8 @@ architecture that builds them faster. It would not exist without Ortho4XP.
 and on Windows with its installer (tried on Windows 11 on ARM, where the x64 app runs under
 emulation, more slowly; not yet on a PC with an Intel or AMD processor). Its Linux installer is
 built and checked automatically, but nobody has built a tile with it yet; a first try on Linux will
-probably come later.
+probably come later. The installer for Intel Macs is built and checked automatically too, on an
+Apple Silicon Mac under Rosetta, but nobody has tried it on an Intel Mac yet.
 
 ![The Plan page: the tiles already installed in green around Majorca and Minorca, two more selected in blue, and the steps to build them](docs/images/plan.jpg)
 
@@ -101,17 +102,19 @@ Other differences in use:
 | Several tiles | built one after the other (batch build) | built side by side, with sharper zones spanning tiles |
 
 Ortho4XP remains the reference, and does things OrthoStudio XP does not do yet: colour filters for
-the imagery (its `.flt` files), the mesh patches made by hand (its `Patches` folder), and Macs with
-an Intel processor. It has also been used for years by a large community on Windows, Linux and
-macOS, where OrthoStudio XP is a beta whose tiles have been built on macOS and Windows so far.
+the imagery (its `.flt` files) and the mesh patches made by hand (its `Patches` folder). It has also
+been used for years by a large community on Windows, Linux and macOS, where OrthoStudio XP is a beta
+whose tiles have been built on macOS and Windows so far.
 
 ## Getting started
 
-Requirements: X-Plane 12, and macOS 14 or later on Apple Silicon, Windows 10 or 11 (64-bit) or a
+Requirements: X-Plane 12, and macOS 14 or later on Apple Silicon (macOS 15 or later on an Intel
+Mac), Windows 10 or 11 (64-bit) or a
 64-bit Linux. Download the installer of your system from the releases of this repository; each has
 Python inside.
 
-- **macOS**: open `OrthoStudio-XP-<version>-macos-arm64.dmg` and drag *OrthoStudio XP* to
+- **macOS**: open `OrthoStudio-XP-<version>-macos-arm64.dmg` on Apple Silicon, or
+  `OrthoStudio-XP-<version>-macos-x86_64.dmg` on an Intel Mac, and drag *OrthoStudio XP* to
   Applications. The app is not signed yet, so macOS refuses to open it the first time: open
   *System Settings*, *Privacy & Security*, click *Open Anyway* next to OrthoStudio XP and confirm.
   If macOS says instead that the app is damaged, run this once in the Terminal:

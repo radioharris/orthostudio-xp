@@ -14,9 +14,9 @@ confirmation the first time (`README.md`).
 
 ## 2. What an installer holds
 
-| | macOS (Apple Silicon) | Windows (x64) | Linux (x86-64) |
+| | macOS (Apple Silicon, Intel) | Windows (x64) | Linux (x86-64) |
 |---|---|---|---|
-| file | `OrthoStudio-XP-<version>-macos-arm64.dmg` | `OrthoStudio-XP-<version>-windows-x64-setup.exe`, and the same files as `.zip` | `OrthoStudio-XP-<version>-linux-x86_64.tar.gz` |
+| file | `OrthoStudio-XP-<version>-macos-arm64.dmg`, `OrthoStudio-XP-<version>-macos-x86_64.dmg` | `OrthoStudio-XP-<version>-windows-x64-setup.exe`, and the same files as `.zip` | `OrthoStudio-XP-<version>-linux-x86_64.tar.gz` |
 | installs | `OrthoStudio XP.app`, dragged to Applications | `%LOCALAPPDATA%\Programs\OrthoStudio XP`, for the current user, no administrator; Start menu entry, optional desktop icon, uninstaller | an `OrthoStudio-XP` folder wherever it is extracted; `install.sh` adds the applications menu entry, `install.sh --remove` takes it out |
 | Python | `Contents/Resources/python` | `python\` | `python/` |
 | started by | `Contents/MacOS/orthostudio` (shell script) | `python\pythonw.exe -m orthostudio.desktop` | `orthostudio-xp` (shell script) |
@@ -37,6 +37,19 @@ and macOS warned that the app "includes a component that will not work with a fu
 macOS" (the user's first installed app, 2026-09-14). Started from a terminal the same launcher runs
 natively, which is why only a launch by macOS shows it (section 6). The doctor's `architecture`
 check says it on any installation.
+
+The Intel app (a user asked, 2026-09-17) is built on the same Apple Silicon Mac:
+`build.py --machine x86_64` asks uv for the Intel CPython (`cpython-<version>-macos-x86_64-none`),
+which uv runs under Rosetta to choose the Intel wheels of the lock, and the checks run it the same
+way. Triangle4XP (its `CMakeLists.txt` asks for `arm64;x86_64`) and DSFTool are universal
+binaries, and the build refuses one without the app's architecture (`lipo -archs`). The app
+declares `LSArchitecturePriority = [x86_64]` without `LSRequiresNativeExecution`: it runs natively
+on an Intel Mac and under Rosetta on Apple Silicon, where its check opens it; the doctor's
+`architecture` check does not apply to it. It needs macOS 15: uv chooses the wheels for the macOS
+the build runs on, and pyproj's Intel wheels ask for macOS 15, so the Intel app is built on macOS
+15 (built on macOS 26, it asked for 15 too). `check_oldest_macos` holds each app to the oldest macOS
+the README gives (`MAC_OLDEST`: 14.0 for Apple Silicon, 15.0 for Intel). Nobody has run it on an
+Intel Mac yet.
 
 In every one:
 
@@ -171,9 +184,10 @@ on a machine that never had OrthoStudio XP.
 
 ## 7. Release workflow (`.github/workflows/release.yml`)
 
-On a tag `v*`, and by hand: one job per system (macOS 14, Windows, Ubuntu 22.04: Triangle4XP
+On a tag `v*`, and by hand: one job per installer (macOS 14 for the Apple Silicon app; macOS 15,
+with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ubuntu 22.04: Triangle4XP
 compiled there runs on older glibc) builds and checks its installer and keeps it as an artifact; a
-tag also publishes the three as a release of the repository (a pre-release when the tag has a
+tag also publishes them all as a release of the repository (a pre-release when the tag has a
 suffix, as in `v0.2.0-rc.1`), with `docs/releases/<version>.md` as its notes when that file exists
 (`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed.
 
@@ -186,5 +200,6 @@ varied kinds flown over in X-Plane).
 
 - Signing: Developer ID and notarisation for macOS, a code-signing certificate for Windows. Both
   need accounts of the publisher (decision 0012).
-- macOS on Intel, Windows and Linux on ARM.
+- Windows and Linux on ARM.
+- The Intel app run on an Intel Mac: it is checked under Rosetta only.
 - Automatic updates: a new version is installed over the old one.
