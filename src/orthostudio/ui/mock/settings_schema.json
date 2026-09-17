@@ -600,8 +600,8 @@
         },
         "use_decal_on_terrain": {
           "default": false,
-          "description": "Terrain files for all but water triangles will contain the maquify_1_green_key.dcl decal directive. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
-          "hint": "Terrain files for all but water triangles will contain the maquify_1_green_key.dcl decal directive. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
+          "description": "Terrain files will contain the decal maquify_2_green_key.dcl, which X-Plane 12 ships. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
+          "hint": "Terrain files will contain the decal maquify_2_green_key.dcl, which X-Plane 12 ships. The effect is noticeable at very low altitude and helps to overcome the orthophoto blur at such levels. Can be slightly distracting at higher altitude.",
           "ortho4xp": "use_decal_on_terrain",
           "level": "expert",
           "title": "Use Decal On Terrain",

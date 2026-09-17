@@ -1905,7 +1905,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 13;
+const PAGE_API_LEVEL = 14;
 
 async function loadStatus() {
   try {
@@ -2028,6 +2028,50 @@ async function quitOsxp() {
   }
   clearInterval(jobsTimer);
   $("stopped").hidden = false;
+}
+
+// ------------------------------------------------------------------ presence
+
+/** The app started from its icon stops a while after its last page closed, unless a build runs or
+ * waits (orthostudio/api/presence.py): nothing shows it once the page is gone, and a user on
+ * Windows had to end it in the Task Manager (2026-09-17). An open page says so every 30 s, and at
+ * once when it shows again; a background tab's timers slow down to about once a minute, which the
+ * engine allows for. */
+const PRESENCE_MS = 30000;
+const PRESENCE_RETRY_MS = 3000;
+let presenceTimer = 0;
+
+async function sayPresent(retry = true) {
+  if (MOCK || !$("stopped").hidden) return;
+  try {
+    await api("POST", "/api/presence", {});
+  } catch (err) {
+    if (err instanceof ApiError) return; // it answered: an older engine's 404 is the banner's business
+    // no answer: the engine may have stopped while the page could not speak (a tab put to sleep
+    // in the background); asked once more before saying so
+    if (retry) setTimeout(() => sayPresent(false), PRESENCE_RETRY_MS);
+    else showEngineGone();
+  }
+}
+
+/** The engine no longer answers: the page says it stopped, as after "Quit", and how to start it. */
+function showEngineGone() {
+  clearInterval(jobsTimer);
+  clearInterval(presenceTimer);
+  const text = $("stopped").querySelector("p");
+  text.dataset.i18n = "quit.gone_text";
+  text.textContent = t("quit.gone_text");
+  $("stopped").hidden = false;
+}
+
+function startPresence() {
+  if (MOCK) return;
+  sayPresent();
+  clearInterval(presenceTimer);
+  presenceTimer = setInterval(() => sayPresent(), PRESENCE_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") sayPresent();
+  });
 }
 
 // ------------------------------------------------------------------ Plan: tiles
@@ -4092,6 +4136,7 @@ async function boot() {
   });
   renderTiles();
   renderPlanPanel();
+  startPresence();
   const results = await Promise.allSettled([
     loadStatus(),
     planMap.load(),

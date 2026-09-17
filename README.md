@@ -124,7 +124,8 @@ Python inside.
   `./orthostudio-xp` directly.
 
 Opening OrthoStudio XP starts it and opens its page in your browser, or just the page when it
-already runs; *Quit* in the page stops it. Its messages go to `serve.log`, in
+already runs; *Quit* in the page stops it, and it stops by itself five minutes after its last page
+is closed, unless a build is running or waiting. Its messages go to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
@@ -166,6 +167,13 @@ uv run osxp uninstall +46+006                   # out of X-Plane, files kept
 uv run osxp uninstall +46+006 --delete          # deleted for good
 uv run osxp clean --all                         # give back all the space OrthoStudio XP can
 ```
+
+## Reporting a problem
+
+Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)):
+its form asks for what helps find the cause, that is the version, your system, what you did and
+what you saw, the tile, a screenshot, and the log `serve.log`. Without a GitHub account, the
+comments on OrthoStudio XP's page on X-Plane.Org are read too.
 
 ## Imagery and responsible use
 

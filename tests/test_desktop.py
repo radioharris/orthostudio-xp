@@ -18,6 +18,7 @@ from orthostudio.desktop import (
     LOG_NAME,
     log_path,
     main,
+    open_running,
     open_while_starting,
     opening_page,
 )
@@ -60,15 +61,82 @@ def test_without_arguments_it_serves_and_opens_the_page(
         shown.append((port, log))
         return False  # an engine listens: the usual start opens it
 
-    assert main([], log=tmp_path / "serve.log", opening=running_already) == 0
-    assert seen == [list(DEFAULT_ARGS)] == [["serve", "--open"]]
-    assert shown == [(ENGINE_PORT, tmp_path / "serve.log")]
+    def not_this_app(port: int) -> bool:
+        return False  # nothing of this installation runs: the start goes on
+
+    log = tmp_path / "serve.log"
+    assert main([], log=log, opening=running_already, running=not_this_app) == 0
+    assert seen == [list(DEFAULT_ARGS)] == [["serve", "--open", "--quit-when-closed"]]
+    assert shown == [(ENGINE_PORT, log)]
     # the opening page shown, the engine does not open the page a second time
-    assert main([], log=tmp_path / "serve.log", opening=lambda port, *, log: True) == 0
-    assert seen[-1] == ["serve", "--no-open"]
+    assert main([], log=log, opening=lambda port, *, log: True, running=not_this_app) == 0
+    assert seen[-1] == ["serve", "--no-open", "--quit-when-closed"]
     # a command run by hand shows no opening page
-    assert main(["--help"], log=tmp_path / "serve.log", opening=running_already) == 0
+    assert main(["--help"], log=log, opening=running_already, running=not_this_app) == 0
     assert len(shown) == 1
+    # this OrthoStudio XP runs already: its page opened, nothing starts, the log says so
+    runs = len(seen)
+    assert main([], log=log, opening=running_already, running=lambda port: True) == 0
+    assert len(seen) == runs and len(shown) == 1
+    assert log.read_text(encoding="utf-8").endswith(
+        f"{APP_NAME}: already running, its page opened\n"
+    )
+
+
+class _Engine:
+    """``GET /api/engine`` of a running OrthoStudio XP, as ``doc`` says, on a free port."""
+
+    def __init__(self, doc: dict) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                body = json.dumps(doc).encode()
+                self.send_response(200 if self.path == "/api/engine" else 404)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.port = int(self.server.server_address[1])
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.mark.parametrize(
+    ("version", "root", "opens"),
+    [("same", "same", True), ("0.0.1", "same", False), ("same", "/elsewhere/orthostudio", False)],
+)
+def test_a_second_launch_opens_this_apps_page_at_once(version: str, root: str, opens: bool) -> None:
+    """A user on Windows closed the browser, opened the app again and saw nothing come
+    (2026-09-17): the page of this installation, at this version, opens before the engine's long
+    imports. Another version or installation is left to the usual start, which asks it to stop."""
+    import orthostudio
+    import orthostudio.desktop
+
+    here = str(Path(orthostudio.desktop.__file__).resolve().parent)
+    engine = _Engine(
+        {
+            "version": orthostudio.__version__ if version == "same" else version,
+            "api_level": 14,
+            "engine": {"root": here if root == "same" else root, "pid": 1},
+        }
+    )
+    opened: list[str] = []
+    try:
+        assert open_running(engine.port, browser=opened.append) is opens
+    finally:
+        engine.stop()
+    assert opened == ([f"http://127.0.0.1:{engine.port}/"] if opens else [])
+    assert open_running(_free_port(), browser=opened.append) is False  # nothing listens
 
 
 def _free_port() -> int:

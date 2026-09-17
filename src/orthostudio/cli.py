@@ -921,6 +921,13 @@ def serve(
         bool,
         typer.Option("--check", help="start, read /api/status, stop (what CI runs)"),
     ] = False,
+    quit_when_closed: Annotated[
+        bool,
+        typer.Option(
+            "--quit-when-closed",
+            help="stop 5 min after the last page closed, unless a build runs (what the app runs)",
+        ),
+    ] = False,
 ) -> None:
     """Serve the page and the local API on 127.0.0.1 (never another address)."""
     from orthostudio.api import serve as serve_mod
@@ -936,7 +943,9 @@ def serve(
             typer.echo(f"error: the page answered {status.get('page_status')}", err=True)
             raise typer.Exit(EXIT_ERROR)
         return
-    code = serve_mod.main(port=port, open_browser=open_browser, ui_dir=ui_dir)
+    code = serve_mod.main(
+        port=port, open_browser=open_browser, ui_dir=ui_dir, quit_when_closed=quit_when_closed
+    )
     if code:
         raise typer.Exit(code)
 

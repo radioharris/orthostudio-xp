@@ -189,6 +189,98 @@ def test_a_second_launch_opens_the_osxp_already_running() -> None:
         running.stop()
 
 
+class _Answering:
+    """A server on a free loopback port answering each GET path as ``routes`` says,
+    ``(delay_s, status, document)``, and 404 to any other."""
+
+    def __init__(self, routes: dict[str, tuple[float, int, dict]]) -> None:
+        import json
+        import threading
+        import time
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                delay_s, status, doc = routes.get(self.path, (0.0, 404, {"detail": "Not Found"}))
+                time.sleep(delay_s)
+                body = json.dumps(doc).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_a_second_launch_recognises_an_osxp_slow_to_give_its_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user on Windows opened the app again after closing its page: the running engine took
+    longer than 1.5 s to give ``/api/status``, the launch took it for another program and ended,
+    and nothing showed (2026-09-17). ``/api/engine`` answers at once."""
+    import time
+
+    from orthostudio.api.app import API_LEVEL
+
+    doc = {"api_level": API_LEVEL, "engine": {"root": str(serve_mod.package_root()), "pid": 1}}
+    running = _Answering({"/api/engine": (0.0, 200, doc), "/api/status": (3.0, 200, doc)})
+    opened: list[str] = []
+    monkeypatch.setattr(serve_mod.webbrowser, "open", opened.append)
+    try:
+        started = time.monotonic()
+        assert serve_mod.running_osxp(running.port) == doc
+        assert time.monotonic() - started < 1.5
+        serve_mod.serve(port=running.port, open_browser=True)  # returns: nothing starts
+        assert opened == [f"http://127.0.0.1:{running.port}/"]
+    finally:
+        running.stop()
+
+
+def test_an_osxp_older_than_api_engine_is_recognised_by_its_status() -> None:
+    """Its ``/api/engine`` is a 404; its status, slower than the old 1.5 s, is waited for."""
+    doc = {"api_level": 13, "engine": {"root": "/elsewhere", "pid": 1}}
+    running = _Answering({"/api/status": (2.0, 200, doc)})
+    try:
+        assert serve_mod.running_osxp(running.port) == doc
+    finally:
+        running.stop()
+
+
+def test_a_port_held_by_another_program_still_opens_its_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What does not say it is OrthoStudio XP is not stopped: the error goes to the log, and its
+    address opens, rather than nothing at all."""
+    from orthostudio.errors import OsxpError
+
+    other = _Answering({})
+    opened: list[str] = []
+    monkeypatch.setattr(serve_mod.webbrowser, "open", opened.append)
+    try:
+        assert serve_mod.running_osxp(other.port) is None
+        with pytest.raises(OsxpError) as exc:
+            serve_mod.serve(port=other.port, open_browser=True)
+        assert "in use" in exc.value.message
+        assert opened == [f"http://127.0.0.1:{other.port}/"]
+    finally:
+        other.stop()
+    with socket.socket() as silent:  # listens, never answers: not waited for past the limit
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(1)
+        assert serve_mod.running_osxp(silent.getsockname()[1], timeout_s=0.3) is None
+
+
 @pytest.mark.parametrize("root", ["/Applications/OrthoStudio XP.app/Contents/Resources", None])
 def test_another_installation_takes_the_place_of_the_running_one(root: str | None) -> None:
     """A user ran a checkout's ``osxp serve --open`` while the installed app ran, and got the

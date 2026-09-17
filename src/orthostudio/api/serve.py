@@ -11,13 +11,17 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Any
 
+from orthostudio.api import presence
 from orthostudio.errors import OsxpError
 
 __all__ = [
     "DEFAULT_PORT",
+    "ENGINE_WAIT_S",
     "HOST",
     "QUIT_API_LEVEL",
+    "STATUS_WAIT_S",
     "check",
     "default_ui_dir",
     "main",
@@ -31,6 +35,11 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 8641
 QUIT_API_LEVEL = 8
 """The first engine that can be stopped from outside (``POST /api/quit``)."""
+ENGINE_WAIT_S = 5.0
+"""How long a launch waits for the running engine to say which it is (``GET /api/engine``)."""
+STATUS_WAIT_S = 20.0
+"""How long it waits for an engine older than ``/api/engine`` to give its ``/api/status``, which
+measures the store and lists the processes first."""
 
 
 def default_ui_dir() -> Path:
@@ -63,17 +72,41 @@ def _check_port(port: int) -> None:
             ) from None
 
 
-def running_osxp(port: int, timeout_s: float = 1.5) -> dict | None:
-    """The status of an OrthoStudio XP already serving on ``port``, or ``None`` (nothing, or not
-    OrthoStudio XP)."""
+def running_osxp(
+    port: int, timeout_s: float = ENGINE_WAIT_S, status_timeout_s: float = STATUS_WAIT_S
+) -> dict | None:
+    """What the OrthoStudio XP already serving on ``port`` says of itself (``api_level``, and its
+    ``engine`` when it says), or ``None``: nothing answers, or not OrthoStudio XP.
+
+    ``GET /api/engine`` answers at once. The launch used to ask ``/api/status`` and wait 1.5 s:
+    on Windows the running engine took longer (it lists the processes and measures the store
+    first), the launch took it for another program and ended, and the app showed nothing until
+    the engine was stopped in the Task Manager (2026-09-17). An engine older than
+    ``/api/engine`` is asked its status, and given longer.
+    """
     import httpx
 
+    answer = _document(httpx, f"http://{HOST}:{port}/api/engine", timeout_s)
+    if answer is None:
+        return None  # nothing answered in time
+    if answer:
+        return answer
+    return _document(httpx, f"http://{HOST}:{port}/api/status", status_timeout_s) or None
+
+
+def _document(httpx: Any, url: str, timeout_s: float) -> dict | None:
+    """The OrthoStudio XP document ``url`` answers (a dict holding ``api_level``); ``{}`` for an
+    answer that is not one (an older engine's 404, another program); ``None`` when nothing
+    answers in ``timeout_s``."""
     try:
-        r = httpx.get(f"http://{HOST}:{port}/api/status", timeout=timeout_s)
-        doc = r.json() if r.status_code == 200 else None
-    except (httpx.HTTPError, ValueError):
+        r = httpx.get(url, timeout=timeout_s)
+    except httpx.HTTPError:
         return None
-    return doc if isinstance(doc, dict) and "api_level" in doc else None
+    try:
+        doc = r.json() if r.status_code == 200 else None
+    except ValueError:
+        doc = None
+    return doc if isinstance(doc, dict) and "api_level" in doc else {}
 
 
 def running_root(status: dict) -> Path | None:
@@ -140,13 +173,18 @@ def serve(
     open_browser: bool = True,
     ui_dir: Path | None = None,
     log_level: str = "info",
+    quit_when_closed: bool = False,
 ) -> None:
-    """Run uvicorn on ``127.0.0.1:port`` until interrupted or quit from the page.
+    """Run uvicorn on ``127.0.0.1:port`` until interrupted, quit from the page, or, with
+    ``quit_when_closed`` (the app's own start), a while after its last page closed
+    (:mod:`orthostudio.api.presence`).
 
     When an OrthoStudio XP already serves the port, its page is opened instead: launching the app
     twice shows the running OrthoStudio XP rather than an error. An older one, or another
     installation, is asked to stop first (:func:`take_over`), so that the OrthoStudio XP opened is
-    the one that runs.
+    the one that runs. When what serves the port does not say it is OrthoStudio XP, its address
+    still opens, with ``open_browser``: the error goes to the log, and the page shows what is
+    there rather than nothing.
     """
     import uvicorn
 
@@ -158,6 +196,8 @@ def serve(
     except OsxpError:
         status = running_osxp(port)
         if status is None:
+            if open_browser:
+                webbrowser.open(url)
             raise
         if not take_over(port, status):
             print(f"OrthoStudio XP is already running: {url}")
@@ -177,11 +217,22 @@ def serve(
         timer = threading.Timer(0.8, lambda: webbrowser.open(url))
         timer.daemon = True
         timer.start()
+    stopping = threading.Event()
+    if quit_when_closed:
+        state = app.state.orthostudio
+        threading.Thread(
+            target=presence.quit_when_closed,
+            args=(state["presence"], lambda: state["jobs"].active() is not None, shutdown),
+            kwargs={"wait": stopping.wait},
+            name="quit-when-closed",
+            daemon=True,
+        ).start()
     try:
         server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=port, log_level=log_level))
         holder["server"] = server
         server.run()
     finally:
+        stopping.set()
         manager = app.state.orthostudio["jobs"]
         with contextlib.suppress(Exception):
             manager.close(timeout=5.0)
@@ -244,10 +295,16 @@ def main(
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
     ui_dir: Path | None = None,
+    quit_when_closed: bool = False,
 ) -> int:
     """Entry point for ``cli.py``; returns the exit status."""
     try:
-        serve(port=port, open_browser=open_browser, ui_dir=ui_dir)
+        serve(
+            port=port,
+            open_browser=open_browser,
+            ui_dir=ui_dir,
+            quit_when_closed=quit_when_closed,
+        )
     except OsxpError as exc:
         import sys
 

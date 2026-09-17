@@ -1,0 +1,66 @@
+name: A problem
+description: Something OrthoStudio XP did wrong, or a defect in a tile it built
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. What helps most to find the cause: what you did, what you saw, the tile, a screenshot, and the log `serve.log`.
+  - type: input
+    id: version
+    attributes:
+      label: Version of OrthoStudio XP
+      description: At the top left of its page, next to its name.
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - macOS (Apple Silicon)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: system-version
+    attributes:
+      label: Version of the system
+      placeholder: "macOS 15.6, Windows 11 25H2, Ubuntu 24.04"
+  - type: textarea
+    id: did
+    attributes:
+      label: What you did
+      placeholder: "Chose +46+006 at ZL16 in the Plan, then Build and install."
+    validations:
+      required: true
+  - type: textarea
+    id: saw
+    attributes:
+      label: What you saw
+      description: And what you expected instead. For an error, its code and its text as the page shows them.
+    validations:
+      required: true
+  - type: input
+    id: tiles
+    attributes:
+      label: Tiles
+      placeholder: "+46+006"
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: For a defect seen in X-Plane, a screenshot with the position (latitude, longitude) or the nearest airport. Drop the images here.
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: The preset, or the answers you changed in Settings.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Drop the file `serve.log` here. It is in `~/Library/Logs/OrthoStudio XP` on macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux.

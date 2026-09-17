@@ -44,6 +44,7 @@ from orthostudio.api.models import (
     SourceTestRequest,
     UninstallRequest,
 )
+from orthostudio.api.presence import Presence
 from orthostudio.api.serve import package_root
 from orthostudio.api.specs import check_ortho4xp_folder, make_specs, plan_answer, resolve_xplane
 from orthostudio.api.zones_api import zones_router
@@ -109,7 +110,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 13
+API_LEVEL = 14
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -123,7 +124,8 @@ each imagery source covers in ``GET /api/providers`` (``extent``, ``extent_bound
 ``custom``) and the sources a user adds (``/api/sources``), 12 = the overlays of other packs
 (``overlay`` in the library, ``POST /api/library/overlays``) and ``POST /api/choose-folder``, 13 =
 the setting ``essential.data_dir`` (an older engine refuses a settings document that holds it),
-``data_dir`` in the status and ``CFG_DATA_DIR_*``. A page
+``data_dir`` in the status and ``CFG_DATA_DIR_*``, 14 = ``GET /api/engine`` (who serves the
+port, answered at once) and ``POST /api/presence`` (a page is open). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -548,6 +550,8 @@ def create_app(
         "doctor": None,
         "doctor_at": 0.0,
         "ui_dir": Path(ui_dir) if ui_dir is not None else None,
+        # when a page last said it was open: the app stops a while after the last one closed
+        "presence": Presence(),
     }
     app.state.orthostudio = state
 
@@ -646,6 +650,28 @@ def create_app(
             # (the app and a checkout) takes its place (serve.take_over)
             "engine": {"root": str(package_root()), "pid": os.getpid()},
         }
+
+    @app.get("/api/engine")
+    async def engine() -> dict[str, Any]:
+        """Which OrthoStudio XP serves this port, answered at once: a second launch of the app
+        recognises the running one with it (``serve.running_osxp``). ``/api/status`` measures the
+        store and lists the processes first, which took longer on Windows than the launch waited,
+        and the app showed nothing (2026-09-17)."""
+        active = manager.active()
+        return {
+            "version": __version__,
+            "api_level": API_LEVEL,
+            "can_quit": shutdown is not None,
+            "active_job": None if active is None else active.id,
+            "engine": {"root": str(package_root()), "pid": os.getpid()},
+        }
+
+    @app.post("/api/presence")
+    async def presence() -> dict[str, Any]:
+        """A page is open. The app started from its icon stops a while after the last word from a
+        page, unless a build runs or waits (``orthostudio.api.presence``)."""
+        state["presence"].seen()
+        return {"ok": True}
 
     @app.post("/api/quit")
     async def quit_engine(req: QuitRequest) -> Any:

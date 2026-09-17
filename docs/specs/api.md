@@ -48,6 +48,8 @@ by default; tests inject a generator of synthetic events.
 | Method, path | Body / query | Answer |
 |---|---|---|
 | `GET /api/status` | – | `{version, api_level, xplane: {path, detected, running}, doctor: [Check...], home, data_dir: {path, chosen, present}, store_bytes, chunks_bytes, library_count, language, active_job, platform: "mac"\|"win"\|"lin", can_quit, engine: {root, pid}}`; `data_dir` is where the tiles and the downloads go (`orthostudio.home.data_root`: `home` unless `chosen` in Settings), `present` false while its disk is unplugged; `can_quit` is true when `osxp serve` started the engine; `engine.root` is the folder of the `orthostudio` package it runs, which tells an installation from another (section 6) |
+| `GET /api/engine` | – | `{version, api_level, can_quit, active_job, engine: {root, pid}}`, answered at once, without the measures of `/api/status`: a second launch recognises the running OrthoStudio XP with it (section 6) |
+| `POST /api/presence` | `{}` | a page is open (the page says so every 30 s, and when it shows again): `{ok: true}`; `osxp serve --quit-when-closed` stops five minutes after the last one (section 6) |
 | `POST /api/quit` | `{force?}` | stops OrthoStudio XP (`osxp serve`'s `uvicorn.Server.should_exit`, 0.3 s after the answer): `{stopping: true, cancelled: <job id> \| null, queued_cancelled: [job id...]}`; 409 `SYS_BUSY` while a job runs unless `force` (the queued jobs are then cancelled, then the running one: `JobManager.cancel_all`, so that none starts in between); 409 `SYS_NOT_STOPPABLE` when the engine was not started by `osxp serve` |
 | `POST /api/choose-folder` | `{prompt, start?}` | asks for a folder in the platform's own dialog, on the computer the engine runs on (a user asked for a button instead of typing the X-Plane folder, 2026-09-15; `fsutil.choose_folder_command`): the Finder's on macOS (`osascript -l JavaScript`, `chooseFolder`, in front of the browser: AppleScript's `activate` held it back 2 s), the File Explorer's on Windows (PowerShell, `FolderBrowserDialog` over a topmost owner, brought in front by the engine once it shows, UTF-8 output), zenity's or kdialog's on Linux. `start` opens it in that folder when it exists. `{path}`, `null` when the user cancelled; 409 `SYS_BUSY` while a dialog is already open (the page asks only once: a click while its dialog opens says so); 501 `SYS_NO_FOLDER_DIALOG` when none can open (a Linux without zenity or kdialog). Waits up to 15 minutes |
 | `POST /api/reveal` | `{path}` | shows the path in the file manager (`open`, `open -R` on macOS; `explorer`, `explorer /select,` on Windows, whose window the engine then brings in front of the browser, since Windows opened it behind: `winfront.py`; `xdg-open` of the folder on Linux; `fsutil.reveal_command`): `{revealed}`; 403 `SYS_FORBIDDEN_PATH` unless the absolute path lies in OrthoStudio XP's home, its data folder, the X-Plane folder or the folder of a library row; 404 when it does not exist |
@@ -571,12 +573,25 @@ comes down at the smoothing's pace.
 
 ## 6. `osxp serve`
 
-`osxp serve [--port 8641] [--open/--no-open] [--ui-dir PATH] [--home PATH]`: `serve.main()`
-builds the app (`ui_dir` default `src/orthostudio/ui`), starts uvicorn on `127.0.0.1:<port>` and
-opens `http://127.0.0.1:<port>/` in the browser (`webbrowser`) unless `--no-open`. The command is
-wired in `cli.py` (`orthostudio.api.serve:main` is the entry point).
+`osxp serve [--port 8641] [--open/--no-open] [--ui-dir PATH] [--home PATH] [--quit-when-closed]`:
+`serve.main()` builds the app (`ui_dir` default `src/orthostudio/ui`), starts uvicorn on
+`127.0.0.1:<port>` and opens `http://127.0.0.1:<port>/` in the browser (`webbrowser`) unless
+`--no-open`. The command is wired in `cli.py` (`orthostudio.api.serve:main` is the entry point).
 
-Port already taken:
+`--quit-when-closed` (what the app runs, `desktop.py`): the engine stops by itself
+(`presence.quit_when_closed`, the same stop as `POST /api/quit`) once no page has said it is open
+(`POST /api/presence`) for 5 min and no build runs or waits. The watch checks every 15 s; a build
+under way, or a check more than three ticks late (the computer slept), starts the wait again. The
+page says it is open every 30 s and when it shows again (`visibilitychange`); a background tab's
+timers slow down to about once a minute. When it gets no answer twice, 3 s apart, it shows the
+stopped screen, saying that OrthoStudio XP stops by itself after its last page closed. A plain
+`osxp serve` in a terminal never stops by itself.
+
+Port already taken: the launch asks `GET /api/engine` (5 s at most), and an engine older than that
+route (a 404) its `/api/status` (20 s at most). It used to ask `/api/status` alone and wait 1.5 s:
+on Windows the running engine took longer (it lists the processes with `tasklist` and measures the
+store first), the launch took it for another program, and nothing showed until the engine was ended
+in the Task Manager (2026-09-17). Then, when the port is taken:
 
 - by the same installation as recent as this one (its `/api/status` gives an `api_level` at least
   this one's and `engine.root` this one's package folder): its page opens, nothing starts. Opening
@@ -592,7 +607,9 @@ Port already taken:
   (2026-09-14). An older engine that does not stop (a build runs in it: 409) or that predates
   `POST /api/quit` (`api_level` below 8) stays, and its page opens, with the banner asking to quit it
   and open OrthoStudio XP again;
-- by another program: `SYS_RESOURCE_MISSING` with the port in context, exit 1.
+- by another program, or anything that does not say it is OrthoStudio XP in time:
+  `SYS_RESOURCE_MISSING` with the port in context, exit 1; with `--open`, the port's address still
+  opens, so that the app shows what is there rather than nothing.
 
 ## 7. Acceptance tests (`tests/test_api_*.py`)
 

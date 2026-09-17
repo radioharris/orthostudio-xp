@@ -81,8 +81,8 @@ A checkout has no `orthostudio/bin`: nothing changes for it.
 
 ## 4. What the app starts (`desktop.py`)
 
-`python -m orthostudio.desktop [args]` runs the `orthostudio` command with `args`, `serve --open`
-by default, its standard output and error appended to `serve.log` in the platform's log folder
+`python -m orthostudio.desktop [args]` runs the `orthostudio` command with `args`,
+`serve --open --quit-when-closed` by default, its standard output and error appended to `serve.log` in the platform's log folder
 (`platformdirs.user_log_dir("OrthoStudio XP")`): `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. A
 line gives the date and the arguments of each start. Started from the Finder, a menu or `pythonw`,
@@ -90,7 +90,10 @@ the engine has no terminal; without the log, uvicorn's output would have nowhere
 `python -m orthostudio` runs the command itself (`__main__.py`), for a terminal.
 
 Opening the app while OrthoStudio XP runs opens the running one's page (`api/serve.py`); *Quit* in
-the page stops it.
+the page stops it. With `--quit-when-closed`, the app also stops by itself five minutes after the
+last word from a page, unless a build runs or waits (`api/presence.py`): once the page is closed,
+nothing shows the engine (`pythonw` has no window on Windows), and a user had to end it in the Task
+Manager (2026-09-17).
 
 **Open files.** Every command raises its soft limit of open files to 8192, within the hard limit
 (`fsutil.raise_open_files_limit`, in the CLI's callback), and the processes it starts inherit it.
@@ -106,7 +109,7 @@ nothing does, `open_while_starting` serves a small page from a free port of the 
 minutes) and opens it: "Opening OrthoStudio XP…" (in French for a French browser), a spinner, and
 after 45 s the path of `serve.log`. The page asks the engine's port every 0.4 s (`fetch` in
 `no-cors` mode: any answer means it listens) and replaces itself with the engine's page; the engine
-then starts with `--no-open`. Being on another port, it never holds the engine's. When something
+then starts with `--no-open --quit-when-closed`. Being on another port, it never holds the engine's. When something
 already listens, the start is the usual one: `serve --open` opens the running OrthoStudio XP, or
 asks an older one to stop first. The data stay in `~/.orthostudio` (`$OSXP_HOME`): uninstalling the app leaves
 them.

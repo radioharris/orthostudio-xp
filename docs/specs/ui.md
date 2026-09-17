@@ -688,6 +688,12 @@ cancelled too; *Stay* has the focus), then
 `POST /api/quit` (`force` when a job runs) and covers the page with "OrthoStudio XP is stopped. You
 can close this tab. To use OrthoStudio XP again, open the OrthoStudio XP app."
 
+**Presence** (2026-09-17): the page says it is open, `POST /api/presence`, at load, every 30 s and
+when it shows again. When the engine does not answer twice, 3 s apart (an answer with an error does
+not count), the page covers itself with the same stopped screen, whose text says that OrthoStudio XP
+no longer answers: it was stopped, or it stopped by itself a few minutes after its last page closed
+(`api.md` section 6). Not in the mock mode.
+
 **The file manager** (user request 2026-09-13): the label names the platform's own
 (`status.platform`: "Show in Finder", "Show in File Explorer", "Open the folder") and every button
 calls `POST /api/reveal`: a folder icon on each Library row (the tile's folder, a third action

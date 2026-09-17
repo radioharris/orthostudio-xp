@@ -108,7 +108,9 @@ in your browser; nothing leaves your computer except the downloads of imagery an
 OrthoStudio XP app to start it: the browser says "Opening OrthoStudio XP…" at once, then shows the
 page as soon as it is ready (opened again while it runs, the app just shows the page); *Quit*, at the
 top right of the page, stops it, after asking when a build is running. Closing the browser tab does
-not stop OrthoStudio XP: a build goes on, and reopening the app brings the page back. What the
+not stop OrthoStudio XP at once: a build goes on, and reopening the app brings the page back. Five
+minutes after its last page closed, with no build running or waiting, the app stops by itself, since
+nothing else would show that it still runs. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. The
 app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app

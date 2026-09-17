@@ -5,7 +5,10 @@ Started from the Finder, the Start menu or a desktop menu, the engine has no ter
 (``pythonw`` on Windows gives it none at all), so its output goes to ``serve.log`` in the
 platform's log folder: ``~/Library/Logs/OrthoStudio XP`` on macOS,
 ``%LOCALAPPDATA%\\OrthoStudio XP\\Logs`` on Windows, ``~/.local/state/OrthoStudio XP/log`` on
-Linux. Opening the app while OrthoStudio XP runs opens the running one's page.
+Linux. Opening the app while OrthoStudio XP runs opens the running one's page, at once when it is
+this same installation (:func:`open_running`). The app stops by itself a while after its last page
+closed, unless a build runs (``--quit-when-closed``, :mod:`orthostudio.api.presence`): nothing else
+shows it once the page is gone.
 
 Until the engine answers, the browser shows a page saying OrthoStudio XP is opening
 (:func:`open_while_starting`): the engine takes a few seconds to start, much longer on a first
@@ -20,11 +23,14 @@ import socket
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from platformdirs import user_log_dir
+
+from orthostudio import __version__
 
 __all__ = [
     "APP_NAME",
@@ -33,13 +39,14 @@ __all__ = [
     "LOG_NAME",
     "log_path",
     "main",
+    "open_running",
     "open_while_starting",
     "opening_page",
 ]
 
 APP_NAME = "OrthoStudio XP"
 LOG_NAME = "serve.log"
-DEFAULT_ARGS = ("serve", "--open")
+DEFAULT_ARGS = ("serve", "--open", "--quit-when-closed")
 ENGINE_PORT = 8641
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
 two equal)."""
@@ -132,6 +139,41 @@ def _listening(port: int) -> bool:
         return False
 
 
+def open_running(
+    port: int = ENGINE_PORT,
+    *,
+    browser: Callable[[str], object] = webbrowser.open,
+    timeout_s: float = 5.0,
+) -> bool:
+    """Open the page of the OrthoStudio XP already serving ``port`` when it is this installation at
+    this version (``GET /api/engine``: the same package folder, the same version); ``False``, and
+    nothing opened, otherwise: the usual start then decides (an older one or another installation
+    is asked to stop).
+
+    Before the engine's imports, which take seconds: a user on Windows who closed the browser and
+    opened the app again saw nothing come, and ended the engine in the Task Manager (2026-09-17).
+    """
+    if not _listening(port):
+        return False
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/engine", timeout=timeout_s
+        ) as answer:
+            doc = json.load(answer)
+        engine = doc.get("engine") if isinstance(doc, dict) else None
+        root = engine.get("root") if isinstance(engine, dict) else None
+        same = (
+            doc.get("version") == __version__
+            and isinstance(root, str)
+            and Path(root).resolve() == Path(__file__).resolve().parent
+        )
+    except (OSError, ValueError, AttributeError):
+        return False
+    if same:
+        browser(f"http://127.0.0.1:{port}/")
+    return same
+
+
 def open_while_starting(
     port: int = ENGINE_PORT,
     *,
@@ -179,18 +221,29 @@ def main(
     *,
     log: Path | None = None,
     opening: Callable[..., bool] | None = None,
+    running: Callable[[int], bool] | None = None,
 ) -> int:
-    """Run the ``orthostudio`` command with ``argv`` (default ``serve --open``), its output
+    """Run the ``orthostudio`` command with ``argv`` (default :data:`DEFAULT_ARGS`), its output
     appended to ``log`` (default :func:`log_path`); returns its exit status.
 
-    Without ``argv``, the app's own start: ``opening`` (default :func:`open_while_starting`)
-    shows the opening page first, and the engine then does not open the page again."""
+    Without ``argv``, the app's own start: ``running`` (default :func:`open_running`) opens the
+    page of this OrthoStudio XP when it runs already, and nothing starts; else ``opening``
+    (default :func:`open_while_starting`) shows the opening page first, and the engine then does
+    not open the page again."""
     path = log_path() if log is None else Path(log)
     path.parent.mkdir(parents=True, exist_ok=True)
     starting = not argv
+    if starting and (open_running if running is None else running)(ENGINE_PORT):
+        with path.open("a", encoding="utf-8") as out:
+            out.write(
+                f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {APP_NAME}: already running, its page "
+                "opened\n"
+            )
+        return 0
     args = list(argv) if argv else list(DEFAULT_ARGS)
     if starting and (open_while_starting if opening is None else opening)(ENGINE_PORT, log=path):
-        args = ["serve", "--no-open"]  # the opening page goes to the engine's page by itself
+        # the opening page goes to the engine's page by itself
+        args = ["serve", "--no-open", "--quit-when-closed"]
 
     from orthostudio.cli import app  # after the opening page: the imports are the long part
 
