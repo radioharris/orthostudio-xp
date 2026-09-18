@@ -387,7 +387,7 @@ top to bottom:
   | Step status | Bar | Words |
   |---|---|---|
   | `pending` (no row runs and none did real work; hits alone do not start a step) | empty | *pending* (*not started* once the job ended) |
-  | `running` (a row runs) | accent colour, the step's `fraction`; the dot pulses | `42 %` (*running* at 0), then the download rate when the running row's line carries one (`21.6 MB/s`: Imagery's textures, the OSM layers of Data, a downloaded relief, `downloadRate`), else the last `message`; the line of a row that ended is dropped |
+  | `running` (a row runs) | accent colour, the step's `fraction`; the dot pulses | `42 %` (*running* at 0), then the download rate when the running row's line carries one (`21.6 MB/s`: Imagery's textures, the OSM layers of Data, a downloaded relief, `downloadRate`), else the last `message` -- which says "nothing to download (the image pieces are in the cache)" when a tile is built again with no fetching, since the counts of a step called Imagery read like a download (a user, 2026-09-18); the line of a row that ended is dropped |
   | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting · 42 %*; tooltip: partly done, the rest waits for its turn |
   | `done` | full, green | *done · 12 s* (the time from 1 s) |
   | `hit` | full, the dimmer `--hit` colour | *already done*; tooltip: kept from an earlier build, nothing to redo |

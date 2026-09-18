@@ -749,14 +749,24 @@ def textures_progress_message(
     say so ("asking again for 3 image piece(s), try 2 of 3, in 8 s"), or the step looks stuck.
     ``mb_per_s``, when known and above zero, is written as ", 21.6 MB/s" inside the brackets:
     the Works page reads it there to show the download rate of the Imagery step.
+
+    With nothing to fetch -- a tile built again with other colours, whose image pieces are all in
+    the cache -- the line says so instead of counting: "tiles 0/0 (0 req/s)" read like a download
+    to a user who asked why building again downloaded the tile (2026-09-18).
     """
     rate = f"{s.req_per_s:.0f} req/s"
     if mb_per_s is not None and mb_per_s > 0:
         rate += f", {mb_per_s:.1f} MB/s"
-    message = (
-        f"{level}: tiles {s.tiles_done}/{s.tiles_total}, textures "
-        f"{s.built + s.hits}/{s.textures_total} ({rate})"
-    )
+    if s.tiles_total:
+        message = (
+            f"{level}: tiles {s.tiles_done}/{s.tiles_total}, textures "
+            f"{s.built + s.hits}/{s.textures_total} ({rate})"
+        )
+    else:
+        message = (
+            f"{level}: textures {s.built + s.hits}/{s.textures_total}, "
+            "nothing to download (the image pieces are in the cache)"
+        )
     if s.second_pass_chunks and not s.second_pass_round:
         message += f", {s.second_pass_chunks} image piece(s) to ask for again"
     elif s.second_pass_chunks:

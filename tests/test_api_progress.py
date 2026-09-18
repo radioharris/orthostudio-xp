@@ -852,6 +852,28 @@ def test_the_second_pass_speaks_plainly() -> None:
     assert "chunk" not in waiting + trying and "round" not in waiting + trying
 
 
+def test_the_textures_message_says_when_nothing_is_downloaded() -> None:
+    """A user asked why building a tile again with other colours downloaded the imagery: it does
+    not, but "tiles 0/0 (0 req/s)" under a step called Imagery read like a download
+    (2026-09-18)."""
+    snapshot = textures_mod.ProgressSnapshot(
+        tiles_done=0, tiles_total=0, parents_done=0, parents_total=0, req_per_s=0.0,
+        bytes=0, in_flight=0, hedges=0, retries=0, net_errors=0, throttled=False,
+        textures_total=213, built=137, hits=0, failed=0, incomplete=0, encoding=0, eta_s=None,
+        elapsed_s=1.0,
+    )  # fmt: skip
+    message = build_mod.textures_progress_message("BI16", snapshot)
+    assert message == (
+        "BI16: textures 137/213, nothing to download (the image pieces are in the cache)"
+    )
+    assert "tiles 0/0" not in message and "req/s" not in message
+    # with pieces to fetch, the line counts them and carries the rate the page reads
+    fetching = build_mod.textures_progress_message(
+        "BI16", dataclasses.replace(snapshot, tiles_total=54528, tiles_done=720), 10.0
+    )
+    assert fetching == "BI16: tiles 720/54528, textures 137/213 (0 req/s, 10.0 MB/s)"
+
+
 def test_the_textures_message_carries_the_download_rate() -> None:
     """The Works page shows the Imagery step's MB/s from this line (test_ui_static checks the
     page reads it); an unknown or zero rate is left out rather than written as 0."""
