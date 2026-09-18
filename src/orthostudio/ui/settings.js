@@ -7,8 +7,9 @@
 // a short note and its name in Ortho4XP. Descriptions and pure functions first (tested under
 // node), the DOM last; app.js owns the saved settings, the draft, and the Save button.
 
-import { adjustImageData, photoValues } from "./colour.js";
+import { photoValues } from "./colour.js";
 import { fmtNum, t } from "./i18n.js";
+import { colourPreview } from "./preview.js";
 import { detailLabel, detailName } from "./map.js";
 import { sourceGroups, sourceLabel } from "./sources.js";
 
@@ -743,82 +744,14 @@ function renderQuestions(box, view) {
     colours.push(h("div", { class: "sub-question colour-values" },
       PHOTO_VALUES.map(([path, label]) => colourNumber(view, path, label()))));
   }
-  const preview = colourPreview(view);
-  if (preview) colours.push(preview);
+  const sample = view.photoSample ? view.photoSample(getPath(d, "essential.provider")) : null;
+  const preview = colourPreview(view.dom.h, sample, photoValues(getPath(d, "essential.photo_look"), {
+    brightness: getPath(d, "expert.photo_brightness"),
+    contrast: getPath(d, "expert.photo_contrast"),
+    saturation: getPath(d, "expert.photo_saturation"),
+  }));
+  if (preview) colours.push(h("div", { class: "sub-question" }, preview));
   box.append(questionBox(view, "colours", ...colours));
-}
-
-/** One image of the ground where the map is looking, as delivered and as the answer would encode
- * it: the pilot sees the colours before a build downloads gigabytes (2026-09-18). */
-function colourPreview(view) {
-  const { h } = view.dom;
-  const sample = view.photoSample ? view.photoSample(getPath(view.draft, "essential.provider")) : null;
-  if (!sample) return null;
-  const size = 148;
-  const before = h("canvas", { width: size, height: size, class: "photo-canvas" });
-  const after = h("canvas", { width: size, height: size, class: "photo-canvas" });
-  const note = h("p", { class: "question-help" }, t("settings.q.colours_preview_wait"));
-  // Where the image comes from, said plainly: a user asked which square he was looking at
-  // (2026-09-18).
-  const where = h("p", { class: "question-help photo-where" },
-    t("settings.q.colours_preview_where", {
-      tile: sample.tile,
-      lat: fmtNum(sample.lat, 3),
-      lon: fmtNum(sample.lon, 3),
-    }));
-  const box = h("div", { class: "sub-question photo-preview" },
-    h("div", { class: "photo-shot" }, before, h("span", { class: "photo-label" }, t("settings.q.colours_preview_before"))),
-    h("div", { class: "photo-shot" }, after, h("span", { class: "photo-label" }, t("settings.q.colours_preview_after"))),
-    h("div", { class: "photo-words" }, note, where));
-  const look = photoValues(getPath(view.draft, "essential.photo_look"), {
-    brightness: getPath(view.draft, "expert.photo_brightness"),
-    contrast: getPath(view.draft, "expert.photo_contrast"),
-    saturation: getPath(view.draft, "expert.photo_saturation"),
-  });
-  const image = new Image();
-  image.crossOrigin = "anonymous";
-  image.addEventListener("load", () => {
-    for (const [canvas, applied] of [[before, null], [after, look]]) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(image, 0, 0, size, size);
-      if (applied) ctx.putImageData(adjustImageData(ctx.getImageData(0, 0, size, size), applied), 0, 0);
-    }
-    note.textContent = t("settings.q.colours_preview_note");
-  });
-  image.addEventListener("error", () => {
-    note.textContent = t("settings.q.colours_preview_failed");
-    box.classList.add("is-quiet");
-  });
-  image.src = sample.url.startsWith("mock-photo:") ? mockPhoto(size, sample.url) : sample.url;
-  return box;
-}
-
-/** The mock mode has no imagery: a ground-looking image drawn from the sample's own name, so the
- * preview can be seen and tested with no network. */
-function mockPhoto(size, seed) {
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  let n = 0;
-  for (const ch of seed) n = (n * 31 + ch.charCodeAt(0)) % 100000;
-  const rand = () => ((n = (n * 1103515245 + 12345) % 2147483648) / 2147483648);
-  ctx.fillStyle = "#6f7a4e";
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 260; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    const r = 4 + rand() * 26;
-    const green = 90 + Math.floor(rand() * 90);
-    ctx.fillStyle = `rgb(${60 + Math.floor(rand() * 70)}, ${green}, ${40 + Math.floor(rand() * 50)})`;
-    ctx.fillRect(x, y, r, r * (0.4 + rand()));
-  }
-  ctx.strokeStyle = "#b9b0a2";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(0, size * 0.62);
-  ctx.bezierCurveTo(size * 0.4, size * 0.4, size * 0.6, size * 0.9, size, size * 0.55);
-  ctx.stroke();
-  return canvas.toDataURL("image/png");
 }
 
 /** The three colour numbers of the 'my own values' answer, in the order they are applied. */

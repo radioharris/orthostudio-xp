@@ -346,6 +346,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .photo-shot { display: flex; flex-direction: column; gap: 4px; }
 .photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
 .photo-label { font-size: 11.5px; color: var(--fg-2); }
+#plan-preview { margin: 8px 0 0; }
+#plan-preview .photo-canvas { width: 110px; height: 110px; }
+#plan-preview .photo-words { flex: 1 1 160px; }
 .photo-words { flex: 1 1 200px; display: grid; gap: 4px; }
 .photo-words > .question-help { margin: 0; }
 .photo-where { color: var(--fg-3); }

@@ -670,7 +670,12 @@ of `textures/colour.py`, and a test holds the two equal to within one step
 (`tests/test_ui_colour.py`), so the preview is what the build will write. No sample yet (the map
 has not drawn, or nothing came back) simply leaves the preview out. Under the two images, a line
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
-in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18). In the mock mode the page
+in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
+
+The same two images appear in **step 3 of the Plan**, for the first square chosen and with the
+*saved* settings, beside *Change in Settings*: the answer is given in Settings and acted on here
+(same user). `ui/preview.js` draws both, `app.js` gives it the sample and the words to use
+(`plan.colours_where`, `plan.colours_note`); nothing is shown while no square is chosen. In the mock mode the page
 draws its own ground-looking image, so the preview works with no network.
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the

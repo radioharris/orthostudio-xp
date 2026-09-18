@@ -20,8 +20,10 @@ import {
   t,
   tOpt,
 } from "./i18n.js";
-import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
+import { photoValues } from "./colour.js";
+import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel } from "./map.js";
+import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
@@ -2751,6 +2753,7 @@ export function diskVerdict(disk) {
 }
 
 function renderPlanPanel() {
+  renderPlanPreview();
   const panel = clear($("plan-panel"));
   const plan = state.plan;
   renderBuildActions();
@@ -3921,8 +3924,8 @@ let folderAsked = false;
  *
  * ``null`` while the map has not drawn yet. In the mock mode the page draws its own image, so
  * that the preview works with no network (``ui.md`` 2.4). */
-function photoSampleUrl(provider) {
-  const centre = planMap && planMap.mapCenter ? planMap.mapCenter() : null;
+function photoSampleUrl(provider, at = null) {
+  const centre = at || (planMap && planMap.mapCenter ? planMap.mapCenter() : null);
   if (!centre) return null;
   const where = { lat: centre.lat, lon: centre.lon, tile: tileName(centre.lat, centre.lon) };
   if (MOCK) return { ...where, url: `mock-photo:${centre.lat.toFixed(3)},${centre.lon.toFixed(3)}` };
@@ -4001,7 +4004,38 @@ function renderSettings(message, kind) {
 function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
   $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
+  renderPlanPreview();
   renderPlanXplane();
+}
+
+/** Step 3 shows the colours of the first square chosen, as the build will encode them: the
+ * answer is given in Settings, and this is where it is acted on (a user asked, 2026-09-18). */
+function renderPlanPreview() {
+  const box = clear($("plan-preview"));
+  const first = state.tiles.length ? parseTile(state.tiles[0]) : null;
+  if (!first) {
+    box.hidden = true;  // nothing chosen yet: step 3 has nothing to show the colours of
+    return;
+  }
+  const at = { lat: first.lat + 0.5, lon: first.lon + 0.5 };
+  const settings = state.settings || {};
+  const provider = settings.essential?.provider;
+  const sample = photoSampleUrl(provider, at);
+  const expert = settings.expert || {};
+  const look = photoValues(settings.essential?.photo_look, {
+    brightness: expert.photo_brightness,
+    contrast: expert.photo_contrast,
+    saturation: expert.photo_saturation,
+  });
+  const preview = sample
+    ? colourPreview(h, sample, look, {
+        size: 110,
+        noteKey: "plan.colours_note",
+        whereKey: "plan.colours_where",
+      })
+    : null;
+  box.hidden = !preview;
+  if (preview) box.append(preview);
 }
 
 async function saveSettings(ev) {
