@@ -4052,7 +4052,7 @@ function renderTileColours() {
     box.append(h("div", { class: "colours-own" },
       h("p", { class: "help" }, line),
       own.free
-        ? h("button", { type: "button", class: "btn btn-small btn-quiet", onclick: () => {
+        ? h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
             const given = planMap.resetColours();
             renderTileColours();
             renderPlanSettings();

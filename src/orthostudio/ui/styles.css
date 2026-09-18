@@ -268,6 +268,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .btn-quiet { border-color: transparent; color: var(--fg-2); }
 .btn-small { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .btn-danger { color: var(--fail); border-color: var(--fail); }
+/* An action that undoes something, which must be seen: the quiet, borderless button was
+   invisible (a user, 2026-09-18). */
+.btn-accent { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.btn-accent:hover { background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
 
 .error-inline { color: var(--fail); font-size: 12.5px; margin: 6px 0 0; }
 
