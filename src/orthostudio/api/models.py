@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from orthostudio.errors import OsxpError
 from orthostudio.zones import MAX_ZONES, check_zone_ids, too_many_zones
+from orthostudio.zones import TileChoice as TileChoiceModel
 from orthostudio.zones import Zone as ZoneModel
 
 __all__ = [
@@ -80,6 +81,11 @@ class PlanRequest(BaseModel):
     zones: list[ZoneModel] | None = None
     """``None``: the saved zones document; a list (possibly empty): exactly those zones
     (``map-zones.md`` 5). Each is validated like a zone of the document (``ZONE_INVALID``)."""
+    tiles_settings: dict[str, TileChoiceModel] | None = None
+    """What each square carries of its own (its colours), by name. ``None`` takes the saved
+    document's, as ``zones`` does -- but a request that carries its own zones and not this built
+    the tiles without their colours (a user built a black and white square and X-Plane showed it
+    as usual, 2026-09-18)."""
 
     @field_validator("tiles")
     @classmethod

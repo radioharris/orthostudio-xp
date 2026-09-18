@@ -1919,6 +1919,15 @@ export function createPlanMap(ctx) {
     ownColours,
     /** The colours a square carries of its own, or null (the Library compares them). */
     tilePhoto: (name) => zs.tiles[name]?.photo || null,
+    /** What the squares of a build carry of their own, for the request (``map-zones.md`` 5). */
+    tilesSettings(names) {
+      const out = {};
+      for (const name of names) {
+        const photo = zs.tiles[name]?.photo;
+        if (photo?.look) out[name] = { photo };
+      }
+      return out;
+    },
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();

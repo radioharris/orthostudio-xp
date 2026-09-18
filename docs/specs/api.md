@@ -110,6 +110,10 @@ PlanRequest {
   overlay: bool = true ; xp12_rasters: bool = true ; online: bool = false (plan: probe)
   zones: [Zone...] | null = null    # null: the saved document's zones touching the tiles
                                      # (map-zones.md 5); a list: exactly those
+  tiles_settings: {"+46+006": {photo: {...}}} | null = null
+                                     # what each square carries of its own (its colours);
+                                     # null: the saved document's. The page sends both, so a job
+                                     # records what it built with (a user, 2026-09-18)
 }
 JobRequest = PlanRequest + { install: bool = false }
 InstallRequest { xplane_dir: str | null ; link: bool = true ; path: str | null }

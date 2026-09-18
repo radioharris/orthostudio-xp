@@ -2526,6 +2526,9 @@ async function planRequest() {
     provider: $("provider-select").value,
     zoom_level: Number($("zl-select").value),
     zones,
+    // The squares' own colours travel with the zones: a request that carried its zones alone
+    // built them without their colours (a user, 2026-09-18).
+    tiles_settings: planMap ? planMap.tilesSettings([...state.tiles]) : {},
   };
 }
 

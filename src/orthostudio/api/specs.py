@@ -202,14 +202,14 @@ def request_zones(
 def request_tiles(req: Any, *, zones_path: Path | None = None) -> dict[str, TileChoice]:
     """What each tile of the map holds of its own (its colours), from the saved document.
 
-    A request that carries its own ``zones`` carries its own ``tiles`` too, or none: a job
-    reloaded from its journal then builds exactly what it built (``map-zones.md`` 5).
+    ``tiles_settings`` in the request wins (a job reloaded from its journal then builds exactly
+    what it built); without it the saved document answers, even when the request carries its own
+    zones -- a page that sent its zones and not its squares built them without their colours (a
+    user, 2026-09-18).
     """
     given = getattr(req, "tiles_settings", None)
     if given is not None:
         return {name: TileChoice.model_validate(value) for name, value in given.items()}
-    if getattr(req, "zones", None) is not None:
-        return {}
     path = zones_path if zones_path is not None else default_zones_path()
     return dict(read_saved_zones(path).tiles)
 

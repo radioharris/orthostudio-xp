@@ -67,6 +67,11 @@ Three levels, each inheriting the one above until it names its own: **Settings**
 **tile** (`zones.with_tile_photo`, read by `api.specs.request_tiles`), then the **zone**
 (`with_photo_zones`). A build takes them as they are when it starts, so two builds of the same
 tile can carry different colours; only the textures are re-encoded, nothing is downloaded again.
+
+A request carries them beside its zones, as `tiles_settings` (`{"+46+006": {"photo": {...}}}`):
+without it the saved document answers. The page sends both, so a job records what it built with;
+sending the zones alone once built the squares without their colours (a user built a black and
+white square and X-Plane showed it as usual, 2026-09-18).
 - `id`: 1 to 64 characters `[A-Za-z0-9_-]`, unique in the document; `name`: at most 80
   characters (may be empty).
 - At most 500 zones in a document.

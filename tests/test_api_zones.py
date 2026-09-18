@@ -381,3 +381,47 @@ def test_make_specs_with_a_zones_file_and_an_override_conflict(
     finer = PlanRequest.model_validate({**lux, "overrides": {"mesh_zl": "20"}})
     (spec,) = make_specs(finer, settings=settings)
     assert spec.config["mesh_zl"] == 20 and spec.config["zone_list"][0][1:] == [20, "Lux"]
+
+
+def test_a_request_carries_the_squares_colours_with_its_zones(home: Path, xplane: Path) -> None:
+    """A user built a black and white square and X-Plane showed it as usual (2026-09-18).
+
+    The page sends the zones of a build with it, and ``request_tiles`` took that as "this request
+    carries everything", so the squares were built without their colours. It now reads
+    ``tiles_settings`` when it is there and the saved document otherwise.
+    """
+    from orthostudio.zones import ZonesDocument, save_zones
+
+    body = {
+        "tiles": ["+46+006"],
+        "zoom_level": 16,
+        "overlay": False,
+        "xp12_rasters": False,
+        "xplane_dir": str(xplane),
+    }
+    black = {"photo": {"look": "custom", "brightness": 0.5, "contrast": -0.5, "saturation": -1.0}}
+    with_own = PlanRequest.model_validate(
+        {**body, "zones": [], "tiles_settings": {"+46+006": black}}
+    )
+    (spec,) = make_specs(with_own, settings=config.Settings(), config_module=config)
+    assert spec.config["photo_brightness"] == 0.5
+    assert spec.config["photo_contrast"] == -0.5
+    assert spec.config["photo_saturation"] == -1.0
+    # without it, the saved document answers, zones given or not
+    path = home / "zones.json"
+    save_zones(path, ZonesDocument.model_validate({"tiles": {"+46+006": black}}))
+    (saved,) = make_specs(
+        PlanRequest.model_validate({**body, "zones": []}),
+        settings=config.Settings(),
+        zones_path=path,
+        config_module=config,
+    )
+    assert saved.config["photo_saturation"] == -1.0
+    # and a square that names none keeps the settings' answer
+    (plain,) = make_specs(
+        PlanRequest.model_validate({**body, "tiles": ["+46+007"], "zones": []}),
+        settings=config.Settings(),
+        zones_path=path,
+        config_module=config,
+    )
+    assert plain.config["photo_saturation"] == 0.0
