@@ -92,6 +92,8 @@ Events: Started(node_id, kind, key) · Progress(node_id, fraction, message) ·
 | `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | masks, DDS encoding, noding, DSF encoding |
 | `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP, Ortho4XP stages, DSFTool |
 | `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads, OSM, DEM (each slot is one network pipeline of 64-128 requests) |
+
+A running node may **lend its slot while it waits** (`NodeContext.idle()`, a context manager): the count of its pool drops, another node of that kind may start, and the waiting one takes its slot back without queueing when it resumes -- so that pool can hold one extra node until it finishes. It exists for the spaced retry rounds of the textures (`pipeline-textures.md` 4.1): a build has one network slot, and a tile waiting for a handful of stuck image pieces left the whole batch's line idle (a user, 2026-09-18). A node that ends while idle is counted once, not twice.
 | `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
 **Lanes.** A node may name a lane (`Node(lane="overpass")`, a thread kind only): it then counts

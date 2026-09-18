@@ -79,6 +79,9 @@ class _Rec:
     ref: ArtifactRef | None = None
     workdir: Path | None = None
     resolved: dict[str, ArtifactRef | None] | None = None
+    idle: bool = False
+    """The run gave its slot back while it waits (``NodeContext.idle``): another node of the
+    same kind may start, and this one is not counted until it resumes."""
 
     @property
     def terminal(self) -> bool:
@@ -408,8 +411,26 @@ class Scheduler:
     def _limit(self, node: Node) -> int:
         return self.lanes[node.lane] if node.lane is not None else self.slots[node.kind]
 
+    def _set_idle(self, node_id: str, idle: bool) -> None:
+        """A running node gives its slot back while it waits, or takes it again (loop thread).
+
+        Taking it back never waits: a node that has already done its work must not queue behind
+        the one that started meanwhile. At most one extra node of that kind runs until the waiting
+        one is done, which is what a spaced retry round costs (``pipeline/textures.py``).
+        """
+        rec = self._recs.get(node_id)
+        if rec is None or rec.state != "running" or rec.idle == idle:
+            return
+        rec.idle = idle
+        self._running[self._pool(rec.node)] += -1 if idle else 1
+        if idle and self._wake is not None:
+            self._wake.set()  # a slot came free: look for something to start
+
     def _finish_running(self, rec: _Rec, outcome: Outcome) -> None:
-        self._running[self._pool(rec.node)] -= 1
+        if rec.idle:
+            rec.idle = False  # the slot was already given back while it waited
+        else:
+            self._running[self._pool(rec.node)] -= 1
         self._ram_in_flight -= rec.node.ram_mb or 0
         self._busy_s += outcome.wall_s
         assert rec.key is not None
@@ -554,6 +575,10 @@ class Scheduler:
                 with contextlib.suppress(RuntimeError):
                     loop.call_soon_threadsafe(self._progress, node_id, fraction, message)
 
+            def set_idle(idle: bool) -> None:
+                with contextlib.suppress(RuntimeError):
+                    loop.call_soon_threadsafe(self._set_idle, node_id, idle)
+
             fut = self._threads.submit(
                 execute,
                 node_id=node.id,
@@ -567,6 +592,7 @@ class Scheduler:
                 progress=progress,
                 cancel_event=self._cancel,
                 run=node.run,
+                set_idle=set_idle,
             )
         node_id = node.id
         fut.add_done_callback(lambda f: self._task_done(node_id, f))

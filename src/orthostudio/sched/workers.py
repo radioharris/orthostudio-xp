@@ -82,6 +82,7 @@ def execute(
     progress: Callable[[float, str], None],
     cancel_event: CancelToken,
     run: NodeRun | None,
+    set_idle: Callable[[bool], None] | None = None,
 ) -> Outcome:
     """Run one node to completion; never raises."""
     t0 = time.perf_counter()
@@ -98,6 +99,7 @@ def execute(
             workdir=workdir,
             progress=progress,
             cancel_event=cancel_event,
+            **({} if set_idle is None else {"set_idle": set_idle}),
         )
         fn = run_p0_rule if run is None else run
         ref = fn(ctx)

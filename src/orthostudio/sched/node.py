@@ -9,7 +9,8 @@ helpers that apply the P0 write protocol (``begin`` / ``commit``).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import contextlib
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -61,6 +62,23 @@ class NodeContext:
     """An empty directory owned by this run; removed after success, kept after a failure."""
     progress: Callable[[float, str], None]
     cancel_event: CancelToken
+    set_idle: Callable[[bool], None] = lambda _idle: None
+    """Say the run is holding its slot without using it (a spaced retry waiting), so another node
+    of the same kind may start meanwhile: a build has one network slot, and a tile waiting for a
+    handful of stuck image pieces left the line idle for the whole batch (a user, 2026-09-18).
+    The slot is taken back without waiting when the run resumes, so at most one extra node of that
+    kind runs during a retry round -- rounds ask at a low concurrency by design."""
+
+    # -- giving the slot back while waiting ------------------------------------------------
+
+    @contextlib.contextmanager
+    def idle(self) -> Iterator[None]:
+        """Hold the slot back for the block (``with ctx.idle(): await pause``)."""
+        self.set_idle(True)
+        try:
+            yield
+        finally:
+            self.set_idle(False)
 
     # -- inputs ----------------------------------------------------------------------------
 

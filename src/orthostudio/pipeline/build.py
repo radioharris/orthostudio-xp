@@ -831,6 +831,7 @@ def _tile_textures(ctx: RunContext) -> None:
             hedge_after_s=env.hedge_after_s,
             parent_levels=params.parent_levels,
             link=True,
+            idle=node.set_idle,
             progress=relay,
             quiet=True,
             cancel=stop,

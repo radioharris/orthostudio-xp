@@ -201,6 +201,21 @@ and the chunk is pasted white into the saved texture.
    (135 s) would push that schedule past five minutes for a tile whose next run fetches only the
    chunks left.
 
+   *When a handful is left* **(a user, 2026-09-18).** One chunk of 54 528 held a ZL16 tile at the
+   very end of its build: 5 s + round + 15 s + round + 45 s + round, about 125 s for 0.002 % of
+   the tile. Under `last_round_worth_it` = 16 chunks still waiting, the pass stops after the
+   second round (`second_pass_stopped_early` in the counts) instead of taking the last and
+   longest pause. Those chunks are not lost: the texture takes their 256 px from the level above
+   (section 5) and *Fetch what is missing* asks for the real ones later, which is the same
+   arbitration as the time cap below, applied to the case that costs the most for the least. An
+   outage, which leaves thousands waiting, still gets its three rounds.
+
+   *The slot is lent while waiting* **(same user).** A build runs with one network slot, so a
+   tile waiting between two rounds left the whole batch's line idle. The pauses now give the slot
+   back (`NodeContext.idle`, `sched/scheduler.py`): the next tile downloads meanwhile, and the
+   waiting node takes its slot again without queueing, so at most one extra network node runs
+   during a retry round -- which asks at a low concurrency by design.
+
    *How long, at most.* **(second review, 2026-09-13)** The whole second pass, pauses, probes
    and rounds included, stops at `second_pass_max_s` = 180 s per run of `build_textures` (one
    provider and zoom level). A pause that would end past the limit is not taken, and a probe or

@@ -580,3 +580,31 @@ def test_process_pool_cancel(store: Store) -> None:
     assert time.perf_counter() - t0 < 2.5
     assert refs == {} and all(e.code == "SYS_CANCELLED" for e in sched.failed.values())
     assert len(store) == 0
+
+
+def run_idle_then_work(ctx: NodeContext) -> ArtifactRef:
+    """A node that waits without using its slot, as the second pass of a tile does."""
+    params = ctx.params
+    assert isinstance(params, SleepParams)
+    t0 = time.perf_counter()
+    with ctx.idle():
+        time.sleep(params.seconds)
+    _poll_sleep(ctx, params.seconds)
+    ref = ctx.produce(lambda out: out.write_bytes(params.payload.encode()))
+    with _LOG_LOCK:
+        LOG.append(Span(ctx.node_id, "?", ctx.rule.name, t0, time.perf_counter()))
+    return ref
+
+
+def test_a_waiting_node_lends_its_network_slot(store: Store) -> None:
+    """One tile waiting between two spaced retry rounds left the whole batch's line idle: a
+    build has one network slot (a user, 2026-09-18). While it waits, the next node may start.
+    """
+    sched = _sched(store, net_slots=1)
+    sched.add(_node("waiter", SRC, kind="net", seconds=0.25, tag="w", run=run_idle_then_work))
+    sched.add(_node("next", SRC, kind="net", seconds=0.1, tag="n"))
+    _run(sched, ["waiter", "next"])
+    spans = _spans(ids={"waiter", "next"})
+    assert _max_concurrent(spans) == 2, "the waiting node never lent its slot"
+    # and the slot is counted once: the run ends without the counter going negative
+    assert sched._running["net"] == 0
