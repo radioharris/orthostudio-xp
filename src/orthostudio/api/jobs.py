@@ -287,11 +287,12 @@ def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
 
 def _relief_of(spec: Any) -> str:
     """Where the tiles of ``spec`` take their heights: ``xplane`` (X-Plane 12's own relief, or
-    ``view`` in the test suite), ``copernicus`` (``COP30``), or ``file`` (the user's own)."""
+    ``view`` in the test suite), ``copernicus`` (``COP30``), ``usgs`` (``NED1/3``), or ``file``
+    (the user's own)."""
     custom = str(spec.config.get("custom_dem", "") or "").strip()
     if not custom:
         return str(spec.relief)
-    return "copernicus" if custom == "COP30" else "file"
+    return {"COP30": "copernicus", "NED1/3": "usgs"}.get(custom, "file")
 
 
 class Job:

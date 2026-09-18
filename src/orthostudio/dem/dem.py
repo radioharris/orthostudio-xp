@@ -32,6 +32,7 @@ from orthostudio.dem.raster import (
     read_elevation_from_file,
 )
 from orthostudio.dem.sources import (
+    MANUAL_SOURCES,
     SOURCES,
     CellState,
     EnsureOptions,
@@ -184,12 +185,24 @@ class Dem:
             combined: CombinedRaster = build_combined_raster(
                 source, tile.lat, tile.lon, opts, on_event=record
             )
-            require_own_cell(tile, source, combined.cells)
+            require_own_cell(tile, source, combined.cells, opts.elevation_dir)
             return cls._from_read(tile, combined.read, source, combined.cells)
         if source in SOURCES:
             result = ensure_elevation(source, tile.lat, tile.lon, opts)
             if not result.ok or result.path is None:
-                raise manual_download_error(source, tile.lat, tile.lon, opts.elevation_dir)
+                # Only the USGS products are read cell by cell (the rest are assembled from a 3x3
+                # block), and OrthoStudio XP downloads them: no file means the source does not
+                # cover this cell. Telling a pilot over Europe to fetch a USGS file by hand would
+                # send him nowhere (a user asked what such a build does, 2026-09-18); the page
+                # names the sources that do cover the region.
+                raise OsxpError(
+                    "DEM_TILE_UNAVAILABLE",
+                    context={
+                        "cell": hem_latlon(tile.lat, tile.lon),
+                        "source": source,
+                        "reason": result.detail or "no file for this cell",
+                    },
+                )
             read = _read_whole_file(result.path, tile, source, record, base_if_error=3601)
             return cls._from_read(tile, read, source, (result,))
         path = Path(source)
@@ -382,16 +395,23 @@ def _read_whole_file(
     return read
 
 
-def require_own_cell(tile: TileRef, source: str, cells: Sequence[EnsureResult]) -> None:
+def require_own_cell(
+    tile: TileRef, source: str, cells: Sequence[EnsureResult], elevation_dir: Path | None = None
+) -> None:
     """Raise ``DEM_TILE_UNAVAILABLE`` when the tile's own cell has no elevation data.
 
     A **fix** (decision 0007). Ortho4XP degrades that cell to 0 m like a neighbour and builds a
     flat tile without a word: that is how ``+46+006`` flew with a flat Jura when the ``dem1``
     archives of viewfinderpanoramas started answering 404. A neighbour still degrades (its
     only use is the 36-post margin); a sea cell (``OCEAN``) is not an error.
+
+    A source whose cells a user places by hand (``MANUAL_SOURCES``) says so instead, naming the
+    file to put there: telling him to choose another source would hide the one thing that works.
     """
     for cell in cells:
         if (cell.lat, cell.lon) == (tile.lat, tile.lon) and cell.state is CellState.MISSING:
+            if source in MANUAL_SOURCES and elevation_dir is not None:
+                raise manual_download_error(source, tile.lat, tile.lon, elevation_dir)
             raise OsxpError(
                 "DEM_TILE_UNAVAILABLE",
                 context={

@@ -33,6 +33,7 @@ __all__ = [
     "DEM1_BLOCKS",
     "DEM1_CELLS",
     "FULL_HGT_SIZE",
+    "MANUAL_SOURCES",
     "SOURCES",
     "TIFF_MAGIC",
     "CellState",
@@ -62,6 +63,12 @@ SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30"
 
 GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
+
+MANUAL_SOURCES: tuple[Source, ...] = ("SRTM", "ALOS")
+"""Sources whose cells a user places by hand: OpenTopography stopped serving them directly
+(``O4_DEM_Utils.py:735-745``). The others are downloaded, so a missing cell is a cell the source
+does not cover, not a file to fetch by hand (a user asked what a European tile does with the
+USGS, 2026-09-18)."""
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -439,7 +446,7 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
         return _ensure_view(lat, lon, opts)
     if source == "COP30":
         return _ensure_cop30(lat, lon, opts)
-    if source in ("SRTM", "ALOS"):
+    if source in MANUAL_SOURCES:
         return _ensure_manual(source, lat, lon, opts)
     if source in ("NED1", "NED1/3"):
         return _ensure_ned(source, lat, lon, opts)

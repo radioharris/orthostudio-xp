@@ -91,6 +91,11 @@ def test_conversions_and_mappings(tmp_path: Path) -> None:
 
     auto = Settings(essential=Essential(relief=Relief(source="auto", file="/dem/x.tif")))
     assert to_build_overrides(auto)["custom_dem"] == ""
+    # the two sources OrthoStudio XP downloads itself go where Ortho4XP puts a source name
+    cop = Settings(essential=Essential(relief=Relief(source="copernicus")))
+    assert to_build_overrides(cop)["custom_dem"] == "COP30"
+    usgs = Settings(essential=Essential(relief=Relief(source="usgs")))
+    assert to_build_overrides(usgs)["custom_dem"] == "NED1/3"
     for mode, ortho4xp_value in (("off", "False"), ("on", "True"), ("existing", "Existing")):
         s2 = Settings(essential=Essential(airports=AirportCoverage(mode=mode)))  # type: ignore[arg-type]
         assert to_build_overrides(s2)["cover_airports_with_highres"] == ortho4xp_value

@@ -14,7 +14,7 @@ ENUMS = {
     "essential.coast_transition.profile": ["sand", "rocks", "3steps"],
     "essential.water_rendering": ["XP11 + bathy", "XP12"],
     "essential.overlays": ["xplane", "none"],
-    "essential.relief.source": ["auto", "file", "copernicus"],
+    "essential.relief.source": ["auto", "file", "copernicus", "usgs"],
     "essential.photo_look": ["as_delivered", "softer", "much_softer", "custom"],
     "essential.relief.fill_nodata": ["nearest", "zero"],
     "advanced.road_level": [0, 1, 2, 3, 4, 5],

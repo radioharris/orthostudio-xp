@@ -230,3 +230,7 @@ def test_relief_copernicus_is_a_command_line_choice_too(home: Path, tmp_path: Pa
     assert mine.config["custom_dem"] == "/tmp/mine.tif"  # --set wins over the name
     (view,) = specs("view")
     assert view.relief == "view" and not view.config.get("custom_dem")
+    # the same for the USGS 3DEP, the page's fourth relief (a user asked for other sources for
+    # the United States and Canada, 2026-09-18)
+    (usgs,) = specs("usgs")
+    assert usgs.config["custom_dem"] == "NED1/3" and usgs.relief == default_relief()

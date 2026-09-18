@@ -286,6 +286,7 @@ export function questionChoices(id, settings, { providers = [] } = {}) {
       return [
         { value: "auto", label: t("settings.q.relief_auto"), note: t("settings.q.relief_auto_note"), recommended: true },
         { value: "copernicus", label: t("settings.q.relief_cop30"), note: t("settings.q.relief_cop30_note") },
+        { value: "usgs", label: t("settings.q.relief_usgs"), note: t("settings.q.relief_usgs_note") },
         { value: "file", label: t("settings.q.relief_file"), note: t("settings.q.relief_file_note") },
       ];
     case "holes":
@@ -369,6 +370,7 @@ export function settingsSummary(settings) {
   const relief = e.relief?.source;
   if (relief === "file") parts.push(t("plan.s.relief_file"));
   else if (relief === "copernicus") parts.push(t("plan.s.relief_cop30"));
+  else if (relief === "usgs") parts.push(t("plan.s.relief_usgs"));
   else parts.push(t("plan.s.relief_auto"));
   parts.push(e.overlays === "none" ? t("plan.s.overlays_none") : t("plan.s.overlays_xplane"));
   return parts;

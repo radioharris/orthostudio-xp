@@ -77,6 +77,7 @@ const STRINGS = {
     "plan.s.water_xp12": "eau d'X-Plane 12",
     "plan.s.relief_auto": "relief d'X-Plane 12",
     "plan.s.relief_cop30": "relief Copernicus",
+    "plan.s.relief_usgs": "relief USGS (États-Unis)",
     "plan.s.relief_file": "relief de votre fichier",
     "plan.s.overlays_xplane": "routes, forêts et bâtiments d'X-Plane",
     "plan.s.overlays_none": "aucun overlay d'OrthoStudio XP",
@@ -321,6 +322,7 @@ const STRINGS = {
     "works.no_install": "sans installation",
     "works.relief_xplane": "relief d'X-Plane",
     "works.relief_cop30": "relief Copernicus",
+    "works.relief_usgs": "relief USGS",
     "works.relief_file": "fichier de relief",
     "works.not_installed_yet": "Ces tuiles ne sont pas encore dans X-Plane : ajoutez-les depuis la Bibliothèque.",
     "works.open_library": "Ouvrir la Bibliothèque",
@@ -583,6 +585,8 @@ const STRINGS = {
     "settings.q.relief_auto_note": "il se raccorde au décor voisin, rien à télécharger",
     "settings.q.relief_cop30": "Le relief Copernicus (1 seconde d'arc)",
     "settings.q.relief_cop30_note": "plus fin que celui d'X-Plane ; environ 40 Mo téléchargés par carré d'un degré, gardés ensuite",
+    "settings.q.relief_usgs": "Le relief détaillé des États-Unis (USGS 3DEP, 1/3 de seconde d'arc)",
+    "settings.q.relief_usgs_note": "le plus fin qui existe en accès libre, environ 10 m au sol : les reliefs marqués y gagnent. États-Unis seulement, Alaska et Hawaï compris ; environ 400 Mo par carré d'un degré, gardés ensuite. Ailleurs, la tuile est refusée plutôt que construite plate.",
     "settings.q.relief_file": "Mon propre fichier d'altitudes (GeoTIFF ou HGT)",
     "settings.q.relief_file_note": "par exemple un modèle numérique de terrain national détaillé",
     "settings.q.relief_path": "Quel fichier ?",
@@ -800,6 +804,7 @@ const STRINGS = {
     "plan.s.water_xp12": "X-Plane 12 water",
     "plan.s.relief_auto": "X-Plane 12 relief",
     "plan.s.relief_cop30": "Copernicus relief",
+    "plan.s.relief_usgs": "USGS relief (United States)",
     "plan.s.relief_file": "relief from your file",
     "plan.s.overlays_xplane": "X-Plane's roads, forests and buildings",
     "plan.s.overlays_none": "no overlays from OrthoStudio XP",
@@ -1044,6 +1049,7 @@ const STRINGS = {
     "works.no_install": "no install",
     "works.relief_xplane": "X-Plane relief",
     "works.relief_cop30": "Copernicus relief",
+    "works.relief_usgs": "USGS relief",
     "works.relief_file": "own relief file",
     "works.not_installed_yet": "These tiles are not in X-Plane yet: add them from the Library.",
     "works.open_library": "Open the Library",
@@ -1306,6 +1312,8 @@ const STRINGS = {
     "settings.q.relief_auto_note": "it matches the scenery around, nothing to download",
     "settings.q.relief_cop30": "The Copernicus relief (1 arc-second)",
     "settings.q.relief_cop30_note": "finer than X-Plane's; about 40 MB downloaded per one-degree square, kept afterwards",
+    "settings.q.relief_usgs": "The detailed relief of the United States (USGS 3DEP, 1/3 arc-second)",
+    "settings.q.relief_usgs_note": "the finest openly available, about 10 m on the ground: sharp relief gains the most. United States only, Alaska and Hawaii included; about 400 MB per one-degree square, kept afterwards. Elsewhere the tile is refused rather than built flat.",
     "settings.q.relief_file": "My own elevation file (GeoTIFF or HGT)",
     "settings.q.relief_file_note": "for example a detailed national elevation model",
     "settings.q.relief_path": "Which file?",
@@ -1510,7 +1518,9 @@ const CODES = {
     DEM_DOWNLOAD_FAILED: ["Le relief n'a pas pu être téléchargé.", "Réessayez, ou fournissez un fichier d'altitudes dans Réglages."],
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["Pas de relief pour {tile} : son fichier de décor X-Plane 12 manque ({path}). OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région du décor X-Plane 12 avec l'installeur d'X-Plane, ou donnez un fichier d'altitudes dans Réglages."]
-      : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
+      : String(c.source || "").startsWith("NED")
+        ? ["Pas de relief pour cette tuile : l'USGS ne couvre que les États-Unis. OrthoStudio XP ne construit pas une tuile plate.", "Dans Réglages, choisissez « Le relief d'X-Plane 12 » ou « Le relief Copernicus » pour cette région."]
+        : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Passez « Vides du raster » à « nearest » dans Réglages si ce n'est pas la mer."],
     MESH_TRIANGLE_BUDGET_REACHED: ["Le maillage a atteint la limite de triangles.", "Augmentez limit_tris ou curvature_tol dans Avancé."],
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
@@ -1552,7 +1562,9 @@ const CODES = {
     DEM_DOWNLOAD_FAILED: ["The elevation data could not be downloaded.", "Retry, or provide an elevation file in Settings."],
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["No relief for {tile}: its X-Plane 12 scenery file is missing ({path}). OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery with the X-Plane installer, or provide an elevation file in Settings."]
-      : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
+      : String(c.source || "").startsWith("NED")
+        ? ["No relief for this tile: the USGS covers the United States only. OrthoStudio XP does not build a flat tile.", "In Settings, choose “The relief of X-Plane 12” or “The Copernicus relief” for this region."]
+        : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Voids of the elevation raster were set to 0 m.", "Set “Raster voids” to “nearest” in Settings if this is not sea."],
     MESH_TRIANGLE_BUDGET_REACHED: ["The mesh reached its triangle budget.", "Raise limit_tris or curvature_tol in Advanced."],
     ZONE_INVALID: ["A zone cannot be used: nothing is saved or built until it is fixed.", "Fix or delete that zone in step 2 (or in the zones file), then try again."],

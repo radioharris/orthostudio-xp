@@ -94,8 +94,11 @@ name does not parse are skipped. **Keep**, including the `S`/`W` detection by su
 `O4_DEM_Utils.py:768-778`: since OpenTopography closed its public bucket, Ortho4XP prints a
 warning and returns failure; the download code after it is dead (`return 0` precedes it).
 **Keep the behaviour, name it**: OrthoStudio XP recycles the local file if present, else raises
-`DEM_SOURCE_MANUAL_DOWNLOAD` (or, in the 3x3 assembly, degrades that cell to zeros exactly
-as Ortho4XP does). No dead code is ported.
+`DEM_SOURCE_MANUAL_DOWNLOAD` -- from the 3x3 assembly too, for the tile's own cell, since these
+two sources are the ones whose file a user places by hand (`MANUAL_SOURCES`); a neighbour still
+degrades to zeros exactly as Ortho4XP does. No dead code is ported. A **downloaded** source that
+has no file for the tile's own cell raises `DEM_TILE_UNAVAILABLE` instead: there is nothing to
+place by hand, the source simply does not cover it.
 
 ### 3.3 `NED1`, `NED1/3`
 
@@ -106,6 +109,16 @@ precedence oddity — `tid = tid + "w" if lon < 0 else "e"` drops the accumulate
 branch, so an eastern tile gets `tid = "e"` and the URL is wrong; OrthoStudio XP builds the correct
 `n43e005` form: **fix**, declared, unreachable in practice because NED covers only
 western longitudes).
+
+Settings offers `NED1/3` as *the detailed relief of the United States* (`relief.source = "usgs"`,
+a user of the X-Plane.Org page asked for other sources "especially for the US and Canada",
+2026-09-18). Measured on the USGS bucket the same day, per one-degree cell: **410 MB** at
+1/3" (n41w106), 449 MB in Alaska (n62w150), 51 MB at 1" -- against ~40 MB for Copernicus. The
+coverage is the United States: a Canadian cell answers 404 (n51w114), the cell is `MISSING`, and
+`require_own_cell` refuses the build (`DEM_TILE_UNAVAILABLE`, decision 0007) instead of building a
+flat tile; the page's remedy names the two sources that cover the region. Canada has no equivalent
+free 1/3" set: Copernicus is the answer there until NRCan's HRDEM (1-2 m lidar, partial coverage,
+WCS) or MRDEM (30 m) is read.
 
 ### 3.4 Negative memo (the fix that motivated this module)
 

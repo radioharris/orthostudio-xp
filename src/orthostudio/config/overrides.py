@@ -92,13 +92,17 @@ def _photo(look: str, x: Any) -> dict[str, float]:
 def _custom_dem(relief: Any) -> str:
     """Ortho4XP's ``custom_dem``: a file, the name of a source, or empty for the default relief.
 
-    ``copernicus`` is OrthoStudio XP's own source (``dem/sources.py``, a user asked 2026-09-17):
-    the name goes where Ortho4XP puts a source name.
+    ``copernicus`` is OrthoStudio XP's own source (``dem/sources.py``, a user asked 2026-09-17)
+    and ``usgs`` the USGS 3DEP at 1/3 arc-second, the sharpest relief of the United States (a
+    user asked for other sources, "especially for the US and Canada", 2026-09-18): the name goes
+    where Ortho4XP puts a source name.
     """
     if relief.source == "file":
         return str(relief.file)
     if relief.source == "copernicus":
         return "COP30"
+    if relief.source == "usgs":
+        return "NED1/3"
     return ""
 
 

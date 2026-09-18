@@ -205,24 +205,63 @@ def test_too_many_voids_fall_back_to_zero(tmp_path: Path) -> None:
 
 
 def test_build_of_a_non_assembled_source_without_a_file_is_an_error(tmp_path: Path) -> None:
-    """NED is read cell by cell (``O4_DEM_Utils.py:96-120``), so a missing file is fatal."""
+    """NED is read cell by cell (``O4_DEM_Utils.py:96-120``), so a missing file is fatal.
+
+    It is downloaded, not placed by hand, so the tile is refused as unavailable; a source whose
+    cells a user does place by hand keeps the remedy that names the file.
+    """
     opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
     with pytest.raises(OsxpError) as excinfo:
         Dem.build(TileRef(43, 5), opts, custom_dem="NED1")
-    assert excinfo.value.code == "DEM_SOURCE_MANUAL_DOWNLOAD"
+    assert excinfo.value.code == "DEM_TILE_UNAVAILABLE"
+    with pytest.raises(OsxpError) as manual:
+        Dem.build(TileRef(43, 5), opts, custom_dem="ALOS")
+    assert manual.value.code == "DEM_SOURCE_MANUAL_DOWNLOAD"
+    assert manual.value.context["expected_name"].endswith("N43E005_ALOS3W30.tif")
 
 
 def test_srtm_without_the_tile_cell_refuses_to_build_a_flat_tile(tmp_path: Path) -> None:
     """SRTM is a global source: Ortho4XP degrades *each* missing cell, the tile's own included,
     and builds a tile flat at 0 m. OrthoStudio XP refuses the tile's own cell (decision 0007); the
-    neighbours still degrade (``test_dem_raster``)."""
+    neighbours still degrade (``test_dem_raster``).
+
+    SRTM is not downloaded (OpenTopography stopped serving it), so the refusal is the one that
+    names the file to place by hand -- the remedy the catalogue always described for it, which
+    only the USGS products used to receive.
+    """
     opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
     events: list[OsxpError] = []
     with pytest.raises(OsxpError) as excinfo:
         Dem.build(TileRef(46, 5), opts, custom_dem="SRTM", on_event=events.append)
-    assert excinfo.value.code == "DEM_TILE_UNAVAILABLE"
+    assert excinfo.value.code == "DEM_SOURCE_MANUAL_DOWNLOAD"
     assert excinfo.value.context["cell"] == "N46E005"
+    assert excinfo.value.context["expected_name"].endswith("N46E005_SRTMv3.hgt")
     assert any(e.code == "DEM_NEIGHBOUR_UNAVAILABLE" for e in events)
+
+
+def test_the_usgs_relief_outside_the_united_states_refuses_the_tile(tmp_path: Path) -> None:
+    """Settings offers the USGS 3DEP (``relief.source = "usgs"`` -> ``NED1/3``), which covers the
+    United States only. A European tile asks for a cell the USGS does not serve (404): the tile's
+    own cell is missing, so the build stops with ``DEM_TILE_UNAVAILABLE`` and the page names the
+    two sources that cover the region -- never a tile flat at 0 m (decision 0007)."""
+    from orthostudio.dem.sources import Download
+
+    asked: list[str] = []
+
+    def refused(url: str) -> Download:
+        asked.append(url)
+        return Download(url, status=404)  # what the USGS bucket answers outside its coverage
+
+    opts = EnsureOptions(elevation_dir=tmp_path, download=refused, memo=NegativeMemo())
+    with pytest.raises(OsxpError) as excinfo:
+        Dem.build(TileRef(46, 6), opts, custom_dem="NED1/3")
+    assert excinfo.value.code == "DEM_TILE_UNAVAILABLE"
+    assert excinfo.value.context["cell"] == "N46E006"
+    assert excinfo.value.context["source"] == "NED1/3"
+    assert asked == [
+        "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/"
+        "n47e006/USGS_13_n47e006.tif"
+    ]
 
 
 def test_an_unreadable_tile_cell_is_refused_too(tmp_path: Path) -> None:
