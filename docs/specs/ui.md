@@ -683,7 +683,17 @@ gives it the sample and the words (`plan.colours_where`, `plan.colours_note`).
 
 Each **zone** keeps its own control in its row, with the sliders under it on *My own values*: it
 inherits its square while it says *Colours: same as the tile*, and wins inside its polygon
-otherwise. In the mock mode the page
+otherwise.
+
+**The map shows the result, not a thumbnail** (a user asked, 2026-09-18). A square or a zone that
+carries its own colours is repainted on the map itself: a `L.GridLayer` on the `osxpColours` pane
+(z-index 250, over the imagery and under the grid) draws each map tile again through
+`ui/colour.js` -- the arithmetic a test holds equal to the engine's -- and clips it to the
+region's polygon, so only what carries its own colours changes and the rest stays the imagery
+underneath. Zones are painted before the squares, so a zone drawn in a square wins, as in a
+build. The layer exists only while something carries its own colours, and follows every change of
+the choices, of the zones and of the squares. In the mock mode it paints its own ground image, so
+it can be seen and measured with no network. In the mock mode the page
 draws its own ground-looking image, so the preview works with no network.
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the

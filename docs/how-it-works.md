@@ -188,7 +188,9 @@ screenshots by hand (2026-09-18).
 of the Plan sets the colours of the squares you chose (with the same sliders and the same preview);
 and a zone drawn inside a square can differ again in its own polygon. Each level inherits the one
 above until it names its own, and a texture belongs to the zone its centre falls in. Changing your
-mind re-encodes the textures concerned and downloads nothing.
+mind re-encodes the textures concerned and downloads nothing. **The map shows it**: a square or a
+zone with its own colours is repainted where it is, so you judge the result on the ground you fly
+over rather than on a thumbnail.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch

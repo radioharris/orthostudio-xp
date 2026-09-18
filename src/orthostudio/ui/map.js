@@ -11,7 +11,9 @@
 // with ctx.toggleTile(). The zones, their order (index 0 wins, M4), the selected zone and the
 // shape being drawn live here.
 
+import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtMB, t } from "./i18n.js";
+import { mockPhoto } from "./preview.js";
 import { sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
   MAX_NAME,
@@ -580,6 +582,7 @@ export function createPlanMap(ctx) {
   function changed({ plan = true } = {}) {
     renderList();
     renderZones();
+    refreshColours();  // the colours of the map follow the squares and the zones
     renderStatus();
     renderLegend();
     renderSizes();
@@ -996,6 +999,7 @@ export function createPlanMap(ctx) {
     const bordersPane = m.createPane("osxpBorders");
     bordersPane.style.zIndex = "340"; // under the grid and the tiles
     bordersPane.style.pointerEvents = "none";
+    m.createPane("osxpColours").style.zIndex = "250"; // over the imagery, under the grid
     m.createPane("osxpGrid").style.zIndex = "350"; // under the zones (overlayPane, 400)
     const labels = m.createPane("osxpLabels");
     labels.style.zIndex = "360";
@@ -1163,6 +1167,125 @@ export function createPlanMap(ctx) {
     return layer;
   }
 
+
+  // -- the colours, live on the map ----------------------------------------------------------
+
+  /** The regions that carry colours of their own, zones first (a zone wins inside its polygon).
+   *
+   * ``{ring: [[lon, lat], ...], look}``; the squares chosen come after, so a zone drawn in one
+   * paints over it, which is the rule a build follows (``map-zones.md`` 3). */
+  function colouredRegions() {
+    const out = [];
+    for (const z of zs.zones) {
+      if (z.photo?.look && z.polygon.length >= 3) out.push({ ring: z.polygon, photo: z.photo });
+    }
+    for (const [name, choice] of Object.entries(zs.tiles || {})) {
+      const corner = parseTile(name);
+      if (!corner || !choice?.photo?.look) continue;
+      const { lat, lon } = corner;
+      out.push({
+        ring: [[lon, lat], [lon + 1, lat], [lon + 1, lat + 1], [lon, lat + 1]],
+        photo: choice.photo,
+        square: true,
+      });
+    }
+    return out;
+  }
+
+  /** A layer that repaints the map with the colours a build would encode (a user asked to see
+   * the result on the whole square, not in a thumbnail, 2026-09-18).
+   *
+   * Each map tile is drawn again through ``colour.js`` -- the arithmetic a test holds equal to
+   * the engine's -- and clipped to the region's polygon, so only what carries its own colours is
+   * repainted and everything else stays the imagery underneath. */
+  function colourLayer(code) {
+    const Coloured = L.GridLayer.extend({
+      createTile(coords, done) {
+        const size = this.getTileSize();
+        const canvas = document.createElement("canvas");
+        canvas.width = size.x;
+        canvas.height = size.y;
+        const regions = colouredRegions();
+        const g = canvas.getContext("2d", { willReadFrequently: true });
+        if (!g || !regions.length) {
+          setTimeout(() => done(null, canvas), 0);
+          return canvas;
+        }
+        const paint = (image) => {
+          const origin = { x: coords.x * size.x, y: coords.y * size.y };
+          const filtered = new Map();
+          for (const region of regions) {
+            const path = ringPath(region.ring, coords.z, origin);
+            if (!path) continue;
+            const key = JSON.stringify(photoValues(region.photo.look, region.photo));
+            let painted = filtered.get(key);
+            if (!painted) {
+              painted = document.createElement("canvas");
+              painted.width = size.x;
+              painted.height = size.y;
+              const pg = painted.getContext("2d", { willReadFrequently: true });
+              pg.drawImage(image, 0, 0, size.x, size.y);
+              pg.putImageData(
+                adjustImageData(pg.getImageData(0, 0, size.x, size.y), photoValues(region.photo.look, region.photo)),
+                0,
+                0,
+              );
+              filtered.set(key, painted);
+            }
+            g.save();
+            g.beginPath();
+            path.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+            g.closePath();
+            g.clip();
+            g.drawImage(painted, 0, 0);
+            g.restore();
+          }
+          done(null, canvas);
+        };
+        if (ctx.mock) {
+          const image = new Image();
+          image.onload = () => paint(image);
+          image.src = mockPhoto(size.x, `${coords.z}/${coords.x}/${coords.y}`);
+          return canvas;
+        }
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+        image.onload = () => paint(image);
+        image.onerror = () => done(null, canvas);  // no imagery there: nothing to repaint
+        image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}`;
+        return canvas;
+      },
+    });
+    return new Coloured({ pane: "osxpColours", maxZoom: 20, noWrap: true, bounds: WORLD });
+  }
+
+  /** A ring of [lon, lat] in the pixels of one map tile, or null when it misses the tile. */
+  function ringPath(ring, z, origin) {
+    const size = 256;
+    const points = ring.map((p) => {
+      const pt = map.project(L.latLng(p[1], p[0]), z);
+      return [pt.x - origin.x, pt.y - origin.y];
+    });
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    if (Math.max(...xs) < 0 || Math.min(...xs) > size) return null;
+    if (Math.max(...ys) < 0 || Math.min(...ys) > size) return null;
+    return points;
+  }
+
+  /** Draw the colours again: the regions or their looks changed. */
+  function refreshColours() {
+    if (!map) return;
+    if (colours) {
+      map.removeLayer(colours);
+      colours = null;
+    }
+    const code = ctx.planProvider ? ctx.planProvider() : null;
+    if (!colouredRegions().length) return;
+    colours = colourLayer(code || "BI");
+    colours.addTo(map);
+  }
+
   /** Mock mode: a neutral canvas grid drawn in the browser, no request (spec section 7.1.7). */
   function neutralLayer() {
     const Neutral = L.GridLayer.extend({
@@ -1196,6 +1319,7 @@ export function createPlanMap(ctx) {
     return building instanceof Map ? building : new Map();
   }
 
+  let colours = null;  // the live colour layer, when something carries its own
   let buildingKey = "";
 
   /** Tiles whose own pack is in X-Plane. A tile's overlay row says whether the shared
@@ -1325,6 +1449,7 @@ export function createPlanMap(ctx) {
   // ---------------------------------------------------------------- the panel and overlays
 
   function renderAll() {
+    refreshColours();
     renderToolOptions();
     renderHelp();
     renderStatus();

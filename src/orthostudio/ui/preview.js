@@ -62,7 +62,7 @@ export function colourPreview(h, sample, look, options = {}) {
 
 /** The mock mode has no imagery: a ground-looking image drawn from the sample's own name, so the
  * preview can be seen and tested with no network. */
-function mockPhoto(size, seed) {
+export function mockPhoto(size, seed) {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
