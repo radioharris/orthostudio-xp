@@ -94,6 +94,7 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "photo_brightness": TileParameter(float, 0.0),
     "photo_contrast": TileParameter(float, 0.0),
     "photo_saturation": TileParameter(float, 0.0),
+    "photo_zones": TileParameter(list, []),
 }
 """Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
 Ortho4XP: the decals on the sea (2026-09-17) and the colours of the photo (2026-09-18). They are

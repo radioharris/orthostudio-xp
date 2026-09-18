@@ -67,3 +67,45 @@ def test_a_neutral_look_keeps_the_key_of_every_texture_built_before() -> None:
     softer = TextureDdsParams(**common, photo_saturation=-0.15).canonical()
     assert softer["photo_saturation"] == -0.15 and softer["photo_brightness"] == 0.0
     assert {k: v for k, v in softer.items() if not k.startswith("photo_")} == neutral
+
+
+def test_a_zone_gives_its_own_colours_to_the_textures_it_holds() -> None:
+    """Colours per zone (a user asked, 2026-09-18): the zone at the texture's **centre** wins.
+
+    A texture is one file, so it cannot carry two looks; the zoom level of a texture is already
+    decided by the zone at its centre (``dsf/zones.py``), and the colours follow the same rule.
+    """
+    from orthostudio.imagery.grid import texture_at
+    from orthostudio.pipeline.build import photo_zone_colours
+
+    north_west = [46.5, 6.0, 46.5, 6.5, 47.0, 6.5, 47.0, 6.0, 46.5, 6.0]
+    zones = [[north_west, -0.06, -0.03, -0.3]]
+    inside = texture_at(46.8, 6.2, 16, "BI")
+    outside = texture_at(46.2, 6.8, 16, "BI")
+    colours = photo_zone_colours(zones, [inside, outside])
+    assert colours[inside] == (-0.06, -0.03, -0.3)
+    assert outside not in colours  # the tile's own colours apply there
+    assert photo_zone_colours([], [inside]) == {}  # no zone, nothing to say
+    # the first zone holding the centre wins, as in the zone_list
+    second = [[north_west, 0.0, 0.0, -0.15]]
+    assert photo_zone_colours(zones + second, [inside])[inside] == (-0.06, -0.03, -0.3)
+
+
+def test_the_zones_of_a_tile_carry_their_look_to_the_build() -> None:
+    """``zones.photo_zone_entries`` clips them per tile, and only for a zone that names one."""
+    from orthostudio.config.overrides import PHOTO_LOOKS
+    from orthostudio.model import TileRef
+    from orthostudio.zones import Zone, photo_zone_entries, with_photo_zones
+
+    square = [[6.1, 46.1], [6.4, 46.1], [6.4, 46.4], [6.1, 46.4]]
+    toned = Zone.model_validate(
+        {"id": "a", "zl": 17, "photo_look": "much_softer", "polygon": square}
+    )
+    plain = Zone.model_validate({"id": "b", "zl": 17, "polygon": square})
+    (entry,) = photo_zone_entries([toned, plain], TileRef(46, 6))
+    assert tuple(entry[1:]) == PHOTO_LOOKS["much_softer"]
+    assert len(entry[0]) % 2 == 0 and entry[0][:2] == entry[0][-2:]  # a closed ring of lat, lon
+    assert photo_zone_entries([toned], TileRef(45, 6)) == []  # another tile: nothing
+    assert photo_zone_entries([plain], TileRef(46, 6)) == []  # no look of its own: nothing
+    assert "photo_zones" not in with_photo_zones({}, [plain], TileRef(46, 6))
+    assert with_photo_zones({}, [toned], TileRef(46, 6))["photo_zones"] == [entry]

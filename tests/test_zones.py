@@ -99,6 +99,7 @@ def test_a_zone_is_normalised_closing_vertex_dropped_and_nine_decimals() -> None
         "name": "LSGG",
         "zl": 18,
         "provider": None,
+        "photo_look": None,
         "polygon": LSGG,
     }
 
@@ -209,7 +210,7 @@ def test_a_zone_with_a_problem_is_listed_as_stored_and_refuses_only_the_tiles_it
         zones_file_revision(tmp_path)  # a folder in the way cannot be read: coded, not ignored
     assert info.value.code == "ZONE_INVALID" and info.value.context["path"] == str(tmp_path)
     # the valid zone normalised, the invalid one exactly as stored (closing vertex, name)
-    assert saved.listed == ({**cape_town, "name": "", "provider": None}, GO2)
+    assert saved.listed == ({**cape_town, "name": "", "provider": None, "photo_look": None}, GO2)
     assert [zone.id for zone in saved.zones] == ["cpt"]
     (problem,) = saved.problems
     reason = "provider GO2 is not in the registry"
@@ -320,7 +321,12 @@ def test_no_file_repeated_ids_the_limit_and_unexpected_keys(tmp_path: Path) -> N
     assert "used by another zone" in saved.problems[1].to_dict()["reason"]
     assert saved.problems[2].error.context["count"] == 501
     assert len(saved.listed) == 501 and len(saved.zones) == 499
-    assert saved.listed[1] == {**zone, "name": "", "provider": None}  # normalised
+    assert saved.listed[1] == {
+        **zone,
+        "name": "",
+        "provider": None,
+        "photo_look": None,
+    }  # normalised
     assert saved.listed[500] == last  # as stored
     # the unexpected key touches no tile; a zone with a problem refuses the tiles it touches
     assert saved.readable and len(saved.zones_for([TileRef(-34, 18)])) == 498

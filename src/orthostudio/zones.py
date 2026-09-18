@@ -77,11 +77,13 @@ __all__ = [
     "dumps_zones",
     "load_zones",
     "parse_zones_document",
+    "photo_zone_entries",
     "read_saved_zones",
     "read_zones_file",
     "save_zones",
     "tiles_touched",
     "too_many_zones",
+    "with_photo_zones",
     "with_zone_list",
     "zone_conflict",
     "zone_invalid",
@@ -195,6 +197,9 @@ class Zone(BaseModel):
     name: str = Field(default="", max_length=MAX_NAME_LENGTH)
     zl: int = Field(ge=MIN_ZL, le=MAX_ZL)
     provider: str | None = None
+    photo_look: Literal["as_delivered", "softer", "much_softer"] | None = None
+    """Colours of the photos inside this zone; ``None`` takes the tile's answer (a user asked for
+    colours per zone, 2026-09-18). The numbers behind the names are ``config.overrides``'."""
     polygon: list[tuple[float, float]]
 
     @field_validator("name", mode="before")
@@ -205,6 +210,11 @@ class Zone(BaseModel):
     @field_validator("provider", mode="before")
     @classmethod
     def _provider(cls, value: Any) -> Any:
+        return None if value == "" else value
+
+    @field_validator("photo_look", mode="before")
+    @classmethod
+    def _photo_look(cls, value: Any) -> Any:
         return None if value == "" else value
 
     @field_validator("polygon", mode="before")
@@ -989,6 +999,35 @@ def zones_for_tile(
     return entries
 
 
+def photo_zone_entries(zones: Sequence[Zone], tile: TileRef) -> list[list[Any]]:
+    """The parts of the zones that name their own colours, clipped to ``tile``.
+
+    ``[[lat0, lon0, ..., lat0, lon0], brightness, contrast, saturation]`` per part, in document
+    order like ``zone_list``: the textures stage reads them and gives each texture the colours
+    of the first part its centre falls in (``pipeline-textures.md`` 6, a user asked for colours
+    per zone, 2026-09-18). A zone without ``photo_look`` is absent: its textures take the tile's
+    answer.
+    """
+    from orthostudio.config.overrides import PHOTO_LOOKS
+
+    cell = _cell(tile)
+    out: list[list[Any]] = []
+    for zone in zones:
+        if zone.photo_look is None:
+            continue
+        lon_min, lat_min, lon_max, lat_max = zone.bounds
+        if lon_max <= tile.lon or lon_min >= tile.lon + 1:
+            continue
+        if lat_max <= tile.lat or lat_min >= tile.lat + 1:
+            continue
+        brightness, contrast, saturation = PHOTO_LOOKS[zone.photo_look]
+        for part in _clip(zone.shape, cell):
+            ring = _entry_ring(part)
+            if ring is not None:
+                out.append([ring, brightness, contrast, saturation])
+    return out
+
+
 def with_zone_list(
     config: Mapping[str, Any], entries: Sequence[ZoneEntry], tile: TileRef
 ) -> dict[str, Any]:
@@ -1011,6 +1050,14 @@ def with_zone_list(
         )
     out["zone_list"] = [[list(coords), int(zl), str(code)] for coords, zl, code in entries]
     return out
+
+
+def with_photo_zones(
+    config: Mapping[str, Any], zones: Sequence[Zone], tile: TileRef
+) -> dict[str, Any]:
+    """``config`` plus ``photo_zones`` when a zone of ``tile`` names its own colours."""
+    entries = photo_zone_entries(zones, tile)
+    return {**config, "photo_zones": entries} if entries else dict(config)
 
 
 def tiles_touched(zone: Zone) -> list[TileRef]:

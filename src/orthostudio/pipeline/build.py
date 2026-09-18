@@ -22,13 +22,14 @@ import signal
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import blake3
+from pydantic import Field
 
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
@@ -48,7 +49,7 @@ from orthostudio.graph import (
     key_for,
     rule,
 )
-from orthostudio.imagery.grid import TextureId
+from orthostudio.imagery.grid import TextureId, tile_to_wgs84
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import detect_xplane, global_scenery_dir
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
@@ -150,6 +151,7 @@ __all__ = [
     "build_tiles",
     "declare",
     "parse_overlay_setting",
+    "photo_zone_colours",
     "resolve_global_scenery",
     "run_osm_phase",
     "source_ref",
@@ -555,6 +557,10 @@ class TileTexturesParams(RuleParams):
     photo_brightness: float = 0.0
     photo_contrast: float = 0.0
     photo_saturation: float = 0.0
+    photo_zones: list[Any] = Field(default_factory=list)
+    """``[[ring, brightness, contrast, saturation], ...]`` of the zones that name their own
+    colours (``zones.photo_zone_entries``): a texture whose centre falls in one takes them
+    instead of the tile's (a user asked for colours per zone, 2026-09-18)."""
     mask_zl: int = 14
     water_tech: str = "XP11 + bathy"
     imprint_masks_to_dds: bool = True
@@ -562,6 +568,12 @@ class TileTexturesParams(RuleParams):
     decal_on_sea: bool = False
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
+
+    def canonical(self) -> dict[str, Any]:
+        doc = super().canonical()
+        if not self.photo_zones:
+            doc.pop("photo_zones", None)  # no zone of its own: the key of every tile built before
+        return doc
 
     def ter_params(self) -> TerParams:
         return TerParams(
@@ -756,6 +768,41 @@ def textures_progress_message(
     return message
 
 
+def photo_zone_colours(
+    photo_zones: Sequence[Any], textures: Iterable[TextureId]
+) -> dict[TextureId, tuple[float, float, float]]:
+    """The colours of the textures whose centre falls in a zone naming its own.
+
+    ``photo_zones`` is what ``zones.photo_zone_entries`` produced (``[[lat0, lon0, ...],
+    brightness, contrast, saturation]``, in document order). A texture belongs to the **first**
+    zone holding its centre, as the zoom level of a texture is the one of the zone at its centre
+    (``dsf/zones.py``): a texture straddling two zones cannot have two colours, since it is one
+    file (a user asked for colours per zone, 2026-09-18). Textures absent from the result take
+    the tile's own colours.
+    """
+    if not photo_zones:
+        return {}
+    from shapely.geometry import Point, Polygon
+
+    shapes = []
+    for entry in photo_zones:
+        ring, brightness, contrast, saturation = entry
+        coords = [(float(ring[i + 1]), float(ring[i])) for i in range(0, len(ring) - 1, 2)]
+        if len(coords) >= 3:
+            shapes.append(
+                (Polygon(coords), (float(brightness), float(contrast), float(saturation)))
+            )
+    out: dict[TextureId, tuple[float, float, float]] = {}
+    for texture in textures:
+        lat, lon = tile_to_wgs84(texture.til_x + 8, texture.til_y + 8, texture.zl)
+        centre = Point(lon, lat)
+        for shape, colours in shapes:
+            if shape.contains(centre):
+                out[texture] = colours
+                break
+    return out
+
+
 def _tile_textures(ctx: RunContext) -> None:
     """Every texture the DSF references: ``build_textures`` (P1) per (provider, zl) group."""
     act = _active()
@@ -771,6 +818,7 @@ def _tile_textures(ctx: RunContext) -> None:
         lookup = index if len(index) else None
     (ctx.out / "textures").mkdir(exist_ok=True)
     (ctx.out / "terrain").mkdir(exist_ok=True)
+    photo_by_texture = photo_zone_colours(params.photo_zones, [j.texture for j in jobs])
     groups: dict[tuple[str, int], list[PipelineTextureJob]] = {}
     for job in jobs:
         groups.setdefault((job.texture.provider, job.texture.zl), []).append(job)
@@ -823,6 +871,7 @@ def _tile_textures(ctx: RunContext) -> None:
             photo_brightness=params.photo_brightness,
             photo_contrast=params.photo_contrast,
             photo_saturation=params.photo_saturation,
+            photo_by_texture=photo_by_texture,
             workers=env.workers,
             encoder=params.encoder,
             mip_mode=params.mip_mode,

@@ -35,7 +35,7 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 {
  "format": "osxp-zones-1",
  "zones": [
-  {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": null,
+  {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": null, "photo_look": null,
    "polygon": [[6.090, 46.225], [6.130, 46.225], [6.130, 46.250], [6.090, 46.250]]}
  ]
 }
@@ -48,6 +48,14 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 - `zl`: integer 12 to 20. When `provider` is set, at most that provider's `max_zl`; when it is
   `null` the tile's provider applies and the check happens when the build is planned.
 - `provider`: `null` (the tile's provider) or a registry code.
+- `photo_look`: `null` (the tile's answer) or `as_delivered` / `softer` / `much_softer`, the
+  colours of the photos inside the zone (a user asked for colours per zone, 2026-09-18). The
+  numbers behind the names are `config.overrides.PHOTO_LOOKS`. `zones.photo_zone_entries` clips
+  the zones that name one into the tile's `photo_zones` setting, and the textures stage gives
+  each texture the colours of the **first** zone holding its centre
+  (`pipeline.build.photo_zone_colours`): a texture is one file, so it cannot carry two looks, and
+  the rule is the one the zoom level already follows. A tile with no such zone keeps the artefact
+  key it had (`TileTexturesParams.canonical`).
 - `id`: 1 to 64 characters `[A-Za-z0-9_-]`, unique in the document; `name`: at most 80
   characters (may be empty).
 - At most 500 zones in a document.

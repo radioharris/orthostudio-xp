@@ -214,6 +214,8 @@ const STRINGS = {
     "draw.max_points": "Une forme a au plus {max} points.",
     "draw.busy": "Terminez ou annulez d'abord la forme en cours.",
 
+    "zones.colours_tile": "Couleurs : comme la tuile",
+    "zones.colours_of": "Couleurs de {name}",
     "zones.next_zl": "Niveau de détail des nouvelles zones",
     "zones.next_provider": "Source d'imagerie des nouvelles zones",
     "zones.tile_provider": "Comme les tuiles",
@@ -915,6 +917,8 @@ const STRINGS = {
     "draw.max_points": "A shape has at most {max} points.",
     "draw.busy": "Finish or cancel the shape you are drawing first.",
 
+    "zones.colours_tile": "Colours: same as the tile",
+    "zones.colours_of": "Colours of {name}",
     "zones.next_zl": "Detail level of new zones",
     "zones.next_provider": "Imagery source of new zones",
     "zones.tile_provider": "Same as the tiles",

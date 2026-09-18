@@ -1542,6 +1542,19 @@ export function createPlanMap(ctx) {
       changed();
     });
 
+    // Colours of this zone's photos, or the tile's answer (a user asked for colours per zone,
+    // 2026-09-18). The names are the ones of the Settings question.
+    const colours = h("select", { class: "zone-colours", "aria-label": t("zones.colours_of", { name: label }), disabled, dataset: key("colours") },
+      [["", t("zones.colours_tile")],
+       ["as_delivered", t("settings.q.colours_as_delivered")],
+       ["softer", t("settings.q.colours_softer")],
+       ["much_softer", t("settings.q.colours_much_softer")]].map(([value, text]) => h("option", { value }, text)));
+    colours.value = z.photo_look || "";
+    colours.addEventListener("change", () => {
+      z.photo_look = colours.value || null;
+      changed();
+    });
+
     const button = (part, text, title, onclick, off) =>
       h("button", { type: "button", class: "btn btn-small btn-icon", "aria-label": title, title, disabled: disabled || off, dataset: key(part), onclick }, text);
     const up = button("up", "↑", t("zones.move_up", { name: label }), () => moveZone(z.id, -1), index === 0);
@@ -1573,6 +1586,7 @@ export function createPlanMap(ctx) {
         h("div", { class: "zone-row" }, name, up, down, del),
         h("div", { class: "zone-row" }, detail),
         h("div", { class: "zone-row" }, imagery),
+        h("div", { class: "zone-row" }, colours),
         notes));
     li.addEventListener("focusin", () => select(z.id, "list"));
     li.addEventListener("click", (ev) => {

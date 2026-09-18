@@ -34,7 +34,8 @@ def _spec(config: dict[str, object], tmp_path: Path) -> BuildSpec:
 def test_default_overrides_reproduce_the_ortho4xp_tile_defaults(tmp_path: Path) -> None:
     ov = to_build_overrides(Settings())
     expected = (set(TILE_PARAMETERS) - NOT_EMITTED) | set(OVERLAY_SETTINGS) - {"keep_objects"}
-    assert set(ov) == expected | set(OSXP_PARAMETERS)
+    # photo_zones comes from the zones drawn on the map, not from the settings
+    assert set(ov) == expected | (set(OSXP_PARAMETERS) - {"photo_zones"})
     cfg = _spec(ov, tmp_path).tile_config()
     defaults = tile_defaults()
     for name, value in ov.items():

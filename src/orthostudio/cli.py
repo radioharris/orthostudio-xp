@@ -188,6 +188,7 @@ def _build_specs(
     require_data_root()
     config = _parse_sets(sets)
     zone_lists = _zone_lists(zones, tiles, provider, config) if zones is not None else {}
+    drawn = _zones_of(zones) if zones is not None else []
     xp = _resolve_xplane(xplane) if (install or xplane is not None) else None
     if install and xp is None:
         raise OsxpError(
@@ -236,7 +237,7 @@ def _build_specs(
             zl=zl,
             out_dir=out_dir,
             global_scenery_dir=gs,
-            config=_with_zones(config, zone_lists.get(tile), ref),
+            config=_with_zones(config, zone_lists.get(tile), ref, drawn),
             install=install,
             custom_scenery=custom_scenery_dir(xp) if xp is not None else None,
             overlay=overlay,
@@ -292,12 +293,20 @@ def _zone_lists(
     return out
 
 
-def _with_zones(config: dict[str, Any], entries: list | None, tile: Any) -> dict[str, Any]:
-    if not entries:
-        return dict(config)
-    from orthostudio.zones import with_zone_list
+def _zones_of(path: Path) -> list:
+    """The zones of a ``--zones FILE``, for the settings they carry of their own (colours)."""
+    from orthostudio.zones import read_zones_file
 
-    return with_zone_list(config, entries, tile)
+    return list(read_zones_file(path).document.zones)
+
+
+def _with_zones(
+    config: dict[str, Any], entries: list | None, tile: Any, zones: list | None = None
+) -> dict[str, Any]:
+    from orthostudio.zones import with_photo_zones, with_zone_list
+
+    out = with_zone_list(config, entries, tile) if entries else dict(config)
+    return with_photo_zones(out, zones, tile) if zones else out
 
 
 class _BuildReporter:

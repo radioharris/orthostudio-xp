@@ -39,6 +39,7 @@ from orthostudio.zones import (
     ZoneEntry,
     default_zones_path,
     read_saved_zones,
+    with_photo_zones,
     with_zone_list,
     zones_for_tile,
 )
@@ -292,7 +293,9 @@ def make_specs(
                 zl=zl,
                 out_dir=out_dir,
                 global_scenery_dir=gs,
-                config=with_zone_list(config, zone_lists[name], tile),
+                config=with_photo_zones(
+                    with_zone_list(config, zone_lists[name], tile), zones, tile
+                ),
                 install=install,
                 custom_scenery=custom_scenery_dir(xp) if xp is not None else None,
                 overlay=overlay,

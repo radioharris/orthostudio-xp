@@ -432,12 +432,16 @@ export function decodeBorders(doc) {
 }
 
 /** One zone as the page keeps it and sends it: the five fields, ring open, 9 decimals. */
+/** The looks a zone may name of its own; ``null`` takes the tile's answer (``zones.py``). */
+export const PHOTO_LOOK_VALUES = ["as_delivered", "softer", "much_softer"];
+
 export function normalizeZone(zone) {
   return {
     id: String(zone.id),
     name: typeof zone.name === "string" ? zone.name.slice(0, MAX_NAME) : "",
     zl: Number(zone.zl),
     provider: typeof zone.provider === "string" && zone.provider ? zone.provider : null,
+    photo_look: PHOTO_LOOK_VALUES.includes(zone.photo_look) ? zone.photo_look : null,
     polygon: cleanPolygon(zone.polygon).map(([x, y]) => [round9(x), round9(y)]),
   };
 }

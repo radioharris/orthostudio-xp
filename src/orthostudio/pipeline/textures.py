@@ -29,7 +29,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Coroutine, Iterable
+from collections.abc import Callable, Coroutine, Iterable, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from importlib import resources
@@ -245,6 +245,9 @@ class TexturesSpec:
     photo_contrast: float = 0.0
     photo_saturation: float = 0.0
     """Colours of the photo, applied to every texture of the tile (``textures/colour.py``)."""
+    photo_by_texture: Mapping[TextureId, tuple[float, float, float]] = field(default_factory=dict)
+    """Colours of the textures that fall in a zone naming its own (``zones.photo_zone_entries``,
+    a user asked, 2026-09-18); the three above are used for every other texture."""
     idle: Callable[[bool], None] | None = None
     """Told that the run holds its slot without using it, during the pauses of the second pass
     (``NodeContext.set_idle``): a build has one network slot, and a tile waiting for a handful of
@@ -1088,9 +1091,20 @@ class _Pipeline:
             sea_texture_blur=self.spec.sea_texture_blur if masked else 0.0,
             clean_halo=self.spec.clean_halo if masked else False,
             parent_levels=self.spec.parent_levels if st.parents else 0,
-            photo_brightness=self.spec.photo_brightness,
-            photo_contrast=self.spec.photo_contrast,
-            photo_saturation=self.spec.photo_saturation,
+            **dict(
+                zip(
+                    ("photo_brightness", "photo_contrast", "photo_saturation"),
+                    self.spec.photo_by_texture.get(
+                        st.texture,
+                        (
+                            self.spec.photo_brightness,
+                            self.spec.photo_contrast,
+                            self.spec.photo_saturation,
+                        ),
+                    ),
+                    strict=True,
+                )
+            ),
         )
 
     # -- pool --------------------------------------------------------------------------------

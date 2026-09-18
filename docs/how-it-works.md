@@ -184,6 +184,11 @@ that reads the downloaded images: changing your mind builds the tile again **wit
 anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing his
 screenshots by hand (2026-09-18).
 
+**Colours zone by zone.** A zone drawn on the map can take its own colours (*Couleurs* in its
+row): a coastal strip toned down while the rest of the tile stays as delivered, for instance. The
+textures inside it are encoded with those colours, the others with the tile's answer, and a
+texture belongs to the zone its centre falls in.
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in
