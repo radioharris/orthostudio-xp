@@ -84,3 +84,37 @@ def test_the_page_and_the_engine_agree_on_the_named_looks() -> None:
             "contrast": contrast,
             "saturation": saturation,
         }, name
+
+
+def test_the_map_paints_a_zone_over_the_square_it_is_drawn_in() -> None:
+    """The map repaints what carries its own colours, and a canvas keeps what is drawn last.
+
+    A user saw a zone keep the colours of its square (2026-09-18): the squares were painted
+    after the zones, covering them. The order must end with what a build applies -- the zone
+    inside its polygon, and, where two overlap, the one higher in the list, since a texture takes
+    the colours of the first zone holding its centre (``build.photo_zone_colours``).
+    """
+    if NODE is None:
+        pytest.skip("node is not installed")
+    zones = [
+        {"id": "first", "polygon": [[0, 0], [1, 0], [1, 1]], "photo": {"look": "softer"}},
+        {"id": "second", "polygon": [[0, 0], [1, 0], [1, 1]], "photo": {"look": "much_softer"}},
+        {"id": "plain", "polygon": [[0, 0], [1, 0], [1, 1]], "photo": {"look": None}},
+        {"id": "sliver", "polygon": [[0, 0], [1, 0]], "photo": {"look": "softer"}},
+    ]
+    tiles = {"+43+005": {"photo": {"look": "custom", "brightness": 0.5}}}
+    script = (
+        "import('./geo.js').then(m => process.stdout.write(JSON.stringify("
+        f"m.colouredRegions({json.dumps(zones)}, {json.dumps(tiles)})"
+        ".map(r => r.square ? 'square' : r.photo.look))))"
+    )
+    out = subprocess.run(
+        [NODE, "--input-type=module"],
+        input=script,
+        cwd=UI,
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    # the square first, then the zones from the last to the first: what wins is painted last
+    assert json.loads(out.stdout) == ["square", "much_softer", "softer"]

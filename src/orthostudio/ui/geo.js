@@ -450,6 +450,37 @@ export function photoKey(photo) {
   return `custom:${n(photo.brightness)}:${n(photo.contrast)}:${n(photo.saturation)}`;
 }
 
+/** The regions that carry colours of their own, **in painting order**: what comes last covers
+ * what came before, so the list ends with what a build would apply.
+ *
+ * ``zones`` is the document's list and ``tiles`` its squares (``{name: {photo}}``). The squares
+ * come first; the zones follow, from the last of the document to the first, since a zone wins
+ * inside its polygon and, where two overlap, the one higher in the list wins -- the rule a build
+ * follows, a texture taking the colours of the first zone holding its centre
+ * (``build.photo_zone_colours``). Painting the squares last hid the colours of every zone drawn
+ * inside one (a user, 2026-09-18). Each region is ``{ring: [[lon, lat], ...], photo, square?}``.
+ */
+export function colouredRegions(zones, tiles) {
+  const out = [];
+  for (const [name, choice] of Object.entries(tiles || {})) {
+    const corner = parseTile(name);
+    if (!corner || !choice?.photo?.look) continue;
+    const { lat, lon } = corner;
+    out.push({
+      ring: [[lon, lat], [lon + 1, lat], [lon + 1, lat + 1], [lon, lat + 1]],
+      photo: choice.photo,
+      square: true,
+    });
+  }
+  for (let i = (zones || []).length - 1; i >= 0; i -= 1) {
+    const zone = zones[i];
+    if (zone?.photo?.look && (zone.polygon || []).length >= 3) {
+      out.push({ ring: zone.polygon, photo: zone.photo });
+    }
+  }
+  return out;
+}
+
 /** One colour choice, as the API stores it: a look and the three numbers of "custom". */
 export function normalizePhoto(photo) {
   const p = photo && typeof photo === "object" ? photo : {};

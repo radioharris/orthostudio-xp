@@ -25,6 +25,7 @@ import {
   ZONES_FORMAT,
   clampLat,
   cleanPolygon,
+  colouredRegions,
   decodeBorders,
   insertIndexForZl,
   metersPerPixel,
@@ -1210,28 +1211,6 @@ export function createPlanMap(ctx) {
 
   // -- the colours, live on the map ----------------------------------------------------------
 
-  /** The regions that carry colours of their own, zones first (a zone wins inside its polygon).
-   *
-   * ``{ring: [[lon, lat], ...], look}``; the squares chosen come after, so a zone drawn in one
-   * paints over it, which is the rule a build follows (``map-zones.md`` 3). */
-  function colouredRegions() {
-    const out = [];
-    for (const z of zs.zones) {
-      if (z.photo?.look && z.polygon.length >= 3) out.push({ ring: z.polygon, photo: z.photo });
-    }
-    for (const [name, choice] of Object.entries(zs.tiles || {})) {
-      const corner = parseTile(name);
-      if (!corner || !choice?.photo?.look) continue;
-      const { lat, lon } = corner;
-      out.push({
-        ring: [[lon, lat], [lon + 1, lat], [lon + 1, lat + 1], [lon, lat + 1]],
-        photo: choice.photo,
-        square: true,
-      });
-    }
-    return out;
-  }
-
   /** A layer that repaints the map with the colours a build would encode (a user asked to see
    * the result on the whole square, not in a thumbnail, 2026-09-18).
    *
@@ -1245,7 +1224,7 @@ export function createPlanMap(ctx) {
         const canvas = document.createElement("canvas");
         canvas.width = size.x;
         canvas.height = size.y;
-        const regions = colouredRegions();
+        const regions = colouredRegions(zs.zones, zs.tiles);
         const g = canvas.getContext("2d", { willReadFrequently: true });
         if (!g || !regions.length) {
           setTimeout(() => done(null, canvas), 0);
@@ -1324,7 +1303,7 @@ export function createPlanMap(ctx) {
       colours = null;
     }
     const code = ctx.planProvider ? ctx.planProvider() : null;
-    if (!colouredRegions().length) return;
+    if (!colouredRegions(zs.zones, zs.tiles).length) return;
     colours = colourLayer(code || "BI");
     colours.addTo(map);
   }
