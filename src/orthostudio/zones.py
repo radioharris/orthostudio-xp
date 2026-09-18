@@ -230,10 +230,11 @@ class Zone(BaseModel):
     first is dropped and every coordinate is rounded to 9 decimals. ``provider`` ``None`` is
     the tile's provider (an empty string is read as ``None``). Validation raises
     ``ZONE_INVALID`` naming the zone; the provider is looked up in the embedded registry, or
-    in the one given as the validation context ``{"registry": {...}}``.
+    in the one given as the validation context ``{"registry": {...}}``. Unknown keys are ignored,
+    so a zone written by a newer version keeps its zoom level and its shape here.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     id: str = Field(min_length=1, max_length=MAX_ID_LENGTH, pattern=_ID_PATTERN)
     name: str = Field(default="", max_length=MAX_NAME_LENGTH)
@@ -337,9 +338,15 @@ def check_zone_ids(zones: Sequence[Zone]) -> None:
 
 
 class ZonesDocument(BaseModel):
-    """The ``osxp-zones-1`` document: at most 500 zones, ids unique, order = priority."""
+    """The ``osxp-zones-1`` document: at most 500 zones, ids unique, order = priority.
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    Unknown keys are **ignored**, here and in a zone: a file written by a newer OrthoStudio XP
+    must stay readable by an older one, which keeps what it understands instead of refusing the
+    file. A user lost his zones the day an engine that did not know ``tiles`` refused the whole
+    document and the page offered to replace it (2026-09-18).
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     format: Literal["osxp-zones-1"] = "osxp-zones-1"
     zones: list[Zone] = Field(default_factory=list)

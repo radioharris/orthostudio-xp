@@ -71,6 +71,12 @@ tile can carry different colours; only the textures are re-encoded, nothing is d
   characters (may be empty).
 - At most 500 zones in a document.
 
+A key this version does not know, in the document or in a zone, is **ignored, never refused**: a
+file written by a newer OrthoStudio XP stays readable by an older one, which keeps the zones it
+understands. A user lost his zones the day an engine that did not know `tiles` refused the whole
+file and the page replaced it on the next save (2026-09-18). The page now leaves a file it could
+not read alone: nothing is saved over it until *Start over* is clicked.
+
 The **revision** of the file is the SHA-256 of its bytes in hex, `""` when there is no file
 (`orthostudio.zones.zones_revision`).
 

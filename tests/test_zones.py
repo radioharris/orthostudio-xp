@@ -120,10 +120,11 @@ def test_a_zone_is_normalised_closing_vertex_dropped_and_nine_decimals() -> None
         ({"id": "a b"}, "id"),
         ({"id": "x" * 65}, "id"),
         ({"name": "n" * 81}, "name"),
-        ({"color": "red"}, "color"),
     ],
 )
 def test_an_invalid_zone_refuses_the_whole_document(zone: dict[str, Any], needle: str) -> None:
+    """A key this version does not know is not in this list: it is ignored, so that a file
+    written by a newer OrthoStudio XP stays readable (test below, 2026-09-18)."""
     good = {"id": "good", "zl": 17, "polygon": _square(6.1, 46.1, 6.2, 46.2)}
     bad = {"id": "bad", "zl": 18, "polygon": _square(6.3, 46.3, 6.4, 46.4), **zone}
     err = _refused("ZONE_INVALID", {"format": "osxp-zones-1", "zones": [good, bad]})
@@ -632,3 +633,25 @@ def test_cli_refuses_a_bad_zones_file(home: Path, tmp_path: Path) -> None:
     with pytest.raises(OsxpError) as info:
         read_zones_file(bad)
     assert "Point is not a Polygon" in info.value.context["reason"]
+
+
+def test_a_document_from_a_newer_version_keeps_what_this_one_understands() -> None:
+    """A user lost his zones when an engine that did not know ``tiles`` refused the file and the
+    page offered to replace it (2026-09-18): unknown keys are ignored, never refused."""
+    from orthostudio.zones import parse_zones_document
+
+    doc = parse_zones_document(
+        {
+            "format": "osxp-zones-1",
+            "invented_later": {"x": 1},
+            "zones": [
+                {
+                    "id": "a",
+                    "zl": 17,
+                    "polygon": [[6.0, 46.0], [6.1, 46.0], [6.1, 46.1]],
+                    "from_the_future": True,
+                }
+            ],
+        }
+    )
+    assert [z.id for z in doc.zones] == ["a"] and doc.zones[0].zl == 17

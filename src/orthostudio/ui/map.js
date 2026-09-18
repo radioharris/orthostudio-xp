@@ -188,7 +188,8 @@ export function createPlanMap(ctx) {
 
   const zs = {
     zones: [],
-    tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
+    tiles: {},
+    fileUnreadable: false,  // the saved file holds something this version could not read  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
     loadError: null, // the engine could not be reached (network, 5xx): nothing is editable
@@ -386,7 +387,11 @@ export function createPlanMap(ctx) {
       zs.fileProblems = read.fileProblems;
       zs.marks = new Map([...read.marks].map(([id, reason]) => [id, { reason, source: "document" }]));
       zs.saveError = null;
-      zs.loaded = true;
+      // Nothing could be read from a file that holds something: saving now would replace it
+      // unseen, which is how a user lost his zones the day an older engine met a newer file
+      // (2026-09-18). Editing waits until he says to start over.
+      zs.fileUnreadable = read.zones.length === 0 && read.fileProblems.length > 0;
+      zs.loaded = !zs.fileUnreadable;
     }
     // Every caller replaces the list (or finds it unavailable): an edit waiting to be saved is gone.
     clearTimeout(zs.saveTimer);
@@ -594,7 +599,8 @@ export function createPlanMap(ctx) {
       ctx.toast(t("zones.too_many", { max: MAX_ZONES }), "fail");
       return;
     }
-    const zone = { id: newZoneId(zs.zones), name: defaultName(), zl: zs.nextZl, provider: zs.nextProvider || null, polygon };
+    const zone = { id: newZoneId(zs.zones), name: defaultName(), zl: zs.nextZl,
+      provider: zs.nextProvider || null, photo: normalizePhoto(null), polygon };  // fmt: skip
     zs.zones.splice(insertIndexForZl(zs.zones, zone.zl), 0, zone);
     zs.selected = zone.id;
     changed();
@@ -1483,8 +1489,20 @@ export function createPlanMap(ctx) {
     if (!box) return;
     const marked = zs.zones.filter((z) => zs.marks.has(z.id)).length;
     clear(box);
-    box.hidden = !zs.loaded || (!zs.fileProblems.length && !marked);
+    box.hidden = !zs.loaded && !zs.fileUnreadable ? true : !zs.fileProblems.length && !marked;
     if (box.hidden) return;
+    if (zs.fileUnreadable) {
+      box.append(
+        h("p", null, t("zones.file_unreadable")),
+        h("ul", null, zs.fileProblems.map((text) => h("li", null, text))),
+        h("button", { type: "button", class: "btn btn-small", onclick: () => {
+          zs.fileUnreadable = false;
+          zs.loaded = true;
+          renderAll();
+        } }, t("zones.file_start_over")),
+      );
+      return;
+    }
     if (zs.fileProblems.length) {
       box.append(h("p", null, t("zones.file_problems")), h("ul", null, zs.fileProblems.map((text) => h("li", null, text))));
     }
@@ -1586,14 +1604,14 @@ export function createPlanMap(ctx) {
        ["softer", t("settings.q.colours_softer")],
        ["much_softer", t("settings.q.colours_much_softer")],
        ["custom", t("settings.q.colours_custom")]].map(([value, text]) => h("option", { value }, text)));
-    colours.value = z.photo.look || "";
+    colours.value = z.photo?.look || "";
     colours.addEventListener("change", () => {
-      z.photo = { ...z.photo, look: colours.value || null };
+      z.photo = { ...normalizePhoto(z.photo), look: colours.value || null };
       changed();
       renderList();  // the sliders of "my own values" appear or go
     });
     // The three numbers, right under the choice, as in Settings and in step 1 (a user, 2026-09-18)
-    const sliders = z.photo.look === "custom" ? ctx.photoSliders(z.photo, (next) => {
+    const sliders = z.photo?.look === "custom" ? ctx.photoSliders(z.photo, (next) => {
       z.photo = next;
       changed();
     }) : null;
