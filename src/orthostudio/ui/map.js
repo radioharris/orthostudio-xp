@@ -443,11 +443,17 @@ export function createPlanMap(ctx) {
     return given;
   }
 
-  /** Whether anything not installed carries colours of its own (the button shows then). */
-  function hasOwnColours() {
+  /** How many squares and zones carry colours of their own, and how many the button would give
+   * back: the Plan says it even when nothing is chosen, so a map repainted from an old visit is
+   * never a mystery (a user, 2026-09-18). */
+  function ownColours() {
     const installed = new Set(installedTiles());
-    if (Object.keys(zs.tiles).some((name) => !installed.has(name))) return true;
-    return zs.zones.some((z) => z.photo?.look && !zoneTiles(z).some((n) => installed.has(n)));
+    const squares = Object.keys(zs.tiles);
+    const zones = zs.zones.filter((z) => z.photo?.look);
+    const free =
+      squares.filter((name) => !installed.has(name)).length +
+      zones.filter((z) => !zoneTiles(z).some((n) => installed.has(n))).length;
+    return { squares: squares.length, zones: zones.length, free };
   }
 
   /** Give every square of ``names`` these colours (``null`` gives them back to Settings). */
@@ -1909,8 +1915,8 @@ export function createPlanMap(ctx) {
     zonesLoaded: () => zs.loaded,
     /** Give back to Settings the colours of what is not installed; answers how many. */
     resetColours,
-    /** Whether anything not installed carries colours of its own. */
-    hasOwnColours,
+    /** How many squares and zones carry their own colours, and how many can be given back. */
+    ownColours,
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();

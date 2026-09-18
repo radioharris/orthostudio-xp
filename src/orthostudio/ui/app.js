@@ -4040,6 +4040,26 @@ function renderTileColours() {
     renderPlanSettings();
   };
   setText(help, names.length ? t("plan.colours_help", { n: names.length }) : t("plan.colours_none"));
+  // What carries its own colours, said even when nothing is chosen: a map repainted from an old
+  // visit must never be a mystery, and the button is always within reach (a user, 2026-09-18).
+  const own = ready ? planMap.ownColours() : { squares: 0, zones: 0, free: 0 };
+  if (own.squares || own.zones) {
+    let line;
+    if (own.squares && own.zones) line = t("plan.colours_own_both", { squares: own.squares, zones: own.zones });
+    else if (own.squares) line = t("plan.colours_own_squares", { n: own.squares });
+    else line = t("plan.colours_own_zones", { n: own.zones });
+    if (!own.free) line += ` ${t("plan.colours_own_installed")}`;
+    box.append(h("div", { class: "colours-own" },
+      h("p", { class: "help" }, line),
+      own.free
+        ? h("button", { type: "button", class: "btn btn-small btn-quiet", onclick: () => {
+            const given = planMap.resetColours();
+            renderTileColours();
+            renderPlanSettings();
+            if (given) toast(t("plan.colours_reset_done", { n: given }));
+          } }, t("plan.colours_reset"))
+        : null));
+  }
   if (!names.length || !ready || shared.mixed) return;
   if (photo?.look === "custom") box.append(photoSliders(photo, (next) => {
     planMap.setTilesPhoto(names, next);
@@ -4048,20 +4068,6 @@ function renderTileColours() {
   // No thumbnail here: the map itself is repainted with these colours, which says it better
   // (a user, 2026-09-18). Settings keeps its two images, having no map.
   box.append(h("p", { class: "help" }, t("plan.colours_on_map")));
-  // Back to Settings in one click, for everything not yet in X-Plane (same user): a tile already
-  // installed keeps its colours, which are the record of what was built.
-  if (ready && planMap.hasOwnColours()) {
-    box.append(h("button", {
-      type: "button",
-      class: "btn btn-small btn-quiet",
-      onclick: () => {
-        const given = planMap.resetColours();
-        renderTileColours();
-        renderPlanSettings();
-        if (given) toast(t("plan.colours_reset_done", { n: given }));
-      },
-    }, t("plan.colours_reset")));
-  }
 }
 
 /** A colour choice with nothing set: what a square starts from when it takes its own. */

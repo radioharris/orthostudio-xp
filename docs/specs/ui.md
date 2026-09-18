@@ -700,9 +700,11 @@ zone: each is a stroke and nothing else, so no translucent colour lies about the
 now that the map shows the very colours a build will encode. The tile being built still pulses,
 on its stroke.
 
-Step 1 also carries **Give the colours back to Settings**, which appears only while something not
-installed carries its own: it clears the squares and the zones and says how many, and a tile
-already in X-Plane keeps its colours, which are the record of what was built.
+Step 1 also says, **whether or not anything is chosen**, how many squares and zones carry their
+own colours -- a map repainted from an old visit must never be a mystery (same user) -- and
+carries **Give the colours back to Settings** beside it: it clears them and says how many. A tile
+already in X-Plane keeps its colours, which are the record of what was built; when only such
+tiles are left, the line says so and the button goes.
 
 Step 1 carries no thumbnail: the map says it better, and one line points at it. Settings keeps its
 two images, having no map.
