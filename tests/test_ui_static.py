@@ -657,6 +657,7 @@ def test_the_page_and_the_engine_agree_on_the_api_level() -> None:
 # -- library (docs/specs/ui.md section 2.3) ---------------------------------------------------
 
 LIBRARY_ROW_KEYS = {
+    "photo",  # the colours the pack was built with, or null
     "tile",
     "kind",
     "provider",
@@ -2926,8 +2927,8 @@ def test_two_squares_with_the_same_answer_are_not_called_different() -> None:
     """
     calls = ", ".join(
         [
-            'm.photoKey(null)',
-            'm.photoKey({look: null, brightness: 0, contrast: 0, saturation: 0})',
+            "m.photoKey(null)",
+            "m.photoKey({look: null, brightness: 0, contrast: 0, saturation: 0})",
             'm.photoKey({look: "softer", brightness: 0, contrast: 0, saturation: 0})',
             'm.photoKey({saturation: -0.4, look: "softer", contrast: 0.2, brightness: 0})',
             'm.photoKey({look: "custom", brightness: 0, contrast: 0, saturation: -0.4})',

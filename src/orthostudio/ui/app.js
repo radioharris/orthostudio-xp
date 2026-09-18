@@ -3666,13 +3666,20 @@ function libraryRow(e) {
     inBuildPill = pill(t("library.in_build"), "running");
     inBuildPill.title = t("library.in_build_help");
   }
+  // The tile on the disk was built with other colours than the square asks for now: the map
+  // shows what you would get, this says what you have (a user, 2026-09-18).
+  let colourMark = null;
+  if (byOsxp && present && photoDiffers(e)) {
+    colourMark = pill(t("library.colours_old"), "warn");
+    colourMark.title = t("library.colours_old_help");
+  }
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
     ? h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
     : null;
   return h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, overlayMark ? [" ", overlayMark] : null),
+    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -3773,6 +3780,23 @@ function renderLibrary() {
   }
   for (const e of rows) body.append(libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
+}
+
+/** Whether the pack on the disk was built with other colours than its square asks for now.
+ *
+ * ``row.photo`` is what the manifest recorded (absent for a pack built before the colours, or
+ * with the plain ones); the square's answer comes from the map's document. Both are rounded the
+ * same way, so a 0 on one side and a missing section on the other agree. */
+function photoDiffers(row) {
+  const built = row.photo || {};
+  const own = planMap && planMap.tilePhoto ? planMap.tilePhoto(row.tile) : null;
+  const wanted = own?.look ? photoValues(own.look, own) : settingsPhoto();
+  const n = (v) => Number(v || 0).toFixed(3);
+  return (
+    n(built.brightness) !== n(wanted.brightness) ||
+    n(built.contrast) !== n(wanted.contrast) ||
+    n(built.saturation) !== n(wanted.saturation)
+  );
 }
 
 function libraryRows() {

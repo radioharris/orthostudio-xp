@@ -126,6 +126,18 @@ class PackParams(RuleParams):
     tile_cfg: str = ""
     """Text of ``tile_settings.cfg`` written in the pack (the 44 tile variables the build
     consumed, ``tile_cfg_text``); empty = no such file."""
+    photo_brightness: float = 0.0
+    photo_contrast: float = 0.0
+    photo_saturation: float = 0.0
+    """Colours of the square, written into the manifest so that the page can say when the tile in
+    X-Plane no longer matches its setting (2026-09-18)."""
+
+    def canonical(self) -> dict[str, Any]:
+        doc = super().canonical()
+        if not (self.photo_brightness or self.photo_contrast or self.photo_saturation):
+            for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
+                doc.pop(name, None)  # a plain pack keeps the key it had
+        return doc
 
 
 class InstallParams(RuleParams):
@@ -157,6 +169,11 @@ class PackManifest:
     zl: int
     artefacts: dict[str, ArtefactEntry] = field(default_factory=dict)
     files: dict[str, Any] = field(default_factory=dict)
+    photo: dict[str, float] = field(default_factory=dict)
+    """Colours of the square this pack was built with (``brightness``, ``contrast``,
+    ``saturation``); empty when they were the plain ones. The page compares them with the square's
+    setting and says when the tile in X-Plane no longer matches it (a user, 2026-09-18). The zones
+    of the tile may carry others: this is the square's answer."""
 
     def to_toml(self) -> str:
         lines = [f'format = "{PACK_FORMAT}"', "", "[tile]"]
@@ -170,6 +187,10 @@ class PackManifest:
         lines += ["", "[files]"]
         for name in sorted(self.files):
             lines.append(f"{name} = {_toml_value(self.files[name])}")
+        if self.photo:
+            lines += ["", "[photo]"]
+            for name in sorted(self.photo):
+                lines.append(f"{name} = {_toml_value(self.photo[name])}")
         return "\n".join(lines) + "\n"
 
     @classmethod
@@ -188,6 +209,7 @@ class PackManifest:
             zl=int(tile["zl"]),
             artefacts=artefacts,
             files=dict(doc.get("files", {})),
+            photo={k: float(v) for k, v in dict(doc.get("photo", {})).items()},
         )
 
     @property
@@ -480,6 +502,7 @@ def assemble_pack(
     overlay: ResolvedInput,
     link: bool = True,
     tile_cfg: str = "",
+    photo: dict[str, float] | None = None,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact)."""
@@ -505,6 +528,7 @@ def assemble_pack(
         provider=provider,
         zl=zl,
         artefacts=artefacts,
+        photo={k: float(v) for k, v in (photo or {}).items() if v},
         files={
             "dsf": tile.dsf_relpath.as_posix(),
             "dsf_size": files.dsf_size,
@@ -1295,6 +1319,11 @@ def _tile_pack(ctx: RunContext) -> None:
         overlay=ctx.inputs["overlay"],
         link=params.link,
         tile_cfg=params.tile_cfg,
+        photo={
+            "brightness": params.photo_brightness,
+            "contrast": params.photo_contrast,
+            "saturation": params.photo_saturation,
+        },
     )
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 

@@ -1,10 +1,156 @@
 [
-  {"tile": "+43+004", "kind": "ortho", "provider": "Arc", "zl": 16, "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004", "name": "zOrthoStudio_+43+004", "built_by": "osxp", "installed": false, "keys": {"dsf": "5e0c…", "textures": "5e0a…"}, "registered_at": 1788012000.0, "updated_at": 1788012000.0, "size_bytes": null, "present": false, "overlay": null},
-  {"tile": "+43+004", "kind": "overlay", "provider": "", "zl": null, "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays", "name": "yOrthoStudio_Overlays", "built_by": "osxp", "installed": true, "keys": null, "registered_at": 1788012000.0, "updated_at": 1788012000.0, "size_bytes": null, "present": true, "overlay": null},
-  {"tile": "+43+005", "kind": "ortho", "provider": "BI", "zl": 16, "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005", "name": "zOrthoStudio_+43+005", "built_by": "osxp", "installed": true, "keys": {"dsf": "b3a6…", "textures": "b3a4…"}, "registered_at": 1788350400.0, "updated_at": 1789290600.0, "size_bytes": 1318420480, "present": true, "overlay": {"state": "double", "others": ["yAutoOrtho_Overlays"]}},
-  {"tile": "+43+005", "kind": "overlay", "provider": "", "zl": null, "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays", "name": "yOrthoStudio_Overlays", "built_by": "osxp", "installed": true, "keys": null, "registered_at": 1788350400.0, "updated_at": 1789290600.0, "size_bytes": null, "present": true, "overlay": null},
-  {"tile": "+43+006", "kind": "ortho", "provider": "BI", "zl": 17, "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+006", "name": "zOrthoStudio_+43+006", "built_by": "osxp", "installed": false, "keys": {"dsf": "9d41…", "textures": "9d3f…"}, "registered_at": 1789200000.0, "updated_at": 1789200000.0, "size_bytes": 3874560000, "present": true, "overlay": null},
-  {"tile": "+43+006", "kind": "overlay", "provider": "", "zl": null, "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays", "name": "yOrthoStudio_Overlays", "built_by": "osxp", "installed": true, "keys": null, "registered_at": 1789200000.0, "updated_at": 1789200000.0, "size_bytes": null, "present": true, "overlay": null},
-  {"tile": "+44+005", "kind": "ortho", "provider": "BI", "zl": 16, "path": "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005", "name": "zOrtho4XP_+44+005", "built_by": "ortho4xp", "installed": true, "keys": null, "registered_at": 1787400000.0, "updated_at": 1787400000.0, "size_bytes": 1104000000, "present": true, "overlay": null},
-  {"tile": "+44+006", "kind": "ortho", "provider": "Arc", "zl": 17, "path": "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+006", "name": "zOrtho4XP_+44+006", "built_by": "ortho4xp", "installed": false, "keys": null, "registered_at": 1787400000.0, "updated_at": 1787400000.0, "size_bytes": 2950000000, "present": true, "overlay": null}
+ {
+  "tile": "+43+004",
+  "kind": "ortho",
+  "provider": "Arc",
+  "zl": 16,
+  "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004",
+  "name": "zOrthoStudio_+43+004",
+  "built_by": "osxp",
+  "installed": false,
+  "keys": {
+   "dsf": "5e0c…",
+   "textures": "5e0a…"
+  },
+  "registered_at": 1788012000.0,
+  "updated_at": 1788012000.0,
+  "size_bytes": null,
+  "present": false,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+43+004",
+  "kind": "overlay",
+  "provider": "",
+  "zl": null,
+  "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays",
+  "name": "yOrthoStudio_Overlays",
+  "built_by": "osxp",
+  "installed": true,
+  "keys": null,
+  "registered_at": 1788012000.0,
+  "updated_at": 1788012000.0,
+  "size_bytes": null,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+43+005",
+  "kind": "ortho",
+  "provider": "BI",
+  "zl": 16,
+  "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005",
+  "name": "zOrthoStudio_+43+005",
+  "built_by": "osxp",
+  "installed": true,
+  "keys": {
+   "dsf": "b3a6…",
+   "textures": "b3a4…"
+  },
+  "registered_at": 1788350400.0,
+  "updated_at": 1789290600.0,
+  "size_bytes": 1318420480,
+  "present": true,
+  "overlay": {
+   "state": "double",
+   "others": [
+    "yAutoOrtho_Overlays"
+   ]
+  },
+  "photo": {
+   "brightness": -0.06,
+   "contrast": -0.03,
+   "saturation": -0.3
+  }
+ },
+ {
+  "tile": "+43+005",
+  "kind": "overlay",
+  "provider": "",
+  "zl": null,
+  "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays",
+  "name": "yOrthoStudio_Overlays",
+  "built_by": "osxp",
+  "installed": true,
+  "keys": null,
+  "registered_at": 1788350400.0,
+  "updated_at": 1789290600.0,
+  "size_bytes": null,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+43+006",
+  "kind": "ortho",
+  "provider": "BI",
+  "zl": 17,
+  "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+006",
+  "name": "zOrthoStudio_+43+006",
+  "built_by": "osxp",
+  "installed": false,
+  "keys": {
+   "dsf": "9d41…",
+   "textures": "9d3f…"
+  },
+  "registered_at": 1789200000.0,
+  "updated_at": 1789200000.0,
+  "size_bytes": 3874560000,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+43+006",
+  "kind": "overlay",
+  "provider": "",
+  "zl": null,
+  "path": "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays",
+  "name": "yOrthoStudio_Overlays",
+  "built_by": "osxp",
+  "installed": true,
+  "keys": null,
+  "registered_at": 1789200000.0,
+  "updated_at": 1789200000.0,
+  "size_bytes": null,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+44+005",
+  "kind": "ortho",
+  "provider": "BI",
+  "zl": 16,
+  "path": "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005",
+  "name": "zOrtho4XP_+44+005",
+  "built_by": "ortho4xp",
+  "installed": true,
+  "keys": null,
+  "registered_at": 1787400000.0,
+  "updated_at": 1787400000.0,
+  "size_bytes": 1104000000,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ },
+ {
+  "tile": "+44+006",
+  "kind": "ortho",
+  "provider": "Arc",
+  "zl": 17,
+  "path": "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+006",
+  "name": "zOrtho4XP_+44+006",
+  "built_by": "ortho4xp",
+  "installed": false,
+  "keys": null,
+  "registered_at": 1787400000.0,
+  "updated_at": 1787400000.0,
+  "size_bytes": 2950000000,
+  "present": true,
+  "overlay": null,
+  "photo": null
+ }
 ]

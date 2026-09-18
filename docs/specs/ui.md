@@ -700,6 +700,13 @@ zone: each is a stroke and nothing else, so no translucent colour lies about the
 now that the map shows the very colours a build will encode. The tile being built still pulses,
 on its stroke.
 
+A tile in the Library carries **other colours** when the pack on the disk was built with colours
+other than the ones its square asks for now (`photoDiffers`, from the `photo` of `GET /api/library`
+and the square's own): the map shows what a build would give, this says what X-Plane holds today,
+and building the tile again applies it (a user asked what happens to an installed tile,
+2026-09-18). A pack built before the colours existed, or with the plain ones, records none and is
+never marked.
+
 Step 1 also says, **whether or not anything is chosen**, how many squares and zones carry their
 own colours -- a map repainted from an old visit must never be a mystery (same user) -- and
 carries **Give the colours back to Settings** beside it: it clears them and says how many. A tile

@@ -263,3 +263,24 @@ def test_the_tile_cfg_is_complete_ordered_and_readable_by_its_parser() -> None:
     assert "keep_objects" not in text  # an overlay setting, not a tile variable
     with pytest.raises(KeyError):
         tile_cfg_values(provider="BI", zl=14, overrides={"mask_widht": 1})
+
+
+def test_a_pack_records_the_colours_it_was_built_with(tmp_path: Path) -> None:
+    """A user asked what happens to a tile already installed whose colours he changes
+    (2026-09-18): the manifest says what the pack holds, so the page can mark the difference."""
+    from orthostudio.pipeline.pack import PackManifest, PackParams
+
+    manifest = PackManifest(
+        tile="+46+006", provider="BI", zl=16, photo={"brightness": -0.06, "saturation": -0.3}
+    )
+    text = manifest.to_toml()
+    assert "[photo]" in text
+    again = PackManifest.from_toml(text)
+    assert again.photo == {"brightness": -0.06, "saturation": -0.3}
+    # a pack built with the plain colours records none, and keeps the key it had
+    plain = PackManifest(tile="+46+006", provider="BI", zl=16)
+    assert "[photo]" not in plain.to_toml()
+    assert PackManifest.from_toml(plain.to_toml()).photo == {}
+    common = {"tile": "+46+006", "provider": "BI", "zl": 16, "out_dir": "/tmp/out"}
+    assert "photo_brightness" not in PackParams(**common).canonical()
+    assert "photo_brightness" in PackParams(**common, photo_saturation=-0.3).canonical()

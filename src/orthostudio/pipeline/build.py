@@ -2166,6 +2166,11 @@ def _verify_effects(
             overlay=_resolved("overlay", refs.get("overlay")),
             link=spec.link,
             tile_cfg=cast(PackParams, nodes.pack.params).tile_cfg,
+            photo={
+                "brightness": cast(PackParams, nodes.pack.params).photo_brightness,
+                "contrast": cast(PackParams, nodes.pack.params).photo_contrast,
+                "saturation": cast(PackParams, nodes.pack.params).photo_saturation,
+            },
         )
         repaired.append("pack")
     installed = False

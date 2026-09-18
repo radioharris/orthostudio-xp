@@ -97,6 +97,7 @@ from orthostudio.pipeline.pack import (
     overlay_link,
     overlay_states,
     pack_to_delete,
+    read_manifest,
     take_back_overlay,
     uninstall_receipt,
 )
@@ -401,10 +402,25 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 "updated_at": r.updated_at,
                 "size_bytes": size,
                 "present": present,
+                "photo": _pack_photo(r.path) if present and r.kind == "ortho" else None,
                 "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
             }
         )
     return out
+
+
+def _pack_photo(pack_dir: Path) -> dict[str, float] | None:
+    """The colours a pack was built with, from its manifest; ``None`` when it does not say.
+
+    A pack built before the colours existed has no such section, and one built with the plain
+    ones writes none: the page then says nothing rather than guessing (a user asked what happens
+    to a tile already installed, 2026-09-18).
+    """
+    try:
+        manifest = read_manifest(pack_dir)
+    except (OSError, ValueError):
+        return None
+    return dict(manifest.photo) if manifest.photo else None
 
 
 def provider_json(p: Provider) -> dict[str, Any]:

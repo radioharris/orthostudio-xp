@@ -1917,6 +1917,8 @@ export function createPlanMap(ctx) {
     resetColours,
     /** How many squares and zones carry their own colours, and how many can be given back. */
     ownColours,
+    /** The colours a square carries of its own, or null (the Library compares them). */
+    tilePhoto: (name) => zs.tiles[name]?.photo || null,
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();

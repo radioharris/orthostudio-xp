@@ -71,7 +71,7 @@ by default; tests inject a generator of synthetic events.
 | `GET /api/jobs/{id}/events` | header `Last-Event-ID` or `?after=` | SSE stream (section 5.3) |
 | `POST /api/jobs/{id}/cancel` | – | `{job_id, status}`; 409 when already finished |
 | `POST /api/jobs/{id}/retry` | `{queue?}` | `{job_id, status, retry_of, queue_position}` (201): the same specs as a new job, queued like `POST /api/jobs`; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` as above |
-| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, present, overlay}]` (section 2.3) |
+| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, present, photo, overlay}]` (section 2.3) |
 | `POST /api/library/overlays` | `{use: "others" \| "own", tiles, xplane_dir?}` | leaves the roads, forests and buildings of the squares to the other active overlay packs, or draws the tiles' own again (`install.md` 4.3): `{changed: [tile...], states: {tile: {state, others}}}`; 409 `XP_RUNNING`, 409 `SYS_TILE_IN_BUILD` for a tile in a build under way or waiting, 422 for a name that is not a tile |
 | `POST /api/library/import-ortho4xp` | `{folder}` | the imported rows |
 | `POST /api/library/{name}/install` | `{xplane_dir?, link?, path?}` | the install receipt (section 2.3); 409 `SYS_TILE_IN_BUILD` for a pack OrthoStudio XP built whose tile is in the running or a queued job: the end of that build decides what X-Plane shows of the tile (an Ortho4XP pack of the tile stays free) |
@@ -149,6 +149,10 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   counts for every row of the name;
 * `present`: the row's directory exists. A tile whose folder was deleted by hand stays listed
   with `present: false` until it is deleted from the library;
+* `photo`: the colours the pack on the disk was built with (`{brightness, contrast, saturation}`,
+  from its `orthostudio.toml`), `null` when it recorded none -- a pack built before the colours
+  existed, or with the plain ones. The page marks a tile whose square now asks for others (a user
+  asked what happens to an installed tile, 2026-09-18);
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as
