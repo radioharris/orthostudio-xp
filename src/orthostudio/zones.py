@@ -490,6 +490,17 @@ def dumps_zones(doc: ZonesDocument) -> str:
             text = json.dumps(zone.model_dump(mode="json"), ensure_ascii=False)
             lines.append(f"  {text}{',' if i < last else ''}")
         lines.append(" ]")
+    if doc.tiles:
+        # What the squares carry of their own, one per line like the zones (2026-09-18): written
+        # only when there is something, so a file without them does not change.
+        lines[-1] += ","
+        lines.append(' "tiles": {')
+        names = sorted(doc.tiles)
+        last = len(names) - 1
+        for i, name in enumerate(names):
+            text = json.dumps(doc.tiles[name].model_dump(mode="json"), ensure_ascii=False)
+            lines.append(f"  {json.dumps(name)}: {text}{',' if i < last else ''}")
+        lines.append(" }")
     lines.append("}")
     return "\n".join(lines) + "\n"
 

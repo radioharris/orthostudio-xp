@@ -655,3 +655,26 @@ def test_a_document_from_a_newer_version_keeps_what_this_one_understands() -> No
         }
     )
     assert [z.id for z in doc.zones] == ["a"] and doc.zones[0].zl == 17
+
+
+def test_the_squares_own_colours_survive_a_save(tmp_path: Path) -> None:
+    """``dumps_zones`` wrote the zones only: the colours of the squares were accepted by the API
+    and thrown away by the writer, so nothing was ever remembered (2026-09-18)."""
+    from orthostudio.zones import ZonesDocument, dumps_zones, read_saved_zones, save_zones
+
+    doc = ZonesDocument.model_validate(
+        {
+            "format": "osxp-zones-1",
+            "zones": [],
+            "tiles": {"+46+006": {"photo": {"look": "custom", "saturation": -0.4}}},
+        }
+    )
+    path = tmp_path / "zones.json"
+    save_zones(path, doc)
+    again = read_saved_zones(path)
+    assert again.tiles["+46+006"].photo.look == "custom"
+    assert again.tiles["+46+006"].photo.saturation == -0.4
+    assert '"tiles"' in dumps_zones(doc)
+    # a document without them writes exactly what it used to
+    save_zones(path, ZonesDocument())
+    assert '"tiles"' not in path.read_text()

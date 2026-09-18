@@ -188,8 +188,8 @@ export function createPlanMap(ctx) {
 
   const zs = {
     zones: [],
-    tiles: {},
-    fileUnreadable: false,  // the saved file holds something this version could not read  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
+    tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
+    fileUnreadable: false,  // the saved file holds something this version could not read
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
     loadError: null, // the engine could not be reached (network, 5xx): nothing is editable
