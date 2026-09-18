@@ -153,16 +153,6 @@ SECOND_PASS_ATTEMPTS = 2
 """Fetcher attempts per chunk within a round (a transfer and its hedge, or one quick retry):
 the rounds are the spaced retries."""
 
-LAST_ROUND_WORTH_IT = 16
-"""Chunks still waiting under which the last spaced round is skipped (a user, 2026-09-18).
-
-One chunk of 54 528 held a ZL16 tile for about 125 s: pause 5 s, round, pause 15 s, round,
-pause 45 s, round. A chunk that never arrives is not lost -- the texture takes those 256 px from
-the level above (``parent_fallback``), and *Fetch what is missing* gets the real ones later -- so
-the last round buys a slightly softer 600 m square at the price of a minute. Under this many
-chunks the pass stops after the second round; a real outage, which leaves thousands waiting, still
-gets its three rounds."""
-
 SECOND_PASS_PROBES = 2
 """Tiles already answered, asked again before each round. When none is answered the provider
 or the line is down: the second pass stops instead of waiting for the next round."""
@@ -255,8 +245,6 @@ class TexturesSpec:
     photo_contrast: float = 0.0
     photo_saturation: float = 0.0
     """Colours of the photo, applied to every texture of the tile (``textures/colour.py``)."""
-    last_round_worth_it: int = LAST_ROUND_WORTH_IT
-    """Chunks under which the last spaced round of the second pass is skipped."""
     idle: Callable[[bool], None] | None = None
     """Told that the run holds its slot without using it, during the pauses of the second pass
     (``NodeContext.set_idle``): a build has one network slot, and a tile waiting for a handful of
@@ -1385,13 +1373,6 @@ class _Pipeline:
                 await self._flush_io()
                 await self._further_rounds(fetcher)
                 if self.second_pass_capped:
-                    break
-                # A handful left after the second round: finish the tile with the level above
-                # rather than wait the last and longest pause (LAST_ROUND_WORTH_IT).
-                left = len(self.deferred)
-                small = 0 < left <= self.spec.last_round_worth_it < self.counts["tiles_total"]
-                if small and round_no >= len(self.pauses) - 1:
-                    self.counts["second_pass_stopped_early"] = left
                     break
         finally:
             self.second_pass_round = 0

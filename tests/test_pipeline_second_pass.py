@@ -380,9 +380,7 @@ def test_chunk_failing_for_good_ends_incomplete_after_the_bounded_rounds(
 
     log = install_fake(monkeypatch, answer)
     t0 = time.perf_counter()
-    # last_round_worth_it=0: this test is about the three bounded rounds, not about the tile
-    # that finishes early when a handful is left (test 7)
-    report = build_textures(make_spec(tmp_path, fake_provider(), last_round_worth_it=0))
+    report = build_textures(make_spec(tmp_path, fake_provider()))
     assert time.perf_counter() - t0 < 30
 
     assert not report.ok
@@ -420,11 +418,7 @@ def test_unanswered_probe_stops_the_second_pass_without_waiting(
 
     log = install_fake(monkeypatch, answer)
     t0 = time.perf_counter()
-    report = build_textures(
-        make_spec(
-            tmp_path, fake_provider(), second_pass_pauses_s=(0.05, 30.0), last_round_worth_it=0
-        )
-    )
+    report = build_textures(make_spec(tmp_path, fake_provider(), second_pass_pauses_s=(0.05, 30.0)))
     assert time.perf_counter() - t0 < 10  # the 30 s pause of round 2 is never taken
 
     (o,) = report.outcomes
@@ -734,11 +728,7 @@ def test_a_pause_ending_past_the_time_limit_is_not_waited(
         monkeypatch, lambda req, tile, n, phase: reset(req) if tile == BAD else ok(req, tile)
     )
     spec = make_spec(
-        tmp_path,
-        fake_provider(),
-        second_pass_pauses_s=(0.05, 30.0),
-        second_pass_max_s=2.0,
-        last_round_worth_it=0,  # the subject here is the time cap, not the early finish
+        tmp_path, fake_provider(), second_pass_pauses_s=(0.05, 30.0), second_pass_max_s=2.0
     )
     t0 = time.perf_counter()
     report = build_textures(spec)
@@ -1000,60 +990,3 @@ def test_real_round_never_has_more_in_flight_than_its_limit(
     assert report.ok, report.errors
     assert report.counts["chunks_recovered"] == 160 and report.counts["second_pass_capped"] == 0
     assert SECOND_PASS_IN_FLIGHT < state.slow_max <= 32
-
-
-# --- 7. a handful left after two rounds: the tile finishes ---------------------------------------
-
-
-def test_a_few_stuck_chunks_do_not_buy_the_last_pause(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """One chunk of 54 528 held a ZL16 tile for about 125 s (a user, 2026-09-18).
-
-    Under ``last_round_worth_it`` chunks, the second pass stops after the second round: those
-    256 px come from the level above, and *Fetch what is missing* gets the real ones later.
-    """
-    stuck = 12
-    bad = {(ZL, 32 + i, 16) for i in range(stuck)}  # 12 chunks of the first row
-
-    def answer(req: FetchRequest, tile: Tile, n: int, phase: int) -> FetchResult:
-        return timeout(req) if tile in bad else ok(req, tile)
-
-    install_fake(monkeypatch, answer)
-    t0 = time.perf_counter()
-    report = build_textures(
-        make_spec(
-            tmp_path,
-            fake_provider(),
-            second_pass_pauses_s=(0.05, 0.05, 30.0),
-            last_round_worth_it=16,
-        )
-    )
-    assert time.perf_counter() - t0 < 10  # the 30 s pause of the last round is never taken
-    assert report.counts["second_pass_rounds"] == 2
-    assert report.counts["second_pass_stopped_early"] == stuck
-    (o,) = report.outcomes
-    assert o.status in ("incomplete", "ok")  # the texture is written, from the level above
-
-
-def test_many_stuck_chunks_still_get_every_round(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An outage leaves thousands waiting: those are worth the last, longest round."""
-
-    bad = {(ZL, 32 + (i % 16), 16 + i // 16) for i in range(40)}  # more than a handful
-
-    def answer(req: FetchRequest, tile: Tile, n: int, phase: int) -> FetchResult:
-        return timeout(req) if tile in bad else ok(req, tile)
-
-    install_fake(monkeypatch, answer)
-    report = build_textures(
-        make_spec(
-            tmp_path,
-            fake_provider(),
-            second_pass_pauses_s=(0.05, 0.05, 0.05),
-            last_round_worth_it=16,
-        )
-    )
-    assert report.counts["second_pass_rounds"] == 3
-    assert "second_pass_stopped_early" not in report.counts

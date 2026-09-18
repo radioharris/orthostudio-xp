@@ -752,16 +752,24 @@ function renderQuestions(box, view) {
  * it: the pilot sees the colours before a build downloads gigabytes (2026-09-18). */
 function colourPreview(view) {
   const { h } = view.dom;
-  const url = view.photoSample ? view.photoSample(getPath(view.draft, "essential.provider")) : null;
-  if (!url) return null;
+  const sample = view.photoSample ? view.photoSample(getPath(view.draft, "essential.provider")) : null;
+  if (!sample) return null;
   const size = 148;
   const before = h("canvas", { width: size, height: size, class: "photo-canvas" });
   const after = h("canvas", { width: size, height: size, class: "photo-canvas" });
   const note = h("p", { class: "question-help" }, t("settings.q.colours_preview_wait"));
+  // Where the image comes from, said plainly: a user asked which square he was looking at
+  // (2026-09-18).
+  const where = h("p", { class: "question-help photo-where" },
+    t("settings.q.colours_preview_where", {
+      tile: sample.tile,
+      lat: fmtNum(sample.lat, 3),
+      lon: fmtNum(sample.lon, 3),
+    }));
   const box = h("div", { class: "sub-question photo-preview" },
     h("div", { class: "photo-shot" }, before, h("span", { class: "photo-label" }, t("settings.q.colours_preview_before"))),
     h("div", { class: "photo-shot" }, after, h("span", { class: "photo-label" }, t("settings.q.colours_preview_after"))),
-    note);
+    h("div", { class: "photo-words" }, note, where));
   const look = photoValues(getPath(view.draft, "essential.photo_look"), {
     brightness: getPath(view.draft, "expert.photo_brightness"),
     contrast: getPath(view.draft, "expert.photo_contrast"),
@@ -781,7 +789,7 @@ function colourPreview(view) {
     note.textContent = t("settings.q.colours_preview_failed");
     box.classList.add("is-quiet");
   });
-  image.src = url.startsWith("mock-photo:") ? mockPhoto(size, url) : url;
+  image.src = sample.url.startsWith("mock-photo:") ? mockPhoto(size, sample.url) : sample.url;
   return box;
 }
 

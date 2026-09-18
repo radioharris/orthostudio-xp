@@ -3924,13 +3924,14 @@ let folderAsked = false;
 function photoSampleUrl(provider) {
   const centre = planMap && planMap.mapCenter ? planMap.mapCenter() : null;
   if (!centre) return null;
-  if (MOCK) return `mock-photo:${centre.lat.toFixed(3)},${centre.lon.toFixed(3)}`;
+  const where = { lat: centre.lat, lon: centre.lon, tile: tileName(centre.lat, centre.lon) };
+  if (MOCK) return { ...where, url: `mock-photo:${centre.lat.toFixed(3)},${centre.lon.toFixed(3)}` };
   const q = new URLSearchParams({
     provider: provider || "BI",
     lat: centre.lat.toFixed(5),
     lon: centre.lon.toFixed(5),
   });
-  return `/api/photo-sample?${q}`;
+  return { ...where, url: `/api/photo-sample?${q}` };
 }
 
 async function chooseFolder(prompt, start = null) {

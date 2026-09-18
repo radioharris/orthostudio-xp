@@ -346,7 +346,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .photo-shot { display: flex; flex-direction: column; gap: 4px; }
 .photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
 .photo-label { font-size: 11.5px; color: var(--fg-2); }
-.photo-preview > .question-help { flex: 1 1 200px; margin: 0; }
+.photo-words { flex: 1 1 200px; display: grid; gap: 4px; }
+.photo-words > .question-help { margin: 0; }
+.photo-where { color: var(--fg-3); }
 /* The three colour numbers of "my own values": a slider and its value, side by side. */
 .colour-values { display: grid; gap: 8px; }
 .colour-row { display: grid; grid-template-columns: minmax(140px, 200px) 1fr 3.2em; align-items: center; gap: 10px; }
