@@ -42,9 +42,12 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), Canada's
   lidar where it has been flown (bare earth, laid over Copernicus, which answers elsewhere) or
   your own elevation file. Outside a source's coverage the tile is refused, never built flat.
-- **The colours of the photos.** Aerial imagery as the source delivers it, or toned down a little
-  or a lot, or by your own brightness, contrast and colour. It is applied when the textures are
-  encoded, so changing your mind rebuilds the tile without downloading anything again.
+- **The colours of the photos, seen on the map.** Aerial imagery as the source delivers it, or
+  toned down a little or a lot, or by your own brightness, contrast and colour — for everything you
+  build, for one square, or for a zone drawn inside a square, each level inheriting the one above.
+  The map is repainted with the very colours the build will encode, so you judge them on the ground
+  you fly over rather than on a thumbnail. It is applied when the textures are encoded, so changing
+  your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
 - **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
   and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
   as they are, in the tree they come in.
@@ -111,10 +114,21 @@ Other differences in use:
 | Installation | a link created from its tile map (Ctrl+click); the order in `scenery_packs.ini` is left to X-Plane and to you | from the page in one click, in the order X-Plane needs, with a backup, reversible |
 | Several tiles | built one after the other (batch build) | built side by side, with sharper zones spanning tiles |
 
-Ortho4XP remains the reference, and does things OrthoStudio XP does not do yet: colour filters for
-the imagery (its `.flt` files) and the mesh patches made by hand (its `Patches` folder). It has also
-been used for years by a large community on Windows, Linux and macOS, where OrthoStudio XP is a beta
-whose tiles have been built on macOS and Windows so far.
+Ortho4XP remains the reference, and does things OrthoStudio XP does not do:
+
+- **many more imagery sources**: 71 definitions, mostly national, against 12 checked ones here (a
+  source of your own can be added in the page), and a **combined** layer that stitches several of
+  them into a single texture, each with its own extent, priority and colour filter — where
+  OrthoStudio XP uses one source per tile, or per zone drawn inside it;
+- **a richer treatment of the imagery**: sharpness, blur and per-channel levels with gamma, beside
+  the brightness, contrast and colour OrthoStudio XP applies when it encodes the textures;
+- **X-Plane 11** as well, where OrthoStudio XP builds for X-Plane 12 only.
+
+Its colour filters (`.flt`) and its hand-made mesh patches (`Patches`) are here since 0.1.3 and
+0.1.4: patches written for Ortho4XP are read as they are, and the colours are set for everything
+you build, for one square, or for a zone. Ortho4XP has also been used for years by a large
+community on Windows, Linux and macOS, where OrthoStudio XP is a beta whose tiles have been built
+on macOS and Windows so far.
 
 ## Getting started
 
