@@ -175,6 +175,7 @@ def serve(
     ui_dir: Path | None = None,
     log_level: str = "info",
     quit_when_closed: bool = False,
+    mock: bool = False,
 ) -> None:
     """Run uvicorn on ``127.0.0.1:port`` until interrupted, quit from the page, or, with
     ``quit_when_closed`` (the app's own start), a while after its last page closed
@@ -191,7 +192,7 @@ def serve(
 
     from orthostudio.api.app import create_app
 
-    url = f"http://{HOST}:{port}/"
+    url = f"http://{HOST}:{port}/" + ("?mock=1" if mock else "")
     try:
         _check_port(port)
     except OsxpError:
@@ -298,6 +299,7 @@ def main(
     open_browser: bool = True,
     ui_dir: Path | None = None,
     quit_when_closed: bool = False,
+    mock: bool = False,
 ) -> int:
     """Entry point for ``cli.py``; returns the exit status."""
     try:
@@ -306,6 +308,7 @@ def main(
             open_browser=open_browser,
             ui_dir=ui_dir,
             quit_when_closed=quit_when_closed,
+            mock=mock,
         )
     except OsxpError as exc:
         import sys

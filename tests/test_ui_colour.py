@@ -118,3 +118,42 @@ def test_the_map_paints_a_zone_over_the_square_it_is_drawn_in() -> None:
     )
     # the square first, then the zones from the last to the first: what wins is painted last
     assert json.loads(out.stdout) == ["square", "much_softer", "softer"]
+
+
+def test_the_mock_switch_is_read_from_every_way_it_is_written() -> None:
+    """A user said the mock did not work: ``#plan?mock=1`` -- the query after the route -- and
+    ``?mock=true`` showed the real engine without a word (2026-09-18). ``osxp serve --mock`` opens
+    the right address; these are the ones typed by hand."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    addresses = [
+        "http://127.0.0.1:8641/?mock=1",
+        "http://127.0.0.1:8641/#plan?mock=1",
+        "http://127.0.0.1:8641/?mock=true",
+        "http://127.0.0.1:8641/?mock",
+        "http://127.0.0.1:8641/?mock=0",
+        "http://127.0.0.1:8641/#plan",
+        "http://127.0.0.1:8641/?mock=1&speed=10",
+    ]
+    script = (
+        "import('./app.js').then(m => process.stdout.write(JSON.stringify("
+        f"{json.dumps(addresses)}.map(href => {{ const p = m.pageParams(href); "
+        "return [m.isOn(p.get('mock')), p.get('speed')]; }))))"
+    )
+    out = subprocess.run(
+        [NODE, "--input-type=module"],
+        input=script,
+        cwd=UI,
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert json.loads(out.stdout) == [
+        [True, None],
+        [True, None],
+        [True, None],
+        [True, None],
+        [False, None],
+        [False, None],
+        [True, "10"],
+    ]

@@ -957,6 +957,10 @@ def serve(
             help="stop 5 min after the last page closed, unless a build runs (what the app runs)",
         ),
     ] = False,
+    mock: Annotated[
+        bool,
+        typer.Option("--mock", help="open the page with made-up data (no build, no network)"),
+    ] = False,
 ) -> None:
     """Serve the page and the local API on 127.0.0.1 (never another address)."""
     from orthostudio.api import serve as serve_mod
@@ -973,7 +977,11 @@ def serve(
             raise typer.Exit(EXIT_ERROR)
         return
     code = serve_mod.main(
-        port=port, open_browser=open_browser, ui_dir=ui_dir, quit_when_closed=quit_when_closed
+        port=port,
+        open_browser=open_browser,
+        ui_dir=ui_dir,
+        quit_when_closed=quit_when_closed,
+        mock=mock,
     )
     if code:
         raise typer.Exit(code)

@@ -811,7 +811,12 @@ saved says so in a toast; nothing is saved by leaving.
 ## 3. Mock mode
 
 `index.html?mock=1` makes the API client read `static/mock/<name>.json` instead of
-`/api/...`. Airports are filtered client-side from `mock/airports.json`. This is the development
+`/api/...`. `osxp serve --mock` opens that address, which is the way to reach it without typing
+one. The switch is read from the query and from a query written after the route (`#plan?mock=1`,
+which silently showed the real engine before), and `mock`, `mock=true`, `mock=yes` and `mock=on`
+all mean `mock=1` (`pageParams`, `isOn`; a user, 2026-09-18). An option written after the route is
+kept as the route changes (`HASH_OPTIONS`), so moving to another screen and reloading stays in the
+mock rather than landing on the real engine. Airports are filtered client-side from `mock/airports.json`. This is the development
 and visual-test harness: it must exercise every rendering path, and the mock files must satisfy
 the interface contract so that they double as fixtures for the API chantier.
 

@@ -30,8 +30,39 @@ import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sour
 // ------------------------------------------------------------------ constants
 
 // `location` is read only in a browser: node imports this module in the tests.
-const PARAMS = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
-const MOCK = PARAMS.get("mock") === "1";
+const PARAMS = pageParams(typeof location === "undefined" ? "" : location.href);
+const MOCK = isOn(PARAMS.get("mock"));
+/** Options written after the route (`#plan?mock=1`), kept as the route changes: read once, since
+ * moving to another screen rewrites the hash and would otherwise drop them on the next load. */
+const HASH_OPTIONS =
+  typeof location === "undefined" || !location.hash.includes("?")
+    ? ""
+    : `?${location.hash.split("?").slice(1).join("?")}`;
+
+/** The page's options, from the address: the query, plus one written after the `#` route.
+ *
+ * `?mock=1` is the switch, and `#plan?mock=1` a natural way to write it that silently showed the
+ * real engine instead (a user, 2026-09-18): both are read, the query first. */
+export function pageParams(href) {
+  const text = String(href || "");
+  const route = text.indexOf("#");
+  const query = (part) => {
+    const mark = part.indexOf("?");
+    return new URLSearchParams(mark >= 0 ? part.slice(mark + 1) : "");
+  };
+  const params = query(route >= 0 ? text.slice(0, route) : text);
+  if (route >= 0) {
+    for (const [name, value] of query(text.slice(route))) {
+      if (!params.has(name)) params.append(name, value);
+    }
+  }
+  return params;
+}
+
+/** Whether an option written in the address is on: `1`, `true`, `yes`, `on`, or the bare name. */
+export function isOn(value) {
+  return value !== null && ["", "1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
 /**
  * `?mock=1&fail=...` shows an error path of the mock: `zones` refuses every PUT /api/zones;
  * `zone-conflict` changes the zones behind the page's back before its first save (409);
@@ -1883,7 +1914,7 @@ function showScreen(name, arg) {
     if (btn.dataset.screen === name) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
   }
-  const hash = arg ? `#${name}/${arg}` : `#${name}`;
+  const hash = (arg ? `#${name}/${arg}` : `#${name}`) + HASH_OPTIONS;
   if (location.hash !== hash) history.replaceState(null, "", hash);
   if (name === "works") loadWorks(arg);
   else followBuildUnderWay();
@@ -1900,7 +1931,9 @@ function showScreen(name, arg) {
 }
 
 function routeFromHash() {
-  const m = location.hash.match(/^#(\w+)(?:\/(.+))?$/);
+  // options may be written after the route (`#plan?mock=1`): they are read elsewhere, not here
+  const route = location.hash.split("?")[0];
+  const m = route.match(/^#(\w+)(?:\/(.+))?$/);
   showScreen(m ? m[1] : "plan", m ? m[2] : undefined);
 }
 
