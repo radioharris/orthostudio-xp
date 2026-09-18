@@ -105,7 +105,7 @@ def _parse_sets(values: list[str]) -> dict[str, Any]:
     ``ovl_exclude_net=[22001]``, ``keep_objects=False``: Ortho4XP application variables).
     """
     from orthostudio.pipeline.build import OVERLAY_SETTINGS, parse_overlay_setting
-    from orthostudio.tilefiles import TILE_PARAMETERS, parse_tile_cfg
+    from orthostudio.tilefiles import OSXP_PARAMETERS, TILE_PARAMETERS, parse_tile_cfg
 
     out: dict[str, Any] = {}
     for item in values:
@@ -114,13 +114,13 @@ def _parse_sets(values: list[str]) -> dict[str, Any]:
         if sep and name in OVERLAY_SETTINGS:
             out[name] = parse_overlay_setting(name, value)
             continue
-        if not sep or name not in TILE_PARAMETERS:
+        if not sep or (name not in TILE_PARAMETERS and name not in OSXP_PARAMETERS):
             raise OsxpError(
                 "CFG_VALUE_INVALID",
                 context={"name": name or item, "value": value, "type": "-", "range": "-"},
                 message=f"--set {item!r}: expected <tile parameter>=<value>.",
                 remedy="Tile parameters: "
-                + ", ".join(TILE_PARAMETERS)
+                + ", ".join([*TILE_PARAMETERS, *OSXP_PARAMETERS])
                 + "; overlay settings: "
                 + ", ".join(OVERLAY_SETTINGS),
             )

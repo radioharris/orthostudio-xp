@@ -311,7 +311,8 @@ parents change is re-encoded, one whose parents did not is a hit.
 ```
 Rule(name="texture.dds", version=1, kind="file", ram_mb=250)
 params  TextureDdsParams: provider, zl, encoder, encoder_version, mip_mode, refine_passes,
-                          mask_zl, mask_crop (x0, y0, side) | None, sea_texture_blur, clean_halo
+                          mask_zl, mask_crop (x0, y0, side) | None, sea_texture_blur, clean_halo,
+                          photo_brightness, photo_contrast, photo_saturation
 inputs  chunks   digest = ChunkContainer.digest() (statuses + bodies, independent of fetch times)
         mask     blake3 of the mask PNG, or None when the texture is not masked
         parents  blake3 of the parents blob, or None when every chunk came from the container
@@ -323,7 +324,16 @@ parents, so two textures with identical inputs share one artefact (open sea). Pa
 texture does not consume are neutralised before keying (`graph-keys.md` K2): an unmasked
 texture carries `mask_zl = 0`, `mask_crop = None`, `sea_texture_blur = 0`, `clean_halo =
 False`; a texture without fallback chunks carries `parent_levels = 0`. Changing
-`sea_texture_blur` therefore re-encodes the masked textures only (test P1). The output file
+`sea_texture_blur` therefore re-encodes the masked textures only (test P1).
+
+The **colours of the photo** (`textures/colour.py`: brightness, then contrast, then saturation,
+applied to the assembled image before the mask is imprinted, so X-Plane's own water keeps its
+colours) are the one setting that re-encodes without downloading anything: the chunks are
+untouched. `TextureDdsParams.canonical` leaves the three out of the key while they are zero, so
+every texture built before the setting existed stays a hit; as soon as one is not zero, the three
+enter the key together.
+
+The output file
 `textures/<name>.dds` is a hard link to the artefact (`os.link`, falling back to a copy across
 file systems), published through a temporary name and `os.replace`. Nothing ever edits the
 output, so sharing the inode is safe; `Store.gc` unlinking an artefact leaves the published

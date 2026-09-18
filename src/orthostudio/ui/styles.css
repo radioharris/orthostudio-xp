@@ -340,6 +340,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .plan-panel.is-stale { opacity: 0.55; transition: opacity 0.15s; }
 .plan-panel:empty { display: none; }
 /* A path typed, or chosen with the button beside it (the platform's own folder dialog). */
+/* The three colour numbers of "my own values": a slider and its value, side by side. */
+.colour-values { display: grid; gap: 8px; }
+.colour-row { display: grid; grid-template-columns: minmax(140px, 200px) 1fr 3.2em; align-items: center; gap: 10px; }
+.colour-row input[type="range"] { width: 100%; accent-color: var(--accent); }
+.colour-value { font-variant-numeric: tabular-nums; color: var(--fg-2); text-align: right; }
+@media (max-width: 560px) { .colour-row { grid-template-columns: 1fr 3.2em; } .colour-row > .sub-question-title { grid-column: 1 / -1; } }
 .path-row { display: flex; align-items: center; gap: 8px; }
 .path-row input { flex: 1 1 auto; min-width: 0; }
 .path-row .btn { flex: none; white-space: nowrap; }
@@ -814,9 +820,26 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .sub-question-title { display: block; font-size: 12.5px; font-weight: 600; color: var(--fg-2); margin-bottom: 4px; }
 .question-detected { margin: 0 0 4px; font-size: 13px; overflow-wrap: anywhere; }
 .question-detected.is-warn { color: var(--warn); }
-.settings-experts { margin-top: 16px; }
-.settings-experts > summary { cursor: pointer; font-weight: 600; color: var(--accent); }
-.settings-experts > .help { margin: 6px 0 0; }
+/* A band, not a discreet twisty: a user did not find the expert settings behind the old one-word
+   summary (2026-09-18). The lead stays readable while it is closed, and the count says how much
+   is in there. */
+.settings-experts { margin-top: 20px; border: 1px solid var(--line); border-radius: 8px; }
+.settings-experts > summary {
+  cursor: pointer; display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px;
+  border-radius: 8px; list-style: none;
+}
+.settings-experts > summary::-webkit-details-marker { display: none; }
+.settings-experts[open] > summary { border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
+.settings-experts > summary:hover { background: var(--bg-2); }
+.settings-experts > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.experts-chevron { flex: none; margin-top: 2px; width: 14px; height: 14px; color: var(--accent); }
+.experts-chevron::before { content: "\25B8"; display: block; font-size: 13px; transition: transform 0.12s ease; }
+.settings-experts[open] .experts-chevron::before { transform: rotate(90deg); }
+.experts-head { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.experts-title { font-weight: 600; color: var(--accent); }
+.experts-count { color: var(--fg-3); font-weight: 400; font-size: 12.5px; }
+.experts-lead { font-size: 12px; color: var(--fg-2); line-height: 1.35; }
+.settings-experts > #settings-expert-fields { padding: 4px 14px 0; }
 .expert-group { margin-top: 12px; }
 .expert-group-title { margin: 0 0 8px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg); }
 .settings-actions { position: sticky; bottom: var(--statusbar-h); z-index: 5; background: var(--bg); padding: 10px 0; margin-top: 12px; border-top: 1px solid var(--line); }

@@ -8,13 +8,14 @@ from orthostudio.config import LEVELS, Settings, leaf_properties, settings_schem
 from orthostudio.config.hints import ORTHO4XP_HINTS
 from orthostudio.tilefiles import TILE_PARAMETERS
 
-EXPECTED_LEAVES = {"essential": 14, "advanced": 14, "expert": 21}
+EXPECTED_LEAVES = {"essential": 15, "advanced": 14, "expert": 24}
 ENUMS = {
     "essential.airports.mode": ["off", "on", "icao", "existing"],
     "essential.coast_transition.profile": ["sand", "rocks", "3steps"],
     "essential.water_rendering": ["XP11 + bathy", "XP12"],
     "essential.overlays": ["xplane", "none"],
     "essential.relief.source": ["auto", "file", "copernicus"],
+    "essential.photo_look": ["as_delivered", "softer", "much_softer", "custom"],
     "essential.relief.fill_nodata": ["nearest", "zero"],
     "advanced.road_level": [0, 1, 2, 3, 4, 5],
     "advanced.sea_smoothing_mode": ["zero", "mean", "none"],
@@ -35,7 +36,7 @@ def test_schema_is_inlined_json_and_lists_levels() -> None:
 
 def test_every_leaf_has_unit_hint_level_ortho4xp_default() -> None:
     leaves = leaf_properties()
-    assert len(leaves) == sum(EXPECTED_LEAVES.values()) == 49
+    assert len(leaves) == sum(EXPECTED_LEAVES.values()) == 53
     for level, count in EXPECTED_LEAVES.items():
         assert sum(1 for k in leaves if k.startswith(level + ".")) == count
     for path, prop in leaves.items():

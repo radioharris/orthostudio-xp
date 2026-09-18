@@ -4140,6 +4140,22 @@ async function boot() {
   $("quit-btn").addEventListener("click", quitOsxp);
   $("disk-reveal").addEventListener("click", () => revealPath(dataFolderShown(state.status)));
 
+  // The expert band remembers whether it was open: a user who works in there should not have to
+  // reopen it at every visit, and one who never opens it keeps a short page (2026-09-18).
+  const experts = $("settings-experts");
+  try {
+    if (localStorage.getItem("osxp.experts") === "open") experts.open = true;
+  } catch {
+    // private window, blocked storage: the band simply starts closed
+  }
+  experts.addEventListener("toggle", () => {
+    try {
+      localStorage.setItem("osxp.experts", experts.open ? "open" : "closed");
+    } catch {
+      // nothing to remember, nothing to report
+    }
+  });
+
   planMap = createPlanMap({
     mock: MOCK,
     api,

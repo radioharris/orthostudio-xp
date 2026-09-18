@@ -157,6 +157,18 @@ class Essential(BaseModel):
             "X-World or another pack that brings them."
         ),
     )
+    photo_look: Literal["as_delivered", "softer", "much_softer", "custom"] = _field(
+        "as_delivered",
+        "essential",
+        None,
+        "",
+        hint=(
+            "Colours of the aerial photos: as the provider delivers them, or toned down. A user "
+            "found most of them too bright and too saturated (2026-09-18). Applied when the "
+            "textures are encoded, so changing it builds the tile again without downloading "
+            "anything. 'custom' uses the three expert values."
+        ),
+    )
     xplane_dir: str | None = _field(None, "essential", "custom_scenery_dir", "")
     data_dir: str | None = _field(
         None,
@@ -231,6 +243,36 @@ class Expert(BaseModel):
         "",
         hint="The decals go on land only. With this on they go on the sea as well, as Ortho4XP "
         "writes them; lakes and rivers never have them.",
+    )
+    photo_brightness: float = _field(
+        0.0,
+        "expert",
+        None,
+        "",
+        ge=-0.5,
+        le=0.5,
+        hint="Brightness of the photo, used when the colours are 'my own values'. 0 leaves it as "
+        "delivered, -0.1 takes a tenth of the light away.",
+    )
+    photo_contrast: float = _field(
+        0.0,
+        "expert",
+        None,
+        "",
+        ge=-0.5,
+        le=0.5,
+        hint="Contrast of the photo, used when the colours are 'my own values'. Below 0 the "
+        "ground flattens, above 0 the darks and the lights pull apart.",
+    )
+    photo_saturation: float = _field(
+        0.0,
+        "expert",
+        None,
+        "",
+        ge=-1.0,
+        le=0.5,
+        hint="Colour of the photo, used when the colours are 'my own values'. -1 is grey, -0.3 "
+        "takes a third of the colour away, 0 leaves it as delivered.",
     )
     patches_dir: str = _field(
         "",

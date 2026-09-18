@@ -16,7 +16,7 @@ from orthostudio.config import (
 from orthostudio.config.models import AirportCoverage
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import OVERLAY_SETTINGS, BuildSpec
-from orthostudio.tilefiles import TILE_PARAMETERS, tile_defaults
+from orthostudio.tilefiles import OSXP_PARAMETERS, TILE_PARAMETERS, tile_defaults
 
 NOT_EMITTED = {"default_website", "default_zl", "zone_list", "iterate", "clean_bad_geometries"}
 
@@ -33,9 +33,8 @@ def _spec(config: dict[str, object], tmp_path: Path) -> BuildSpec:
 
 def test_default_overrides_reproduce_the_ortho4xp_tile_defaults(tmp_path: Path) -> None:
     ov = to_build_overrides(Settings())
-    assert set(ov) == (set(TILE_PARAMETERS) - NOT_EMITTED) | set(OVERLAY_SETTINGS) - {
-        "keep_objects"
-    }
+    expected = (set(TILE_PARAMETERS) - NOT_EMITTED) | set(OVERLAY_SETTINGS) - {"keep_objects"}
+    assert set(ov) == expected | set(OSXP_PARAMETERS)
     cfg = _spec(ov, tmp_path).tile_config()
     defaults = tile_defaults()
     for name, value in ov.items():
@@ -49,6 +48,9 @@ def test_default_overrides_reproduce_the_ortho4xp_tile_defaults(tmp_path: Path) 
 def test_emitted_types_match_the_declared_ortho4xp_types() -> None:
     ov = to_build_overrides(Settings())
     for name, value in ov.items():
+        if name in OSXP_PARAMETERS:  # OrthoStudio XP's own, typed the same way
+            assert isinstance(value, OSXP_PARAMETERS[name].type), name
+            continue
         if name not in TILE_PARAMETERS:
             assert isinstance(value, list), name
             continue
@@ -105,3 +107,26 @@ def test_scalar_width_keeps_ortho4xp_int_when_integral() -> None:
     assert ov["masks_width"] == 100 and type(ov["masks_width"]) is int
     s = Settings(essential=Essential(coast_transition=CoastTransition(width_m=120.5)))
     assert to_build_overrides(s)["masks_width"] == 120.5
+
+
+def test_the_photo_look_and_the_decals_on_the_sea_reach_the_build() -> None:
+    """Two settings of OrthoStudio XP's own; the decals reached nothing before (2026-09-18)."""
+    from orthostudio.config.models import Expert
+    from orthostudio.config.overrides import PHOTO_LOOKS
+
+    for look, (b, c, sat) in PHOTO_LOOKS.items():
+        ov = to_build_overrides(Settings(essential=Essential(photo_look=look)))  # type: ignore[arg-type]
+        assert (ov["photo_brightness"], ov["photo_contrast"], ov["photo_saturation"]) == (b, c, sat)
+    mine = Settings(
+        essential=Essential(photo_look="custom"),
+        expert=Expert(photo_brightness=0.1, photo_saturation=-0.4),
+    )
+    ov = to_build_overrides(mine)
+    assert ov["photo_brightness"] == 0.1 and ov["photo_saturation"] == -0.4
+    # the sliders are ignored while the look is not 'custom'
+    unused = Settings(
+        essential=Essential(photo_look="softer"), expert=Expert(photo_saturation=-0.4)
+    )
+    assert to_build_overrides(unused)["photo_saturation"] == PHOTO_LOOKS["softer"][2]
+    assert to_build_overrides(Settings())["decal_on_sea"] is False
+    assert to_build_overrides(Settings(expert=Expert(decal_on_sea=True)))["decal_on_sea"] is True

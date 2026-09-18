@@ -9,6 +9,7 @@ import learns the provider and zoom level of a tile Ortho4XP built. Spec:
 
 from orthostudio.tilefiles._grid import TextureId
 from orthostudio.tilefiles.config import (
+    OSXP_PARAMETERS,
     TILE_PARAMETERS,
     TileParameter,
     parse_tile_cfg,
@@ -40,6 +41,7 @@ from orthostudio.tilefiles.terrain import (
 )
 
 __all__ = [
+    "OSXP_PARAMETERS",
     "TILE_PARAMETERS",
     "MaskIndex",
     "MaskWindow",

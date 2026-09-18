@@ -120,7 +120,7 @@ from orthostudio.sched import (
 )
 from orthostudio.sources.osm import layers_for
 from orthostudio.textures.ter import TerKind, TerParams
-from orthostudio.tilefiles import masks_index, tile_cfg_text, tile_defaults
+from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
 from orthostudio.vectors.layers import build_layers
 from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
 from orthostudio.vectors.rule import VectorsJob, vectors_job
@@ -329,13 +329,19 @@ class BuildSpec:
             if name in OVERLAY_SETTINGS:
                 values[name] = _check_overlay_setting(name, value)
                 continue
+            if name in OSXP_PARAMETERS:
+                # OrthoStudio XP's own settings (the decals on the sea, the photo's colours):
+                # read like a tile variable, absent from Ortho4XP's 44 and from tile_settings.cfg
+                values[name] = value
+                continue
             if name not in values:
                 raise OsxpError(
                     "CFG_VALUE_INVALID",
                     context={"name": name, "value": value, "type": "-", "range": "-"},
                     message=f"{name!r} is not an Ortho4XP tile parameter.",
                     remedy="See the 44 tile parameters in docs/specs/tile-files.md "
-                    f"(overlay settings: {', '.join(OVERLAY_SETTINGS)}).",
+                    f"(overlay settings: {', '.join(OVERLAY_SETTINGS)}; OrthoStudio XP's own: "
+                    f"{', '.join(OSXP_PARAMETERS)}).",
                 )
             values[name] = value
         for name in OVERLAY_SETTINGS:
@@ -546,6 +552,9 @@ class TileTexturesParams(RuleParams):
     sea_texture_blur: float = 0.0
     clean_halo: bool = False
     parent_levels: int = 5
+    photo_brightness: float = 0.0
+    photo_contrast: float = 0.0
+    photo_saturation: float = 0.0
     mask_zl: int = 14
     water_tech: str = "XP11 + bathy"
     imprint_masks_to_dds: bool = True
@@ -811,6 +820,9 @@ def _tile_textures(ctx: RunContext) -> None:
             ter_params=params.ter_params(),
             sea_texture_blur=params.sea_texture_blur,
             clean_halo=params.clean_halo,
+            photo_brightness=params.photo_brightness,
+            photo_contrast=params.photo_contrast,
+            photo_saturation=params.photo_saturation,
             workers=env.workers,
             encoder=params.encoder,
             mip_mode=params.mip_mode,

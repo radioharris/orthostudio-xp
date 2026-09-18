@@ -53,6 +53,9 @@ _SAME: tuple[tuple[str, str], ...] = (
     ("sea_texture_blur", "sea_texture_blur"),
     ("normal_map_strength", "normal_map_strength"),
     ("use_decal_on_terrain", "use_decal_on_terrain"),
+    # OrthoStudio XP's own, under its own name: Ortho4XP has no such setting, and the
+    # switch reached nothing before this line (found on 2026-09-18, shipped in 0.1.3).
+    ("decal_on_sea", "decal_on_sea"),
     ("ovl_exclude_pol", "ovl_exclude_pol"),
     ("ovl_exclude_net", "ovl_exclude_net"),
 )
@@ -65,6 +68,25 @@ def _masks_width(width: float | list[float]) -> int | float | list[float]:
     if isinstance(width, list):
         return [float(v) for v in width]
     return int(width) if float(width).is_integer() else float(width)
+
+
+PHOTO_LOOKS: dict[str, tuple[float, float, float]] = {
+    "as_delivered": (0.0, 0.0, 0.0),
+    "softer": (-0.03, 0.0, -0.15),
+    "much_softer": (-0.06, -0.03, -0.30),
+}
+"""``look`` -> (brightness, contrast, saturation). A user found most aerial imagery too bright
+and too saturated (2026-09-18); ``custom`` uses the three expert values instead."""
+
+
+def _photo(look: str, x: Any) -> dict[str, float]:
+    """The three colour values a build consumes, from the look chosen."""
+    if look == "custom":
+        values = (float(x.photo_brightness), float(x.photo_contrast), float(x.photo_saturation))
+    else:
+        values = PHOTO_LOOKS[look]
+    names = ("photo_brightness", "photo_contrast", "photo_saturation")
+    return dict(zip(names, values, strict=True))
 
 
 def _custom_dem(relief: Any) -> str:
@@ -94,6 +116,7 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
         "fill_nodata": e.relief.fill_nodata == "nearest",
         "ratio_water": float(a.ratio_water_pct) / 100.0,
         "overlay_lod": float(a.overlay_lod_km) * 1000.0,
+        **_photo(e.photo_look, x),
     }
     for osxp_name, ortho4xp_name in _SAME:
         value = getattr(a, osxp_name) if osxp_name in _ADVANCED else getattr(x, osxp_name)

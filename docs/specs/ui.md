@@ -641,7 +641,10 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    while empty, and its holes). A value set by hand that no choice offers (a width of 80 m, lakes at
    40 %, the airport mode `existing`, the `3steps` profile) is shown as one more choice,
    never hidden.
-3. **For experts** (`<details>`, closed): every other setting in groups (airports, coast and sea,
+3. **For experts** (`<details>`, closed): a band with a chevron, its title, how many settings are
+   behind it and its one-line lead, all readable while it is closed, and whether it was open is
+   remembered in `localStorage` (a user found the old one-word summary too well hidden,
+   2026-09-18). It holds every other setting in groups (airports, coast and sea,
    lakes and rivers, terrain, roads, light and ground, X-Plane objects), each with a plain label, a
    one-sentence note, its unit inside the control and its name in Ortho4XP as a small badge, on the
    aligned grid of the old form (enum as a select with named options for the road levels, the sea
@@ -656,6 +659,10 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    folder: it takes two columns, its placeholder is the folder used when it is left empty
    (`<status.home>/patches`) and *Choose…* beside it opens the platform's dialog (a user of the
    X-Plane.Org page asked what to type in it, 2026-09-17).
+
+*Are the photo colours right for you?* (`essential.photo_look`) offers the look in plain words --
+as delivered, toned down, toned down a lot, my own values -- and, on *my own values*, the three
+expert numbers appear under it as sliders, so nobody has to go hunting for them (2026-09-18).
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the
 schema's leaves, so a setting added to the engine cannot be left out of the page.

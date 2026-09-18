@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -20,6 +21,7 @@ from orthostudio.imagery.chunks import ChunkContainer
 from orthostudio.imagery.grid import TextureId
 from orthostudio.pipeline.parents import read_parents_blob
 from orthostudio.textures.assemble import assemble_texture_detailed, parent_fallback
+from orthostudio.textures.colour import adjust_photo, photo_unchanged
 from orthostudio.textures.encode import EncoderUnavailableError, encode_dds
 from orthostudio.textures.imprint import imprint, load_mask, mask_crop
 
@@ -53,6 +55,19 @@ class TextureDdsParams(RuleParams):
     sea_texture_blur: float = 0.0
     clean_halo: bool = False
     parent_levels: int = 5
+    photo_brightness: float = 0.0
+    photo_contrast: float = 0.0
+    photo_saturation: float = 0.0
+    """Colours of the photo (``textures/colour.py``, a user asked 2026-09-18). Zero changes
+    nothing, and :meth:`canonical` then leaves the three out of the key, so every texture built
+    before they existed stays a hit."""
+
+    def canonical(self) -> dict[str, Any]:
+        doc = super().canonical()
+        if photo_unchanged(self.photo_brightness, self.photo_contrast, self.photo_saturation):
+            for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
+                doc.pop(name, None)
+        return doc
 
 
 @dataclass(slots=True)
@@ -101,6 +116,13 @@ def texture_dds(ctx: RunContext) -> None:
             t_like, lambda x, y, zl: parents.get((x, y, zl)), max_levels=params.parent_levels
         )
     assembled = assemble_texture_detailed(container, fallback)
+    # The photo's colours, before the mask: X-Plane's water keeps its own (2026-09-18).
+    rgb = adjust_photo(
+        assembled.rgb,
+        brightness=params.photo_brightness,
+        contrast=params.photo_contrast,
+        saturation=params.photo_saturation,
+    )
     t1 = time.perf_counter()
     mask_input = ctx.inputs["mask"]
     image: np.ndarray
@@ -109,7 +131,7 @@ def texture_dds(ctx: RunContext) -> None:
         x0, y0, side = params.mask_crop
         alpha = mask_crop(load_mask(mask_input.path), x0, y0, side)
         image = imprint(
-            assembled.rgb,
+            rgb,
             alpha,
             sea_texture_blur=params.sea_texture_blur,
             zl=params.zl,
@@ -117,7 +139,7 @@ def texture_dds(ctx: RunContext) -> None:
         )
         fmt = "bc3"
     else:
-        image = assembled.rgb
+        image = rgb
         fmt = "bc1"
     t2 = time.perf_counter()
     try:

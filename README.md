@@ -40,6 +40,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
   For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept) or
   your own elevation file.
+- **The colours of the photos.** Aerial imagery as the source delivers it, or toned down a little
+  or a lot, or by your own brightness, contrast and colour. It is applied when the textures are
+  encoded, so changing your mind rebuilds the tile without downloading anything again.
 - **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
   and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
   as they are, in the tree they come in.

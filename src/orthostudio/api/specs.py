@@ -33,7 +33,7 @@ from orthostudio.pipeline.home import (
     default_tiles_root,
     require_data_root,
 )
-from orthostudio.tilefiles import TILE_PARAMETERS, parse_tile_cfg
+from orthostudio.tilefiles import OSXP_PARAMETERS, TILE_PARAMETERS, parse_tile_cfg
 from orthostudio.zones import (
     Zone,
     ZoneEntry,
@@ -138,12 +138,12 @@ def typed_overrides(raw: dict[str, Any]) -> dict[str, Any]:
         if name in OVERLAY_SETTINGS:
             out[name] = parse_overlay_setting(name, str(value)) if isinstance(value, str) else value
             continue
-        if name not in TILE_PARAMETERS:
+        if name not in TILE_PARAMETERS and name not in OSXP_PARAMETERS:
             raise OsxpError(
                 "CFG_VALUE_INVALID",
                 context={"name": name, "value": value, "type": "-", "range": "-"},
                 message=f"{name!r} is not an Ortho4XP tile parameter.",
-                remedy="Tile parameters: " + ", ".join(TILE_PARAMETERS),
+                remedy="Tile parameters: " + ", ".join([*TILE_PARAMETERS, *OSXP_PARAMETERS]),
             )
         if isinstance(value, str):
             out.update(parse_tile_cfg(f"{name}={value}\n", strict=True))

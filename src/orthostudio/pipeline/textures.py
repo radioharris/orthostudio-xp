@@ -241,6 +241,10 @@ class TexturesSpec:
     ter_params: TerParams = field(default_factory=TerParams)
     sea_texture_blur: float = 0.0
     clean_halo: bool = False
+    photo_brightness: float = 0.0
+    photo_contrast: float = 0.0
+    photo_saturation: float = 0.0
+    """Colours of the photo, applied to every texture of the tile (``textures/colour.py``)."""
     workers: int | None = None
     encoder: str = "auto"
     mip_mode: str = "gamma22"
@@ -1080,6 +1084,9 @@ class _Pipeline:
             sea_texture_blur=self.spec.sea_texture_blur if masked else 0.0,
             clean_halo=self.spec.clean_halo if masked else False,
             parent_levels=self.spec.parent_levels if st.parents else 0,
+            photo_brightness=self.spec.photo_brightness,
+            photo_contrast=self.spec.photo_contrast,
+            photo_saturation=self.spec.photo_saturation,
         )
 
     # -- pool --------------------------------------------------------------------------------

@@ -315,8 +315,14 @@
       <div id="settings-presets" class="settings-presets"></div>
       <div id="settings-questions" class="settings-questions"></div>
       <details class="settings-experts" id="settings-experts">
-        <summary data-i18n="settings.experts">For experts</summary>
-        <p class="help" data-i18n="settings.experts_lead">Every other setting, in plain words. The small grey name is the setting's name in Ortho4XP.</p>
+        <summary>
+          <span class="experts-chevron" aria-hidden="true"></span>
+          <span class="experts-head">
+            <span class="experts-title"><span data-i18n="settings.experts">For experts</span>
+              <span class="experts-count" id="settings-experts-count"></span></span>
+            <span class="experts-lead" data-i18n="settings.experts_lead">Every other setting, in plain words. The small grey name is the setting's name in Ortho4XP.</span>
+          </span>
+        </summary>
         <div id="settings-expert-fields"></div>
       </details>
       <div class="actions settings-actions">

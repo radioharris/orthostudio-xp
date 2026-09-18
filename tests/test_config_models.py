@@ -22,9 +22,9 @@ def test_levels_and_field_counts() -> None:
     assert LEVELS == ("essential", "advanced", "expert")
     assert list(Settings.model_fields) == list(LEVELS)
     # region is P5; overlays and data_dir are OrthoStudio XP's own
-    assert len(Essential.model_fields) == 9
+    assert len(Essential.model_fields) == 10
     assert len(Advanced.model_fields) == 14
-    assert len(Expert.model_fields) == 21
+    assert len(Expert.model_fields) == 24
 
 
 def test_defaults_are_the_ortho4xp_defaults() -> None:

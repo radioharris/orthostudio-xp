@@ -142,6 +142,7 @@ export const QUESTION_PATHS = {
   width: ["essential.coast_transition.width_m"],
   water: ["essential.water_rendering"],
   lakes: ["advanced.ratio_water_pct"],
+  colours: ["essential.photo_look", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"],
   relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata"],
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
@@ -156,6 +157,7 @@ const QUESTION_TEXT = {
   width: [() => t("settings.q.width"), () => t("settings.q.width_help")],
   water: [() => t("settings.q.water"), () => t("settings.q.water_help")],
   lakes: [() => t("settings.q.lakes"), () => t("settings.q.lakes_help")],
+  colours: [() => t("settings.q.colours"), () => t("settings.q.colours_help")],
   relief: [() => t("settings.q.relief"), () => t("settings.q.relief_help")],
   overlays: [() => t("settings.q.overlays"), () => t("settings.q.overlays_help")],
   xplane: [() => t("settings.q.xplane"), () => t("settings.q.xplane_help")],
@@ -271,6 +273,13 @@ export function questionChoices(id, settings, { providers = [] } = {}) {
       const current = value("advanced.ratio_water_pct");
       return withCurrent(choices, current, t("settings.q.lakes_other", { n: fmtNum(Number(current), 1) }));
     }
+    case "colours":
+      return [
+        { value: "as_delivered", label: t("settings.q.colours_as_delivered"), recommended: true },
+        { value: "softer", label: t("settings.q.colours_softer"), note: t("settings.q.colours_softer_note") },
+        { value: "much_softer", label: t("settings.q.colours_much_softer"), note: t("settings.q.colours_much_softer_note") },
+        { value: "custom", label: t("settings.q.colours_custom"), note: t("settings.q.colours_custom_note") },
+      ];
     case "relief":
       return [
         { value: "auto", label: t("settings.q.relief_auto"), note: t("settings.q.relief_auto_note"), recommended: true },
@@ -319,6 +328,9 @@ export function answer(draft, id, value) {
       break;
     case "lakes":
       setPath(draft, "advanced.ratio_water_pct", Number(value));
+      break;
+    case "colours":
+      setPath(draft, "essential.photo_look", value);
       break;
     case "relief":
       setPath(draft, "essential.relief.source", value);
@@ -385,7 +397,7 @@ export const EXPERT_GROUPS = [
     fields: ["advanced.curvature_tol", "advanced.limit_tris", "expert.min_angle", "expert.apt_curv_tol", "expert.apt_curv_ext", "expert.coast_curv_tol", "expert.coast_curv_ext", "advanced.apt_smoothing_pix", "expert.patches_dir"],
   },
   { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
-  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea"] },
+  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
 ];
 
@@ -424,6 +436,9 @@ const FIELD_TEXT = {
   "expert.normal_map_strength": [() => t("settings.x.normals"), () => t("settings.x.normals_hint")],
   "expert.use_decal_on_terrain": [() => t("settings.x.decal"), () => t("settings.x.decal_hint")],
   "expert.decal_on_sea": [() => t("settings.x.decal_sea"), () => t("settings.x.decal_sea_hint")],
+  "expert.photo_brightness": [() => t("settings.x.photo_brightness"), () => t("settings.x.photo_brightness_hint")],
+  "expert.photo_contrast": [() => t("settings.x.photo_contrast"), () => t("settings.x.photo_contrast_hint")],
+  "expert.photo_saturation": [() => t("settings.x.photo_saturation"), () => t("settings.x.photo_saturation_hint")],
   "expert.patches_dir": [() => t("settings.x.patches"), () => t("settings.x.patches_hint")],
   "expert.ovl_exclude_pol": [() => t("settings.x.exclude_pol"), () => t("settings.x.exclude_pol_hint")],
   "expert.ovl_exclude_net": [() => t("settings.x.exclude_net"), () => t("settings.x.exclude_net_hint")],
@@ -719,6 +734,43 @@ function renderQuestions(box, view) {
     );
   }
   box.append(questionBox(view, "relief", ...relief));
+
+  // The colours of the photo: the choice in plain words, and the three numbers right here when
+  // the pilot asks for their own, so nobody has to go hunting under For experts (2026-09-18).
+  const colours = [radios(view, "colours", "q-colours", getPath(d, "essential.photo_look"))];
+  if (getPath(d, "essential.photo_look") === "custom") {
+    colours.push(h("div", { class: "sub-question colour-values" },
+      PHOTO_VALUES.map(([path, label]) => colourNumber(view, path, label()))));
+  }
+  box.append(questionBox(view, "colours", ...colours));
+}
+
+/** The three colour numbers of the 'my own values' answer, in the order they are applied. */
+const PHOTO_VALUES = [
+  ["expert.photo_brightness", () => t("settings.x.photo_brightness")],
+  ["expert.photo_contrast", () => t("settings.x.photo_contrast")],
+  ["expert.photo_saturation", () => t("settings.x.photo_saturation")],
+];
+
+/** One colour number as a slider with its value beside it (-0.5 .. 0.5, saturation from -1). */
+function colourNumber(view, path, label) {
+  const { h } = view.dom;
+  const d = view.draft;
+  const id = `q-${path.replace(/\W+/g, "-")}`;
+  const min = path.endsWith("saturation") ? -1 : -0.5;
+  const shown = h("output", { class: "colour-value", for: id });
+  const slider = h("input", { type: "range", id, min: String(min), max: "0.5", step: "0.05",
+    dataset: { focusKey: `q:${path}` } });
+  const show = () => { shown.textContent = fmtNum(Number(slider.value), 2); };
+  slider.value = String(getPath(d, path) ?? 0);
+  show();
+  slider.addEventListener("input", () => {
+    setPath(d, path, Number(slider.value));
+    show();
+  });
+  slider.addEventListener("change", () => view.changed());
+  return h("div", { class: "colour-row" },
+    h("label", { class: "sub-question-title", for: id }, label), slider, shown);
 }
 
 /**
@@ -767,6 +819,11 @@ function renderExperts(box, view) {
   for (const g of EXPERT_GROUPS) box.append(group(g.title(), g.fields));
   const retired = retiredShown(view.draft, view.schema);
   if (retired.length) box.append(group(t("settings.x.group_retired"), retired, t("settings.x.retired_help")));
+  // How many settings are behind the band: a user did not know there was anything there
+  // (2026-09-18). Counted from what was just drawn, so it can never drift.
+  const count = box.querySelectorAll(".gen-field").length;
+  const label = box.parentElement?.querySelector(".experts-count");
+  if (label) label.textContent = count ? t("settings.experts_count", { count }) : "";
 }
 
 function expertField(view, path, prop) {

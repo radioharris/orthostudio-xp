@@ -177,6 +177,13 @@ the computer's own disk instead.
 `tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
 
+**The colours of the photos.** *Are the photo colours right for you?* takes aerial imagery as the
+source delivers it, tones it down a little, a lot, or by your own numbers (brightness, contrast and
+colour, under *For experts*). It is applied when the textures are encoded, which is the last step
+that reads the downloaded images: changing your mind builds the tile again **without downloading
+anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing his
+screenshots by hand (2026-09-18).
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in

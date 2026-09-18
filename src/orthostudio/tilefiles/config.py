@@ -89,6 +89,17 @@ TILE_PARAMETERS: dict[str, TileParameter] = {
     "zone_list": TileParameter(list, []),
 }
 
+OSXP_PARAMETERS: dict[str, TileParameter] = {
+    "decal_on_sea": TileParameter(bool, False),
+    "photo_brightness": TileParameter(float, 0.0),
+    "photo_contrast": TileParameter(float, 0.0),
+    "photo_saturation": TileParameter(float, 0.0),
+}
+"""Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
+Ortho4XP: the decals on the sea (2026-09-17) and the colours of the photo (2026-09-18). They are
+not part of the 44, so ``tile_cfg_text`` does not write them; ``--set`` and the page's overrides
+accept them beside the 44."""
+
 _LITERAL_TYPES = (bool, list)
 _ZONE_APPEND = "zone_list.append("
 
@@ -168,7 +179,7 @@ def parse_tile_cfg(text: str, *, path: Path | None = None, strict: bool = False)
         if not sep or not name:
             raise _line_error(path, lineno, "expected key=value")
         raw = raw.strip()
-        param = TILE_PARAMETERS.get(name)
+        param = TILE_PARAMETERS.get(name) or OSXP_PARAMETERS.get(name)
         if param is None:
             if strict:
                 raise _line_error(path, lineno, f"unknown parameter {name}")
