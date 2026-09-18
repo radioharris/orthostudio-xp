@@ -447,6 +447,18 @@ export function createPlanMap(ctx) {
     return { squares, zones, free: squares + zones };
   }
 
+  /** Give each named square its own colours in one call (``null`` gives them back to Settings).
+   *
+   * Unlike ``setTilesPhoto`` the squares differ here: taking the colours back from the tiles
+   * already built gives each square what its own pack holds (a user, 2026-09-18). */
+  function setEachTilePhoto(byName) {
+    for (const [name, photo] of Object.entries(byName)) {
+      if (photo && photo.look) zs.tiles[name] = { photo: { ...photo } };
+      else delete zs.tiles[name];
+    }
+    changed();
+  }
+
   /** Give every square of ``names`` these colours (``null`` gives them back to Settings). */
   function setTilesPhoto(names, photo) {
     for (const name of names) {
@@ -1905,6 +1917,8 @@ export function createPlanMap(ctx) {
     tilesPhoto,
     /** Set the colours of the squares given; `null` gives them back to Settings. */
     setTilesPhoto,
+    /** Set the colours of several squares at once, each one its own; `null` gives them back. */
+    setEachTilePhoto,
     /** Whether the saved document is loaded: nothing may be set before it is. */
     zonesLoaded: () => zs.loaded,
     /** Give back to Settings the colours of what is not installed; answers how many. */

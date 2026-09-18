@@ -20,7 +20,7 @@ import {
   t,
   tOpt,
 } from "./i18n.js";
-import { photoValues } from "./colour.js";
+import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
@@ -3460,6 +3460,9 @@ async function loadLibrary() {
   }
   renderLibrary();
   planMap?.libraryChanged();
+  // The Plan offers to go back to the colours of a tile on the disk: a build that just ended, or
+  // a tile deleted, changes what it may offer.
+  renderTileColours();
   loadDisk(); // a delete or a removal changes what can be freed
 }
 
@@ -3787,19 +3790,56 @@ function renderLibrary() {
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
  *
- * ``row.photo`` is what the manifest recorded (absent for a pack built before the colours, or
- * with the plain ones); the square's answer comes from the map's document. Both are rounded the
- * same way, so a 0 on one side and a missing section on the other agree. */
+ * ``row.photo`` is what the pack recorded (absent for one built before the colours, or with the
+ * plain ones); the square's answer comes from the map's document. Both are rounded the same way,
+ * so a 0 on one side and a missing section on the other agree. */
 function photoDiffers(row) {
-  const built = row.photo || {};
-  const own = planMap && planMap.tilePhoto ? planMap.tilePhoto(row.tile) : null;
-  const wanted = own?.look ? photoValues(own.look, own) : settingsPhoto();
+  return valuesKey(row.photo) !== valuesKey(wantedPhoto(row.tile));
+}
+
+/** The three colour values, rounded, as one string: what tells two answers apart. */
+function valuesKey(values) {
   const n = (v) => Number(v || 0).toFixed(3);
-  return (
-    n(built.brightness) !== n(wanted.brightness) ||
-    n(built.contrast) !== n(wanted.contrast) ||
-    n(built.saturation) !== n(wanted.saturation)
-  );
+  const p = values || {};
+  return `${n(p.brightness)}:${n(p.contrast)}:${n(p.saturation)}`;
+}
+
+/** The colours a square asks for now: its own answer, or the one Settings gives. */
+function wantedPhoto(tile) {
+  const own = planMap && planMap.tilePhoto ? planMap.tilePhoto(tile) : null;
+  return own?.look ? photoValues(own.look, own) : settingsPhoto();
+}
+
+/** The colours the pack of ``tile`` on the disk was built with, or ``null`` when there is none.
+ *
+ * The installed pack answers first: it is the one X-Plane shows. A pack that recorded nothing
+ * answers the plain colours, which is what the Library's mark reads into it too. */
+function builtPhoto(tile) {
+  const rows = libraryTiles(state.library).filter((e) => e.tile === tile && e.present && e.built_by === "osxp");
+  const row = rows.find((e) => e.installed) || rows[0];
+  if (!row) return null;
+  return { brightness: 0, contrast: 0, saturation: 0, ...(row.photo || {}) };
+}
+
+/** The choice that gives these values: a look of the menu when one matches, else "my own". */
+function photoChoiceOf(values) {
+  for (const [look, preset] of Object.entries(PHOTO_LOOKS)) {
+    if (valuesKey(preset) === valuesKey(values)) return { ...values, look };
+  }
+  return { ...values, look: "custom" };
+}
+
+/** The chosen squares whose tile on the disk was built with other colours than they ask for now:
+ * `[{tile, choice}]`, so the Plan can offer to take those colours back (a user, 2026-09-18). */
+function tilesBuiltOtherwise(names) {
+  const out = [];
+  for (const tile of names) {
+    const built = builtPhoto(tile);
+    if (built && valuesKey(built) !== valuesKey(wantedPhoto(tile))) {
+      out.push({ tile, choice: photoChoiceOf(built) });
+    }
+  }
+  return out;
 }
 
 function libraryRows() {
@@ -4085,6 +4125,21 @@ function renderTileColours() {
             if (given) toast(t("plan.colours_reset_done", { n: given }));
           } }, t("plan.colours_reset"))
         : null));
+  }
+  // Going back to what a tile already holds: the Library marks the difference, this undoes it
+  // without hunting for the numbers again (a user, 2026-09-18).
+  const otherwise = ready ? tilesBuiltOtherwise(names) : [];
+  if (otherwise.length) {
+    box.append(h("div", { class: "colours-own" },
+      h("p", { class: "help" }, otherwise.length === 1
+        ? t("plan.colours_built_one", { tile: otherwise[0].tile })
+        : t("plan.colours_built_many", { n: otherwise.length })),
+      h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
+          planMap.setEachTilePhoto(Object.fromEntries(otherwise.map((e) => [e.tile, e.choice])));
+          renderTileColours();
+          renderPlanSettings();
+          toast(t("plan.colours_built_done", { n: otherwise.length }));
+        } }, t("plan.colours_built_take"))));
   }
   if (!names.length || !ready || shared.mixed) return;
   if (photo?.look === "custom") box.append(photoSliders(photo, (next) => {

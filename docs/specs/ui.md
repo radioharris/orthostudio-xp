@@ -704,8 +704,17 @@ A tile in the Library carries **other colours** when the pack on the disk was bu
 other than the ones its square asks for now (`photoDiffers`, from the `photo` of `GET /api/library`
 and the square's own): the map shows what a build would give, this says what X-Plane holds today,
 and building the tile again applies it (a user asked what happens to an installed tile,
-2026-09-18). A pack built before the colours existed, or with the plain ones, records none and is
+2026-09-18). A pack built with the plain colours, or before they existed, records none and is
 never marked.
+
+The other way round is a button of step 1, **Go back to the colours already built**: it appears
+when a chosen square has a pack on the disk built with other colours, names the tile (or how many
+squares), and gives each square the colours of *its own* pack -- a named look of the menu when one
+matches, its numbers otherwise (`tilesBuiltOtherwise`, `map.setEachTilePhoto`). Nothing is built
+again: the tile on the disk does not move, and the mark in the Library goes quiet because the two
+now agree (a user asked to be able to go back to the colours already installed, 2026-09-18). The
+pack of an installed tile answers first, being the one X-Plane shows; a pack that recorded nothing
+answers the plain colours, as the mark reads it too.
 
 Step 1 also says, **whether or not anything is chosen**, how many squares and zones carry their
 own colours -- a map repainted from an old visit must never be a mystery (same user) -- and

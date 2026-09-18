@@ -190,7 +190,10 @@ and a zone drawn inside a square can differ again in its own polygon. Each level
 above until it names its own, and a texture belongs to the zone its centre falls in. Changing your
 mind re-encodes the textures concerned and downloads nothing. **The map shows it**: a square or a
 zone with its own colours is repainted where it is, so you judge the result on the ground you fly
-over rather than on a thumbnail.
+over rather than on a thumbnail. Two buttons undo a choice: *Give the colours back to Settings*
+clears everything, and *Go back to the colours already built* gives each square the colours of the
+tile you already have on the disk -- the Library says which tiles no longer match, and this is how
+you agree with them again without building anything.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
