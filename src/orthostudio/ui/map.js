@@ -588,6 +588,7 @@ export function createPlanMap(ctx) {
   function changed({ plan = true } = {}) {
     renderList();
     renderZones();
+    renderGrid();  // a square that takes its own colours loses its fill at once
     refreshColours();  // the colours of the map follow the squares and the zones
     renderStatus();
     renderLegend();
@@ -1409,7 +1410,8 @@ export function createPlanMap(ctx) {
       const cls = ["osxp-zone", `zl-${z.zl}`];
       if (z.id === zs.selected) cls.push("is-selected");
       if (zs.marks.has(z.id)) cls.push("is-invalid");
-      if (zs.plainColours || z.photo?.look) cls.push("is-plain");
+      const overPainted = zoneTiles(z).some((name) => zs.tiles[name]?.photo?.look);
+      if (zs.plainColours || z.photo?.look || overPainted) cls.push("is-plain");
       layers.zones.addLayer(L.polygon(latLngs(z.polygon), { className: cls.join(" "), interactive: false, weight: 2 }));
     }
     const sel = zoneById(zs.selected);
