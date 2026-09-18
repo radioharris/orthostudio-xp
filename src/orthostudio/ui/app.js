@@ -4048,6 +4048,20 @@ function renderTileColours() {
   // No thumbnail here: the map itself is repainted with these colours, which says it better
   // (a user, 2026-09-18). Settings keeps its two images, having no map.
   box.append(h("p", { class: "help" }, t("plan.colours_on_map")));
+  // Back to Settings in one click, for everything not yet in X-Plane (same user): a tile already
+  // installed keeps its colours, which are the record of what was built.
+  if (ready && planMap.hasOwnColours()) {
+    box.append(h("button", {
+      type: "button",
+      class: "btn btn-small btn-quiet",
+      onclick: () => {
+        const given = planMap.resetColours();
+        renderTileColours();
+        renderPlanSettings();
+        if (given) toast(t("plan.colours_reset_done", { n: given }));
+      },
+    }, t("plan.colours_reset")));
+  }
 }
 
 /** A colour choice with nothing set: what a square starts from when it takes its own. */

@@ -2860,9 +2860,9 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert grid.index("osxp-tile-installed") < grid.index("osxp-tile-${building.get(name)}")
     assert "JSON.stringify([...buildingNow().entries()])" in map_js  # redrawn on change only
     css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert re.search(
-        r"\.osxp-tile-working \{[^}]*fill-opacity: 0\.3;[^}]*animation: tile-pulse", css
-    )
+    # marks are outlines, never fills (2026-09-18): the tile worked on pulses on its stroke
+    assert re.search(r"\.osxp-tile-working \{[^}]*fill: none;[^}]*animation: tile-pulse", css)
+    assert re.search(r"@keyframes tile-pulse \{[^}]*stroke-opacity", css)
     assert ".osxp-tile-queued {" in css and "stroke-dasharray" in css.split(".osxp-tile-queued")[1]
     assert ".osxp-tile-failed {" in css and "@keyframes tile-pulse" in css
     app_js = (UI / "app.js").read_text(encoding="utf-8")

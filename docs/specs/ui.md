@@ -695,13 +695,14 @@ build. The layer exists only while something carries its own colours, and follow
 the choices, of the zones and of the squares. In the mock mode it paints its own ground image, so
 it can be seen and measured with no network.
 
-**Nothing tints what it repaints.** A square carrying its own colours loses its fill and keeps a
-thicker stroke (`is-plain`), and so does every zone carrying its own **or lying in such a square**:
-a translucent blue over ground being judged would lie about its colours (same user). The squares
-are drawn again on every change, so the fill goes the moment the colours are set. The map's legend also carries **True colours**, a checkbox that takes
-every fill off -- selection, installed tiles, zones -- leaving the outlines, for judging a square
-that carries no colours of its own or one already installed under its green tint; the choice is
-remembered in `localStorage`.
+**Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
+zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
+now that the map shows the very colours a build will encode. The tile being built still pulses,
+on its stroke.
+
+Step 1 also carries **Give the colours back to Settings**, which appears only while something not
+installed carries its own: it clears the squares and the zones and says how many, and a tile
+already in X-Plane keeps its colours, which are the record of what was built.
 
 Step 1 carries no thumbnail: the map says it better, and one line points at it. Settings keeps its
 two images, having no map.

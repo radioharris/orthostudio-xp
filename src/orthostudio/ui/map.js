@@ -192,7 +192,6 @@ export function createPlanMap(ctx) {
     zones: [],
     tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
     fileUnreadable: false,  // the saved file holds something this version could not read
-    plainColours: false,  // "true colours": no fill at all, so nothing tints the imagery
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
     loadError: null, // the engine could not be reached (network, 5xx): nothing is editable
@@ -351,11 +350,6 @@ export function createPlanMap(ctx) {
   /** GET /api/zones, one request at a time, shared by every caller (boot, Retry, a plan or job
    * request, a conflict). Never rejects. */
   function load() {
-    try {
-      zs.plainColours = localStorage.getItem("osxp.plainColours") === "1";
-    } catch {
-      // private window, blocked storage: the map keeps its marks, as before
-    }
     if (!zs.loading) {
       zs.loading = fetchZones().finally(() => {
         zs.loading = null;
@@ -424,6 +418,35 @@ export function createPlanMap(ctx) {
     }
     if (looks.size !== 1) return { mixed: true, photo: null };
     return { mixed: false, photo };
+  }
+
+  /** Give back to Settings the colours of every square and zone that is not installed.
+   *
+   * A tile already in X-Plane keeps its own: it was built with them, and the setting is the
+   * record of what is on the disk (a user, 2026-09-18). Answers how many were given back. */
+  function resetColours() {
+    const installed = new Set(installedTiles());
+    let given = 0;
+    for (const name of Object.keys(zs.tiles)) {
+      if (installed.has(name)) continue;
+      delete zs.tiles[name];
+      given += 1;
+    }
+    for (const z of zs.zones) {
+      if (!z.photo?.look) continue;
+      if (zoneTiles(z).some((name) => installed.has(name))) continue;
+      z.photo = { ...z.photo, look: null };
+      given += 1;
+    }
+    if (given) changed();
+    return given;
+  }
+
+  /** Whether anything not installed carries colours of its own (the button shows then). */
+  function hasOwnColours() {
+    const installed = new Set(installedTiles());
+    if (Object.keys(zs.tiles).some((name) => !installed.has(name))) return true;
+    return zs.zones.some((z) => z.photo?.look && !zoneTiles(z).some((n) => installed.has(n)));
   }
 
   /** Give every square of ``names`` these colours (``null`` gives them back to Settings). */
@@ -1364,10 +1387,7 @@ export function createPlanMap(ctx) {
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
       if (selected.has(name)) {
-        // No fill over a square repainted with its own colours: the tint would lie about them
-        // (a user, 2026-09-18). The stroke alone says it is chosen.
-        const plain = zs.plainColours || Boolean(zs.tiles[name]?.photo?.look);
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-selected${plain ? " is-plain" : ""}`, interactive: false, weight: plain ? 3 : 2 }));
+        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-selected", interactive: false, fill: false, weight: 3 }));
       }
       if (installed.has(name)) {
         layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-installed", interactive: false, fill: false, weight: 3 }));
@@ -1410,9 +1430,7 @@ export function createPlanMap(ctx) {
       const cls = ["osxp-zone", `zl-${z.zl}`];
       if (z.id === zs.selected) cls.push("is-selected");
       if (zs.marks.has(z.id)) cls.push("is-invalid");
-      const overPainted = zoneTiles(z).some((name) => zs.tiles[name]?.photo?.look);
-      if (zs.plainColours || z.photo?.look || overPainted) cls.push("is-plain");
-      layers.zones.addLayer(L.polygon(latLngs(z.polygon), { className: cls.join(" "), interactive: false, weight: 2 }));
+      layers.zones.addLayer(L.polygon(latLngs(z.polygon), { className: cls.join(" "), interactive: false, fill: false, weight: 3 }));
     }
     const sel = zoneById(zs.selected);
     if (sel && sel.polygon.length >= 3) {
@@ -1520,7 +1538,6 @@ export function createPlanMap(ctx) {
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
     if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
-    if (map) items.push(plainToggle());
     if (map) items.push(bordersToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
@@ -1534,27 +1551,6 @@ export function createPlanMap(ctx) {
   }
 
   /** The legend's borders line: a checkbox, and why nothing shows when zoomed in close. */
-  /** "True colours": every fill goes, so nothing tints the imagery while you judge it. */
-  function plainToggle() {
-    const input = h("input", {
-      type: "checkbox",
-      checked: zs.plainColours,
-      onchange: (ev) => {
-        zs.plainColours = ev.target.checked;
-        try {
-          localStorage.setItem("osxp.plainColours", zs.plainColours ? "1" : "0");
-        } catch {
-          // private window, blocked storage: the choice lasts this visit
-        }
-        renderGrid();
-        renderZones();
-        renderLegend();
-      },
-    });
-    return h("li", { class: "legend-toggle" },
-      h("label", { title: t("map.plain_hint") }, input, t("map.plain")));
-  }
-
   function bordersToggle() {
     let text = t("map.borders");
     if (borders.wanted && map.getZoom() > BORDERS_MAX_ZOOM) text = t("map.borders_zoomed");
@@ -1910,6 +1906,10 @@ export function createPlanMap(ctx) {
     setTilesPhoto,
     /** Whether the saved document is loaded: nothing may be set before it is. */
     zonesLoaded: () => zs.loaded,
+    /** Give back to Settings the colours of what is not installed; answers how many. */
+    resetColours,
+    /** Whether anything not installed carries colours of its own. */
+    hasOwnColours,
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();
