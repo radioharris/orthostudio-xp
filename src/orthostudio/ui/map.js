@@ -421,21 +421,17 @@ export function createPlanMap(ctx) {
     return { mixed: false, photo: keys.has("") ? null : photo };
   }
 
-  /** Give back to Settings the colours of every square and zone that is not installed.
+  /** Give every square and zone its colours back to Settings; answers how many.
    *
-   * A tile already in X-Plane keeps its own: it was built with them, and the setting is the
-   * record of what is on the disk (a user, 2026-09-18). Answers how many were given back. */
+   * Installed tiles included: their pack records the colours it was built with, and the Library
+   * says when it no longer matches, so the setting has nothing to keep for them. Sparing them
+   * only made the button vanish while a pilot was working on an installed tile (a user,
+   * 2026-09-18). */
   function resetColours() {
-    const installed = new Set(installedTiles());
-    let given = 0;
-    for (const name of Object.keys(zs.tiles)) {
-      if (installed.has(name)) continue;
-      delete zs.tiles[name];
-      given += 1;
-    }
+    let given = Object.keys(zs.tiles).length;
+    zs.tiles = {};
     for (const z of zs.zones) {
       if (!z.photo?.look) continue;
-      if (zoneTiles(z).some((name) => installed.has(name))) continue;
       z.photo = { ...z.photo, look: null };
       given += 1;
     }
@@ -443,17 +439,12 @@ export function createPlanMap(ctx) {
     return given;
   }
 
-  /** How many squares and zones carry colours of their own, and how many the button would give
-   * back: the Plan says it even when nothing is chosen, so a map repainted from an old visit is
-   * never a mystery (a user, 2026-09-18). */
+  /** How many squares and zones carry colours of their own: the Plan says it even when nothing
+   * is chosen, so a map repainted from an old visit is never a mystery (a user, 2026-09-18). */
   function ownColours() {
-    const installed = new Set(installedTiles());
-    const squares = Object.keys(zs.tiles);
-    const zones = zs.zones.filter((z) => z.photo?.look);
-    const free =
-      squares.filter((name) => !installed.has(name)).length +
-      zones.filter((z) => !zoneTiles(z).some((n) => installed.has(n))).length;
-    return { squares: squares.length, zones: zones.length, free };
+    const squares = Object.keys(zs.tiles).length;
+    const zones = zs.zones.filter((z) => z.photo?.look).length;
+    return { squares, zones, free: squares + zones };
   }
 
   /** Give every square of ``names`` these colours (``null`` gives them back to Settings). */
@@ -1285,8 +1276,11 @@ export function createPlanMap(ctx) {
           image.src = mockPhoto(size.x, `${coords.z}/${coords.x}/${coords.y}`);
           return canvas;
         }
+        // No crossOrigin: the image comes from this engine, so it never taints the canvas, and
+        // asking for CORS made the browser refuse the copy the map layer had already cached
+        // without it -- the tile then failed to load and stayed unpainted (a user saw a map
+        // repainted in places after a hard reload, 2026-09-18).
         const image = new Image();
-        image.crossOrigin = "anonymous";
         image.onload = () => paint(image);
         image.onerror = () => done(null, canvas);  // no imagery there: nothing to repaint
         image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}`;

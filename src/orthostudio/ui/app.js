@@ -4075,7 +4075,6 @@ function renderTileColours() {
     if (own.squares && own.zones) line = t("plan.colours_own_both", { squares: own.squares, zones: own.zones });
     else if (own.squares) line = t("plan.colours_own_squares", { n: own.squares });
     else line = t("plan.colours_own_zones", { n: own.zones });
-    if (!own.free) line += ` ${t("plan.colours_own_installed")}`;
     box.append(h("div", { class: "colours-own" },
       h("p", { class: "help" }, line),
       own.free

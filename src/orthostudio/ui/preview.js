@@ -40,8 +40,9 @@ export function colourPreview(h, sample, look, options = {}) {
     h("div", { class: "photo-shot" }, after,
       h("span", { class: "photo-label" }, t("settings.q.colours_preview_after"))),
     h("div", { class: "photo-words" }, ...words));
+  // Same origin as the page (the engine, or a data: URL in the mock): no crossOrigin, which
+  // would only make the browser refuse a copy it already cached without it.
   const image = new Image();
-  image.crossOrigin = "anonymous";
   image.addEventListener("load", () => {
     for (const [canvas, applied] of [[before, null], [after, look]]) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });

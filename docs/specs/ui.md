@@ -709,9 +709,10 @@ never marked.
 
 Step 1 also says, **whether or not anything is chosen**, how many squares and zones carry their
 own colours -- a map repainted from an old visit must never be a mystery (same user) -- and
-carries **Give the colours back to Settings** beside it: it clears them and says how many. A tile
-already in X-Plane keeps its colours, which are the record of what was built; when only such
-tiles are left, the line says so and the button goes.
+carries **Give the colours back to Settings** beside it: it clears every square and every zone,
+installed or not, and says how many. Sparing installed tiles only made the button vanish while a
+pilot worked on one; their pack records the colours it was built with, so the setting has nothing
+to keep for them, and the Library says when the two no longer agree.
 
 Step 1 carries no thumbnail: the map says it better, and one line points at it. Settings keeps its
 two images, having no map.
