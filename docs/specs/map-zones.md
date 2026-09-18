@@ -256,7 +256,8 @@ Plan screen, above the existing inputs (which stay):
    level (legend). A trash above the list deletes every zone after asking (`ui.md`, Step 2).
 5. Every change is saved with `PUT /api/zones` (debounced 500 ms); an error is a toast.
 6. The estimate and *Build* send `tiles` (the selection) and `zones` (the list shown). A zone
-   that touches no selected tile gets a hint ("outside the selected tiles").
+   that touches no selected tile gets a hint ("outside the selected tiles") and a button that
+   adds the tiles it falls in, so a zone drawn first can be built without hunting for its tile.
 7. Mock mode (`?mock=1`): `mock/zones.json`; the base layer is a canvas grid layer (no request).
 
 Every visible string goes through `t()` in French and English; controls keep keyboard access.

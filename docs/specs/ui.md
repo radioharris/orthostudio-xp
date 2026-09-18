@@ -213,7 +213,10 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   ↓ (priority), × (delete), the **detail level** (labels sized at the zone's latitude), the
   **imagery source**, then notes: the zone's approximate size ("about 2.04 GB", or "nothing extra"
   at the tiles' level and source), "region · N tiles" when it covers several tiles (positive-area
-  rule of `map-zones.md` 4), "outside the selected tiles", "sharper than <source> provides" when a
+  rule of `map-zones.md` 4), "outside the selected tiles" -- followed by **Add N tile(s)**, which
+  chooses the tiles the zone falls in, since a zone builds nothing on its own and a build makes
+  whole tiles (a user asked what happens to a zone drawn without tiles, 2026-09-18); never done on
+  its own, a region can hold many tiles and each one is a download --, "sharper than <source> provides" when a
   zone without its own source is above the tiles' source's maximum, and "OrthoStudio XP cannot use
   this zone: <reason>" (row framed in red, zone dashed on the map) for a problem of the saved file
   naming it or a `ZONE_*` refusal naming it (below). A detail level the page does not offer (20, or

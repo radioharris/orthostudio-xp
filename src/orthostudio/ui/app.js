@@ -4373,6 +4373,8 @@ async function boot() {
     clear,
     tiles: () => state.tiles,
     toggleTile,
+    // a zone drawn outside the chosen tiles offers to add its own (a user, 2026-09-18)
+    chooseTiles: (names) => sayTilesInBuild(addTiles(names)),
     providers: () => state.providers,
     planProvider: () => $("provider-select").value,
     planZl: () => Number($("zl-select").value),

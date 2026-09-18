@@ -1776,7 +1776,17 @@ export function createPlanMap(ctx) {
     }
     const touched = zoneTiles(z);
     if (touched.length > 1) notes.append(h("span", { class: "pill pill-region", title: touched.join(" ") }, t("zones.region", { n: touched.length })));
-    if (!touched.some((n) => selectedTiles.has(n))) notes.append(h("span", { class: "zone-hint" }, t("zones.outside")));
+    if (!touched.some((n) => selectedTiles.has(n))) {
+      // A zone builds nothing on its own: a build makes whole tiles. Rather than only saying so,
+      // the row adds the tiles the zone falls in, in one click (a user asked what happens to a
+      // zone drawn without tiles, 2026-09-18). Never on its own: a region can hold many tiles,
+      // and each one is a download.
+      notes.append(h("span", { class: "zone-hint" }, t("zones.outside")));
+      notes.append(h("button", {
+        type: "button", class: "btn btn-small btn-accent", disabled, title: touched.join(" "),
+        onclick: () => ctx.chooseTiles(touched),
+      }, t("zones.outside_add", { n: touched.length })));
+    }
     const tilesZl = Number(ctx.planZl());
     if (usableZl(z.zl) && Number.isInteger(tilesZl) && z.zl < tilesZl) {
       // Less sharp than the tiles: the area comes out blurrier than the rest of the tile.

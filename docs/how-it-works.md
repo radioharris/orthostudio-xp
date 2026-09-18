@@ -195,6 +195,11 @@ clears everything, and *Go back to the colours already built* gives each square 
 tile you already have on the disk -- the Library says which tiles no longer match, and this is how
 you agree with them again without building anything.
 
+**A zone alone builds nothing.** A build makes whole tiles -- that is how X-Plane cuts its scenery
+-- so a zone drawn where no tile is chosen simply waits: it is saved with the others, its row says
+*outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing
+is chosen for you: a zone can cover several tiles, and each tile is a download.
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in
