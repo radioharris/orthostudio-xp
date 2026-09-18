@@ -153,10 +153,12 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   counts for every row of the name;
 * `present`: the row's directory exists. A tile whose folder was deleted by hand stays listed
   with `present: false` until it is deleted from the library;
-* `photo`: the colours the pack on the disk was built with (`{brightness, contrast, saturation}`,
-  from its `orthostudio.toml`), `null` when it recorded none -- a pack built before the colours
-  existed, or with the plain ones. The page marks a tile whose square now asks for others (a user
-  asked what happens to an installed tile, 2026-09-18);
+* `photo`: the colours the pack on the disk was built with (`{brightness, contrast, saturation}`),
+  from its `orthostudio.toml`, or -- for a pack built before the manifest recorded them -- from
+  the params of the `textures` artefact it names, read in the store (a user found a bright tile
+  called plain, 2026-09-18). `null` when neither says: built with the plain colours, built before
+  they existed, or its artefact has left the store. The page marks a tile whose square now asks
+  for others (a user asked what happens to an installed tile, 2026-09-18);
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as

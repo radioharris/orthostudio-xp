@@ -600,6 +600,50 @@ async def test_status_counts_a_hard_linked_store_file_once(app, home: Path, xpla
     assert doc["store_bytes"] == 5000 and doc["chunks_bytes"] == 300
 
 
+def test_library_reads_the_colours_of_a_pack_whose_manifest_predates_them(home: Path) -> None:
+    """A user installed a tile with bright colours and the page called it plain (2026-09-18):
+    that pack was built before the manifest recorded them, so the textures artefact it names is
+    asked instead. A pack older still, or whose artefact has left the store, says nothing."""
+    from orthostudio.api.app import _pack_photos
+    from orthostudio.graph import Store, artifact_key
+    from orthostudio.home import default_store_root
+    from orthostudio.pipeline.pack import ArtefactEntry, PackManifest
+
+    bright, keys = {"photo_brightness": 0.5, "photo_contrast": 0.5, "photo_saturation": 0.5}, {}
+    with Store(default_store_root(), fsync=False) as store:
+        for name, params in (("bright", bright), ("before", {"tile": "+43+005"})):
+            key, recipe = artifact_key("tile_textures", 1, params, {})
+            with store.begin("tile_textures", key, "file") as b:
+                b.out.write_bytes(b"DDS " + name.encode())
+                b.commit(version=1, recipe=recipe, inputs=[])
+            keys[name] = ArtefactEntry(key, store.digest_of(key), "tile_textures")
+    gone = ArtefactEntry("ab" * 32, "cd" * 32, "tile_textures")
+
+    def pack(name: str, entry: ArtefactEntry | None, photo: dict[str, float] | None = None) -> Path:
+        folder = home / "tiles" / name
+        folder.mkdir(parents=True)
+        artefacts = {} if entry is None else {"textures": entry}
+        m = PackManifest("+43+005", "BI", 16, artefacts, {}, photo or {})
+        (folder / "orthostudio.toml").write_text(m.to_toml())
+        return folder
+
+    recorded = pack("recorded", keys["bright"], {"brightness": -0.06, "saturation": -0.3})
+    older = pack("older", keys["bright"])
+    plain = pack("plain", keys["before"])
+    lost = pack("lost", gone)
+    naked = pack("naked", None)
+    empty = home / "tiles" / "empty"
+    empty.mkdir()
+
+    photos = _pack_photos([recorded, older, plain, lost, naked, empty])
+
+    # what the manifest says wins; the artefact answers for the packs built before it did
+    assert photos[recorded] == {"brightness": -0.06, "saturation": -0.3}
+    assert photos[older] == {"brightness": 0.5, "contrast": 0.5, "saturation": 0.5}
+    assert photos[plain] is None and photos[lost] is None
+    assert photos[naked] is None and photos[empty] is None
+
+
 @pytest.mark.anyio
 async def test_library_marks_installed_only_the_linked_pack(
     app, home: Path, xplane: Path, tmp_path: Path

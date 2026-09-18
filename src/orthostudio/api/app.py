@@ -52,7 +52,7 @@ from orthostudio.clean import clean, disk_bytes
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import Action, OsxpError, Severity
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
-from orthostudio.graph import Store
+from orthostudio.graph import GraphError, Store
 from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
@@ -373,6 +373,7 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
         rows = lib.list()
     # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
     states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
+    photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and r.path.is_dir()])
     shared_links: dict[Path, Path] = {}
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -402,25 +403,55 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 "updated_at": r.updated_at,
                 "size_bytes": size,
                 "present": present,
-                "photo": _pack_photo(r.path) if present and r.kind == "ortho" else None,
+                "photo": photos.get(r.path),
                 "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
             }
         )
     return out
 
 
-def _pack_photo(pack_dir: Path) -> dict[str, float] | None:
-    """The colours a pack was built with, from its manifest; ``None`` when it does not say.
+def _pack_photos(pack_dirs: list[Path]) -> dict[Path, dict[str, float] | None]:
+    """The colours each of these packs was built with; ``None`` when nothing can say.
 
-    A pack built before the colours existed has no such section, and one built with the plain
-    ones writes none: the page then says nothing rather than guessing (a user asked what happens
-    to a tile already installed, 2026-09-18).
+    The manifest holds them since 2026-09-18. Before that it did not, and a pack built bright
+    then looked plain to the page, which said nothing while X-Plane showed a bright tile (a user,
+    same day): the textures artefact the manifest names is asked instead, since its recorded
+    params are what the build encoded. The store is opened once, and only if an older pack needs
+    it. A build with the plain colours records none of the three, and a pack whose artefact has
+    left the store cannot be asked: both answer ``None``, and the page says nothing.
     """
+    photos: dict[Path, dict[str, float] | None] = {}
+    older: dict[Path, str] = {}
+    for pack_dir in pack_dirs:
+        photos[pack_dir] = None
+        try:
+            manifest = read_manifest(pack_dir)
+        except (OSError, ValueError):
+            continue
+        if manifest.photo:
+            photos[pack_dir] = dict(manifest.photo)
+        elif (entry := manifest.artefacts.get("textures")) is not None:
+            older[pack_dir] = entry.key
+    if older:
+        try:
+            with Store(default_store_root()) as store:
+                for pack_dir, key in older.items():
+                    photos[pack_dir] = _artefact_photo(store, key)
+        except (OSError, GraphError):
+            pass  # no store to ask: the page says nothing rather than guessing "plain"
+    return photos
+
+
+def _artefact_photo(store: Store, key: str) -> dict[str, float] | None:
+    """The colours recorded in the params of a textures artefact, or ``None``."""
     try:
-        manifest = read_manifest(pack_dir)
-    except (OSError, ValueError):
+        params = store.why(key).params
+    except (OSError, GraphError, ValueError):
         return None
-    return dict(manifest.photo) if manifest.photo else None
+    names = ("photo_brightness", "photo_contrast", "photo_saturation")
+    if not any(name in params for name in names):
+        return None  # built before the colours existed at all
+    return {name.removeprefix("photo_"): float(params.get(name) or 0.0) for name in names}
 
 
 def provider_json(p: Provider) -> dict[str, Any]:
