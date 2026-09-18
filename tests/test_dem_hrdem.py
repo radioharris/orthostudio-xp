@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -52,14 +53,14 @@ def wcs_tiff(heights: np.ndarray, *, lon: float, lat: float, step: float, tile: 
     offsets_at = nodata_at + len(nodata)
     counts_at = offsets_at + 4 * across * down
     ifd_at = counts_at + 4 * across * down
-    offsets = struct.pack(f">{across * down}I", *(data_at + i * tile * tile * 4 for i in range(across * down)))  # fmt: skip
-    counts = struct.pack(f">{across * down}I", *([tile * tile * 4] * (across * down)))
+    many = across * down
+    offsets = struct.pack(f">{many}I", *(data_at + i * tile * tile * 4 for i in range(many)))
+    counts = struct.pack(f">{many}I", *([tile * tile * 4] * many))
 
     def entry(tag: int, kind: int, count: int, value: int | bytes) -> bytes:
         raw = value if isinstance(value, bytes) else struct.pack(">I", value)
         return struct.pack(">HHI", tag, kind, count) + raw.ljust(4, b"\0")[:4]
 
-    many = across * down
     entries = [
         entry(256, 3, 1, struct.pack(">HH", width, 0)),
         entry(257, 3, 1, struct.pack(">HH", height, 0)),
@@ -129,10 +130,10 @@ def _server(cover: np.ndarray, posts: int, lat: int, lon: int):
         asked.append(url)
         box = url.split("boundingbox=")[1].split(",urn")[0].split(",")
         lat0, lon0, lat1, lon1 = (float(v) for v in box)
-        nx = int(round((lon1 - lon0) * (posts - 1))) + 1
-        ny = int(round((lat1 - lat0) * (posts - 1))) + 1
-        x0 = int(round((lon0 - lon) * (posts - 1)))
-        y0 = int(round((lat + 1 - lat1) * (posts - 1)))
+        nx = round((lon1 - lon0) * (posts - 1)) + 1
+        ny = round((lat1 - lat0) * (posts - 1)) + 1
+        x0 = round((lon0 - lon) * (posts - 1))
+        y0 = round((lat + 1 - lat1) * (posts - 1))
         out = np.full((ny, nx), np.float32(-32767.0), dtype=np.float32)
         ys, xs = slice(max(0, y0), y0 + ny), slice(max(0, x0), x0 + nx)
         part = cover[ys, xs]
@@ -212,7 +213,7 @@ def test_the_canadian_relief_is_laid_over_copernicus() -> None:
     assert to_build_overrides(settings)["custom_dem"] == "COP30;HRDEM"
 
     class _Spec:
-        config = {"custom_dem": "COP30;HRDEM"}
+        config: ClassVar[dict[str, str]] = {"custom_dem": "COP30;HRDEM"}
         relief = "xplane"
 
     assert _relief_of(_Spec()) == "canada"
