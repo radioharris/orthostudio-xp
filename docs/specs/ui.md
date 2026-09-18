@@ -663,6 +663,13 @@ since they are this computer's and no look of the tiles; a draft that differs fr
 *Are the photo colours right for you?* (`essential.photo_look`) offers the look in plain words --
 as delivered, toned down, toned down a lot, my own values -- and, on *my own values*, the three
 expert numbers appear under it as sliders, so nobody has to go hunting for them (2026-09-18).
+Under the answers, **the preview**: one image of the ground where the map is looking
+(`GET /api/photo-sample` with the chosen source and the map's centre), drawn twice, as delivered
+and as the answer would encode it. `ui/colour.js` computes it in the browser, with the arithmetic
+of `textures/colour.py`, and a test holds the two equal to within one step
+(`tests/test_ui_colour.py`), so the preview is what the build will write. No sample yet (the map
+has not drawn, or nothing came back) simply leaves the preview out. In the mock mode the page
+draws its own ground-looking image, so the preview works with no network.
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the
 schema's leaves, so a setting added to the engine cannot be left out of the page.

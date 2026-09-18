@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -111,7 +111,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 16
+API_LEVEL = 17
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -816,6 +816,54 @@ def create_app(
             return provider_json(source)
 
         return await asyncio.to_thread(run)
+
+    @app.get("/api/photo-sample")
+    async def photo_sample(
+        provider: str = Query("BI"),
+        lat: float = Query(...),
+        lon: float = Query(...),
+        zl: int = Query(15, ge=10, le=18),
+    ) -> Any:
+        """One image of a provider where the page is looking, for the colours preview.
+
+        The Settings screen shows what a tile will look like before a build downloads gigabytes
+        (a user asked for the colours, 2026-09-18). One tile of the provider's own grid, at a
+        modest zoom, cached by the browser; the answer is the image itself.
+        """
+        registry = await asyncio.to_thread(load_registry)
+        source = registry.get(provider)
+        if source is None:
+            raise OsxpError(
+                "CFG_VALUE_INVALID",
+                context={"name": "provider", "value": provider, "type": "str", "range": "-"},
+                message=f"No imagery source with the code {provider!r}.",
+                remedy="Choose one of the sources of the Plan.",
+            )
+        level = min(zl, source.max_zl)
+        x, y = wgs84_to_tile(lat, lon, level)
+        url = tile_url(source, int(x), int(y), level)
+        request = FetchRequest(key="photo-sample", url=url, host_group="photo-sample")
+        if source_fetch is not None:
+            result = await source_fetch(request)
+        else:
+            client = TileClient()
+            try:
+                result = await client.fetch(request)
+            finally:
+                await client.aclose()
+        kind = image_kind(result.body) if result.status == 200 else None
+        if kind is None:
+            raise OsxpError(
+                "NET_UNAVAILABLE",
+                context={"host": provider, "attempts": "1"},
+                message=f"{provider} did not send an image for this place.",
+                remedy="Try again, or look at another place on the map.",
+            )
+        return Response(
+            content=result.body,
+            media_type=f"image/{kind}",
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     @app.post("/api/sources/test")
     async def try_source(req: SourceTestRequest) -> Any:

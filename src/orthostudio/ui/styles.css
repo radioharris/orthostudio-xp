@@ -340,6 +340,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .plan-panel.is-stale { opacity: 0.55; transition: opacity 0.15s; }
 .plan-panel:empty { display: none; }
 /* A path typed, or chosen with the button beside it (the platform's own folder dialog). */
+/* Before and after, side by side: the ground where the map is looking (2026-09-18). */
+.photo-preview { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.photo-preview.is-quiet .photo-shot { display: none; }
+.photo-shot { display: flex; flex-direction: column; gap: 4px; }
+.photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
+.photo-label { font-size: 11.5px; color: var(--fg-2); }
+.photo-preview > .question-help { flex: 1 1 200px; margin: 0; }
 /* The three colour numbers of "my own values": a slider and its value, side by side. */
 .colour-values { display: grid; gap: 8px; }
 .colour-row { display: grid; grid-template-columns: minmax(140px, 200px) 1fr 3.2em; align-items: center; gap: 10px; }

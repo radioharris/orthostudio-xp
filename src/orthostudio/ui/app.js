@@ -1905,7 +1905,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 16;
+const PAGE_API_LEVEL = 17;
 
 async function loadStatus() {
   try {
@@ -3917,6 +3917,22 @@ let folderAsked = false;
  * While the dialog opens, a second click says so instead of asking the engine again: nothing
  * showed for seconds on Windows, and the click after it answered "SYS_BUSY: A folder dialog is
  * already open" (a user, 2026-09-15). */
+/** Where the Settings screen takes its colour sample: the map's centre, and the chosen source.
+ *
+ * ``null`` while the map has not drawn yet. In the mock mode the page draws its own image, so
+ * that the preview works with no network (``ui.md`` 2.4). */
+function photoSampleUrl(provider) {
+  const centre = planMap && planMap.mapCenter ? planMap.mapCenter() : null;
+  if (!centre) return null;
+  if (MOCK) return `mock-photo:${centre.lat.toFixed(3)},${centre.lon.toFixed(3)}`;
+  const q = new URLSearchParams({
+    provider: provider || "BI",
+    lat: centre.lat.toFixed(5),
+    lon: centre.lon.toFixed(5),
+  });
+  return `/api/photo-sample?${q}`;
+}
+
 async function chooseFolder(prompt, start = null) {
   if (folderAsked) {
     toast(t("folder.already_open"));
@@ -3971,6 +3987,7 @@ function renderSettings(message, kind) {
       platform: state.status?.platform || null,
       reveal: state.status?.platform ? { label: revealLabel(state.status.platform), open: revealPath } : null,
       chooseFolder: state.engineOutdated ? null : chooseFolder,
+      photoSample: photoSampleUrl,
       changed: (text, level) => renderSettings(text, level),
     },
   );
