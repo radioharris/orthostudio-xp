@@ -22,7 +22,7 @@ import json
 import logging
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
@@ -67,7 +67,9 @@ __all__ = [
     "ZONES_FILE",
     "ZONES_FORMAT",
     "LoadedZones",
+    "PhotoChoice",
     "SavedZones",
+    "TileChoice",
     "Zone",
     "ZoneEntry",
     "ZoneProblem",
@@ -84,6 +86,7 @@ __all__ = [
     "tiles_touched",
     "too_many_zones",
     "with_photo_zones",
+    "with_tile_photo",
     "with_zone_list",
     "zone_conflict",
     "zone_invalid",
@@ -181,6 +184,45 @@ def _coordinate(value: float) -> float:
     return round(value, DECIMALS) + 0.0  # + 0.0 turns -0.0 into 0.0
 
 
+class PhotoChoice(BaseModel):
+    """Colours of the photos of a tile or a zone, the three levels being Settings, then the
+    tile, then the zone: each inherits the one above until it names its own (a user, 2026-09-18).
+
+    ``look`` ``None`` inherits; ``custom`` uses the three numbers, which are deviations as in
+    Settings (``-0.3`` takes 30 % away).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    look: Literal["as_delivered", "softer", "much_softer", "custom"] | None = None
+    brightness: float = Field(default=0.0, ge=-0.5, le=0.5)
+    contrast: float = Field(default=0.0, ge=-0.5, le=0.5)
+    saturation: float = Field(default=0.0, ge=-1.0, le=0.5)
+
+    @field_validator("look", mode="before")
+    @classmethod
+    def _look(cls, value: Any) -> Any:
+        return None if value == "" else value
+
+    def values(self) -> tuple[float, float, float] | None:
+        """The three numbers this choice asks for, or ``None`` when it inherits."""
+        from orthostudio.config.overrides import PHOTO_LOOKS
+
+        if self.look is None:
+            return None
+        if self.look == "custom":
+            return (float(self.brightness), float(self.contrast), float(self.saturation))
+        return PHOTO_LOOKS[self.look]
+
+
+class TileChoice(BaseModel):
+    """What the map holds for one tile of its own, beside the zones: its colours for now."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    photo: PhotoChoice = Field(default_factory=PhotoChoice)
+
+
 class Zone(BaseModel):
     """One zone of an ``osxp-zones-1`` document (spec section 3), normalised and validated.
 
@@ -197,9 +239,9 @@ class Zone(BaseModel):
     name: str = Field(default="", max_length=MAX_NAME_LENGTH)
     zl: int = Field(ge=MIN_ZL, le=MAX_ZL)
     provider: str | None = None
-    photo_look: Literal["as_delivered", "softer", "much_softer"] | None = None
-    """Colours of the photos inside this zone; ``None`` takes the tile's answer (a user asked for
-    colours per zone, 2026-09-18). The numbers behind the names are ``config.overrides``'."""
+    photo: PhotoChoice = Field(default_factory=PhotoChoice)
+    """Colours of the photos inside this zone; it inherits the tile's while its ``look`` is
+    ``None`` (a user asked for colours per zone, 2026-09-18)."""
     polygon: list[tuple[float, float]]
 
     @field_validator("name", mode="before")
@@ -210,11 +252,6 @@ class Zone(BaseModel):
     @field_validator("provider", mode="before")
     @classmethod
     def _provider(cls, value: Any) -> Any:
-        return None if value == "" else value
-
-    @field_validator("photo_look", mode="before")
-    @classmethod
-    def _photo_look(cls, value: Any) -> Any:
         return None if value == "" else value
 
     @field_validator("polygon", mode="before")
@@ -306,6 +343,9 @@ class ZonesDocument(BaseModel):
 
     format: Literal["osxp-zones-1"] = "osxp-zones-1"
     zones: list[Zone] = Field(default_factory=list)
+    tiles: dict[str, TileChoice] = Field(default_factory=dict)
+    """What a tile holds of its own, by name (``+46+006``): the map is where a pilot sets it, so
+    it is kept beside the zones, in the same file and the same revision."""
 
     @model_validator(mode="wrap")
     @classmethod
@@ -597,6 +637,8 @@ class SavedZones:
     problem as stored when it can be shown."""
     zones: tuple[Zone, ...] = ()
     """The valid zones, in document order (the ones a build may use)."""
+    tiles: Mapping[str, TileChoice] = field(default_factory=dict)
+    """What each tile holds of its own (its colours), by name."""
     problems: tuple[ZoneProblem, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
@@ -605,6 +647,7 @@ class SavedZones:
             "format": ZONES_FORMAT,
             "revision": self.revision,
             "zones": list(self.listed),
+            "tiles": {name: choice.model_dump(mode="json") for name, choice in self.tiles.items()},
             "problems": [problem.to_dict() for problem in self.problems],
         }
 
@@ -748,7 +791,13 @@ def read_saved_zones(path: Path, *, registry: Mapping[str, Provider] | None = No
             path, revision, listed=tuple(listed), zones=tuple(zones), problems=tuple(problems)
         )
     listed = [zone.model_dump(mode="json") for zone in document.zones]
-    return SavedZones(path, revision, listed=tuple(listed), zones=tuple(document.zones))
+    return SavedZones(
+        path,
+        revision,
+        listed=tuple(listed),
+        zones=tuple(document.zones),
+        tiles=dict(document.tiles),
+    )
 
 
 # -- zones files of the command line ------------------------------------------------------------
@@ -1005,22 +1054,21 @@ def photo_zone_entries(zones: Sequence[Zone], tile: TileRef) -> list[list[Any]]:
     ``[[lat0, lon0, ..., lat0, lon0], brightness, contrast, saturation]`` per part, in document
     order like ``zone_list``: the textures stage reads them and gives each texture the colours
     of the first part its centre falls in (``pipeline-textures.md`` 6, a user asked for colours
-    per zone, 2026-09-18). A zone without ``photo_look`` is absent: its textures take the tile's
-    answer.
+    per zone, 2026-09-18). A zone whose ``photo.look`` is ``None`` is absent: it inherits the
+    tile's colours.
     """
-    from orthostudio.config.overrides import PHOTO_LOOKS
-
     cell = _cell(tile)
     out: list[list[Any]] = []
     for zone in zones:
-        if zone.photo_look is None:
+        values = zone.photo.values()
+        if values is None:
             continue
         lon_min, lat_min, lon_max, lat_max = zone.bounds
         if lon_max <= tile.lon or lon_min >= tile.lon + 1:
             continue
         if lat_max <= tile.lat or lat_min >= tile.lat + 1:
             continue
-        brightness, contrast, saturation = PHOTO_LOOKS[zone.photo_look]
+        brightness, contrast, saturation = values
         for part in _clip(zone.shape, cell):
             ring = _entry_ring(part)
             if ring is not None:
@@ -1050,6 +1098,19 @@ def with_zone_list(
         )
     out["zone_list"] = [[list(coords), int(zl), str(code)] for coords, zl, code in entries]
     return out
+
+
+def with_tile_photo(config: Mapping[str, Any], choice: TileChoice | None) -> dict[str, Any]:
+    """``config`` with the tile's own colours, when it names any (Settings' otherwise).
+
+    The three levels are Settings, the tile, then the zones: this is the middle one, and the
+    zones of that tile override it inside their polygons (a user, 2026-09-18).
+    """
+    values = choice.photo.values() if choice is not None else None
+    if values is None:
+        return dict(config)
+    names = ("photo_brightness", "photo_contrast", "photo_saturation")
+    return {**config, **dict(zip(names, values, strict=True))}
 
 
 def with_photo_zones(

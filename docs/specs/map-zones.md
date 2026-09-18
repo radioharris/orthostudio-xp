@@ -48,14 +48,25 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 - `zl`: integer 12 to 20. When `provider` is set, at most that provider's `max_zl`; when it is
   `null` the tile's provider applies and the check happens when the build is planned.
 - `provider`: `null` (the tile's provider) or a registry code.
-- `photo_look`: `null` (the tile's answer) or `as_delivered` / `softer` / `much_softer`, the
-  colours of the photos inside the zone (a user asked for colours per zone, 2026-09-18). The
-  numbers behind the names are `config.overrides.PHOTO_LOOKS`. `zones.photo_zone_entries` clips
+- `photo`: `{look, brightness, contrast, saturation}`, the colours of the photos inside the zone.
+  `look` `null` inherits the tile's, `custom` uses the three numbers, the named looks are
+  `config.overrides.PHOTO_LOOKS` (a user asked for colours per zone and per tile, 2026-09-18). `zones.photo_zone_entries` clips
   the zones that name one into the tile's `photo_zones` setting, and the textures stage gives
   each texture the colours of the **first** zone holding its centre
   (`pipeline.build.photo_zone_colours`): a texture is one file, so it cannot carry two looks, and
   the rule is the one the zoom level already follows. A tile with no such zone keeps the artefact
   key it had (`TileTexturesParams.canonical`).
+
+The document also holds **what each tile carries of its own**, which is where a pilot sets it:
+
+```json
+"tiles": {"+46+006": {"photo": {"look": "softer", "brightness": 0, "contrast": 0, "saturation": 0}}}
+```
+
+Three levels, each inheriting the one above until it names its own: **Settings**, then the
+**tile** (`zones.with_tile_photo`, read by `api.specs.request_tiles`), then the **zone**
+(`with_photo_zones`). A build takes them as they are when it starts, so two builds of the same
+tile can carry different colours; only the textures are re-encoded, nothing is downloaded again.
 - `id`: 1 to 64 characters `[A-Za-z0-9_-]`, unique in the document; `name`: at most 80
   characters (may be empty).
 - At most 500 zones in a document.

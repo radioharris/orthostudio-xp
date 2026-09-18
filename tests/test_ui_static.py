@@ -359,7 +359,7 @@ def test_mock_zones_follow_the_document_format() -> None:
     ids = [z["id"] for z in doc["zones"]]
     assert len(set(ids)) == len(ids)
     for zone in doc["zones"]:
-        assert set(zone) <= {"id", "name", "zl", "provider", "photo_look", "polygon"}, zone["id"]
+        assert set(zone) <= {"id", "name", "zl", "provider", "photo", "polygon"}, zone["id"]
         assert {"id", "name", "zl", "provider", "polygon"} <= set(zone), zone["id"]
         assert ZONE_ID_RE.match(zone["id"]), zone["id"]
         assert isinstance(zone["name"], str) and len(zone["name"]) <= 80

@@ -25,7 +25,9 @@
      43.452918894
     ]
    ],
-   "photo_look": "much_softer"
+   "photo": {
+    "look": "much_softer"
+   }
   },
   {
    "id": "lsgg-18",

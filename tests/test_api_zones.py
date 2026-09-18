@@ -35,9 +35,10 @@ home = fakes.home
 xplane = fakes.xplane
 
 LSGG = [[6.090, 46.225], [6.130, 46.225], [6.130, 46.250], [6.090, 46.250]]
-ZONE = {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": None, "photo_look": None,
+NO_PHOTO = {"look": None, "brightness": 0.0, "contrast": 0.0, "saturation": 0.0}
+ZONE = {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": None, "photo": NO_PHOTO,
         "polygon": LSGG}  # fmt: skip
-CAPE_TOWN = {"id": "cpt", "name": "Cape Town", "zl": 17, "provider": None, "photo_look": None,
+CAPE_TOWN = {"id": "cpt", "name": "Cape Town", "zl": 17, "provider": None, "photo": NO_PHOTO,
              "polygon": [[18.4, -33.9], [18.6, -33.9], [18.6, -33.7], [18.4, -33.7]]}  # fmt: skip
 
 
@@ -51,7 +52,7 @@ def _revision(path: Path) -> str:
 
 def _answer(path: Path, *zones: dict[str, Any]) -> dict[str, Any]:
     """What ``GET`` answers, and ``PUT`` once saved, for a file holding exactly ``zones``."""
-    return {**_document(*zones), "revision": _revision(path), "problems": []}
+    return {**_document(*zones), "revision": _revision(path), "tiles": {}, "problems": []}
 
 
 # -- the router alone --------------------------------------------------------------------------

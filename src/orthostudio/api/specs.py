@@ -35,11 +35,13 @@ from orthostudio.pipeline.home import (
 )
 from orthostudio.tilefiles import OSXP_PARAMETERS, TILE_PARAMETERS, parse_tile_cfg
 from orthostudio.zones import (
+    TileChoice,
     Zone,
     ZoneEntry,
     default_zones_path,
     read_saved_zones,
     with_photo_zones,
+    with_tile_photo,
     with_zone_list,
     zones_for_tile,
 )
@@ -197,6 +199,21 @@ def request_zones(
     return saved.zones_for(TileRef.parse(name) for name in tiles)
 
 
+def request_tiles(req: Any, *, zones_path: Path | None = None) -> dict[str, TileChoice]:
+    """What each tile of the map holds of its own (its colours), from the saved document.
+
+    A request that carries its own ``zones`` carries its own ``tiles`` too, or none: a job
+    reloaded from its journal then builds exactly what it built (``map-zones.md`` 5).
+    """
+    given = getattr(req, "tiles_settings", None)
+    if given is not None:
+        return {name: TileChoice.model_validate(value) for name, value in given.items()}
+    if getattr(req, "zones", None) is not None:
+        return {}
+    path = zones_path if zones_path is not None else default_zones_path()
+    return dict(read_saved_zones(path).tiles)
+
+
 def make_specs(
     req: PlanRequest,
     *,
@@ -254,6 +271,7 @@ def make_specs(
     config.pop("default_website", None)
     config.pop("default_zl", None)
     zones = request_zones(req, tiles, zones_path=zones_path, registry=reg)
+    tile_choices = request_tiles(req, zones_path=zones_path)
     mesh_zl = config.get("mesh_zl", TILE_PARAMETERS["mesh_zl"].default)
     zone_lists: dict[str, list[ZoneEntry]] = {
         name: zones_for_tile(
@@ -294,7 +312,11 @@ def make_specs(
                 out_dir=out_dir,
                 global_scenery_dir=gs,
                 config=with_photo_zones(
-                    with_zone_list(config, zone_lists[name], tile), zones, tile
+                    with_tile_photo(
+                        with_zone_list(config, zone_lists[name], tile), tile_choices.get(name)
+                    ),
+                    zones,
+                    tile,
                 ),
                 install=install,
                 custom_scenery=custom_scenery_dir(xp) if xp is not None else None,

@@ -124,8 +124,14 @@ def zones_router(
                     raise zone_conflict(path)
                 save_zones(path, doc)
                 revision = zones_file_revision(path)
-            zones = doc.model_dump(mode="json")["zones"]
-            answer = {"format": doc.format, "revision": revision, "zones": zones, "problems": []}
+            written = doc.model_dump(mode="json")
+            answer = {
+                "format": doc.format,
+                "revision": revision,
+                "zones": written["zones"],
+                "tiles": written["tiles"],
+                "problems": [],
+            }
             return answer, revision
 
         try:

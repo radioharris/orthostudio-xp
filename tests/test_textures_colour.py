@@ -99,7 +99,7 @@ def test_the_zones_of_a_tile_carry_their_look_to_the_build() -> None:
 
     square = [[6.1, 46.1], [6.4, 46.1], [6.4, 46.4], [6.1, 46.4]]
     toned = Zone.model_validate(
-        {"id": "a", "zl": 17, "photo_look": "much_softer", "polygon": square}
+        {"id": "a", "zl": 17, "photo": {"look": "much_softer"}, "polygon": square}
     )
     plain = Zone.model_validate({"id": "b", "zl": 17, "polygon": square})
     (entry,) = photo_zone_entries([toned, plain], TileRef(46, 6))
@@ -109,3 +109,34 @@ def test_the_zones_of_a_tile_carry_their_look_to_the_build() -> None:
     assert photo_zone_entries([plain], TileRef(46, 6)) == []  # no look of its own: nothing
     assert "photo_zones" not in with_photo_zones({}, [plain], TileRef(46, 6))
     assert with_photo_zones({}, [toned], TileRef(46, 6))["photo_zones"] == [entry]
+
+
+def test_the_three_levels_are_settings_then_tile_then_zone() -> None:
+    """Each level inherits the one above until it names its own (a user, 2026-09-18)."""
+    from orthostudio.config.overrides import PHOTO_LOOKS
+    from orthostudio.model import TileRef
+    from orthostudio.zones import PhotoChoice, TileChoice, Zone, with_photo_zones, with_tile_photo
+
+    settings = {"photo_brightness": 0.0, "photo_contrast": 0.0, "photo_saturation": 0.0}
+    # a tile that says nothing keeps the settings' answer
+    assert with_tile_photo(settings, None) == settings
+    assert with_tile_photo(settings, TileChoice()) == settings
+    # a tile that names its own wins over the settings
+    tile = TileChoice(photo=PhotoChoice(look="softer"))
+    got = with_tile_photo(settings, tile)
+    assert (got["photo_brightness"], got["photo_contrast"], got["photo_saturation"]) == PHOTO_LOOKS[
+        "softer"
+    ]
+    # its own numbers, when it asks for them
+    mine = TileChoice(photo=PhotoChoice(look="custom", saturation=-0.45))
+    assert with_tile_photo(settings, mine)["photo_saturation"] == -0.45
+    # a zone inside wins in its polygon, and a zone that says nothing leaves the tile alone
+    square = [[6.1, 46.1], [6.4, 46.1], [6.4, 46.4], [6.1, 46.4]]
+    inherits = Zone.model_validate({"id": "a", "zl": 17, "polygon": square})
+    assert "photo_zones" not in with_photo_zones(got, [inherits], TileRef(46, 6))
+    own = Zone.model_validate(
+        {"id": "b", "zl": 17, "photo": {"look": "as_delivered"}, "polygon": square}
+    )
+    with_zone = with_photo_zones(got, [own], TileRef(46, 6))
+    assert with_zone["photo_zones"][0][1:] == [0.0, 0.0, 0.0]  # as delivered, inside the zone
+    assert with_zone["photo_saturation"] == PHOTO_LOOKS["softer"][2]  # the tile's, everywhere else
