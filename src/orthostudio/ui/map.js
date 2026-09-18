@@ -31,6 +31,7 @@ import {
   newZoneId,
   normalizePhoto,
   normalizeZone,
+  photoKey,
   parseTile,
   pointInPolygon,
   tilesInBounds,
@@ -409,15 +410,15 @@ export function createPlanMap(ctx) {
 
   /** The colours the chosen squares share, or null when they disagree (the Plan's control). */
   function tilesPhoto(names) {
-    const looks = new Set();
+    const keys = new Set();
     let photo = null;
     for (const name of names) {
       const own = zs.tiles[name]?.photo || null;
-      looks.add(own ? JSON.stringify(own) : "");
-      if (own) photo = own;
+      keys.add(photoKey(own));
+      if (own?.look) photo = own;
     }
-    if (looks.size !== 1) return { mixed: true, photo: null };
-    return { mixed: false, photo };
+    if (keys.size !== 1) return { mixed: true, photo: null };
+    return { mixed: false, photo: keys.has("") ? null : photo };
   }
 
   /** Give back to Settings the colours of every square and zone that is not installed.

@@ -436,6 +436,20 @@ export function decodeBorders(doc) {
  * (Settings, then the tile, then the zone: ``zones.py``). */
 export const PHOTO_LOOK_VALUES = ["as_delivered", "softer", "much_softer", "custom"];
 
+/** What two colour choices must share to be the same answer.
+ *
+ * ``""`` when nothing is set (the level above applies); the name alone for a named look, since
+ * its numbers are not used; the three numbers for ``custom``. Comparing the objects themselves
+ * said "the chosen squares differ" for squares that did not (a user, 2026-09-18): the keys of
+ * two equal choices can be in any order, and a named look drags numbers nobody reads. */
+export function photoKey(photo) {
+  const look = photo && photo.look ? photo.look : "";
+  if (!look) return "";
+  if (look !== "custom") return look;
+  const n = (v) => Number(v || 0).toFixed(3);
+  return `custom:${n(photo.brightness)}:${n(photo.contrast)}:${n(photo.saturation)}`;
+}
+
 /** One colour choice, as the API stores it: a look and the three numbers of "custom". */
 export function normalizePhoto(photo) {
   const p = photo && typeof photo === "object" ? photo : {};

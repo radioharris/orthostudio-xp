@@ -2916,3 +2916,29 @@ def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     assert got[0] == "waits for the DSF (Assembly)"
     assert got[1] == "waits for the images of +46+006"
     assert got[2] == "pending" and got[3] != got[0]
+
+
+def test_two_squares_with_the_same_answer_are_not_called_different() -> None:
+    """The Plan said "the chosen squares differ" for squares that did not (a user, 2026-09-18).
+
+    Two choices are the same answer when their key is: the key of a named look is its name, since
+    its numbers are never read, and the order of an object's keys never matters.
+    """
+    calls = ", ".join(
+        [
+            'm.photoKey(null)',
+            'm.photoKey({look: null, brightness: 0, contrast: 0, saturation: 0})',
+            'm.photoKey({look: "softer", brightness: 0, contrast: 0, saturation: 0})',
+            'm.photoKey({saturation: -0.4, look: "softer", contrast: 0.2, brightness: 0})',
+            'm.photoKey({look: "custom", brightness: 0, contrast: 0, saturation: -0.4})',
+            'm.photoKey({saturation: -0.4, contrast: 0, brightness: 0, look: "custom"})',
+            'm.photoKey({look: "custom", brightness: 0, contrast: 0, saturation: -0.35})',
+        ]
+    )
+    empty, none, named, named_other_order, custom, custom_other_order, custom_other = _node_json(
+        "geo.js", f"[{calls}]"
+    )
+    assert empty == none == ""  # nothing set: the level above applies
+    assert named == named_other_order  # a named look ignores the numbers beside it
+    assert custom == custom_other_order  # and the key order never matters
+    assert custom != custom_other and custom != named
