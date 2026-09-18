@@ -577,7 +577,7 @@ def test_saved_zones_with_problems_stay_listed() -> None:
         "/h/zones.json: not JSON",
     ]
     empty = _node_json("map.js", "m.readZonesDocument(null)")
-    assert empty == {"zones": [], "revision": None, "marks": {}, "fileProblems": []}
+    assert empty == {"zones": [], "tiles": {}, "revision": None, "marks": {}, "fileProblems": []}
 
 
 def test_saves_are_conditional_and_survive_closing_the_page() -> None:

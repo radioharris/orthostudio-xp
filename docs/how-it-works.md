@@ -184,10 +184,11 @@ that reads the downloaded images: changing your mind builds the tile again **wit
 anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing his
 screenshots by hand (2026-09-18).
 
-**Colours zone by zone.** A zone drawn on the map can take its own colours (*Couleurs* in its
-row): a coastal strip toned down while the rest of the tile stays as delivered, for instance. The
-textures inside it are encoded with those colours, the others with the tile's answer, and a
-texture belongs to the zone its centre falls in.
+**Colours square by square, and zone by zone.** Settings answers for everything you build; step 1
+of the Plan sets the colours of the squares you chose (with the same sliders and the same preview);
+and a zone drawn inside a square can differ again in its own polygon. Each level inherits the one
+above until it names its own, and a texture belongs to the zone its centre falls in. Changing your
+mind re-encodes the textures concerned and downloads nothing.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch

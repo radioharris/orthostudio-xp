@@ -27,6 +27,7 @@ import {
   insertIndexForZl,
   metersPerPixel,
   newZoneId,
+  normalizePhoto,
   normalizeZone,
   parseTile,
   pointInPolygon,
@@ -148,6 +149,12 @@ export function readZonesDocument(doc) {
     taken.add(zone.id);
     zones.push(zone);
   }
+  const tiles = {};
+  const raw = doc && doc.tiles && typeof doc.tiles === "object" ? doc.tiles : {};
+  for (const [name, value] of Object.entries(raw)) {
+    const photo = normalizePhoto(value && value.photo);
+    if (photo.look) tiles[name] = { photo };
+  }
   const marks = new Map();
   const fileProblems = [];
   for (const p of doc && Array.isArray(doc.problems) ? doc.problems : []) {
@@ -160,7 +167,7 @@ export function readZonesDocument(doc) {
       if (text) fileProblems.push(text);
     }
   }
-  return { zones, revision: doc && typeof doc.revision === "string" ? doc.revision : null, marks, fileProblems };
+  return { zones, tiles, revision: doc && typeof doc.revision === "string" ? doc.revision : null, marks, fileProblems };
 }
 
 /**
@@ -181,6 +188,7 @@ export function createPlanMap(ctx) {
 
   const zs = {
     zones: [],
+    tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
     loadError: null, // the engine could not be reached (network, 5xx): nothing is editable
@@ -373,6 +381,7 @@ export function createPlanMap(ctx) {
     if (doc) {
       const read = readZonesDocument(doc);
       zs.zones = read.zones;
+      zs.tiles = read.tiles;
       zs.revision = read.revision;
       zs.fileProblems = read.fileProblems;
       zs.marks = new Map([...read.marks].map(([id, reason]) => [id, { reason, source: "document" }]));
@@ -388,11 +397,38 @@ export function createPlanMap(ctx) {
   }
 
   function zoneForApi(z) {
-    return { id: z.id, name: z.name, zl: z.zl, provider: z.provider, polygon: z.polygon.map((p) => [p[0], p[1]]) };
+    return { id: z.id, name: z.name, zl: z.zl, provider: z.provider, photo: z.photo, polygon: z.polygon.map((p) => [p[0], p[1]]) };
+  }
+
+  /** The colours the chosen squares share, or null when they disagree (the Plan's control). */
+  function tilesPhoto(names) {
+    const looks = new Set();
+    let photo = null;
+    for (const name of names) {
+      const own = zs.tiles[name]?.photo || null;
+      looks.add(own ? JSON.stringify(own) : "");
+      if (own) photo = own;
+    }
+    if (looks.size !== 1) return { mixed: true, photo: null };
+    return { mixed: false, photo };
+  }
+
+  /** Give every square of ``names`` these colours (``null`` gives them back to Settings). */
+  function setTilesPhoto(names, photo) {
+    for (const name of names) {
+      if (photo && photo.look) zs.tiles[name] = { photo: { ...photo } };
+      else delete zs.tiles[name];
+    }
+    changed();
   }
 
   function documentBody() {
-    return { format: ZONES_FORMAT, zones: zs.zones.map(zoneForApi) };
+    // The squares' own colours travel with the zones: one file, one revision (map-zones.md 3).
+    const tiles = {};
+    for (const [name, choice] of Object.entries(zs.tiles || {})) {
+      if (choice && choice.photo && choice.photo.look) tiles[name] = { photo: choice.photo };
+    }
+    return { format: ZONES_FORMAT, zones: zs.zones.map(zoneForApi), tiles };
   }
 
   function scheduleSave() {
@@ -1548,12 +1584,19 @@ export function createPlanMap(ctx) {
       [["", t("zones.colours_tile")],
        ["as_delivered", t("settings.q.colours_as_delivered")],
        ["softer", t("settings.q.colours_softer")],
-       ["much_softer", t("settings.q.colours_much_softer")]].map(([value, text]) => h("option", { value }, text)));
-    colours.value = z.photo_look || "";
+       ["much_softer", t("settings.q.colours_much_softer")],
+       ["custom", t("settings.q.colours_custom")]].map(([value, text]) => h("option", { value }, text)));
+    colours.value = z.photo.look || "";
     colours.addEventListener("change", () => {
-      z.photo_look = colours.value || null;
+      z.photo = { ...z.photo, look: colours.value || null };
       changed();
+      renderList();  // the sliders of "my own values" appear or go
     });
+    // The three numbers, right under the choice, as in Settings and in step 1 (a user, 2026-09-18)
+    const sliders = z.photo.look === "custom" ? ctx.photoSliders(z.photo, (next) => {
+      z.photo = next;
+      changed();
+    }) : null;
 
     const button = (part, text, title, onclick, off) =>
       h("button", { type: "button", class: "btn btn-small btn-icon", "aria-label": title, title, disabled: disabled || off, dataset: key(part), onclick }, text);
@@ -1587,6 +1630,7 @@ export function createPlanMap(ctx) {
         h("div", { class: "zone-row" }, detail),
         h("div", { class: "zone-row" }, imagery),
         h("div", { class: "zone-row" }, colours),
+        sliders ? h("div", { class: "zone-row zone-sliders" }, sliders) : null,
         notes));
     li.addEventListener("focusin", () => select(z.id, "list"));
     li.addEventListener("click", (ev) => {
@@ -1683,6 +1727,12 @@ export function createPlanMap(ctx) {
     mapLatitude: () => (map ? map.getCenter().lat : null),
     /** The map centre `{lat, lon}`, or null before the map exists. */
     mapCenter: () => (map ? { lat: map.getCenter().lat, lon: map.getCenter().lng } : null),
+    /** The colours the squares given share: `{mixed, photo}` (the Plan's colour control). */
+    tilesPhoto,
+    /** Set the colours of the squares given; `null` gives them back to Settings. */
+    setTilesPhoto,
+    /** Whether the saved document is loaded: nothing may be set before it is. */
+    zonesLoaded: () => zs.loaded,
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();

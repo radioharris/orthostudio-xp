@@ -110,7 +110,13 @@
               <select id="zl-select"></select>
               <small class="help" id="zl-help"></small>
             </div>
+            <div class="field">
+              <label for="tile-colours-select" data-i18n="plan.colours">Photo colours</label>
+              <select id="tile-colours-select"></select>
+              <small class="help" id="tile-colours-help"></small>
+            </div>
           </div>
+          <div class="tile-colours" id="tile-colours"></div>
           <details class="more">
             <summary data-i18n="step1.more">Other ways: airport, tile names, coordinates</summary>
             <div class="field-row">
@@ -200,7 +206,6 @@
             <p class="help" id="plan-settings-summary" aria-live="polite"></p>
             <button type="button" class="btn btn-small" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
           </div>
-          <div class="plan-preview" id="plan-preview" hidden></div>
           <div class="actions estimate-actions">
             <button type="button" class="btn btn-small" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
             <span class="spinner" id="estimate-spinner" hidden aria-hidden="true"></span>

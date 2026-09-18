@@ -2753,7 +2753,7 @@ export function diskVerdict(disk) {
 }
 
 function renderPlanPanel() {
-  renderPlanPreview();
+  renderTileColours();
   const panel = clear($("plan-panel"));
   const plan = state.plan;
   renderBuildActions();
@@ -4004,38 +4004,102 @@ function renderSettings(message, kind) {
 function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
   $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
-  renderPlanPreview();
   renderPlanXplane();
 }
 
-/** Step 3 shows the colours of the first square chosen, as the build will encode them: the
- * answer is given in Settings, and this is where it is acted on (a user asked, 2026-09-18). */
-function renderPlanPreview() {
-  const box = clear($("plan-preview"));
-  const first = state.tiles.length ? parseTile(state.tiles[0]) : null;
-  if (!first) {
-    box.hidden = true;  // nothing chosen yet: step 3 has nothing to show the colours of
-    return;
-  }
-  const at = { lat: first.lat + 0.5, lon: first.lon + 0.5 };
-  const settings = state.settings || {};
-  const provider = settings.essential?.provider;
-  const sample = photoSampleUrl(provider, at);
-  const expert = settings.expert || {};
-  const look = photoValues(settings.essential?.photo_look, {
-    brightness: expert.photo_brightness,
-    contrast: expert.photo_contrast,
-    saturation: expert.photo_saturation,
+/** Step 1: the colours of the squares chosen, with the three sliders and the preview.
+ *
+ * The three levels are Settings, the square, then the zones (``map-zones.md`` 3). This control
+ * writes the **squares'**: one square selected changes that one, six change the six -- which is
+ * also "one colour for this build" (a user, 2026-09-18). */
+function renderTileColours() {
+  const box = clear($("tile-colours"));
+  const select = $("tile-colours-select");
+  const help = $("tile-colours-help");
+  const names = state.tiles;
+  const ready = Boolean(planMap && planMap.zonesLoaded && planMap.zonesLoaded());
+  select.disabled = !names.length || !ready;
+  const shared = names.length && ready ? planMap.tilesPhoto(names) : { mixed: false, photo: null };
+  const options = [
+    ["", t("plan.colours_settings")],
+    ["as_delivered", t("settings.q.colours_as_delivered")],
+    ["softer", t("settings.q.colours_softer")],
+    ["much_softer", t("settings.q.colours_much_softer")],
+    ["custom", t("settings.q.colours_custom")],
+  ];
+  clear(select);
+  if (shared.mixed) select.append(h("option", { value: "~" }, t("plan.colours_mixed")));
+  for (const [value, text] of options) select.append(h("option", { value }, text));
+  const photo = shared.photo;
+  select.value = shared.mixed ? "~" : photo?.look || "";
+  select.onchange = () => {
+    if (select.value === "~") return;
+    const look = select.value || null;
+    planMap.setTilesPhoto(names, look ? { ...(photo || zeroPhoto()), look } : null);
+    renderTileColours();
+    renderPlanSettings();
+  };
+  setText(help, names.length ? t("plan.colours_help", { n: names.length }) : t("plan.colours_none"));
+  if (!names.length || !ready || shared.mixed) return;
+  if (photo?.look === "custom") box.append(photoSliders(photo, (next) => {
+    planMap.setTilesPhoto(names, next);
+    renderTileColours();
+  }));
+  const first = parseTile(names[0]);
+  const sample = photoSampleUrl(state.settings?.essential?.provider, {
+    lat: first.lat + 0.5,
+    lon: first.lon + 0.5,
   });
   const preview = sample
-    ? colourPreview(h, sample, look, {
+    ? colourPreview(h, sample, photo ? photoValues(photo.look, photo) : settingsPhoto(), {
         size: 110,
         noteKey: "plan.colours_note",
         whereKey: "plan.colours_where",
       })
     : null;
-  box.hidden = !preview;
   if (preview) box.append(preview);
+}
+
+/** A colour choice with nothing set: what a square starts from when it takes its own. */
+function zeroPhoto() {
+  return { look: null, brightness: 0, contrast: 0, saturation: 0 };
+}
+
+/** The colours Settings answers, for a square that names none. */
+function settingsPhoto() {
+  const essential = state.settings?.essential || {};
+  const expert = state.settings?.expert || {};
+  return photoValues(essential.photo_look, {
+    brightness: expert.photo_brightness,
+    contrast: expert.photo_contrast,
+    saturation: expert.photo_saturation,
+  });
+}
+
+/** The three sliders of "my own values", for a square or a zone; ``onchange`` gets the choice. */
+function photoSliders(photo, onchange) {
+  const box = h("div", { class: "colour-values" });
+  for (const [key, label] of [
+    ["brightness", t("settings.x.photo_brightness")],
+    ["contrast", t("settings.x.photo_contrast")],
+    ["saturation", t("settings.x.photo_saturation")],
+  ]) {
+    const id = `photo-${key}-${Math.random().toString(36).slice(2, 8)}`;
+    const shown = h("output", { class: "colour-value", for: id });
+    const min = key === "saturation" ? "-1" : "-0.5";
+    const slider = h("input", { type: "range", id, min, max: "0.5", step: "0.05" });
+    slider.value = String(photo[key] ?? 0);
+    shown.textContent = fmtNum(Number(slider.value), 2);
+    slider.addEventListener("input", () => {
+      shown.textContent = fmtNum(Number(slider.value), 2);
+    });
+    slider.addEventListener("change", () => {
+      onchange({ ...photo, look: "custom", [key]: Number(slider.value) });
+    });
+    box.append(h("div", { class: "colour-row" },
+      h("label", { class: "sub-question-title", for: id }, label), slider, shown));
+  }
+  return box;
 }
 
 async function saveSettings(ev) {
@@ -4224,6 +4288,7 @@ async function boot() {
     library: () => state.library,
     building: () => buildingOnMap(),
     engineOutdated: () => Boolean(state.engineOutdated),
+    photoSliders,
     onZonesChanged: () => planChanged(),
   });
   renderTiles();

@@ -432,8 +432,24 @@ export function decodeBorders(doc) {
 }
 
 /** One zone as the page keeps it and sends it: the five fields, ring open, 9 decimals. */
-/** The looks a zone may name of its own; ``null`` takes the tile's answer (``zones.py``). */
-export const PHOTO_LOOK_VALUES = ["as_delivered", "softer", "much_softer"];
+/** The looks a tile or a zone may name of its own; ``null`` inherits the level above
+ * (Settings, then the tile, then the zone: ``zones.py``). */
+export const PHOTO_LOOK_VALUES = ["as_delivered", "softer", "much_softer", "custom"];
+
+/** One colour choice, as the API stores it: a look and the three numbers of "custom". */
+export function normalizePhoto(photo) {
+  const p = photo && typeof photo === "object" ? photo : {};
+  const number = (value, min) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(0.5, Math.max(min, n)) : 0;
+  };
+  return {
+    look: PHOTO_LOOK_VALUES.includes(p.look) ? p.look : null,
+    brightness: number(p.brightness, -0.5),
+    contrast: number(p.contrast, -0.5),
+    saturation: number(p.saturation, -1),
+  };
+}
 
 export function normalizeZone(zone) {
   return {
@@ -441,7 +457,7 @@ export function normalizeZone(zone) {
     name: typeof zone.name === "string" ? zone.name.slice(0, MAX_NAME) : "",
     zl: Number(zone.zl),
     provider: typeof zone.provider === "string" && zone.provider ? zone.provider : null,
-    photo_look: PHOTO_LOOK_VALUES.includes(zone.photo_look) ? zone.photo_look : null,
+    photo: normalizePhoto(zone.photo),
     polygon: cleanPolygon(zone.polygon).map(([x, y]) => [round9(x), round9(y)]),
   };
 }

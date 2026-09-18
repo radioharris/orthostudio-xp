@@ -672,10 +672,18 @@ has not drawn, or nothing came back) simply leaves the preview out. Under the tw
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
 
-The same two images appear in **step 3 of the Plan**, for the first square chosen and with the
-*saved* settings, beside *Change in Settings*: the answer is given in Settings and acted on here
-(same user). `ui/preview.js` draws both, `app.js` gives it the sample and the words to use
-(`plan.colours_where`, `plan.colours_note`); nothing is shown while no square is chosen. In the mock mode the page
+The same two images appear in **step 1 of the Plan**, under *Photo colours*, which sits beside
+the imagery source and the detail level and sets the colours of the **squares chosen**: one square
+selected changes that one, six change the six, which is also "one colour for this build" (a user,
+2026-09-18). Its choices are *Same as Settings* and the four of the Settings question; *My own
+values* shows the same three sliders. When the squares chosen disagree, the control says so and
+sets nothing until one is picked. The colours travel with the zones, in the map's document
+(`map-zones.md` 3), so they are remembered; `ui/preview.js` draws the two images and `app.js`
+gives it the sample and the words (`plan.colours_where`, `plan.colours_note`).
+
+Each **zone** keeps its own control in its row, with the sliders under it on *My own values*: it
+inherits its square while it says *Colours: same as the tile*, and wins inside its polygon
+otherwise. In the mock mode the page
 draws its own ground-looking image, so the preview works with no network.
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the
