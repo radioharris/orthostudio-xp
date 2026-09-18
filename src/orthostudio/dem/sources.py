@@ -55,11 +55,12 @@ __all__ = [
     "view_url",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30"]
+Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30")
-"""The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), and
-``COP30``, the Copernicus DEM GLO-30 of OrthoStudio XP (a user asked, 2026-09-17)."""
+SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM")
+"""The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), plus the two
+OrthoStudio XP added for users who asked: ``COP30``, the Copernicus DEM GLO-30 (2026-09-17), and
+``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``)."""
 
 GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
@@ -153,6 +154,7 @@ _SUFFIX: dict[str, str] = {
     "ALOS": "_ALOS3W30.tif",
     "NED1/3": "_NED13.tif",
     "NED1": "_NED1.tif",
+    "HRDEM": "_HRDEM.hgt",
 }
 
 
@@ -450,6 +452,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
         return _ensure_manual(source, lat, lon, opts)
     if source in ("NED1", "NED1/3"):
         return _ensure_ned(source, lat, lon, opts)
+    if source == "HRDEM":
+        return _ensure_hrdem(lat, lon, opts)
     raise ValueError(f"unknown elevation source {source!r}")
 
 
@@ -547,6 +551,29 @@ def _ensure_ned(source: str, lat: int, lon: int, opts: EnsureOptions) -> EnsureR
     if got.final:
         opts.memo.record(url)
     return EnsureResult(lat, lon, CellState.MISSING, None, url, got.error or f"HTTP {got.status}")
+
+
+def _ensure_hrdem(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """Canada's lidar cell, built from the WCS of NRCan (``dem/hrdem.py``).
+
+    A cell the lidar does not reach is ``MISSING`` and remembered, so the next build asks once
+    and lays Copernicus alone. The written file is a plain ``.hgt``.
+    """
+    from orthostudio.dem.hrdem import hrdem_cell, hrdem_url, write_hgt
+
+    path = _local("HRDEM", lat, lon, opts)
+    if path.is_file():
+        return EnsureResult(lat, lon, CellState.LOCAL, path)
+    url = hrdem_url(lat, lon, lat + 1, lon + 1, 2, 2)  # the cell, as the memo names it
+    if opts.memo.is_missing(url):
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, "in the negative memo")
+    opts.check_cancelled()
+    cell = hrdem_cell(lat, lon, opts.download, check_cancelled=opts.check_cancelled)
+    if cell is None:
+        opts.memo.record(url)
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, "no lidar over this cell")
+    write_hgt(path, cell)
+    return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
 
 
 def manual_download_error(source: str, lat: int, lon: int, elevation_dir: Path) -> OsxpError:

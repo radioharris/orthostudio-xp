@@ -66,6 +66,43 @@ and it is assembled from the 3 x 3 block like the other global sources, so that 
 The files declare no nodata value and have none (their voids are filled at the source):
 `Dem.load` drops `DEM_NODATA_UNDECLARED` for this source.
 
+### 3.0b `HRDEM` (Canada's lidar, NRCan) — OrthoStudio XP's own
+
+Added for the same user as the USGS option, who flies in Canada and asked for a source there
+(2026-09-18). Airborne lidar, 1 to 2 m, **bare earth** (the `dtm` coverage), served by the WCS of
+the datacube of Natural Resources Canada:
+`https://datacube.services.geo.ca/wrapper/ogc/elevation-hrdem-mosaic`
+(`datacube.services.geo.ca/ows/elevation` redirects there). WCS 1.1.1, `image/geotiff`, EPSG:4326
+in its URN form, whose axes are **latitude first**: written the other way round the service
+computes an inverted extent and answers 500 (measured). `hrdem.hrdem_url` builds it.
+
+Why it is worth a module of its own (`dem/hrdem.py`):
+
+* **The coverage is partial** — only the part of the country that has been flown. A cheap
+  coarse request over the whole cell (128 x 128 posts, 260 KB, ~2 s) says where the lidar is:
+  measured 2026-09-18, 100 % over `+45-076` (Ottawa), 44 % over `+50-115` (the Rockies), 0 % over
+  `+54-072` (northern Quebec). A cell with none is `MISSING` and remembered; the blocks with none
+  are never asked for. It is therefore an **overlay**, laid over Copernicus
+  (`custom_dem = "COP30;HRDEM"`), which answers everywhere else: `DEM_OVERLAY_UNAVAILABLE` says
+  so, and the build goes on.
+* **Bare earth.** Copernicus GLO-30 is a surface model and carries the tree canopy; a forest
+  reads as a 10-20 m plateau. The DTM is the ground, which is what a mesh under photo scenery
+  wants.
+* **The answers must be read here.** They are big-endian, uncompressed, tiled float32 GeoTIFFs;
+  Pillow reads their tags but decodes their samples in the wrong byte order, so `read_wcs_tiff`
+  reads the tiles with numpy at the offsets the tags give.
+* **A window is served a post or two short** of what was asked (62 x 62 for 64 x 64, 999 x 1000
+  for 1000 x 1000): each block is asked for with a post of margin and placed where **its own**
+  geometry says, at the centre of its first post -- placing on the tie point's corner shifts a
+  block half a post, which moved heights by metres (measured against a single-request reference:
+  0.013 m mean, 0.000 m median, over 129 600 posts).
+
+A cell is 4 x 4 blocks of 901 posts, written as `<cell>_HRDEM.hgt` (big-endian int16, `-32768`
+for the voids, the format section 5 already reads): 3601 posts a side, one arc-second, ~26 MB.
+The lidar is far finer, but a cell at 1/3" would be 466 MB from the service and 233 MB on the
+disk, while the gain that counts -- measured ground instead of a radar surface -- is already
+there at 1".
+
 ### 3.1 `View` (viewfinderpanoramas, J. de Ferranti) — Ortho4XP's default
 
 `O4_DEM_Utils.py:595-735`. Two resolutions:

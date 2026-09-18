@@ -226,7 +226,14 @@ def _build_specs(
     # Both are DEM sources, so they go where Ortho4XP puts one
     # (``config.overrides._custom_dem``); --set custom_dem wins.
     choice = relief.strip().lower() if relief is not None else None
-    source = {"copernicus": "COP30", "cop30": "COP30", "usgs": "NED1/3", "ned1/3": "NED1/3"}
+    source = {
+        "copernicus": "COP30",
+        "cop30": "COP30",
+        "usgs": "NED1/3",
+        "ned1/3": "NED1/3",
+        "canada": "COP30;HRDEM",
+        "hrdem": "COP30;HRDEM",
+    }
     if choice in source:
         if not str(config.get("custom_dem", "") or "").strip():
             config = {**config, "custom_dem": source[choice]}
@@ -433,7 +440,8 @@ _RELIEF_OPT = typer.Option(
     "--relief",
     help="relief of the elevation stage: xplane (X-Plane 12's own, read from its Global "
     "Scenery; the default), copernicus (downloaded and kept), usgs (USGS 3DEP 1/3 arc-second, "
-    "United States only) or view (viewfinderpanoramas, for comparisons)",
+    "United States only), canada (Canada's HRDEM lidar over Copernicus) or view "
+    "(viewfinderpanoramas, for comparisons)",
 )
 
 

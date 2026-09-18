@@ -103,6 +103,10 @@ def _custom_dem(relief: Any) -> str:
         return "COP30"
     if relief.source == "usgs":
         return "NED1/3"
+    if relief.source == "canada":
+        # Canada's lidar covers the part of the country that has been flown: it is laid *over*
+        # Copernicus, which answers everywhere else (``dem/hrdem.py``, same user, same day).
+        return "COP30;HRDEM"
     return ""
 
 

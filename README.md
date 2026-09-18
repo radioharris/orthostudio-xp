@@ -39,8 +39,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   X-World brings its own.
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
   For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept),
-  the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square) or your own
-  elevation file. Outside a source's coverage the tile is refused, never built flat.
+  the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), Canada's
+  lidar where it has been flown (bare earth, laid over Copernicus, which answers elsewhere) or
+  your own elevation file. Outside a source's coverage the tile is refused, never built flat.
 - **The colours of the photos.** Aerial imagery as the source delivers it, or toned down a little
   or a lot, or by your own brightness, contrast and colour. It is applied when the textures are
   encoded, so changing your mind rebuilds the tile without downloading anything again.

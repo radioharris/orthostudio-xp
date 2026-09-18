@@ -290,6 +290,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "your own elevation file (custom_dem).",
     ),
     _spec(
+        "DEM_OVERLAY_UNAVAILABLE",
+        _D,
+        _C,
+        "No elevation data from {source} over cell {cell}: the relief laid under it is used "
+        "alone there.",
+        "Nothing to do: the source covers part of the country only (Canada's lidar), and the "
+        "base relief answers for the rest.",
+    ),
+    _spec(
         "DEM_NEIGHBOUR_UNAVAILABLE",
         _D,
         _C,

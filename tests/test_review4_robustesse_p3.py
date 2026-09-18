@@ -218,7 +218,8 @@ def test_the_dem_job_carries_its_cancel_token_all_the_way_down() -> None:
         for p in (SRC / "dem").rglob("*.py")
         if re.search(r"cancel", p.read_text(encoding="utf-8"))
     )
-    assert readers == ["raster.py", "rule.py", "sources.py"]
+    # hrdem.py polls it too: a Canadian cell is up to 16 requests, and a cancel must not wait
+    assert readers == ["hrdem.py", "raster.py", "rule.py", "sources.py"]
     event = threading.Event()
     event.set()
     opts = EnsureOptions(elevation_dir=Path("/nowhere"), cancel=event)

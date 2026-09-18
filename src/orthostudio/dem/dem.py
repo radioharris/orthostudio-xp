@@ -53,6 +53,7 @@ __all__ = [
     "alt_file_name",
     "elevation_file",
     "expected_alt_size",
+    "own_cell_missing",
     "require_own_cell",
     "resolve_source",
 ]
@@ -149,6 +150,7 @@ class Dem:
 
         sources = resolve_source(custom_dem, tile, opts.elevation_dir)
         dem = cls._load_one(tile, sources[0], opts, record)
+        assert dem is not None  # the base is never optional: it raises rather than answer None
         dem.events = events
         if fill_nodata == "zero":
             count = nodata_to_zero(dem.alt_dem, dem.nodata)
@@ -169,8 +171,22 @@ class Dem:
                     context={"count": count, "cell": hem_latlon(tile.lat, tile.lon)},
                 )
             )
-        overlays = tuple(cls._load_one(tile, name, opts, record) for name in sources[1:])
-        dem.overlays = overlays
+        overlays = []
+        for name in sources[1:]:
+            # An overlay is what it can be: Canada's lidar covers the part of the country that
+            # has been flown, so a cell without it lays the base alone rather than refusing the
+            # tile (a user asked for a Canadian source, 2026-09-18).
+            laid = cls._load_one(tile, name, opts, record, optional=True)
+            if laid is None:
+                record(
+                    OsxpError(
+                        "DEM_OVERLAY_UNAVAILABLE",
+                        context={"cell": hem_latlon(tile.lat, tile.lon), "source": name},
+                    )
+                )
+            else:
+                overlays.append(laid)
+        dem.overlays = tuple(overlays)
         return dem
 
     @classmethod
@@ -180,16 +196,24 @@ class Dem:
         source: str,
         opts: EnsureOptions,
         record: Callable[[OsxpError], None],
-    ) -> Dem:
+        *,
+        optional: bool = False,
+    ) -> Dem | None:
+        """One source of the composite. ``optional`` (an overlay) answers ``None`` where the
+        source has no data for the tile, instead of refusing the build."""
         if source in GEOMETRY:
             combined: CombinedRaster = build_combined_raster(
                 source, tile.lat, tile.lon, opts, on_event=record
             )
+            if optional and own_cell_missing(tile, combined.cells):
+                return None
             require_own_cell(tile, source, combined.cells, opts.elevation_dir)
             return cls._from_read(tile, combined.read, source, combined.cells)
         if source in SOURCES:
             result = ensure_elevation(source, tile.lat, tile.lon, opts)
             if not result.ok or result.path is None:
+                if optional:
+                    return None
                 # Only the USGS products are read cell by cell (the rest are assembled from a 3x3
                 # block), and OrthoStudio XP downloads them: no file means the source does not
                 # cover this cell. Telling a pilot over Europe to fetch a USGS file by hand would
@@ -393,6 +417,14 @@ def _read_whole_file(
             },
         )
     return read
+
+
+def own_cell_missing(tile: TileRef, cells: Sequence[EnsureResult]) -> bool:
+    """Whether the tile's own cell has no elevation data (the one a build cannot do without)."""
+    return any(
+        (cell.lat, cell.lon) == (tile.lat, tile.lon) and cell.state is CellState.MISSING
+        for cell in cells
+    )
 
 
 def require_own_cell(

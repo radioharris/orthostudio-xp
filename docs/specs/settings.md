@@ -71,7 +71,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `coast_transition.width_m` | float `>= 0`, or a list of three floats `>= 0` when the profile is `3steps` (a scalar is required by `sand` / `rocks`) | m | 100 | `masks_width` | Maximum extent of the masks perpendicularly to the coastline (rough definition). NOTE: The value is now in meters, it used to be in ZL14 pixel size in earlier verions, the scale is roughly one to ten between both. |
 | `water_rendering` | E `XP11 + bathy` / `XP12` | - | `XP11 + bathy` | `water_tech` | Water tech type. XP12 uses a new (partly in construction) rendering tech, XP11 + bathy uses a more traditionnal blend. Both allows for 3D water. |
 | `photo_look` | E `as_delivered` / `softer` / `much_softer` / `custom` | - | `as_delivered` | – | (OrthoStudio XP) Colours of the aerial photos: as the provider delivers them, or toned down. `softer` = (-0.03, 0, -0.15), `much_softer` = (-0.06, -0.03, -0.30) as (brightness, contrast, saturation); `custom` uses the three expert values. Applied when the textures are encoded, so changing it re-encodes the tile without downloading anything. |
-| `relief.source` | E `auto` / `file` / `copernicus` / `usgs` | - | `auto` | `custom_dem` (empty = auto, `COP30`, `NED1/3`) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
+| `relief.source` | E `auto` / `file` / `copernicus` / `usgs` / `canada` | - | `auto` | `custom_dem` (empty = auto, `COP30`, `NED1/3`, `COP30;HRDEM`) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
 | `relief.file` | str (path; required non-empty when `source` is `file`) | - | `""` | `custom_dem` | same hint |
 | `relief.fill_nodata` | E `nearest` / `zero` | - | `nearest` | `fill_nodata` (`True` = nearest) | When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data). |
 | `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 3). |
@@ -212,8 +212,10 @@ expects them (`pipeline/build.py`, `BuildSpec.tile_config`):
 - `water_tech`; `custom_dem` (`""` when `relief.source == "auto"`, `"COP30"` when `copernicus`,
   `"NED1/3"` when `usgs` -- the USGS 3DEP at 1/3 arc-second, about 10 m, United States only, asked
   for by a user of the X-Plane.Org page, 2026-09-18; outside its coverage the cell is missing and
-  the build is refused with `DEM_TILE_UNAVAILABLE` rather than made flat, decision 0007);
-  `fill_nodata` (bool);
+  the build is refused with `DEM_TILE_UNAVAILABLE` rather than made flat, decision 0007 -- and
+  `"COP30;HRDEM"` when `canada`: the same user flies there, and Canada's lidar covers the part of
+  the country that has been flown, so it is laid *over* Copernicus, which answers for the rest
+  (`dem.md` 3.0b, `DEM_OVERLAY_UNAVAILABLE`); `fill_nodata` (bool);
 - `ratio_water = ratio_water_pct / 100`; `overlay_lod = overlay_lod_km * 1000`;
 - every other advanced/expert field under its Ortho4XP name (`masks_use_DEM_too`);
 - `ovl_exclude_pol` / `ovl_exclude_net` as lists.
