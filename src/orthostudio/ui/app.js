@@ -4325,7 +4325,13 @@ async function boot() {
     building: () => buildingOnMap(),
     engineOutdated: () => Boolean(state.engineOutdated),
     photoSliders,
-    onZonesChanged: () => planChanged(),
+    onZonesChanged: () => {
+      planChanged();
+      // The Library marks a tile whose square now asks for other colours: it must be drawn again
+      // when the squares change, and when the document arrives after it (a user saw a tile that
+      // had lost its mark, 2026-09-18).
+      renderLibrary();
+    },
   });
   renderTiles();
   renderPlanPanel();

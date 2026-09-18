@@ -2169,7 +2169,10 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
     assert "persistSettings" not in estimate  # a live estimate saves nothing
     for name in ("addTiles", "removeTile", "clearTiles"):
         assert "planChanged();" in _function_body(app_js, name), name
-    assert "onZonesChanged: () => planChanged()," in app_js
+    # the zones changing re-plans, and redraws the Library, which marks a tile whose square
+    # now asks for other colours (2026-09-18)
+    assert "onZonesChanged: () => {" in app_js
+    assert "planChanged();" in app_js and "renderLibrary();" in app_js
     assert app_js.count("planChanged();\n    planMap?.planChanged();") == 2  # source, level
     assert "state.plan = null;" not in "".join(
         _function_body(app_js, n) for n in ("addTiles", "removeTile", "clearTiles", "build")
