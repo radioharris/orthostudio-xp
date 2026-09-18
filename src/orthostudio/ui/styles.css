@@ -548,6 +548,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 @keyframes tile-pulse { 0%, 100% { fill-opacity: 0.08; opacity: 0.55; } 50% { fill-opacity: 0.4; opacity: 1; } }
 .plan-map .osxp-zone { stroke: var(--zl); stroke-width: 2; fill: var(--zl); fill-opacity: 0.22; }
 .plan-map .osxp-zone.is-selected { stroke-width: 4; fill-opacity: 0.38; }
+/* Nothing tints what the map repaints with its own colours, nor anything while "true colours"
+   is on: the mark is the stroke alone (a user, 2026-09-18). */
+.plan-map .osxp-zone.is-plain { fill-opacity: 0; stroke-width: 3; }
+.plan-map .osxp-zone.is-plain.is-selected { stroke-width: 5; }
+.plan-map .osxp-tile-selected.is-plain { fill-opacity: 0; stroke-width: 3; }
 .plan-map .osxp-zone.is-invalid { stroke-dasharray: 6 4; }
 .plan-map .osxp-zone-outline { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
 .plan-map .osxp-draft { stroke: var(--zl); stroke-width: 2.5; fill: none; }

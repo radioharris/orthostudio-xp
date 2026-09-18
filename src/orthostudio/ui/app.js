@@ -4045,19 +4045,9 @@ function renderTileColours() {
     planMap.setTilesPhoto(names, next);
     renderTileColours();
   }));
-  const first = parseTile(names[0]);
-  const sample = photoSampleUrl(state.settings?.essential?.provider, {
-    lat: first.lat + 0.5,
-    lon: first.lon + 0.5,
-  });
-  const preview = sample
-    ? colourPreview(h, sample, photo ? photoValues(photo.look, photo) : settingsPhoto(), {
-        size: 110,
-        noteKey: "plan.colours_note",
-        whereKey: "plan.colours_where",
-      })
-    : null;
-  if (preview) box.append(preview);
+  // No thumbnail here: the map itself is repainted with these colours, which says it better
+  // (a user, 2026-09-18). Settings keeps its two images, having no map.
+  box.append(h("p", { class: "help" }, t("plan.colours_on_map")));
 }
 
 /** A colour choice with nothing set: what a square starts from when it takes its own. */

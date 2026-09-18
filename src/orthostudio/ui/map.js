@@ -192,6 +192,7 @@ export function createPlanMap(ctx) {
     zones: [],
     tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
     fileUnreadable: false,  // the saved file holds something this version could not read
+    plainColours: false,  // "true colours": no fill at all, so nothing tints the imagery
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
     loadError: null, // the engine could not be reached (network, 5xx): nothing is editable
@@ -350,6 +351,11 @@ export function createPlanMap(ctx) {
   /** GET /api/zones, one request at a time, shared by every caller (boot, Retry, a plan or job
    * request, a conflict). Never rejects. */
   function load() {
+    try {
+      zs.plainColours = localStorage.getItem("osxp.plainColours") === "1";
+    } catch {
+      // private window, blocked storage: the map keeps its marks, as before
+    }
     if (!zs.loading) {
       zs.loading = fetchZones().finally(() => {
         zs.loading = null;
@@ -1357,7 +1363,10 @@ export function createPlanMap(ctx) {
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
       if (selected.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-selected", interactive: false, weight: 2 }));
+        // No fill over a square repainted with its own colours: the tint would lie about them
+        // (a user, 2026-09-18). The stroke alone says it is chosen.
+        const plain = zs.plainColours || Boolean(zs.tiles[name]?.photo?.look);
+        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-selected${plain ? " is-plain" : ""}`, interactive: false, weight: plain ? 3 : 2 }));
       }
       if (installed.has(name)) {
         layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-installed", interactive: false, fill: false, weight: 3 }));
@@ -1400,6 +1409,7 @@ export function createPlanMap(ctx) {
       const cls = ["osxp-zone", `zl-${z.zl}`];
       if (z.id === zs.selected) cls.push("is-selected");
       if (zs.marks.has(z.id)) cls.push("is-invalid");
+      if (zs.plainColours || z.photo?.look) cls.push("is-plain");
       layers.zones.addLayer(L.polygon(latLngs(z.polygon), { className: cls.join(" "), interactive: false, weight: 2 }));
     }
     const sel = zoneById(zs.selected);
@@ -1508,6 +1518,7 @@ export function createPlanMap(ctx) {
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
     if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
+    if (map) items.push(plainToggle());
     if (map) items.push(bordersToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
@@ -1521,6 +1532,27 @@ export function createPlanMap(ctx) {
   }
 
   /** The legend's borders line: a checkbox, and why nothing shows when zoomed in close. */
+  /** "True colours": every fill goes, so nothing tints the imagery while you judge it. */
+  function plainToggle() {
+    const input = h("input", {
+      type: "checkbox",
+      checked: zs.plainColours,
+      onchange: (ev) => {
+        zs.plainColours = ev.target.checked;
+        try {
+          localStorage.setItem("osxp.plainColours", zs.plainColours ? "1" : "0");
+        } catch {
+          // private window, blocked storage: the choice lasts this visit
+        }
+        renderGrid();
+        renderZones();
+        renderLegend();
+      },
+    });
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: t("map.plain_hint") }, input, t("map.plain")));
+  }
+
   function bordersToggle() {
     let text = t("map.borders");
     if (borders.wanted && map.getZoom() > BORDERS_MAX_ZOOM) text = t("map.borders_zoomed");

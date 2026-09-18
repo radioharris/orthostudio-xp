@@ -693,8 +693,17 @@ region's polygon, so only what carries its own colours changes and the rest stay
 underneath. Zones are painted before the squares, so a zone drawn in a square wins, as in a
 build. The layer exists only while something carries its own colours, and follows every change of
 the choices, of the zones and of the squares. In the mock mode it paints its own ground image, so
-it can be seen and measured with no network. In the mock mode the page
-draws its own ground-looking image, so the preview works with no network.
+it can be seen and measured with no network.
+
+**Nothing tints what it repaints.** A square or a zone carrying its own colours loses its fill and
+keeps a thicker stroke (`is-plain`): a translucent blue over a square being judged would lie about
+its colours (same user). The map's legend also carries **True colours**, a checkbox that takes
+every fill off -- selection, installed tiles, zones -- leaving the outlines, for judging a square
+that carries no colours of its own or one already installed under its green tint; the choice is
+remembered in `localStorage`.
+
+Step 1 carries no thumbnail: the map says it better, and one line points at it. Settings keeps its
+two images, having no map.
 
 A test holds the settings the screen offers (questions, expert fields, retired) equal to the
 schema's leaves, so a setting added to the engine cannot be left out of the page.
