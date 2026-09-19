@@ -92,6 +92,11 @@ const BASEMAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles, data © OpenStreetM
 export const AIRPORTS_MIN_ZOOM = 8;
 export const AIRPORTS_LABEL_ZOOM = 9;
 export const AIRPORTS_LIMIT = 200;
+/** Where the code sits beside its ring, in pixels: the anchor of the icon and the box the
+ * decluttering works with read the same two numbers, so they cannot drift apart. */
+const LABEL_DX = 11;
+const LABEL_DY = 5;
+const LABEL_HEIGHT = 13;
 const BORDERS_RETRY_MS = [5000, 15000, 60000, 300000];
 
 /** The delay before reading the borders again after `tries` failed readings in a row: soon at
@@ -1200,22 +1205,25 @@ export function createPlanMap(ctx) {
       if (!withCode) continue;
       // 6.7 px a character at 11 px in the monospace face, measured; 13 px of offset, 13 tall
       const p = points[index];
-      const box = { l: p.x + 13, t: p.y - 6.5, r: p.x + 13 + code.length * 6.7 + 2, b: p.y + 6.5 };
+      const box = {
+        l: p.x + LABEL_DX,
+        t: p.y - LABEL_DY,
+        r: p.x + LABEL_DX + code.length * 6.7 + 2,
+        b: p.y - LABEL_DY + LABEL_HEIGHT,
+      };
       if (clashes(box, placed) || clashes(box, ringBoxes.filter((_, i) => i !== index))) continue;
       placed.push(box);
       L.marker([lat, lon], {
         pane: "osxpAirports",
         interactive: false,
         // The offset is the icon's anchor, not a style: Leaflet writes its own transform on the
-        // element to place it, and a transform in the stylesheet is thrown away by it. With the
-        // anchor 13 px left and 7 px down of the label's origin, the code lands clear of the
-        // ring, which is 6 px of radius and stroke (a user saw "GG" for LSGG and then saw the
-        // ring still on the letters, 2026-09-19).
+        // element to place it, and a transform in the stylesheet is thrown away by it (a user saw
+        // "GG" for LSGG, then saw the ring still on the letters, 2026-09-19).
         icon: L.divIcon({
           className: "osxp-airport-label",
           html: escapeHtml(code),
           iconSize: [0, 0],
-          iconAnchor: [-13, 7],
+          iconAnchor: [-LABEL_DX, LABEL_DY],
         }),
       }).addTo(layers.airports);
     }
