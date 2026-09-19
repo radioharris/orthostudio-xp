@@ -2975,7 +2975,7 @@ function setRoute(points) {
     // a browser that keeps nothing: the route simply goes when the page is read again
   }
   renderRoute();
-  planMap?.routeChanged();
+  planMap?.routeChanged(Boolean(state.route));
 }
 
 function clearRoute() {

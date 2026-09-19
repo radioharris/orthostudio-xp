@@ -2329,9 +2329,20 @@ export function createPlanMap(ctx) {
       }
       return out;
     },
-    /** The flight plan of step 1 changed: draw it again, or take it away. */
-    routeChanged() {
+    /**
+     * The flight plan of step 1 changed: draw it again, or take it away. ``fit`` brings the map to
+     * it, which is what a route drawn by hand or read from SimBrief asks for; the one restored
+     * when the page opens leaves the map where the user left it.
+     */
+    routeChanged(fit = false) {
       drawRoute();
+      const points = (ctx.route?.() || {}).points || [];
+      if (!fit || !map || points.length < 2) return;
+      // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map
+      // (measured 2026-09-19), while the zoom it computes is right.
+      const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lon]));
+      const zoom = Math.min(9, map.getBoundsZoom(bounds, false, L.point(60, 60)));
+      map.setView(bounds.getCenter(), zoom);
     },
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {
