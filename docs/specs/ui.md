@@ -715,6 +715,15 @@ little asks nothing, and capped at `AIRPORTS_LIMIT` (400) with the explicit ICAO
 airport is a ring, its code beside it, and its name in the tooltip; the pane sits over the labels
 and under the zones, and takes no pointer event.
 
+**A street map beside the photo** (same user, same day): a third checkbox in the legend swaps the
+aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engine
+(`api/basemap.py`). It is vector, so the page loads MapLibre GL and its Leaflet bridge
+(`vendor/maplibre/`, about a megabyte) **the first time it is asked for**, never on a page that
+stays on the photo; until they are there the imagery stays, and a failure says so in the legend
+and goes back to the imagery. The colours of a square or a zone are not repainted over it: they
+would tint roads and houses and say nothing about a build. Off by default, remembered in
+`localStorage` (`osxp.mapStreet`), with OpenFreeMap's attribution in the map's corner.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

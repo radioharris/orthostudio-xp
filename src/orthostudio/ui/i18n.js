@@ -201,6 +201,10 @@ const STRINGS = {
     "map.airports": "Aérodromes",
     "map.airports_zoomed": "Aérodromes (zoomez pour les voir)",
     "map.airports_hint": "Les terrains que connaît OrthoStudio XP, affichés par-dessus la photo : de quoi voir si un carré contient celui que vous cherchez. Rien n'est téléchargé, la liste est dans le logiciel.",
+    "map.street": "Plan de rues",
+    "map.street_loading": "Plan de rues (chargement)",
+    "map.street_failed": "Plan de rues indisponible : la photo reste affichée",
+    "map.street_hint": "OpenStreetMap à la place de la photo, pour lire les villes, les routes et les noms. Les couleurs ne sont pas repeintes dessus : elles ne veulent rien dire sur un plan.",
 
     "draw.rect": "Ajouter du détail : rectangle",
     "draw.shape": "Ajouter du détail : forme libre",
@@ -939,6 +943,10 @@ const STRINGS = {
     "map.airports": "Airports",
     "map.airports_zoomed": "Airports (zoom in to see them)",
     "map.airports_hint": "The airports OrthoStudio XP knows, drawn over the photo: enough to see whether a square holds the one you are looking for. Nothing is downloaded, the list is inside the app.",
+    "map.street": "Street map",
+    "map.street_loading": "Street map (loading)",
+    "map.street_failed": "Street map unavailable: the photo stays",
+    "map.street_hint": "OpenStreetMap instead of the photo, to read towns, roads and names. The colours are not repainted on it: they would mean nothing on a street map.",
 
     "draw.rect": "Add detail: rectangle",
     "draw.shape": "Add detail: free shape",

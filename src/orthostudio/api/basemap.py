@@ -29,7 +29,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from orthostudio.fsutil import atomic_write_bytes
@@ -77,7 +77,10 @@ def rewrite_style(doc: Any, prefix: str = "/api/basemap") -> Any:
     """The style with every OpenFreeMap address pointing back at this router.
 
     MapLibre reads the tiles, the glyphs and the sprites from the addresses the style gives, so
-    rewriting them here is what keeps the page from talking to another origin.
+    rewriting them here is what keeps the page from talking to another origin. ``prefix`` is the
+    **absolute** address of this router in a served answer: the vector tiles are fetched from a
+    web worker, which has no page to resolve a relative address against and refuses it outright
+    ("Failed to parse URL", measured 2026-09-19).
     """
     if isinstance(doc, str):
         if doc.startswith(OPENFREEMAP_URL):
@@ -190,7 +193,7 @@ def basemap_router(
             status_code=502,
         )
 
-    def upstream(path: str) -> Response:
+    def upstream(path: str, prefix: str = "/api/basemap") -> Response:
         """Serve one piece, from the cache or from the service.
 
         The bytes are kept as the service sent them; a JSON answer (the style, and the tile source
@@ -208,25 +211,36 @@ def basemap_router(
                 doc = json.loads(body)
             except ValueError:
                 return failed(path, "its JSON could not be read")
-            return JSONResponse(rewrite_style(doc), headers=_HEADERS)
+            # Not kept by the browser: the addresses inside are this engine's, and this engine
+            # answers on the port it was started with. A style cached for a week outlived the
+            # port it named (measured 2026-09-19).
+            return JSONResponse(rewrite_style(doc, prefix), headers=_JSON_HEADERS)
         return Response(body, media_type=content_type(path), headers=_HEADERS)
 
+    def prefix_of(request: Request) -> str:
+        """This router's absolute address, as the client reached it."""
+        return str(request.base_url).rstrip("/") + "/api/basemap"
+
     @router.get("/api/basemap/style")
-    async def style() -> Response:
+    async def style(request: Request) -> Response:
         """The style of the street map: the one address the page has to know."""
         import asyncio
 
-        return await asyncio.to_thread(upstream, f"styles/{STYLE_NAME}")
+        return await asyncio.to_thread(upstream, f"styles/{STYLE_NAME}", prefix_of(request))
 
     @router.get("/api/basemap/{path:path}")
-    async def piece(path: str) -> Response:
+    async def piece(path: str, request: Request) -> Response:
         """A vector tile, a glyph range, a sprite or the low-zoom raster of the style."""
         import asyncio
 
-        return await asyncio.to_thread(upstream, path)
+        return await asyncio.to_thread(upstream, path, prefix_of(request))
 
     return router
 
 
 _HEADERS = {"Cache-Control": "private, max-age=604800"}
-"""A week: the pieces of a street map change rarely, and the cache on disk holds them anyway."""
+"""A week, for the pieces whose address carries a version (the tiles, the glyphs, the sprites,
+the low-zoom raster); the cache on disk holds them anyway."""
+
+_JSON_HEADERS = {"Cache-Control": "no-cache"}
+"""The style and the tile sources name this engine's own address: they are read again each time."""

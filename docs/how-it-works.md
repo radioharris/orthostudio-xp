@@ -196,6 +196,13 @@ clears everything, and *Go back to the colours already built* gives each square 
 tile you already have on the disk -- the Library says which tiles no longer match, and this is how
 you agree with them again without building anything.
 
+**A street map, if you want one.** The legend has a box that swaps the aerial photo for
+OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
+OpenFreeMap, a free service that renders OpenStreetMap without a key; OrthoStudio XP serves it
+through its own engine, so nothing on the page talks to another site, and what is downloaded is
+kept in the map cache. The renderer it needs is loaded the first time you ask for the street map,
+not before.
+
 **Airports on the map.** The legend has a box for them: OrthoStudio XP knows about 39 000
 aerodromes and draws those of the view, with their code, over the photo. It costs no download, the
 list travels with the app, and it answers the question the aerial imagery often does not: is the

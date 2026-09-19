@@ -448,6 +448,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }
 /* Airports on the map: a small ring and its code, readable over a photo (a user asked to see
    whether a square holds the airport he wants, 2026-09-19). */
+.legend-street { background: linear-gradient(135deg, #e8e0d8 0 45%, #b9c6a8 45% 100%); border: 1px solid var(--line-2); }
 .legend-airport { width: 10px; border: 2px solid #ffd166; background: rgba(255, 209, 102, 0.35); border-radius: 50%; }
 .osxp-airport-label {
   font: 600 11px/1.1 ui-monospace, "SF Mono", Menlo, monospace;

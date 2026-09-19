@@ -76,8 +76,21 @@ const BORDERS_KEY = "osxp.mapBorders";
  *
  * Below AIRPORTS_MIN_ZOOM there would be thousands of them: the legend says to zoom in. */
 const AIRPORTS_KEY = "osxp.mapAirports";
-export const AIRPORTS_MIN_ZOOM = 8;
-export const AIRPORTS_LIMIT = 400;
+
+/** The street map: OpenStreetMap rendered by OpenFreeMap, served by the engine
+ * (`api/basemap.py`). A user asked for it beside the aerial imagery, as Ortho4XP offers in its
+ * preview window, to tell what a square holds before building it (2026-09-19).
+ *
+ * It is vector, so it needs MapLibre GL, which weighs a megabyte: the renderer is loaded the
+ * first time the map is asked for, never on a page that stays on the photo. */
+const STREET_KEY = "osxp.mapStreet";
+const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
+const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
+const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
+const BASEMAP_STYLE = "api/basemap/style";
+const BASEMAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles, data © OpenStreetMap contributors";
+export const AIRPORTS_MIN_ZOOM = 9;
+export const AIRPORTS_LIMIT = 200;
 const BORDERS_RETRY_MS = [5000, 15000, 60000, 300000];
 
 /** The delay before reading the borders again after `tries` failed readings in a row: soon at
@@ -223,6 +236,11 @@ export function createPlanMap(ctx) {
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
+    street: {
+      wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
+      loading: false,
+      failed: false,
+    },
     airports: {
       wanted: storageGet(AIRPORTS_KEY) === "1", // off unless the user asked: markers over a photo
       rows: [],
@@ -1302,8 +1320,87 @@ export function createPlanMap(ctx) {
     baseKey = key;
     setNotice("");
     if (ctx.mock) base = neutralLayer();
+    else if (zs.street.wanted && !zs.street.failed) base = streetLayer();
     else if (code) base = providerLayer(code);
     if (base) base.addTo(map);
+  }
+
+  /** The street map, drawn by MapLibre GL inside the Leaflet map.
+   *
+   * The renderer is fetched the first time it is wanted; until it is there the imagery stays, so
+   * nothing blinks and a failure leaves the map as it was. */
+  function streetLayer() {
+    if (typeof L.maplibreGL !== "function") {
+      loadMaplibre();
+      return providerLayer(ctx.planProvider() || "");
+    }
+    const layer = L.maplibreGL({ style: BASEMAP_STYLE, attribution: BASEMAP_ATTRIBUTION });
+    const gl = layer.getMaplibreMap?.();
+    gl?.on("error", () => {
+      // The style or a tile did not come: say it once, and go back to the imagery.
+      if (zs.street.failed) return;
+      zs.street.failed = true;
+      setNotice(t("map.street_failed"));
+      setBaseLayer(true);
+      renderLegend();
+    });
+    return layer;
+  }
+
+  /** Load MapLibre GL and its Leaflet bridge, once, then draw the street map. */
+  function loadMaplibre() {
+    if (zs.street.loading || typeof L.maplibreGL === "function") return;
+    zs.street.loading = true;
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = MAPLIBRE_CSS;
+    document.head.append(css);
+    const add = (src) =>
+      new Promise((resolve, reject) => {
+        const tag = document.createElement("script");
+        tag.src = src;
+        tag.onload = resolve;
+        tag.onerror = () => reject(new Error(src));
+        document.head.append(tag);
+      });
+    add(MAPLIBRE_JS)
+      .then(() => add(MAPLIBRE_BRIDGE))
+      .then(() => {
+        zs.street.loading = false;
+        if (zs.street.wanted) setBaseLayer(true);
+        renderLegend();
+      })
+      .catch(() => {
+        zs.street.loading = false;
+        zs.street.failed = true;
+        setNotice(t("map.street_failed"));
+        renderLegend();
+      });
+  }
+
+  function setStreetWanted(wanted) {
+    zs.street.wanted = wanted;
+    zs.street.failed = false;
+    storageSet(STREET_KEY, wanted ? "1" : "0");
+    setNotice("");
+    setBaseLayer(true);
+    refreshColours();
+    renderLegend();
+  }
+
+  /** The legend's street-map line: a checkbox, and a word while the renderer is coming. */
+  function streetToggle() {
+    let text = t("map.street");
+    if (zs.street.failed) text = t("map.street_failed");
+    else if (zs.street.wanted && zs.street.loading) text = t("map.street_loading");
+    const input = h("input", {
+      type: "checkbox",
+      checked: zs.street.wanted,
+      onchange: (ev) => setStreetWanted(ev.target.checked),
+    });
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: t("map.street_hint") },
+        input, h("span", { class: "legend-swatch legend-street", "aria-hidden": "true" }), text));
   }
 
   function providerLayer(code) {
@@ -1427,6 +1524,9 @@ export function createPlanMap(ctx) {
       colours = null;
     }
     const code = ctx.planProvider ? ctx.planProvider() : null;
+    // Over the street map there is no photo to recolour: the repaint would tint roads and
+    // houses, which says nothing about a build.
+    if (zs.street.wanted && !zs.street.failed) return;
     if (!colouredRegions(zs.zones, zs.tiles).length) return;
     colours = colourLayer(code || "BI");
     colours.addTo(map);
@@ -1654,7 +1754,7 @@ export function createPlanMap(ctx) {
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
     if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
-    if (map) items.push(bordersToggle(), airportsToggle());
+    if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
     clear(box).append(list);

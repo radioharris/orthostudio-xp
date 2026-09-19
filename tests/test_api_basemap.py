@@ -55,14 +55,19 @@ def _client(app: FastAPI) -> AsyncClient:
 
 def test_rewriting_a_style_leaves_no_other_origin() -> None:
     """MapLibre follows the addresses the style gives: rewritten, the page asks this engine only,
-    which is what keeps the rule that the page holds no address of another origin."""
-    out = rewrite_style(STYLE)
+    which is what keeps the rule that the page holds no address of another origin.
+
+    They are absolute: the vector tiles are fetched from a web worker, which has no page to
+    resolve a relative address against and refuses it ("Failed to parse URL", measured).
+    """
+    here = "http://127.0.0.1:8641/api/basemap"
+    out = rewrite_style(STYLE, here)
     text = json.dumps(out)
-    assert OPENFREEMAP_URL not in text and "http" not in text
-    assert out["glyphs"] == "/api/basemap/fonts/{fontstack}/{range}.pbf"
-    assert out["sources"]["openmaptiles"]["url"] == "/api/basemap/planet"
+    assert OPENFREEMAP_URL not in text
+    assert out["glyphs"] == f"{here}/fonts/{{fontstack}}/{{range}}.pbf"
+    assert out["sources"]["openmaptiles"]["url"] == f"{here}/planet"
     assert out["sources"]["ne2_shaded"]["tiles"] == [
-        "/api/basemap/natural_earth/ne2sr/{z}/{x}/{y}.png"
+        f"{here}/natural_earth/ne2sr/{{z}}/{{x}}/{{y}}.png"
     ]
     assert out["layers"] == STYLE["layers"]  # everything else is left alone
 
@@ -79,12 +84,14 @@ async def test_the_style_the_source_and_a_tile_go_through_the_proxy(tmp_path: Pa
     async with _client(app) as c:
         style = await c.get("/api/basemap/style")
         assert style.status_code == 200
-        assert style.json()["sources"]["openmaptiles"]["url"] == "/api/basemap/planet"
+        assert style.json()["sources"]["openmaptiles"]["url"] == "http://osxp/api/basemap/planet"
+        # read again each time: the addresses inside name the port this engine answers on
+        assert style.headers["cache-control"] == "no-cache"
 
         # the source names where the tiles really are: it is rewritten too, or the page would
         # follow the service's own address and leave this engine
         source = await c.get("/api/basemap/planet")
-        assert source.json()["tiles"] == ["/api/basemap/planet/20260913/{z}/{x}/{y}.pbf"]
+        assert source.json()["tiles"] == ["http://osxp/api/basemap/planet/20260913/{z}/{x}/{y}.pbf"]
 
         tile = await c.get("/api/basemap/planet/20260913/12/2117/1453.pbf")
         assert tile.status_code == 200
