@@ -491,9 +491,12 @@ for a range of `0.8 × eta_s`–`1.5 × eta_s`) are read too.
 ### 2.3 Library
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`): the data used by the tiles on
-this computer, the data no tile needs any more, the downloaded images and the map background,
-each with a plain tooltip. *Free space…* asks first, in a modal dialog that says what goes and how
-much (Escape keeps everything), with a checkbox to delete the downloaded images too; it is
+this computer, the data no tile needs any more, the downloaded images, the map background and the
+**downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a modal dialog that
+says what goes and how much (Escape keeps everything), with **two** checkboxes, one for the
+downloaded images and one for the relief: a square of relief is 40 MB from Copernicus against
+800 MB of imagery at ZL16, and comes back much faster, so the choices are separate. The relief was
+counted by nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is
 disabled while a build runs and when there is nothing to free, and ends with a toast of what came
 back. A 409 `SYS_BUSY` shows as a card in the Library's words.
 

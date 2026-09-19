@@ -1845,29 +1845,41 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     cache and the images: the Library measures (GET /api/disk), asks, then frees (POST
     /api/clean). The mock answers like the engine, a running build included."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    for element in ('id="disk-space"', 'id="disk-free"', 'id="disk-images"', 'id="disk-confirm"'):
+    for element in (
+        'id="disk-space"',
+        'id="disk-free"',
+        'id="disk-images"',
+        'id="disk-relief"',
+        'id="disk-confirm"',
+    ):
         assert element in html, element
+    # the relief is its own choice, counted apart: a user emptied everything and 1.4 GB of
+    # elevation cells stayed, because nothing counted or freed them (2026-09-18)
+    disk = "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9}"
     plans = _node_json(
         "app.js",
-        "[m.freeSpacePlan({unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1}, false), "
-        "m.freeSpacePlan({unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1}, true), "
-        "m.freeSpacePlan(null, true)]",
+        f"[m.freeSpacePlan({disk}, false, false), m.freeSpacePlan({disk}, true, false), "
+        f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true)]",
     )
     assert plans == [
-        {"unused": 5, "pictures": 0, "total": 5},
-        {"unused": 5, "pictures": 8, "total": 13},
-        {"unused": 0, "pictures": 0, "total": 0},
+        {"unused": 5, "pictures": 0, "heights": 0, "total": 5},
+        {"unused": 5, "pictures": 8, "heights": 0, "total": 13},
+        {"unused": 5, "pictures": 0, "heights": 9, "total": 14},
+        {"unused": 0, "pictures": 0, "heights": 0, "total": 0},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
-    const freed = (await call("POST", "/api/clean", {images: true})).ok;
+    const freed = (await call("POST", "/api/clean", {images: true, relief: true})).ok;
     const after = (await call("GET", "/api/disk")).ok;
     process.stdout.write(JSON.stringify({before, freed, after}));
     """
     got = _node_mock(script)
     assert got["before"]["unused_bytes"] > 0 and got["before"]["building"] is False
+    assert got["before"]["relief_bytes"] > 0
     assert got["freed"]["freed_bytes"] == got["before"]["unused_bytes"]
+    assert got["freed"]["relief_freed_bytes"] == got["before"]["relief_bytes"]
     assert got["after"]["unused_bytes"] == got["after"]["images_bytes"] == 0
+    assert got["after"]["relief_bytes"] == 0
     refused = 'process.stdout.write(JSON.stringify(await call("POST", "/api/clean", {})));'
     busy = _node_mock(refused, fail="busy")
     assert busy == {"status": 409, "code": "SYS_BUSY"}

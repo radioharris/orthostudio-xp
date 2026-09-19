@@ -84,6 +84,12 @@ class CleanReport:
     images_removed: bool = False
     mapcache_bytes: int = 0
     """The map cache's share of ``images_bytes``."""
+    relief_bytes: int = 0
+    """The elevation cells downloaded and kept (``<data folder>/elevation``). Counted apart from
+    the imagery: a square of relief is 40 MB from Copernicus against 400 MB from the USGS, and
+    fetching it again costs far less than the imagery, so it is offered as its own choice. It was
+    invisible until a user emptied everything and found 1.4 GB left (2026-09-18)."""
+    relief_removed: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -225,6 +231,8 @@ def clean(
     dry_run: bool = False,
     grace_s: float = GRACE_S,
     mapcache_root: Path | None = None,
+    elevation_root: Path | None = None,
+    relief: bool = False,
 ) -> CleanReport:
     """Collect what no pack needs; with ``images``, empty the imagery caches as well.
 
@@ -232,6 +240,10 @@ def clean(
     ``images_bytes``. Without ``mapcache_root`` (the default) no map cache is counted or
     emptied: a directory beside ``chunks_root`` is never assumed to be one (``osxp clean`` passes
     ``$OSXP_HOME/mapcache``).
+
+    ``elevation_root`` is counted in ``relief_bytes`` and emptied with ``relief``, its own choice:
+    the relief of a square is worth far less to download again than its imagery, and it used to be
+    freed by nothing at all.
     """
     report = CleanReport(dry_run=dry_run)
     packs = pack_dirs(library_path, tiles_root)
@@ -253,6 +265,12 @@ def clean(
         if images and not dry_run:
             _empty(cache)
             report.images_removed = True
+    elevation = Path(elevation_root) if elevation_root is not None else None
+    if elevation is not None and elevation.is_dir() and not _overlap(elevation, chunks):
+        report.relief_bytes = freed_bytes([elevation])
+        if relief and not dry_run:
+            _empty(elevation)
+            report.relief_removed = True
     return report
 
 

@@ -49,6 +49,7 @@ from orthostudio.api.serve import package_root
 from orthostudio.api.specs import check_ortho4xp_folder, make_specs, plan_answer, resolve_xplane
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import clean, disk_bytes
+from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import Action, OsxpError, Severity
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
@@ -1420,7 +1421,7 @@ def create_app(
         with Store(root) as st:
             return st.building_pids()
 
-    def collect(*, images: bool, dry_run: bool) -> Any:
+    def collect(*, images: bool, relief: bool, dry_run: bool) -> Any:
         # No grace period: the callers check first that nothing is building (osxp clean --all).
         return clean(
             default_store_root(),
@@ -1431,6 +1432,8 @@ def create_app(
             dry_run=dry_run,
             grace_s=0.0,
             mapcache_root=default_mapcache_root(),
+            elevation_root=default_elevation_dir(),
+            relief=relief,
         )
 
     def busy_building(other: bool) -> JSONResponse:
@@ -1446,15 +1449,16 @@ def create_app(
     async def disk() -> Any:
         """What the Library's "Free space" would give back, measured without deleting anything:
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
-        image pieces and the map background."""
+        image pieces, the map background, and the relief downloaded and kept."""
 
         def run() -> dict[str, Any]:
-            report = collect(images=True, dry_run=True)
+            report = collect(images=True, relief=True, dry_run=True)
             return {
                 "store_bytes": _store_bytes(default_store_root()),
                 "unused_bytes": report.freed_bytes,
                 "images_bytes": report.images_bytes - report.mapcache_bytes,
                 "mapcache_bytes": report.mapcache_bytes,
+                "relief_bytes": report.relief_bytes,
                 "tiles": len(report.packs),
                 "building": manager.active() is not None or bool(other_builds()),
             }
@@ -1463,20 +1467,24 @@ def create_app(
 
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:
-        """Free the space: every piece of tile data no tile on disk needs, and with ``images``
-        the downloaded image pieces and the map background. Refused while a build runs, here or
-        in another process, since nothing protects what a build is about to use otherwise."""
+        """Free the space: every piece of tile data no tile on disk needs, with ``images`` the
+        downloaded image pieces and the map background, and with ``relief`` the elevation cells.
+        Refused while a build runs, here or in another process, since nothing protects what a
+        build is about to use otherwise."""
         req = req or CleanRequest()
         async with deleting:  # no build starts meanwhile, and deletes wait
             if manager.active() is not None:
                 return busy_building(other=False)
             if await asyncio.to_thread(other_builds):
                 return busy_building(other=True)
-            report = await asyncio.to_thread(collect, images=req.images, dry_run=False)
+            report = await asyncio.to_thread(
+                collect, images=req.images, relief=req.relief, dry_run=False
+            )
             return {
                 "format": "osxp-clean-1",
                 "freed_bytes": report.freed_bytes,
                 "images_freed_bytes": report.images_bytes if req.images else 0,
+                "relief_freed_bytes": report.relief_bytes if req.relief else 0,
                 "removed": report.removed,
             }
 

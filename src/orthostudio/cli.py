@@ -761,14 +761,20 @@ def clean(
         bool,
         typer.Option("--images", help="also empty the imagery cache (downloaded again if needed)"),
     ] = False,
+    relief: Annotated[
+        bool,
+        typer.Option(
+            "--relief", help="also empty the elevation cells (downloaded again if needed)"
+        ),
+    ] = False,
     everything: Annotated[
         bool,
         typer.Option(
             "--all",
             help="free all the space OrthoStudio XP can give back: every built result no tile on "
-            "disk needs, even from a build that just ended, plus the downloaded image pieces and "
-            "the map cache (a tile built again downloads its images again); refused while a build "
-            "runs",
+            "disk needs, even from a build that just ended, plus the downloaded image pieces, the "
+            "map cache and the elevation cells (a tile built again downloads them again); refused "
+            "while a build runs",
         ),
     ] = False,
     store: Annotated[Path | None, _STORE_OPT] = None,
@@ -778,6 +784,7 @@ def clean(
     """Free the disk space the cache holds for no pack (superseded or abandoned builds)."""
     from orthostudio.clean import GRACE_S
     from orthostudio.clean import clean as run_clean
+    from orthostudio.dem.sources import default_elevation_dir
     from orthostudio.graph import Store
     from orthostudio.install.library import default_library_path
     from orthostudio.pipeline.home import (
@@ -808,6 +815,8 @@ def clean(
         dry_run=dry_run,
         grace_s=0.0 if everything else GRACE_S,
         mapcache_root=default_mapcache_root(),
+        elevation_root=default_elevation_dir(),
+        relief=relief or everything,
     )
     if json_output:
         typer.echo(json.dumps(report.to_dict(), indent=1))
@@ -827,8 +836,20 @@ def clean(
             f"imagery cache: {_size(report.images_bytes)}, kept (--images empties it; a texture "
             "rebuilt later downloads its images again)"
         )
+    if report.relief_removed:
+        typer.echo(f"elevation cells emptied: freed {_size(report.relief_bytes)}")
+    elif relief or everything:
+        typer.echo(f"elevation cells: {verb} {_size(report.relief_bytes)}")
+    else:
+        typer.echo(
+            f"elevation cells: {_size(report.relief_bytes)}, kept (--relief empties them; a tile "
+            "built later downloads them again, which is far quicker than its images)"
+        )
     if everything:
-        typer.echo(f"in total: {verb} {_size(report.freed_bytes + report.images_bytes)}")
+        typer.echo(
+            f"in total: {verb} "
+            f"{_size(report.freed_bytes + report.images_bytes + report.relief_bytes)}"
+        )
 
 
 @app.command("import-ortho4xp")

@@ -1128,7 +1128,7 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     return { ...mock.disk, tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
@@ -1136,12 +1136,14 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     const images = Boolean(body?.images);
+    const relief = Boolean(body?.relief);
     const freed = mock.disk.unused_bytes;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - freed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, removed: freed ? 12 : 0 };
+    const reliefFreed = relief ? mock.disk.relief_bytes : 0;
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - freed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
@@ -3523,10 +3525,13 @@ async function loadDisk() {
 
 /** The sizes a confirmation and the panel show: the unused tile data, and with `images` the
  * downloaded image pieces and the map background. Exported for the tests. */
-export function freeSpacePlan(disk, images) {
+export function freeSpacePlan(disk, images, relief) {
   const unused = Math.max(0, Number(disk?.unused_bytes) || 0);
   const pictures = images ? Math.max(0, Number(disk?.images_bytes) || 0) + Math.max(0, Number(disk?.mapcache_bytes) || 0) : 0;
-  return { unused, pictures, total: unused + pictures };
+  // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
+  // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
+  const heights = relief ? Math.max(0, Number(disk?.relief_bytes) || 0) : 0;
+  return { unused, pictures, heights, total: unused + pictures + heights };
 }
 
 function renderDisk() {
@@ -3548,13 +3553,14 @@ function renderDisk() {
     ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
     ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
     ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
+    ...row(t("disk.relief"), fmtBytes(d.relief_bytes || 0), t("disk.relief_help")),
   );
   const reveal = $("disk-reveal");
   const data = state.status?.data_dir;
   reveal.hidden = !dataFolderShown(state.status);
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
-  const plan = freeSpacePlan(d, $("disk-images").checked);
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked);
   button.disabled = Boolean(d.building) || plan.total <= 0 || state.diskBusy;
   let said = d.building ? t("disk.busy_note") : plan.total <= 0 ? t("disk.nothing") : "";
   if (data?.present === false) said = t("disk.data_missing", { path: data.path });
@@ -3569,6 +3575,7 @@ function confirmFreeSpace(plan) {
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
+  if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
   lines.push(t("disk.confirm_kept"));
   clear($("disk-confirm-text")).append(...lines.map((line) => h("p", null, line)));
   dialog.returnValue = "";
@@ -3587,14 +3594,15 @@ function confirmFreeSpace(plan) {
 async function freeSpace() {
   if (state.diskBusy || !state.disk) return;
   const images = $("disk-images").checked;
-  const plan = freeSpacePlan(state.disk, images);
+  const relief = $("disk-relief").checked;
+  const plan = freeSpacePlan(state.disk, images, relief);
   if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();
   try {
-    const res = await api("POST", "/api/clean", { images });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0);
+    const res = await api("POST", "/api/clean", { images, relief });
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
@@ -4374,6 +4382,7 @@ async function boot() {
   $("disk-free").addEventListener("click", freeSpace);
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);
+  $("disk-relief").addEventListener("change", renderDisk);
   $("settings-form").addEventListener("submit", saveSettings);
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);

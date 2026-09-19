@@ -310,3 +310,39 @@ def test_the_command_empties_the_map_cache_of_the_home(
     doc = json.loads(done.output)
     assert doc["mapcache_bytes"] == size and doc["images_removed"] is True
     assert list((home / "mapcache").iterdir()) == []
+
+
+def test_the_downloaded_relief_is_counted_and_can_be_freed(tmp_path: Path) -> None:
+    """A user emptied everything from the Library, was told there was nothing left to free, and
+    found 1.4 GB of elevation cells still there (2026-09-18): nothing counted them. They are their
+    own choice, apart from the imagery, because a square of relief costs far less to fetch again.
+    """
+    from orthostudio.clean import clean
+
+    store = tmp_path / "store"
+    chunks = tmp_path / "chunks"
+    elevation = tmp_path / "elevation"
+    for folder, name, size in (
+        (chunks, "BI/16/1_2.chunks", 300),
+        (elevation, "+40+000/N46E006_COP30.tif", 4000),
+        (elevation, "+40-080/N45W076_HRDEM.hgt", 2000),
+    ):
+        path = folder / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * size)
+
+    seen = clean(store, chunks, library_path=None, tiles_root=None, dry_run=True,
+                 elevation_root=elevation)  # fmt: skip
+    assert seen.relief_bytes >= 6000 and not seen.relief_removed
+    assert elevation.exists()
+
+    # the imagery alone leaves the relief where it is
+    only_images = clean(store, chunks, library_path=None, tiles_root=None, images=True,
+                        elevation_root=elevation)  # fmt: skip
+    assert only_images.images_removed and not only_images.relief_removed
+    assert list(elevation.rglob("*.tif"))
+
+    freed = clean(store, chunks, library_path=None, tiles_root=None, elevation_root=elevation,
+                  relief=True)  # fmt: skip
+    assert freed.relief_removed and freed.relief_bytes >= 6000
+    assert elevation.is_dir() and not any(elevation.iterdir())

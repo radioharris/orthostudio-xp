@@ -229,6 +229,10 @@ class CleanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     images: bool = False
     """Also empty the downloaded image pieces and the map background (the Library's checkbox)."""
+    relief: bool = False
+    """Also empty the elevation cells downloaded and kept: its own checkbox, since the relief of a
+    square costs far less to fetch again than its imagery (a user found 1.4 GB left after emptying
+    everything, 2026-09-18)."""
 
 
 class DeleteRequest(BaseModel):

@@ -248,24 +248,27 @@ and built again.
 
 ## 5. What stays after each action
 
-| Action | Tile folder and X-Plane link | Cache (`store`) | Image pieces (`chunks`) |
-|---|---|---|---|
-| Build | added | results added | pieces added |
-| Remove from X-Plane (Library) | the link goes, the folder stays | stays | stays |
-| Add to X-Plane (Library) | the link comes back, at once | stays | stays |
-| Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays |
-| `osxp clean` | — | what no tile on disk needs, unless used in the last hour | stays |
-| `osxp clean --images` | — | same as `osxp clean` | emptied, with the map cache |
-| `osxp clean --all` | — | everything no tile on disk needs, however recent | emptied, with the map cache |
-| Free space (Library) | — | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box |
-| Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go |
+| Action | Tile folder and X-Plane link | Cache (`store`) | Image pieces (`chunks`) | Relief (`elevation`) |
+|---|---|---|---|---|
+| Build | added | results added | pieces added | cells added |
+| Remove from X-Plane (Library) | the link goes, the folder stays | stays | stays | stays |
+| Add to X-Plane (Library) | the link comes back, at once | stays | stays | stays |
+| Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays | stays |
+| `osxp clean` | - | what no tile on disk needs, unless used in the last hour | stays | stays |
+| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache | stays |
+| `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent | emptied, with the map cache | emptied |
+| Free space (Library) | - | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box | emptied if you tick its own box |
+| Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 
 The delays protect a build that may be running at the same time, in the page or in a terminal: it
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,
 so they refuse to run while a build is in progress.
 
-Deleting a tile keeps its image pieces on purpose: building the same area again then skips the
-download, which is most of the time. To give everything back, use *Free space…* at the bottom of
+Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
+again then skips the download, which is most of the time. The relief has its own box because it
+weighs much less and comes back much faster: 40 MB a square from Copernicus, against 800 MB of
+imagery at ZL16. To give everything back, use *Free space…* at the bottom of
 the Library (it shows the sizes and asks first), or from a terminal:
 
 ```bash
