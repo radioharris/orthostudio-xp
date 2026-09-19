@@ -180,6 +180,32 @@ OWN_SUFFIXES: tuple[str, ...] = (".hgt", ".tif", ".tiff", ".raw")
 sets of the community come (Sonny's lidar models of Europe, viewfinderpanoramas)."""
 
 
+def _points_in(path: Path) -> int:
+    """How many points a candidate file holds, to tell a finer set from a coarser one.
+
+    Cheap for the raw formats, whose side is the square root of their size; a GeoTIFF is asked for
+    its header, which costs a few milliseconds and no pixel.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return 0
+    if path.suffix.lower() in (".hgt", ".raw"):
+        return size // 2  # int16 a point
+    try:
+        from PIL import Image
+
+        guard = Image.MAX_IMAGE_PIXELS
+        try:
+            Image.MAX_IMAGE_PIXELS = None
+            with Image.open(path) as im:
+                return int(im.size[0]) * int(im.size[1])
+        finally:
+            Image.MAX_IMAGE_PIXELS = guard
+    except Exception:
+        return size // 4  # unreadable header: float32 a point, near enough to compare
+
+
 def cell_file_in_folder(folder: Path, lat: int, lon: int) -> Path | None:
     """The file of cell ``(lat, lon)`` somewhere under ``folder``, or ``None``.
 
@@ -188,20 +214,34 @@ def cell_file_in_folder(folder: Path, lat: int, lon: int) -> Path | None:
     (a user of the X-Plane.Org page, 2026-09-19). He names the folder once, and each tile takes the
     file of its own square from it, whatever the depth it sits at and whatever its resolution: the
     reader works the side out from the size of the file.
+
+    **The finest wins.** The same sets come at 3", 1" and 0.5", under the same names, one folder
+    each, and a user who has all three keeps all three (same user, same day): the candidate with
+    the most points is taken, so his 0.5" file is used where he has one and his 3" file elsewhere.
+    Between two of the same size the order of ``OWN_SUFFIXES`` decides, and between two files
+    alike, the shortest path, so the answer never depends on the order the disk hands them over.
     """
     cell = hem_latlon(lat, lon).lower()
     try:
-        found = {
-            path.suffix.lower(): path
+        found = [
+            path
             for path in folder.rglob("*")
             if path.stem.lower() == cell and path.suffix.lower() in OWN_SUFFIXES and path.is_file()
-        }
+        ]
     except OSError:  # an unplugged disk, a folder that went away: no file, no crash
         return None
-    for suffix in OWN_SUFFIXES:
-        if suffix in found:
-            return found[suffix]
-    return None
+    if not found:
+        return None
+    if len(found) == 1:
+        return found[0]
+    return min(
+        found,
+        key=lambda path: (
+            -_points_in(path),
+            OWN_SUFFIXES.index(path.suffix.lower()),
+            str(path),
+        ),
+    )
 
 
 def default_elevation_dir() -> Path:

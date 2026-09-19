@@ -88,7 +88,11 @@ the base in front), so the square the folder holds takes its file and every othe
 relief chosen. A partial set therefore builds every tile.
 
 `sources.cell_file_in_folder` finds the file: any depth under the folder, the stem being the cell
-(`N47E011`), and `.hgt`, `.tif`, `.tiff` or `.raw`, in that order. Any resolution is read, the
+(`N47E011`), and `.hgt`, `.tif`, `.tiff` or `.raw`. **The finest wins**: the same sets come at 3",
+1" and 0.5" under the same names, one folder each, and a user who has all three keeps all three, so
+the candidate with the most points is taken (the size for a raw format, the header for a GeoTIFF),
+then the suffix order, then the shortest path. The answer therefore never depends on the order the
+disk hands the files over. Any resolution is read, the
 side being worked out from the size of the file: 3" (1201, upsampled to 3601), 1" (3601) and 0.5"
 (7201) were built end to end. Named as the relief itself rather than over one, a folder must hold
 the square: the tile is refused rather than built flat (decision 0007), and the message names the

@@ -10,6 +10,7 @@ import json
 import zipfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from orthostudio.dem.sources import (
@@ -21,6 +22,7 @@ from orthostudio.dem.sources import (
     EnsureOptions,
     NegativeMemo,
     base_file_name,
+    cell_file_in_folder,
     cells_of_block,
     cop30_name,
     cop30_url,
@@ -342,3 +344,39 @@ def test_ned_downloads_the_tif_as_is(tmp_path: Path) -> None:
 def test_unknown_source_is_a_programming_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unknown elevation source"):
         ensure_elevation("GLO30", 43, 5, _opts(tmp_path, no_download))
+
+
+def test_the_finest_file_of_a_folder_wins_and_the_answer_never_depends_on_the_disk(
+    tmp_path: Path,
+) -> None:
+    """The same sets come at 3", 1" and 0.5", under the same names, one folder each, and a user who
+    has all three keeps all three (X-Plane.Org, 2026-09-19).
+
+    The candidate with the most points is taken, so each square is built with the finest file the
+    folder holds for it. Sizes here stand for the real ones: 1201, 3601 and 7201 points a side.
+    """
+    root = tmp_path / "Sonny"
+    for name, side in (("Austria_3", 4), ("Austria_1", 8), ("Austria_05", 16)):
+        (root / name).mkdir(parents=True)
+        np.zeros((side, side), dtype=">i2").tofile(root / name / "N47E011.hgt")
+    # one square he only has coarsely
+    np.zeros((4, 4), dtype=">i2").tofile(root / "Austria_3" / "N48E011.hgt")
+
+    assert cell_file_in_folder(root, 47, 11) == root / "Austria_05" / "N47E011.hgt"
+    assert cell_file_in_folder(root, 48, 11) == root / "Austria_3" / "N48E011.hgt"
+    assert cell_file_in_folder(root, 46, 11) is None
+    # a GeoTIFF is weighed by its header, not by the bytes its compression happens to take
+    tif = root / "Geotiffs"
+    tif.mkdir()
+    _write_small_geotiff(tif / "N48E011.tif", 6)
+    assert cell_file_in_folder(root, 48, 11) == tif / "N48E011.tif"
+
+
+def _write_small_geotiff(path: Path, side: int) -> None:
+    from PIL import Image, TiffImagePlugin
+
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / side, 1 / side, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, 11.0, 49.0, 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    Image.fromarray(np.zeros((side, side), dtype=np.float32)).save(path, tiffinfo=info)
