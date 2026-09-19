@@ -10,8 +10,9 @@ dock. Published is the page alone, with two things put right:
   the size and on the baseline measured from the ones that were there, so the rest of the line is
   the browser's own rendering, untouched.
 
-Each picture is written as PNG or as JPEG, whichever suits what it holds, and always under
-``MAX_BYTES``, which is what the store listing accepts.
+Each picture is written as PNG or as JPEG, whichever suits what it holds, under ``MAX_BYTES``,
+and the set stays under ``MAX_TOTAL``, which is what the store listing accepts for its pictures
+together.
 
 Nothing else is retouched, and a new release costs one command, which is why none of this is done
 by hand.
@@ -64,11 +65,17 @@ JPEG_ABOVE = 60_000
 below it the picture is flat user interface, which PNG keeps sharper and smaller."""
 
 MAX_BYTES = 1_900_000
-"""What a picture must stay under: X-Plane.Org refuses more (the user's own limit, 2026-09-19). A
-picture of the page weighs 300 to 600 KB, so nothing is usually done; one that goes over is written
-again as JPEG, at a lower quality and then smaller, until it fits."""
+"""What one picture must stay under. A picture of the page weighs 300 to 600 KB, so nothing is
+usually done; one that goes over is written again as JPEG, at a lower quality and then smaller,
+until it fits."""
 
-QUALITIES = (88, 82, 74, 66)
+MAX_TOTAL = 1_800_000
+"""What the whole set must stay under: the store listing takes 1.9 MB for its pictures together
+(2026-09-19), and this leaves a margin under it. The photographic ones (the map) are written again
+at a lower quality until the set fits; the flat ones are left alone, since a screen of text is what
+a lower quality ruins first."""
+
+QUALITIES = (88, 82, 74, 66, 58)
 
 
 @dataclass(frozen=True)
@@ -250,6 +257,23 @@ def save(image: Image.Image, folder: Path, name: str) -> Path:
     raise RuntimeError(f"{name} does not fit in {MAX_BYTES} bytes")
 
 
+def fit_total(written: list[tuple[Path, Image.Image]]) -> None:
+    """Bring the whole set under ``MAX_TOTAL`` by lowering the quality of its photographs."""
+    photos = [(path, image) for path, image in written if path.suffix == ".jpg"]
+    for quality in QUALITIES[1:]:
+        total = sum(path.stat().st_size for path, _ in written)
+        if total <= MAX_TOTAL or not photos:
+            break
+        for path, image in photos:
+            _jpeg(image, path, quality)
+        total = sum(path.stat().st_size for path, _ in written)
+        print(f"the {len(photos)} photograph(s) written again at quality {quality}: "
+              f"{total / 1e6:.2f} MB for the set")  # fmt: skip
+    total = sum(path.stat().st_size for path, _ in written)
+    if total > MAX_TOTAL:
+        raise RuntimeError(f"the set weighs {total / 1e6:.2f} MB, above {MAX_TOTAL / 1e6:.2f} MB")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     here = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(here / "src"))
@@ -271,6 +295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if names and len(names) != len(sources):
         parser.error(f"{len(names)} names for {len(sources)} captures")
 
+    written: list[tuple[Path, Image.Image]] = []
     for index, source in enumerate(sources):
         print(source.name)
         page = prepare(source, args.was, args.version, None if args.profile == "store" else 1600)
@@ -280,9 +305,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             name = f"orthostudio-xp-{args.version}-{source.stem}"
         else:
             name = source.stem
-        written = save(page, args.out, name)
-        size = written.stat().st_size // 1024
-        print(f"  {written} ({page.width}x{page.height}, {size} KB)")
+        target = save(page, args.out, name)
+        written.append((target, page))
+        print(f"  {target} ({page.width}x{page.height}, {target.stat().st_size // 1024} KB)")
+    fit_total(written)
+    for target, _ in written:
+        print(f"{target.name}: {target.stat().st_size // 1024} KB")
+    print(f"the set: {sum(t.stat().st_size for t, _ in written) / 1e6:.2f} MB")
     return 0
 
 
