@@ -402,6 +402,13 @@ def test_in_bounds_for_the_map(index: AirportIndex) -> None:
     assert index.in_bounds(3.0, 60.0, 5.0, 61.0, kinds=["sea"]) == []
     assert index.in_bounds(4.0, 43.0, 6.0, 44.0, limit=0) == []
 
+    # Only the real codes, for the map: 57 % of a full index carries an identifier of X-Plane's
+    # own (XED0051, 5TE), which a pilot cannot read on a map (a user, 2026-09-19).
+    every = index.in_bounds(-180.0, -90.0, 180.0, 90.0, limit=50)
+    named = index.in_bounds(-180.0, -90.0, 180.0, 90.0, limit=50, icao_only=True)
+    assert {a.icao for a in every} - {a.icao for a in named} == {"5TE", "ENRM"}
+    assert all(a.icao_explicit for a in named)
+
     # a rectangle crossing the antimeridian is read as two, so Alaska and Norway both answer
     across = index.in_bounds(170.0, -90.0, -140.0, 90.0)
     assert {a.icao for a in across} >= {"PAMB", "5TE"}

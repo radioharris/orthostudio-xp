@@ -89,7 +89,7 @@ const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
 const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
 const BASEMAP_STYLE = "api/basemap/style";
 const BASEMAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles, data © OpenStreetMap contributors";
-export const AIRPORTS_MIN_ZOOM = 9;
+export const AIRPORTS_MIN_ZOOM = 8;
 export const AIRPORTS_LIMIT = 200;
 const BORDERS_RETRY_MS = [5000, 15000, 60000, 300000];
 
@@ -1141,7 +1141,9 @@ export function createPlanMap(ctx) {
     state.loading = true;
     const query = `west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`;
     ctx
-      .api("GET", `/api/airports/in?${query}&limit=${AIRPORTS_LIMIT}`)
+      // Only the airports carrying a real ICAO code: the others are identifiers of X-Plane's own
+      // (`XED0051`), which a pilot cannot read on a map (a user, 2026-09-19).
+      .api("GET", `/api/airports/in?${query}&limit=${AIRPORTS_LIMIT}&icao_only=true`)
       .then((rows) => {
         state.rows = Array.isArray(rows) ? rows : [];
         state.key = key;

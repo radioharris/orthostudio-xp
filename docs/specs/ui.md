@@ -711,7 +711,9 @@ downloaded and they show **over the aerial imagery**, where a runway is not alwa
 unless the user asks, remembered in `localStorage` (`osxp.mapAirports`). Below zoom
 `AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line says to zoom in; above it,
 the view is read with a quarter of padding, rounded to a tenth of a degree so that panning a
-little asks nothing, and capped at `AIRPORTS_LIMIT` (400) with the explicit ICAO codes first. Each
+little asks nothing, and capped at `AIRPORTS_LIMIT` (200). Only the airports **carrying a real
+ICAO code** are drawn (`icao_only`): 57 % of a full index has an identifier of X-Plane's own
+instead (`XED0051`, `XLF001D`), which a pilot cannot read on a map (same user). Each
 airport is a ring, its code beside it, and its name in the tooltip; the pane sits over the labels
 and under the zones, and takes no pointer event.
 

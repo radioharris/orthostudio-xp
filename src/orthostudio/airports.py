@@ -517,8 +517,13 @@ class AirportIndex:
         *,
         limit: int = 400,
         kinds: Iterable[str] | None = None,
+        icao_only: bool = False,
     ) -> list[Airport]:
         """The airports inside that rectangle, the ones with a real ICAO code first.
+
+        ``icao_only`` keeps those that carry one. Of the 38 888 airports of a full index, 43 %
+        do; the others are identifiers of X-Plane's own (``XED0051``, ``XLF001D``), which on a map
+        are noise a pilot cannot read (a user, 2026-09-19).
 
         For the map: a user asked to see whether a square holds the airport he wants, which the
         aerial imagery does not always say (2026-09-19). The order puts the airports a pilot names
@@ -536,6 +541,8 @@ class AirportIndex:
             for w, e in spans:
                 sql = f"{_SELECT} WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?"
                 params: list[object] = [south, north, w, e]
+                if icao_only:
+                    sql += " AND icao_explicit = 1"
                 if kind_list is not None:
                     sql += " AND kind IN (" + ",".join("?" * len(kind_list)) + ")"
                     params.extend(kind_list)

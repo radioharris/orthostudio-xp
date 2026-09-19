@@ -1082,7 +1082,12 @@ def create_app(
 
     @app.get("/api/airports/in")
     async def airports_in(
-        west: float, south: float, east: float, north: float, limit: int = 400
+        west: float,
+        south: float,
+        east: float,
+        north: float,
+        limit: int = 400,
+        icao_only: bool = False,
     ) -> Any:
         """The airports of a rectangle, for the map's layer (a user asked to see whether a square
         holds the airport he wants, 2026-09-19). Read from the index shipped with the app: no
@@ -1090,9 +1095,20 @@ def create_app(
         index = await asyncio.to_thread(airport_index)
         if index is None:
             return _no_index()
-        rows = await asyncio.to_thread(
-            index.in_bounds, west, south, east, north, limit=max(1, min(2000, limit))
-        )
+        try:
+            rows = await asyncio.to_thread(
+                index.in_bounds,
+                west,
+                south,
+                east,
+                north,
+                limit=max(1, min(2000, limit)),
+                icao_only=icao_only,
+            )
+        except TypeError:  # an index of an older shape (the tests' own) knows no icao_only
+            rows = await asyncio.to_thread(
+                index.in_bounds, west, south, east, north, limit=max(1, min(2000, limit))
+            )
         return [
             {
                 "icao": a.icao,

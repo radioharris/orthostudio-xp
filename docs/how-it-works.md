@@ -204,7 +204,9 @@ kept in the map cache. The renderer it needs is loaded the first time you ask fo
 not before.
 
 **Airports on the map.** The legend has a box for them: OrthoStudio XP knows about 39 000
-aerodromes and draws those of the view, with their code, over the photo. It costs no download, the
+aerodromes and draws those of the view, with their ICAO code, over the photo. Only the fields that
+have a real code are drawn; the rest carry an identifier of X-Plane's own, which says nothing to a
+pilot. It costs no download, the
 list travels with the app, and it answers the question the aerial imagery often does not: is the
 field I want inside this square? They appear from zoom 8 in, where there are few enough to read.
 
