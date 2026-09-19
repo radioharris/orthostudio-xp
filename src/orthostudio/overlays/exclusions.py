@@ -15,6 +15,7 @@ from pydantic import Field, field_validator
 from orthostudio.graph.rule import RuleParams
 
 __all__ = [
+    "ALWAYS_EXCLUDED_POLYGONS",
     "DEFAULT_EXCLUDED_POLYGONS",
     "OverlayExclusions",
     "exclusions_by_name",
@@ -28,6 +29,21 @@ DEFAULT_EXCLUDED_POLYGONS: tuple[str, ...] = ("lib/g12/beaches.bch", "lib/g8/bea
 
 Both are what ``ovl_exclude_pol = [0]`` meant in Ortho4XP on a Global Scenery source (verified:
 ``POLYGON_DEF`` 0 of the sampled XP12 tiles is ``lib/g12/beaches.bch``).
+"""
+
+ALWAYS_EXCLUDED_POLYGONS: tuple[str, ...] = ("lib/g10/terrain10/apt_border",)
+"""The line X-Plane 12 draws around an airport, dropped whatever the settings say.
+
+``apt_border_<climate>.lin`` feathers the edge of the airport grass into the terrain around it,
+and Laminar keeps it in the base mesh, not in the autogen. An overlay that copies it lays it over
+a photograph that already shows the ground: what the pilot sees is a painted outline around every
+airfield, sand-coloured in the desert, that follows no airport boundary he can edit. Reported for
+Ortho4XP on the X-Plane.Org forum (topic 349619, 2026-07), and measured in our own overlay of
++46+006: fifteen of them, one per airfield, Geneva's 99 points included.
+
+It is not a setting: the line exists to blend a terrain OrthoStudio XP does not draw, so nothing
+of value is lost, and a user cannot be expected to find it. ``ovl_exclude_pol`` stays what it was
+for everything else.
 """
 
 _ALL_NETWORKS = ("", "*")
@@ -90,9 +106,14 @@ def resolve_polygon_exclusions(defs: Sequence[str], items: Iterable[str | int]) 
 
     ``int``: that index (an index beyond ``defs`` is kept in the set, harmless: no polygon
     uses it). ``str``: every index whose name contains it; with a leading ``!``, every index
-    whose name does **not** contain the rest. Items are united.
+    whose name does **not** contain the rest. Items are united, and
+    :data:`ALWAYS_EXCLUDED_POLYGONS` joins them whatever was asked for.
     """
-    out: set[int] = set()
+    out = {
+        k
+        for k, name in enumerate(defs)
+        if any(always in name for always in ALWAYS_EXCLUDED_POLYGONS)
+    }
     for item in items:
         if isinstance(item, int):
             out.add(item)

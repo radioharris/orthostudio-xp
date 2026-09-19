@@ -56,10 +56,14 @@ class DemParams(RuleParams):
     unavailable. Off by default: turning it on changes ``Data<tile>.alt`` and the mesh."""
 
     own_stamp: str = ""
-    """What the file of one's own weighed and when it was last written (``size:mtime``), for the
-    square this node builds, when ``custom_dem`` names a folder of one's own (the pipeline fills
-    it). The path alone would not do: replacing a file with a better version of itself leaves the
-    path as it was, and the tile would come back from the store unchanged."""
+    """What the overlays of a composite ``custom_dem`` bring to this square, when it has any (the
+    pipeline fills it; empty otherwise). A file of one's own is named with what it weighed and
+    when it was last written, ``2:N47E011.hgt:25934402:1789841044000000000``, because the path
+    alone would not do: replacing a file with a better version of itself leaves the path as it
+    was, and the tile would come back from the store unchanged. An overlay that is a source is
+    named as it is, ``2:HRDEM``. The leading number is how the overlays are put together
+    (``pipeline/build.py`` ``LAID_IN``): they are written into the raster from 0.1.7, and a tile
+    built when they were kept beside it is not the tile this rule now writes."""
 
     @property
     def fill(self) -> FillNodata:

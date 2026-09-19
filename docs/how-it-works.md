@@ -30,7 +30,10 @@ the measurements, `docs/benchmarks/`.
   `yOrthoStudio_Overlays`, loaded above the photo tiles. Users of simHeaven X-World, which brings
   its own, answer *None* to the Settings question on roads, forests and buildings: OrthoStudio XP
   then builds no overlay, and a tile built again takes its old one out of X-Plane. A
-  `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled.
+  `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled. One thing is left behind on
+  purpose: the line X-Plane 12 draws around airport grass to blend it into the terrain. Over a
+  photograph it has nothing to blend and shows as an outline around every airfield, so it is
+  dropped.
 
 ## 2. The steps
 

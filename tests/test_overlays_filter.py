@@ -205,6 +205,23 @@ def test_default_keeps_everything_but_mesh_and_beaches() -> None:
     assert stats.bytes_in == len(TEXT) and stats.bytes_out == len(out)
 
 
+def test_the_airport_border_line_goes_whatever_the_settings_say() -> None:
+    """``apt_border_<climate>.lin`` feathers the edge of X-Plane's airport grass into the terrain.
+    Copied over a photograph it is a painted outline around every airfield, and no user could
+    guess he has to exclude it (X-Plane.Org topic 349619; fifteen of them in our own +46+006,
+    four in +35-117). It goes even when the exclusion list is empty."""
+    header = HEADER.replace(
+        b"POLYGON_DEF lib/g8/broad_tmp_sdry.for\n",
+        b"POLYGON_DEF lib/g10/terrain10/apt_border_hot_dry.lin\n",
+    )
+    text = header + POLY0 + POLY1 + POLY2 + POLY3 + TAIL  # POLY1 is now the border line
+    for asked in ([], [0], ["lib/g12/beaches.bch"], [2]):
+        out, stats = run(text, OverlayExclusions(ovl_exclude_pol=asked))
+        assert b"BEGIN_POLYGON 1 " not in out, asked
+        assert 1 in stats.excluded_polygon_indices
+        assert b"BEGIN_POLYGON 3 " in out  # the rest of the overlay is untouched
+
+
 def test_first_line_is_the_overlay_property_and_source_one_is_not_duplicated() -> None:
     src = TEXT.replace(b"PROPERTY sim/east 6\n", b"PROPERTY sim/overlay 1\nPROPERTY sim/east 6\n")
     out, stats = run(src, OverlayExclusions())

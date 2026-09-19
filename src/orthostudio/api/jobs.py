@@ -285,14 +285,34 @@ def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
 # -- job ------------------------------------------------------------------------------------------
 
 
+_RELIEF_NAMES = {"COP30": "copernicus", "NED1/3": "usgs", "XP12": "xplane"}
+
+
 def _relief_of(spec: Any) -> str:
     """Where the tiles of ``spec`` take their heights: ``xplane`` (X-Plane 12's own relief, or
     ``view`` in the test suite), ``copernicus`` (``COP30``), ``usgs`` (``NED1/3``), ``canada``
-    (``COP30;HRDEM``), or ``file`` (the user's own)."""
+    (``COP30;HRDEM``), or ``file`` (the user's own).
+
+    The base is what comes before the first ``;``: a folder of one's own laid over a source must
+    not make the line read *own relief file* when the relief is the source (a user chose the USGS
+    relief, named his folder, and the Works line called it his own file, 2026-09-19).
+    """
     custom = str(spec.config.get("custom_dem", "") or "").strip()
     if not custom:
         return str(spec.relief)
-    return {"COP30": "copernicus", "NED1/3": "usgs", "COP30;HRDEM": "canada"}.get(custom, "file")
+    base, _, rest = custom.partition(";")
+    if base == "COP30" and [p for p in rest.split(";") if p] == ["HRDEM"]:
+        return "canada"
+    if not base:
+        return str(spec.relief)
+    return _RELIEF_NAMES.get(base, "file")
+
+
+def _own_files_of(spec: Any) -> bool:
+    """Whether a folder (or a file) of the user's own is laid over the relief of ``spec``."""
+    custom = str(spec.config.get("custom_dem", "") or "").strip()
+    overlays = [part for part in custom.split(";")[1:] if part]
+    return any(part not in _RELIEF_NAMES and part != "HRDEM" for part in overlays)
 
 
 class Job:
@@ -865,6 +885,7 @@ class Job:
                 # which relief the tiles are built on, so that Works says it while it builds
                 # (a user missed it during a build, 2026-09-17)
                 "relief": _relief_of(self.specs[0]) if self.specs else None,
+                "relief_own": bool(self.specs) and _own_files_of(self.specs[0]),
                 "ok": self.status == "done",
             }
 

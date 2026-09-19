@@ -376,6 +376,7 @@ export function settingsSummary(settings) {
   else if (relief === "usgs") parts.push(t("plan.s.relief_usgs"));
   else if (relief === "canada") parts.push(t("plan.s.relief_canada"));
   else parts.push(t("plan.s.relief_auto"));
+  if (relief !== "file" && String(e.relief?.folder || "").trim()) parts.push(t("plan.s.relief_own"));
   parts.push(e.overlays === "none" ? t("plan.s.overlays_none") : t("plan.s.overlays_xplane"));
   return parts;
 }

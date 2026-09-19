@@ -416,12 +416,20 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     spec = _spec(tmp_path, TileRef(47, 11), relief="copernicus")
     params, _ = dem_declaration(spec, cfg, lambda _tile: None, None)
     assert params["custom_dem"] == f"COP30;{tmp_path / 'Sonny'}"
-    assert params["own_stamp"].startswith("N47E011.hgt:2000:")
-    # a square the folder does not hold: the same node, and nothing to mark
+    assert params["own_stamp"].startswith("2:N47E011.hgt:2000:")
+    # a square the folder does not hold: the same node, and nothing of its own to mark
     other, _ = dem_declaration(
         _spec(tmp_path, TileRef(47, 10), relief="copernicus"), cfg, lambda _tile: None, None
     )
-    assert "own_stamp" not in other
+    assert other["own_stamp"].endswith(":none")
+    # a relief with no overlay at all keeps the key it has always had
+    plain = to_build_overrides(
+        Settings.model_validate({"essential": {"relief": {"source": "copernicus"}}})
+    )
+    alone, _ = dem_declaration(
+        _spec(tmp_path, TileRef(47, 11), relief="copernicus"), plain, lambda _tile: None, None
+    )
+    assert "own_stamp" not in alone
 
     # the X-Plane relief keeps its own base, and the folder still rides over it
     with_xp = Settings.model_validate(

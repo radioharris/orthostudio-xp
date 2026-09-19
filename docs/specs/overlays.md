@@ -119,6 +119,18 @@ spellings, so that XP11 Global Scenery and HD Mesh sources keep the same behavio
 accepted for compatibility; `exclusions_by_name(exclusions, defs)` rewrites the indices of an
 Ortho4XP configuration into the exact names found in a given source.
 
+**The airport border line is dropped whatever the settings say** (`ALWAYS_EXCLUDED_POLYGONS`,
+`lib/g10/terrain10/apt_border`). X-Plane 12 feathers the edge of the airport grass into the
+terrain around it with a `.lin` drawn from the base mesh, not from the autogen, so an extraction
+that keeps everything but the mesh copies it. Over a photograph there is nothing to feather: it
+draws a painted outline around every airfield, sand-coloured in the desert, matching no boundary
+the user can edit. Reported for Ortho4XP on the X-Plane.Org forum (topic 349619, 2026-07) and
+measured here: fifteen of them in our own overlay of `+46+006`, one per airfield, each within
+400 m of its airport's reference point (Geneva's has 99 points), and four in `+35-117`. It is not
+a setting because the line exists to blend a terrain OrthoStudio XP does not draw, and because no
+user could be expected to find it; `tile.overlay` is version 2 so that an overlay extracted before
+is built again.
+
 ## 5. Inputs and outputs (`src/orthostudio/overlays/`)
 
 ```

@@ -3169,7 +3169,8 @@ function updateJobView(v, job) {
     clear(v.pill).append(jobStatusPill(job.status));
     v.status = job.status;
   }
-  const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, reliefWords(job.relief), job.install ? t("works.install") : t("works.no_install")];
+  const relief = [reliefWords(job.relief), job.relief_own ? t("works.relief_own") : ""].filter(Boolean).join(" + ");
+  const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;

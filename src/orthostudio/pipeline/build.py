@@ -1004,7 +1004,9 @@ TILE_TEXTURES: Rule = rule(
 )(_tile_textures)
 TILE_OVERLAY: Rule = rule(
     name="tile.overlay",
-    version=1,
+    # 2: the airport border lines of X-Plane 12 are dropped (``overlays/exclusions.py``), so an
+    # overlay extracted before is not the overlay this rule now writes.
+    version=2,
     params=OverlayParams,
     inputs=("source",),
     ram_mb=300,
@@ -1425,33 +1427,41 @@ def dem_declaration(
     return _stamp_own_file(params, spec), inputs
 
 
+LAID_IN = "2"
+"""How a composite relief is put together, at the head of ``own_stamp``: from 0.1.7 the overlays
+are written into the raster (``dem/dem.py`` ``_lay_into``). Up to 0.1.6 they were kept beside it
+and never reached the scenery, so a tile of the store built then must be built again; a relief
+without overlays keeps the key it has always had, and nothing else is rebuilt."""
+
+
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
-    """``params`` with the mark of the user's own file for this square, when a folder is named.
+    """``params`` with the mark of what the overlays of a composite bring to this square.
 
     A folder of one's own rides in ``custom_dem`` as an overlay: the square it holds takes its
     file, every other square keeps the relief chosen (a user of the X-Plane.Org page has the lidar
     models of Europe by the hundred and asked to name the folder once, 2026-09-19). What that file
     weighs and when it was last written enters the key, because replacing a file with a better
     version of itself leaves its path as it was, and the tile would come back from the store
-    unchanged.
+    unchanged. An overlay that is a source rather than a folder (Canada's lidar over Copernicus)
+    is named as it is: what it holds for a square is the service's business, not ours.
     """
-    folders = [
-        Path(part)
-        for part in str(params.get("custom_dem") or "").split(";")[1:]
-        if part and Path(part).is_dir()
-    ]
+    overlays = [part for part in str(params.get("custom_dem") or "").split(";")[1:] if part]
+    if not overlays:
+        return params
     marks = []
-    for folder in folders:
-        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon)
+    for part in overlays:
+        folder = Path(part)
+        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon) if folder.is_dir() else None
         if own is None:
+            marks.append(part if not folder.is_dir() else f"{part}:none")
             continue
         try:
             stat = own.stat()
         except OSError:
+            marks.append(f"{part}:unreadable")
             continue
         marks.append(f"{own.name}:{stat.st_size}:{stat.st_mtime_ns}")
-    if marks:
-        params["own_stamp"] = " ".join(marks)
+    params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
     return params
 
 
