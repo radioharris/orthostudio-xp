@@ -1186,7 +1186,15 @@ export function createPlanMap(ctx) {
       L.marker([lat, lon], {
         pane: "osxpAirports",
         interactive: false,
-        icon: L.divIcon({ className: "osxp-airport-label", html: escapeHtml(code) }),
+        // Size and anchor at zero, so the label starts exactly at the airport and the style
+        // moves it clear of the ring: centred by default, the ring ate its first letters
+        // (a user saw "GG" for LSGG, 2026-09-19).
+        icon: L.divIcon({
+          className: "osxp-airport-label",
+          html: escapeHtml(code),
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        }),
       }).addTo(layers.airports);
     }
     if (rows.length && !map.hasLayer(layers.airports)) layers.airports.addTo(map);
