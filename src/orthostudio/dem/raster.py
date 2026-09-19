@@ -223,6 +223,11 @@ def _read_raw(path: Path, *, info_only: bool) -> RasterRead:
     return RasterRead(4326, 0.0, 0.0, 1.0, 1.0, NODATA, n, n, alt)
 
 
+MAX_POINTS = 400_000_000
+"""What a raster may hold and still be read whole: 1.6 GB of floats. Beyond it the file is refused
+with a plain reason rather than filling the memory (a national model at 10 m holds twice that)."""
+
+
 def _read_gdal_like(
     path: Path,
     lat: int,
@@ -234,10 +239,18 @@ def _read_gdal_like(
     """GeoTIFF through Pillow and the raw TIFF tags (spec section 5.1, a **fix**)."""
     from PIL import Image, TiffImagePlugin
 
+    # Pillow refuses a very large image outright, to guard against a bomb. A national elevation
+    # model is legitimately that large (Switzerland at 10 m: 851 million points), and its header is
+    # what tells us whether it can be used at all: the guard is lifted to read the header, and
+    # MAX_POINTS below decides what is read whole.
+    guard = Image.MAX_IMAGE_PIXELS
     try:
+        Image.MAX_IMAGE_PIXELS = None
         im = Image.open(path)
     except Exception as err:
         raise OsxpError("DEM_FILE_UNREADABLE", context={"path": path, "reason": repr(err)}) from err
+    finally:
+        Image.MAX_IMAGE_PIXELS = guard
     with im:
         if not isinstance(im, TiffImagePlugin.TiffImageFile):
             raise OsxpError("DEM_RASTER_LIBRARY_MISSING", context={"path": path})
@@ -246,6 +259,20 @@ def _read_gdal_like(
         geo = _geotransform(tags, path)
         epsg = _epsg(tags, path, on_event)
         nodata = _nodata(tags, path, on_event)
+        # Before reading a single pixel: a raster in another projection is refused, and some of
+        # them are enormous. A national model at 10 m (Switzerland, 914 MB compressed) would have
+        # been decompressed to 3.4 GB of floats first, only to be turned down (2026-09-19).
+        if epsg not in (4326, 4269):
+            raise OsxpError("DEM_EPSG_UNSUPPORTED", context={"path": path, "epsg": epsg})
+        if not info_only and nxdem * nydem > MAX_POINTS:
+            raise OsxpError(
+                "DEM_FILE_UNREADABLE",
+                context={
+                    "path": path,
+                    "reason": f"{nxdem * nydem / 1e6:.0f} million points is more than this "
+                    f"version reads whole ({MAX_POINTS / 1e6:.0f} million)",
+                },
+            )
         alt: F32 | None = None
         if not info_only:
             try:
@@ -256,8 +283,6 @@ def _read_gdal_like(
                 alt = alt[:, :, 0]
             if nodata != NODATA:
                 alt[alt == np.float32(nodata)] = np.float32(NODATA)
-    if epsg not in (4326, 4269):
-        raise OsxpError("DEM_EPSG_UNSUPPORTED", context={"path": path, "epsg": epsg})
     x0 = geo[0] + 0.5 * geo[1] - lon
     y1 = geo[3] + 0.5 * geo[5] - lat
     x1 = x0 + (nxdem - 1) * geo[1]

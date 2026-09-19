@@ -94,6 +94,15 @@ side being worked out from the size of the file: 3" (1201, upsampled to 3601), 1
 the square: the tile is refused rather than built flat (decision 0007), and the message names the
 folder.
 
+**What a file may be.** Its own window is read from the file: a raster covering a whole country
+serves every tile inside it, as long as it is in WGS 84 (or NAD 83, near enough). Another
+projection is refused, `DEM_EPSG_UNSUPPORTED`, **before a pixel is read**: national models at 10 or
+20 m come in a metric grid (Sonny's Switzerland at 10 m is UTM 32N, 851 million points, 914 MB),
+and decoding one only to turn it down would have filled 3.4 GB. Ortho4XP reads the same file, warns
+that "result is likely to be non sense" and builds it anyway (`O4_DEM_Utils.py:536-548`); it also
+needs GDAL for any GeoTIFF, which OrthoStudio XP does not. A raster of more than `MAX_POINTS`
+(400 million, 1.6 GB of floats) is refused with a plain reason rather than filling the memory.
+
 **What enters the key.** The folder's path alone would not do: replacing a file with a better
 version of itself leaves the path as it was, and the tile would come back from the store unchanged.
 `pipeline.build` looks the file up for each square and puts its name, its size and the time it was

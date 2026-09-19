@@ -377,6 +377,27 @@ def test_read_geotiff_window_and_nodata(tmp_path: Path) -> None:
     assert read.x1 == pytest.approx(read.x0 + 2 / 3600)
 
 
+def test_a_raster_too_large_to_read_whole_says_so(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A national elevation model holds hundreds of millions of points: refused with a plain
+    reason rather than filled into memory (Switzerland at 10 m is 851 million, 3.4 GB of floats).
+
+    Pillow refuses to open such an image at all, as a guard against a bomb; the reader lifts that
+    guard for the header, which is what says whether the file can be used, and decides here.
+    """
+    from orthostudio.dem import raster as raster_module
+
+    monkeypatch.setattr(raster_module, "MAX_POINTS", 4)
+    path = tmp_path / "big.tif"
+    _write_geotiff(path, np.zeros((3, 3), dtype=np.float32), 43, 5)
+    events: list[object] = []
+    read = read_elevation_from_file(path, 43, 5, on_event=events.append)
+    assert read.alt_dem is not None and not read.alt_dem.any()  # degraded, as an unreadable file
+    reason = next(e for e in events if getattr(e, "code", "") == "DEM_FILE_UNREADABLE")
+    assert "more than this version reads whole" in reason.context["reason"]  # type: ignore[attr-defined]
+    # its header still reads, which is how a folder of one's own can index what it holds
+    assert read_elevation_from_file(path, 43, 5, info_only=True).nxdem == 3
+
+
 def test_a_geotiff_in_another_crs_is_refused(tmp_path: Path) -> None:
     from PIL import Image, TiffImagePlugin
 
