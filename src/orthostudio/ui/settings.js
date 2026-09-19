@@ -8,7 +8,7 @@
 // node), the DOM last; app.js owns the saved settings, the draft, and the Save button.
 
 import { photoValues } from "./colour.js";
-import { fmtNum, t } from "./i18n.js";
+import { fmtNum, homely, t } from "./i18n.js";
 import { colourPreview } from "./preview.js";
 import { detailLabel, detailName } from "./map.js";
 import { sourceGroups, sourceLabel } from "./sources.js";
@@ -172,8 +172,8 @@ const QUESTION_TEXT = {
  */
 export function dataFolderLine(dataDir) {
   if (!dataDir || !dataDir.path) return null;
-  if (dataDir.present === false) return { text: t("settings.q.data_missing", { path: dataDir.path }), warn: true };
-  const path = dataDir.path;
+  if (dataDir.present === false) return { text: t("settings.q.data_missing", { path: homely(dataDir.path) }), warn: true };
+  const path = homely(dataDir.path);
   return { text: dataDir.chosen ? t("settings.q.data_now", { path }) : t("settings.q.data_now_home", { path }), warn: false };
 }
 
@@ -669,7 +669,7 @@ function renderQuestions(box, view) {
   // (simHeaven X-World) brings the roads, forests and buildings. Then what the tiles look like.
   const xp = view.xplane;
   const found = Boolean(xp && xp.detected && xp.path);
-  const detected = found ? t("settings.q.xplane_detected", { path: xp.path }) : t("settings.q.xplane_not_detected");
+  const detected = found ? t("settings.q.xplane_detected", { path: homely(xp.path) }) : t("settings.q.xplane_not_detected");
   // "empty = the detected folder" only when there is one.
   const folder = h("input", { type: "text", id: "q-xplane-dir", class: "question-path", spellcheck: "false", autocomplete: "off", placeholder: found ? t("settings.q.xplane_placeholder") : "", dataset: { focusKey: "q:xplane" } });
   folder.value = getPath(d, "essential.xplane_dir") || "";
@@ -795,7 +795,7 @@ function dataQuestion(view) {
   const { h } = view.dom;
   const d = view.draft;
   const now = dataFolderLine(view.dataDir);
-  const field = h("input", { type: "text", id: "q-data-dir", class: "question-path", spellcheck: "false", autocomplete: "off", placeholder: t("settings.q.data_placeholder", { path: view.home || "~/.orthostudio" }), dataset: { focusKey: "q:data" } });
+  const field = h("input", { type: "text", id: "q-data-dir", class: "question-path", spellcheck: "false", autocomplete: "off", placeholder: t("settings.q.data_placeholder", { path: homely(view.home) || "~/.orthostudio" }), dataset: { focusKey: "q:data" } });
   field.value = getPath(d, "essential.data_dir") || "";
   field.addEventListener("input", () => setPath(d, "essential.data_dir", field.value.trim() || null));
   field.addEventListener("change", () => view.changed());

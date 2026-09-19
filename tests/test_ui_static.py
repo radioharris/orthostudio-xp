@@ -2958,3 +2958,28 @@ def test_two_squares_with_the_same_answer_are_not_called_different() -> None:
     assert named == named_other_order  # a named look ignores the numbers beside it
     assert custom == custom_other_order  # and the key order never matters
     assert custom != custom_other and custom != named
+
+
+def test_a_folder_under_the_home_is_written_with_a_tilde() -> None:
+    """The page showed "/Users/hap/X-Plane 12" in the status bar, in the Library and in Settings.
+
+    It is longer to read than it needs to be, and it carries the name of whoever runs OrthoStudio
+    XP into every picture they post with a report (2026-09-19). What the engine is asked to open or
+    to save is still the path itself: only what is read is shortened.
+    """
+    calls = ", ".join(
+        [
+            'm.homely("/Users/pilot/X-Plane 12")',  # before the status says, nothing is assumed
+            '(m.setUserHome("/Users/pilot"), m.homely("/Users/pilot/X-Plane 12"))',
+            'm.homely("/Users/pilot")',
+            'm.homely("/Users/pilotage/X-Plane 12")',  # the home is a folder, not a prefix
+            'm.homely("/Volumes/Scenery/tiles")',
+            '(m.setUserHome("C:\\\\Users\\\\pilot"),'
+            ' m.homely("C:\\\\Users\\\\pilot\\\\X-Plane 12"))',
+        ]
+    )
+    unknown, under, itself, alike, elsewhere, windows = _node_json("i18n.js", f"[{calls}]")
+    assert unknown == "/Users/pilot/X-Plane 12"
+    assert under == "~/X-Plane 12" and itself == "~"
+    assert alike == "/Users/pilotage/X-Plane 12" and elsewhere == "/Volumes/Scenery/tiles"
+    assert windows == "~\\X-Plane 12"

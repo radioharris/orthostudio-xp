@@ -1681,6 +1681,27 @@ export function applyStatic(root) {
 
 // ---------------------------------------------------------------- formatting
 
+// ------------------------------------------------------------ paths, as the reader sees them
+
+let userHome = "";
+
+/** The home folder of whoever runs the engine (``/api/status`` ``user_home``). */
+export function setUserHome(path) {
+  userHome = typeof path === "string" ? path : "";
+}
+
+/** A path under the home folder written with "~". It is shorter to read, and it keeps the name of
+ * whoever runs OrthoStudio XP out of the pictures people post with a report. What the engine is
+ * asked to open or to save is always the path itself, never this. */
+export function homely(path) {
+  if (typeof path !== "string" || !userHome) return path;
+  if (path === userHome) return "~";
+  for (const sep of ["/", "\\"]) {
+    if (path.startsWith(userHome + sep)) return `~${path.slice(userHome.length)}`;
+  }
+  return path;
+}
+
 function locale() {
   return current === "fr" ? "fr-FR" : "en-US";
 }

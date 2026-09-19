@@ -790,6 +790,13 @@ has a *Settings* button that focuses its field. The library count follows every 
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
 
+**Paths with a tilde** (2026-09-19): wherever the page *reads out* a folder (this bar, the
+Library's line about which X-Plane it speaks of, Settings' detected folder and data folder, the
+Plan's notice about a saved X-Plane that is gone), what lies under the home folder is written
+`~/...` (`i18n.js` `homely`, fed by `user_home` of the status). It is shorter to read, and the
+name of whoever runs OrthoStudio XP stays out of the pictures posted with a report. Fields the
+user edits, and every path the engine is asked to open or to save, keep the path itself.
+
 **Pinned bars** (user request, 2026-09-14): the top bar stays at the top of the window and the
 status bar at its bottom, wherever the page is scrolled (`position: sticky`). The status bar's
 height, measured by `app.js` `trackStatusbarHeight` into `--statusbar-h` (it grows when its items

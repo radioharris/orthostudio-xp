@@ -15,8 +15,10 @@ import {
   fmtMbps,
   fmtNum,
   fmtRange,
+  homely,
   language,
   setLanguage,
+  setUserHome,
   t,
   tOpt,
 } from "./i18n.js";
@@ -1951,6 +1953,8 @@ async function loadStatus() {
     $("status-xplane").textContent = errorMessage(err);
     return;
   }
+  // Paths are shown with "~" for what lies under it (i18n.js homely).
+  setUserHome(state.status?.user_home);
   state.engineOutdated = (Number(state.status?.api_level) || 1) < PAGE_API_LEVEL;
   renderEngineBanner();
   renderStatus();
@@ -1979,7 +1983,8 @@ function renderStatus() {
   const x = s.xplane || {};
   xp.append(`${t("status.xplane")}: `);
   if (x.detected && x.path) {
-    xp.append(h("span", { class: "mono", title: x.path }, x.path.length > 40 ? `…${x.path.slice(-38)}` : x.path));
+    const shown = homely(x.path);
+    xp.append(h("span", { class: "mono", title: shown }, shown.length > 40 ? `…${shown.slice(-38)}` : shown));
     if (x.running) xp.append(" ", pill(t("status.xplane_running"), "warn"));
   } else xp.append(pill(t("status.xplane_missing"), "fail"));
   renderPlanXplane();
@@ -2001,7 +2006,7 @@ function renderStatus() {
   // Settings, whose disk may not be plugged in.
   const place = clear($("status-home"));
   const data = s.data_dir;
-  const where = data?.chosen && data.path ? data.path : s.home || "";
+  const where = homely(data?.chosen && data.path ? data.path : s.home || "");
   place.append(where);
   place.title = data?.chosen ? t("status.data_dir", { path: where }) : "";
   if (data?.present === false) place.append(" ", pill(t("status.data_missing"), "fail"));
@@ -2277,7 +2282,7 @@ export function xplaneNotice(status, settings) {
   const x = status?.xplane;
   if (!x || (x.detected && x.path)) return null;
   const saved = settings?.essential?.xplane_dir;
-  return saved ? t("plan.xplane_saved_missing", { path: saved }) : t("plan.xplane_missing");
+  return saved ? t("plan.xplane_saved_missing", { path: homely(saved) }) : t("plan.xplane_missing");
 }
 
 function renderPlanXplane() {
@@ -3563,7 +3568,7 @@ function renderDisk() {
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked);
   button.disabled = Boolean(d.building) || plan.total <= 0 || state.diskBusy;
   let said = d.building ? t("disk.busy_note") : plan.total <= 0 ? t("disk.nothing") : "";
-  if (data?.present === false) said = t("disk.data_missing", { path: data.path });
+  if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
   setText(note, said);
 }
 
@@ -3815,7 +3820,7 @@ function renderLibrary() {
   const xplane = $("library-xplane");
   const path = state.status?.xplane?.path;
   xplane.hidden = !path;
-  if (path) xplane.textContent = t("library.xplane", { path });
+  if (path) xplane.textContent = t("library.xplane", { path: homely(path) });
   // New buttons replace the old ones: a focused button's successor, same row and column, keeps it.
   const cell = body.contains(document.activeElement) ? document.activeElement.closest("td") : null;
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;

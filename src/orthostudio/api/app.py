@@ -688,6 +688,8 @@ def create_app(
             },
             "doctor": checks,
             "home": str(home),
+            # the page writes the paths under it with "~": docs/specs/ui.md 1.9
+            "user_home": str(Path.home()),
             # where the tiles and the downloads go: an external disk may be unplugged
             "data_dir": {
                 "path": str(root),

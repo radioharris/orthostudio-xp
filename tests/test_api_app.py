@@ -42,6 +42,8 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         assert r.status_code == 200, r.text
         doc = r.json()
         assert doc["version"] and doc["home"] == str(home) and doc["language"] == "fr"
+        # the page writes what lies under it with "~", so no name of a user is in a picture
+        assert doc["user_home"] == str(Path.home())
         xp_status = doc["xplane"]
         assert xp_status["path"] == str(xplane) and xp_status["detected"] is True
         # the other X-Plane 12 of the machine, for the page to name them
