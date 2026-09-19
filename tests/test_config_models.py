@@ -21,8 +21,8 @@ from orthostudio.errors import OsxpError
 def test_levels_and_field_counts() -> None:
     assert LEVELS == ("essential", "advanced", "expert")
     assert list(Settings.model_fields) == list(LEVELS)
-    # region is P5; overlays and data_dir are OrthoStudio XP's own, and so is check_updates
-    assert len(Essential.model_fields) == 10
+    # region is P5; overlays, data_dir and simbrief_user are OrthoStudio XP's own
+    assert len(Essential.model_fields) == 11
     assert len(Advanced.model_fields) == 14
     assert len(Expert.model_fields) == 25
 

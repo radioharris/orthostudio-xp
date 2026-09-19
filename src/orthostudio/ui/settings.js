@@ -58,9 +58,10 @@ export function schemaDefaults(schema) {
   return doc;
 }
 
-/** The folders of this computer, which *Default values* keeps: they are no look of the tiles, and
- * the defaults sending the downloads back to the computer's own disk would surprise (2026-09-15). */
-export const COMPUTER_FOLDERS = ["essential.xplane_dir", "essential.data_dir"];
+/** What belongs to this computer and to its pilot, which *Default values* keeps: none of it is a
+ * look of the tiles, and the defaults sending the downloads back to the computer's own disk would
+ * surprise (2026-09-15); the SimBrief name is the pilot's own (2026-09-19). */
+export const COMPUTER_FOLDERS = ["essential.xplane_dir", "essential.data_dir", "essential.simbrief_user"];
 
 /** The schema's defaults, with the folders of ``draft`` kept. */
 export function defaultsKeepingFolders(schema, draft) {
@@ -150,6 +151,7 @@ export const QUESTION_PATHS = {
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
   data: ["essential.data_dir"],
+  simbrief: ["essential.simbrief_user"],
 };
 
 const QUESTION_TEXT = {
@@ -166,6 +168,7 @@ const QUESTION_TEXT = {
   overlays: [() => t("settings.q.overlays"), () => t("settings.q.overlays_help")],
   xplane: [() => t("settings.q.xplane"), () => t("settings.q.xplane_help")],
   data: [() => t("settings.q.data"), () => t("settings.q.data_help")],
+  simbrief: [() => t("settings.q.simbrief"), () => t("settings.q.simbrief_help")],
 };
 
 /**
@@ -819,6 +822,7 @@ function renderQuestions(box, view) {
     h("div", { class: "sub-question" }, h("label", { class: "sub-question-title", for: "q-xplane-dir" }, t("settings.q.xplane_other")),
       h("div", { class: "path-row" }, folder, choose))));
   box.append(dataQuestion(view));
+  box.append(simbriefQuestion(view));
   box.append(questionBox(view, "overlays", radios(view, "overlays", "q-overlays", getPath(d, "essential.overlays"))));
 
   const providerChoices = questionChoices("provider", d, { providers: view.providers });
@@ -970,6 +974,25 @@ function ownFolderQuestion(view) {
       h("div", { class: "path-row" }, field, choose)),
     h("p", { class: "question-help" }, t("settings.q.own_names")),
     h("p", { class: "question-help" }, t("settings.q.own_rest")));
+}
+
+/**
+ * The SimBrief name, for the flight plan the Plan draws (2026-09-19). A name, never a password:
+ * their interface serves the last plan of a user to whoever asks for it. The help says where the
+ * name goes, since it is the only thing of the user that leaves this computer.
+ */
+function simbriefQuestion(view) {
+  const { h } = view.dom;
+  const d = view.draft;
+  const field = h("input", { type: "text", id: "q-simbrief", class: "question-path", spellcheck: "false", autocomplete: "off", maxlength: "64", placeholder: t("settings.q.simbrief_placeholder"), dataset: { focusKey: "q:simbrief" } });
+  field.value = getPath(d, "essential.simbrief_user") || "";
+  field.addEventListener("input", () => setPath(d, "essential.simbrief_user", field.value.trim() || null));
+  field.addEventListener("change", () => view.changed());
+  return questionBox(view, "simbrief",
+    h("div", { class: "sub-question" },
+      h("label", { class: "sub-question-title", for: "q-simbrief" }, t("settings.q.simbrief_name")),
+      field),
+    h("p", { class: "question-help" }, t("settings.q.simbrief_sent")));
 }
 
 function renderExperts(box, view) {

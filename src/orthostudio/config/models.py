@@ -185,6 +185,17 @@ class Essential(BaseModel):
         ),
     )
     xplane_dir: str | None = _field(None, "essential", "custom_scenery_dir", "")
+    simbrief_user: str | None = _field(
+        None,
+        "essential",
+        None,
+        "",
+        hint=(
+            "The SimBrief name (or pilot ID) whose last flight plan the Plan draws, to choose the "
+            "squares a route flies over. Only this name is sent to simbrief.com, and only when the "
+            "button is pressed; empty means nothing is ever asked of them."
+        ),
+    )
     data_dir: str | None = _field(
         None,
         "essential",

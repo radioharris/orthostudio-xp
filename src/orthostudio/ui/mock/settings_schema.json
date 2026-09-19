@@ -244,6 +244,23 @@
           "title": "Xplane Dir",
           "unit": ""
         },
+        "simbrief_user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The SimBrief name (or pilot ID) whose last flight plan the Plan draws, to choose the squares a route flies over. Only this name is sent to simbrief.com, and only when the button is pressed; empty means nothing is ever asked of them.",
+          "hint": "The SimBrief name (or pilot ID) whose last flight plan the Plan draws, to choose the squares a route flies over. Only this name is sent to simbrief.com, and only when the button is pressed; empty means nothing is ever asked of them.",
+          "level": "essential",
+          "ortho4xp": null,
+          "title": "Simbrief User",
+          "unit": ""
+        },
         "data_dir": {
           "anyOf": [
             {

@@ -49,6 +49,7 @@ from orthostudio.api.models import (
 )
 from orthostudio.api.presence import Presence
 from orthostudio.api.serve import package_root
+from orthostudio.api.simbrief import simbrief_router
 from orthostudio.api.specs import (
     check_ortho4xp_folder,
     make_specs,
@@ -742,6 +743,10 @@ def create_app(
 
     def xplane_dir(explicit: str | None = None) -> Path | None:
         return resolve_xplane(explicit, settings().essential.xplane_dir)
+
+    # The Plan's flight plan: the name is read on each request, so a change in Settings counts at
+    # once, and nothing is asked of simbrief.com until the button is pressed.
+    app.include_router(simbrief_router(lambda: settings().essential.simbrief_user))
 
     def airport_index() -> Any:
         if state["airports"] is None and not state["airports_tried"]:

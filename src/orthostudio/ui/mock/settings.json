@@ -20,7 +20,8 @@
     },
     "overlays": "xplane",
     "xplane_dir": "/Users/pilot/X-Plane 12",
-    "data_dir": null
+    "data_dir": null,
+    "simbrief_user": "pilot"
   },
   "advanced": {
     "curvature_tol": 2.0,

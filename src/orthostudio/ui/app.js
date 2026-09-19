@@ -1032,6 +1032,21 @@ export async function mockApi(method, path, body, options = {}) {
     const available = Boolean(latest) && latest !== current;
     return { current, latest, url: available ? `#release-${latest}` : null, available };
   }
+  if (p === "/api/simbrief") {
+    // A plan like SimBrief's, so the route and its buttons can be tried without an account.
+    if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
+    return {
+      from: "LSGG",
+      to: "LEPA",
+      points: [
+        { ident: "LSGG", name: "Geneva", lat: 46.2384, lon: 6.1094 },
+        { ident: "SOSAL", name: "", lat: 45.5, lon: 5.4 },
+        { ident: "BEBIX", name: "", lat: 44.2, lon: 4.6 },
+        { ident: "MTG", name: "Montelimar", lat: 43.1, lon: 4.2 },
+        { ident: "LEPA", name: "Palma de Mallorca", lat: 39.5517, lon: 2.7388 },
+      ],
+    };
+  }
   if (p === "/api/status") {
     // fail=slow-status: the status took long on users' Windows, and the page waited for it with
     // the menu alone (2026-09-22)
@@ -2891,8 +2906,8 @@ function renderRoute() {
   setText(
     $("route-what"),
     t("plan.route_what", {
-      from: points[0].icao,
-      to: points[points.length - 1].icao,
+      from: points[0].ident,
+      to: points[points.length - 1].ident,
       km: fmtInt(Math.round(routeLength(points))),
     }),
   );
@@ -2914,7 +2929,7 @@ async function drawRoute() {
   for (const code of codes) {
     try {
       const airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
-      points.push({ icao: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
+      points.push({ ident: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
     } catch (_e) {
       missing.push(code);
     }
@@ -2925,6 +2940,30 @@ async function drawRoute() {
   }
   showPlanError(null);
   setRoute(points);
+}
+
+/** The last flight plan of the SimBrief name set in Settings, drawn as it was filed. */
+async function routeFromSimbrief() {
+  if (!(state.settings?.essential?.simbrief_user || "").trim()) {
+    showPlanError(t("plan.route_simbrief_none"));
+    return;
+  }
+  let line;
+  try {
+    line = await api("GET", "/api/simbrief");
+  } catch (err) {
+    showPlanError(null, err);
+    return;
+  }
+  const points = (line?.points || []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  if (points.length < 2) {
+    showPlanError(t("plan.route_short"));
+    return;
+  }
+  showPlanError(null);
+  $("route-input").value = `${line.from} ${line.to}`;
+  setRoute(points.map((p) => ({ ident: p.ident, name: p.name || "", lat: p.lat, lon: p.lon })));
+  toast(t("plan.route_simbrief_ok", { from: line.from, to: line.to }));
 }
 
 function setRoute(points) {
@@ -2954,11 +2993,11 @@ function restoreRoute() {
     saved = null;
   }
   const points = (saved?.points || []).filter(
-    (p) => p && typeof p.icao === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon),
+    (p) => p && typeof p.ident === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon),
   );
   if (points.length < 2) return;
   state.route = { points };
-  $("route-input").value = points.map((p) => p.icao).join(" ");
+  $("route-input").value = [points[0].ident, points[points.length - 1].ident].join(" ");
   renderRoute();
 }
 
@@ -5230,6 +5269,7 @@ async function boot() {
   });
   $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles()));
   $("route-all").addEventListener("click", () => addRouteTiles(routeAllTiles()));
+  $("route-simbrief").addEventListener("click", routeFromSimbrief);
   $("route-clear").addEventListener("click", clearRoute);
   // the radius applies to both ends of the route: the counts on the buttons follow it
   $("radius-input").addEventListener("input", renderRoute);

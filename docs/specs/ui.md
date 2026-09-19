@@ -839,6 +839,22 @@ letters twice over (a user, 2026-09-19). A code that would land on another airpo
 a code already placed, is left out; its ring stays and its name is still in the tooltip. Measured
 on a dense view: 55 rings, 44 codes, no code over a ring and no two codes touching.
 
+**Choosing squares, in plain sight** (2026-09-19): under the squares chosen come the two ways of
+adding more, no longer folded away (a user never opened the *Other ways* line): **around an
+airport**, an ICAO code with a radius in kilometres, and **along a flight plan**. The folded line
+keeps what nobody plans a flight with: tile names and coordinates.
+
+A **flight plan** is a line of airports (`LSGG LFMN`, resolved one by one against the shipped
+index, and what the engine does not know as an airport is left out, so a route pasted from
+elsewhere works), or the last plan of SimBrief (`GET /api/simbrief`, the name in Settings), whose
+navigation log gives the real path. The map draws it over the grid (`osxpRoute`, under the
+airports, no pointer event), and two buttons say how many squares each would add: **departure and
+arrival**, the squares within the radius of both ends, and **the whole route**, those the line
+crosses too (`geo.js` `tilesAlong`, sampled every 0.1°, well under the one degree a square
+measures). Nothing is chosen without a click, and step 3 still says what it costs: on a plan from
+Geneva to Palma, three squares against twelve. The route is kept in `localStorage`
+(`osxp.route`) alone, so a reload keeps the line and nothing of it is saved with the tiles.
+
 **A street map beside the photo** (same user, same day): a third checkbox in the legend swaps the
 aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engine
 (`api/basemap.py`). It is vector, so the page loads MapLibre GL and its Leaflet bridge

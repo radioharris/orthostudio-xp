@@ -252,6 +252,15 @@ pilot. It costs no download, the
 list travels with the app, and it answers the question the aerial imagery often does not: is the
 field I want inside this square? They appear from zoom 8 in, where there are few enough to read.
 
+**The squares of a flight plan.** Step 1 takes a route, `LSGG LFMN` or the airports of a plan
+pasted from elsewhere, and draws it on the map. With your SimBrief name in Settings, one button
+reads your last flight plan instead, with the departure and arrival procedures it holds, so the
+line is the one you will fly. Two buttons then choose the squares: departure and arrival, which is
+what you look at when you are low, or the whole route. Each says how many squares it would add
+before you press it, because a route across a country is tens of gigabytes: from Geneva to Palma,
+three squares against twelve. Only the name goes to simbrief.com, only when you press that button,
+and the route is never saved with your tiles.
+
 **A zone alone builds nothing.** A build makes whole tiles -- that is how X-Plane cuts its scenery
 -- so a zone drawn where no tile is chosen simply waits: it is saved with the others, its row says
 *outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing

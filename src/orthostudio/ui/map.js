@@ -1248,7 +1248,7 @@ export function createPlanMap(ctx) {
         fillColor: end ? "#ffffff" : "#e0572f",
         fillOpacity: 1,
       })
-        .bindTooltip(p.name ? `${p.icao} ${p.name}` : p.icao, { direction: "top", opacity: 0.9 })
+        .bindTooltip(p.name ? `${p.ident} ${p.name}` : p.ident, { direction: "top", opacity: 0.9 })
         .addTo(layers.route);
     });
   }

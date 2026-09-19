@@ -764,6 +764,27 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Plug in the disk it is on, or choose another folder in Settings.",
     ),
     _spec(
+        "CFG_SIMBRIEF_USER_MISSING",
+        _B,
+        _S,
+        "No SimBrief name is set.",
+        "Settings asks for your SimBrief name, the one you sign in with.",
+    ),
+    _spec(
+        "CFG_SIMBRIEF_USER_UNKNOWN",
+        _B,
+        _S,
+        "SimBrief does not know {user}.",
+        "Check the name in Settings: it is your SimBrief name, or your pilot ID.",
+    ),
+    _spec(
+        "CFG_SIMBRIEF_PLAN_EMPTY",
+        _B,
+        _S,
+        "The last SimBrief plan says nothing of where it goes.",
+        "Generate a flight plan on simbrief.com, then try again.",
+    ),
+    _spec(
         "CFG_LATLON_INVALID",
         _B,
         _S,
