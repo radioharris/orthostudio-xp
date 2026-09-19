@@ -65,7 +65,7 @@ How it works, what it keeps on disk and how to clean it:
 
 | What it will cost | Works |
 |---|---|
-| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.jpg) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
+| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
 
 | Library | Settings |
 |---|---|
