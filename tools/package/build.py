@@ -546,8 +546,11 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     out.unlink(missing_ok=True)
     run(
         [
+            # ULMO (LZMA) rather than UDZO (zlib): the same image in 64 MB instead of 134 MB,
+            # four seconds to write on every core, and macOS 10.15 and later mount it -- this app
+            # asks for macOS 14 (MAC_OLDEST).
             "hdiutil", "create", "-volname", f"{APP_NAME} {version}", "-srcfolder", image,
-            "-ov", "-format", "UDZO", out,
+            "-ov", "-format", "ULMO", out,
         ]
     )  # fmt: skip
     return out, image / app.name / "Contents" / "Resources" / "python" / "bin" / "python3"

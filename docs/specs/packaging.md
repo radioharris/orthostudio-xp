@@ -70,8 +70,10 @@ path, its dates). The `.pyc` files are compiled at build time, their recorded pa
 the `python` folder, and the `_sysconfigdata` of the CPython gets back the `/install` prefix uv
 replaced: no path of the build machine is left in an installer.
 
-Sizes of 0.0.1, built by the release workflow: the `.dmg` 137 MB (the app takes 266 MB once
-installed), the Windows setup program 68 MB (LZMA), the Linux `.tar.gz` 146 MB.
+Sizes, built by the release workflow: the `.dmg` 64 MB (LZMA, `ULMO`; 134 MB when it was written
+with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
+Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of
+processor per release; it is not worth it while no one has built a tile on Linux.
 
 The oldest macOS the app runs on is the highest `macosx_X_Y` of the wheels installed
 (`LSMinimumSystemVersion`, computed and printed at build time): 14.0 on the macOS 14 build
