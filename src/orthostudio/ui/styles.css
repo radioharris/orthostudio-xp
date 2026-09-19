@@ -455,7 +455,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   color: #ffd166;
   text-shadow: 0 0 3px #000, 0 0 3px #000;
   white-space: nowrap;
-  transform: translate(9px, -7px); /* clear of the ring, which is 10 px across */
+  transform: translate(13px, -7px); /* clear of the ring: radius 4 plus a 2 px stroke, and air */
   pointer-events: none;
 }
 .plan-map.is-mock ~ .map-legend .legend-border { border-top-color: var(--fg-2); }

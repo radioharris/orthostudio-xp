@@ -709,7 +709,9 @@ whether a square holds the airport he wants, 2026-09-19): a checkbox in the lege
 airports of the view, from the index the app ships (`GET /api/airports/in`), so nothing is
 downloaded and they show **over the aerial imagery**, where a runway is not always obvious. Off
 unless the user asks, remembered in `localStorage` (`osxp.mapAirports`). Below zoom
-`AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line says to zoom in; above it,
+`AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line says to zoom in; from there
+the rings alone say where the airports are, and the codes join them at `AIRPORTS_LABEL_ZOOM` (9),
+since half a continent of codes is a wall of text (same user). Above the threshold,
 the view is read with a quarter of padding, rounded to a tenth of a degree so that panning a
 little asks nothing, and capped at `AIRPORTS_LIMIT` (200). Only the airports **carrying a real
 ICAO code** are drawn (`icao_only`): 57 % of a full index has an identifier of X-Plane's own

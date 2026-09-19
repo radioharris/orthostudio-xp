@@ -90,6 +90,7 @@ const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
 const BASEMAP_STYLE = "api/basemap/style";
 const BASEMAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles, data © OpenStreetMap contributors";
 export const AIRPORTS_MIN_ZOOM = 8;
+export const AIRPORTS_LABEL_ZOOM = 9;
 export const AIRPORTS_LIMIT = 200;
 const BORDERS_RETRY_MS = [5000, 15000, 60000, 300000];
 
@@ -1100,6 +1101,7 @@ export function createPlanMap(ctx) {
     });
     m.on("zoomend", () => {
       renderBorders();
+      drawAirports(); // the codes appear one zoom before they would be unreadable
       renderLegend();
     });
     m.on("click", onMapClick);
@@ -1166,6 +1168,9 @@ export function createPlanMap(ctx) {
     if (!map || !layers.airports) return;
     layers.airports.clearLayers();
     const rows = zs.airports.wanted ? zs.airports.rows : [];
+    // The rings say where the airports are; the codes come one zoom later, or a view of half a
+    // continent is a wall of text (a user, 2026-09-19).
+    const withCode = map.getZoom() >= AIRPORTS_LABEL_ZOOM;
     for (const a of rows) {
       const lat = Number(a.lat);
       const lon = Number(a.lon);
@@ -1183,6 +1188,7 @@ export function createPlanMap(ctx) {
       })
         .bindTooltip(name ? `${code} · ${name}` : code, { pane: "osxpAirports" })
         .addTo(layers.airports);
+      if (!withCode) continue;
       L.marker([lat, lon], {
         pane: "osxpAirports",
         interactive: false,
