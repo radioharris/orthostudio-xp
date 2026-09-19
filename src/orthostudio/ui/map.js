@@ -1171,7 +1171,16 @@ export function createPlanMap(ctx) {
     // The rings say where the airports are; the codes come one zoom later, or a view of half a
     // continent is a wall of text (a user, 2026-09-19).
     const withCode = map.getZoom() >= AIRPORTS_LABEL_ZOOM;
-    for (const a of rows) {
+    // Where every ring will be, so a code is never written over a neighbour's: the codes are
+    // placed in the order the engine gave them (the ones a pilot names first), and one that
+    // would land on a ring or on a code already placed is left out. Its ring stays, and the
+    // name is in the tooltip (a user, 2026-09-19).
+    const points = rows.map((a) => map.latLngToContainerPoint([Number(a.lat), Number(a.lon)]));
+    const ringBoxes = points.map((p) => ({ l: p.x - 6, t: p.y - 6, r: p.x + 6, b: p.y + 6 }));
+    const placed = [];
+    const clashes = (box, boxes) =>
+      boxes.some((o) => !(box.r < o.l || o.r < box.l || box.b < o.t || o.b < box.t));
+    for (const [index, a] of rows.entries()) {
       const lat = Number(a.lat);
       const lon = Number(a.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
@@ -1189,17 +1198,24 @@ export function createPlanMap(ctx) {
         .bindTooltip(name ? `${code} · ${name}` : code, { pane: "osxpAirports" })
         .addTo(layers.airports);
       if (!withCode) continue;
+      // 6.7 px a character at 11 px in the monospace face, measured; 13 px of offset, 13 tall
+      const p = points[index];
+      const box = { l: p.x + 13, t: p.y - 6.5, r: p.x + 13 + code.length * 6.7 + 2, b: p.y + 6.5 };
+      if (clashes(box, placed) || clashes(box, ringBoxes.filter((_, i) => i !== index))) continue;
+      placed.push(box);
       L.marker([lat, lon], {
         pane: "osxpAirports",
         interactive: false,
-        // Size and anchor at zero, so the label starts exactly at the airport and the style
-        // moves it clear of the ring: centred by default, the ring ate its first letters
-        // (a user saw "GG" for LSGG, 2026-09-19).
+        // The offset is the icon's anchor, not a style: Leaflet writes its own transform on the
+        // element to place it, and a transform in the stylesheet is thrown away by it. With the
+        // anchor 13 px left and 7 px down of the label's origin, the code lands clear of the
+        // ring, which is 6 px of radius and stroke (a user saw "GG" for LSGG and then saw the
+        // ring still on the letters, 2026-09-19).
         icon: L.divIcon({
           className: "osxp-airport-label",
           html: escapeHtml(code),
           iconSize: [0, 0],
-          iconAnchor: [0, 0],
+          iconAnchor: [-13, 7],
         }),
       }).addTo(layers.airports);
     }

@@ -717,7 +717,12 @@ little asks nothing, and capped at `AIRPORTS_LIMIT` (200). Only the airports **c
 ICAO code** are drawn (`icao_only`): 57 % of a full index has an identifier of X-Plane's own
 instead (`XED0051`, `XLF001D`), which a pilot cannot read on a map (same user). Each
 airport is a ring, its code beside it, and its name in the tooltip; the pane sits over the labels
-and under the zones, and takes no pointer event.
+and under the zones, and takes no pointer event. The code is offset by the icon's **anchor**
+(`[-13, 7]`), not by a transform in the stylesheet: Leaflet writes its own transform on the
+element to place it and throws the stylesheet's away, which left the ring sitting on the first
+letters twice over (a user, 2026-09-19). A code that would land on another airport's ring, or on
+a code already placed, is left out; its ring stays and its name is still in the tooltip. Measured
+on a dense view: 55 rings, 44 codes, no code over a ring and no two codes touching.
 
 **A street map beside the photo** (same user, same day): a third checkbox in the legend swaps the
 aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engine
