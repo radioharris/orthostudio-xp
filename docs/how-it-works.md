@@ -225,7 +225,9 @@ the file of its own square from it, at any resolution, subfolders included. The 
 after their square, as the SRTM data are: `N47E011.hgt`, or `.tif`. If you keep several sets of the
 same place, 3", 1" and 0.5" for instance, the finest file is used for each square, and a file finer
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
-downloaded is what is built. Where your folder has nothing, the relief you chose stays in charge, so
+downloaded is what is built. The finest wins the other way round too: where the relief you chose is
+sharper than your file, as the United States relief at a third of an arc-second is against a file
+of one second, the relief answers and the report names the file it left aside. Where your folder has nothing, the relief you chose stays in charge, so
 a collection that covers one country is no trouble. Change a file and the tiles that use it are built again; the rest are not. A single file
 works too, under *My own elevation file*, and writing `{latlon}` in its path where the name of the
 square goes (`/my-relief/{latlon}.hgt`) makes it one file per tile without naming a folder.

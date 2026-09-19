@@ -299,6 +299,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "base relief answers for the rest.",
     ),
     _spec(
+        "DEM_OVERLAY_COARSER",
+        _D,
+        _C,
+        "Your own file for cell {cell} ({own}) has {own_m} m between two points, where {source} "
+        "has {base_m} m: the finer of the two is used, so {source} answers over this square.",
+        "Nothing to do. Put a file at least as fine as the relief you chose in the folder, or "
+        "choose a coarser relief, if you want your own file to answer here.",
+    ),
+    _spec(
         "DEM_NEIGHBOUR_UNAVAILABLE",
         _D,
         _C,

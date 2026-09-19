@@ -389,9 +389,15 @@ stages, which know nothing of an overlay. Kept beside it, a user's own file was 
 then quietly dropped: the tile came out of the base alone. Found on 2026-09-19 on a real build of
 `+46+006` whose lidar folder changed nothing at all, and true of `COP30;HRDEM` just the same.
 Each overlay is laid nearest-point where it has data, exactly as `alt_vec_strict` would have read
-it, and **the finest step in the room wins**: an overlay sharper than the base raises the whole
-window to its own grid first (bilinear, block by block, up to `MAX_COMPOSITE_SIDE = 12 000` points
-a side, which a 1/3" overlay over an assembled window stays under). `meta.json` names what was
+it, and **the finest step in the room wins, both ways**: an overlay sharper than the base raises the
+whole window to its own grid first (bilinear, block by block, up to `MAX_COMPOSITE_SIDE = 12 000`
+points a side, which a 1/3" overlay over an assembled window stays under), and an overlay coarser
+than the base is left aside with `DEM_OVERLAY_COARSER`, which names the file and both steps (a user
+with Sonny's 1" sets and the USGS 1/3" relief asked which one answers, 2026-09-20; the American sets
+of one's own are made from that very source). Equal steps go to the overlay, which is what a file
+of one's own is for. The comparison is on the *file*, not on the raster in hand (`_file_step`):
+`read_elevation_from_file` refines a 1201 point `.hgt` to 3601 as Ortho4XP does, so a 3" file would
+otherwise pass for a 1" one. `meta.json` names what was
 laid in `laid_over`, and the overlay's file joins `cells`. Difference: Ortho4XP returns a float32 array when every
 point is inside and float64 otherwise (`numpy.array` of a mixed list); OrthoStudio XP always returns
 float64 (**fix**, value-preserving, float32 -> float64 is exact).

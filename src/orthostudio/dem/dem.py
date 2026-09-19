@@ -427,16 +427,66 @@ def _step_of(dem: Dem) -> float:
     return (dem.x1 - dem.x0) / (dem.nxdem - 1)
 
 
+def _file_name(dem: Dem) -> str:
+    """The name of the file a one-cell source was read from, for a message that names it."""
+    cell = dem.cells[0] if len(dem.cells) == 1 else None
+    return cell.path.name if cell is not None and cell.path is not None else ""
+
+
+def _file_step(dem: Dem) -> float:
+    """Degrees between two points of the *file* a one-cell source was read from.
+
+    ``read_elevation_from_file`` refines a 1201 point ``.hgt`` to 3601 as Ortho4XP does, so the
+    raster in hand is not the resolution the file was published at: a 3 second file of one's own
+    would look as fine as a 1 second source. A ``.hgt`` or a ``.raw`` covers exactly one square,
+    so its side is its size; anything else is read at its own resolution and the raster tells the
+    truth.
+    """
+    cell = dem.cells[0] if len(dem.cells) == 1 else None
+    path = cell.path if cell is not None else None
+    if path is not None and path.suffix.lower() in (".hgt", ".raw"):
+        try:
+            side = round((path.stat().st_size // 2) ** 0.5)
+        except OSError:
+            return _step_of(dem)
+        if side > 1:
+            return 1.0 / (side - 1)
+    return _step_of(dem)
+
+
 def _lay_into(
     base: Dem, overlays: Sequence[tuple[str, Dem]], record: Callable[[OsxpError], None]
 ) -> None:
     """Write the overlays into the base raster, the last one first in line, in place.
 
-    The finest step in the room wins: an overlay sharper than the base raises the whole window
-    to its own grid, so that a half-second file of one's own is not read at the second of the
-    source under it. The base has been filled by then, so nothing interpolates a void.
+    The finest step in the room wins, both ways. An overlay sharper than the base raises the whole
+    window to its own grid, so that a half-second file of one's own is not read at the second of
+    the source under it. An overlay *coarser* than the base is left where it is: a file of one's
+    own at one second laid over the USGS relief at a third of a second would throw away two
+    points out of three, and the American sets of one's own are made from that very source
+    (a user asked what happens when he has both, 2026-09-20). The base has been filled by then,
+    so nothing interpolates a void.
     """
-    finest = min(_step_of(dem) for _name, dem in overlays)
+    under = _file_step(base)
+    coarse = [(name, over) for name, over in overlays if _file_step(over) > under * 1.000001]
+    for name, over in coarse:
+        record(
+            OsxpError(
+                "DEM_OVERLAY_COARSER",
+                context={
+                    "cell": hem_latlon(base.tile.lat, base.tile.lon),
+                    "own": _file_name(over) or Path(name).name,
+                    "own_m": f"{_file_step(over) * 111_320:.0f}",
+                    "source": base.source,
+                    "base_m": f"{under * 111_320:.0f}",
+                },
+            )
+        )
+    overlays = [pair for pair in overlays if pair not in coarse]
+    if not overlays:
+        base.laid_over = ()
+        return
+    finest = min(_file_step(dem) for _name, dem in overlays)
     if finest < _step_of(base) and round((base.x1 - base.x0) / finest) + 1 <= MAX_COMPOSITE_SIDE:
         _refine(base, finest)
     laid: list[str] = []

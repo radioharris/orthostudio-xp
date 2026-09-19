@@ -362,6 +362,27 @@ def test_an_overlay_finer_than_the_base_raises_the_whole_grid(tmp_path: Path) ->
     assert np.array_equal(np.asarray(dem.alt_dem), fine.astype(np.float32))
 
 
+def test_a_file_of_ones_own_coarser_than_the_relief_is_left_aside(tmp_path: Path) -> None:
+    """The finest wins both ways. A 1" file laid over the USGS 1/3" would throw away two points
+    out of three, and the American sets of one's own are made from that very source (a user with
+    both asked what happens, 2026-09-20). It is said, not done silently."""
+    base = _hgt(tmp_path / "base.hgt", 3601, 10)  # the finer relief
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    _hgt(mine / "N43E005.hgt", 1201, 20)  # three times coarser
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    events: list[OsxpError] = []
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{mine}", on_event=events.append)
+    assert dem.laid_over == ()
+    assert dem.alt_dem.min() == 10 and dem.alt_dem.max() == 10
+    (told,) = [e for e in events if e.code == "DEM_OVERLAY_COARSER"]
+    assert told.context["own"] == "N43E005.hgt" and told.message
+    # the same file over a coarser relief is laid, and raises the grid
+    coarse = _hgt(tmp_path / "coarse.hgt", 601, 10)
+    over = Dem.build(TileRef(43, 5), opts, custom_dem=f"{coarse};{mine}")
+    assert over.laid_over == (str(mine),) and (over.nxdem, over.nydem) == (1201, 1201)
+
+
 def test_a_hole_in_the_overlay_lets_the_relief_under_it_through(tmp_path: Path) -> None:
     base = _hgt(tmp_path / "base.hgt", 1201, 10)
     holed = np.full((1201, 1201), 20, np.int16)
