@@ -82,7 +82,10 @@ Why it is worth a module of its own (`dem/hrdem.py`):
   coarse request over the whole cell (128 x 128 posts, 260 KB, ~2 s) says where the lidar is:
   measured 2026-09-18, 100 % over `+45-076` (Ottawa), 44 % over `+50-115` (the Rockies), 0 % over
   `+54-072` (northern Quebec). A cell with none is `MISSING` and remembered; the blocks with none
-  are never asked for. It is therefore an **overlay**, laid over Copernicus
+  are never asked for. A service that **does not answer** raises `ProbeError` instead, and the
+  cell is missing *without* being remembered: a bad minute must not hide the lidar for the month
+  the memo keeps a miss (a user in Alberta, whose square the mosaic covers at 85 %, reported that
+  it would not load, 2026-09-19). It is therefore an **overlay**, laid over Copernicus
   (`custom_dem = "COP30;HRDEM"`), which answers everywhere else: `DEM_OVERLAY_UNAVAILABLE` says
   so, and the build goes on.
 * **Bare earth.** Copernicus GLO-30 is a surface model and carries the tree canopy; a forest

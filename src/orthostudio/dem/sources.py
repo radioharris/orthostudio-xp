@@ -559,7 +559,7 @@ def _ensure_hrdem(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     A cell the lidar does not reach is ``MISSING`` and remembered, so the next build asks once
     and lays Copernicus alone. The written file is a plain ``.hgt``.
     """
-    from orthostudio.dem.hrdem import hrdem_cell, hrdem_url, write_hgt
+    from orthostudio.dem.hrdem import ProbeError, hrdem_cell, hrdem_url, write_hgt
 
     path = _local("HRDEM", lat, lon, opts)
     if path.is_file():
@@ -568,7 +568,12 @@ def _ensure_hrdem(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     if opts.memo.is_missing(url):
         return EnsureResult(lat, lon, CellState.MISSING, None, url, "in the negative memo")
     opts.check_cancelled()
-    cell = hrdem_cell(lat, lon, opts.download, check_cancelled=opts.check_cancelled)
+    try:
+        cell = hrdem_cell(lat, lon, opts.download, check_cancelled=opts.check_cancelled)
+    except ProbeError as exc:
+        # The service did not answer: the cell is unknown, not empty. Remembering it here would
+        # hide the lidar for a month over a region that has it (a user in Alberta, 2026-09-19).
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, f"the service: {exc}")
     if cell is None:
         opts.memo.record(url)
         return EnsureResult(lat, lon, CellState.MISSING, None, url, "no lidar over this cell")

@@ -176,6 +176,34 @@ def test_a_cell_the_lidar_does_not_reach_costs_one_request() -> None:
     assert len(asked) == 1
 
 
+def test_a_service_that_does_not_answer_is_not_remembered_as_empty(tmp_path: Path) -> None:
+    """A user in Alberta reported the lidar "will not load" over a square the mosaic covers at
+    85 % (2026-09-19). A coverage request that fails is not an empty cell: remembering it as one
+    would hide the lidar there for the month the negative memo keeps a miss."""
+    from orthostudio.dem.hrdem import ProbeError, hrdem_cell
+    from orthostudio.dem.sources import CellState, EnsureOptions, NegativeMemo, ensure_elevation
+
+    def broken(url: str) -> Download:
+        return Download(url, error="NET_TIMEOUT")
+
+    with pytest.raises(ProbeError):
+        hrdem_cell(53, -114, broken, posts=41, side=21, probe=9)
+
+    memo = NegativeMemo(tmp_path / "misses.json")
+    opts = EnsureOptions(elevation_dir=tmp_path, download=broken, memo=memo)
+    result = ensure_elevation("HRDEM", 53, -114, opts)
+    assert result.state is CellState.MISSING
+    assert not memo.misses  # nothing remembered: the next build asks again
+
+    # a cell the service says is empty *is* remembered, so it costs one request and no more
+    posts = 41
+    nothing = np.full((posts, posts), np.float32(-32767.0), dtype=np.float32)
+    quiet, _ = _server(nothing, posts, 54, -72)
+    opts = EnsureOptions(elevation_dir=tmp_path, download=quiet, memo=memo)
+    assert ensure_elevation("HRDEM", 54, -72, opts).state is CellState.MISSING
+    assert len(memo.misses) == 1
+
+
 def test_the_written_cell_is_read_back_by_the_engine(tmp_path: Path) -> None:
     """``.hgt``: big-endian int16, north-up, ``-32768`` for the voids -- the format the raster
     reader already knows, so nothing else in the pipeline learns a new one."""

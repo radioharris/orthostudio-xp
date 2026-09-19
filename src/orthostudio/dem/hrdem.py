@@ -42,6 +42,7 @@ __all__ = [
     "HRDEM_PROBE",
     "HRDEM_WCS_URL",
     "HgtVoid",
+    "ProbeError",
     "cell_blocks",
     "hrdem_cell",
     "hrdem_url",
@@ -72,6 +73,14 @@ worth asking for."""
 
 HgtVoid = -32768
 """The void of a ``.hgt``, which is also ``raster.NODATA``."""
+
+
+class ProbeError(Exception):
+    """The service did not answer: nothing is known about this cell, and nothing is remembered.
+
+    Telling a failure apart from an absence of lidar is what keeps a bad minute from becoming a
+    month: a cell remembered as empty is not asked for again until the memo forgets it.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,14 +199,16 @@ def hrdem_cell(
     check_cancelled: Callable[[], None] | None = None,
     on_block: Callable[[int, int], None] | None = None,
 ) -> NDArray[np.float32] | None:
-    """The cell's heights, or ``None`` when the lidar does not reach it.
+    """The cell's heights, ``None`` when the lidar does not reach it.
 
     The coverage request comes first: a cell with no lidar costs one small round trip, and a
-    cell with a little costs only the blocks that hold it.
+    cell with a little costs only the blocks that hold it. A service that does not answer raises
+    :class:`ProbeError`, which is not the same thing as an empty cell and must not be
+    remembered as one.
     """
     got = download(hrdem_url(lat, lon, lat + 1, lon + 1, probe, probe))
     if not got.ok:
-        return None
+        raise ProbeError(got.error or f"HTTP {got.status}")
     coarse, _ = read_wcs_tiff(got.body)
     if not (coarse != HgtVoid).any():
         return None
@@ -205,6 +216,7 @@ def hrdem_cell(
     if not blocks:
         return None
     cell = np.full((posts, posts), np.float32(HgtVoid), dtype=np.float32)
+    answered = 0
     for done, block in enumerate(blocks, start=1):
         if check_cancelled is not None:
             check_cancelled()
@@ -221,10 +233,13 @@ def hrdem_cell(
         )
         answer = download(url)
         if answer.ok:
+            answered += 1
             part, geo = read_wcs_tiff(answer.body)
             _place(cell, part, geo, lat, lon, posts)
         if on_block is not None:
             on_block(done, len(blocks))
+    if not answered:
+        raise ProbeError("no block of this cell came back")
     return cell if (cell != HgtVoid).any() else None
 
 
