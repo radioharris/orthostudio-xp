@@ -309,7 +309,9 @@ async def test_at_most_8_requests_per_provider_and_never_above_its_max_in_flight
 #
 # Leaflet asks for the tiles of every level a zoom passes through and aborts most of them.
 
-ROUND_TRIP_S = 0.25
+ROUND_TRIP_S = 0.5
+"""Long enough that the time a loaded runner takes to schedule the tasks stays small beside
+it: at 0.25 s a correct run measured 0.57 s on a busy Windows runner (2026-09-19)."""
 
 
 @pytest.mark.anyio
@@ -336,8 +338,8 @@ async def test_abandoned_requests_never_reach_upstream_and_the_next_tile_takes_o
         elapsed = time.monotonic() - t0
         assert r.status_code == 200 and r.content == JPEG
         assert proxy.flights() == {}
-    # Fetching the 40 abandoned tiles first would take 5 round-trips before this one.
-    assert elapsed < 2 * ROUND_TRIP_S, elapsed
+    # Fetching the 40 abandoned tiles first would take 5 round-trips (2.5 s) before this one.
+    assert elapsed < 3 * ROUND_TRIP_S, elapsed
     fetched = sorted(request.key[2:] for request in up.requests)
     assert fetched == [(x, 1000) for x in range(8)] + [(2000, 2000)]
     assert len(_files(home / "mapcache")) == 9

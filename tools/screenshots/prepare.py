@@ -10,6 +10,9 @@ dock. Published is the page alone, with two things put right:
   the size and on the baseline measured from the ones that were there, so the rest of the line is
   the browser's own rendering, untouched.
 
+Each picture is written as PNG or as JPEG, whichever suits what it holds, and always under
+``MAX_BYTES``, which is what the store listing accepts.
+
 Nothing else is retouched, and a new release costs one command, which is why none of this is done
 by hand.
 
@@ -59,6 +62,13 @@ STATUS_BAR = (30, 100)
 JPEG_ABOVE = 60_000
 """More distinct colours than this and the picture is aerial imagery, which JPEG keeps far smaller;
 below it the picture is flat user interface, which PNG keeps sharper and smaller."""
+
+MAX_BYTES = 1_900_000
+"""What a picture must stay under: X-Plane.Org refuses more (the user's own limit, 2026-09-19). A
+picture of the page weighs 300 to 600 KB, so nothing is usually done; one that goes over is written
+again as JPEG, at a lower quality and then smaller, until it fits."""
+
+QUALITIES = (88, 82, 74, 66)
 
 
 @dataclass(frozen=True)
@@ -212,16 +222,32 @@ def prepare(source: Path, was: str, version: str, max_width: int | None) -> Imag
     return page
 
 
+def _jpeg(image: Image.Image, target: Path, quality: int) -> Path:
+    image.save(target, quality=quality, subsampling=0, optimize=True, progressive=True)
+    return target
+
+
 def save(image: Image.Image, folder: Path, name: str) -> Path:
-    """Written as PNG or as JPEG, whichever suits what the picture holds."""
+    """PNG or JPEG, whichever suits what the picture holds, and always under ``MAX_BYTES``."""
     folder.mkdir(parents=True, exist_ok=True)
-    if image.getcolors(maxcolors=JPEG_ABOVE) is None:
-        target = folder / f"{name}.jpg"
-        image.save(target, quality=88, subsampling=0, optimize=True, progressive=True)
-    else:
+    flat = image.getcolors(maxcolors=JPEG_ABOVE) is not None
+    if flat:
         target = folder / f"{name}.png"
         image.save(target, optimize=True)
-    return target
+        if target.stat().st_size <= MAX_BYTES:
+            return target
+        target.unlink()  # too heavy for a flat picture: JPEG from here on
+    target = folder / f"{name}.jpg"
+    for quality in QUALITIES:
+        if _jpeg(image, target, quality).stat().st_size <= MAX_BYTES:
+            return target
+    smaller = image
+    while smaller.width > 800:
+        smaller = smaller.resize((smaller.width * 4 // 5, smaller.height * 4 // 5), Image.LANCZOS)
+        if _jpeg(smaller, target, QUALITIES[0]).stat().st_size <= MAX_BYTES:
+            print(f"  narrowed to {smaller.width} px to stay under {MAX_BYTES // 1000} KB")
+            return target
+    raise RuntimeError(f"{name} does not fit in {MAX_BYTES} bytes")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

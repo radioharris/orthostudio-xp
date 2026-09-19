@@ -440,15 +440,17 @@ def test_failure_skips_dependants_and_keeps_independent_branches(store: Store) -
 
 def test_fail_fast_cancels_the_rest(store: Store) -> None:
     a = _node("a", SRC, seconds=0.02, tag="a", fail=True)
-    c = _node("c", SRC, seconds=3.0, tag="c")
+    c = _node("c", SRC, seconds=10.0, tag="c")
     d = _node("d", MID, seconds=0.02, a=c)
     sched = _sched(store, fail_fast=True)
     sched.add(a)
     sched.add(d)
     t0 = time.perf_counter()
     refs, _ = _run(sched, ["a", "d"])
-    # c, left to run, would take 3 s: 0.8 s against 1 s failed once on a busy Windows runner
-    assert time.perf_counter() - t0 < 2.0
+    # c, left to run, would take 10 s; cancelled it costs nothing (0.03 s here). The margin is what
+    # a loaded runner takes to get the threads scheduled at all: 0.8 s, then 1 s, then 2 s failed
+    # in turn on a busy Windows runner, the last one at 3.2 s (2026-09-19).
+    assert time.perf_counter() - t0 < 5.0
     assert refs == {}
     assert sched.failed["a"].code == "MESH_TRIANGULATION_FAILED"
     assert sched.failed["c"].code == "SYS_CANCELLED"  # cancelled in flight by fail_fast
