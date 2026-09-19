@@ -196,6 +196,11 @@ clears everything, and *Go back to the colours already built* gives each square 
 tile you already have on the disk -- the Library says which tiles no longer match, and this is how
 you agree with them again without building anything.
 
+**Airports on the map.** The legend has a box for them: OrthoStudio XP knows about 39 000
+aerodromes and draws those of the view, with their code, over the photo. It costs no download, the
+list travels with the app, and it answers the question the aerial imagery often does not: is the
+field I want inside this square? They appear from zoom 8 in, where there are few enough to read.
+
 **A zone alone builds nothing.** A build makes whole tiles -- that is how X-Plane cuts its scenery
 -- so a zone drawn where no tile is chosen simply waits: it is saved with the others, its row says
 *outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing

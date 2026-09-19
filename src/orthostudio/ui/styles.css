@@ -446,6 +446,17 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .map-legend .legend-toggle input { margin: 0; }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }
+/* Airports on the map: a small ring and its code, readable over a photo (a user asked to see
+   whether a square holds the airport he wants, 2026-09-19). */
+.legend-airport { width: 10px; border: 2px solid #ffd166; background: rgba(255, 209, 102, 0.35); border-radius: 50%; }
+.osxp-airport-label {
+  font: 600 11px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #ffd166;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  white-space: nowrap;
+  transform: translate(8px, -6px);
+  pointer-events: none;
+}
 .plan-map.is-mock ~ .map-legend .legend-border { border-top-color: var(--fg-2); }
 
 .zl-12 { --zl: var(--zl-12); }

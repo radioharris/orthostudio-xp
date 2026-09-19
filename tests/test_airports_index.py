@@ -389,3 +389,20 @@ def test_default_index_none_uses_detection(tmp_path: Path, monkeypatch: pytest.M
     xp = _fake_xplane(tmp_path, _APT)
     monkeypatch.setattr(mod, "detect_xplane", lambda: xp)
     assert default_index(None).get("ENQA") is not None
+
+
+def test_in_bounds_for_the_map(index: AirportIndex) -> None:
+    """The map draws the airports of the view (a user asked to see whether a square holds the one
+    he wants, 2026-09-19): a rectangle, the explicit ICAO codes first, and a limit that keeps the
+    airports a pilot names rather than the strips that carry an identifier only."""
+    around_marseille = index.in_bounds(4.0, 43.0, 6.0, 44.0)
+    assert [a.icao for a in around_marseille] == ["LFML"]
+    assert index.in_bounds(4.0, 43.0, 6.0, 43.1) == []  # south of it
+    assert [a.icao for a in index.in_bounds(3.0, 60.0, 5.0, 61.0, kinds=["heli"])] == ["ENQA"]
+    assert index.in_bounds(3.0, 60.0, 5.0, 61.0, kinds=["sea"]) == []
+    assert index.in_bounds(4.0, 43.0, 6.0, 44.0, limit=0) == []
+
+    # a rectangle crossing the antimeridian is read as two, so Alaska and Norway both answer
+    across = index.in_bounds(170.0, -90.0, -140.0, 90.0)
+    assert {a.icao for a in across} >= {"PAMB", "5TE"}
+    assert all(a.lon >= 170.0 or a.lon <= -140.0 for a in across)

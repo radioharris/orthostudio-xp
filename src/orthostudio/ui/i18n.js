@@ -198,6 +198,9 @@ const STRINGS = {
     "map.borders_failed": "Frontières indisponibles pour l'instant (nouvel essai automatique)",
     "map.borders_hint": "Tracés de Natural Earth, justes à quelques centaines de mètres près : ils sont masqués quand on zoome de près.",
     "map.borders_attribution": "Frontières : Natural Earth",
+    "map.airports": "Aérodromes",
+    "map.airports_zoomed": "Aérodromes (zoomez pour les voir)",
+    "map.airports_hint": "Les terrains que connaît OrthoStudio XP, affichés par-dessus la photo : de quoi voir si un carré contient celui que vous cherchez. Rien n'est téléchargé, la liste est dans le logiciel.",
 
     "draw.rect": "Ajouter du détail : rectangle",
     "draw.shape": "Ajouter du détail : forme libre",
@@ -933,6 +936,9 @@ const STRINGS = {
     "map.borders_failed": "Country borders unavailable for now (trying again by itself)",
     "map.borders_hint": "Lines from Natural Earth, accurate to a few hundred metres: they are hidden when you zoom in close.",
     "map.borders_attribution": "Borders: Natural Earth",
+    "map.airports": "Airports",
+    "map.airports_zoomed": "Airports (zoom in to see them)",
+    "map.airports_hint": "The airports OrthoStudio XP knows, drawn over the photo: enough to see whether a square holds the one you are looking for. Nothing is downloaded, the list is inside the app.",
 
     "draw.rect": "Add detail: rectangle",
     "draw.shape": "Add detail: free shape",

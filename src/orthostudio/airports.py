@@ -508,6 +508,42 @@ class AirportIndex:
                 ).fetchone()
         return None if row is None else _row_to_airport(row)
 
+    def in_bounds(
+        self,
+        west: float,
+        south: float,
+        east: float,
+        north: float,
+        *,
+        limit: int = 400,
+        kinds: Iterable[str] | None = None,
+    ) -> list[Airport]:
+        """The airports inside that rectangle, the ones with a real ICAO code first.
+
+        For the map: a user asked to see whether a square holds the airport he wants, which the
+        aerial imagery does not always say (2026-09-19). The order puts the airports a pilot names
+        (an explicit ICAO code, then a name) before the strips that carry only an identifier, so a
+        capped answer keeps the useful ones. A rectangle crossing the antimeridian is read as two.
+        """
+        if not self.db.exists() or limit <= 0 or north < south:
+            return []
+        kind_list = sorted(set(kinds)) if kinds is not None else None
+        if kind_list is not None and not kind_list:
+            return []
+        spans = [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
+        rows: list[tuple[Any, ...]] = []
+        with self._connect() as con:
+            for w, e in spans:
+                sql = f"{_SELECT} WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?"
+                params: list[object] = [south, north, w, e]
+                if kind_list is not None:
+                    sql += " AND kind IN (" + ",".join("?" * len(kind_list)) + ")"
+                    params.extend(kind_list)
+                sql += f" ORDER BY icao_explicit DESC, {_PREFERRED} LIMIT ?"
+                params.append(limit)
+                rows.extend(con.execute(sql, params).fetchall())
+        return [_row_to_airport(row) for row in rows[:limit]]
+
     def search(
         self, q: str, limit: int = 10, *, kinds: Iterable[str] | None = None
     ) -> list[Airport]:

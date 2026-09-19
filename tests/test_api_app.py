@@ -645,6 +645,22 @@ def test_library_reads_the_colours_of_a_pack_whose_manifest_predates_them(home: 
 
 
 @pytest.mark.anyio
+async def test_the_map_asks_for_the_airports_of_a_rectangle(app) -> None:  # type: ignore[no-untyped-def]
+    """A user asked for an OSM background to tell whether a square holds the airport he wants
+    (2026-09-19): the map draws the airports of the index instead, which costs no request outside
+    the machine and shows over the aerial imagery."""
+    async with client_for(app) as c:
+        box = {"west": 4.0, "south": 43.0, "east": 6.0, "north": 44.0}
+        r = await c.get("/api/airports/in", params=box)
+        assert r.status_code == 200
+        assert [a["icao"] for a in r.json()] == ["LFML"]  # Nice is outside the rectangle
+        assert r.json()[0]["lat"] == 43.4367
+
+        empty = await c.get("/api/airports/in", params={**box, "north": 43.1})
+        assert empty.status_code == 200 and empty.json() == []
+
+
+@pytest.mark.anyio
 async def test_library_marks_installed_only_the_linked_pack(
     app, home: Path, xplane: Path, tmp_path: Path
 ) -> None:  # type: ignore[no-untyped-def]

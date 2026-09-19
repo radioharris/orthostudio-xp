@@ -704,6 +704,17 @@ every zone drawn inside one (a user, 2026-09-18). The layer exists only while so
 the choices, of the zones and of the squares. In the mock mode it paints its own ground image, so
 it can be seen and measured with no network.
 
+**Airports on the map** (a user of the X-Plane.Org page asked for an OSM background to tell
+whether a square holds the airport he wants, 2026-09-19): a checkbox in the legend draws the
+airports of the view, from the index the app ships (`GET /api/airports/in`), so nothing is
+downloaded and they show **over the aerial imagery**, where a runway is not always obvious. Off
+unless the user asks, remembered in `localStorage` (`osxp.mapAirports`). Below zoom
+`AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line says to zoom in; above it,
+the view is read with a quarter of padding, rounded to a tenth of a degree so that panning a
+little asks nothing, and capped at `AIRPORTS_LIMIT` (400) with the explicit ICAO codes first. Each
+airport is a ring, its code beside it, and its name in the tooltip; the pane sits over the labels
+and under the zones, and takes no pointer event.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

@@ -152,6 +152,18 @@ class FakeIndex:
     def get(self, icao: str) -> FakeAirport | None:
         return next((a for a in self.rows if a.icao == icao), None)
 
+    def in_bounds(
+        self,
+        west: float,
+        south: float,
+        east: float,
+        north: float,
+        *,
+        limit: int = 400,
+        kinds: object = None,
+    ) -> list[FakeAirport]:
+        return [a for a in self.rows if south <= a.lat <= north and west <= a.lon <= east][:limit]
+
     def tiles_around(self, icao: str, radius_km: float) -> list[TileRef]:
         a = self.get(icao)
         if a is None:

@@ -68,6 +68,16 @@ const HINT_KEY = "osxp.mapHintDone";
 const BORDERS_URL = "static/vendor/borders/borders.json";
 export const BORDERS_MAX_ZOOM = 10;
 const BORDERS_KEY = "osxp.mapBorders";
+
+/** Airports on the map (`GET /api/airports/in`), from the index the app ships: no request leaves
+ * the machine, and they show over the aerial imagery, where a runway is not always obvious. A
+ * user of the X-Plane.Org page asked for an OSM background to tell whether a square holds the
+ * airport he wanted (2026-09-19); this answers the question itself.
+ *
+ * Below AIRPORTS_MIN_ZOOM there would be thousands of them: the legend says to zoom in. */
+const AIRPORTS_KEY = "osxp.mapAirports";
+export const AIRPORTS_MIN_ZOOM = 8;
+export const AIRPORTS_LIMIT = 400;
 const BORDERS_RETRY_MS = [5000, 15000, 60000, 300000];
 
 /** The delay before reading the borders again after `tries` failed readings in a row: soon at
@@ -213,6 +223,12 @@ export function createPlanMap(ctx) {
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
+    airports: {
+      wanted: storageGet(AIRPORTS_KEY) === "1", // off unless the user asked: markers over a photo
+      rows: [],
+      key: "", // the view the rows were read for
+      loading: false,
+    },
   };
   const borders = {
     wanted: storageGet(BORDERS_KEY) !== "0", // shown unless the user unticked them
@@ -1046,7 +1062,11 @@ export function createPlanMap(ctx) {
     labels.style.zIndex = "360";
     labels.style.pointerEvents = "none";
     m.createPane("osxpDraft").style.zIndex = "450";
+    const airportsPane = m.createPane("osxpAirports");
+    airportsPane.style.zIndex = "365"; // over the labels, under the zones
+    airportsPane.style.pointerEvents = "none";
     layers.borders = L.layerGroup();
+    layers.airports = L.layerGroup();
     layers.grid = L.layerGroup().addTo(m);
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
@@ -1058,6 +1078,7 @@ export function createPlanMap(ctx) {
       renderGrid();
       renderBanner();
       renderToolOptions(true);
+      refreshAirports();
     });
     m.on("zoomend", () => {
       renderBorders();
@@ -1073,7 +1094,110 @@ export function createPlanMap(ctx) {
     });
     setBaseLayer(true);
     renderBorders();
+    refreshAirports();
     renderAll();
+  }
+
+  // ---------------------------------------------------------------- airports
+
+  /** Read the airports of the view when they are wanted and the zoom is close enough.
+   *
+   * The engine answers from the index shipped with the app, so this costs no network; the view is
+   * rounded into a key so that panning a little does not ask again. */
+  function refreshAirports() {
+    if (!map) return;
+    const state = zs.airports;
+    if (!state.wanted || map.getZoom() < AIRPORTS_MIN_ZOOM) {
+      if (state.rows.length) {
+        state.rows = [];
+        state.key = "";
+        drawAirports();
+      }
+      return;
+    }
+    const b = map.getBounds().pad(0.25);
+    const key = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
+      .map((v) => v.toFixed(1))
+      .join(",");
+    if (key === state.key || state.loading) return;
+    state.loading = true;
+    const query = `west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`;
+    ctx
+      .api("GET", `/api/airports/in?${query}&limit=${AIRPORTS_LIMIT}`)
+      .then((rows) => {
+        state.rows = Array.isArray(rows) ? rows : [];
+        state.key = key;
+        drawAirports();
+      })
+      .catch(() => {
+        // The index may be absent on this machine (503): the legend keeps the box, the map stays
+        // as it is, and nothing is said. Asking again costs one small request on the next move.
+        state.rows = [];
+        state.key = "";
+        drawAirports();
+      })
+      .finally(() => {
+        state.loading = false;
+      });
+  }
+
+  /** The markers: a small circle and the code, in the airports pane. */
+  function drawAirports() {
+    if (!map || !layers.airports) return;
+    layers.airports.clearLayers();
+    const rows = zs.airports.wanted ? zs.airports.rows : [];
+    for (const a of rows) {
+      const lat = Number(a.lat);
+      const lon = Number(a.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const name = String(a.name || "");
+      const code = String(a.icao || "");
+      L.circleMarker([lat, lon], {
+        pane: "osxpAirports",
+        radius: 4,
+        weight: 2,
+        color: "#ffd166",
+        fillColor: "#ffd166",
+        fillOpacity: 0.35,
+        interactive: false,
+      })
+        .bindTooltip(name ? `${code} · ${name}` : code, { pane: "osxpAirports" })
+        .addTo(layers.airports);
+      L.marker([lat, lon], {
+        pane: "osxpAirports",
+        interactive: false,
+        icon: L.divIcon({ className: "osxp-airport-label", html: escapeHtml(code) }),
+      }).addTo(layers.airports);
+    }
+    if (rows.length && !map.hasLayer(layers.airports)) layers.airports.addTo(map);
+    if (!rows.length && map.hasLayer(layers.airports)) map.removeLayer(layers.airports);
+  }
+
+  function setAirportsWanted(wanted) {
+    zs.airports.wanted = wanted;
+    storageSet(AIRPORTS_KEY, wanted ? "1" : "0");
+    if (!wanted) {
+      zs.airports.rows = [];
+      zs.airports.key = "";
+      drawAirports();
+    } else {
+      refreshAirports();
+    }
+    renderLegend();
+  }
+
+  /** The legend's airports line: a checkbox, and why nothing shows when zoomed out. */
+  function airportsToggle() {
+    const close = map.getZoom() >= AIRPORTS_MIN_ZOOM;
+    const text = zs.airports.wanted && !close ? t("map.airports_zoomed") : t("map.airports");
+    const input = h("input", {
+      type: "checkbox",
+      checked: zs.airports.wanted,
+      onchange: (ev) => setAirportsWanted(ev.target.checked),
+    });
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: t("map.airports_hint") },
+        input, h("span", { class: "legend-swatch legend-airport", "aria-hidden": "true" }), text));
   }
 
   // ---------------------------------------------------------------- country borders
@@ -1530,7 +1654,7 @@ export function createPlanMap(ctx) {
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
     if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
-    if (map) items.push(bordersToggle());
+    if (map) items.push(bordersToggle(), airportsToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
     clear(box).append(list);

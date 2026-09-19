@@ -1078,6 +1078,30 @@ def create_app(
         rows = await asyncio.to_thread(index.search, q, limit)
         return [{"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon} for a in rows]
 
+    @app.get("/api/airports/in")
+    async def airports_in(
+        west: float, south: float, east: float, north: float, limit: int = 400
+    ) -> Any:
+        """The airports of a rectangle, for the map's layer (a user asked to see whether a square
+        holds the airport he wants, 2026-09-19). Read from the index shipped with the app: no
+        request leaves the machine, and it works over the aerial imagery."""
+        index = await asyncio.to_thread(airport_index)
+        if index is None:
+            return _no_index()
+        rows = await asyncio.to_thread(
+            index.in_bounds, west, south, east, north, limit=max(1, min(2000, limit))
+        )
+        return [
+            {
+                "icao": a.icao,
+                "name": a.name,
+                "lat": a.lat,
+                "lon": a.lon,
+                "kind": getattr(a, "kind", "land"),
+            }
+            for a in rows
+        ]
+
     @app.get("/api/airports/{icao}")
     async def airport_get(icao: str) -> Any:
         index = await asyncio.to_thread(airport_index)
