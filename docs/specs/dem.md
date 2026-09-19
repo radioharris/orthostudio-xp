@@ -66,6 +66,18 @@ and it is assembled from the 3 x 3 block like the other global sources, so that 
 The files declare no nodata value and have none (their voids are filled at the source):
 `Dem.load` drops `DEM_NODATA_UNDECLARED` for this source.
 
+**Cells are not square above 50°** (fixed 2026-09-19). The product keeps about 30 m on the ground
+rather than one arc-second, so from 50° of latitude a cell carries 2400 columns instead of 3600,
+then 1800 (60°), 1200 (70°), 720 (75°) and 360 (80°), to the north and to the south alike; the rows
+stay 3600. Read as they came, those cells were `DEM_FILE_UNREADABLE` and the tile was refused:
+**nobody above 50° could build with Copernicus**, nor with Canada's lidar, which is laid over it (a
+user in Alberta reported it twice). `raster._to_base_columns` interpolates the columns onto the
+grid the block assembles, which invents nothing: at 53° a 1.5" step in longitude is 28 m against
+31 m for one second of latitude, so the cell is square in metres and the finer grid only restores
+the shape the assembly expects. Measured afterwards on `+53-114`: the mesh builds, and the model
+gives 714 m at Edmonton International (published 723 m) and 667 m at Edmonton City Centre
+(published 671 m).
+
 ### 3.0b `HRDEM` (Canada's lidar, NRCan) — OrthoStudio XP's own
 
 Added for the same user as the USGS option, who flies in Canada and asked for a source there

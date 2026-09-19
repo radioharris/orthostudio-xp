@@ -1508,6 +1508,18 @@ const DATA_DIR_WHY = {
   },
 };
 
+/** The relief sources OrthoStudio XP downloads: a tile refused with one of them says which, and
+ * what the service answered, rather than sending the user to the X-Plane installer (a user in
+ * Alberta read "install this region", which he had, 2026-09-19). */
+const DOWNLOADED_RELIEF = new Set(["COP30", "HRDEM", "View", "SRTM", "ALOS"]);
+
+/** Their names as Settings says them, not as the engine files them. */
+const RELIEF_WORDS = {
+  fr: { COP30: "Copernicus", HRDEM: "lidar canadien", View: "viewfinderpanoramas" },
+  en: { COP30: "Copernicus", HRDEM: "Canadian lidar", View: "viewfinderpanoramas" },
+};
+const reliefWord = (lang, source) => RELIEF_WORDS[lang][String(source || "")] || String(source || "");
+
 // Messages and remedies for the warning / error codes the page knows (docs/specs/errors.md).
 // Unknown codes fall back to the message and remedy carried by the engine, and so do the ZONE_*
 // codes when the engine sends a message (it names the zone): see codeWords() in app.js. An entry
@@ -1550,7 +1562,9 @@ const CODES = {
       ? ["Pas de relief pour {tile} : son fichier de décor X-Plane 12 manque ({path}). OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région du décor X-Plane 12 avec l'installeur d'X-Plane, ou donnez un fichier d'altitudes dans Réglages."]
       : String(c.source || "").startsWith("NED")
         ? ["Pas de relief pour cette tuile : l'USGS ne couvre que les États-Unis. OrthoStudio XP ne construit pas une tuile plate.", "Dans Réglages, choisissez « Le relief d'X-Plane 12 » ou « Le relief Copernicus » pour cette région."]
-        : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
+        : DOWNLOADED_RELIEF.has(String(c.source || ""))
+          ? [`Le relief ${reliefWord("fr", c.source)} de cette tuile n'a pas pu être obtenu ({reason}). OrthoStudio XP ne construit pas une tuile plate.`, "Réessayez ; si cela se reproduit, choisissez « Le relief d'X-Plane 12 » dans Réglages, qui ne demande aucun téléchargement, et signalez-le."]
+          : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Passez « Vides du raster » à « nearest » dans Réglages si ce n'est pas la mer."],
     MESH_TRIANGLE_BUDGET_REACHED: ["Le maillage a atteint la limite de triangles.", "Augmentez limit_tris ou curvature_tol dans Avancé."],
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
@@ -1594,7 +1608,9 @@ const CODES = {
       ? ["No relief for {tile}: its X-Plane 12 scenery file is missing ({path}). OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery with the X-Plane installer, or provide an elevation file in Settings."]
       : String(c.source || "").startsWith("NED")
         ? ["No relief for this tile: the USGS covers the United States only. OrthoStudio XP does not build a flat tile.", "In Settings, choose “The relief of X-Plane 12” or “The Copernicus relief” for this region."]
-        : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
+        : DOWNLOADED_RELIEF.has(String(c.source || ""))
+          ? [`The ${reliefWord("en", c.source)} relief of this tile could not be obtained ({reason}). OrthoStudio XP does not build a flat tile.`, "Try again; if it happens again, choose “The relief of X-Plane 12” in Settings, which downloads nothing, and report it."]
+          : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Voids of the elevation raster were set to 0 m.", "Set “Raster voids” to “nearest” in Settings if this is not sea."],
     MESH_TRIANGLE_BUDGET_REACHED: ["The mesh reached its triangle budget.", "Raise limit_tris or curvature_tol in Advanced."],
     ZONE_INVALID: ["A zone cannot be used: nothing is saved or built until it is fixed.", "Fix or delete that zone in step 2 (or in the zones file), then try again."],

@@ -19,6 +19,8 @@ from orthostudio.dem.raster import (
     MAX_FILL_PIXELS,
     NODATA,
     PLACEMENTS,
+    _cell_array,
+    _to_base_columns,
     build_combined_raster,
     cell_has_land,
     fill_nodata_nearest,
@@ -506,3 +508,51 @@ def test_the_download_hook_is_used_for_a_missing_cell(tmp_path: Path) -> None:
     build_combined_raster("View", 43, 5, opts)
     assert asked, "every land cell of the block was asked for once"
     assert all(u.startswith("http://viewfinderpanoramas.org/dem") for u in asked)
+
+
+def _write_geotiff(path: Path, alt: np.ndarray, lat: int, lon: int) -> None:
+    """One cell as Copernicus serves it: posts at the centre of each cell, EPSG 4326."""
+    from PIL import Image, TiffImagePlugin
+
+    rows, cols = alt.shape
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / cols, 1 / rows, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, float(lon), float(lat + 1), 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(alt).save(path, tiffinfo=info)
+
+
+def test_a_copernicus_cell_coarser_in_longitude_is_stretched_not_refused() -> None:
+    """Copernicus GLO-30 keeps about 30 m on the ground rather than one arc-second: from 50° of
+    latitude its cells carry 2400 columns instead of 3600 (then 1800, 1200, 720, 360).
+
+    Read as they came, those cells were called unreadable and the tile was refused: nobody above
+    50° could build with Copernicus, nor with Canada's lidar, which is laid over it (a user in
+    Alberta, 2026-09-18 and again on the 19th with 0.1.5).
+    """
+    ramp = np.arange(4, dtype=np.float32).reshape(1, 4).repeat(8, axis=0)
+    out = _to_base_columns(ramp, 8)
+    assert out is not None and out.shape == (8, 8)
+    # posts at the centre of each cell: the ends hold the edge value, the middle interpolates
+    assert out[0].tolist() == [0.0, 0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.0]
+    square = np.zeros((8, 8), dtype=np.float32)
+    assert _to_base_columns(square, 8) is square  # already on the grid: not copied
+    odd = np.zeros((7, 4), dtype=np.float32)  # not the rows expected: left to be refused
+    assert _to_base_columns(odd, 8) is odd
+    assert _to_base_columns(None, 8) is None
+
+
+def test_the_block_reads_a_cell_coarser_in_longitude(tmp_path: Path) -> None:
+    """The same, through the code the build runs: the cell is read, placed and never called
+    unreadable. 360 posts stand here for the 3600 of the real product, 240 for its 2400."""
+    lat, lon, base = 53, -114, 360
+    alt = np.tile(np.arange(240, dtype=np.float32), (base, 1))
+    _write_geotiff(tmp_path / "+50-120" / "N53W114_COP30.tif", alt, lat, lon)
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download, memo=NegativeMemo())
+    events: list[object] = []
+    result, cell = _cell_array("COP30", lat, lon, base, opts, events.append)
+    assert result.state is CellState.LOCAL
+    assert cell.shape == (base, base)
+    assert cell[0, 0] == 0.0 and cell[0, -1] == 239.0  # the cell's own extent, end to end
+    assert not [e for e in events if getattr(e, "code", "") == "DEM_FILE_UNREADABLE"]

@@ -511,7 +511,7 @@ def _cell_array(
             on_event(err)
 
     read = read_elevation_from_file(result.path, lat0, lon0, base_if_error=base, on_event=note)
-    alt = read.alt_dem
+    alt = _to_base_columns(read.alt_dem, base)
     if alt is None or alt.shape != (base, base):
         note(
             OsxpError(
@@ -530,6 +530,34 @@ def _cell_array(
         ), zeros
     assert alt is not None
     return result, alt
+
+
+def _to_base_columns(alt: F32 | None, base: int) -> F32 | None:
+    """A cell sampled more coarsely in longitude, brought back to ``base`` columns.
+
+    Copernicus GLO-30 keeps about 30 m on the ground rather than one arc-second: from 50° of
+    latitude its cells carry 2400 columns instead of 3600, then 1800, 1200, 720 and 360 further
+    north (and the same to the south). The rows stay 3600. Read as they come, such a cell was
+    called unreadable and **the tile was refused**: nobody above 50° could build with Copernicus,
+    nor with Canada's lidar, which is laid over it (a user in Alberta, twice, 2026-09-18 and
+    2026-09-19).
+
+    The columns are interpolated onto the grid the 3x3 block assembles. It invents no detail: at
+    53° a 1.5" step in longitude is 28 m on the ground against 31 m for one second of latitude, so
+    the cell is square in metres and the finer grid only restores the shape the assembly expects.
+    """
+    if alt is None or alt.ndim != 2:
+        return alt
+    rows, cols = alt.shape
+    if cols == base or rows != base or cols < 2 or cols > base:
+        return alt
+    # Posts at the centre of each cell of the product (``GEOMETRY``): (i + 0.5) / cols. Outside
+    # the first and the last post, the edge value holds rather than a line drawn beyond the data.
+    pos = np.clip((np.arange(base, dtype=np.float64) + 0.5) * cols / base - 0.5, 0.0, cols - 1)
+    left = np.floor(pos).astype(np.int64)
+    right = np.minimum(left + 1, cols - 1)
+    weight = (pos - left).astype(np.float32)
+    return (alt[:, left] * (1.0 - weight) + alt[:, right] * weight).astype(np.float32)
 
 
 def _xp12_block(
