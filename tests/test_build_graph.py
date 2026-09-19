@@ -421,7 +421,7 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     other, _ = dem_declaration(
         _spec(tmp_path, TileRef(47, 10), relief="copernicus"), cfg, lambda _tile: None, None
     )
-    assert other["own_stamp"].endswith(":none")
+    assert "own_stamp" not in other  # nothing of its own here: the same key as ever
     # a relief with no overlay at all keeps the key it has always had
     plain = to_build_overrides(
         Settings.model_validate({"essential": {"relief": {"source": "copernicus"}}})

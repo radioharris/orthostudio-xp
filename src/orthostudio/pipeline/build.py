@@ -1445,23 +1445,22 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     unchanged. An overlay that is a source rather than a folder (Canada's lidar over Copernicus)
     is named as it is: what it holds for a square is the service's business, not ours.
     """
-    overlays = [part for part in str(params.get("custom_dem") or "").split(";")[1:] if part]
-    if not overlays:
-        return params
     marks = []
-    for part in overlays:
+    for part in [p for p in str(params.get("custom_dem") or "").split(";")[1:] if p]:
         folder = Path(part)
-        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon) if folder.is_dir() else None
-        if own is None:
-            marks.append(part if not folder.is_dir() else f"{part}:none")
+        if not folder.is_dir():
+            marks.append(part)  # a source (Canada's lidar) or a file, named as it is
             continue
+        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon)
+        if own is None:
+            continue  # the folder holds nothing for this square, so it changes no key
         try:
             stat = own.stat()
         except OSError:
-            marks.append(f"{part}:unreadable")
             continue
         marks.append(f"{own.name}:{stat.st_size}:{stat.st_mtime_ns}")
-    params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
+    if marks:
+        params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
     return params
 
 
