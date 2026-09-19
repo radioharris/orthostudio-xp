@@ -85,7 +85,8 @@ file per one-degree square, and asked to name the folder once rather than a file
 (2026-09-19). Settings' *Do you have elevation files of your own?* takes a folder; it travels in
 `custom_dem` as **one more overlay**, `COP30;/path/to/folder` (or `XP12;...`, the pipeline putting
 the base in front), so the square the folder holds takes its file and every other square keeps the
-relief chosen. A partial set therefore builds every tile.
+relief chosen. A partial set therefore builds every tile. The overlay is written into the raster
+before it is stored (section 8.2): the stages after the relief read a file, not the object.
 
 `sources.cell_file_in_folder` finds the file: any depth under the folder, the stem being the cell
 (`N47E011`), and `.hgt`, `.tif`, `.tiff` or `.raw`. **The finest wins**: the same sets come at 3",
@@ -379,7 +380,19 @@ subprocess (`test_dem_oracle.py::test_alt_vec_matches_ortho4xp_bitwise`).
 `alt_strict` rounds to the nearest pixel and returns `nodata` outside the window; a
 `custom_dem` of the form `"base;overlay1;overlay2"` builds one `Dem` per overlay and overlays
 them in order (`alt_vec_composite`, lines 329-334: later overlays win where they have data).
-**Keep**, including the priority order. Difference: Ortho4XP returns a float32 array when every
+**Keep**, including the priority order.
+
+**Difference, and it matters: the overlays are written into the raster** (`_lay_into`, called by
+`Dem.build`), not kept beside it. Ortho4XP builds a tile in one run and can ask its overlays at
+every point; here the raster is written to the store and read again by the vector and mesh
+stages, which know nothing of an overlay. Kept beside it, a user's own file was found, keyed and
+then quietly dropped: the tile came out of the base alone. Found on 2026-09-19 on a real build of
+`+46+006` whose lidar folder changed nothing at all, and true of `COP30;HRDEM` just the same.
+Each overlay is laid nearest-point where it has data, exactly as `alt_vec_strict` would have read
+it, and **the finest step in the room wins**: an overlay sharper than the base raises the whole
+window to its own grid first (bilinear, block by block, up to `MAX_COMPOSITE_SIDE = 12 000` points
+a side, which a 1/3" overlay over an assembled window stays under). `meta.json` names what was
+laid in `laid_over`, and the overlay's file joins `cells`. Difference: Ortho4XP returns a float32 array when every
 point is inside and float64 otherwise (`numpy.array` of a mixed list); OrthoStudio XP always returns
 float64 (**fix**, value-preserving, float32 -> float64 is exact).
 

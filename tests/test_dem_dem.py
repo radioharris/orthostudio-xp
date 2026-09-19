@@ -323,18 +323,81 @@ def test_an_unreadable_overlay_is_refused_too(tmp_path: Path) -> None:
         )
 
 
-def test_build_of_a_composite_keeps_the_overlays(tmp_path: Path) -> None:
-    base = tmp_path / "base.hgt"
-    base.write_bytes(np.full((1201, 1201), 10, np.int16).astype(">i2").tobytes())
+def _hgt(path: Path, side: int, value: int) -> Path:
+    path.write_bytes(np.full((side, side), value, np.int16).astype(">i2").tobytes())
+    return path
+
+
+def test_build_of_a_composite_writes_the_overlay_into_the_raster(tmp_path: Path) -> None:
+    """The overlay must be *in* the raster, not beside it.
+
+    Kept beside it, it lived only in the object: the artefact held the base alone, and the
+    vector and mesh stages, which read the artefact, built the tile out of the base. A user's
+    own lidar file was found, keyed, and changed nothing (+46+006, 2026-09-19).
+    """
+    base = _hgt(tmp_path / "base.hgt", 1201, 10)
+    over = _hgt(tmp_path / "over.hgt", 1201, 20)
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}")
+    assert dem.laid_over == (str(over),)
+    assert dem.alt_dem.min() == 20 and dem.alt_dem.max() == 20
+    out = tmp_path / "artifact"
+    dem.save(out)
+    again = Dem.load(out)  # what the next stage reads
+    assert again.alt_vec(np.array([[0.5, 0.5]]))[0] == pytest.approx(20.0, abs=1e-4)
+    assert json.loads((out / "meta.json").read_text())["laid_over"] == [str(over)]
+
+
+def test_an_overlay_finer_than_the_base_raises_the_whole_grid(tmp_path: Path) -> None:
+    """A half-second file of one's own read at the second of the source under it would throw
+    away half of what the user downloaded: the window takes the finest step in the room."""
+    base = _hgt(tmp_path / "base.hgt", 1201, 10)
+    fine = np.full((3601, 3601), 20, np.int16)
+    fine[::2, ::2] = 40  # detail no 3" grid could hold
     over = tmp_path / "over.hgt"
-    over.write_bytes(np.full((1201, 1201), 20, np.int16).astype(">i2").tobytes())
-    dem = Dem.build(
-        TileRef(43, 5),
-        EnsureOptions(elevation_dir=tmp_path, download=no_download),
-        custom_dem=f"{base};{over}",
-    )
-    assert len(dem.overlays) == 1
-    assert dem.alt_vec(np.array([[0.5, 0.5]]))[0] == pytest.approx(20.0, abs=1e-4)
+    over.write_bytes(fine.astype(">i2").tobytes())
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}")
+    assert (dem.nxdem, dem.nydem) == (3601, 3601)
+    assert np.array_equal(np.asarray(dem.alt_dem), fine.astype(np.float32))
+
+
+def test_a_hole_in_the_overlay_lets_the_relief_under_it_through(tmp_path: Path) -> None:
+    base = _hgt(tmp_path / "base.hgt", 1201, 10)
+    holed = np.full((1201, 1201), 20, np.int16)
+    holed[:100, :100] = -32768
+    over = tmp_path / "over.hgt"
+    over.write_bytes(holed.astype(">i2").tobytes())
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}")
+    assert float(dem.alt_dem[0, 0]) == 10.0  # the void of the overlay
+    assert float(dem.alt_dem[-1, -1]) == 20.0
+    assert not (dem.alt_dem == NODATA).any()
+
+
+def test_an_overlay_covering_the_tile_leaves_the_margin_to_the_base(tmp_path: Path) -> None:
+    """An assembled source is read a little beyond the tile (section 4.1); a file of one's own
+    covers the square and no more, so the skirt around it keeps the relief underneath."""
+    opts = _block(tmp_path, value=250)
+    over = _hgt(tmp_path / "over.hgt", 3601, 700)
+    dem = Dem.build(TileRef(46, 5), opts, custom_dem=f"View;{over}")
+    assert (dem.nxdem, dem.nydem) == (3673, 3673)
+    assert float(dem.alt_dem[0, 0]) == 250.0  # the margin, north-west of the square
+    assert float(dem.alt_dem[dem.nydem // 2, dem.nxdem // 2]) == 700.0
+    assert float(dem.alt_dem[36, 36]) == 700.0 and float(dem.alt_dem[35, 35]) == 250.0
+
+
+def test_a_folder_without_this_square_leaves_the_relief_alone(tmp_path: Path) -> None:
+    """A partial collection is no trouble: the tile is built from the relief chosen."""
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    _hgt(mine / "N46E006.hgt", 1201, 900)  # another square
+    opts = _block(tmp_path, value=250)
+    events: list[OsxpError] = []
+    dem = Dem.build(TileRef(46, 5), opts, custom_dem=f"View;{mine}", on_event=events.append)
+    assert dem.laid_over == ()
+    assert dem.alt_dem.min() == 250 and dem.alt_dem.max() == 250
+    assert any(e.code == "DEM_OVERLAY_UNAVAILABLE" for e in events)
 
 
 # -- artefact (spec 9, acceptance A7) ------------------------------------------------------

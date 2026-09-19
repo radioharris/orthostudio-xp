@@ -123,6 +123,8 @@ class Dem:
     source: str = "View"
     cells: tuple[EnsureResult, ...] = ()
     overlays: tuple[Dem, ...] = ()
+    laid_over: tuple[str, ...] = ()
+    """The overlays of a composite written into :attr:`alt_dem`, in the order they were laid."""
     events: list[OsxpError] = field(default_factory=list)
 
     # -- construction ------------------------------------------------------------------------
@@ -186,8 +188,15 @@ class Dem:
                     )
                 )
             else:
-                overlays.append(laid)
-        dem.overlays = tuple(overlays)
+                overlays.append((name, laid))
+        if overlays:
+            # Into the raster, not beside it. Ortho4XP builds a tile in one go and can ask its
+            # overlays at every point (``alt_vec_composite``); here the raster is written to the
+            # store and read again by the vector and mesh stages, which know nothing of an
+            # overlay. Kept beside it, a user's own file was found, keyed and then quietly
+            # dropped: the scenery came out of the base alone (found 2026-09-19 on a build of
+            # +46+006 whose lidar file changed nothing).
+            _lay_into(dem, overlays, record)
         return dem
 
     @classmethod
@@ -361,6 +370,7 @@ class Dem:
             "mean": float(self.alt_dem.mean()),
             "nodata_pixels": int((self.alt_dem == self.nodata).sum()),
             "alt_layout": ALT_FILE_FORMAT,
+            "laid_over": list(self.laid_over),
             "cells": [
                 {
                     "cell": c.cell,
@@ -401,6 +411,103 @@ class Dem:
             nodata=float(meta["nodata"]),
             source=str(meta["source"]),
         )
+
+
+MAX_COMPOSITE_SIDE = 12_000
+"""How fine a composite raster may become, in points a side: a 1/3" overlay over an assembled
+window lands just under it (11 013), and 12 000 points is 576 MB of float32, the size the USGS
+source already produces for one tile of the United States."""
+
+ROWS_AT_A_TIME = 512
+"""Rows of one block of the two grid walks below: a block of a 7 200-point raster is 15 MB."""
+
+
+def _step_of(dem: Dem) -> float:
+    """Degrees between two points of the raster (its window is square)."""
+    return (dem.x1 - dem.x0) / (dem.nxdem - 1)
+
+
+def _lay_into(
+    base: Dem, overlays: Sequence[tuple[str, Dem]], record: Callable[[OsxpError], None]
+) -> None:
+    """Write the overlays into the base raster, the last one first in line, in place.
+
+    The finest step in the room wins: an overlay sharper than the base raises the whole window
+    to its own grid, so that a half-second file of one's own is not read at the second of the
+    source under it. The base has been filled by then, so nothing interpolates a void.
+    """
+    finest = min(_step_of(dem) for _name, dem in overlays)
+    if finest < _step_of(base) and round((base.x1 - base.x0) / finest) + 1 <= MAX_COMPOSITE_SIDE:
+        _refine(base, finest)
+    laid: list[str] = []
+    for name, over in overlays:
+        points = _lay_one(base, over)
+        if not points:
+            record(
+                OsxpError(
+                    "DEM_OVERLAY_UNAVAILABLE",
+                    context={"cell": hem_latlon(base.tile.lat, base.tile.lon), "source": name},
+                )
+            )
+            continue
+        laid.append(name)
+        base.cells = (*base.cells, *over.cells)
+    base.laid_over = tuple(laid)
+
+
+def _refine(dem: Dem, step: float) -> None:
+    """Put the raster on a finer grid of the same window, bilinear, block by block."""
+    nx = round((dem.x1 - dem.x0) / step) + 1
+    ny = round((dem.y1 - dem.y0) / step) + 1
+    src = dem.alt_dem
+    out = np.empty((ny, nx), dtype=np.float32)
+    fx = np.linspace(0.0, dem.nxdem - 1, nx)
+    cols = np.clip(np.floor(fx).astype(np.int64), 0, dem.nxdem - 2)
+    dx = (fx - cols).astype(np.float32)
+    fy = np.linspace(0.0, dem.nydem - 1, ny)
+    rows = np.clip(np.floor(fy).astype(np.int64), 0, dem.nydem - 2)
+    dy = (fy - rows).astype(np.float32)
+    for start in range(0, ny, ROWS_AT_A_TIME):
+        stop = min(start + ROWS_AT_A_TIME, ny)
+        rr, down = rows[start:stop], dy[start:stop, None]
+        top = src[np.ix_(rr, cols)] * (1 - dx) + src[np.ix_(rr, cols + 1)] * dx
+        bottom = src[np.ix_(rr + 1, cols)] * (1 - dx) + src[np.ix_(rr + 1, cols + 1)] * dx
+        out[start:stop] = top * (1 - down) + bottom * down
+    dem.alt_dem = out
+    dem.nxdem, dem.nydem = nx, ny
+
+
+def _lay_one(base: Dem, over: Dem) -> int:
+    """One overlay into the base raster, nearest point, where it has data (``alt_vec_strict``)."""
+    ys = np.linspace(base.y1, base.y0, base.nydem)
+    xs = np.linspace(base.x0, base.x1, base.nxdem)
+    rows = np.nonzero((ys >= over.y0) & (ys <= over.y1))[0]
+    cols = np.nonzero((xs >= over.x0) & (xs <= over.x1))[0]
+    if rows.size == 0 or cols.size == 0:
+        return 0
+    from_row = np.clip(
+        np.rint((over.y1 - ys[rows]) / (over.y1 - over.y0) * (over.nydem - 1)).astype(np.int64),
+        0,
+        over.nydem - 1,
+    )
+    from_col = np.clip(
+        np.rint((xs[cols] - over.x0) / (over.x1 - over.x0) * (over.nxdem - 1)).astype(np.int64),
+        0,
+        over.nxdem - 1,
+    )
+    written = 0
+    for start in range(0, rows.size, ROWS_AT_A_TIME):
+        stop = min(start + ROWS_AT_A_TIME, rows.size)
+        patch = over.alt_dem[np.ix_(from_row[start:stop], from_col)]
+        has = patch != over.nodata
+        if not has.any():
+            continue
+        here = rows[start:stop]
+        region = base.alt_dem[np.ix_(here, cols)]
+        region[has] = patch[has]
+        base.alt_dem[np.ix_(here, cols)] = region
+        written += int(has.sum())
+    return written
 
 
 def _read_whole_file(
