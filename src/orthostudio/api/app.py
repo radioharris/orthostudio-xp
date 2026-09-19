@@ -26,6 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from orthostudio import __version__, config
 from orthostudio.airports import default_index as default_airport_index
+from orthostudio.api.basemap import basemap_router
 from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
 from orthostudio.api.map_api import TileClient, TileFetch, map_router
 from orthostudio.api.models import (
@@ -560,6 +561,7 @@ def create_app(
     # its own lifespan, which closes its upstream fetchers when the server stops.
     app.include_router(zones_router())
     app.include_router(map_router(fetch=map_fetch))
+    app.include_router(basemap_router())
     manager = jobs if jobs is not None else JobManager(env_factory=env_factory)
     # Held while a tile is deleted: deletes run one at a time, and no build starts meanwhile, since
     # the store clean that ends a delete could take an artefact a new build is about to reuse.
