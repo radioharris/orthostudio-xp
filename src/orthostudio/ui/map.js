@@ -1134,8 +1134,12 @@ export function createPlanMap(ctx) {
     const airportsPane = m.createPane("osxpAirports");
     airportsPane.style.zIndex = "365"; // over the labels, under the zones
     airportsPane.style.pointerEvents = "none";
+    const routePane = m.createPane("osxpRoute");
+    routePane.style.zIndex = "362"; // over the grid, under the airports it leads to
+    routePane.style.pointerEvents = "none";
     layers.borders = L.layerGroup();
     layers.airports = L.layerGroup();
+    layers.route = L.layerGroup().addTo(m);
     layers.grid = L.layerGroup().addTo(m);
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
@@ -1221,6 +1225,34 @@ export function createPlanMap(ctx) {
   }
 
   /** The markers: a small circle and the code, in the airports pane. */
+  /**
+   * The flight plan of step 1: one line through its airports, a ring at each end and a smaller one
+   * at the points between. It is an aid to choosing squares, so it is drawn over the grid and
+   * takes no pointer event; nothing of it is built or saved with the tiles.
+   */
+  function drawRoute() {
+    if (!map || !layers.route) return;
+    layers.route.clearLayers();
+    const points = (ctx.route?.() || {}).points || [];
+    if (points.length < 2) return;
+    const line = points.map((p) => [p.lat, p.lon]);
+    L.polyline(line, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
+    L.polyline(line, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
+    points.forEach((p, i) => {
+      const end = i === 0 || i === points.length - 1;
+      L.circleMarker([p.lat, p.lon], {
+        pane: "osxpRoute",
+        radius: end ? 5 : 3,
+        weight: 2,
+        color: "#e0572f",
+        fillColor: end ? "#ffffff" : "#e0572f",
+        fillOpacity: 1,
+      })
+        .bindTooltip(p.name ? `${p.icao} ${p.name}` : p.icao, { direction: "top", opacity: 0.9 })
+        .addTo(layers.route);
+    });
+  }
+
   function drawAirports() {
     if (!map || !layers.airports) return;
     layers.airports.clearLayers();
@@ -1825,6 +1857,7 @@ export function createPlanMap(ctx) {
     renderLegend();
     renderSizes();
     renderHint();
+    drawRoute();
   }
 
   /** The banner over the map says what to do next while drawing (section 7.0.2). */
@@ -2295,6 +2328,10 @@ export function createPlanMap(ctx) {
         if (photo?.look) out[name] = { photo };
       }
       return out;
+    },
+    /** The flight plan of step 1 changed: draw it again, or take it away. */
+    routeChanged() {
+      drawRoute();
     },
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {

@@ -24,7 +24,7 @@ import {
   tOpt,
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
-import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
+import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, routeLength, tileName, tilesAlong, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
@@ -180,6 +180,8 @@ const state = {
   settingsDraft: null,
   tiles: [],
   airport: null,
+  /** The flight plan drawn on the map: `{points: [{icao, name, lat, lon}]}` or null. */
+  route: null,
   plan: null,
   /** Step 3's error: `{message}` (the page's own sentence) or `{err}` (an engine answer). */
   planError: null,
@@ -2850,6 +2852,122 @@ async function addTilesFromIcao() {
   toast(t("plan.icao_added", { icao: airport.icao, name: airport.name || "", n: names.length, r }));
 }
 
+// ------------------------------------------------------------------ Plan: the flight plan
+
+const ROUTE_KEY = "osxp.route";
+
+/** The airports of a typed route: "LSGG LFMN", spaces, commas or arrows between them. */
+export function routeCodes(text) {
+  return String(text || "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((code) => code.length >= 3 && code.length <= 4);
+}
+
+/** The squares around both ends of the route, at the radius the page shows. */
+function routeEndTiles() {
+  const points = state.route?.points || [];
+  if (points.length < 2) return [];
+  const r = Math.max(1, Number($("radius-input").value) || 15);
+  const first = points[0];
+  const last = points[points.length - 1];
+  return [...new Set([...tilesAround(first.lat, first.lon, r), ...tilesAround(last.lat, last.lon, r)])];
+}
+
+/** Every square the route crosses, the ends included. */
+function routeAllTiles() {
+  const points = state.route?.points || [];
+  if (points.length < 2) return [];
+  return [...new Set([...tilesAlong(points), ...routeEndTiles()])];
+}
+
+function renderRoute() {
+  const found = $("route-found");
+  const points = state.route?.points || [];
+  found.hidden = points.length < 2;
+  if (found.hidden) return;
+  const ends = routeEndTiles();
+  const all = routeAllTiles();
+  setText(
+    $("route-what"),
+    t("plan.route_what", {
+      from: points[0].icao,
+      to: points[points.length - 1].icao,
+      km: fmtInt(Math.round(routeLength(points))),
+    }),
+  );
+  setText($("route-ends"), t("plan.route_ends", { n: ends.length }));
+  setText($("route-all"), t("plan.route_all", { n: all.length }));
+}
+
+/** Read the codes, ask the engine where those airports are, and draw the line. */
+async function drawRoute() {
+  const codes = routeCodes($("route-input").value);
+  if (codes.length < 2) {
+    showPlanError(t("plan.route_short"));
+    return;
+  }
+  // A pasted route carries waypoints and DCT between its airports: what the engine does not know
+  // as an airport is left out, and the line says which two ends were kept.
+  const points = [];
+  const missing = [];
+  for (const code of codes) {
+    try {
+      const airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
+      points.push({ icao: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
+    } catch (_e) {
+      missing.push(code);
+    }
+  }
+  if (points.length < 2) {
+    showPlanError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
+    return;
+  }
+  showPlanError(null);
+  setRoute(points);
+}
+
+function setRoute(points) {
+  state.route = points && points.length >= 2 ? { points } : null;
+  try {
+    if (state.route) localStorage.setItem(ROUTE_KEY, JSON.stringify(state.route));
+    else localStorage.removeItem(ROUTE_KEY);
+  } catch (_e) {
+    // a browser that keeps nothing: the route simply goes when the page is read again
+  }
+  renderRoute();
+  planMap?.routeChanged();
+}
+
+function clearRoute() {
+  $("route-input").value = "";
+  showPlanError(null);
+  setRoute(null);
+}
+
+/** The route of the last visit, so a reload does not lose the line (nothing is asked again). */
+function restoreRoute() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(ROUTE_KEY) || "null");
+  } catch (_e) {
+    saved = null;
+  }
+  const points = (saved?.points || []).filter(
+    (p) => p && typeof p.icao === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon),
+  );
+  if (points.length < 2) return;
+  state.route = { points };
+  $("route-input").value = points.map((p) => p.icao).join(" ");
+  renderRoute();
+}
+
+function addRouteTiles(names) {
+  if (!names.length) return;
+  sayTilesInBuild(addTiles(names));
+  toast(t("plan.route_added", { n: names.length }));
+}
+
 // ------------------------------------------------------------------ Plan: provider, zoom
 
 function currentProvider() {
@@ -5103,6 +5221,18 @@ async function boot() {
     renderIcaoList();
   });
   $("icao-add").addEventListener("click", addTilesFromIcao);
+  $("route-draw").addEventListener("click", drawRoute);
+  $("route-input").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      drawRoute();
+    }
+  });
+  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles()));
+  $("route-all").addEventListener("click", () => addRouteTiles(routeAllTiles()));
+  $("route-clear").addEventListener("click", clearRoute);
+  // the radius applies to both ends of the route: the counts on the buttons follow it
+  $("radius-input").addEventListener("input", renderRoute);
   $("sources-open").addEventListener("click", openSources);
   $("sources-close").addEventListener("click", () => $("sources-dialog").close());
   $("source-try").addEventListener("click", trySource);
@@ -5165,6 +5295,7 @@ async function boot() {
     h,
     clear,
     tiles: () => state.tiles,
+    route: () => state.route,
     toggleTile,
     // a zone drawn outside the chosen tiles offers to add its own (a user, 2026-09-18)
     chooseTiles: (names) => sayTilesInBuild(addTiles(names)),
@@ -5186,6 +5317,7 @@ async function boot() {
   });
   renderTiles();
   renderPlanPanel();
+  restoreRoute();
   startPresence();
   // The screen shows at once and fills in as the engine answers. It used to wait for every
   // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu

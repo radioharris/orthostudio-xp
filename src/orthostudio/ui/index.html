@@ -119,23 +119,39 @@
             </div>
           </div>
           <div class="tile-colours" id="tile-colours"></div>
-          <details class="more">
-            <summary data-i18n="step1.more">Other ways: airport, tile names, coordinates</summary>
-            <div class="field-row">
-              <div class="field field-combo">
-                <label for="icao-input" data-i18n="plan.icao">ICAO code</label>
-                <input id="icao-input" type="text" autocomplete="off" spellcheck="false" maxlength="24" placeholder="LFML" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="icao-list">
-                <ul id="icao-list" class="combo-list" role="listbox" hidden></ul>
-              </div>
-              <div class="field field-narrow">
-                <label for="radius-input" data-i18n="plan.radius">Radius</label>
-                <div class="with-unit">
-                  <input id="radius-input" type="number" min="1" max="300" step="1" value="15" inputmode="numeric">
-                  <span class="unit">km</span>
-                </div>
-              </div>
-              <button type="button" class="btn" id="icao-add" data-i18n="plan.add">Add</button>
+          <div class="field-row plan-way">
+            <div class="field field-combo">
+              <label for="icao-input" data-i18n="plan.icao">Around an airport</label>
+              <input id="icao-input" type="text" autocomplete="off" spellcheck="false" maxlength="24" placeholder="LFML" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="icao-list">
+              <ul id="icao-list" class="combo-list" role="listbox" hidden></ul>
             </div>
+            <div class="field field-narrow">
+              <label for="radius-input" data-i18n="plan.radius">Radius</label>
+              <div class="with-unit">
+                <input id="radius-input" type="number" min="1" max="300" step="1" value="15" inputmode="numeric">
+                <span class="unit">km</span>
+              </div>
+            </div>
+            <button type="button" class="btn" id="icao-add" data-i18n="plan.add">Add</button>
+          </div>
+          <div class="field-row plan-way">
+            <div class="field">
+              <label for="route-input" data-i18n="plan.route">Along a flight plan</label>
+              <input id="route-input" type="text" autocomplete="off" spellcheck="false" maxlength="200" placeholder="LSGG LFMN" data-i18n-placeholder="plan.route_ph">
+              <small class="help" data-i18n="plan.route_help">Two airports or more, in the order you fly them.</small>
+            </div>
+            <button type="button" class="btn" id="route-draw" data-i18n="plan.route_draw">Draw</button>
+          </div>
+          <div class="route-found" id="route-found" hidden>
+            <p class="route-what" id="route-what"></p>
+            <div class="field-row">
+              <button type="button" class="btn btn-small" id="route-ends"></button>
+              <button type="button" class="btn btn-small" id="route-all"></button>
+              <button type="button" class="btn btn-small btn-quiet" id="route-clear" data-i18n="plan.route_clear">Clear</button>
+            </div>
+          </div>
+          <details class="more">
+            <summary data-i18n="step1.more">Other ways: tile names, coordinates</summary>
             <div class="field field-spaced">
               <label for="tiles-text" data-i18n="plan.tiles_text">Tile names</label>
               <input id="tiles-text" type="text" autocomplete="off" spellcheck="false" placeholder="+43+005 +43+006" data-i18n-placeholder="plan.tiles_text_ph">

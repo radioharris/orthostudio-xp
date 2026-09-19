@@ -4426,3 +4426,60 @@ def test_my_sources_is_a_button_that_can_be_seen() -> None:
     html = (UI / "index.html").read_text(encoding="utf-8")
     tag = html[html.index('id="sources-open"') - 120 : html.index('id="sources-open"')]
     assert "btn-quiet" not in tag and "btn btn-small" in tag
+
+
+def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
+    """A route is one more way of choosing squares, beside the airport, and both are visible.
+
+    They were under a folded "Other ways" line, which a user never opened (2026-09-19). What the
+    buttons count is what the map draws: the same arithmetic answers both.
+    """
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    step = re.search(r'<section class="plan-step" id="tiles-panel".*?</section>', html, re.S)
+    assert step is not None
+    panel = step.group(0)
+    folded = re.search(r'<details class="more">.*?</details>', panel, re.S)
+    assert folded is not None
+    for element in ('id="icao-input"', 'id="radius-input"', 'id="route-input"', 'id="route-draw"',
+                    'id="route-ends"', 'id="route-all"', 'id="route-clear"'):  # fmt: skip
+        assert element in panel and element not in folded.group(0)
+    # what stays folded: the two ways nobody uses to plan a flight
+    assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
+
+
+def test_the_squares_a_route_crosses_and_its_length() -> None:
+    """``tilesAlong`` samples every leg well under the one degree a square measures, so a square
+    the line only clips is still counted; ``routeLength`` measures on the sphere."""
+    calls = ", ".join(
+        [
+            "m.tilesAlong([{lat: 46.24, lon: 6.11}, {lat: 43.66, lon: 7.21}])",
+            "Math.round(m.routeLength([{lat: 46.24, lon: 6.11}, {lat: 43.66, lon: 7.21}]))",
+            # the short way round the antimeridian, as an aircraft flies it
+            "m.tilesAlong([{lat: 0, lon: 179.5}, {lat: 0, lon: -179.5}])",
+            "m.tilesAlong([{lat: 46.24, lon: 6.11}])",
+        ]
+    )
+    geneva_nice, km, dateline, alone = _node_json("geo.js", f"[{calls}]")
+    assert geneva_nice == ["+46+006", "+45+006", "+44+006", "+44+007", "+43+007"]
+    assert 295 <= km <= 305  # 299 km on the great circle
+    assert dateline == ["+00+179", "+00-180"]  # two squares, not the whole world
+    assert alone == ["+46+006"]
+
+
+def test_a_route_is_read_from_what_a_pilot_types() -> None:
+    """Spaces, commas or arrows between the codes, and anything too short is not an airport."""
+    calls = ", ".join(
+        [
+            'm.routeCodes("LSGG LFMN")',
+            'm.routeCodes("lsgg, lfmn")',
+            'm.routeCodes("LSGG -> LFMN -> LIRF")',
+            'm.routeCodes("LSGG DCT MOLUS DCT LFMN")',
+            'm.routeCodes("")',
+        ]
+    )
+    plain, commas, arrows, with_fixes, empty = _node_json("app.js", f"[{calls}]")
+    assert plain == commas == ["LSGG", "LFMN"]
+    assert arrows == ["LSGG", "LFMN", "LIRF"]
+    # a pasted route keeps its four-letter tokens; the engine leaves out what is not an airport
+    assert with_fixes == ["LSGG", "DCT", "DCT", "LFMN"]
+    assert empty == []

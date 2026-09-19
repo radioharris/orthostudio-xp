@@ -1106,3 +1106,15 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .stopped-card h2 { font-size: var(--fs-title-1); }
 .stopped-card p { margin: 0; color: var(--fg-2); }
 
+
+/* Step 1's ways of choosing squares: the airport and the flight plan, in plain sight since a user
+   never opened the "Other ways" line (2026-09-19). */
+.plan-way { margin-top: var(--gap); align-items: flex-end; }
+.route-found {
+  margin-top: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+.route-what { margin: 0 0 var(--gap); font-size: 12.5px; color: var(--fg-2); }
