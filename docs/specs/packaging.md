@@ -70,7 +70,7 @@ path, its dates). The `.pyc` files are compiled at build time, their recorded pa
 the `python` folder, and the `_sysconfigdata` of the CPython gets back the `/install` prefix uv
 replaced: no path of the build machine is left in an installer.
 
-Sizes, built by the release workflow: the `.dmg` 64 MB (LZMA, `ULMO`; 134 MB when it was written
+Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of
 processor per release; it is not worth it while no one has built a tile on Linux.

@@ -544,15 +544,19 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     (image / "Applications").symlink_to("/Applications")
     out = DIST / artefact_name(version, target)
     out.unlink(missing_ok=True)
+    # The image is written with zlib and then converted to LZMA. The same content: 134 MB with
+    # zlib, 106 MB when `create` writes LZMA itself, 64 MB through `convert` -- which is also the
+    # fastest of the three, since it compresses on every core (measured 2026-09-19). macOS mounts
+    # LZMA images from 10.15, and this app asks for macOS 14 (MAC_OLDEST).
+    plain = stage / "plain.dmg"
     run(
         [
-            # ULMO (LZMA) rather than UDZO (zlib): the same image in 64 MB instead of 134 MB,
-            # four seconds to write on every core, and macOS 10.15 and later mount it -- this app
-            # asks for macOS 14 (MAC_OLDEST).
             "hdiutil", "create", "-volname", f"{APP_NAME} {version}", "-srcfolder", image,
-            "-ov", "-format", "ULMO", out,
+            "-ov", "-format", "UDZO", plain,
         ]
     )  # fmt: skip
+    run(["hdiutil", "convert", plain, "-format", "ULMO", "-o", out])
+    plain.unlink()
     return out, image / app.name / "Contents" / "Resources" / "python" / "bin" / "python3"
 
 

@@ -24,9 +24,10 @@ Overpass).
 | `styles.css` | design tokens (light and dark, detail-level colours), layout, components |
 | `i18n.js` | the dictionary (`en`, `fr`), `t()`, number/duration/size formatters |
 | `app.js` | state, API client (real or mock), rendering functions, SSE handling |
-| `map.js` | the Plan's map: base layer, tile grid, zone drawing, zone list, sizes, zones persistence |
+| `map.js` | the Plan's map: base layer (aerial or street), tile grid, airports, zone drawing, zone list, sizes, zones persistence |
 | `geo.js` | geometry without DOM (tiles, textures, polygons, the `osxp-zones-1` checks); run by the tests |
 | `vendor/leaflet/` | Leaflet 1.9.4 (`leaflet.js`, `leaflet.css`, `LICENSE`, `README.md`), not edited |
+| `vendor/maplibre/` | MapLibre GL 5.24.0 and its Leaflet bridge, for the street map's vector tiles; loaded only when that map is asked for |
 | `mock/*.json` | one file per API response, used by `?mock=1` and by the tests |
 | `__init__.py` | `ui_dir()` and `STATIC_FILES` for `create_app` and the tests; nothing else |
 
@@ -941,9 +942,10 @@ Served through `FastAPI` + `StaticFiles` with `httpx.AsyncClient(transport=ASGIT
    `plan`, `job`, `library`, `settings`, `settings_schema`, `zones`).
 6. `ROLE_STEP` of `app.js` equals the engine's `ROLE_STAGE`; `stepOfNode` maps a role, the last
    segment of an id and the rule names of the P2b contract, and nothing for Object's own keys.
-7. The only scripts are `static/vendor/leaflet/leaflet.js` then the module `static/app.js`,
-   the only stylesheets `static/vendor/leaflet/leaflet.css` then `static/styles.css`
-   (decision M1); every literal `t()` key of `app.js`, `map.js`, `geo.js` exists in both
+7. The only scripts `index.html` carries are `static/vendor/leaflet/leaflet.js` then the module
+   `static/app.js`, the only stylesheets `static/vendor/leaflet/leaflet.css` then
+   `static/styles.css` (decision M1; MapLibre is added by `map.js` when the street map is asked
+   for, never before); every literal `t()` key of `app.js`, `map.js`, `geo.js` exists in both
    languages and none of them calls `t()` with a dynamic key.
 8. `mock/zones.json` follows the `osxp-zones-1` format (with a 64-hex `revision` and empty
    `problems`, as GET answers it), and `validateZonesDocument` accepts it
