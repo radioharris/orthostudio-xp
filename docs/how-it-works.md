@@ -221,7 +221,7 @@ Settings' *Do you have elevation files of your own?* takes the folder they are i
 the file of its own square from it, at any resolution, subfolders included. The files must be named
 after their square, as the SRTM data are: `N47E011.hgt`, or `.tif`. Where your folder has nothing,
 the relief you chose stays in charge, so a collection that covers one country is no trouble. Change
-a file and the tiles that use it are built again; the rest are not.
+a file and the tiles that use it are built again; the rest are not. A single file works too, under *My own elevation file*, and writing `{latlon}` in its path where the name of the square goes (`/my-relief/{latlon}.hgt`) makes it one file per tile without naming a folder.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch

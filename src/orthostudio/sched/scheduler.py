@@ -661,7 +661,7 @@ class Scheduler:
         if rec is None or rec.state != "running":
             return  # late progress after completion is dropped (causal order per node)
         rec.last_fraction = min(1.0, max(0.0, float(fraction)))
-        self._emit(Progress(node_id, rec.last_fraction, message))
+        self._emit(Progress(node_id, rec.last_fraction, message), from_callback=True)
 
     async def _settle_cancel(self, grace_s: float | None = None) -> None:
         """After ``cancel()``: wait for running nodes (grace), then fail whatever is left.
@@ -691,13 +691,25 @@ class Scheduler:
 
     # -- events and statistics ---------------------------------------------------------------
 
-    def _emit(self, event: Event) -> None:
+    def _emit(self, event: Event, *, from_callback: bool = False) -> None:
+        """Hand one event to the listener; ``from_callback`` when nothing above can catch.
+
+        A listener stops a run by raising (the API's ``CancelRequested``), and that only works
+        where the caller can see it: from a callback of the loop, asyncio would print the whole
+        traceback in the log instead, where it reads like a crash. A user who cancelled a build
+        saw two of them (2026-09-19). The run is being stopped anyway, and the next event from the
+        coroutine carries the refusal.
+        """
         if self._on_event is None:
             return
         try:
             self._on_event(event)
         except Exception:
             log.exception("on_event raised for %r", event)
+        except BaseException:
+            if not from_callback:
+                raise
+            log.debug("on_event asked to stop the run, from a callback (%r)", event)
 
     def _stats(self) -> Stats:
         now = time.perf_counter()

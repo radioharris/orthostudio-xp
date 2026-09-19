@@ -610,3 +610,29 @@ def test_a_waiting_node_lends_its_network_slot(store: Store) -> None:
     assert _max_concurrent(spans) == 2, "the waiting node never lent its slot"
     # and the slot is counted once: the run ends without the counter going negative
     assert sched._running["net"] == 0
+
+
+def test_a_listener_that_stops_the_run_never_prints_from_a_callback(store: Store) -> None:
+    """A listener stops a run by raising, and the scheduler lets that through where the caller can
+    see it. From a callback of the loop nothing can: asyncio would print the whole traceback in the
+    log, which reads like a crash (a user who cancelled a build saw two, 2026-09-19).
+    """
+
+    class Stop(BaseException):
+        pass
+
+    seen: list[str] = []
+
+    def listener(event: Event) -> None:
+        seen.append(type(event).__name__)
+        if isinstance(event, Progress):  # progress alone reaches the listener from a callback
+            raise Stop
+
+    sched = _sched(store)
+    sched.add(_node("a", SRC, seconds=0.2, tag="a"))
+    refs = asyncio.run(sched.run(["a"], on_event=listener))
+    assert refs and "Progress" in seen  # the node ran, reported, and the run went through
+
+    # from the coroutine, where the caller can see it, the same refusal is let through
+    with pytest.raises(Stop):
+        sched._emit(Progress("a", 0.5, "half"))

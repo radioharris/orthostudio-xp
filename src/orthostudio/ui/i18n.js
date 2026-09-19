@@ -605,7 +605,7 @@ const STRINGS = {
     "settings.q.relief_file": "Mon propre fichier d'altitudes (GeoTIFF ou HGT)",
     "settings.q.relief_file_note": "par exemple un modèle numérique de terrain national détaillé",
     "settings.q.relief_path": "Quel fichier ?",
-    "settings.q.relief_path_help": "Le chemin complet du fichier sur cet ordinateur. Il doit couvrir toute la tuile : au-delà de son bord, les altitudes sont étirées.",
+    "settings.q.relief_path_help": "Le chemin complet du fichier sur cet ordinateur. Il doit couvrir toute la tuile : au-delà de son bord, les altitudes sont étirées. Écrivez {latlon} à la place du nom du carré pour un fichier par tuile, par exemple /mes-reliefs/{latlon}.hgt.",
     "settings.q.relief_path_missing": "Indiquez le chemin du fichier, ou choisissez le relief d'X-Plane 12 : le moteur refuse un fichier vide.",
 
     "settings.q.own": "Avez-vous vos propres fichiers d'altitudes ?",
@@ -1356,7 +1356,7 @@ const STRINGS = {
     "settings.q.relief_file": "My own elevation file (GeoTIFF or HGT)",
     "settings.q.relief_file_note": "for example a detailed national elevation model",
     "settings.q.relief_path": "Which file?",
-    "settings.q.relief_path_help": "The full path of the file on this computer. It must cover the whole tile: beyond its edge the heights are stretched.",
+    "settings.q.relief_path_help": "The full path of the file on this computer. It must cover the whole tile: beyond its edge the heights are stretched. Write {latlon} where the name of the square goes for one file per tile, as in /my-relief/{latlon}.hgt.",
     "settings.q.relief_path_missing": "Type the path of the file, or choose X-Plane 12's relief: the engine refuses an empty file.",
 
     "settings.q.own": "Do you have elevation files of your own?",
@@ -1531,6 +1531,9 @@ const DATA_DIR_WHY = {
  * Alberta read "install this region", which he had, 2026-09-19). */
 const DOWNLOADED_RELIEF = new Set(["COP30", "HRDEM", "View", "SRTM", "ALOS"]);
 
+/** A source that is a file or a folder of the user's own, rather than one of the names above. */
+const LOOKS_LIKE_A_PATH = /[\\/]/;
+
 /** Their names as Settings says them, not as the engine files them. */
 const RELIEF_WORDS = {
   fr: { COP30: "Copernicus", HRDEM: "lidar canadien", View: "viewfinderpanoramas" },
@@ -1582,7 +1585,9 @@ const CODES = {
         ? ["Pas de relief pour cette tuile : l'USGS ne couvre que les États-Unis. OrthoStudio XP ne construit pas une tuile plate.", "Dans Réglages, choisissez « Le relief d'X-Plane 12 » ou « Le relief Copernicus » pour cette région."]
         : DOWNLOADED_RELIEF.has(String(c.source || ""))
           ? [`Le relief ${reliefWord("fr", c.source)} de cette tuile n'a pas pu être obtenu ({reason}). OrthoStudio XP ne construit pas une tuile plate.`, "Réessayez ; si cela se reproduit, choisissez « Le relief d'X-Plane 12 » dans Réglages, qui ne demande aucun téléchargement, et signalez-le."]
-          : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
+          : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
+            ? ["Pas de relief pour cette tuile dans vos propres fichiers : {reason}. OrthoStudio XP ne construit pas une tuile plate.", "Ajoutez le fichier de ce carré, ou choisissez un autre relief dans Réglages ; un dossier posé par-dessus un relief laisse celui-ci répondre là où il n'a rien."]
+            : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Passez « Vides du raster » à « nearest » dans Réglages si ce n'est pas la mer."],
     MESH_TRIANGLE_BUDGET_REACHED: ["Le maillage a atteint la limite de triangles.", "Augmentez limit_tris ou curvature_tol dans Avancé."],
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
@@ -1628,7 +1633,9 @@ const CODES = {
         ? ["No relief for this tile: the USGS covers the United States only. OrthoStudio XP does not build a flat tile.", "In Settings, choose “The relief of X-Plane 12” or “The Copernicus relief” for this region."]
         : DOWNLOADED_RELIEF.has(String(c.source || ""))
           ? [`The ${reliefWord("en", c.source)} relief of this tile could not be obtained ({reason}). OrthoStudio XP does not build a flat tile.`, "Try again; if it happens again, choose “The relief of X-Plane 12” in Settings, which downloads nothing, and report it."]
-          : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
+          : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
+            ? ["No relief for this tile in your own files: {reason}. OrthoStudio XP does not build a flat tile.", "Add the file of that square, or choose another relief in Settings; a folder laid over a relief lets that relief answer where it has nothing."]
+            : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
     DEM_VOIDS_FILLED_WITH_ZERO: ["Voids of the elevation raster were set to 0 m.", "Set “Raster voids” to “nearest” in Settings if this is not sea."],
     MESH_TRIANGLE_BUDGET_REACHED: ["The mesh reached its triangle budget.", "Raise limit_tris or curvature_tol in Advanced."],
     ZONE_INVALID: ["A zone cannot be used: nothing is saved or built until it is fixed.", "Fix or delete that zone in step 2 (or in the zones file), then try again."],
