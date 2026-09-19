@@ -215,6 +215,14 @@ field I want inside this square? They appear from zoom 8 in, where there are few
 *outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing
 is chosen for you: a zone can cover several tiles, and each tile is a download.
 
+**Your own elevation files.** Many countries publish lidar surveys far finer than the worldwide
+data, and enthusiasts republish them square by square (Sonny's models of Europe, for instance).
+Settings' *Do you have elevation files of your own?* takes the folder they are in: each tile takes
+the file of its own square from it, at any resolution, subfolders included. The files must be named
+after their square, as the SRTM data are: `N47E011.hgt`, or `.tif`. Where your folder has nothing,
+the relief you chose stays in charge, so a collection that covers one country is no trouble. Change
+a file and the tiles that use it are built again; the rest are not.
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in

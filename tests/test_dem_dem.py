@@ -401,3 +401,49 @@ def test_elevation_path_is_shared_with_ortho4xp(tmp_path: Path) -> None:
     assert elevation_path("View", tmp_path, 43, 5).relative_to(tmp_path) == Path(
         "+40+000/N43E005.hgt"
     )
+
+
+def test_a_folder_of_ones_own_files_is_laid_over_the_relief_chosen(tmp_path: Path) -> None:
+    """A user has the lidar models of Europe by the hundred, one file per square, and wants to
+    name the folder once rather than a file per tile (X-Plane.Org, 2026-09-19).
+
+    The folder rides in ``custom_dem`` as an overlay: the square it holds takes its file, and where
+    it has nothing the relief under it answers, so a partial set builds every tile.
+    """
+    own = tmp_path / "Sonny" / "Austria"
+    own.mkdir(parents=True)
+    ramp = np.linspace(300, 2000, 1201, dtype=np.float32)
+    (np.zeros((1201, 1), np.float32) + ramp[None, :]).astype(">i2").tofile(own / "N47E011.hgt")
+    base = tmp_path / "base"  # stands here for Copernicus or X-Plane's relief: one file a square
+    base.mkdir()
+    for cell in ("N47E011", "N47E010"):
+        np.full((1201, 1201), 100, dtype=">i2").tofile(base / f"{cell}.hgt")
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download, memo=NegativeMemo())
+    folder = str(tmp_path / "Sonny")
+
+    middle = np.array([[0.25, 0.5], [0.5, 0.5], [0.75, 0.5]])
+    held = Dem.build(TileRef(47, 11), opts, custom_dem=f"{base};{folder}")
+    assert held.alt_vec(middle).round().tolist() == [725.0, 1150.0, 1575.0]  # his own file
+
+    # a square his folder does not hold: the relief under it, and no failure
+    events: list[OsxpError] = []
+    elsewhere = Dem.build(
+        TileRef(47, 10), opts, custom_dem=f"{base};{folder}", on_event=events.append
+    )
+    assert elsewhere.alt_vec(middle).round().tolist() == [100.0, 100.0, 100.0]
+    assert [e.code for e in events if e.code == "DEM_OVERLAY_UNAVAILABLE"]
+
+
+def test_a_folder_of_ones_own_alone_refuses_the_squares_it_does_not_hold(tmp_path: Path) -> None:
+    """Named as the relief itself, rather than over one, the folder must hold the square: a tile
+    is refused rather than built flat (decision 0007), and the message names the folder."""
+    own = tmp_path / "own"
+    own.mkdir()
+    np.full((1201, 1201), 500, dtype=">i2").tofile(own / "N47E011.hgt")
+    opts = EnsureOptions(elevation_dir=tmp_path / "base", download=no_download, memo=NegativeMemo())
+    held = Dem.build(TileRef(47, 11), opts, custom_dem=str(own))
+    assert held.alt_vec(np.array([[0.5, 0.5]])).round().tolist() == [500.0]
+    with pytest.raises(OsxpError) as raised:
+        Dem.build(TileRef(47, 10), opts, custom_dem=str(own))
+    assert raised.value.code == "DEM_TILE_UNAVAILABLE"
+    assert str(own) in str(raised.value.context.get("reason", ""))

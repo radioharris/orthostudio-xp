@@ -33,7 +33,12 @@ from pydantic import Field
 
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
-from orthostudio.dem.sources import Download, default_elevation_dir, hem_latlon
+from orthostudio.dem.sources import (
+    Download,
+    cell_file_in_folder,
+    default_elevation_dir,
+    hem_latlon,
+)
 from orthostudio.dem.xplane import XP12_INPUTS, XP12_SOURCE
 from orthostudio.dsf import DsfParams, Xp12Rasters, airport_covers, build_dsf
 from orthostudio.dsf.xp12 import global_scenery_dsf, rasters_from_dsf, read_global_scenery_dsf
@@ -1386,8 +1391,11 @@ def dem_declaration(
     """
     params: dict[str, Any] = {**cfg, "tile": spec.tile.name}
     inputs: dict[str, Node | ArtifactRef | None] = dict.fromkeys(XP12_INPUTS)
-    if spec.relief != "xplane" or cfg.get("custom_dem"):
-        return params, inputs
+    # A folder of the user's own files rides in ``custom_dem`` as one more overlay, so the base
+    # here is what comes before the first separator: ";/his/folder" is still the X-Plane relief.
+    base, _, overlays = str(cfg.get("custom_dem") or "").partition(";")
+    if spec.relief != "xplane" or base:
+        return _stamp_own_file(params, spec), inputs
     if global_source(spec.tile) is None:
         missing = (
             global_scenery_dsf(global_scenery, spec.tile) if global_scenery is not None else None
@@ -1410,11 +1418,41 @@ def dem_declaration(
             remedy="Install this region of the X-Plane 12 Global Scenery with the X-Plane "
             "installer (or give --global-scenery / --xplane), or build with --relief view.",
         )
-    params["custom_dem"] = XP12_SOURCE
+    params["custom_dem"] = f"{XP12_SOURCE};{overlays}" if overlays else XP12_SOURCE
     for name, (dlat, dlon) in XP12_INPUTS.items():
         lat = spec.tile.lat + dlat
         inputs[name] = global_source(spec.tile.neighbour(dlat, dlon)) if -90 <= lat < 90 else None
-    return params, inputs
+    return _stamp_own_file(params, spec), inputs
+
+
+def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
+    """``params`` with the mark of the user's own file for this square, when a folder is named.
+
+    A folder of one's own rides in ``custom_dem`` as an overlay: the square it holds takes its
+    file, every other square keeps the relief chosen (a user of the X-Plane.Org page has the lidar
+    models of Europe by the hundred and asked to name the folder once, 2026-09-19). What that file
+    weighs and when it was last written enters the key, because replacing a file with a better
+    version of itself leaves its path as it was, and the tile would come back from the store
+    unchanged.
+    """
+    folders = [
+        Path(part)
+        for part in str(params.get("custom_dem") or "").split(";")[1:]
+        if part and Path(part).is_dir()
+    ]
+    marks = []
+    for folder in folders:
+        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon)
+        if own is None:
+            continue
+        try:
+            stat = own.stat()
+        except OSError:
+            continue
+        marks.append(f"{own.name}:{stat.st_size}:{stat.st_mtime_ns}")
+    if marks:
+        params["own_stamp"] = " ".join(marks)
+    return params
 
 
 def declare(

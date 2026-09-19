@@ -78,6 +78,28 @@ the shape the assembly expects. Measured afterwards on `+53-114`: the mesh build
 gives 714 m at Edmonton International (published 723 m) and 667 m at Edmonton City Centre
 (published 671 m).
 
+### 3.0a A folder of one's own files
+
+Added for a user of the X-Plane.Org page who has the lidar models of Europe by the hundred, one
+file per one-degree square, and asked to name the folder once rather than a file per tile
+(2026-09-19). Settings' *Do you have elevation files of your own?* takes a folder; it travels in
+`custom_dem` as **one more overlay**, `COP30;/path/to/folder` (or `XP12;...`, the pipeline putting
+the base in front), so the square the folder holds takes its file and every other square keeps the
+relief chosen. A partial set therefore builds every tile.
+
+`sources.cell_file_in_folder` finds the file: any depth under the folder, the stem being the cell
+(`N47E011`), and `.hgt`, `.tif`, `.tiff` or `.raw`, in that order. Any resolution is read, the
+side being worked out from the size of the file: 3" (1201, upsampled to 3601), 1" (3601) and 0.5"
+(7201) were built end to end. Named as the relief itself rather than over one, a folder must hold
+the square: the tile is refused rather than built flat (decision 0007), and the message names the
+folder.
+
+**What enters the key.** The folder's path alone would not do: replacing a file with a better
+version of itself leaves the path as it was, and the tile would come back from the store unchanged.
+`pipeline.build` looks the file up for each square and puts its name, its size and the time it was
+last written into `DemParams.own_stamp`. A file restored with an old timestamp is therefore not
+noticed, which is the accepted limit.
+
 ### 3.0b `HRDEM` (Canada's lidar, NRCan) — OrthoStudio XP's own
 
 Added for the same user as the USGS option, who flies in Canada and asked for a source there

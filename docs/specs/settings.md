@@ -43,7 +43,7 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 
 | Level | Planned | Leaves here | Note |
 |---|---|---|---|
-| essential | 8 | 14 | 8 groups, `region` excepted, `overlays` and `data_dir` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 3 |
+| essential | 8 | 16 | 8 groups, `region` excepted, `overlays` and `data_dir` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 4 |
 | advanced | 14 | 14 | |
 | expert | 20 | 19 | the plan's expert list named 19 parameters under the heading "20" |
 | total | 42 | 47 | |
@@ -77,6 +77,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 3). |
 | `xplane_dir` | str or absent (`None` = detected by `install.detect_xplane`) | - | `None` | `custom_scenery_dir` (its parent) | Your X-Plane Custom Scenery. Used only for "1-click" creation (or deletion) of symbolic links from Ortho4XP tiles to there. |
 | `data_dir` | str or absent (`None` = `$OSXP_HOME`); `PUT /api/settings` accepts a new folder only when `orthostudio.home.check_data_dir` does (absolute, found, writable, outside X-Plane's `Custom Scenery`, on a disk that hard-links files) and no build runs or waits | - | `None` | - (OrthoStudio XP) | The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its caches, several GB per tile: on an external disk, for instance (user request, 2026-09-15; `pipeline-textures.md` 2). Empty: OrthoStudio XP's own folder. Its disk must hard-link files (APFS, Mac OS Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where it is. |
+| `relief.folder` | str (empty = none) | - | `""` | `custom_dem` (as an overlay) | A folder of elevation files of the user's own, one per one-degree square, named after it (`N47E011.hgt`, `.tif`), subfolders included (user request, 2026-09-19; `dem.md` 3.0a). It is laid over the relief chosen, whichever that is: a square the folder holds takes its file, every other square keeps that relief. |
 
 `region` (map, replaces `lat`/`lon`/`zone_list`) is P5.
 

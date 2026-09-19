@@ -146,6 +146,7 @@ export const QUESTION_PATHS = {
   lakes: ["advanced.ratio_water_pct"],
   colours: ["essential.photo_look", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"],
   relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata"],
+  own: ["essential.relief.folder"],
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
   data: ["essential.data_dir"],
@@ -161,6 +162,7 @@ const QUESTION_TEXT = {
   lakes: [() => t("settings.q.lakes"), () => t("settings.q.lakes_help")],
   colours: [() => t("settings.q.colours"), () => t("settings.q.colours_help")],
   relief: [() => t("settings.q.relief"), () => t("settings.q.relief_help")],
+  own: [() => t("settings.q.own"), () => t("settings.q.own_help")],
   overlays: [() => t("settings.q.overlays"), () => t("settings.q.overlays_help")],
   xplane: [() => t("settings.q.xplane"), () => t("settings.q.xplane_help")],
   data: [() => t("settings.q.data"), () => t("settings.q.data_help")],
@@ -740,6 +742,7 @@ function renderQuestions(box, view) {
     );
   }
   box.append(questionBox(view, "relief", ...relief));
+  box.append(ownFolderQuestion(view));
 
   // The colours of the photo: the choice in plain words, and the three numbers right here when
   // the pilot asks for their own, so nobody has to go hunting under For experts (2026-09-18).
@@ -819,6 +822,37 @@ function dataQuestion(view) {
     h("p", { class: "question-help" }, t("settings.q.data_disk", { formats: dataFormats(view.platform) })),
     // A user typed his Custom Scenery there and was refused once he had saved (2026-09-17).
     h("p", { class: "question-help" }, t("settings.q.data_outside")));
+}
+
+/**
+ * A folder of the user's own elevation files, laid over the relief chosen above (2026-09-19).
+ *
+ * A user of the X-Plane.Org page has the lidar models of Europe by the hundred, one file per
+ * square, and asked to name the folder once instead of a file per tile. Where the folder has
+ * nothing, the relief above answers, so a partial set is safe.
+ */
+function ownFolderQuestion(view) {
+  const { h } = view.dom;
+  const d = view.draft;
+  const field = h("input", { type: "text", id: "q-relief-folder", class: "question-path", spellcheck: "false", autocomplete: "off", placeholder: t("settings.q.own_placeholder"), dataset: { focusKey: "q:relief-folder" } });
+  field.value = getPath(d, "essential.relief.folder") || "";
+  field.addEventListener("input", () => setPath(d, "essential.relief.folder", field.value.trim()));
+  field.addEventListener("change", () => view.changed());
+  const choose = view.chooseFolder
+    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:relief-folder-choose" }, onclick: async () => {
+        const path = await view.chooseFolder(t("settings.q.own_prompt"), field.value.trim() || null);
+        if (!path) return;
+        field.value = path;
+        setPath(d, "essential.relief.folder", path);
+        view.changed();
+      } }, t("settings.q.own_choose"))
+    : null;
+  return questionBox(view, "own",
+    h("div", { class: "sub-question" },
+      h("label", { class: "sub-question-title", for: "q-relief-folder" }, t("settings.q.own_folder")),
+      h("div", { class: "path-row" }, field, choose)),
+    h("p", { class: "question-help" }, t("settings.q.own_names")),
+    h("p", { class: "question-help" }, t("settings.q.own_rest")));
 }
 
 function renderExperts(box, view) {

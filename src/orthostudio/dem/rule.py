@@ -55,6 +55,12 @@ class DemParams(RuleParams):
     """osxp-only, TODO (spec 9.1, blocker B2): reuse a local 3" file when the 1" archive is
     unavailable. Off by default: turning it on changes ``Data<tile>.alt`` and the mesh."""
 
+    own_stamp: str = ""
+    """What the file of one's own weighed and when it was last written (``size:mtime``), for the
+    square this node builds, when ``custom_dem`` names a folder of one's own (the pipeline fills
+    it). The path alone would not do: replacing a file with a better version of itself leaves the
+    path as it was, and the tile would come back from the store unchanged."""
+
     @property
     def fill(self) -> FillNodata:
         return "nearest" if self.fill_nodata else "zero"

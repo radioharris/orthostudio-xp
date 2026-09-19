@@ -387,3 +387,51 @@ def test_source_ref_is_content_addressed(tmp_path: Path) -> None:
     p.write_bytes(b"XPLNEDSF" * 3)
     ref = source_ref(p)
     assert ref.key == ref.digest and ref.size == 24 and ref.path == p and ref.kind == "file"
+
+
+def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
+    tmp_path: Path,
+) -> None:
+    """Settings hand the folder down inside ``custom_dem``; the node keeps the relief chosen as its
+    base and adds the folder as an overlay, with the mark of the file of that square in its key.
+
+    Without that mark the path alone would be the key, and replacing a file with a better version
+    of itself would answer from the store, unchanged (a user of the X-Plane.Org page, 2026-09-19).
+    """
+    from orthostudio.config.models import Settings
+    from orthostudio.config.overrides import to_build_overrides
+    from orthostudio.pipeline.build import dem_declaration
+
+    ref = ArtifactRef("a" * 64, "b" * 64, tmp_path / "dsf", "fake", "file", 1)
+
+    own = tmp_path / "Sonny" / "Austria"
+    own.mkdir(parents=True)
+    (own / "N47E011.hgt").write_bytes(b"\x00" * 2000)
+    settings = Settings.model_validate(
+        {"essential": {"relief": {"source": "copernicus", "folder": str(tmp_path / "Sonny")}}}
+    )
+    cfg = to_build_overrides(settings)
+    assert cfg["custom_dem"] == f"COP30;{tmp_path / 'Sonny'}"
+
+    spec = _spec(tmp_path, TileRef(47, 11), relief="copernicus")
+    params, _ = dem_declaration(spec, cfg, lambda _tile: None, None)
+    assert params["custom_dem"] == f"COP30;{tmp_path / 'Sonny'}"
+    assert params["own_stamp"].startswith("N47E011.hgt:2000:")
+    # a square the folder does not hold: the same node, and nothing to mark
+    other, _ = dem_declaration(
+        _spec(tmp_path, TileRef(47, 10), relief="copernicus"), cfg, lambda _tile: None, None
+    )
+    assert "own_stamp" not in other
+
+    # the X-Plane relief keeps its own base, and the folder still rides over it
+    with_xp = Settings.model_validate(
+        {"essential": {"relief": {"source": "auto", "folder": str(tmp_path / "Sonny")}}}
+    )
+    xp_cfg = to_build_overrides(with_xp)
+    assert xp_cfg["custom_dem"] == f";{tmp_path / 'Sonny'}"
+    xp_spec = _spec(tmp_path, TileRef(47, 11), relief="xplane")
+    xp_params, xp_inputs = dem_declaration(xp_spec, xp_cfg, lambda tile: ref, None)
+    assert xp_params["custom_dem"] == f"XP12;{tmp_path / 'Sonny'}"
+    assert any(
+        value is ref for value in xp_inputs.values()
+    )  # the Global Scenery DSFs are still read

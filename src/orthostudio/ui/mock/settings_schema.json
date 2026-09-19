@@ -166,6 +166,16 @@
               "type": "string",
               "unit": ""
             },
+            "folder": {
+              "default": "",
+              "description": "A folder of elevation files of your own, one per one-degree square, named after that square as the SRTM format does (N47E011.hgt, or .tif), subfolders included. Each tile takes its own file from it, whatever its resolution; where the folder has nothing, the relief chosen above is used. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to name the folder once (2026-09-19).",
+              "hint": "A folder of elevation files of your own, one per one-degree square, named after that square as the SRTM format does (N47E011.hgt, or .tif), subfolders included. Each tile takes its own file from it, whatever its resolution; where the folder has nothing, the relief chosen above is used. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to name the folder once (2026-09-19).",
+              "level": "essential",
+              "ortho4xp": null,
+              "title": "Folder",
+              "type": "string",
+              "unit": ""
+            },
             "fill_nodata": {
               "default": "nearest",
               "description": "When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data).",

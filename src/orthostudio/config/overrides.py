@@ -110,6 +110,18 @@ def _custom_dem(relief: Any) -> str:
     return ""
 
 
+def _with_folder(base: str, relief: Any) -> str:
+    """``base`` with the user's own folder of files laid over it, when he named one.
+
+    It travels as one more overlay of ``custom_dem``, which already carries composites: a square
+    the folder holds takes its file, every other square keeps the relief chosen. An empty base
+    (the X-Plane relief, which the pipeline resolves) leaves the leading separator, and the
+    pipeline puts ``XP12`` in front of it.
+    """
+    folder = str(relief.folder or "").strip()
+    return f"{base};{folder}" if folder else base
+
+
 def to_build_overrides(settings: Settings) -> dict[str, Any]:
     """The tile variables and overlay settings of ``settings`` under their Ortho4XP names."""
     e, a, x = settings.essential, settings.advanced, settings.expert
@@ -120,7 +132,7 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
         "masking_mode": e.coast_transition.profile,
         "masks_width": _masks_width(e.coast_transition.width_m),
         "water_tech": e.water_rendering,
-        "custom_dem": _custom_dem(e.relief),
+        "custom_dem": _with_folder(_custom_dem(e.relief), e.relief),
         "fill_nodata": e.relief.fill_nodata == "nearest",
         "ratio_water": float(a.ratio_water_pct) / 100.0,
         "overlay_lod": float(a.overlay_lod_km) * 1000.0,

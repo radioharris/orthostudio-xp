@@ -42,6 +42,7 @@ __all__ = [
     "NegativeMemo",
     "Source",
     "base_file_name",
+    "cell_file_in_folder",
     "cop30_name",
     "cop30_url",
     "default_elevation_dir",
@@ -172,6 +173,35 @@ def generic_tif(elevation_dir: Path, lat: int, lon: int) -> Path:
     """``<base>.tif``: the implicit source when ``custom_dem`` is empty (``:313-314``)."""
     base = base_file_name(elevation_dir, lat, lon)
     return base.with_name(base.name + ".tif")
+
+
+OWN_SUFFIXES: tuple[str, ...] = (".hgt", ".tif", ".tiff", ".raw")
+"""What a file of one's own may be, in the order they are tried. ``.hgt`` first: that is how the
+sets of the community come (Sonny's lidar models of Europe, viewfinderpanoramas)."""
+
+
+def cell_file_in_folder(folder: Path, lat: int, lon: int) -> Path | None:
+    """The file of cell ``(lat, lon)`` somewhere under ``folder``, or ``None``.
+
+    A user has his own elevation files by the hundred, one per one-degree cell, named after that
+    cell as the SRTM format does (``N47E011.hgt``), and often sorted into a directory per country
+    (a user of the X-Plane.Org page, 2026-09-19). He names the folder once, and each tile takes the
+    file of its own square from it, whatever the depth it sits at and whatever its resolution: the
+    reader works the side out from the size of the file.
+    """
+    cell = hem_latlon(lat, lon).lower()
+    try:
+        found = {
+            path.suffix.lower(): path
+            for path in folder.rglob("*")
+            if path.stem.lower() == cell and path.suffix.lower() in OWN_SUFFIXES and path.is_file()
+        }
+    except OSError:  # an unplugged disk, a folder that went away: no file, no crash
+        return None
+    for suffix in OWN_SUFFIXES:
+        if suffix in found:
+            return found[suffix]
+    return None
 
 
 def default_elevation_dir() -> Path:

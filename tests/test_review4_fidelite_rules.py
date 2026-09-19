@@ -117,6 +117,7 @@ def test_the_native_rules_declare_exactly_the_values_their_computation_reads() -
         "custom_dem",
         "fill_nodata",
         "dem1_local_fallback",
+        "own_stamp",
     }
 
 

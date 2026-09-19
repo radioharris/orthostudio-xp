@@ -37,6 +37,7 @@ from orthostudio.dem.sources import (
     CellState,
     EnsureOptions,
     EnsureResult,
+    cell_file_in_folder,
     elevation_path,
     ensure_elevation,
     generic_tif,
@@ -230,7 +231,26 @@ class Dem:
             read = _read_whole_file(result.path, tile, source, record, base_if_error=3601)
             return cls._from_read(tile, read, source, (result,))
         path = Path(source)
-        read = _read_whole_file(path, tile, source, record)
+        # A folder of one's own files: the one of this square is taken from it, wherever it sits
+        # (``cell_file_in_folder``). An overlay finds nothing where the folder has nothing, and the
+        # relief under it answers there; a base must have it, as any other base must.
+        if path.is_dir():
+            own = cell_file_in_folder(path, tile.lat, tile.lon)
+            if own is None:
+                if optional:
+                    return None
+                raise OsxpError(
+                    "DEM_TILE_UNAVAILABLE",
+                    context={
+                        "cell": hem_latlon(tile.lat, tile.lon),
+                        "source": source,
+                        "reason": f"no file for this square in {path}",
+                    },
+                )
+            path = own
+        if optional and not path.is_file():
+            return None
+        read = _read_whole_file(path, tile, str(path), record)
         return cls._from_read(
             tile,
             read,

@@ -59,6 +59,7 @@ def test_rule_declaration() -> None:
         "custom_dem",
         "fill_nodata",
         "dem1_local_fallback",
+        "own_stamp",
     }
 
 

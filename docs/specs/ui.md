@@ -791,6 +791,13 @@ has a *Settings* button that focuses its field. The library count follows every 
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
 
+**Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
+of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
+like the other folders of Settings). It says what the files must be called, that subfolders are
+searched and any resolution read, and that the relief chosen above answers wherever the folder has
+nothing. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
+name the folder once (`dem.md` 3.0a).
+
 **Paths with a tilde** (2026-09-19): wherever the page *reads out* a folder (this bar, the
 Library's line about which X-Plane it speaks of, Settings' detected folder and data folder, the
 Plan's notice about a saved X-Plane that is gone), what lies under the home folder is written
