@@ -13,13 +13,15 @@ built and checked automatically, but nobody has built a tile with it yet; a firs
 probably come later. The installer for Intel Macs is built and checked automatically too, on an
 Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an Intel Mac yet.
 
-![The Plan page: the tiles already installed in green around Majorca and Minorca, two more selected in blue, and the steps to build them](docs/images/plan.jpg)
+![The Plan page: three squares chosen over the Alps and one over Corsica, the colours of the photos set beside the map, and the four steps to build them](docs/images/plan.jpg)
 
 ## What you get
 
 - **A page with a map.** Click the squares you want, see the tiles already in X-Plane, draw
   sharper zones around airports or anywhere you fly low (one zone may cover several tiles),
-  check the size and the time before building, then build and install in one click.
+  check the size and the time before building, then build and install in one click. The map shows
+  the aerial imagery or, in one click, the OpenStreetMap street map, with the airports and their
+  ICAO codes as you zoom in, to find what you fly over before you choose a square.
 - **Works, as it happens.** A progress bar for every step of every tile, the time elapsed and
   a range for the time left over the whole build (starting from your connection's speed on your
   last builds), errors that say what happened and what to do, and a button to fetch again only
@@ -30,8 +32,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   Ortho4XP setting still there under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it; remove a tile from
   X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
-  and free that space in one click. Tiles imported from Ortho4XP are listed too, and OrthoStudio XP
-  never deletes them. A button shows a tile's folder in the Finder, the Windows File Explorer or the
+  and free that space in one click, the downloaded relief and the map background included. Tiles
+  imported from Ortho4XP are listed too, and OrthoStudio XP never deletes them. A button shows a tile's folder in the Finder, the Windows File Explorer or the
   Linux file manager.
 - **Installation handled.** Links in Custom Scenery under OrthoStudio XP's own names
   (`zOrthoStudio_<tile>`, `yOrthoStudio_Overlays`), `scenery_packs.ini` in the right order, a
@@ -61,9 +63,13 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 How it works, what it keeps on disk and how to clean it:
 [docs/how-it-works.md](docs/how-it-works.md).
 
-| Works | Library | Settings |
-|---|---|---|
-| ![A finished build of five tiles: every step of every tile, then the final report](docs/images/works.png) | ![The Library: five tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
+| What it will cost | Works |
+|---|---|
+| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.jpg) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
+
+| Library | Settings |
+|---|---|
+| ![The Library: four tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
 
 ## Build times, measured
 
@@ -232,7 +238,10 @@ Database Licence (ODbL): OrthoStudio XP downloads the airports, roads, coastline
 tile from public Overpass servers to shape its terrain. Like the imagery, the tiles built from them
 are for your own use.
 
-Base-map borders: Natural Earth (public domain). Map library: Leaflet (BSD-2-Clause).
+The page's street map comes from [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, data ©
+OpenStreetMap contributors), read through the engine so the page contacts nothing but its own
+address. Base-map borders: Natural Earth (public domain). Map libraries: Leaflet (BSD-2-Clause)
+and MapLibre GL (BSD-3-Clause), both vendored.
 
 ## Development
 
