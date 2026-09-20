@@ -816,6 +816,24 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .toast.toast-fail { background: var(--fail); color: #fff; }
 
+/* Find on this page (find.js): a bar at the top right, where a browser puts its own. */
+.find-bar {
+  position: fixed; top: calc(var(--topbar-h) + 8px); right: 12px; z-index: 30;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.find-input {
+  width: 200px; height: 26px; padding: 0 6px; font: inherit; font-size: 12.5px;
+  color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.find-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.find-count { min-width: 5.5em; text-align: right; }
+.find-count.is-warn { color: var(--warn); }
+/* Painted over the text without touching the tree: the screens are drawn again constantly. */
+::highlight(osxp-find) { background: var(--warn-soft); color: var(--fg); }
+::highlight(osxp-find-current) { background: var(--accent); color: var(--bg); }
+
 /* --------------------------------------------------------- motion */
 
 @media (prefers-reduced-motion: reduce) {
@@ -837,6 +855,15 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* ----------------------------------------------------------- settings in plain words (settings.js) */
 
 .settings-form { max-width: 1100px; }
+.settings-search { margin: 0 0 14px; }
+.settings-search-input {
+  width: 100%; max-width: 420px; min-height: 30px; padding: 0 8px;
+  font: inherit; font-size: 13px; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.settings-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-search-note { margin: 6px 0 0; }
+.settings-search-note.is-warn { color: var(--warn); }
 .settings-presets { margin: 4px 0 16px; }
 .presets-title { margin: 0 0 6px; font-weight: 600; color: var(--fg-2); }
 .preset-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }

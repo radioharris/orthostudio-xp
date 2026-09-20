@@ -493,6 +493,13 @@ const STRINGS = {
     "library.err_conflict": "X-Plane a déjà un dossier de ce nom, et ce n'est pas cette copie de la tuile.",
     "library.err_conflict_remedy": "Retirez l'autre copie de X-Plane, ou déplacez ou renommez ce dossier dans Custom Scenery, puis réessayez.",
 
+    "find.label": "Chercher dans cette page",
+    "find.placeholder": "Chercher dans cette page",
+    "find.count": "{n} sur {total}",
+    "find.none": "rien trouvé",
+    "find.previous": "Précédent (Maj+Entrée)",
+    "find.next": "Suivant (Entrée)",
+    "find.close": "Fermer (Échap)",
     "quit.button": "Quitter",
     "quit.help": "Arrêter OrthoStudio XP",
     "quit.title": "Quitter OrthoStudio XP ?",
@@ -503,6 +510,7 @@ const STRINGS = {
     "quit.confirm": "Quitter OrthoStudio XP",
     "quit.stopped_title": "OrthoStudio XP est arrêté",
     "quit.stopped_text": "Vous pouvez fermer cet onglet. Pour l'utiliser à nouveau, ouvrez l'application OrthoStudio XP.",
+    "quit.stopped_text_window": "Vous pouvez fermer cette fenêtre. Pour l'utiliser à nouveau, ouvrez l'application OrthoStudio XP.",
     "quit.gone_text": "Il ne répond plus : il a été arrêté, ou il s'est arrêté de lui-même quelques minutes après la fermeture de sa dernière page. Pour l'utiliser à nouveau, ouvrez l'application OrthoStudio XP.",
     "reveal.mac": "Afficher dans le Finder",
     "reveal.win": "Afficher dans l'Explorateur de fichiers",
@@ -519,6 +527,10 @@ const STRINGS = {
     "settings.invalid": "Réglages refusés par le moteur : {detail}",
     "settings.ortho4xp": "Nom dans Ortho4XP : {name}",
     "settings.recommended": "conseillé",
+    "settings.search": "Chercher un réglage",
+    "settings.search_ph": "Chercher : rivières, eau, min_area…",
+    "settings.search_found": "{n} sur {total} réglages.",
+    "settings.search_none": "Rien ne correspond. Essayez un mot de la question, ou un nom d'Ortho4XP comme min_area.",
     "settings.experts": "Pour les experts",
     "settings.experts_count": "{count} réglages",
     "settings.experts_lead": "Tous les autres réglages, en mots simples. Le petit nom gris est celui du réglage dans Ortho4XP ; la plupart demandent un vol d'essai pour en juger.",
@@ -1263,6 +1275,13 @@ const STRINGS = {
     "library.err_conflict": "X-Plane already has a folder of this name, and it is not this copy of the tile.",
     "library.err_conflict_remedy": "Remove the other copy from X-Plane, or move or rename that folder in Custom Scenery, then try again.",
 
+    "find.label": "Find on this page",
+    "find.placeholder": "Find on this page",
+    "find.count": "{n} of {total}",
+    "find.none": "not found",
+    "find.previous": "Previous (Shift+Enter)",
+    "find.next": "Next (Enter)",
+    "find.close": "Close (Esc)",
     "quit.button": "Quit",
     "quit.help": "Stop OrthoStudio XP",
     "quit.title": "Quit OrthoStudio XP?",
@@ -1273,6 +1292,7 @@ const STRINGS = {
     "quit.confirm": "Quit OrthoStudio XP",
     "quit.stopped_title": "OrthoStudio XP is stopped",
     "quit.stopped_text": "You can close this tab. To use it again, open the OrthoStudio XP app.",
+    "quit.stopped_text_window": "You can close this window. To use it again, open the OrthoStudio XP app.",
     "quit.gone_text": "It no longer answers: it was stopped, or it stopped by itself a few minutes after its last page closed. To use it again, open the OrthoStudio XP app.",
     "reveal.mac": "Show in Finder",
     "reveal.win": "Show in File Explorer",
@@ -1289,6 +1309,10 @@ const STRINGS = {
     "settings.invalid": "Settings rejected by the engine: {detail}",
     "settings.ortho4xp": "Name in Ortho4XP: {name}",
     "settings.recommended": "recommended",
+    "settings.search": "Search the settings",
+    "settings.search_ph": "Search: rivers, water, min_area…",
+    "settings.search_found": "{n} of {total} settings.",
+    "settings.search_none": "Nothing matches. Try a word from the question, or an Ortho4XP name such as min_area.",
     "settings.experts": "For experts",
     "settings.experts_count": "{count} settings",
     "settings.experts_lead": "Every other setting, in plain words. The small grey name is the setting's name in Ortho4XP; most need a test flight to judge.",
@@ -1749,12 +1773,15 @@ export function codeText(code, context = null) {
   return words.map((text) => interpolate(text, ctx));
 }
 
-/** Apply data-i18n / data-i18n-title / data-i18n-placeholder attributes in a subtree. */
+/** Apply data-i18n / -title / -placeholder / -aria-label attributes in a subtree. */
 export function applyStatic(root) {
   for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
   for (const el of root.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
   for (const el of root.querySelectorAll("[data-i18n-placeholder]")) {
     el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+  for (const el of root.querySelectorAll("[data-i18n-aria-label]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
   }
 }
 

@@ -320,6 +320,11 @@
       <p class="lead" data-i18n="settings.lead">Answer in plain words what you want to see in X-Plane. The recommended answer is marked.</p>
     </div>
     <form id="settings-form" class="settings-form" novalidate>
+      <div class="settings-search">
+        <input type="search" id="settings-search" class="settings-search-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="settings.search_ph" data-i18n-aria-label="settings.search" placeholder="Search: rivers, water, min_area…" aria-label="Search the settings">
+        <p class="help settings-search-note" id="settings-search-note" aria-live="polite" hidden></p>
+      </div>
       <div id="settings-presets" class="settings-presets"></div>
       <div id="settings-questions" class="settings-questions"></div>
       <details class="settings-experts" id="settings-experts">
@@ -353,6 +358,14 @@
   <span class="status-item status-home" id="status-home"></span>
 </footer>
 
+<div id="find-bar" class="find-bar" role="search" hidden>
+  <input type="search" id="find-input" class="find-input" spellcheck="false" autocomplete="off"
+         data-i18n-placeholder="find.placeholder" data-i18n-aria-label="find.label" placeholder="Find on this page" aria-label="Find on this page">
+  <span class="help find-count" id="find-count" aria-live="polite"></span>
+  <button type="button" class="btn btn-small" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
+  <button type="button" class="btn btn-small" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
+  <button type="button" class="btn btn-small" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
+</div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- The Library's delete confirmation (app.js confirmDelete): a native modal dialog, outside the

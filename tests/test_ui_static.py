@@ -3133,3 +3133,127 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     # .btn-small keeps its minimum for the buttons whose label may wrap; only these three are fixed
     small = css[css.index(".btn-small {") :][: css[css.index(".btn-small {") :].index("}")]
     assert "min-height" in small and "height: " not in small.replace("min-height", "")
+
+
+def test_a_setting_can_be_found_by_name_or_by_its_ortho4xp_name() -> None:
+    """The questions are laid out in two CSS columns, so the tenth of them sits halfway down the
+    right-hand one: a user with the page in English looked for "How much of the photo on lakes and
+    rivers?", read the page from the top, and never reached it (2026-09-20). The window has no
+    Find to jump there either. A search box filters instead of highlighting, which no Find does:
+    what does not match leaves the column flow and the rest gathers at the top."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'id="settings-search"' in html
+    assert 'data-i18n-placeholder="settings.search_ph"' in html
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("settings.search", "settings.search_ph", "settings.search_found"):
+            assert tables[lang][key], f"{lang} is missing {key}"
+
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    # drawn, then filtered, then the focus and the scroll put back: filtering moves the page
+    body = _function_body(code, "renderSettingsView")
+    assert body.index("renderExperts(") < body.index("applySearch(") < body.index("restoreFocus(")
+    filt = _function_body(code, "applySearch")
+    assert ".question" in filt and ".gen-field" in filt  # both the questions and the experts
+    assert "expert-group" in filt  # a group with nothing left in it hides its title too
+
+    got = _node_json(
+        "settings.js",
+        """(() => {
+          const w = m.searchWords;
+          const hit = (text, q) => m.matchesSearch(text, w(q));
+          return {
+            accents: w("Rivières"),
+            plural: w("rivers"),
+            short: w("gps"),
+            words: w("  photo   lakes "),
+            singular: hit("Simplify lake and river outlines", "rivers"),
+            ortho4xp: hit("Smallest pond drawn as water min_area", "min_area"),
+            accented: hit("Quelle part de la photo sur les lacs et les rivières ?", "rivieres"),
+            both: hit("How much of the photo on lakes and rivers?", "photo lakes"),
+            one_word_missing: hit("How much of the photo on lakes and rivers?", "photo runway"),
+            empty: w(""),
+          };
+        })()""",
+    )
+    assert got == {
+        "accents": ["riviere"],  # accents folded, and the plural s dropped
+        "plural": ["river"],
+        "short": ["gps"],  # too short to lose its s: "gps" is not "gp"
+        "words": ["photo", "lake"],
+        "singular": True,
+        "ortho4xp": True,
+        "accented": True,
+        "both": True,
+        "one_word_missing": False,  # every word has to be found
+        "empty": [],
+    }
+
+
+def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
+    """Since 0.1.8 the app opens in a window of its own: neither WKWebView nor WebView2 carries a
+    Find, and pywebview's Edit menu is Cut, Copy, Paste and Select All only. A user who reached a
+    setting with Cmd+F in the browser found the key dead (2026-09-20). In a browser the key is
+    left alone: its own Find does more than this one."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    for el in ("find-bar", "find-input", "find-count", "find-prev", "find-next", "find-close"):
+        assert f'id="{el}"' in html
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("find.label", "find.count", "find.none", "quit.stopped_text_window"):
+            assert tables[lang][key], f"{lang} is missing {key}"
+    # the window has no tab to close, and said so until 0.1.8
+    assert "tab" not in tables["en"]["quit.stopped_text_window"]
+    assert "onglet" not in tables["fr"]["quit.stopped_text_window"]
+
+    code = (UI / "find.js").read_text(encoding="utf-8")
+    # nothing is written into the page: app.js draws its screens again and compares what it drew,
+    # so matches wrapped in <mark> would be torn out from under the reader. The prose of the
+    # module says all this, so only what it runs is read here.
+    runs = "\n".join(
+        line for line in code.splitlines() if not line.lstrip().startswith(("//", "*", "/*"))
+    )
+    assert "innerHTML" not in runs and "<mark" not in runs
+    assert "CSS.highlights" in code and "new Highlight(" in code
+    assert "window.find?.(" in code  # where the highlight API is missing
+    assert "::highlight(osxp-find)" in (UI / "styles.css").read_text(encoding="utf-8")
+
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "window.pywebview" in _function_body(app_js, "inOwnWindow")
+    assert "bindFind(inOwnWindow());" in app_js
+    assert "findForget();" in _function_body(app_js, "showScreen")
+
+    got = _node_json(
+        "find.js",
+        """(() => {
+          const text = (s) => ({nodeType: 3, nodeValue: s, childNodes: []});
+          const el = (tag, kids, extra = {}) =>
+            ({nodeType: 1, tagName: tag, childNodes: kids, ...extra});
+          globalThis.document = {
+            createRange: () => ({
+              setStart(node, at) { this.startContainer = node; this.from = at; },
+              setEnd(node, at) { this.to = at; },
+            }),
+          };
+          const tree = el("DIV", [
+            text("The Copernicus relief"),
+            el("SCRIPT", [text("copernicus in a script")]),
+            el("P", [text("copernicus twice: copernicus")], {hidden: false}),
+            el("P", [text("hidden copernicus")], {hidden: true}),
+            el("DETAILS", [text("body copernicus")], {open: false, querySelector: () => null}),
+          ]);
+          const found = m.findRanges(tree, "copernicus");
+          return {
+            hits: found.length,
+            offsets: found.map((r) => [r.from, r.to]),
+            words: found.map((r) => r.startContainer.nodeValue),
+            nothing: m.findRanges(tree, "").length,
+          };
+        })()""",
+    )
+    assert got == {
+        "hits": 3,  # the script, the hidden paragraph and the closed details are not read
+        "offsets": [[4, 14], [0, 10], [18, 28]],
+        "words": ["The Copernicus relief"] + ["copernicus twice: copernicus"] * 2,
+        "nothing": 0,
+    }

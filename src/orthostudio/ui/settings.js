@@ -568,14 +568,87 @@ export function parseList(text) {
  * calls ``changed()``, which draws again; the focus, the caret and the scroll position survive
  * (data-focus-key, keptScroll).
  */
+/** Case and accents out of the way, so "rivieres" finds "rivières" and "EAU" finds "eau". */
+function fold(text) {
+  return String(text ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+/** The words of a search. Several words all have to be found, in any order.
+ *
+ * A plural loses its s, so "rivers" finds "Simplify lake and river outlines" and "rivieres"
+ * finds "rivière". Short words keep theirs: "gps" is not "gp".
+ */
+export function searchWords(query) {
+  return fold(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w));
+}
+
+export function matchesSearch(text, words) {
+  const hay = fold(text);
+  return words.every((w) => hay.includes(w));
+}
+
 export function renderSettingsView(parts, view) {
   const saved = captureFocus(parts.root);
   const scroll = keptScroll();
   renderPresets(parts.presets, view);
   renderQuestions(parts.questions, view);
   renderExperts(parts.experts, view);
+  applySearch(parts, view);
   restoreFocus(parts.root, saved);
   scroll?.restore();
+}
+
+/**
+ * Keep only the questions and the expert settings the search names, and say how many are left.
+ *
+ * The questions are laid out in two CSS columns, so the tenth of them sits halfway down the
+ * right-hand one and reading the page from the top never reaches it; the window, unlike a
+ * browser, has no Find to jump there (a user looked for "How much of the photo on lakes and
+ * rivers?" and did not find it, 2026-09-20). What is hidden leaves the column flow, so the
+ * matches gather at the top. Everything the box shows is searched, its Ortho4XP name included:
+ * typing `min_area` finds "Smallest pond drawn as water".
+ */
+let expertsWereOpen;
+
+export function applySearch(parts, view) {
+  const words = searchWords(view.search || "");
+  const searching = words.length > 0;
+  let shown = 0;
+  let total = 0;
+  for (const box of [...parts.questions.querySelectorAll(".question"), ...parts.experts.querySelectorAll(".gen-field")]) {
+    total += 1;
+    const hit = !searching || matchesSearch(box.textContent, words);
+    box.hidden = !hit;
+    if (hit) shown += 1;
+  }
+  // A group of expert settings with nothing left in it takes its title away too.
+  for (const group of parts.experts.querySelectorAll(".expert-group")) {
+    group.hidden = searching && ![...group.querySelectorAll(".gen-field")].some((f) => !f.hidden);
+  }
+  // The presets answer several questions at once: they are not a setting anyone searches for.
+  if (parts.presets) parts.presets.hidden = searching;
+  // A match under the band is no use behind it: a search opens it, and closing the search puts
+  // the band back the way the user had it.
+  const experts = parts.experts.closest("details");
+  if (experts) {
+    if (searching && expertsWereOpen === undefined) expertsWereOpen = experts.open;
+    if (searching) experts.open = true;
+    else if (expertsWereOpen !== undefined) {
+      experts.open = expertsWereOpen;
+      expertsWereOpen = undefined;
+    }
+  }
+  if (!parts.note) return;
+  parts.note.hidden = !searching;
+  parts.note.classList.toggle("is-warn", searching && shown === 0);
+  parts.note.textContent = !searching
+    ? ""
+    : shown
+      ? t("settings.search_found", { n: shown, total })
+      : t("settings.search_none");
 }
 
 /**

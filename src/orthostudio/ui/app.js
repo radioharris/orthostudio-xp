@@ -27,6 +27,7 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { bindFind, findForget } from "./find.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -1915,6 +1916,7 @@ function showScreen(name, arg) {
   state.screen = name;
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   measureMapTop(); // the map can only be measured once its screen is shown
+  findForget(); // an open Find looks in the screen now shown, not the one left behind
   for (const btn of $("nav").querySelectorAll(".nav-btn")) {
     if (btn.dataset.screen === name) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
@@ -4196,10 +4198,11 @@ async function importOrtho4xp(ev) {
 function renderSettings(message, kind) {
   if (!state.schema || !state.settingsDraft) return;
   renderSettingsView(
-    { root: $("settings-form"), presets: $("settings-presets"), questions: $("settings-questions"), experts: $("settings-expert-fields") },
+    { root: $("settings-form"), presets: $("settings-presets"), questions: $("settings-questions"), experts: $("settings-expert-fields"), note: $("settings-search-note") },
     {
       dom: { h, clear },
       draft: state.settingsDraft,
+      search: state.settingsSearch,
       schema: state.schema,
       providers: state.providers,
       xplane: state.status?.xplane || null,
@@ -4423,6 +4426,17 @@ function rerenderAll() {
 
 // ------------------------------------------------------------------ boot
 
+/**
+ * Whether this page is OrthoStudio XP's own window rather than a tab in a browser.
+ *
+ * pywebview writes `window.pywebview` into the page it opens (`webview/js/api.js`). It decides
+ * two things: who gets Cmd+F (in a browser its own Find is better than ours), and whether the
+ * page that says the engine stopped talks about a tab or a window.
+ */
+export function inOwnWindow() {
+  return typeof window !== "undefined" && Boolean(window.pywebview);
+}
+
 async function boot() {
   trackStatusbarHeight();
   window.addEventListener("resize", measureMapTop);
@@ -4435,6 +4449,13 @@ async function boot() {
     // ignore
   }
   applyStatic(document);
+  if (inOwnWindow()) {
+    // No tab to close in a window of its own, and the app is not reopened from there either.
+    const stopped = $("stopped").querySelector("p");
+    stopped.dataset.i18n = "quit.stopped_text_window";
+    stopped.textContent = t("quit.stopped_text_window");
+  }
+  bindFind(inOwnWindow());
   $("mock-badge").hidden = !MOCK;
 
   $("nav").addEventListener("click", (ev) => {
@@ -4491,6 +4512,10 @@ async function boot() {
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);
   $("disk-relief").addEventListener("change", renderDisk);
+  $("settings-search").addEventListener("input", (e) => {
+    state.settingsSearch = e.target.value;
+    renderSettings();
+  });
   $("settings-form").addEventListener("submit", saveSettings);
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);
