@@ -38,7 +38,9 @@ from typing import Any, Literal
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException, Timeout
 
-__all__ = ["FetchRequest", "FetchResult", "FetchStats", "Fetcher", "fetch_all"]
+from orthostudio import __version__
+
+__all__ = ["USER_AGENT", "FetchRequest", "FetchResult", "FetchStats", "Fetcher", "fetch_all"]
 
 # --- public data types --------------------------------------------------------------------------
 
@@ -115,6 +117,12 @@ RATE_WINDOW_S = 5.0
 THROTTLED_MEMORY_S = 10.0
 CONNECT_TIMEOUT_MAX_S = 10.0
 MAX_REDIRECTS = 5
+
+USER_AGENT = f"OrthoStudio-XP/{__version__} (+https://github.com/radioharris/orthostudio-xp)"
+"""Who is asking, on every request. Nothing was sent before, which is impolite towards services
+that carry us for nothing and blind when one of them wants to know who is knocking: Overpass asks
+a client to name itself, and the Brazilian water agency, which serves the ANADEM relief, answers
+403 to a request without one (measured 2026-09-20). A caller may still override it per request."""
 DETAIL_MAX_CHARS = 200
 
 _Kind = Literal["ok", "pushback", "server", "timeout", "connect"]
@@ -721,8 +729,9 @@ class Fetcher:
         t0 = _now()
         try:
             try:
+                headers = {"User-Agent": USER_AGENT, **(req.headers or {})}
                 response = await session.request(
-                    "GET", req.url, headers=req.headers or None, timeout=self._timeout()
+                    "GET", req.url, headers=headers, timeout=self._timeout()
                 )
             except Timeout as exc:
                 return _Outcome("timeout", latency=_now() - t0, detail=_transport_detail(exc))

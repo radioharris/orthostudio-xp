@@ -5,6 +5,7 @@ templates) lives in ``orthostudio.imagery``; this package only moves bytes.
 """
 
 from orthostudio.net.fetch import (
+    USER_AGENT,
     Fetcher,
     FetchRequest,
     FetchResult,
@@ -12,4 +13,4 @@ from orthostudio.net.fetch import (
     fetch_all,
 )
 
-__all__ = ["FetchRequest", "FetchResult", "FetchStats", "Fetcher", "fetch_all"]
+__all__ = ["USER_AGENT", "FetchRequest", "FetchResult", "FetchStats", "Fetcher", "fetch_all"]

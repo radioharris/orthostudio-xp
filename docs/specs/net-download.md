@@ -88,6 +88,13 @@ Result semantics:
 - Hostname rotation (`ecn.t0..t3`, four HTTP/2 connections, 100 streams each, s. 1) is done by
   the URL the imagery layer builds (`{switch:...}` in the template); this module does not
   rewrite URLs.
+- **Every request says who is asking**: `User-Agent: OrthoStudio-XP/<version>
+  (+<repository>)` (`USER_AGENT`), which a caller may replace per request. Nothing was sent
+  before: services that carry us for nothing could not tell who was knocking, Overpass asks a
+  client to name itself, and a server may simply refuse an anonymous request, as the Brazilian
+  water agency's does for the ANADEM relief (403 without one, 206 with any, measured
+  2026-09-20). Checked against the providers after the change: Bing, Esri and Overpass answer
+  as before.
 
 ### R2. Concurrency per host group: AIMD
 

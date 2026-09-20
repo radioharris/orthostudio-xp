@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats, fetch_all
+from orthostudio.net import USER_AGENT, Fetcher, FetchRequest, FetchResult, FetchStats, fetch_all
 from orthostudio.net import fetch as fetch_mod
 
 # --- local server -------------------------------------------------------------------------------
@@ -68,6 +68,8 @@ class _Handler(BaseHTTPRequestHandler):
         count = self.state.hit(self.path)
         if route == "ok":
             self._send(200, body_for(int(arg)))
+        elif route == "whoami":
+            self._send(200, (self.headers.get("User-Agent") or "").encode())
         elif route == "notfound":
             self._send(404, b"no tile")
         elif route == "flaky":
@@ -148,6 +150,22 @@ async def fetch(
 
 
 # --- tests --------------------------------------------------------------------------------------
+
+
+def test_every_request_says_who_is_asking(server: LocalServer) -> None:
+    """Nothing named us before: the services that carry us for nothing could not tell who was
+    knocking, Overpass asks a client to name itself, and the server of the ANADEM relief answers
+    403 to a request without a User-Agent (measured 2026-09-20). A caller may still set its own."""
+    reqs = [
+        FetchRequest(key="default", url=server.url("whoami"), host_group="g"),
+        FetchRequest(
+            key="own", url=server.url("whoami/2"), headers={"User-Agent": "mine"}, host_group="g"
+        ),
+    ]
+    said = {r.key: r.body.decode() for r in run(fetch(Fetcher(), reqs))}
+    assert said["default"] == USER_AGENT
+    assert USER_AGENT.startswith("OrthoStudio-XP/") and "github.com" in USER_AGENT
+    assert said["own"] == "mine"
 
 
 def test_normal_bodies_in_request_order(server: LocalServer) -> None:
