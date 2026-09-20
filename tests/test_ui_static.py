@@ -3424,3 +3424,29 @@ def test_the_works_line_says_which_relief_was_read_not_only_which_was_chosen() -
     assert jobs[0]["relief"] == "canada"
     codes = [d.get("code") for d in _mock_json("job_done")["decisions"]]
     assert "DEM_OVERLAY_UNAVAILABLE" in codes
+
+
+def test_the_import_says_it_takes_nothing_from_the_ortho4xp_folder() -> None:
+    """"Import my Ortho4XP tiles" reads and registers, and the word import suggests copying or
+    moving: a user asked whether his Ortho4XP tiles would be deleted, copied, or where they
+    would be put (2026-09-20). They stay exactly where they are, the library keeps their path,
+    and a tile Ortho4XP built is refused by delete (`pipeline/pack.py`). The page said none of
+    it."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'data-i18n="library.import_help"' in html
+    assert html.index('data-i18n="library.import"') < html.index('data-i18n="library.import_help"')
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        assert tables[lang]["library.import_help"], f"{lang} is missing it"
+    # the three things a user fears, answered
+    words = tables["en"]["library.import_help"]
+    assert "copied" in words and "moved" in words and "deletes" in words
+
+    # and it is the truth: the import registers, and deleting an imported tile is refused
+    from orthostudio.install.library import Library
+
+    source = Path(Library.import_ortho4xp.__code__.co_filename).read_text(encoding="utf-8")
+    body = source[source.index("def import_ortho4xp") :]
+    body = body[: body.index("\n\n\n")]
+    for takes in ("copy", "move", "rmtree", "unlink", "rename"):
+        assert takes not in body, f"the import {takes}s something"
