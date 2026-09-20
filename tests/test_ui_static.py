@@ -2624,17 +2624,16 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
     assert got["platform"] == "mac"
 
 
-def test_saved_settings_reach_the_plan() -> None:
-    """A user changed a preset in Settings and the Plan kept its detail level: after Save the
-    Plan takes the saved level and drops an estimate that no longer holds; leaving Settings with
-    answers not saved says so. Since 2026-09-20 it follows only what the save changed, which
-    test_saving_settings_leaves_the_plan_alone_unless_it_changed_them has the story of."""
+def test_a_save_drops_an_estimate_that_no_longer_holds() -> None:
+    """Saving changes what a build would cost, so the estimate on the Plan is worked out again,
+    and leaving Settings with answers not saved says so.
+
+    This test used to check that the Plan *took* the saved detail level, which a user had asked
+    for on 2026-09-14. That was undone on 2026-09-21, for the reason
+    test_settings_are_where_the_next_plan_starts_and_nothing_more has: the two screens were
+    writing over each other in both directions. The estimate is what survives of it."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    save = _function_body(app_js, "saveSettings")
-    assert save.index('if (levelChanged) $("zl-select").value = "";') < save.index(
-        "renderProviders(sourceChanged"
-    )
-    assert "planChanged();" in save  # the cost is worked out again with what was saved
+    assert "planChanged();" in _function_body(app_js, "saveSettings")
     assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
 
 
@@ -3138,8 +3137,11 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     assert ".quit-btn" in head, "Quit is sized apart from the tools beside it"
     # two classes deep, so it beats `.btn` whatever the order of the file
     assert head.count(".topbar-tools ") == 3
-    for held in ("height: 26px", "min-height: 26px", "max-height: 26px", "line-height: 1"):
+    for held in ("height: 26px", "min-height: 26px", "max-height: 26px"):
         assert held in rule, held
+    # and no line-height of its own: pinning the line box to the font's exact height left Quit's
+    # label standing off its own icon on Windows, where the font is not the Mac's (2026-09-21)
+    assert "line-height" not in rule
     assert css.index(".btn {") > start  # and the rule it has to beat really does come later
     # .btn-small keeps its minimum for the buttons whose label may wrap; only these three are fixed
     small = css[css.index(".btn-small {") :][: css[css.index(".btn-small {") :].index("}")]
@@ -3323,26 +3325,32 @@ def test_the_usgs_relief_at_one_arc_second_is_offered_too() -> None:
     assert 'c.source === "NED1" ? "North America" : "the United States"' in i18n
 
 
-def test_saving_settings_leaves_the_plan_alone_unless_it_changed_them() -> None:
-    """A user chose Bing for his tile in the Plan, went to Settings to change the relief and
-    nothing else, saved, came back and built: the tile was built with the source of the settings,
-    Clarity, and nothing said so (2026-09-20). Saving put the source and the detail level of the
-    settings back into the Plan whatever had been saved, so a choice made for this build was
-    thrown away by a save that never touched it. The level went the same way.
+def test_settings_are_where_the_next_plan_starts_and_nothing_more() -> None:
+    """Settings hold where a plan starts; the Plan on screen is this build's and is never written
+    over, in either direction.
 
-    The other direction has to keep working: changing the source in Settings is how the Plan is
-    given a new one."""
+    Saving put the settings' source and detail level back into the Plan, so a user who chose Bing
+    there, changed only the relief in Settings and saved, built his tile with the source of the
+    settings and was never told (2026-09-20). Narrowing that to the settings a save had really
+    changed was not enough: changing the source on purpose, for the builds to come, still moved
+    the plan already set up on screen (the next day).
+
+    And the traffic went the other way too: starting a build wrote the Plan's source and level
+    into the settings, so the "default" followed the last build. It no longer does. The Plan
+    takes the settings when the page opens, and that is the whole of it."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    body = _function_body(app_js, "saveSettings")
-    # read before the save, so the comparison is against what was there before
-    assert body.index("const was = state.settings?.essential") < body.index('api("PUT"')
-    assert "const sourceChanged = was.provider !== source.provider;" in body
-    assert "const levelChanged = was.zoom_level !== source.zoom_level;" in body
-    assert 'if (levelChanged) $("zl-select").value = "";' in body
-    assert "renderProviders(sourceChanged ? state.settings.essential?.provider : null);" in body
-    # and neither of the two runs unguarded any more
-    assert '\n    $("zl-select").value = "";' not in app_js
-    assert "renderProviders(state.settings.essential?.provider);" not in app_js
+    save = _function_body(app_js, "saveSettings")
+    assert "renderProviders();" in save  # the list of sources, never the one the Plan shows
+    assert '$("zl-select")' not in save
+    assert "planChanged();" in save  # the cost is worked out again with what was saved
+    # nothing of the three attempts at making the two screens talk is left
+    for gone in ("sourceChanged", "planSourceChosen", "persistSettings"):
+        assert gone not in app_js, gone
+    assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
+
+    # the Plan starts from the settings, and only there
+    assert "state.settings?.essential?.provider" in _function_body(app_js, "renderSourceOptions")
+    assert "state.settings?.essential?.zoom_level" in _function_body(app_js, "renderZlOptions")
 
 
 def test_the_page_keeps_the_zoom_keys_and_where_it_was_left() -> None:

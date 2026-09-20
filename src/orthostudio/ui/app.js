@@ -2684,14 +2684,6 @@ async function planRequest() {
   };
 }
 
-async function persistSettings() {
-  if (!state.settings) return;
-  state.settings.essential.provider = $("provider-select").value;
-  state.settings.essential.zoom_level = Number($("zl-select").value);
-  state.settings = await api("PUT", "/api/settings", state.settings);
-  state.settingsDraft = structuredClone(state.settings);
-}
-
 /** How long the Plan waits after a change before working out the cost: a few clicks on the map
  * make one estimate (one takes 0.1 to 0.5 s for one to six tiles on an M4 Pro). */
 const ESTIMATE_DELAY_MS = 400;
@@ -2776,7 +2768,6 @@ async function build(install) {
     if (!state.plan || diskVerdict(state.plan.disk).ok === false) return;
     const req = await planRequest();
     if (!req) return;
-    await persistSettings();
     // Asked while another build runs, it waits for its turn (a user asked for a queue).
     const res = await api("POST", "/api/jobs", { ...req, install, queue: true });
     planMap?.zonesAccepted();
@@ -4391,19 +4382,15 @@ async function saveSettings(ev) {
   const err = $("settings-error");
   err.hidden = true;
   try {
-    // What the Plan shows is this build's choice, and Settings holds the one to start from: a
-    // save that did not touch them must leave them alone. It used to put both back whatever was
-    // saved, so a user who chose Bing in the Plan, changed only the relief here and saved, built
-    // the tile with the source of the settings without being told (2026-09-20).
-    const was = state.settings?.essential || {};
-    const source = state.settingsDraft?.essential || {};
-    const sourceChanged = was.provider !== source.provider;
-    const levelChanged = was.zoom_level !== source.zoom_level;
+    // Settings are where the *next* plan starts, and nothing more: the Plan on screen is this
+    // build's and is never written over. Saving used to put the settings' source and detail
+    // level back into it, so a user who chose Bing there, changed only the relief here and
+    // saved, built with the source of the settings and was never told; and narrowing that to
+    // the settings a save had really changed still moved the plan he had set up under him
+    // (a user, 2026-09-20 and the day after).
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
     state.settingsDraft = structuredClone(state.settings);
-    // The Plan follows the source and the level only where this save changed them.
-    if (levelChanged) $("zl-select").value = "";
-    planChanged();
+    planChanged();  // the cost again: it was worked out with the settings of before
     // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
     // and step 3 no longer shows a refusal made with the settings of before.
     await loadStatus();
@@ -4412,7 +4399,7 @@ async function saveSettings(ev) {
     setTimeout(() => {
       if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
     }, 3000);
-    renderProviders(sourceChanged ? state.settings.essential?.provider : null);
+    renderProviders();  // the list of sources, never the one the Plan shows
     renderPlanSettings();
   } catch (e) {
     err.hidden = false;

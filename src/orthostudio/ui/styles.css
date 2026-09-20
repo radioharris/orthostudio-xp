@@ -186,9 +186,12 @@ a { color: var(--accent); }
  * which `.quit-btn` also carries and which is declared further down with a min-height of its
  * own; and held on both sides, because a `<select>` is drawn by the engine and WebView2 gives it
  * metrics of its own, which left the Windows bar ragged where the Mac's was straight (a user,
- * 2026-09-20). `line-height: 1` for the same reason: the glyphs, not only the boxes. */
+ * 2026-09-20). No `line-height` of its own: set to 1 the same day, it pinned the line box to the
+ * font's exact height, and where the glyph sits in that box is the font's business -- Segoe UI
+ * on Windows, SF on macOS. Quit's label then stood off its own icon there (the same user, the
+ * next day). The flex centring below does the work instead. */
 .topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn {
-  font: inherit; font-size: 12px; line-height: 1; padding: 0 6px; margin-block: 0;
+  font: inherit; font-size: 12px; padding: 0 6px; margin-block: 0;
   height: 26px; min-height: 26px; max-height: 26px; align-self: center; vertical-align: middle;
   background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
