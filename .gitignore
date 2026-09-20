@@ -14,3 +14,6 @@ fixtures/
 .orthostudio/
 *.log
 .vscode/
+
+# Editor and agent scratch (kept locally, not shared)
+.claude/
