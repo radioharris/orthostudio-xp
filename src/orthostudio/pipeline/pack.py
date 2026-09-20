@@ -88,6 +88,14 @@ __all__ = [
 ]
 
 PACK_FORMAT = "osxp-pack-1"
+ORTHO4XP_MAIN = "Ortho4XP.py"
+"""What an Ortho4XP installation holds at its root, and what its import asks the user to point at.
+A pack under one is never deleted, whatever the library says about it."""
+
+ORTHO4XP_LOOK_UP = 4
+"""How far above a pack that marker is looked for: ``<Ortho4XP>/Tiles/zOrtho4XP_<tile>`` needs
+two, and a custom build dir a little more."""
+
 MANIFEST_NAME = "orthostudio.toml"
 RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
@@ -1095,6 +1103,22 @@ def delete_receipt(
     }
 
 
+def _ortho4xp_above(pack_dir: Path) -> Path | None:
+    """The Ortho4XP installation this pack sits in, or None.
+
+    Ortho4XP's own folder holds ``Ortho4XP.py``, which is what the import asks the user to point
+    at. Looked for over the pack's parents so that a build of ours never has to be trusted not to
+    be somewhere it should not be deleted from.
+    """
+    for folder in list(pack_dir.parents)[:ORTHO4XP_LOOK_UP]:
+        try:
+            if (folder / ORTHO4XP_MAIN).is_file():
+                return folder
+        except OSError:  # an unreadable folder is not an answer either way
+            continue
+    return None
+
+
 def _manifest_to_delete(
     pack_dir: Path, tile: TileRef, row: LibraryEntry | None
 ) -> PackManifest | None:
@@ -1104,15 +1128,38 @@ def _manifest_to_delete(
     Raises ``SYS_PACK_NOT_OSXP`` for what OrthoStudio XP did not build, before anything is touched.
     """
     context = {"path": str(pack_dir), "tile": tile.name}
+    by_hand = (
+        "Nothing was deleted. Uninstall takes the tile out of X-Plane without deleting "
+        f"anything; to delete the tile for good, delete the folder {pack_dir} by hand."
+    )
     if row is not None and row.built_by != "osxp":
         raise OsxpError(
             "SYS_PACK_NOT_OSXP",
             context={**context, "reason": "built by Ortho4XP"},
             message=f"{tile.name} in {pack_dir} was built by Ortho4XP: OrthoStudio XP deletes only "
             "the tiles it built.",
-            remedy="Nothing was deleted. Uninstall takes the tile out of X-Plane without "
-            f"deleting anything; to delete the tile for good, delete the folder {pack_dir} by "
-            "hand.",
+            remedy=by_hand,
+        )
+    # Two more, because this deletes a folder for good and the guard above believes the library:
+    # a row missing for this very path, or one an older version wrote wrong, left nothing between
+    # a folder with an orthostudio.toml in it and rm -rf (a user asked for the guard,
+    # 2026-09-20). These two read the disk instead, and hold whatever any row says.
+    if pack_dir.name.startswith(IMPORTED_PACK_PREFIX):
+        raise OsxpError(
+            "SYS_PACK_NOT_OSXP",
+            context={**context, "reason": "an Ortho4XP pack name"},
+            message=f"{pack_dir.name} is named the way Ortho4XP names its packs, so OrthoStudio "
+            "XP does not delete it.",
+            remedy=by_hand,
+        )
+    inside = _ortho4xp_above(pack_dir)
+    if inside is not None:
+        raise OsxpError(
+            "SYS_PACK_NOT_OSXP",
+            context={**context, "reason": "inside an Ortho4XP folder", "ortho4xp": str(inside)},
+            message=f"{pack_dir} is inside {inside}, which is an Ortho4XP installation: "
+            "OrthoStudio XP does not delete anything there.",
+            remedy=by_hand,
         )
     if not pack_dir.exists():  # deleted by hand, or a link that leads nowhere
         return None
