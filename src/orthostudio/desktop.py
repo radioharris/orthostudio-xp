@@ -355,14 +355,21 @@ def on_close() -> Callable[[], bool] | None:
 
         return keep
 
+    said_yes = [False]
+
     def ask_if_building() -> bool:
+        if said_yes[0]:
+            return True  # asked and answered: closing must not ask the same question again
         if not a_build_runs(ENGINE_PORT):
             return True  # nothing is lost sight of: it closes, without a word
-        threading.Thread(
-            target=lambda: window.ask_then_close(APP_NAME, BUILDING_ON_CLOSE),
-            name="ask-before-closing",
-            daemon=True,
-        ).start()
+
+        def aside() -> None:
+            """Closing the window comes back through here, which is why the answer is kept."""
+            if window.ask(APP_NAME, BUILDING_ON_CLOSE):
+                said_yes[0] = True
+                window.close_now()
+
+        threading.Thread(target=aside, name="ask-before-closing", daemon=True).start()
         return False
 
     return ask_if_building

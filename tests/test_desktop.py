@@ -320,9 +320,7 @@ def test_the_close_button_closes_without_a_word_when_nothing_is_building(
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
     monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: False)
-    monkeypatch.setattr(
-        window, "ask_then_close", lambda *a: pytest.fail("asked a question nobody needed")
-    )
+    monkeypatch.setattr(window, "ask", lambda *a: pytest.fail("asked a question nobody needed"))
     answer = desktop.on_close()
     assert answer is not None and answer() is True
 
@@ -333,13 +331,35 @@ def test_the_close_button_asks_when_a_build_runs(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
     monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
     asked: list[tuple[str, str]] = []
-    monkeypatch.setattr(window, "ask_then_close", lambda t, m: asked.append((t, m)))
+    closed: list[bool] = []
+    monkeypatch.setattr(window, "ask", lambda t, m: (asked.append((t, m)), True)[1])
+    monkeypatch.setattr(window, "close_now", lambda: closed.append(True))
     answer = desktop.on_close()
     assert answer is not None
     # no meanwhile: the box cannot be drawn by the thread waiting for this answer
     assert answer() is False
     for _ in range(50):
-        if asked:
+        if closed:
             break
         time.sleep(0.02)
     assert asked and asked[0][0] == APP_NAME and "build is running" in asked[0][1]
+    assert closed == [True]
+
+    # closing comes back through here, and the question must not be asked a second time: it was,
+    # for ever, and OK did nothing but show the box again (a user, 2026-09-20)
+    assert answer() is True
+    assert len(asked) == 1
+
+
+def test_the_close_button_asks_again_on_a_later_close(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The answer is kept for the closing it was given for, not for the life of the window: a
+    window brought back and closed again asks again."""
+    from orthostudio import window
+
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
+    monkeypatch.setattr(window, "ask", lambda t, m: False)  # the user says no
+    monkeypatch.setattr(window, "close_now", lambda: pytest.fail("closed on a no"))
+    answer = desktop.on_close()
+    assert answer is not None
+    assert answer() is False and answer() is False  # a no never lets it through

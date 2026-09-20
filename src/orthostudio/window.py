@@ -29,9 +29,10 @@ __all__ = [
     "POLL_S",
     "SIZE",
     "WEBVIEW2_HELP",
+    "ask",
     "ask_the_page_to_quit",
-    "ask_then_close",
     "away",
+    "close_now",
     "hint",
     "on_quit",
     "possible",
@@ -296,23 +297,28 @@ def _window_menu_shortcut() -> None:
     AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(put_it_there)
 
 
-def ask_then_close(title: str, message: str) -> None:
-    """Ask in a window of the system's own, and close ours when the answer is yes.
+def ask(title: str, message: str) -> bool:
+    """Ask in a window of the system's own; whether the answer was yes.
 
     Never from the thread that draws: the close button's answer is given on that thread, and
-    waiting there for a box that same thread must draw would wait for ever. The caller answers no
-    to the close button and calls this aside; what is answered here closes the window, or nothing
-    does. Asked and not answerable, the window closes: the button was pressed, after all.
+    waiting there for a box that same thread must draw would wait for ever. Asked and not
+    answerable, the answer is yes: the button was pressed, after all.
     """
     window = _window
     if window is None:
-        return
+        return True
     try:
-        answered_yes = bool(window.create_confirmation_dialog(title, message))
+        return bool(window.create_confirmation_dialog(title, message))
     except Exception:
-        answered_yes = True
-    if answered_yes:
-        window.destroy()
+        return True
+
+
+def close_now() -> None:
+    """Close the window. It goes through the close button's own answer again, which must let it
+    through this time (``orthostudio.desktop.on_close``) or the question would be asked for ever
+    (a user, 2026-09-20)."""
+    if _window is not None:
+        _window.destroy()
 
 
 def show(

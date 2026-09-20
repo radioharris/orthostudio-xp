@@ -3019,3 +3019,18 @@ def test_a_folder_under_the_home_is_written_with_a_tilde() -> None:
     assert under == "~/X-Plane 12" and itself == "~"
     assert alike == "/Users/pilotage/X-Plane 12" and elsewhere == "/Volumes/Scenery/tiles"
     assert windows == "~\\X-Plane 12"
+
+
+def test_the_legend_says_when_this_machine_has_no_airports() -> None:
+    """A user ticked Airports on a machine without X-Plane's apt.dat, nothing came, and he had to
+    ask why (2026-09-20). The request answers 503 there; the legend now says so instead of
+    leaving the box ticked over an empty map."""
+    js = (UI / "map.js").read_text(encoding="utf-8")
+    call = js[js.index("icao_only=true") :]  # the request itself, not the comment above it
+    fail = call[call.index(".catch(") : call.index(".finally(")]
+    assert "missing = true" in fail and "renderLegend()" in fail
+    # and it stops saying it the moment airports do come back
+    ok = call[call.index(".then(") : call.index(".catch(")]
+    assert "missing = false" in ok
+    for key in ("map.airports_missing", "map.airports_missing_hint"):
+        assert f'"{key}"' in js, key

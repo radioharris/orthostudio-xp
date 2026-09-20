@@ -252,6 +252,7 @@ export function createPlanMap(ctx) {
       rows: [],
       key: "", // the view the rows were read for
       loading: false,
+      missing: false, // this machine has no airport index: the legend says so
     },
   };
   const borders = {
@@ -1154,14 +1155,20 @@ export function createPlanMap(ctx) {
       .then((rows) => {
         state.rows = Array.isArray(rows) ? rows : [];
         state.key = key;
+        state.missing = false; // an X-Plane folder was chosen since, or the index was built
         drawAirports();
+        renderLegend();
       })
       .catch(() => {
-        // The index may be absent on this machine (503): the legend keeps the box, the map stays
-        // as it is, and nothing is said. Asking again costs one small request on the next move.
+        // The index is absent on this machine when X-Plane's apt.dat is not there (503). The box
+        // was ticked and nothing came, and a user had to ask why (2026-09-20): the legend says it
+        // now. Asking again costs one small request on the next move, so a folder chosen in the
+        // meantime shows its airports without a reload.
         state.rows = [];
         state.key = "";
+        state.missing = true;
         drawAirports();
+        renderLegend();
       })
       .finally(() => {
         state.loading = false;
@@ -1244,17 +1251,21 @@ export function createPlanMap(ctx) {
     renderLegend();
   }
 
-  /** The legend's airports line: a checkbox, and why nothing shows when zoomed out. */
+  /** The legend's airports line: a checkbox, and why nothing shows, be it the zoom or a machine
+   * with no airport index at all. */
   function airportsToggle() {
     const close = map.getZoom() >= AIRPORTS_MIN_ZOOM;
-    const text = zs.airports.wanted && !close ? t("map.airports_zoomed") : t("map.airports");
+    const missing = zs.airports.wanted && zs.airports.missing;
+    let text = t("map.airports");
+    if (missing) text = t("map.airports_missing");
+    else if (zs.airports.wanted && !close) text = t("map.airports_zoomed");
     const input = h("input", {
       type: "checkbox",
       checked: zs.airports.wanted,
       onchange: (ev) => setAirportsWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
-      h("label", { title: t("map.airports_hint") },
+      h("label", { title: missing ? t("map.airports_missing_hint") : t("map.airports_hint") },
         input, h("span", { class: "legend-swatch legend-airport", "aria-hidden": "true" }), text));
   }
 
