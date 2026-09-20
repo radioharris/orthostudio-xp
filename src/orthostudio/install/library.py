@@ -180,6 +180,13 @@ class Library:
 
         ``path`` is stored absolute: ``osxp build --out tiles --install`` gave a relative one,
         which ``osxp serve`` then read from its own working directory.
+
+        ``built_by`` is written when the row is created and **never changed afterwards**: who
+        built a pack is a fact about the pack, not about what is being done to it now. Installing
+        one went through here with ``"osxp"`` whatever the row said, so adding an imported tile to
+        X-Plane turned it into a tile OrthoStudio XP claimed to have built -- and Delete, which
+        refuses what it did not build, then deleted it where it stood, inside the Ortho4XP folder
+        (a user, 2026-09-20).
         """
         now = time.time()
         path_s = str(Path(path).absolute())
@@ -190,7 +197,7 @@ class Library:
                                registered_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (lat, lon, kind, path) DO UPDATE SET
-                provider = excluded.provider, zl = excluded.zl, built_by = excluded.built_by,
+                provider = excluded.provider, zl = excluded.zl,
                 keys = excluded.keys, updated_at = excluded.updated_at
             """,
             (tile.lat, tile.lon, kind, path_s, provider, int(zl), built_by, keys_s, now, now),

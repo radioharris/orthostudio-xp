@@ -41,9 +41,12 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   X-World brings its own.
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
   For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept),
-  the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), Canada's
-  lidar where it has been flown (bare earth, laid over Copernicus, which answers elsewhere) or
-  your own elevation file. Outside a source's coverage the tile is refused, never built flat.
+  the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), the USGS
+  at 1 arc-second over North America (Canada and Mexico included, though its Canadian heights
+  come from old map contours rather than measurement), Canada's lidar where it has been flown
+  (bare earth, laid over Copernicus, which answers elsewhere) or your own elevation file. Works
+  says which one a build actually read, since a relief laid over another falls back where it has
+  nothing. Outside a source's coverage the tile is refused, never built flat.
 - **The colours of the photos, seen on the map.** Aerial imagery as the source delivers it, or
   toned down a little or a lot, or by your own brightness, contrast and colour — for everything you
   build, for one square, or for a zone drawn inside a square, each level inheriting the one above.
@@ -157,7 +160,9 @@ Python inside.
   `./orthostudio-xp` directly.
 
 Opening OrthoStudio XP shows its page in a window of its own, which works like any window on your
-system; opening it again brings that window back. Quitting stops the engine, and asks first when a
+system; opening it again brings that window back. It keeps a browser's habits: Cmd+F or Ctrl+F
+finds text on the page, and Cmd or Ctrl with `+`, `-` and `0` changes the text size, which it
+remembers. Quitting stops the engine, and asks first when a
 build is running: what was already built is kept, so building again carries on from there. On
 Linux it opens in your browser instead, as every version has: the web view a window needs there is
 built for your distribution's own Python, and OrthoStudio XP carries its own, so installing it
