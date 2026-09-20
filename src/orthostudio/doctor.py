@@ -341,9 +341,12 @@ def _window() -> Check:
     if window.possible():
         return Check("window", "ok", "A window of its own", {"browser_only": False})
     hint = window.hint()
+    # nothing to do about it is not a warning: it is how this build works on this system, and an
+    # orange pill nobody can ever clear is noise (measured in a container, 2026-09-20)
+    nothing_to_do = window.install() is None
     return Check(
         "window",
-        "warn",
+        "skip" if nothing_to_do else "warn",
         hint or "The browser opens instead of a window of its own",
         # the page puts its own words around "install" and shows it as a command or a link: the
         # line at the foot of the page was the only place this was said, and it is a fold (a user

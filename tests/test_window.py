@@ -30,6 +30,8 @@ def test_a_system_without_a_window_is_told_what_to_install(
     platform: str, says: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(window.sys, "platform", platform)
+    # on Linux the packages are only worth naming to the Python they were built for
+    monkeypatch.setattr(window.sys, "base_prefix", "/usr")
     words = window.hint()
     assert words is not None and says in words
     # a link, so that a system we did not name is not left with a command that does not fit it
@@ -151,3 +153,33 @@ def test_the_window_package_travels_everywhere() -> None:
     asked = [line for line in lock.splitlines() if '{ name = "pywebview"' in line]
     assert asked, "pywebview is not in the lock"
     assert not any("sys_platform" in line for line in asked), asked
+
+
+def test_linux_is_told_the_truth_about_which_python_can_see_the_toolkit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distribution builds its web view for the Python it ships. Installed beside an app that
+    carries its own, the packages are there and invisible to it: measured in a container, apt put
+    gi under /usr/lib/python3/dist-packages for 3.10 and the app's 3.14 never saw it
+    (2026-09-20). Naming them to that app is advice that leads nowhere."""
+    monkeypatch.setattr(window.sys, "platform", "linux")
+
+    monkeypatch.setattr(window.sys, "base_prefix", "/opt/OrthoStudio-XP/python")
+    assert window.the_distributions_python() is False
+    assert window.install() is None  # nothing to do, so nothing is asked of the user
+    words = window.hint() or ""
+    assert "carries a Python of its own" in words and "apt install" not in words
+
+    monkeypatch.setattr(window.sys, "base_prefix", "/usr")
+    assert window.the_distributions_python() is True
+    assert "apt install" in (window.install() or "")  # there, the packages do meet the app
+
+
+def test_a_window_nobody_can_have_is_not_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio import doctor
+
+    monkeypatch.setattr(window, "possible", lambda: False)
+    monkeypatch.setattr(window, "install", lambda: None)
+    assert doctor._window().status == "skip"  # an orange pill nobody can clear is noise
+    monkeypatch.setattr(window, "install", lambda: "sudo apt install something")
+    assert doctor._window().status == "warn"  # there is something to do: it is worth a colour

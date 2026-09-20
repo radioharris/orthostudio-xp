@@ -3051,3 +3051,18 @@ def test_a_browser_only_system_is_told_at_the_top_of_the_page() -> None:
     assert "renderWindowNote();" in js[js.index("function renderEngineBanner") :]
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".window-note {" in css and "--warn" not in css[css.index(".window-note {") :][:200]
+
+
+def test_a_check_that_failed_is_said_at_the_top_of_the_page() -> None:
+    """Triangle4XP missing makes every build impossible, and a red pill at the foot of the page
+    was the only sign of it (a user asked, 2026-09-20). What stops you belongs where you are."""
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    banner = js[js.index("function renderEngineBanner") :]
+    banner = banner[: banner.index("\nfunction ", 10)]
+    assert "failedChecks()" in banner and "app.checks_failed" in banner
+    # loud, like the other things that stop you: the same banner, not the quiet note
+    assert "window-note" not in banner
+    # and it gives the way to what failed, rather than leaving the user to find the foot
+    assert "app.checks_failed_show" in banner and "showChecks" in banner
+    # it yields to what is more urgent: an engine that cannot answer says so first
+    assert banner.index("app.engine_error") < banner.index("app.checks_failed")

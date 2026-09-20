@@ -162,6 +162,7 @@ def test_the_window_check_says_what_to_install_when_there_is_none(
 
     monkeypatch.setattr(window, "possible", lambda: False)
     monkeypatch.setattr(window, "hint", lambda: "install the frobnicator: https://example.invalid")
+    monkeypatch.setattr(window, "install", lambda: "install the frobnicator")
     check = doctor._window()
     assert check.name == "window" and check.status == "warn"  # the app still works, in a browser
     assert "frobnicator" in check.summary and check.details["browser_only"] is True

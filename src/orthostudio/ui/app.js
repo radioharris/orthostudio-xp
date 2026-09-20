@@ -2013,15 +2013,34 @@ function renderWindowNote() {
   $("main").prepend(note);
 }
 
+/** The checks the doctor failed, by name. Something OrthoStudio XP needs is not working, and a
+ * red pill at the foot of the page was the only sign: Triangle4XP missing makes every build
+ * impossible, and nothing said so where the user was looking (a user asked, 2026-09-20). */
+function failedChecks() {
+  const checks = Array.isArray(state.status?.doctor) ? state.status.doctor : [];
+  return checks.filter((c) => c && c.status === "fail").map((c) => c.name);
+}
+
+/** Open the checks at the foot and bring them into view: what failed says there what it is. */
+function showChecks() {
+  const details = $("status-doctor")?.querySelector("details");
+  if (!details) return;
+  details.open = true;
+  details.scrollIntoView({ block: "nearest" });
+}
+
 function renderEngineBanner() {
   const unread = state.status?.settings_problems || [];
+  const failed = failedChecks();
   const words = state.engineOutdated
     ? t("app.engine_outdated")
     : state.engineError
       ? t("app.engine_error", { reason: state.engineError })
       : unread.length
         ? t("app.settings_unread", { list: unread.join(" · ") })
-        : null;
+        : failed.length
+          ? t("app.checks_failed", { list: failed.join(" · ") })
+          : null;
   let banner = $("engine-outdated");
   if (!words) {
     banner?.remove();
@@ -2043,6 +2062,12 @@ function renderEngineBanner() {
     banner.append(
       " ",
       h("button", { class: "btn btn-small", onclick: () => location.reload() }, t("app.engine_error_reload")),
+    );
+  }
+  if (!state.engineOutdated && !state.engineError && !unread.length && failed.length) {
+    banner.append(
+      " ",
+      h("button", { class: "btn btn-small", onclick: showChecks }, t("app.checks_failed_show")),
     );
   }
 }

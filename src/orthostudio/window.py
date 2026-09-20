@@ -40,6 +40,7 @@ __all__ = [
     "puts_away_on_close",
     "show",
     "storage_dir",
+    "the_distributions_python",
     "to_the_front",
 ]
 
@@ -83,13 +84,28 @@ def storage_dir() -> Path:
     return osxp_home() / "window"
 
 
+def the_distributions_python() -> bool:
+    """Whether this Python is the one the distribution ships, which is the only one its own
+    packages can be imported into.
+
+    A distribution builds its web view bindings for its own Python and no other: installed beside
+    the app they are there, and invisible to it, because the app carries a Python of its own.
+    Measured in a container: ``apt install python3-gi gir1.2-webkit2-4.1`` put ``gi`` under
+    ``/usr/lib/python3/dist-packages`` for Python 3.10, and the app's 3.14 never saw it
+    (2026-09-20). Run from a checkout made with the distribution's Python, they do meet.
+    """
+    base = Path(sys.base_prefix)
+    return base == Path("/usr") or str(base).startswith("/usr/")
+
+
 def install() -> str | None:
     """What to do about it, in one line: the command on Linux, Microsoft's page on Windows.
 
     Kept apart from :func:`hint`, whose sentence is English, so that the page can put its own
     words around this and leave the command itself where it is written once."""
     if sys.platform.startswith("linux"):
-        return f"sudo apt install {LINUX_PACKAGES}"
+        # naming them to a Python that could never import them is advice that leads nowhere
+        return f"sudo apt install {LINUX_PACKAGES}" if the_distributions_python() else None
     if sys.platform == "win32":
         return WEBVIEW2_HELP
     return None
@@ -99,6 +115,13 @@ def hint() -> str | None:
     """What to install for a window on this system, once :func:`show` has refused; ``None`` when
     the system is one we cannot advise (macOS carries WKWebView, and has nothing to install)."""
     if sys.platform.startswith("linux"):
+        if not the_distributions_python():
+            return (
+                "OrthoStudio XP opens in your browser on Linux, and there is nothing to install "
+                "for it: the app carries a Python of its own, and a distribution builds its web "
+                "view for the Python it ships. Run from a checkout made with that Python, the two "
+                f"meet ({LINUX_HELP})."
+            )
         return (
             "OrthoStudio XP opened in your browser: this system has no web view of its own to "
             f"show it in a window. On Debian and Ubuntu: sudo apt install {LINUX_PACKAGES}. "
