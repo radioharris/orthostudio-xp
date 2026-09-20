@@ -119,8 +119,11 @@ your computer except the downloads of imagery and map data. Open the OrthoStudio
 a window opens saying "Opening OrthoStudio XP…", then shows the page as soon as it is ready. Opened
 again while it runs, the app brings its window back rather than opening a second one. *Quit*, at the
 top right of the page, stops it, after asking when a build is running. Closing the window does not
-stop OrthoStudio XP at once: a build goes on, and opening the app again brings the page back. Five
-minutes after its last page closed, with no build running or waiting, it stops by itself.
+stop OrthoStudio XP: the window goes out of sight, its icon stays in the Dock, a build goes on, and
+a click on the icon brings the window back where you left it. **Nothing closes the app but you**:
+*Quit* in the page, or *Quit OrthoStudio XP* in its menu. Opened in a browser instead of a window,
+where there is no icon to show that it runs, it still stops by itself five minutes after its last
+page closed, with no build running or waiting.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
 browser would show. On Linux, where that web view is a package your distribution installs and

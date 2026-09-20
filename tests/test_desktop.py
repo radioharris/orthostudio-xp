@@ -265,7 +265,7 @@ def test_the_window_closes_only_once_its_engine_has_answered_and_stopped(
 ) -> None:
     answers = iter([False, False, True, True, False, False])
     monkeypatch.setattr(desktop, "_listening", lambda port: next(answers))
-    gone = desktop.engine_stopped(ENGINE_PORT)
+    gone = desktop.time_to_close(ENGINE_PORT)
     # coming up: the window stays, or a slow start would take it away under the opening page
     assert gone() is False and gone() is False
     assert gone() is False and gone() is False  # it answers: the window stays

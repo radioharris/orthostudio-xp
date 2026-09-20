@@ -32,6 +32,15 @@ which only the last three are supported) and a native Python interface (which wo
   which ended so that macOS held no windowless app, therefore goes back to a plain `exec`.
 - The engine starts only once the window is on screen. A system with no web view is left exactly
   as it was found, and the browser opens instead, which is what every version until 0.1.9 did.
+- **The close button puts the app away; it does not quit it.** That is what closing a window means
+  on macOS, and the app stays in the Dock for the click that brings it back. It is the whole
+  application that is put away, not the window alone: pywebview has no
+  `applicationShouldHandleReopen`, so a hidden window could not be brought back from the Dock,
+  where a hidden application can (measured). Windows and Linux have no such place to stay in, and
+  close as they always did. **Nothing else closes the app.** An automatic quit, after some while
+  put away, was written and taken out again: an app that vanishes from the Dock on its own is an
+  app that went away without telling anyone, and deciding that is the user's, not ours. The window
+  still closes when *Quit* stops the engine, because the user asked for that.
 - **OrthoStudio XP installs nothing on a system it does not own.** Where a library is missing, the
   doctor's `window` check names it with a link, and the page lists it at the foot. The one
   exception is the Windows installer, which *offers* the WebView2 Runtime, ticked and refusable,

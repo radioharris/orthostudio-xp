@@ -157,8 +157,10 @@ Python inside.
   `./orthostudio-xp` directly.
 
 Opening OrthoStudio XP starts it and shows its page in a window of its own, or brings that window
-back when it already runs; *Quit* in the page stops it, and it stops by itself five minutes after
-its last page is closed, unless a build is running or waiting. The window is drawn by the web view
+back when it already runs. Closing its window puts it away rather than closing it: its icon stays,
+a click brings the window back, and a build goes on. *Quit*, in the page or in the app's menu, is
+what stops it. Opened in a browser instead of a window, it stops by itself five minutes after its
+last page is closed, unless a build is running or waiting. The window is drawn by the web view
 your system carries: on Linux that is a package your distribution installs, and until it is there
 the page opens in your browser instead, the *Checks* line at the foot of the page naming what to
 install. Its messages go to `serve.log`, in

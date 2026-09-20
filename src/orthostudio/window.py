@@ -28,8 +28,10 @@ __all__ = [
     "POLL_S",
     "SIZE",
     "WEBVIEW2_HELP",
+    "away",
     "hint",
     "possible",
+    "puts_away_on_close",
     "show",
     "storage_dir",
 ]
@@ -131,12 +133,29 @@ def possible() -> bool:
     return _here("gi") or _here("PyQt6") or _here("PyQt5") or _here("PySide6")
 
 
+def puts_away_on_close() -> bool:
+    """Whether the close button should put the app away rather than quit it.
+
+    macOS only: there, closing a window does not quit its app, which stays in the Dock for the
+    click that brings it back. Windows and Linux have no such place to stay in, and quit."""
+    return sys.platform == "darwin"
+
+
+def away() -> None:
+    """Put the app away without quitting it, as its own Hide menu item does: the icon stays in the
+    Dock, and a click on it brings the window back (measured, 2026-09-20)."""
+    from AppKit import NSApplication
+
+    NSApplication.sharedApplication().hide_(None)
+
+
 def show(
     url: str,
     *,
     title: str,
     on_shown: Callable[[], None] | None = None,
     closes_when: Callable[[], bool] | None = None,
+    on_close: Callable[[], bool] | None = None,
     size: tuple[int, int] = SIZE,
     storage: Path | None = None,
 ) -> None:
@@ -146,7 +165,9 @@ def show(
     engine is started: the window is on screen while it loads, rather than after. ``closes_when``
     is asked every :data:`POLL_S` while the window is open, and the window closes the moment it
     says yes: *Quit* stops the engine, and a window left on a page with nothing behind it would
-    keep the app in the Dock with nothing to show.
+    keep the app in the Dock with nothing to show. ``on_close`` is asked when the close button is
+    clicked, and the window stays when it answers no, which is how the app is put away rather than
+    quit (:func:`puts_away_on_close`).
 
     Raises when this system has no web view (the package missing, or no toolkit under it). The
     engine must not have been started before this returns, so that a system without a window
@@ -165,6 +186,15 @@ def show(
         # the page draws its own background for the theme it was given; white flashes on a dark one
         background_color="#14171d",
     )
+
+    if on_close is not None:
+
+        def closing() -> bool | None:
+            # pywebview takes the close away when a handler answers False, and lets it through
+            # otherwise (webview.event.Event.set)
+            return None if on_close() else False
+
+        window.events.closing += closing
 
     def behind() -> None:
         """What runs while the window is up. It must end when the window does: pywebview gives it

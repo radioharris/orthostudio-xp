@@ -39,14 +39,15 @@ __all__ = [
     "ENGINE_PORT",
     "LOG_NAME",
     "engine_here",
-    "engine_stopped",
     "in_a_window",
     "log_path",
     "main",
     "open_running",
     "open_while_starting",
     "opening_page",
+    "puts_away_on_close",
     "start_engine",
+    "time_to_close",
 ]
 
 APP_NAME = "OrthoStudio XP"
@@ -266,20 +267,40 @@ def start_engine(log: Path) -> None:
         )
 
 
-def engine_stopped(port: int = ENGINE_PORT) -> Callable[[], bool]:
-    """Answers yes once the engine has answered on ``port`` and then stopped, which is *Quit* from
-    the page: the window has nothing behind it, and closes. It says no while the engine is still
-    coming up, so that a slow start does not take the window away from under the opening page."""
+def time_to_close(port: int = ENGINE_PORT) -> Callable[[], bool]:
+    """Whether the window has nothing left to show; asked while it is open.
+
+    Yes once the engine has answered and then stopped, which is *Quit* from the page: the window
+    would otherwise stand on a page with nothing behind it. No while the engine is still coming
+    up, so that a slow start does not take the window away from under the opening page.
+
+    Nothing else closes it. An app put away is still an app, and it stays in the Dock until the
+    person who opened it says otherwise: OrthoStudio XP does not disappear from under them.
+    """
     answered = False
 
-    def gone() -> bool:
+    def close_now() -> bool:
         nonlocal answered
         if _listening(port):
             answered = True
             return False
         return answered
 
-    return gone
+    return close_now
+
+
+def puts_away_on_close() -> Callable[[], bool] | None:
+    """What the close button should do, or ``None`` where closing the window quits the app."""
+    from orthostudio import window
+
+    if not window.puts_away_on_close():
+        return None
+
+    def keep() -> bool:
+        window.away()
+        return False  # the window stays, out of sight, and the icon stays in the Dock
+
+    return keep
 
 
 def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
@@ -308,7 +329,8 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
             url,
             title=APP_NAME,
             on_shown=None if running else lambda: start_engine(log),
-            closes_when=engine_stopped(ENGINE_PORT),
+            closes_when=time_to_close(ENGINE_PORT),
+            on_close=puts_away_on_close(),
         )
     except Exception:
         _note(log, "its window could not be shown: the browser opens instead")
