@@ -312,12 +312,17 @@ def may_quit() -> bool:
     return False
 
 
-BUILDING_ON_CLOSE = (
-    "A build is running. Close the window?\n\n"
-    "The build goes on without it, and opening OrthoStudio XP again shows it."
+BUILDING_ON_QUIT = (
+    "A build is running. Quit OrthoStudio XP and stop it?\n\n"
+    "What it has already built is kept: starting the build again carries on from there."
 )
-"""Asked by the close button where closing ends the app, and only when a build runs: closing loses
-nothing otherwise, and a question nobody needs is a question nobody reads."""
+"""Asked by the close button where closing quits the app, and only when a build runs.
+
+Closing a window on Windows means quitting the app (a user, 2026-09-20), so the engine goes with
+it rather than living on behind a window that is gone: an app that keeps working where nothing
+shows it is the very thing this window was made to end. A build is the one thing worth asking
+about, and the answer says what it costs, which is the time since its last finished step and not
+the work before it (the store is keyed by content: a build started again takes what is there)."""
 
 
 def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
@@ -336,14 +341,38 @@ def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
     return isinstance(doc, dict) and doc.get("active_job") is not None
 
 
+def stop_the_engine(
+    port: int = ENGINE_PORT, *, force: bool = False, timeout_s: float = 3.0
+) -> bool:
+    """Ask the engine on ``port`` to stop (``POST /api/quit``); whether it answered.
+
+    A build running is stopped only with ``force``, which is what the page itself passes once the
+    user has said so.
+    """
+    body = json.dumps({"force": force}).encode("utf-8")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/quit",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as answer:
+            return 200 <= int(answer.status) < 300
+    except OSError:
+        return False
+
+
 def on_close() -> Callable[[], bool] | None:
     """What the close button does, which is not the same thing everywhere.
 
     On macOS it puts the window away: closing a window there does not quit its app, which stays in
-    the Dock for the click that brings it back. Elsewhere the window closes and the app ends with
-    it, which loses sight of a build; the question is asked then, and only then
-    (:data:`BUILDING_ON_CLOSE`). It is asked aside, and this answers no meanwhile: the box cannot
-    be drawn by the thread waiting for this answer.
+    the Dock for the click that brings it back. On Windows and Linux it quits, which is what
+    closing a window means there, and the engine stops with it: leaving it to work on behind a
+    window that is gone, with nothing to show for it, is the very thing the window was made to
+    end. A build is worth asking about first (:data:`BUILDING_ON_QUIT`), and only a build; the
+    question is asked aside, and this answers no meanwhile, because the box cannot be drawn by the
+    thread waiting for this answer.
     """
     from orthostudio import window
 
@@ -357,22 +386,24 @@ def on_close() -> Callable[[], bool] | None:
 
     said_yes = [False]
 
-    def ask_if_building() -> bool:
+    def quit_the_app() -> bool:
         if said_yes[0]:
             return True  # asked and answered: closing must not ask the same question again
         if not a_build_runs(ENGINE_PORT):
-            return True  # nothing is lost sight of: it closes, without a word
+            stop_the_engine(ENGINE_PORT)  # nothing to ask about, and nothing left behind
+            return True
 
         def aside() -> None:
             """Closing the window comes back through here, which is why the answer is kept."""
-            if window.ask(APP_NAME, BUILDING_ON_CLOSE):
+            if window.ask(APP_NAME, BUILDING_ON_QUIT):
+                stop_the_engine(ENGINE_PORT, force=True)
                 said_yes[0] = True
                 window.close_now()
 
-        threading.Thread(target=aside, name="ask-before-closing", daemon=True).start()
+        threading.Thread(target=aside, name="ask-before-quitting", daemon=True).start()
         return False
 
-    return ask_if_building
+    return quit_the_app
 
 
 def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
