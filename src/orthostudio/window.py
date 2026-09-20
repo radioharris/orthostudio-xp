@@ -151,17 +151,22 @@ def puts_away_on_close() -> bool:
 
 
 def away() -> None:
-    """Put the app away without quitting it, as its own Hide menu item does: the icon stays in the
-    Dock, and a click on it brings the window back (measured, 2026-09-20)."""
-    from AppKit import NSApplication
+    """Put the window away without closing it. The app stays where it was, active, its name in the
+    menu bar, and :func:`on_quit` brings the window back when its icon is clicked.
 
-    NSApplication.sharedApplication().hide_(None)
+    Not the whole app: hiding that would hand the menu bar to whichever app comes next, where
+    closing a window leaves a Mac app as it was (a user saw it, 2026-09-20)."""
+    if _window is not None:
+        _window.hide()
 
 
 def to_the_front() -> None:
-    """Bring the app back in front, put away or not: what it is about to ask must be seen."""
+    """Bring the window back and the app in front, put away or not: what it is about to ask must
+    be seen."""
     from AppKit import NSApplication
 
+    if _window is not None:
+        _window.show()
     app = NSApplication.sharedApplication()
     app.unhide_(None)
     app.activateIgnoringOtherApps_(True)
@@ -201,13 +206,18 @@ _quitter: Any = None
 
 
 def on_quit(handler: Callable[[], bool]) -> None:
-    """Have ``handler`` decide what the app's Quit does, wherever it is asked from.
+    """Have ``handler`` decide what the app's Quit does, and bring the window back at a click on
+    the app's icon.
 
     Cmd+Q, the Quit of the app's own menu and the Quit of its Dock menu all end in
     ``applicationShouldTerminate:``, which pywebview answers by asking each window whether it may
-    close. With a close button that puts the app away instead of closing it (:func:`show`), that
-    answer is always no, and the app could not be quit at all. This takes the decision back:
+    close. With a close button that puts the window away instead of closing it (:func:`away`),
+    that answer is always no, and the app could not be quit at all. This takes the decision back:
     ``handler`` answers True to let the app go, False to keep it.
+
+    The same delegate answers ``applicationShouldHandleReopen:``, which macOS sends when the app's
+    icon is clicked and no window is showing: pywebview has no answer of its own for it, and a
+    window put away would have stayed away.
     """
     import AppKit
 
@@ -220,6 +230,13 @@ def on_quit(handler: Callable[[], bool]) -> None:
         class OrthoStudioQuit(AppKit.NSObject):  # type: ignore[misc]
             def applicationShouldTerminate_(self, app: object) -> int:  # noqa: N802
                 return now if held[0]() else cancel
+
+            def applicationShouldHandleReopen_hasVisibleWindows_(  # noqa: N802
+                self, app: object, visible: bool
+            ) -> bool:
+                if not visible and _window is not None:
+                    _window.show()
+                return True
 
             def applicationSupportsSecureRestorableState_(  # noqa: N802
                 self, app: object
