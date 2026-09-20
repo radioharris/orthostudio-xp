@@ -354,6 +354,7 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
             closes_when=time_to_close(ENGINE_PORT),
             on_close=puts_away_on_close(),
             may_quit=may_quit,
+            note=lambda text: _note(log, text),
         )
     except Exception:
         _note(log, "its window could not be shown: the browser opens instead")

@@ -328,6 +328,10 @@ AppVersion={version}
 AppPublisher=OrthoStudio XP contributors
 DefaultDirName={{localappdata}}\\Programs\\{APP_NAME}
 DefaultGroupName={APP_NAME}
+; Inno hides the folder page on an upgrade and reuses the folder it found. It is asked for
+; every time instead: the folder of a 290 MB app, which a user may want on another disk, is worth
+; a page, and the folder it starts on is still the one already installed (a user asked, 2026-09-20).
+DisableDirPage=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible

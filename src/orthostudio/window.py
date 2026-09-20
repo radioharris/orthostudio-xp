@@ -172,10 +172,12 @@ def away() -> None:
 def to_the_front() -> None:
     """Bring the window back and the app in front, put away or not: what it is about to ask must
     be seen."""
-    from AppKit import NSApplication
-
     if _window is not None:
         _window.show()
+    if not puts_away_on_close():
+        return
+    from AppKit import NSApplication
+
     app = NSApplication.sharedApplication()
     app.unhide_(None)
     app.activateIgnoringOtherApps_(True)
@@ -228,6 +230,8 @@ def on_quit(handler: Callable[[], bool]) -> None:
     icon is clicked and no window is showing: pywebview has no answer of its own for it, and a
     window put away would have stayed away.
     """
+    if not puts_away_on_close():
+        return  # elsewhere the close button closes, and the app's Quit needs nothing of ours
     import AppKit
 
     global _quitter
@@ -269,6 +273,8 @@ def _window_menu_shortcut() -> None:
     menu macOS was given and puts one on. Nothing raises here; without it the entry is still in
     the menu, only without its key.
     """
+    if not puts_away_on_close():
+        return
     import AppKit
 
     command = getattr(AppKit, "NSEventModifierFlagCommand", 1 << 20)
@@ -297,6 +303,7 @@ def show(
     closes_when: Callable[[], bool] | None = None,
     on_close: Callable[[], bool] | None = None,
     may_quit: Callable[[], bool] | None = None,
+    note: Callable[[str], None] | None = None,
     size: tuple[int, int] = SIZE,
     storage: Path | None = None,
 ) -> None:
@@ -309,7 +316,8 @@ def show(
     keep the app in the Dock with nothing to show. ``on_close`` is asked when the close button is
     clicked, and the window stays when it answers no, which is how the app is put away rather than
     quit (:func:`puts_away_on_close`); ``may_quit`` answers for the app's own Quit, wherever it is
-    asked from (:func:`on_quit`).
+    asked from (:func:`on_quit`). ``note`` is given a line when something that is not the engine
+    goes wrong behind the window, which would otherwise be said to nobody.
 
     Raises when this system has no web view (the package missing, or no toolkit under it). The
     engine must not have been started before this returns, so that a system without a window
@@ -345,12 +353,22 @@ def show(
 
     def behind() -> None:
         """What runs while the window is up. It must end when the window does: pywebview gives it
-        a thread of its own, and that thread is not a daemon."""
-        if may_quit is not None:
-            on_quit(may_quit)
-            _window_menu_shortcut()
+        a thread of its own, and that thread is not a daemon.
+
+        The engine starts first and on its own: what follows is the window's own comfort, and a
+        comfort that fails must not take the engine with it. It did: ``on_quit`` reached for AppKit
+        on a system that has none, the thread died on the import, the engine was never started, and
+        the opening page waited for it for ever with nothing in the log (Windows, 2026-09-20).
+        """
         if on_shown is not None:
             on_shown()
+        try:
+            if may_quit is not None:
+                on_quit(may_quit)
+            _window_menu_shortcut()
+        except Exception as exc:  # the window is up and the engine runs: this is not worth dying
+            if note is not None:
+                note(f"the window opened without its menu and its Quit: {exc!r}")
         if closes_when is None:
             return
         closed = threading.Event()
@@ -361,6 +379,11 @@ def show(
                 return
 
     start = behind if any(x is not None for x in (on_shown, closes_when, may_quit)) else None
-    # the way back to a window that was put away, next to the Dock's icon
-    menu = [Menu(WINDOW_MENU, [MenuAction(title, lambda: window.show())])]
+    # the way back to a window that was put away, next to the Dock's icon; where the close button
+    # closes, there is nothing to come back to
+    menu = (
+        [Menu(WINDOW_MENU, [MenuAction(title, lambda: window.show())])]
+        if puts_away_on_close()
+        else []
+    )
     webview.start(start, menu=menu, private_mode=False, storage_path=str(store))

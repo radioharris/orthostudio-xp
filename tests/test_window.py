@@ -87,3 +87,57 @@ def test_show_asks_for_a_web_view_and_says_so_when_there_is_none(
     monkeypatch.setattr(builtins, "__import__", no_webview)
     with pytest.raises(ModuleNotFoundError):
         window.show("http://127.0.0.1:8641/", title="OrthoStudio XP", storage=tmp_path)
+
+
+def test_the_window_asks_nothing_of_cocoa_on_a_system_that_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``import AppKit`` on Windows killed the thread that starts the engine, so the engine never
+    started and the opening page waited for it for ever, with nothing in the log (2026-09-20)."""
+    for platform in ("win32", "linux"):
+        monkeypatch.setattr(window.sys, "platform", platform)
+        assert window.on_quit(lambda: True) is None  # would raise if it reached for AppKit
+        assert window._window_menu_shortcut() is None
+        assert window.puts_away_on_close() is False
+
+
+def test_the_engine_starts_even_when_the_window_trimmings_fail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """What the window puts around itself is comfort; the engine is the point. A comfort that
+    fails must not take the engine with it, and must not do it silently."""
+    started, said = [], []
+
+    class FakeWindow:
+        events = type("E", (), {"closed": type("S", (), {"__iadd__": lambda s, f: s})()})()
+
+        def show(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        window, "on_quit", lambda h: (_ for _ in ()).throw(RuntimeError("no AppKit"))
+    )
+    monkeypatch.setattr(window, "_window_menu_shortcut", lambda: None)
+
+    def fake_start(func: object, **kw: object) -> None:
+        assert callable(func)
+        func()
+
+    fake = type("W", (), {"create_window": lambda *a, **k: FakeWindow(), "start": fake_start})
+    monkeypatch.setitem(__import__("sys").modules, "webview", fake)
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "webview.menu",
+        type("M", (), {"Menu": lambda *a, **k: None, "MenuAction": lambda *a, **k: None}),
+    )
+
+    window.show(
+        "http://127.0.0.1:8641/",
+        title="OrthoStudio XP",
+        on_shown=lambda: started.append(True),
+        may_quit=lambda: True,
+        note=said.append,
+        storage=tmp_path,
+    )
+    assert started == [True]  # the engine ran
+    assert said and "no AppKit" in said[0]  # and the failure was said

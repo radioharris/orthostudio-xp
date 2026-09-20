@@ -182,6 +182,8 @@ def test_the_windows_installer_needs_no_administrator(tmp_path: Path) -> None:
         tmp_path / build.WEBVIEW2_EXE,
     )
     assert "PrivilegesRequired=lowest" in script
+    # the folder is asked for every time, upgrade or not: Inno would hide the page on an upgrade
+    assert "DisableDirPage=no" in script
     # the app its last page opens would inherit RedirectionGuard, and install no tile (2026-09-15)
     assert "\nRedirectionGuard=no\n" in script
     assert "AppId={{7C8E0F52-3B1D-4E4A-9B67-2D4F1A6C9E31}" in script
