@@ -16,6 +16,7 @@ from orthostudio.install.xplane import (
     global_scenery_dir,
     is_xplane_dir,
     other_xplane_dirs,
+    packs_of_their_own,
     xplane_running,
 )
 
@@ -67,6 +68,34 @@ def test_detect_prefers_first_valid_line_of_install_file(tmp_path: Path) -> None
     install_file = tmp_path / "x-plane_install_12.txt"
     install_file.write_text(f"{gone}/\n{good}/\n", encoding="utf-8")
     assert detect_xplane(install_file=install_file, candidates=[], env={}) == good
+
+
+def test_packs_that_bring_their_own_scenery_are_named(tmp_path: Path) -> None:
+    """A user with simHeaven X-World kept our overlays as well and had everything twice
+    (2026-09-20): the Settings question can answer itself when such a pack is there."""
+    custom = tmp_path / "Custom Scenery"
+    for name in (
+        "simHeaven_X-WORLD-Pro_Europe-09-scenery",
+        "simHeaven_X-WORLD-Pro_Library",
+        "simHeaven_X-America-3-regions",
+        "zOrthoStudio_+46+006",
+        "Aerosoft - LFMN Nice",
+    ):
+        (custom / name).mkdir(parents=True)
+    assert packs_of_their_own(tmp_path) == ["simHeaven X-World", "simHeaven X-America"]
+
+    # a pack disabled in scenery_packs.ini draws nothing, so it is not named
+    (custom / "scenery_packs.ini").write_text(
+        "I\n1000 Version\nSCENERY\n\n"
+        "SCENERY_PACK_DISABLED Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/\n"
+        "SCENERY_PACK_DISABLED Custom Scenery/simHeaven_X-WORLD-Pro_Library/\n"
+        "SCENERY_PACK Custom Scenery/zOrthoStudio_+46+006/\n",
+        encoding="utf-8",
+    )
+    assert packs_of_their_own(tmp_path) == ["simHeaven X-America"]
+
+    # no X-Plane folder at all: a hint on a page never raises
+    assert packs_of_their_own(tmp_path / "nowhere") == []
 
 
 def test_other_xplane_dirs_names_the_ones_not_used(tmp_path: Path) -> None:

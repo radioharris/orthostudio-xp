@@ -639,7 +639,13 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    forests and buildings (X-Plane's / none,
    `essential.overlays`, whose sentence starts "Using simHeaven X-World? Choose “None from
    OrthoStudio XP”", since a user looked for the simHeaven option and did not find it at the end of
-   the list). Then the look of the tiles: whose photos (a select of the providers, an unavailable
+   the list; **when the engine finds such a pack in Custom Scenery** the question answers itself:
+   `xplane.packs_of_their_own` of `/api/status` names it, *None* becomes the recommended answer and
+   both answers say why, because a user of the X-Plane.Org page had X-World installed, kept ours,
+   and had everything drawn twice, 2026-09-20. On a **first run**, with no settings file yet, such
+   a pack also makes *None* the answer *chosen*, written to the file so that the page, a build and
+   the command line agree: a user who never opens Settings is the one this happened to. Nothing is
+   written when nothing was adjusted). Then the look of the tiles: whose photos (a select of the providers, an unavailable
    one disabled); how much detail (ZL15-18 in plain names with the ground size at 45°, the
    multiplier of disk and time, levels above the source's `max_zl` disabled); airports (main ones
    with an ICAO code / every airfield / no, naming the airport level); coast fade (sand / rocks);

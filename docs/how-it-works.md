@@ -28,7 +28,9 @@ the measurements, `docs/benchmarks/`.
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,
   `yOrthoStudio_Overlays`, loaded above the photo tiles. Users of simHeaven X-World, which brings
-  its own, answer *None* to the Settings question on roads, forests and buildings: OrthoStudio XP
+  its own, answer *None* to the Settings question on roads, forests and buildings; when OrthoStudio
+  XP finds such a pack in your Custom Scenery it says so beside the question, and on a first run it
+  answers *None* for you: OrthoStudio XP
   then builds no overlay, and a tile built again takes its old one out of X-Plane. A
   `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled. One thing is left behind on
   purpose: the line X-Plane 12 draws around airport grass to blend it into the terrain. Over a

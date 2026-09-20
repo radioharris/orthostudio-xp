@@ -2428,6 +2428,24 @@ def test_every_setting_is_offered_somewhere() -> None:
         assert label != path and hint, path
 
 
+def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> None:
+    """A user with simHeaven X-World kept our overlays too and had everything twice
+    (2026-09-20). When the engine finds such a pack in X-Plane, the recommended answer is the
+    other one, and both answers say why."""
+    doc = _mock_json("settings")
+    plain = _node_json("settings.js", f"m.questionChoices('overlays', {json.dumps(doc)}, {{}})")
+    assert [c["value"] for c in plain] == ["xplane", "none"]
+    assert plain[0]["recommended"] and not plain[1].get("recommended")
+    assert not plain[0].get("note")
+
+    found = _node_json(
+        "settings.js",
+        f"m.questionChoices('overlays', {json.dumps(doc)}, {{ownScenery: ['simHeaven X-World']}})",
+    )
+    assert not found[0].get("recommended") and found[1]["recommended"]
+    assert "simHeaven X-World" in found[0]["note"] and "simHeaven X-World" in found[1]["note"]
+
+
 def test_questions_offer_valid_answers_and_one_recommended_each() -> None:
     from orthostudio.config import leaf_properties
 

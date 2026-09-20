@@ -72,6 +72,7 @@ from orthostudio.install import (
     install_pack,
     is_link,
     other_xplane_dirs,
+    packs_of_their_own,
     xplane_running,
 )
 from orthostudio.model import TileRef, pack_dir_name
@@ -602,6 +603,8 @@ def create_app(
         "settings_path": settings_path,
         "doctor": None,
         "doctor_at": 0.0,
+        # the first run reads what is installed once, then the file answers (see settings())
+        "first_run_done": False,
         "ui_dir": Path(ui_dir) if ui_dir is not None else None,
         # when a page last said it was open: the app stops a while after the last one closed
         "presence": Presence(),
@@ -629,7 +632,34 @@ def create_app(
     # -- helpers -----------------------------------------------------------------------------
 
     def settings() -> Any:
+        path = Path(state["settings_path"] or config.default_config_path())
+        if not state["first_run_done"] and not path.is_file():
+            state["first_run_done"] = True
+            fresh = _settings_of_a_first_run()
+            if fresh is not None:
+                return fresh
         return config.load_settings(state["settings_path"])
+
+    def _settings_of_a_first_run() -> Any:
+        """The defaults adjusted to what is already installed, written once, or ``None``.
+
+        A pack that brings its own roads, forests and buildings over the whole world (simHeaven
+        X-World and its family) answers the overlay question: a user of the X-Plane.Org page who
+        never opened Settings had everything drawn twice, ours over theirs (2026-09-20). Written
+        to the file, not only shown, so that the page, a build and the command line agree; the
+        page then shows *None* chosen, with the pack named beside it. Nothing is written when
+        nothing was adjusted, and a file that cannot be written is not an error here.
+        """
+        xp = resolve_xplane(None, "")
+        if xp is None or not packs_of_their_own(xp):
+            return None
+        fresh = config.Settings()
+        chosen = fresh.model_copy(
+            update={"essential": fresh.essential.model_copy(update={"overlays": "none"})}
+        )
+        with contextlib.suppress(OsxpError, OSError):
+            config.save_settings(chosen, state["settings_path"])
+        return chosen
 
     def xplane_dir(explicit: str | None = None) -> Path | None:
         return resolve_xplane(explicit, settings().essential.xplane_dir)
@@ -685,6 +715,11 @@ def create_app(
                 "running": xplane_running() if xp is not None else False,
                 # a user installed a tile into an X-Plane 12 he had forgotten (2026-09-17)
                 "others": [str(p) for p in await asyncio.to_thread(other_xplane_dirs, xp)],
+                # packs that bring their own roads, forests and buildings: the Settings question
+                # about the overlays answers itself when one of them is there (2026-09-20)
+                "packs_of_their_own": (
+                    [] if xp is None else await asyncio.to_thread(packs_of_their_own, xp)
+                ),
             },
             "doctor": checks,
             "home": str(home),

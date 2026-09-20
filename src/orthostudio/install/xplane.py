@@ -22,6 +22,7 @@ from pathlib import Path
 from orthostudio.fsutil import NO_CONSOLE_WINDOW
 
 __all__ = [
+    "SCENERY_OF_ITS_OWN",
     "XPLANE_DIR_ENV",
     "XPLANE_EXECUTABLES",
     "custom_scenery_dir",
@@ -31,6 +32,7 @@ __all__ = [
     "global_scenery_dir",
     "is_xplane_dir",
     "other_xplane_dirs",
+    "packs_of_their_own",
     "process_names",
     "xplane_candidates",
     "xplane_running",
@@ -174,6 +176,46 @@ def global_scenery_dir(xplane: Path) -> Path:
 def custom_scenery_dir(xplane: Path) -> Path:
     """``<xp>/Custom Scenery`` (path only, not checked)."""
     return Path(xplane) / "Custom Scenery"
+
+
+SCENERY_OF_ITS_OWN: tuple[tuple[str, str], ...] = (
+    ("simheaven_x-world", "simHeaven X-World"),
+    ("simheaven_x-europe", "simHeaven X-Europe"),
+    ("simheaven_x-america", "simHeaven X-America"),
+    ("simheaven_x-asia", "simHeaven X-Asia"),
+    ("simheaven_x-africa", "simHeaven X-Africa"),
+    ("simheaven_x-oceania", "simHeaven X-Oceania"),
+)
+"""Packs that bring their own roads, forests and buildings over the whole world: folder prefix,
+lowercased, and the name to show. A user of the X-Plane.Org page had X-World installed and kept
+OrthoStudio XP's overlays as well, so everything was drawn twice (2026-09-20); the Settings
+question said to choose one, but nothing checked."""
+
+
+def packs_of_their_own(xplane: Path) -> list[str]:
+    """The names of :data:`SCENERY_OF_ITS_OWN` installed in ``<xp>/Custom Scenery``, in order.
+
+    A pack disabled in ``scenery_packs.ini`` does not count: it draws nothing. A folder is read
+    once, and an unreadable one answers nothing rather than raising: this is a hint on a settings
+    page, never a reason to fail.
+    """
+    from orthostudio.install.scenery_packs import SceneryPacks
+
+    custom = custom_scenery_dir(xplane)
+    try:
+        folders = [p.name for p in custom.iterdir() if p.is_dir()]
+    except OSError:
+        return []
+    disabled: set[str] = set()
+    ini = custom / "scenery_packs.ini"
+    if ini.is_file():
+        with contextlib.suppress(OSError, ValueError):
+            disabled = {e.name for e in SceneryPacks.load(ini).entries if not e.enabled}
+    found: list[str] = []
+    for prefix, shown in SCENERY_OF_ITS_OWN:
+        if any(f.lower().startswith(prefix) and f not in disabled for f in folders):
+            found.append(shown)
+    return found
 
 
 # ----------------------------------------------------------------- running?

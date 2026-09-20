@@ -66,6 +66,33 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
 
 
 @pytest.mark.anyio
+async def test_a_first_run_with_x_world_answers_the_overlay_question(  # type: ignore[no-untyped-def]
+    app, home: Path, xplane: Path
+) -> None:
+    """A user of the X-Plane.Org page had simHeaven X-World and our overlays as well, so
+    everything was drawn twice (2026-09-20). With such a pack installed and no settings file
+    yet, the answer starts on *none*, and it is written so that a build agrees with the page."""
+    (xplane / "Custom Scenery" / "simHeaven_X-WORLD-Pro_Europe-09-scenery").mkdir()
+    assert not (home / "config.toml").is_file()
+    async with client_for(app) as c:
+        doc = (await c.get("/api/settings")).json()
+        assert doc["essential"]["overlays"] == "none"
+        assert (home / "config.toml").is_file()  # the same answer for the page and for a build
+        status = (await c.get("/api/status")).json()
+        assert status["xplane"]["packs_of_their_own"] == ["simHeaven X-World"]
+
+
+@pytest.mark.anyio
+async def test_a_first_run_without_such_a_pack_writes_nothing(  # type: ignore[no-untyped-def]
+    app, home: Path, xplane: Path
+) -> None:
+    async with client_for(app) as c:
+        doc = (await c.get("/api/settings")).json()
+    assert doc["essential"]["overlays"] == "xplane"
+    assert not (home / "config.toml").is_file()
+
+
+@pytest.mark.anyio
 async def test_settings_round_trip_and_schema(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
     async with client_for(app) as c:
         r = await c.get("/api/settings")

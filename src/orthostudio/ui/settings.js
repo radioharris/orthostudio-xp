@@ -205,7 +205,7 @@ export function questionShown(id, settings) {
 }
 
 /** The choices of a question, in order: ``{value, label, note?, recommended?, disabled?}``. */
-export function questionChoices(id, settings, { providers = [] } = {}) {
+export function questionChoices(id, settings, { providers = [], ownScenery = [] } = {}) {
   const value = (path) => getPath(settings, path);
   switch (id) {
     case "provider": {
@@ -297,11 +297,25 @@ export function questionChoices(id, settings, { providers = [] } = {}) {
         { value: "nearest", label: t("settings.q.holes_nearest"), recommended: true },
         { value: "zero", label: t("settings.q.holes_zero"), note: t("settings.q.holes_zero_note") },
       ];
-    case "overlays":
+    case "overlays": {
+      // A pack that brings its own roads, forests and buildings is in X-Plane: ours would come
+      // on top of its own, everything drawn twice. The answer to recommend is the other one.
+      const brought = ownScenery.length ? ownScenery.join(", ") : "";
       return [
-        { value: "xplane", label: t("settings.q.overlays_xplane"), recommended: true },
-        { value: "none", label: t("settings.q.overlays_none"), note: t("settings.q.overlays_none_note") },
+        {
+          value: "xplane",
+          label: t("settings.q.overlays_xplane"),
+          note: brought ? t("settings.q.overlays_twice", { pack: brought }) : undefined,
+          recommended: !brought,
+        },
+        {
+          value: "none",
+          label: t("settings.q.overlays_none"),
+          note: brought ? t("settings.q.overlays_found", { pack: brought }) : t("settings.q.overlays_none_note"),
+          recommended: Boolean(brought),
+        },
       ];
+    }
     default:
       return [];
   }
@@ -640,7 +654,10 @@ function questionBox(view, id, ...body) {
 
 function radios(view, id, name, current) {
   const { h } = view.dom;
-  const choices = questionChoices(id, view.draft, { providers: view.providers });
+  const choices = questionChoices(id, view.draft, {
+    providers: view.providers,
+    ownScenery: view.xplane?.packs_of_their_own || [],
+  });
   return h("div", { class: "choices" }, choices.map((c) => {
     const input = h("input", {
       type: "radio",
