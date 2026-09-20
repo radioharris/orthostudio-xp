@@ -109,10 +109,8 @@ class Relief(BaseModel):
 
     model_config = _FROZEN
 
-    source: Literal[
-        "auto", "file", "copernicus", "usgs", "usgs1", "canada", "south_america"
-    ] = _field(
-        "auto", "essential", "custom_dem", ""
+    source: Literal["auto", "file", "copernicus", "usgs", "usgs1", "canada", "south_america"] = (
+        _field("auto", "essential", "custom_dem", "")
     )
     file: str = _field("", "essential", "custom_dem", "")
     folder: str = _field(

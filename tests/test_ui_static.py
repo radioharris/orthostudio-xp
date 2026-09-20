@@ -3279,7 +3279,7 @@ def test_a_build_that_stopped_short_offers_to_be_built_again() -> None:
     redo: a build under way, and one that finished with everything built."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     head = _function_body(app_js, "buildJobView")
-    assert 'onclick: retryJob' in head and 't("works.again")' in head
+    assert "onclick: retryJob" in head and 't("works.again")' in head
     assert "v.again, v.stop" in head  # beside Stop, before it: Stop is the dangerous one
     update = _function_body(app_js, "updateJobView")
     rule = 'v.again.hidden = active || (job.status === "done" && !(job.errors || []).length);'
@@ -3307,15 +3307,19 @@ def test_the_usgs_relief_at_one_arc_second_is_offered_too() -> None:
 
     tables = _i18n_tables()
     for lang in ("en", "fr"):
-        for key in ("settings.q.relief_usgs1", "settings.q.relief_usgs1_note",
-                    "plan.s.relief_usgs1", "works.relief_usgs1"):
+        for key in (
+            "settings.q.relief_usgs1",
+            "settings.q.relief_usgs1_note",
+            "plan.s.relief_usgs1",
+            "works.relief_usgs1",
+        ):
             assert tables[lang][key], f"{lang} is missing {key}"
     # the note warns what the measurement showed: over Canada it was drawn from contour lines
     assert "contour" in tables["en"]["settings.q.relief_usgs1_note"]
     assert "courbes de niveau" in tables["fr"]["settings.q.relief_usgs1_note"]
     # and the refusal no longer sends a Canadian user away from a layer that covers them
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
-    assert 'the USGS covers the United States only' not in i18n
+    assert "the USGS covers the United States only" not in i18n
     assert 'c.source === "NED1" ? "North America" : "the United States"' in i18n
 
 
@@ -3393,7 +3397,7 @@ def test_the_final_report_says_which_tiles_were_patched() -> None:
     body = _function_body(app_js, "renderReport")
     assert "(tile.patches || []).length" in body  # tiles that had patches, whatever the engine
     assert 't("works.patches_none")' in body  # and the other half of the answer
-    assert 'tile.patches.join(' in body  # the names, under the pointer
+    assert "tile.patches.join(" in body  # the names, under the pointer
     assert '[t("works.patches"), patchWords' in body
     tables = _i18n_tables()
     for lang in ("en", "fr"):
@@ -3412,7 +3416,7 @@ def test_the_works_line_says_which_relief_was_read_not_only_which_was_chosen() -
     assert 'decisionCounts(job).get("DEM_OVERLAY_UNAVAILABLE")' in body
     assert 't("works.relief_gap_one")' in body and 't("works.relief_gap"' in body
     # and the code reads as words in the list of decisions, not as its own name
-    assert "DEM_OVERLAY_UNAVAILABLE: () => t(\"works.dec_no_overlay\")" in app_js
+    assert 'DEM_OVERLAY_UNAVAILABLE: () => t("works.dec_no_overlay")' in app_js
     tables = _i18n_tables()
     for lang in ("en", "fr"):
         for key in ("works.relief_gap", "works.relief_gap_one", "works.dec_no_overlay"):
@@ -3427,7 +3431,7 @@ def test_the_works_line_says_which_relief_was_read_not_only_which_was_chosen() -
 
 
 def test_the_import_says_it_takes_nothing_from_the_ortho4xp_folder() -> None:
-    """"Import my Ortho4XP tiles" reads and registers, and the word import suggests copying or
+    """ "Import my Ortho4XP tiles" reads and registers, and the word import suggests copying or
     moving: a user asked whether his Ortho4XP tiles would be deleted, copied, or where they
     would be put (2026-09-20). They stay exactly where they are, the library keeps their path,
     and a tile Ortho4XP built is refused by delete (`pipeline/pack.py`). The page said none of
