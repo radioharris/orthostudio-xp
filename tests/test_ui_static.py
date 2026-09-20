@@ -3450,3 +3450,23 @@ def test_the_import_says_it_takes_nothing_from_the_ortho4xp_folder() -> None:
     body = body[: body.index("\n\n\n")]
     for takes in ("copy", "move", "rmtree", "unlink", "rename"):
         assert takes not in body, f"the import {takes}s something"
+
+
+def test_a_tile_we_did_not_build_says_why_it_has_no_delete() -> None:
+    """Delete is drawn for tiles OrthoStudio XP built and nothing was drawn for the others, so a
+    user who had just imported his Ortho4XP tiles looked for the button and did not find it
+    (2026-09-20). The lead says it and the "Built by" column says it; neither is where the eye
+    goes. The reason now sits where the button would be, with the whole of it under the
+    pointer."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = app_js[app_js.index("const deleteButton = byOsxp") :]
+    row = row[: row.index("\n  let missing")]
+    assert 't("library.delete_not_ours")' in row
+    assert 't("library.delete_not_ours_help")' in row
+    assert ": null;" not in row  # what stood there before
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        assert tables[lang]["library.delete_not_ours"]
+        # and it says what to do instead, both halves of it
+        words = tables[lang]["library.delete_not_ours_help"]
+        assert len(words) > 60, f"{lang} says too little"

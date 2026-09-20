@@ -3848,9 +3848,12 @@ function libraryRow(e) {
   } else if (present) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
   }
+  // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
+  // is said in the lead and in the "Built by" column, and a user still looked for the button
+  // (2026-09-20). It is now said where the button would be.
   const deleteButton = byOsxp
     ? h("button", { type: "button", class: "btn btn-small btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
-    : null;
+    : h("span", { class: "help", title: t("library.delete_not_ours_help") }, t("library.delete_not_ours"));
   let missing = null;
   if (!present) {
     missing = pill(t("library.missing"), "warn");
