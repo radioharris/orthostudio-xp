@@ -245,8 +245,18 @@ each one measures, and the lidar answers it. Against `HRDEM` on the posts it cov
 NED is much the closer where the sample is small and sits in the trees, and the poorer where the
 sample is ten times larger; neither wins by more than a metre or two, and both are far behind the
 lidar itself. `NED1` therefore stays a source the code knows (`SOURCES`) and Settings does not
-offer: 49 MB a cell against 28 MB buys nothing measurable. What would help in Canada outside the
-flown parts is NRCan's MRDEM (30 m, national), which is not read yet.
+offer: 49 MB a cell against 28 MB buys nothing measurable.
+
+What would help there is **MRDEM**, NRCan's national 30 m model of the same CanElevation series
+as HRDEM: not a finer grid but a **bare earth** one. Where the lidar has flown it is the HRDEM
+mosaic resampled from 1 m; everywhere else it is **Copernicus GLO-30 with a forest-removal and a
+settlement-removal model applied** to estimate the ground
+([product page](https://open.canada.ca/data/en/dataset/18752265-bda3-498c-a4ba-9dfe68cb98da),
+[specification](https://download-telecharger.services.geo.ca/pub/elevation/dem_mne/MRDEM_MNEMR/CanElevation-MRDEM-Product-Specifications.pdf)).
+That is the +5.08 m and the 72 % of posts above the ground measured over Banff, taken off at the
+source: what ANADEM does for the Amazon, for Canada. Two things stand between it and this
+pipeline, which reads one-arc-second lat/lon cells: MRDEM is projected in EPSG:3979 (Canada Atlas
+Lambert) and its heights are CGVD2013, not EGM2008. Not read yet.
 
 ### 3.4 Negative memo (the fix that motivated this module)
 
