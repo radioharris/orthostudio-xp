@@ -57,6 +57,10 @@ DIM_TEXT = 150
 """The version is written in the page's faintest ink (``--fg-3``). The brand beside it reaches 228
 and the tabs 172, so the first run of ink that never gets brighter than this is the version."""
 
+TITLE_BAR = 200
+"""How far below the first band of page colour the page's own bar may still be, in pixels: a
+window's title bar stands between them and is about 54 px tall at twice the scale."""
+
 STATUS_BAR = (30, 100)
 """How tall the status bar may be, in pixels, for the crop to trust what it found."""
 
@@ -88,29 +92,44 @@ class Found:
     colour: tuple[int, int, int]
 
 
-def _matches(pixels: np.ndarray, colour: Sequence[int]) -> np.ndarray:
-    return np.abs(pixels - np.array(colour)).max(axis=2) <= TOLERANCE
+def _matches(pixels: np.ndarray, colour: Sequence[int], tolerance: int = TOLERANCE) -> np.ndarray:
+    return np.abs(pixels - np.array(colour)).max(axis=2) <= tolerance
 
 
 def page_box(pixels: np.ndarray) -> tuple[int, int, int, int]:
-    """Where the page is in a capture of the whole screen, as ``(left, top, right, bottom)``.
+    """Where the page is in a capture, as ``(left, top, right, bottom)``.
 
-    The browser's own grey is the landmark: under its last row the page opens with its bar, which is
-    one of the page colours across the whole width. The bottom is the last such row, the status bar;
-    the sides come from the bar itself.
+    Two kinds of capture reach here. In one, the page is a tab of the whole screen: the browser's
+    own grey is the landmark, and under its last row the page opens with its bar. In the other,
+    since 0.1.8, the page is the app's own window, and there is no browser at all: the search then
+    starts at the top of the capture. The window's title bar is no obstacle, being a grey of macOS
+    and not one of the page (44,43,44 against 32,34,37, measured), so it falls outside on its own,
+    and so does the desktop around the window.
+
+    Either way the page opens with its bar, which is one of the page colours across the width. The
+    bottom is the last such row, the status bar; the sides come from the bar itself, which is why a
+    window narrower than the screen needs nothing said about it.
     """
     page = np.zeros(pixels.shape[:2], bool)
     for colour in PAGE_COLOURS:
         page |= _matches(pixels, colour)
     share = page.mean(axis=1)
     chrome = np.where(_matches(pixels, BROWSER_CHROME).mean(axis=1) >= 0.5)[0]
-    if not chrome.size:
-        raise LookupError("no browser bars: is this a capture of the whole screen, in Chrome?")
-    under = int(chrome.max()) + 1
+    under = int(chrome.max()) + 1 if chrome.size else 0
     tops = [row for row in range(under, len(share) - 12) if share[row : row + 12].min() >= 0.5]
     if not tops:
         raise LookupError("no page under the browser bars: is the page in its dark theme?")
     top = tops[0]
+    # The page draws its bars in its own colours, and a capture keeps them exactly. The grey macOS
+    # paints a window's title bar with only comes close: 35,34,35 against the page's 32,34,37 on
+    # one capture and 44,43,44 on the next, measured, the first of which the tolerance that finds
+    # a bar would swallow whole. So the top is taken from the exact colour, which the title bar
+    # never has; a capture whose colours have been through JPEG has none either, and keeps what
+    # the tolerance found.
+    exact = _matches(pixels, PAGE_COLOURS[0], tolerance=0).mean(axis=1)
+    page_bar = [row for row in range(top, min(top + TITLE_BAR, len(exact))) if exact[row] >= 0.5]
+    if page_bar:
+        top = page_bar[0]
     bottom = max(row for row in np.where(share >= 0.5)[0] if share[row - 12 : row + 1].min() >= 0.5)
     columns = np.where(page[top : top + 40].mean(axis=0) >= 0.95)[0]
     return int(columns.min()), top, int(columns.max()) + 1, int(bottom) + 1
