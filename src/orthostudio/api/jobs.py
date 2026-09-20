@@ -301,8 +301,11 @@ def _relief_of(spec: Any) -> str:
     if not custom:
         return str(spec.relief)
     base, _, rest = custom.partition(";")
-    if base == "COP30" and [p for p in rest.split(";") if p] == ["HRDEM"]:
+    overlays = [p for p in rest.split(";") if p]
+    if base == "COP30" and overlays == ["HRDEM"]:
         return "canada"
+    if base == "COP30" and overlays == ["ANADEM"]:
+        return "south_america"
     if not base:
         return str(spec.relief)
     return _RELIEF_NAMES.get(base, "file")
@@ -312,7 +315,8 @@ def _own_files_of(spec: Any) -> bool:
     """Whether a folder (or a file) of the user's own is laid over the relief of ``spec``."""
     custom = str(spec.config.get("custom_dem", "") or "").strip()
     overlays = [part for part in custom.split(";")[1:] if part]
-    return any(part not in _RELIEF_NAMES and part != "HRDEM" for part in overlays)
+    known = {*_RELIEF_NAMES, "HRDEM", "ANADEM"}
+    return any(part not in known for part in overlays)
 
 
 class Job:

@@ -23,9 +23,11 @@ from orthostudio.dem.sources import (
     DownloadFn,
     EnsureOptions,
     NegativeMemo,
+    RangesFn,
     default_elevation_dir,
     default_memo_path,
     http_download,
+    http_ranges,
     no_download,
 )
 from orthostudio.dem.xplane import XP12_INPUTS
@@ -83,6 +85,9 @@ class DemJob:
     memo_ttl_s: float | None = None
     on_event: Callable[[OsxpError], None] | None = None
     cancel: threading.Event | None = None
+    ranges: RangesFn | None = None
+    """``None`` means :func:`orthostudio.dem.sources.http_ranges`: how ANADEM's zones of 2 GB are
+    read a square at a time. Pass :func:`no_ranges` to forbid the network."""
     global_scenery_dir: Path | None = None
     """X-Plane 12 Global Scenery, for ``custom_dem = "XP12"`` when :func:`build_dem` is called
     directly. The rule ignores it and reads only the DSFs of its inputs."""
@@ -92,6 +97,7 @@ class DemJob:
         return EnsureOptions(
             elevation_dir=self.elevation_dir,
             download=self.download if self.download is not None else http_download,
+            ranges=self.ranges if self.ranges is not None else http_ranges,
             memo=NegativeMemo(self.memo_path, ttl_s=self.memo_ttl_s),
             dem1_local_fallback=dem1_local_fallback,
             cancel=self.cancel,

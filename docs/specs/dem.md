@@ -78,6 +78,30 @@ the shape the assembly expects. Measured afterwards on `+53-114`: the mesh build
 gives 714 m at Edmonton International (published 723 m) and 667 m at Edmonton City Centre
 (published 671 m).
 
+### 3.0b ANADEM, the relief of South America
+
+Added for a user of the X-Plane.Org page (2026-09-20). ANADEM v1.0 is a **terrain** model of South
+America: the Federal University of Rio Grande do Sul and Brazil's water agency take the vegetation
+bias out of Copernicus GLO-30 with a model trained on remote sensing (Laipelt et al., 2024,
+`https://hge-iph.github.io/anadem/`). Measured here over the Amazon, `S10W060`, 262 144 points:
+**Copernicus stands 16.7 m above ANADEM on average** (median 18.1 m), higher on 96 % of the points,
+and its surface is noisier (2.41 m between neighbours against 1.26 m). That is the canopy, and an
+airstrip in the forest sits on top of it.
+
+It is laid **over Copernicus** (`custom_dem = "COP30;ANADEM"`, Settings' relief *The relief of South
+America*), as Canada's lidar is: outside the zones published, Copernicus answers alone.
+
+The agency serves one tiled GeoTIFF per MGRS zone, **about 2 GB**, 52 of them (`ANADEM_ZONES`), and
+their server takes byte ranges. A square is 37 MB of a zone, so nothing else travels: `dem/cog.py`
+reads the header in one request (`HEADER_BYTES`, enough for the directory and the tables of 2 596
+tile offsets), asks for the tiles the square falls in, and writes them as a small deflated GeoTIFF
+of that square (`write_geotiff`), which the rest of the engine reads like any other elevation file.
+Measured: a whole square of the Amazon in **9 s**, 33 MB kept. A one-degree square never straddles a
+zone, whose sides are multiples of six degrees of longitude and eight of latitude.
+
+The same reader opens a huge tiled GeoTIFF a user has on his disk, which Pillow would decode whole
+(`MAX_POINTS` refuses a zone of 671 million points).
+
 ### 3.0a A folder of one's own files
 
 Added for a user of the X-Plane.Org page who has the lidar models of Europe by the hundred, one

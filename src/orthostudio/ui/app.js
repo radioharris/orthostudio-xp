@@ -3158,6 +3158,7 @@ function reliefWords(relief) {
   if (relief === "copernicus") return t("works.relief_cop30");
   if (relief === "usgs") return t("works.relief_usgs");
   if (relief === "canada") return t("works.relief_canada");
+  if (relief === "south_america") return t("works.relief_anadem");
   if (relief === "file") return t("works.relief_file");
   if (relief === "xplane") return t("works.relief_xplane");
   return "";  // an older engine says nothing, and the line keeps its other parts

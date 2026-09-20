@@ -290,6 +290,7 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
         { value: "copernicus", label: t("settings.q.relief_cop30"), note: t("settings.q.relief_cop30_note") },
         { value: "usgs", label: t("settings.q.relief_usgs"), note: t("settings.q.relief_usgs_note") },
         { value: "canada", label: t("settings.q.relief_canada"), note: t("settings.q.relief_canada_note") },
+        { value: "south_america", label: t("settings.q.relief_anadem"), note: t("settings.q.relief_anadem_note") },
         { value: "file", label: t("settings.q.relief_file"), note: t("settings.q.relief_file_note") },
       ];
     case "holes":
@@ -389,6 +390,7 @@ export function settingsSummary(settings) {
   else if (relief === "copernicus") parts.push(t("plan.s.relief_cop30"));
   else if (relief === "usgs") parts.push(t("plan.s.relief_usgs"));
   else if (relief === "canada") parts.push(t("plan.s.relief_canada"));
+  else if (relief === "south_america") parts.push(t("plan.s.relief_anadem"));
   else parts.push(t("plan.s.relief_auto"));
   if (relief !== "file" && String(e.relief?.folder || "").trim()) parts.push(t("plan.s.relief_own"));
   parts.push(e.overlays === "none" ? t("plan.s.overlays_none") : t("plan.s.overlays_xplane"));

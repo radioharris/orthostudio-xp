@@ -56,9 +56,9 @@ __all__ = [
     "view_url",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM"]
+Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM")
+SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM")
 """The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), plus the two
 OrthoStudio XP added for users who asked: ``COP30``, the Copernicus DEM GLO-30 (2026-09-17), and
 ``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``)."""
@@ -82,6 +82,46 @@ COP30_BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
 """Copernicus DEM GLO-30, 1 arc-second, on the public store of the Open Data programme: one
 GeoTIFF of 3600x3600 posts per cell, 20 to 40 MB, no account (checked 2026-09-17)."""
 NED_BASE_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation"
+ANADEM_BASE_URL = "https://metadados.snirh.gov.br/files/anadem_v1_tiles"
+"""ANADEM v1.0, the terrain model of South America: the vegetation bias taken out of Copernicus
+GLO-30 by the Federal University of Rio Grande do Sul and Brazil's water agency (Laipelt et al.,
+2024, https://hge-iph.github.io/anadem/). Served by the agency as one tiled GeoTIFF of about 2 GB
+per MGRS zone; the square of one tile is 37 MB of it, read by byte ranges (``dem/cog.py``)."""
+
+# fmt: off
+ANADEM_ZONES: frozenset[str] = frozenset({
+    "17L", "17M", "17N", "18F", "18G", "18H", "18K", "18L", "18M", "18N", "18P",
+    "19F", "19G", "19H", "19J", "19K", "19L", "19M", "19N", "19P",
+    "20F", "20G", "20H", "20J", "20K", "20L", "20M", "20N", "20P",
+    "21F", "21H", "21J", "21K", "21L", "21M", "21N", "21P",
+    "22H", "22J", "22K", "22L", "22M", "22N",
+    "23J", "23K", "23L", "23M", "24K", "24L", "24M", "25L", "25M",
+})
+# fmt: on
+"""The 52 zones published. A square outside them is simply not theirs: the relief laid under
+ANADEM answers, as it does for Canada's lidar."""
+
+_MGRS_BANDS = "CDEFGHJKLMNPQRSTUVWX"
+
+
+def anadem_zone(lat: int, lon: int) -> str | None:
+    """The MGRS zone of a square (``21L``), or ``None`` outside what ANADEM covers.
+
+    A one-degree square never straddles a zone: their sides are multiples of six degrees of
+    longitude and eight of latitude, and a square sits on whole degrees.
+    """
+    if not -80 <= lat < 80:
+        return None
+    zone = int((lon + 180) // 6) + 1
+    band = _MGRS_BANDS[int((lat + 80) // 8)]
+    name = f"{zone:02d}{band}"
+    return name if name in ANADEM_ZONES else None
+
+
+def anadem_url(zone: str) -> str:
+    """Where the zone's GeoTIFF lives."""
+    return f"{ANADEM_BASE_URL}/anadem_v1_{zone}.tif"
+
 
 DEM1_CELLS: frozenset[tuple[int, int]] = frozenset(
     {
@@ -156,6 +196,7 @@ _SUFFIX: dict[str, str] = {
     "NED1/3": "_NED13.tif",
     "NED1": "_NED1.tif",
     "HRDEM": "_HRDEM.hgt",
+    "ANADEM": "_ANADEM.tif",
 }
 
 
@@ -413,6 +454,43 @@ def no_download(url: str) -> Download:
     return Download(url, error="NET_CONNECTION_FAILED")
 
 
+RangesFn = Callable[[str, Sequence[tuple[int, int]]], list[bytes]]
+"""How :func:`ensure_elevation` reads parts of a file too big to fetch whole (ANADEM); injected
+like :data:`DownloadFn`, so tests never reach a service. A part that could not be read comes back
+empty rather than missing, so the caller sees which one."""
+
+
+def http_ranges(
+    url: str, parts: Sequence[tuple[int, int]], *, timeout_s: float = 120.0, max_attempts: int = 3
+) -> list[bytes]:
+    """``(offset, length)`` pairs of one file, eight in flight, in the order asked."""
+    from orthostudio.net.fetch import FetchRequest, fetch_all
+
+    if not parts:
+        return []
+    results = fetch_all(
+        [
+            FetchRequest(
+                key=i,
+                url=url,
+                headers={"Range": f"bytes={at}-{at + size - 1}"},
+                host_group=_host_group(url),
+            )
+            for i, (at, size) in enumerate(parts)
+        ],
+        timeout_s=timeout_s,
+        max_attempts=max_attempts,
+        max_in_flight=8,
+        start_in_flight=4,
+    )
+    return [r.body if r.status in (200, 206) and r.body else b"" for r in results]
+
+
+def no_ranges(url: str, parts: Sequence[tuple[int, int]]) -> list[bytes]:
+    """A :data:`RangesFn` that reads nothing (offline builds and tests)."""
+    return []
+
+
 # -- ensure ---------------------------------------------------------------------------------
 
 
@@ -443,6 +521,8 @@ class EnsureOptions:
     elevation_dir: Path
     """Where the cells are read, and where the ones this run downloads are written."""
     download: DownloadFn = no_download
+    ranges: RangesFn = no_ranges
+    """Reads parts of a file served whole (ANADEM's zones of 2 GB); ``no_ranges`` reads none."""
     memo: NegativeMemo = field(default_factory=NegativeMemo)
     dem1_local_fallback: bool = False
     """TODO (spec 9.1, blocker B2): reuse a local 3" file when the 1" zip is unavailable.
@@ -524,6 +604,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
         return _ensure_ned(source, lat, lon, opts)
     if source == "HRDEM":
         return _ensure_hrdem(lat, lon, opts)
+    if source == "ANADEM":
+        return _ensure_anadem(lat, lon, opts)
     raise ValueError(f"unknown elevation source {source!r}")
 
 
@@ -648,6 +730,57 @@ def _ensure_hrdem(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
         opts.memo.record(url)
         return EnsureResult(lat, lon, CellState.MISSING, None, url, "no lidar over this cell")
     write_hgt(path, cell)
+    return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+
+
+def _ensure_anadem(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """The square of ANADEM, cut out of its zone's GeoTIFF without fetching the whole 2 GB.
+
+    The header comes first, in one read; it says where each of the file's 512 by 512 tiles lies,
+    and only those the square falls in are asked for (37 MB for a square, against 2 GB for the
+    zone). What is read is written as a small deflated GeoTIFF of the square, so every stage
+    after this one reads it as it reads any other elevation file.
+
+    A square outside the zones published is ``MISSING`` without a single request, and the relief
+    laid under ANADEM answers there, as it does for Canada's lidar.
+    """
+    from orthostudio.dem.cog import (
+        HEADER_BYTES,
+        read_header,
+        read_window,
+        window_for,
+        write_geotiff,
+    )
+
+    path = _local("ANADEM", lat, lon, opts)
+    if path.is_file() and _is_tiff(path):
+        return EnsureResult(lat, lon, CellState.LOCAL, path)
+    zone = anadem_zone(lat, lon)
+    if zone is None:
+        return EnsureResult(lat, lon, CellState.MISSING, None, "", "outside what ANADEM covers")
+    url = anadem_url(zone)
+    if opts.memo.is_missing(url):
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, "in the negative memo")
+    opts.check_cancelled()
+    head = opts.ranges(url, [(0, HEADER_BYTES)])
+    if not head or not head[0]:
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, "the zone could not be read")
+    try:
+        info = read_header(head[0], path=url)
+        window = window_for(info, lat, lat + 1, lon, lon + 1)
+        opts.check_cancelled()
+        values = read_window(info, window, lambda parts: opts.ranges(url, parts), path=url)
+    except OsxpError as err:
+        return EnsureResult(lat, lon, CellState.MISSING, None, url, str(err))
+    write_geotiff(
+        path,
+        values,
+        north=window.north,
+        west=window.west,
+        step_x=window.step_x,
+        step_y=window.step_y,
+        nodata=info.nodata,
+    )
     return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
 
 

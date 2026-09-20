@@ -1129,10 +1129,25 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
                 ctx.progress(0.0, dem_download_message(spec.tile, got[0], got[1], elapsed))
             return answer
 
+        def ranges(url: str, parts: Any) -> list[bytes]:
+            # ANADEM is read part by part: each part received counts like a file's bytes, so the
+            # Works line shows the rate of a square as it does for a source served whole.
+            answers = dem_sources.http_ranges(url, parts)
+            body = sum(len(b) for b in answers)
+            if body:
+                got[0] += 1
+                got[1] += body
+                ctx.progress(
+                    0.0,
+                    dem_download_message(spec.tile, got[0], got[1], time.perf_counter() - start),
+                )
+            return answers
+
         job = DemJob(
             tile=spec.tile,
             elevation_dir=default_elevation_dir(),
             download=download,
+            ranges=ranges,
             cancel=cast(Any, ctx.cancel_event),
         )
         with dem_job(job):

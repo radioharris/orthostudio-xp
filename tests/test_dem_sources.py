@@ -380,3 +380,64 @@ def _write_small_geotiff(path: Path, side: int) -> None:
     info[33922] = (0.0, 0.0, 0.0, 11.0, 49.0, 0.0)
     info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
     Image.fromarray(np.zeros((side, side), dtype=np.float32)).save(path, tiffinfo=info)
+
+
+# -- ANADEM, South America (spec 3.0b) ---------------------------------------------------------
+
+
+def test_anadem_zones_and_urls() -> None:
+    """A one-degree square never straddles an MGRS zone, so each has exactly one file; a square
+    outside what they published has none, and Copernicus answers there."""
+    from orthostudio.dem.sources import ANADEM_ZONES, anadem_url, anadem_zone
+
+    assert len(ANADEM_ZONES) == 52
+    assert anadem_zone(-10, -60) == "21L"  # the Amazon
+    assert anadem_zone(-23, -47) == "23K"  # Sao Paulo
+    assert anadem_zone(-35, -59) == "21H"  # Buenos Aires
+    assert anadem_zone(10, -70) == "19P"  # Venezuela
+    assert anadem_zone(46, 6) is None and anadem_zone(-10, 20) is None
+    assert anadem_url("21L").endswith("/anadem_v1_21L.tif")
+
+
+def test_anadem_reads_only_its_square_and_writes_it(tmp_path: Path) -> None:
+    """The zone is 2 GB: the header is read once, then the tiles the square falls in, and what
+    comes back is written as a small GeoTIFF of that square alone."""
+    import numpy as np
+    from tests.test_dem_cog import tiled_tiff
+
+    from orthostudio.dem.sources import CellState, EnsureOptions, ensure_elevation
+
+    # a zone of ten squares, of which we want one
+    rows = cols = 64
+    values = np.arange(rows * cols, dtype=np.float32).reshape(rows, cols) % 300
+    blob = tiled_tiff(values)
+    # the fixture's grid: 0.001 degree from (-60, -9); the square -60..-59.936 fits in it
+    asked: list[tuple[int, int]] = []
+
+    def ranges(url: str, parts: list[tuple[int, int]]) -> list[bytes]:
+        assert url.endswith("anadem_v1_21L.tif")
+        asked.extend(parts)
+        return [blob[at : at + size] for at, size in parts]
+
+    opts = EnsureOptions(elevation_dir=tmp_path, ranges=ranges)
+    got = ensure_elevation("ANADEM", -10, -60, opts)
+    assert got.state is CellState.DOWNLOADED and got.path is not None
+    assert got.path.name == "S10W060_ANADEM.tif"
+    from orthostudio.dem.cog import HEADER_BYTES
+
+    assert asked[0] == (0, HEADER_BYTES)  # the header first, in one read
+    tiles = asked[1:]
+    assert tiles and sum(size for _at, size in tiles) < len(blob)  # then a part of the zone
+
+    again = ensure_elevation("ANADEM", -10, -60, opts)
+    assert again.state is CellState.LOCAL  # kept, and never asked for twice
+
+
+def test_a_square_outside_anadem_asks_nothing(tmp_path: Path) -> None:
+    from orthostudio.dem.sources import CellState, EnsureOptions, ensure_elevation
+
+    def ranges(url: str, parts: list[tuple[int, int]]) -> list[bytes]:
+        raise AssertionError("nothing to ask for outside the zones published")
+
+    got = ensure_elevation("ANADEM", 46, 6, EnsureOptions(elevation_dir=tmp_path, ranges=ranges))
+    assert got.state is CellState.MISSING and got.path is None
