@@ -35,18 +35,25 @@ from orthostudio import __version__
 __all__ = [
     "APP_NAME",
     "DEFAULT_ARGS",
+    "ENGINE_ARGS",
     "ENGINE_PORT",
     "LOG_NAME",
+    "engine_here",
+    "engine_stopped",
+    "in_a_window",
     "log_path",
     "main",
     "open_running",
     "open_while_starting",
     "opening_page",
+    "start_engine",
 ]
 
 APP_NAME = "OrthoStudio XP"
 LOG_NAME = "serve.log"
 DEFAULT_ARGS = ("serve", "--open", "--quit-when-closed")
+ENGINE_ARGS = ("serve", "--no-open", "--quit-when-closed")
+"""What the engine of a window is started with: the window shows the page, not the browser."""
 ENGINE_PORT = 8641
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
 two equal)."""
@@ -139,19 +146,15 @@ def _listening(port: int) -> bool:
         return False
 
 
-def open_running(
-    port: int = ENGINE_PORT,
-    *,
-    browser: Callable[[str], object] = webbrowser.open,
-    timeout_s: float = 5.0,
-) -> bool:
-    """Open the page of the OrthoStudio XP already serving ``port`` when it is this installation at
-    this version (``GET /api/engine``: the same package folder, the same version); ``False``, and
-    nothing opened, otherwise: the usual start then decides (an older one or another installation
-    is asked to stop).
+def engine_here(port: int = ENGINE_PORT, *, timeout_s: float = 5.0) -> bool:
+    """Whether the OrthoStudio XP already serving ``port`` is this installation at this version
+    (``GET /api/engine``: the same package folder, the same version). ``False`` when another one,
+    an older one, or something else holds the port: the usual start then decides (it is asked to
+    stop, :func:`orthostudio.api.serve.take_over`).
 
-    Before the engine's imports, which take seconds: a user on Windows who closed the browser and
-    opened the app again saw nothing come, and ended the engine in the Task Manager (2026-09-17).
+    Asked before the engine's imports, which take seconds: a user on Windows who closed the
+    browser and opened the app again saw nothing come, and ended the engine in the Task Manager
+    (2026-09-17).
     """
     if not _listening(port):
         return False
@@ -162,16 +165,27 @@ def open_running(
             doc = json.load(answer)
         engine = doc.get("engine") if isinstance(doc, dict) else None
         root = engine.get("root") if isinstance(engine, dict) else None
-        same = (
+        return (
             doc.get("version") == __version__
             and isinstance(root, str)
             and Path(root).resolve() == Path(__file__).resolve().parent
         )
     except (OSError, ValueError, AttributeError):
         return False
-    if same:
-        browser(f"http://127.0.0.1:{port}/")
-    return same
+
+
+def open_running(
+    port: int = ENGINE_PORT,
+    *,
+    browser: Callable[[str], object] = webbrowser.open,
+    timeout_s: float = 5.0,
+) -> bool:
+    """Open the page of the OrthoStudio XP already serving ``port``, when :func:`engine_here`;
+    ``False``, and nothing opened, otherwise."""
+    if not engine_here(port, timeout_s=timeout_s):
+        return False
+    browser(f"http://127.0.0.1:{port}/")
+    return True
 
 
 def open_while_starting(
@@ -216,12 +230,100 @@ def open_while_starting(
     return True
 
 
+def _note(log: Path, text: str) -> None:
+    """One line in the log, in the shape the engine's own starts have."""
+    with log.open("a", encoding="utf-8") as out:
+        out.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {APP_NAME}: {text}\n")
+
+
+def start_engine(log: Path) -> None:
+    """Start the engine in a process of its own, apart from this one, its output in ``log``.
+
+    The window is held by the app's own process, which macOS knows by the app it came from; a
+    window opened by a process started aside is called Python and carries Python's icon (measured,
+    2026-09-20). The engine is the one put aside, and outlives the window on purpose: closing the
+    window leaves a build running, and the engine stops by itself a while after its last page
+    (``--quit-when-closed``).
+    """
+    import subprocess
+
+    from orthostudio.fsutil import NO_CONSOLE_WINDOW
+
+    with log.open("a", encoding="utf-8") as out:
+        out.write(
+            f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {APP_NAME}: orthostudio "
+            f"{' '.join(ENGINE_ARGS)} (for its own window)\n"
+        )
+        out.flush()
+        subprocess.Popen(
+            [sys.executable, "-m", "orthostudio", *ENGINE_ARGS],
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=out,
+            start_new_session=True,
+            # pythonw has no console, and a console program it starts flashes a window
+            creationflags=NO_CONSOLE_WINDOW,
+        )
+
+
+def engine_stopped(port: int = ENGINE_PORT) -> Callable[[], bool]:
+    """Answers yes once the engine has answered on ``port`` and then stopped, which is *Quit* from
+    the page: the window has nothing behind it, and closes. It says no while the engine is still
+    coming up, so that a slow start does not take the window away from under the opening page."""
+    answered = False
+
+    def gone() -> bool:
+        nonlocal answered
+        if _listening(port):
+            answered = True
+            return False
+        return answered
+
+    return gone
+
+
+def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
+    """Show the app in a window of its own, and return ``True`` once that window is closed.
+
+    ``False``, and nothing started, when this system has no window to give: the caller opens the
+    browser, as every version until 0.1.9 did, and the doctor's ``window`` check says in the page
+    what to install for one. The engine starts only once the window is up, behind the page that
+    says so, so that a system without one is left as it was found.
+    """
+    from orthostudio import window
+
+    if show is None:
+        if not window.possible():
+            _note(log, window.hint() or "no window of its own on this system")
+            return False
+        show = window.show
+    running = engine_here(ENGINE_PORT)
+    url = f"http://127.0.0.1:{ENGINE_PORT}/"
+    if not running:
+        shown: list[str] = []
+        if open_while_starting(ENGINE_PORT, log=log, browser=shown.append) and shown:
+            url = shown[0]  # the opening page, which goes to the engine's by itself
+    try:
+        show(
+            url,
+            title=APP_NAME,
+            on_shown=None if running else lambda: start_engine(log),
+            closes_when=engine_stopped(ENGINE_PORT),
+        )
+    except Exception:
+        _note(log, "its window could not be shown: the browser opens instead")
+        return False
+    _note(log, "its window closed")
+    return True
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     log: Path | None = None,
     opening: Callable[..., bool] | None = None,
     running: Callable[[int], bool] | None = None,
+    window: Callable[..., None] | bool | None = None,
 ) -> int:
     """Run the ``orthostudio`` command with ``argv`` (default :data:`DEFAULT_ARGS`), its output
     appended to ``log`` (default :func:`log_path`); returns its exit status.
@@ -233,6 +335,8 @@ def main(
     path = log_path() if log is None else Path(log)
     path.parent.mkdir(parents=True, exist_ok=True)
     starting = not argv
+    if starting and window is not False and in_a_window(path, show=window or None):
+        return 0
     if starting and (open_running if running is None else running)(ENGINE_PORT):
         with path.open("a", encoding="utf-8") as out:
             out.write(

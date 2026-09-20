@@ -37,20 +37,26 @@ def test_the_launchers_run_the_python_inside_by_a_relative_path() -> None:
     assert '"$HERE/python/bin/python3"' in build.linux_launcher()
 
 
-@pytest.mark.parametrize(
-    "text",
-    [build.macos_launcher(), checkout_app.LAUNCHER],
-    ids=["installed", "checkout"],
-)
-def test_a_macos_launcher_opened_without_arguments_ends_and_leaves_the_engine(text: str) -> None:
-    # macOS brings a running app in front instead of starting it again, and an engine that never
-    # opens a window has nothing to bring: the icon bounced and nothing came (2026-09-20)
-    started, _, rest = text.partition("if [ $# -eq 0 ]; then")
-    assert started and "exec" not in rest.partition("fi")[0]
-    assert "-m orthostudio.desktop </dev/null &" in rest and "exit 0" in rest
-    # given arguments, from a terminal or from check_launch, it stays the process that runs them
-    assert rest.partition("fi")[2].strip().startswith("exec ")
-    assert '-m orthostudio.desktop "$@"' in rest.partition("fi")[2]
+def test_a_macos_launcher_becomes_the_process_that_holds_the_window() -> None:
+    # the window must be the app's own process: macOS knows it by the bundle it was started from,
+    # and a window opened by a process started aside is called Python (measured, 2026-09-20)
+    for text in (build.macos_launcher(), checkout_app.LAUNCHER):
+        assert "exec " in text and " &\n" not in text
+        assert '-m orthostudio.desktop "$@"' in text
+
+
+def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None:
+    script = build.inno_setup_script(
+        "0.1.9", Path("/b"), Path("/i.ico"), Path("/o"), "out", Path("/w") / build.WEBVIEW2_EXE
+    )
+    task = next(ln for ln in script.splitlines() if ln.startswith('Name: "webview2"'))
+    # offered, ticked, and only on a machine that has none: Flags: unchecked would hide it away,
+    # and no Check would offer it to everyone
+    assert "Check: WebView2Missing" in task and "unchecked" not in task
+    assert "function WebView2Missing" in script  # the Pascal that answers it travels with it
+    assert "F3017226-FE2A-4295-8BDF-00C3A9A7E4C5" in script  # Microsoft's own key
+    assert f'Filename: "{{tmp}}\\{build.WEBVIEW2_EXE}"' in script
+    assert "Tasks: webview2" in script
 
 
 def test_the_app_bundle_describes_itself() -> None:
@@ -130,7 +136,12 @@ def test_the_oldest_macos_is_the_most_demanding_wheel() -> None:
 
 def test_the_windows_installer_needs_no_administrator(tmp_path: Path) -> None:
     script = build.inno_setup_script(
-        "0.1.0", tmp_path / "bundle", tmp_path / "orthostudio.ico", tmp_path, "setup"
+        "0.1.0",
+        tmp_path / "bundle",
+        tmp_path / "orthostudio.ico",
+        tmp_path,
+        "setup",
+        tmp_path / build.WEBVIEW2_EXE,
     )
     assert "PrivilegesRequired=lowest" in script
     # the app its last page opens would inherit RedirectionGuard, and install no tile (2026-09-15)
@@ -148,7 +159,12 @@ def test_the_windows_installer_stops_the_app_it_replaces(tmp_path: Path) -> None
     from orthostudio.api.serve import DEFAULT_PORT
 
     script = build.inno_setup_script(
-        "0.1.0", tmp_path / "bundle", tmp_path / "orthostudio.ico", tmp_path, "setup"
+        "0.1.0",
+        tmp_path / "bundle",
+        tmp_path / "orthostudio.ico",
+        tmp_path,
+        "setup",
+        tmp_path / build.WEBVIEW2_EXE,
     )
     code = script[script.index("\n[Code]\n") :]
     assert build.ENGINE_PORT == DEFAULT_PORT and "%PORT%" not in script

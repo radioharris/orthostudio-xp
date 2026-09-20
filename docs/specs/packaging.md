@@ -38,15 +38,27 @@ macOS" (the user's first installed app, 2026-09-14). Started from a terminal the
 natively, which is why only a launch by macOS shows it (section 6). The doctor's `architecture`
 check says it on any installation.
 
-Opened with no argument, from the Finder or the Dock, the macOS launcher leaves the engine
-running and ends at once, where it used to become the engine itself (`macos_launcher`, and the same
-in `checkout_app.py`). macOS brings a running app in front rather than starting it again, and an
-engine whose only window is a page in a browser has nothing to bring in front: the icon bounced and
-nothing came, and the page could only be reached by its address (2026-09-20). Ended, the app is
-started again at every click, and `orthostudio.desktop.open_running` opens the page of the engine
-already running. Given arguments, from a terminal or from `check_launch`, the launcher stays the
-process that runs them and gives back their status. Windows and Linux start their command afresh at
-every click and need nothing of the sort.
+The app shows its page in a window of its own, through the web view the system already carries
+(`orthostudio/window.py`, pywebview): WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux.
+The launcher becomes that process rather than starting it aside, so that the window belongs to
+this bundle; a window opened by a process started aside is called Python and carries Python's icon
+(measured, 2026-09-20). The engine is the one put aside, in a process of its own
+(`orthostudio.desktop.start_engine`): closing the window leaves a build running, and the engine
+stops by itself a while after its last page. The engine starts only once the window is on screen,
+behind the opening page, so that a system with no window to give is left as it was found and the
+browser opens instead, as every version until 0.1.9 did. The doctor's `window` check says which it
+was, and the page lists it: a system that could have a window and lacks a library is told which
+one, with a link, and OrthoStudio XP installs nothing on a system it does not own. macOS carries
+the web view and the app carries `pyobjc`, so a macOS build refuses an app whose `window` check is
+not `ok` (`check_launch`).
+
+The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
+own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is
+missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
+vast majority of Windows 10 machines. The 2 MB Evergreen bootstrapper is downloaded at build time
+(`fetch_webview2`), so a Windows build reaches Microsoft once, as it already reaches PyPI; turned
+down, nothing is installed and the app opens the browser. Linux asks for packages that need root
+and differ between distributions: nothing is offered there, and the `window` check names them.
 
 The Intel app (a user asked, 2026-09-17) is built on the same Apple Silicon Mac:
 `build.py --machine x86_64` asks uv for the Intel CPython (`cpython-<version>-macos-x86_64-none`),

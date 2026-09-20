@@ -56,6 +56,10 @@ ENGINE_PORT = 8641
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
 two equal): the Windows installer asks a running engine to quit there."""
 INNO_CODE = Path(__file__).resolve().parent / "stop_running.pas"
+INNO_WEBVIEW2 = Path(__file__).resolve().parent / "webview2.pas"
+WEBVIEW2_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+"""Microsoft's Evergreen bootstrapper, the link they give to ship with an app."""
+WEBVIEW2_EXE = "MicrosoftEdgeWebview2Setup.exe"
 """The ``[Code]`` of the Windows installer: an OrthoStudio XP running from the installation folder
 is stopped before its files are replaced or removed."""
 UV_OFFLINE: list[str] = []
@@ -156,28 +160,18 @@ def artefact_name(version: str, target: Target) -> str:
 def macos_launcher() -> str:
     """``Contents/MacOS/orthostudio``: the Python inside the app runs the desktop entry.
 
-    Opened with no argument, from the Finder or the Dock, the launcher leaves the engine running
-    and ends at once. It would otherwise be the engine's own process, and macOS would hold an app
-    that runs and never opens a window: told to open it again, it brings the running one in front
-    instead of starting it, and there is nothing to bring. The icon bounced and nothing came, and
-    the page could only be reached by its address (2026-09-20). Ended, the app is started again at
-    every click, and ``orthostudio.desktop.open_running`` opens the page of the engine already
-    running. Given arguments, from a terminal or from ``check_launch``, it stays the process that
-    runs them and gives back their status.
+    It becomes that process, rather than starting it aside: the window the app opens is then the
+    app's own, and macOS knows it by this bundle. A window opened by a process started aside is
+    called Python and carries Python's icon (measured, 2026-09-20). The entry itself ends when it
+    has no window to show, so that macOS is never left with an app that runs and shows nothing
+    (``orthostudio.desktop._aside_on_macos``).
     """
     return (
         "#!/bin/bash\n"
         "# OrthoStudio XP (tools/package/build.py): the engine and its page, from the Python\n"
         "# inside the app. Its output goes to ~/Library/Logs/OrthoStudio XP/serve.log.\n"
         'CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"\n'
-        'PYTHON="$CONTENTS/Resources/python/bin/python3"\n'
-        "if [ $# -eq 0 ]; then\n"
-        "  # opened from the Finder or the Dock: the engine runs on and this launcher ends, so\n"
-        "  # that macOS holds no app without a window to bring in front at the next click\n"
-        f'  "$PYTHON" -m {ENTRY_MODULE} </dev/null &\n'
-        "  exit 0\n"
-        "fi\n"
-        f'exec "$PYTHON" -m {ENTRY_MODULE} "$@"\n'
+        f'exec "$CONTENTS/Resources/python/bin/python3" -m {ENTRY_MODULE} "$@"\n'
     )
 
 
@@ -282,12 +276,43 @@ echo "OrthoStudio XP added to the applications menu ($ENTRY)."
 """
 
 
-def inno_setup_script(version: str, bundle: Path, icon: Path, out_dir: Path, out_name: str) -> str:
+def fetch_webview2(into: Path) -> Path:
+    """Microsoft's WebView2 bootstrapper (about 2 MB) into ``into``, for the installer to offer.
+
+    It downloads and installs the runtime from Microsoft's own servers when it is run. The build
+    stops when it cannot be had, rather than quietly making an installer that cannot offer it: a
+    Windows build needs to reach Microsoft once, as it already reaches PyPI.
+    """
+    out = into / WEBVIEW2_EXE
+    print("+ download", WEBVIEW2_URL, flush=True)
+    try:
+        with urllib.request.urlopen(WEBVIEW2_URL, timeout=120) as answer:
+            body = answer.read()
+    except OSError as exc:
+        raise SystemExit(
+            f"the WebView2 bootstrapper could not be downloaded ({exc}): {WEBVIEW2_URL}"
+        ) from exc
+    if len(body) < 500_000 or body[:2] != b"MZ":
+        raise SystemExit(f"what came back from {WEBVIEW2_URL} is not a program ({len(body)} bytes)")
+    out.write_bytes(body)
+    return out
+
+
+def inno_setup_script(
+    version: str, bundle: Path, icon: Path, out_dir: Path, out_name: str, webview2: Path
+) -> str:
     """The Inno Setup script of the Windows installer: for the current user only (no
     administrator), a Start menu entry, an optional desktop one, the app started at the end, and
     an OrthoStudio XP running from the folder stopped before its files are replaced or removed
-    (:data:`INNO_CODE`)."""
-    code = INNO_CODE.read_text(encoding="utf-8").replace("%PORT%", str(ENGINE_PORT))
+    (:data:`INNO_CODE`).
+
+    On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
+    installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
+    user can turn down. Turned down, or on a machine that has the runtime already, nothing is
+    installed and nothing is downloaded (:data:`INNO_WEBVIEW2`)."""
+    code = "\n".join(p.read_text(encoding="utf-8") for p in (INNO_CODE, INNO_WEBVIEW2)).replace(
+        "%PORT%", str(ENGINE_PORT)
+    )
     run = r"{app}\python\pythonw.exe"
     return f"""; OrthoStudio XP installer (tools/package/build.py), for Inno Setup 6
 [Setup]
@@ -318,15 +343,18 @@ RedirectionGuard=no
 
 [Tasks]
 Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"; Flags: unchecked
+Name: "webview2"; Description: "Install the Microsoft WebView2 Runtime, which {APP_NAME} shows its window in"; GroupDescription: "Missing Windows component:"; Check: WebView2Missing
 
 [Files]
 Source: "{bundle}\\*"; DestDir: "{{app}}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{webview2}"; DestDir: "{{tmp}}"; Flags: deleteafterinstall; Tasks: webview2
 
 [Icons]
 Name: "{{autoprograms}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"
 Name: "{{autodesktop}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"; Tasks: desktopicon
 
 [Run]
+Filename: "{{tmp}}\\{WEBVIEW2_EXE}"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft WebView2 Runtime..."; Tasks: webview2
 Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Description: "{{cm:LaunchProgram,{APP_NAME}}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -607,7 +635,9 @@ def build_windows(target: Target, version: str) -> tuple[Path, Path]:
     name = artefact_name(version, target)
     script = stage / "orthostudio-xp.iss"
     script.write_text(
-        inno_setup_script(version, bundle, icon, DIST, name.removesuffix(".exe")),
+        inno_setup_script(
+            version, bundle, icon, DIST, name.removesuffix(".exe"), fetch_webview2(stage)
+        ),
         encoding="utf-8",
     )
     iscc = shutil.which("iscc") or r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -707,9 +737,19 @@ def run_launcher(launcher: Sequence[str | Path], args: Sequence[str], env: dict[
         raise SystemExit(f"the installed app failed ({done.returncode}): {' '.join(args)}")
 
 
-def check_launch(launcher: Sequence[str | Path], installed: Path, env: dict[str, str]) -> None:
+def check_launch(
+    launcher: Sequence[str | Path],
+    installed: Path,
+    env: dict[str, str],
+    *,
+    window: bool = False,
+) -> None:
     """The installed app, through its launcher: the doctor, whose output is in the log, finds the
-    Triangle4XP installed with it, and the server starts and answers."""
+    Triangle4XP installed with it, and the server starts and answers.
+
+    With ``window``, the app must also be able to show one (the doctor's ``window`` check): macOS
+    carries the web view and the app carries the rest, so an app that would open the browser
+    instead is one this build left something out of, and it does not ship."""
     where = "from orthostudio.desktop import log_path; print(log_path())"
     python = installed_python(installed)
     log = Path(run([python, "-c", where], env=env))
@@ -720,6 +760,10 @@ def check_launch(launcher: Sequence[str | Path], installed: Path, env: dict[str,
         installed.resolve()
     ):
         raise SystemExit(f"the installed app does not find its Triangle4XP: {triangle}")
+    if window:
+        shown = next(c for c in doctor["checks"] if c["name"] == "window")
+        if shown["status"] != "ok":
+            raise SystemExit(f"the installed app cannot show a window of its own: {shown}")
     run_launcher(launcher, ["serve", "--check", "--port", str(free_port())], env)
     print(f"check: the installed app starts ({log})", flush=True)
 
@@ -819,7 +863,7 @@ def check_installer(target: Target, artefact: Path) -> None:
             try:
                 app = mount / f"{APP_NAME}.app"
                 env["HOME"] = str(tmp)
-                check_launch([app / "Contents" / "MacOS" / "orthostudio"], app, env)
+                check_launch([app / "Contents" / "MacOS" / "orthostudio"], app, env, window=True)
                 check_native_launch(app, tmp, target.machine)
             finally:
                 run(["hdiutil", "detach", "-force", mount], check=False)

@@ -41,6 +41,7 @@ def test_doctor_json_offline(tmp_path: Path) -> None:
         "triangle4xp",
         "architecture",
         "junctions",
+        "window",
         "bing",
         "store",
         "chunks",
@@ -149,3 +150,21 @@ def test_the_xplane_check_finds_x_plane_where_every_command_does(
     assert check.summary.startswith("X-Plane 12 not found: choose its folder in Settings")
     assert "optional" not in check.summary and "X_PLANE_DIR" not in check.summary
     assert doctor._xplane(xp).details["path"] == str(xp)  # --xplane, or the Settings' folder
+
+
+def test_the_window_check_says_what_to_install_when_there_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The page lists every check of the doctor, so a system that opens the browser instead of a
+    window says there what it lacks: OrthoStudio XP installs nothing on a system it does not own
+    (``orthostudio.window.hint``)."""
+    from orthostudio import doctor, window
+
+    monkeypatch.setattr(window, "possible", lambda: False)
+    monkeypatch.setattr(window, "hint", lambda: "install the frobnicator: https://example.invalid")
+    check = doctor._window()
+    assert check.name == "window" and check.status == "warn"  # the app still works, in a browser
+    assert "frobnicator" in check.summary and check.details["browser_only"] is True
+
+    monkeypatch.setattr(window, "possible", lambda: True)
+    assert doctor._window().status == "ok"

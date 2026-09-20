@@ -11,11 +11,13 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 import orthostudio.cli
+from orthostudio import desktop
 from orthostudio.desktop import (
     APP_NAME,
     DEFAULT_ARGS,
     ENGINE_PORT,
     LOG_NAME,
+    in_a_window,
     log_path,
     main,
     open_running,
@@ -65,18 +67,21 @@ def test_without_arguments_it_serves_and_opens_the_page(
         return False  # nothing of this installation runs: the start goes on
 
     log = tmp_path / "serve.log"
-    assert main([], log=log, opening=running_already, running=not_this_app) == 0
+    assert main([], log=log, opening=running_already, running=not_this_app, window=False) == 0
     assert seen == [list(DEFAULT_ARGS)] == [["serve", "--open", "--quit-when-closed"]]
     assert shown == [(ENGINE_PORT, log)]
     # the opening page shown, the engine does not open the page a second time
-    assert main([], log=log, opening=lambda port, *, log: True, running=not_this_app) == 0
+    assert (
+        main([], log=log, opening=lambda port, *, log: True, running=not_this_app, window=False)
+        == 0
+    )
     assert seen[-1] == ["serve", "--no-open", "--quit-when-closed"]
     # a command run by hand shows no opening page
     assert main(["--help"], log=log, opening=running_already, running=not_this_app) == 0
     assert len(shown) == 1
     # this OrthoStudio XP runs already: its page opened, nothing starts, the log says so
     runs = len(seen)
-    assert main([], log=log, opening=running_already, running=lambda port: True) == 0
+    assert main([], log=log, opening=running_already, running=lambda port: True, window=False) == 0
     assert len(seen) == runs and len(shown) == 1
     assert log.read_text(encoding="utf-8").endswith(
         f"{APP_NAME}: already running, its page opened\n"
@@ -180,3 +185,89 @@ def test_the_opening_page_escapes_the_log_path() -> None:
     log = PurePosixPath("/Users/a</script>b/serve.log")
     page = opening_page(8641, log).decode("utf-8")  # type: ignore[arg-type]
     assert "</script>b" not in page and "<\\/script>b" in page
+
+
+# -- the window of its own ---------------------------------------------------------------------
+
+
+def test_the_engine_starts_only_once_the_window_is_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[str] = []
+    monkeypatch.setattr(desktop, "engine_here", lambda *a, **k: False)
+    monkeypatch.setattr(desktop, "start_engine", lambda log: started.append("engine"))
+    monkeypatch.setattr(desktop, "open_while_starting", lambda port, *, log, browser: False)
+    seen: dict[str, object] = {}
+
+    def fake_show(url: str, *, title: str, on_shown=None, **rest: object) -> None:
+        seen["url"], seen["title"] = url, title
+        assert started == []  # nothing runs before the window is on screen
+        if on_shown:
+            on_shown()
+        seen["while_open"] = list(started)
+
+    log = tmp_path / "serve.log"
+    assert in_a_window(log, show=fake_show) is True
+    assert seen["while_open"] == ["engine"] and seen["title"] == APP_NAME
+    assert str(ENGINE_PORT) in str(seen["url"])
+    assert "its window closed" in log.read_text(encoding="utf-8")
+
+
+def test_a_window_is_not_asked_for_twice_when_the_engine_already_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(desktop, "engine_here", lambda *a, **k: True)
+    monkeypatch.setattr(
+        desktop, "start_engine", lambda log: pytest.fail("the engine was started twice")
+    )
+    asked: list[object] = []
+
+    def fake_show(url: str, *, title: str, on_shown=None, **rest: object) -> None:
+        asked.append(on_shown)
+
+    assert in_a_window(tmp_path / "serve.log", show=fake_show) is True
+    assert asked == [None]  # nothing to start behind the window
+
+
+def test_a_system_without_a_window_is_left_as_it_was_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(desktop, "engine_here", lambda *a, **k: False)
+    monkeypatch.setattr(
+        desktop, "start_engine", lambda log: pytest.fail("the engine was started with no window")
+    )
+    monkeypatch.setattr(desktop, "open_while_starting", lambda port, *, log, browser: False)
+
+    def refuses(url: str, *, title: str, on_shown=None, **rest: object) -> None:
+        raise RuntimeError("no web view here")
+
+    log = tmp_path / "serve.log"
+    assert in_a_window(log, show=refuses) is False
+    assert "could not be shown" in log.read_text(encoding="utf-8")
+
+
+def test_the_app_started_in_a_window_runs_no_command_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        orthostudio.cli, "app", lambda **kw: pytest.fail("the engine ran in the window's process")
+    )
+    monkeypatch.setattr(desktop, "engine_here", lambda *a, **k: True)
+
+    def fake_show(url: str, *, title: str, on_shown=None, **rest: object) -> None:
+        return None
+
+    assert main([], log=tmp_path / "serve.log", window=fake_show) == 0
+
+
+def test_the_window_closes_only_once_its_engine_has_answered_and_stopped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answers = iter([False, False, True, True, False, False])
+    monkeypatch.setattr(desktop, "_listening", lambda port: next(answers))
+    gone = desktop.engine_stopped(ENGINE_PORT)
+    # coming up: the window stays, or a slow start would take it away under the opening page
+    assert gone() is False and gone() is False
+    assert gone() is False and gone() is False  # it answers: the window stays
+    assert gone() is True  # Quit: nothing behind the page, the window closes
+    assert gone() is True

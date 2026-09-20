@@ -1,0 +1,184 @@
+"""The app in a window of its own, when the system has one to give.
+
+The interface is a page, and a page in a browser is not a window. Its icon leaves the Dock while
+the app runs, a click on the icon has nothing to bring in front, every click opens one more tab,
+and two tabs of the same app do not follow each other (a user, 2026-09-20). Shown through the web
+view the system already carries (WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux), the
+app is an app: one window, an icon that stays, a click that brings it back. The page inside is the
+very one the browser shows, served by the same engine on the same port: nothing of the interface
+is written twice.
+
+Nothing here is required. :func:`show` raises when the system has no web view to give, and the
+caller opens the browser instead, which is what every version until 0.1.9 did. A system that could
+have a window and lacks a library is told which one, with a link (:func:`hint`); OrthoStudio XP
+installs nothing of its own on a system it does not own.
+"""
+
+from __future__ import annotations
+
+import sys
+import threading
+from collections.abc import Callable
+from pathlib import Path
+
+__all__ = [
+    "LINUX_HELP",
+    "LINUX_PACKAGES",
+    "MIN_SIZE",
+    "POLL_S",
+    "SIZE",
+    "WEBVIEW2_HELP",
+    "hint",
+    "possible",
+    "show",
+    "storage_dir",
+]
+
+POLL_S = 2.0
+"""How often ``closes_when`` is asked, while the window is open."""
+
+SIZE = (1440, 920)
+"""The window a first run opens. Narrower than 1280, the Plan's two columns crowd each other."""
+
+MIN_SIZE = (1024, 700)
+
+LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
+"""What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
+why the message carries the link rather than a command for a system we did not recognise."""
+
+LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
+WEBVIEW2_HELP = "https://developer.microsoft.com/microsoft-edge/webview2/"
+
+
+def storage_dir() -> Path:
+    """Where the web view keeps what the page stores (the theme, the language, the Experts panel).
+
+    pywebview starts in a private mode that forgets all of it when the window closes; the page
+    would lose its theme and its language at every launch. The folder is OrthoStudio XP's own, so
+    that removing the app takes it away with the rest.
+    """
+    from orthostudio.home import osxp_home
+
+    return osxp_home() / "window"
+
+
+def hint() -> str | None:
+    """What to install for a window on this system, once :func:`show` has refused; ``None`` when
+    the system is one we cannot advise (macOS carries WKWebView, and has nothing to install)."""
+    if sys.platform.startswith("linux"):
+        return (
+            "OrthoStudio XP opened in your browser: this system has no web view of its own to "
+            f"show it in a window. On Debian and Ubuntu: sudo apt install {LINUX_PACKAGES}. "
+            f"For other systems: {LINUX_HELP}"
+        )
+    if sys.platform == "win32":
+        return (
+            "OrthoStudio XP opened in your browser: the WebView2 Runtime, which draws its window, "
+            f"is not installed. Microsoft gives it here: {WEBVIEW2_HELP}"
+        )
+    return None
+
+
+def _here(name: str) -> bool:
+    """Whether ``name`` could be imported, without importing it."""
+    from importlib.util import find_spec
+
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _webview2_runtime() -> bool:
+    """Whether Windows carries the WebView2 Runtime, read the way Microsoft says to read it: the
+    ``pv`` value of the runtime's key, per machine or per user, present and above 0.0.0.0. The
+    installer offers it from the same two keys (``tools/package/webview2.pas``)."""
+    import winreg
+
+    guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    for root, key in (
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{guid}"),
+        (winreg.HKEY_CURRENT_USER, rf"Software\Microsoft\EdgeUpdate\Clients\{guid}"),
+    ):
+        try:
+            with winreg.OpenKey(root, key) as handle:
+                version, _kind = winreg.QueryValueEx(handle, "pv")
+        except OSError:
+            continue
+        if isinstance(version, str) and version not in ("", "0.0.0.0"):
+            return True
+    return False
+
+
+def possible() -> bool:
+    """Whether this system has what a window of its own takes.
+
+    It asks **without importing any of it**: importing the toolkit is what opens a connection to
+    the window server, and a process that does so grows an icon in the Dock. The engine asks this
+    (the doctor's ``window`` check) and must stay the plain program it is; asking the other way
+    put an icon in the Dock for every test worker that asked (2026-09-20).
+
+    It answers for what it can see from here, which is not the whole story on Linux: PyGObject may
+    be installed and its WebKit2 typelib missing. :func:`show` then raises, before anything has
+    been started, and the browser opens instead.
+    """
+    if not _here("webview"):
+        return False
+    if sys.platform == "darwin":
+        return _here("AppKit") and _here("WebKit")  # pyobjc, which travels inside the app
+    if sys.platform == "win32":
+        return _here("clr") and _webview2_runtime()  # pythonnet, and Microsoft's own component
+    return _here("gi") or _here("PyQt6") or _here("PyQt5") or _here("PySide6")
+
+
+def show(
+    url: str,
+    *,
+    title: str,
+    on_shown: Callable[[], None] | None = None,
+    closes_when: Callable[[], bool] | None = None,
+    size: tuple[int, int] = SIZE,
+    storage: Path | None = None,
+) -> None:
+    """Show ``url`` in a window of its own, and return once the window is closed.
+
+    ``on_shown`` runs in a thread of its own the moment the window is up, which is where the
+    engine is started: the window is on screen while it loads, rather than after. ``closes_when``
+    is asked every :data:`POLL_S` while the window is open, and the window closes the moment it
+    says yes: *Quit* stops the engine, and a window left on a page with nothing behind it would
+    keep the app in the Dock with nothing to show.
+
+    Raises when this system has no web view (the package missing, or no toolkit under it). The
+    engine must not have been started before this returns, so that a system without a window
+    leaves nothing behind when the caller falls back to the browser.
+    """
+    import webview  # not at import time: a system without it must still run the engine
+
+    store = storage_dir() if storage is None else storage
+    store.mkdir(parents=True, exist_ok=True)
+    window = webview.create_window(
+        title,
+        url,
+        width=size[0],
+        height=size[1],
+        min_size=MIN_SIZE,
+        # the page draws its own background for the theme it was given; white flashes on a dark one
+        background_color="#14171d",
+    )
+
+    def behind() -> None:
+        """What runs while the window is up. It must end when the window does: pywebview gives it
+        a thread of its own, and that thread is not a daemon."""
+        if on_shown is not None:
+            on_shown()
+        if closes_when is None:
+            return
+        closed = threading.Event()
+        window.events.closed += closed.set
+        while not closed.wait(POLL_S):
+            if closes_when():
+                window.destroy()
+                return
+
+    start = behind if (on_shown is not None or closes_when is not None) else None
+    webview.start(start, private_mode=False, storage_path=str(store))

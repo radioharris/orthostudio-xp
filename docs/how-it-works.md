@@ -114,16 +114,18 @@ estimate, and its button opens the Settings question *Where is X-Plane 12 instal
 *Choose the X-Plane folder…* opens the Finder's (or the File Explorer's) folder window: nothing is estimated
 or built until the folder is known.
 
-**Starting and stopping.** OrthoStudio XP is a program that runs on your computer and shows its page
-in your browser; nothing leaves your computer except the downloads of imagery and map data. Open the
-OrthoStudio XP app to start it: the browser says "Opening OrthoStudio XP…" at once, then shows the
-page as soon as it is ready (opened again while it runs, the app just shows the page); *Quit*, at the
-top right of the page, stops it, after asking when a build is running. Closing the browser tab does
-not stop OrthoStudio XP at once: a build goes on, and reopening the app brings the page back. On
-macOS its icon leaves the Dock while it runs, since the page in your browser is its only window:
-drag the app from Applications into the Dock to keep it there to click. Five
-minutes after its last page closed, with no build running or waiting, the app stops by itself, since
-nothing else would show that it still runs. What the
+**Starting and stopping.** OrthoStudio XP is a program that runs on your computer; nothing leaves
+your computer except the downloads of imagery and map data. Open the OrthoStudio XP app to start it:
+a window opens saying "Opening OrthoStudio XP…", then shows the page as soon as it is ready. Opened
+again while it runs, the app brings its window back rather than opening a second one. *Quit*, at the
+top right of the page, stops it, after asking when a build is running. Closing the window does not
+stop OrthoStudio XP at once: a build goes on, and opening the app again brings the page back. Five
+minutes after its last page closed, with no build running or waiting, it stops by itself.
+
+The window is drawn by the web view your system already carries, so the page is the same one a
+browser would show. On Linux, where that web view is a package your distribution installs and
+OrthoStudio XP will not install anything for you, the page opens in your browser instead; the
+`window` line of *Checks*, at the foot of the page, says so and names the package. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. The
 app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app

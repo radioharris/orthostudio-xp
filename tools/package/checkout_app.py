@@ -25,7 +25,12 @@ from icon import make_icns
 REPO = Path(__file__).resolve().parents[2]
 APP_NAME = "OrthoStudio XP (checkout)"
 """Not the installed app's name: both would sit in the Dock under the same name and take the
-same port, and a user who clicked one got the other (2026-09-20)."""
+same port, and a user who clicked one got the other (2026-09-20).
+
+Its window shows in the Dock as Python, with Python's icon, when the checkout's ``.venv`` was made
+from a framework build of Python, Homebrew's among them: the window then takes the identity of the
+framework's own ``Python.app``. The installed app carries a standalone Python and is right
+(``docs/decisions/0013-a-window-of-its-own.md``); this one is a tool for whoever writes the code."""
 EXECUTABLE = "orthostudio"
 """The launcher inside the app and its icon file: a name without a space."""
 
@@ -35,14 +40,7 @@ LAUNCHER = """#!/bin/bash
 # the page of the one already running instead of starting a second and doing nothing visible.
 REPO={repo}
 cd "$REPO" || exit 1
-PYTHON="$REPO/.venv/bin/python"
-if [ $# -eq 0 ]; then
-  # opened from the Finder or the Dock: the engine runs on and this launcher ends, so that macOS
-  # holds no app without a window to bring in front at the next click (macos_launcher in build.py)
-  "$PYTHON" -m orthostudio.desktop </dev/null &
-  exit 0
-fi
-exec "$PYTHON" -m orthostudio.desktop "$@"
+exec "$REPO/.venv/bin/python" -m orthostudio.desktop "$@"
 """
 
 

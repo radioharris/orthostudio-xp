@@ -22,6 +22,9 @@ dependencies = [
   "typer>=0.15",
   "ispc-texcomp>=1.0.1",
   "curl_cffi>=0.10",
+  # the window of its own (orthostudio/window.py); where it needs a library the system must carry,
+  # OrthoStudio XP installs nothing and opens the browser instead, so Linux asks for nothing here
+  "pywebview>=6.2; sys_platform == 'darwin' or sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

@@ -327,6 +327,28 @@ def _bing(offline: bool) -> Check:
     )
 
 
+def _window() -> Check:
+    """Whether the app opens in a window of its own, or in the browser instead.
+
+    macOS and Windows carry the web view it needs, and the installers carry the rest, so this
+    says ``ok`` on an installed app; a build refuses an app that answers otherwise
+    (``tools/package/build.py``). Linux asks for a library of its own, which OrthoStudio XP does
+    not install on a system it does not own: the answer is then ``warn``, and it names the
+    library (``orthostudio.window.hint``).
+    """
+    from orthostudio import window
+
+    if window.possible():
+        return Check("window", "ok", "A window of its own", {"browser_only": False})
+    hint = window.hint()
+    return Check(
+        "window",
+        "warn",
+        hint or "The browser opens instead of a window of its own",
+        {"browser_only": True, "hint": hint},
+    )
+
+
 def _store(store_root: Path) -> Check:
     root = Path(store_root).expanduser()
     if not (root / "index.sqlite").exists():
@@ -393,6 +415,7 @@ def run_doctor(
         _triangle,
         _architecture,
         _junctions,
+        _window,
         lambda: _bing(offline),
         lambda: _store(store_root),
         lambda: _chunks(chunks_root),

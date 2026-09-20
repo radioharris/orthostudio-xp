@@ -156,9 +156,12 @@ Python inside.
   run `./install.sh` in the extracted folder for an entry in the applications menu, or start
   `./orthostudio-xp` directly.
 
-Opening OrthoStudio XP starts it and opens its page in your browser, or just the page when it
-already runs; *Quit* in the page stops it, and it stops by itself five minutes after its last page
-is closed, unless a build is running or waiting. Its messages go to `serve.log`, in
+Opening OrthoStudio XP starts it and shows its page in a window of its own, or brings that window
+back when it already runs; *Quit* in the page stops it, and it stops by itself five minutes after
+its last page is closed, unless a build is running or waiting. The window is drawn by the web view
+your system carries: on Linux that is a package your distribution installs, and until it is there
+the page opens in your browser instead, the *Checks* line at the foot of the page naming what to
+install. Its messages go to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
