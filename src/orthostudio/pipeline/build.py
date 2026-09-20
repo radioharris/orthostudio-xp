@@ -501,21 +501,41 @@ def patches_folder(patches_dir: Path | None, tile: TileRef) -> Path | None:
     return (with_files or found or [None])[0]
 
 
-def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
-    """The tile's patch folder as a graph input, keyed by what the files hold.
+def patch_files(patches_dir: Path | None, tile: TileRef) -> list[Path]:
+    """Every file of the tile's patch folder that a build reads, in a settled order.
 
-    The folder :func:`patches_folder` finds, when it holds at least one ``*.patch.osm`` or one
-    directory of OBJ8 objects (``vectors/patches.py`` reads both): the digest covers every such
-    file, name and content, so that editing a patch builds the tile again and removing it comes
-    back to the tile without patches.
+    The ``*.patch.osm`` files first, then the OBJ8 objects of the directories beside them
+    (``vectors/patches.py`` reads both). Empty when the tile has no folder, or an empty one.
     """
     folder = patches_folder(patches_dir, tile)
     if folder is None:
-        return None
+        return []
     files = sorted(p for p in folder.glob("*.patch.osm") if p.is_file())
     objects = sorted(p for d in folder.iterdir() if d.is_dir() for p in sorted(d.rglob("*")))
-    files += [p for p in objects if p.is_file()]
-    if not files:
+    return files + [p for p in objects if p.is_file()]
+
+
+def patch_names(patches_dir: Path | None, tile: TileRef) -> list[str]:
+    """What :func:`patch_files` found, named the way the user named them.
+
+    For the report: a build that read a hand-made patch said so nowhere, so nobody could tell a
+    tile built with its patches from one built without (a user, 2026-09-20).
+    """
+    folder = patches_folder(patches_dir, tile)
+    if folder is None:
+        return []
+    return [str(p.relative_to(folder)) for p in patch_files(patches_dir, tile)]
+
+
+def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
+    """The tile's patch folder as a graph input, keyed by what the files hold.
+
+    The digest covers every file :func:`patch_files` lists, name and content, so that editing a
+    patch builds the tile again and removing it comes back to the tile without patches.
+    """
+    folder = patches_folder(patches_dir, tile)
+    files = patch_files(patches_dir, tile)
+    if folder is None or not files:
         return None
     listing = "\n".join(f"{p.relative_to(folder)} {digest_file(p)}" for p in files)
     digest = digest_bytes(listing.encode("utf-8"))
@@ -1793,6 +1813,8 @@ class TileOutcome:
     """The elevation the mesh read (spec 8.1)."""
     osm: dict[str, Any] = field(default_factory=dict)
     """What phase 0 did for this tile (spec 8.3)."""
+    patches: list[str] = field(default_factory=list)
+    """The hand-made patch files this tile was built with, named as the user named them."""
 
     @property
     def error(self) -> NodeOutcome | None:
@@ -1841,6 +1863,7 @@ class BuildReport:
                     "repaired": t.repaired,
                     "stages": t.stages,
                     "osm": t.osm,
+                    "patches": t.patches,
                     "nodes": [
                         {
                             "id": n.id,
@@ -2475,6 +2498,7 @@ def build_tiles(
                 repaired=repaired,
                 stages=g.stages.to_dict(),
                 osm=_osm_report(osm.get(g.spec.tile)),
+                patches=patch_names(g.spec.patches_dir, g.spec.tile),
             )
         )
     for d in collector.done.values():

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import test_api_fakes as fakes
 from orthostudio.model import TileRef
-from orthostudio.pipeline.build import patches_folder, patches_ref
+from orthostudio.pipeline.build import patch_names, patches_folder, patches_ref
 
 home = fakes.home
 xplane = fakes.xplane
@@ -146,3 +146,27 @@ def test_the_engine_makes_the_folder_so_it_can_be_found(tmp_path: Path, monkeypa
     assert make_patches_dir() == tmp_path / "home" / "patches"  # twice over is no error
     # empty, it holds no tile: a build reads no patch from it
     assert patches_ref(default_patches_dir(), TILE) is None
+
+
+def test_the_report_says_which_patches_a_tile_was_built_with(tmp_path: Path) -> None:
+    """A build read the hand-made patches and said so nowhere: a tile built with them looked
+    exactly like one built without, and nobody could tell which had been applied (a user,
+    2026-09-20). The names travel in the report, as the user named them."""
+    assert patch_names(None, TILE) == []
+    assert patch_names(tmp_path / "nowhere", TILE) == []
+
+    folder = tmp_path / "Patches" / TILE.name
+    _patch(folder, "LFML.patch.osm")
+    _patch(folder, "harbour.patch.osm")
+    (folder / "objects").mkdir()
+    (folder / "objects" / "crane.obj").write_text("OBJ8", encoding="utf-8")
+    # relative to the tile's own folder, and in the order a build reads them
+    assert patch_names(tmp_path / "Patches", TILE) == [
+        "LFML.patch.osm",
+        "harbour.patch.osm",
+        str(Path("objects") / "crane.obj"),
+    ]
+    # the same list the graph key is made of, so the report can never say one and the build another
+    ref = patches_ref(tmp_path / "Patches", TILE)
+    assert ref is not None
+    assert patch_names(tmp_path / "Patches", OTHER) == []

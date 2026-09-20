@@ -3382,3 +3382,21 @@ def test_the_page_keeps_the_zoom_keys_and_where_it_was_left() -> None:
         "normal": 1,
         "fresh": 1,  # nothing remembered: the page opens at its own size
     }
+
+
+def test_the_final_report_says_which_tiles_were_patched() -> None:
+    """A build read the hand-made patches and said so nowhere: a tile built with its patches
+    looked exactly like one built without (a user, 2026-09-20). The report says which tiles had
+    them, with the file names under the pointer, and says "none" rather than staying silent when
+    there were none: the question is whether they were applied, and no answer is an answer."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderReport")
+    assert "(tile.patches || []).length" in body  # tiles that had patches, whatever the engine
+    assert 't("works.patches_none")' in body  # and the other half of the answer
+    assert 'tile.patches.join(' in body  # the names, under the pointer
+    assert '[t("works.patches"), patchWords' in body
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        assert tables[lang]["works.patches"] and tables[lang]["works.patches_none"]
+    # the mock builds a tile with patches, so both halves can be seen without a folder of them
+    assert "patch.osm`" in app_js

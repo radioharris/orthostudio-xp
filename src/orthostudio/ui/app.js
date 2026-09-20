@@ -754,7 +754,10 @@ function mockOutcome(run) {
       const hits = textures.status === "hit" ? total : 18;
       decisions.push({ tile: tile.tile, kind: "textures", total, built: total - hits - missing, hits, missing, parent_fallback: i === 0 ? 3 : 0, placeholders: 0 });
     }
-    return { tile: tile.tile, provider: tile.provider, zl: tile.zl, ok, pack_dir: packDir, overlay_dsf: null, installed: ok && tile.install, repaired: [], stages: {}, osm: {}, nodes };
+    // The first tile is built with hand-made patches, so that both halves of the report
+    // line can be seen in the mock: which tiles had patches, and which files.
+    const patches = i === 0 ? [`${tile.tile}-airport.patch.osm`, "lake-shore.patch.osm"] : [];
+    return { tile: tile.tile, provider: tile.provider, zl: tile.zl, ok, pack_dir: packDir, overlay_dsf: null, installed: ok && tile.install, repaired: [], stages: {}, osm: {}, patches, nodes };
   });
   for (const tile of tiles) {
     if (tile.pack_dir) decisions.push({ tile: tile.tile, kind: "pack", path: tile.pack_dir, bytes: 2656881226 + 110000000 * tiles.indexOf(tile), installed: tile.installed });
@@ -3526,7 +3529,15 @@ function renderReport(job) {
     decisions.append(h("li", null, words, h("b", null, fmtInt(n))));
   }
   const totals = reportTotals(job);
+  // Whether the hand-made patches were read, and which: a build said nothing about them, so a
+  // tile built with its patches looked exactly like one built without (a user, 2026-09-20).
+  const patched = (rep.tiles || []).filter((tile) => (tile.patches || []).length);
+  const patchWords = patched.length
+    ? h("span", { title: patched.map((tile) => `${tile.tile}\n  ${tile.patches.join("\n  ")}`).join("\n") },
+        patched.map((tile) => `${tile.tile} (${fmtInt(tile.patches.length)})`).join(", "))
+    : t("works.patches_none");
   const summary = kv([
+    [t("works.patches"), patchWords, patched.length ? null : "help"],
     [t("works.report_hits"), fmtInt(rep.hits)],
     [t("works.report_built"), fmtInt(rep.built)],
     [t("works.report_failed"), fmtInt(rep.failed), rep.failed ? "fail" : null],
