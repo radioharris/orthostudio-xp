@@ -10,9 +10,10 @@ dock. Published is the page alone, with two things put right:
   the size and on the baseline measured from the ones that were there, so the rest of the line is
   the browser's own rendering, untouched.
 
-Each picture is written as PNG or as JPEG, whichever suits what it holds, under ``MAX_BYTES``,
-and the set stays under ``MAX_TOTAL``, which is what the store listing accepts for its pictures
-together.
+The pictures of the README (``--profile docs``) are PNG, whatever they hold and whatever they
+weigh. Those of the store listing (``--profile store``) are written as PNG or as JPEG, whichever
+suits what each holds, under ``MAX_BYTES``, and the set stays under ``MAX_TOTAL``, which is what
+the listing accepts for its pictures together.
 
 Nothing else is retouched, and a new release costs one command, which is why none of this is done
 by hand.
@@ -253,9 +254,18 @@ def _jpeg(image: Image.Image, target: Path, quality: int) -> Path:
     return target
 
 
-def save(image: Image.Image, folder: Path, name: str) -> Path:
-    """PNG or JPEG, whichever suits what the picture holds, and always under ``MAX_BYTES``."""
+def save(image: Image.Image, folder: Path, name: str, png_only: bool = False) -> Path:
+    """PNG or JPEG, whichever suits what the picture holds, and always under ``MAX_BYTES``.
+
+    ``png_only`` for the pictures of the README, which are PNG whatever they hold and whatever
+    they weigh: JPEG and the weights it is there to reach belong to the store listing, which sets
+    them (the author, 2026-09-20).
+    """
     folder.mkdir(parents=True, exist_ok=True)
+    if png_only:
+        target = folder / f"{name}.png"
+        image.save(target, optimize=True)
+        return target
     flat = image.getcolors(maxcolors=JPEG_ABOVE) is not None
     if flat:
         target = folder / f"{name}.png"
@@ -324,10 +334,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             name = f"orthostudio-xp-{args.version}-{source.stem}"
         else:
             name = source.stem
-        target = save(page, args.out, name)
+        target = save(page, args.out, name, png_only=args.profile == "docs")
         written.append((target, page))
         print(f"  {target} ({page.width}x{page.height}, {target.stat().st_size // 1024} KB)")
-    fit_total(written)
+    if args.profile == "store":
+        fit_total(written)
     for target, _ in written:
         print(f"{target.name}: {target.stat().st_size // 1024} KB")
     print(f"the set: {sum(t.stat().st_size for t, _ in written) / 1e6:.2f} MB")
