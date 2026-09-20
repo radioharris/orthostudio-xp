@@ -410,7 +410,7 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
     """Show the app in a window of its own, and return ``True`` once that window is closed.
 
     ``False``, and nothing started, when this system has no window to give: the caller opens the
-    browser, as every version until 0.1.9 did, and the doctor's ``window`` check says in the page
+    browser, as every version before 0.1.8 did, and the doctor's ``window`` check says in the page
     what to install for one. The engine starts only once the window is up, behind the page that
     says so, so that a system without one is left as it was found.
     """

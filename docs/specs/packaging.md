@@ -62,7 +62,7 @@ this bundle; a window opened by a process started aside is called Python and car
 (`orthostudio.desktop.start_engine`): closing the window leaves a build running, and the engine
 stops by itself a while after its last page. The engine starts only once the window is on screen,
 behind the opening page, so that a system with no window to give is left as it was found and the
-browser opens instead, as every version until 0.1.9 did. The doctor's `window` check says which it
+browser opens instead, as every version before 0.1.8 did. The doctor's `window` check says which it
 was, and the page lists it: a system that could have a window and lacks a library is told which
 one, with a link, and OrthoStudio XP installs nothing on a system it does not own. macOS carries
 the web view and the app carries `pyobjc`, so a macOS build refuses an app whose `window` check is

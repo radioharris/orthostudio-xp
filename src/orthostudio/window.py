@@ -9,7 +9,7 @@ very one the browser shows, served by the same engine on the same port: nothing 
 is written twice.
 
 Nothing here is required. :func:`show` raises when the system has no web view to give, and the
-caller opens the browser instead, which is what every version until 0.1.9 did. A system that could
+caller opens the browser instead, which is what every version before 0.1.8 did. A system that could
 have a window and lacks a library is told which one, with a link (:func:`hint`); OrthoStudio XP
 installs nothing of its own on a system it does not own.
 """

@@ -31,7 +31,7 @@ which only the last three are supported) and a native Python interface (which wo
   process started aside is called Python and carries Python's icon (measured). The 0.1.8 launcher,
   which ended so that macOS held no windowless app, therefore goes back to a plain `exec`.
 - The engine starts only once the window is on screen. A system with no web view is left exactly
-  as it was found, and the browser opens instead, which is what every version until 0.1.9 did.
+  as it was found, and the browser opens instead, which is what every version before 0.1.8 did.
 - **The close button puts the window away; it does not quit the app.** That is what closing a
   window means on macOS: the app stays, active, its name in the menu bar, its icon in the Dock,
   and a click on that icon brings the window back. Only the window is put away. Hiding the whole
