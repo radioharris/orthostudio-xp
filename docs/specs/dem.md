@@ -225,12 +225,28 @@ western longitudes).
 Settings offers `NED1/3` as *the detailed relief of the United States* (`relief.source = "usgs"`,
 a user of the X-Plane.Org page asked for other sources "especially for the US and Canada",
 2026-09-18). Measured on the USGS bucket the same day, per one-degree cell: **410 MB** at
-1/3" (n41w106), 449 MB in Alaska (n62w150), 51 MB at 1" -- against ~40 MB for Copernicus. The
-coverage is the United States: a Canadian cell answers 404 (n51w114), the cell is `MISSING`, and
+1/3" (n41w106), 449 MB in Alaska (n62w150), 51 MB at 1" -- against ~40 MB for Copernicus.
+
+**The 1/3" layer stops at the border, the 1" layer does not.** A Canadian cell answers 404 at 1/3"
+(n51w114 and n52w116, measured 2026-09-18 and again 2026-09-20), the cell is `MISSING`, and
 `require_own_cell` refuses the build (`DEM_TILE_UNAVAILABLE`, decision 0007) instead of building a
-flat tile; the page's remedy names the two sources that cover the region. Canada has no equivalent
-free 1/3" set: Copernicus is the answer there until NRCan's HRDEM (1-2 m lidar, partial coverage,
-WCS) or MRDEM (30 m) is read.
+flat tile; the page's remedy names the two sources that cover the region. At 1" the same cells
+answer 206: NED does cover Canada there, which a user of the X-Plane.Org page knew and we did not
+(2026-09-20). He asked whether it would be more accurate than Copernicus.
+
+**It is not, on the evidence.** Both are one arc-second, so the question is not the grid but what
+each one measures, and the lidar answers it. Against `HRDEM` on the posts it covers:
+
+| cell | lidar posts | Copernicus | NED 1" |
+|---|---|---|---|
+| `+51-116` Banff, 3 % flown | 28 368 | +5.08 m mean, 72 % above the ground | **+0.47 m mean, 53 % above** |
+| `+50-115` Kananaskis, 37 % flown | 303 758 | **+1.50 m mean, 2.19 m median error** | +1.51 m mean, 3.04 m median error |
+
+NED is much the closer where the sample is small and sits in the trees, and the poorer where the
+sample is ten times larger; neither wins by more than a metre or two, and both are far behind the
+lidar itself. `NED1` therefore stays a source the code knows (`SOURCES`) and Settings does not
+offer: 49 MB a cell against 28 MB buys nothing measurable. What would help in Canada outside the
+flown parts is NRCan's MRDEM (30 m, national), which is not read yet.
 
 ### 3.4 Negative memo (the fix that motivated this module)
 
