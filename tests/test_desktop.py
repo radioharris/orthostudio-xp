@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import sys
+import time
 import urllib.request
 from pathlib import Path, PurePosixPath
 
@@ -271,3 +272,31 @@ def test_the_window_closes_only_once_its_engine_has_answered_and_stopped(
     assert gone() is False and gone() is False  # it answers: the window stays
     assert gone() is True  # Quit: nothing behind the page, the window closes
     assert gone() is True
+
+
+def test_quitting_the_app_asks_the_page_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cmd+Q, the app's own Quit and the Dock's Quit must not take the app away from under a
+    build without a word. The page already has the question, with what a build and a queue are
+    worth in it, so the window comes back in front and its Quit button is pressed."""
+    from orthostudio import window
+
+    monkeypatch.setattr(desktop, "_listening", lambda port: True)
+    front, asked = [], []
+    monkeypatch.setattr(window, "to_the_front", lambda: front.append(True))
+    monkeypatch.setattr(window, "ask_the_page_to_quit", lambda: asked.append(True))
+
+    assert desktop.may_quit() is False  # the page answers, not this
+    assert front == [True]
+    for _ in range(50):
+        if asked:
+            break
+        time.sleep(0.02)
+    assert asked == [True]
+
+
+def test_quitting_with_no_engine_left_goes_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio import window
+
+    monkeypatch.setattr(desktop, "_listening", lambda port: False)
+    monkeypatch.setattr(window, "to_the_front", lambda: pytest.fail("nothing to ask about"))
+    assert desktop.may_quit() is True

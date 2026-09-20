@@ -28,12 +28,15 @@ __all__ = [
     "POLL_S",
     "SIZE",
     "WEBVIEW2_HELP",
+    "ask_the_page_to_quit",
     "away",
     "hint",
+    "on_quit",
     "possible",
     "puts_away_on_close",
     "show",
     "storage_dir",
+    "to_the_front",
 ]
 
 POLL_S = 2.0
@@ -47,6 +50,9 @@ MIN_SIZE = (1024, 700)
 LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
 """What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
 why the message carries the link rather than a command for a system we did not recognise."""
+
+_window: object | None = None
+"""The window that is up, for what has to speak to its page from elsewhere."""
 
 LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
 WEBVIEW2_HELP = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -149,6 +155,84 @@ def away() -> None:
     NSApplication.sharedApplication().hide_(None)
 
 
+def to_the_front() -> None:
+    """Bring the app back in front, put away or not: what it is about to ask must be seen."""
+    from AppKit import NSApplication
+
+    app = NSApplication.sharedApplication()
+    app.unhide_(None)
+    app.activateIgnoringOtherApps_(True)
+
+
+CLICK_QUIT = """
+(() => {
+  const b = document.getElementById("quit-btn");
+  if (!b || b.hidden) return false;
+  b.click();
+  return true;
+})()
+"""
+"""The page's own Quit: it asks about a build that runs or waits, in the user's own language, and
+stops the engine (``ui/app.js`` ``quitOsxp``). Asking it beats asking again in a second voice."""
+
+
+def ask_the_page_to_quit() -> None:
+    """Press the page's Quit button, and end the app outright when there is no page to ask.
+
+    Never from the main thread: reading a page's answer waits for the main thread, which would be
+    waiting for this.
+    """
+    window = _window
+    if window is None:
+        return
+    try:
+        asked = window.evaluate_js(CLICK_QUIT)
+    except Exception:
+        asked = False
+    if not asked:
+        window.destroy()  # no page, or a page that cannot stop the engine: the app goes
+
+
+_quitter: object | None = None
+"""Kept here because an NSApplication holds its delegate without keeping it alive."""
+
+
+def on_quit(handler: Callable[[], bool]) -> None:
+    """Have ``handler`` decide what the app's Quit does, wherever it is asked from.
+
+    Cmd+Q, the Quit of the app's own menu and the Quit of its Dock menu all end in
+    ``applicationShouldTerminate:``, which pywebview answers by asking each window whether it may
+    close. With a close button that puts the app away instead of closing it (:func:`show`), that
+    answer is always no, and the app could not be quit at all. This takes the decision back:
+    ``handler`` answers True to let the app go, False to keep it.
+    """
+    import AppKit
+
+    global _quitter
+    if _quitter is None:
+        now = getattr(AppKit, "NSTerminateNow", 1)
+        cancel = getattr(AppKit, "NSTerminateCancel", 0)
+        held: list[Callable[[], bool]] = []
+
+        class OrthoStudioQuit(AppKit.NSObject):  # type: ignore[misc]
+            def applicationShouldTerminate_(self, app: object) -> int:  # noqa: N802
+                return now if held[0]() else cancel
+
+            def applicationSupportsSecureRestorableState_(  # noqa: N802
+                self, app: object
+            ) -> bool:
+                return True
+
+        _quitter = (OrthoStudioQuit.alloc().init(), held)
+    delegate, held = _quitter  # type: ignore[misc]
+    held[:] = [handler]
+
+    def install() -> None:
+        AppKit.NSApplication.sharedApplication().setDelegate_(delegate)
+
+    AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(install)
+
+
 def show(
     url: str,
     *,
@@ -156,6 +240,7 @@ def show(
     on_shown: Callable[[], None] | None = None,
     closes_when: Callable[[], bool] | None = None,
     on_close: Callable[[], bool] | None = None,
+    may_quit: Callable[[], bool] | None = None,
     size: tuple[int, int] = SIZE,
     storage: Path | None = None,
 ) -> None:
@@ -167,7 +252,8 @@ def show(
     says yes: *Quit* stops the engine, and a window left on a page with nothing behind it would
     keep the app in the Dock with nothing to show. ``on_close`` is asked when the close button is
     clicked, and the window stays when it answers no, which is how the app is put away rather than
-    quit (:func:`puts_away_on_close`).
+    quit (:func:`puts_away_on_close`); ``may_quit`` answers for the app's own Quit, wherever it is
+    asked from (:func:`on_quit`).
 
     Raises when this system has no web view (the package missing, or no toolkit under it). The
     engine must not have been started before this returns, so that a system without a window
@@ -175,9 +261,10 @@ def show(
     """
     import webview  # not at import time: a system without it must still run the engine
 
+    global _window
     store = storage_dir() if storage is None else storage
     store.mkdir(parents=True, exist_ok=True)
-    window = webview.create_window(
+    _window = window = webview.create_window(
         title,
         url,
         width=size[0],
@@ -199,6 +286,8 @@ def show(
     def behind() -> None:
         """What runs while the window is up. It must end when the window does: pywebview gives it
         a thread of its own, and that thread is not a daemon."""
+        if may_quit is not None:
+            on_quit(may_quit)
         if on_shown is not None:
             on_shown()
         if closes_when is None:
@@ -210,5 +299,5 @@ def show(
                 window.destroy()
                 return
 
-    start = behind if (on_shown is not None or closes_when is not None) else None
+    start = behind if any(x is not None for x in (on_shown, closes_when, may_quit)) else None
     webview.start(start, private_mode=False, storage_path=str(store))

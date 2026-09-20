@@ -289,6 +289,28 @@ def time_to_close(port: int = ENGINE_PORT) -> Callable[[], bool]:
     return close_now
 
 
+def may_quit() -> bool:
+    """What Cmd+Q, the Quit of the app's own menu and the Quit of its Dock menu do.
+
+    They must not take the app away from under a build without a word. The page already has the
+    question, in the user's language, with what a build and a queue are worth: the window comes
+    back in front, put away or not, and its own Quit button is pressed
+    (``orthostudio.window.ask_the_page_to_quit``). This answers no meanwhile; what stops the app
+    is the engine stopping, which the page does once the user has said yes (:func:`time_to_close`).
+
+    Yes, at once, when no engine answers: there is nothing to ask about, and nothing to stop.
+    """
+    from orthostudio import window
+
+    if not _listening(ENGINE_PORT):
+        return True
+    window.to_the_front()
+    threading.Thread(
+        target=window.ask_the_page_to_quit, name="ask-the-page-to-quit", daemon=True
+    ).start()
+    return False
+
+
 def puts_away_on_close() -> Callable[[], bool] | None:
     """What the close button should do, or ``None`` where closing the window quits the app."""
     from orthostudio import window
@@ -331,6 +353,7 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
             on_shown=None if running else lambda: start_engine(log),
             closes_when=time_to_close(ENGINE_PORT),
             on_close=puts_away_on_close(),
+            may_quit=may_quit,
         )
     except Exception:
         _note(log, "its window could not be shown: the browser opens instead")

@@ -121,7 +121,8 @@ again while it runs, the app brings its window back rather than opening a second
 top right of the page, stops it, after asking when a build is running. Closing the window does not
 stop OrthoStudio XP: the window goes out of sight, its icon stays in the Dock, a build goes on, and
 a click on the icon brings the window back where you left it. **Nothing closes the app but you**:
-*Quit* in the page, or *Quit OrthoStudio XP* in its menu. Opened in a browser instead of a window,
+*Quit* in the page, or *Quit OrthoStudio XP* in its menu, in the Dock's menu or with Cmd+Q, which
+all bring the window back in front and ask the same question, telling you when a build is running. Opened in a browser instead of a window,
 where there is no icon to show that it runs, it still stops by itself five minutes after its last
 page closed, with no build running or waiting.
 

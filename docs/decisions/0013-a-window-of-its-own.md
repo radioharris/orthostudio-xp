@@ -41,6 +41,15 @@ which only the last three are supported) and a native Python interface (which wo
   put away, was written and taken out again: an app that vanishes from the Dock on its own is an
   app that went away without telling anyone, and deciding that is the user's, not ours. The window
   still closes when *Quit* stops the engine, because the user asked for that.
+- **Quitting the app asks the page.** Cmd+Q, the Quit of the app's own menu and the Quit of its
+  Dock menu all end in `applicationShouldTerminate:`, which pywebview answers by asking each
+  window whether it may close: with a close button that puts the app away, the app could not be
+  quit at all. OrthoStudio XP takes that answer back with a delegate of its own, brings the window
+  in front whether it was put away or not, and presses the page's own Quit button. That question
+  is already written, already translated, and already counts a build that runs and the ones that
+  wait; asking it again in a second voice would be a second thing to keep in step. Force Quit
+  cannot be answered by anyone: the engine, left behind, stops by itself once its build is done,
+  as it does for a browser whose tab was closed.
 - **OrthoStudio XP installs nothing on a system it does not own.** Where a library is missing, the
   doctor's `window` check names it with a link, and the page lists it at the foot. The one
   exception is the Windows installer, which *offers* the WebView2 Runtime, ticked and refusable,
