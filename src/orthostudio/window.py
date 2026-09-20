@@ -30,6 +30,7 @@ __all__ = [
     "SIZE",
     "WEBVIEW2_HELP",
     "ask_the_page_to_quit",
+    "ask_then_close",
     "away",
     "hint",
     "on_quit",
@@ -293,6 +294,25 @@ def _window_menu_shortcut() -> None:
                 return
 
     AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(put_it_there)
+
+
+def ask_then_close(title: str, message: str) -> None:
+    """Ask in a window of the system's own, and close ours when the answer is yes.
+
+    Never from the thread that draws: the close button's answer is given on that thread, and
+    waiting there for a box that same thread must draw would wait for ever. The caller answers no
+    to the close button and calls this aside; what is answered here closes the window, or nothing
+    does. Asked and not answerable, the window closes: the button was pressed, after all.
+    """
+    window = _window
+    if window is None:
+        return
+    try:
+        answered_yes = bool(window.create_confirmation_dialog(title, message))
+    except Exception:
+        answered_yes = True
+    if answered_yes:
+        window.destroy()
 
 
 def show(

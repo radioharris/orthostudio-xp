@@ -300,3 +300,46 @@ def test_quitting_with_no_engine_left_goes_at_once(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(desktop, "_listening", lambda port: False)
     monkeypatch.setattr(window, "to_the_front", lambda: pytest.fail("nothing to ask about"))
     assert desktop.may_quit() is True
+
+
+def test_the_close_button_puts_the_window_away_on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio import window
+
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: True)
+    put_away: list[bool] = []
+    monkeypatch.setattr(window, "away", lambda: put_away.append(True))
+    answer = desktop.on_close()
+    assert answer is not None
+    assert answer() is False and put_away == [True]  # the window stays, out of sight
+
+
+def test_the_close_button_closes_without_a_word_when_nothing_is_building(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from orthostudio import window
+
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: False)
+    monkeypatch.setattr(
+        window, "ask_then_close", lambda *a: pytest.fail("asked a question nobody needed")
+    )
+    answer = desktop.on_close()
+    assert answer is not None and answer() is True
+
+
+def test_the_close_button_asks_when_a_build_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio import window
+
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(window, "ask_then_close", lambda t, m: asked.append((t, m)))
+    answer = desktop.on_close()
+    assert answer is not None
+    # no meanwhile: the box cannot be drawn by the thread waiting for this answer
+    assert answer() is False
+    for _ in range(50):
+        if asked:
+            break
+        time.sleep(0.02)
+    assert asked and asked[0][0] == APP_NAME and "build is running" in asked[0][1]

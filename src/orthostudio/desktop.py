@@ -38,14 +38,15 @@ __all__ = [
     "ENGINE_ARGS",
     "ENGINE_PORT",
     "LOG_NAME",
+    "a_build_runs",
     "engine_here",
     "in_a_window",
     "log_path",
     "main",
+    "on_close",
     "open_running",
     "open_while_starting",
     "opening_page",
-    "puts_away_on_close",
     "start_engine",
     "time_to_close",
 ]
@@ -311,18 +312,60 @@ def may_quit() -> bool:
     return False
 
 
-def puts_away_on_close() -> Callable[[], bool] | None:
-    """What the close button should do, or ``None`` where closing the window quits the app."""
+BUILDING_ON_CLOSE = (
+    "A build is running. Close the window?\n\n"
+    "The build goes on without it, and opening OrthoStudio XP again shows it."
+)
+"""Asked by the close button where closing ends the app, and only when a build runs: closing loses
+nothing otherwise, and a question nobody needs is a question nobody reads."""
+
+
+def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
+    """Whether the engine on ``port`` has a build running or waiting (``GET /api/engine``).
+
+    Asked on the thread that draws, when the close button is pressed, so it does not wait long:
+    the engine is on the loopback, and a slow answer is one the user would feel.
+    """
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/engine", timeout=timeout_s
+        ) as answer:
+            doc = json.load(answer)
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get("active_job") is not None
+
+
+def on_close() -> Callable[[], bool] | None:
+    """What the close button does, which is not the same thing everywhere.
+
+    On macOS it puts the window away: closing a window there does not quit its app, which stays in
+    the Dock for the click that brings it back. Elsewhere the window closes and the app ends with
+    it, which loses sight of a build; the question is asked then, and only then
+    (:data:`BUILDING_ON_CLOSE`). It is asked aside, and this answers no meanwhile: the box cannot
+    be drawn by the thread waiting for this answer.
+    """
     from orthostudio import window
 
-    if not window.puts_away_on_close():
-        return None
+    if window.puts_away_on_close():
 
-    def keep() -> bool:
-        window.away()
-        return False  # the window stays, out of sight, and the icon stays in the Dock
+        def keep() -> bool:
+            window.away()
+            return False  # the window stays, out of sight, and the icon stays in the Dock
 
-    return keep
+        return keep
+
+    def ask_if_building() -> bool:
+        if not a_build_runs(ENGINE_PORT):
+            return True  # nothing is lost sight of: it closes, without a word
+        threading.Thread(
+            target=lambda: window.ask_then_close(APP_NAME, BUILDING_ON_CLOSE),
+            name="ask-before-closing",
+            daemon=True,
+        ).start()
+        return False
+
+    return ask_if_building
 
 
 def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
@@ -352,7 +395,7 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
             title=APP_NAME,
             on_shown=None if running else lambda: start_engine(log),
             closes_when=time_to_close(ENGINE_PORT),
-            on_close=puts_away_on_close(),
+            on_close=on_close(),
             may_quit=may_quit,
             note=lambda text: _note(log, text),
         )
