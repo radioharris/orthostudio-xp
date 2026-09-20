@@ -38,7 +38,9 @@ which only the last three are supported) and a native Python interface (which wo
   application was tried first, because pywebview has no `applicationShouldHandleReopen` and a
   window put away would have stayed away; it hands the menu bar to whichever app comes next, which
   a user saw at once. OrthoStudio XP answers that message itself, in the delegate it already holds
-  for Quit. Windows and Linux have no such place to stay in, and close as they always did. **Nothing else closes the app.** An automatic quit, after some while
+  for Quit. A *Window* menu, which pywebview builds for no one, holds the other way back, with
+  Cmd+0 put on it by hand since a pywebview menu entry carries no key. Windows and Linux have no
+  such place to stay in, and close as they always did. **Nothing else closes the app.** An automatic quit, after some while
   put away, was written and taken out again: an app that vanishes from the Dock on its own is an
   app that went away without telling anyone, and deciding that is the user's, not ours. The window
   still closes when *Quit* stops the engine, because the user asked for that.

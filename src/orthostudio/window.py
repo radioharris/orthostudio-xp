@@ -48,6 +48,15 @@ SIZE = (1440, 920)
 
 MIN_SIZE = (1024, 700)
 
+WINDOW_MENU = "Window"
+"""The menu that brings the window back once it has been put away. macOS builds one of its own for
+apps that list their windows in it; pywebview builds none, and without it the Dock's icon was the
+only way back (a user asked, 2026-09-20)."""
+
+WINDOW_MENU_KEY = "0"
+"""Cmd+0 for that entry, which a pywebview menu cannot carry and :func:`_window_menu_shortcut`
+puts there by hand."""
+
 LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
 """What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
 why the message carries the link rather than a command for a system we did not recognise."""
@@ -253,6 +262,33 @@ def on_quit(handler: Callable[[], bool]) -> None:
     AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(install)
 
 
+def _window_menu_shortcut() -> None:
+    """Give the first entry of the :data:`WINDOW_MENU` its key, once the menus are built.
+
+    ``webview.menu.MenuAction`` takes a title and something to run, and no key: this walks the
+    menu macOS was given and puts one on. Nothing raises here; without it the entry is still in
+    the menu, only without its key.
+    """
+    import AppKit
+
+    command = getattr(AppKit, "NSEventModifierFlagCommand", 1 << 20)
+
+    def put_it_there() -> None:
+        main = AppKit.NSApplication.sharedApplication().mainMenu()
+        if main is None:
+            return
+        for index in range(main.numberOfItems()):
+            item = main.itemAtIndex_(index)
+            submenu = item.submenu()
+            if item.title() == WINDOW_MENU and submenu is not None and submenu.numberOfItems():
+                first = submenu.itemAtIndex_(0)
+                first.setKeyEquivalent_(WINDOW_MENU_KEY)
+                first.setKeyEquivalentModifierMask_(command)
+                return
+
+    AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(put_it_there)
+
+
 def show(
     url: str,
     *,
@@ -280,6 +316,7 @@ def show(
     leaves nothing behind when the caller falls back to the browser.
     """
     import webview  # not at import time: a system without it must still run the engine
+    from webview.menu import Menu, MenuAction
 
     global _window
     store = storage_dir() if storage is None else storage
@@ -311,6 +348,7 @@ def show(
         a thread of its own, and that thread is not a daemon."""
         if may_quit is not None:
             on_quit(may_quit)
+            _window_menu_shortcut()
         if on_shown is not None:
             on_shown()
         if closes_when is None:
@@ -323,4 +361,6 @@ def show(
                 return
 
     start = behind if any(x is not None for x in (on_shown, closes_when, may_quit)) else None
-    webview.start(start, private_mode=False, storage_path=str(store))
+    # the way back to a window that was put away, next to the Dock's icon
+    menu = [Menu(WINDOW_MENU, [MenuAction(title, lambda: window.show())])]
+    webview.start(start, menu=menu, private_mode=False, storage_path=str(store))
