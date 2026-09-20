@@ -797,6 +797,14 @@ has a *Settings* button that focuses its field. The library count follows every 
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
 
+**When the engine does not answer** (`renderEngineBanner`): a banner at the top of every screen,
+the same one that announces an engine older than the page. An engine that answers *with an error*
+gets it too, naming what it said and offering *Reload the page*, and it goes as soon as a status
+comes back. Before that, `GET /api/status` failing wrote one line at the foot of the page and left
+every screen as empty as it was drawn: a user on Windows saw the fields greyed out, had nothing to
+go on, and the thread guessed for two days (flusi.info, 2026-09-20). An engine that answers nothing
+at all is still the *stopped* screen, through the presence ping.
+
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
 like the other folders of Settings). It says what the files must be called, that subfolders are

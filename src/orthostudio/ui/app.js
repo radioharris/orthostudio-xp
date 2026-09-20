@@ -1949,8 +1949,14 @@ const PAGE_API_LEVEL = 18;
 async function loadStatus() {
   try {
     state.status = await api("GET", "/api/status");
+    state.engineError = null;
   } catch (err) {
+    // The engine answered, but not with a status: every screen then stays as empty as it was
+    // drawn, and the only sign used to be a line at the foot of the page. A user on Windows saw
+    // greyed fields and nothing else, and could not know what to look at (flusi.info, 2026-09-20).
     $("status-xplane").textContent = errorMessage(err);
+    state.engineError = errorMessage(err);
+    renderEngineBanner();
     return;
   }
   // Paths are shown with "~" for what lies under it (i18n.js homely).
@@ -1960,11 +1966,17 @@ async function loadStatus() {
   renderStatus();
 }
 
-/** An engine older than the page (started before an update) cannot answer the new routes: say
- * how to fix it instead of letting "Not Found" and a blank map speak. */
+/** An engine older than the page (started before an update) cannot answer the new routes, and an
+ * engine that answers with an error leaves every screen empty: say which it is and what to do,
+ * instead of letting "Not Found" and greyed fields speak. */
 function renderEngineBanner() {
+  const words = state.engineOutdated
+    ? t("app.engine_outdated")
+    : state.engineError
+      ? t("app.engine_error", { reason: state.engineError })
+      : null;
   let banner = $("engine-outdated");
-  if (!state.engineOutdated) {
+  if (!words) {
     banner?.remove();
     return;
   }
@@ -1972,7 +1984,13 @@ function renderEngineBanner() {
     banner = h("p", { id: "engine-outdated", class: "engine-outdated", role: "alert" });
     $("main").prepend(banner);
   }
-  banner.textContent = t("app.engine_outdated");
+  clear(banner).append(words);
+  if (state.engineError && !state.engineOutdated) {
+    banner.append(
+      " ",
+      h("button", { class: "btn btn-small", onclick: () => location.reload() }, t("app.engine_error_reload")),
+    );
+  }
 }
 
 function renderStatus() {

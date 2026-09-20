@@ -206,6 +206,24 @@ def test_every_literal_key_exists_in_both_languages() -> None:
         assert not missing, (lang, missing)
 
 
+def test_an_engine_that_answers_with_an_error_is_announced() -> None:
+    """A user on Windows saw the fields greyed and nothing else: the engine was answering with an
+    error, and the only sign was one line at the foot of the page (flusi.info, 2026-09-20). The
+    banner that already announces an engine older than the page says this too."""
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    load = re.search(r"\nasync function loadStatus\(\) \{.*?\n\}\n", code, re.S)
+    assert load is not None
+    assert "state.engineError = errorMessage(err)" in load.group(0)
+    assert "renderEngineBanner()" in load.group(0)
+    assert "state.engineError = null" in load.group(0)  # gone as soon as it answers again
+    banner = re.search(r"\nfunction renderEngineBanner\(\) \{.*?\n\}\n", code, re.S)
+    assert banner is not None
+    assert 't("app.engine_error"' in banner.group(0) and 't("app.engine_outdated")' in banner.group(
+        0
+    )
+    assert "location.reload()" in banner.group(0)
+
+
 def test_no_dynamic_t_call() -> None:
     """Dynamic keys must go through tOpt() so the literal-key check stays complete."""
     for name in PAGE_MODULES:
