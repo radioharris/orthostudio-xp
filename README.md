@@ -13,7 +13,7 @@ built and checked automatically, but nobody has built a tile with it yet; a firs
 probably come later. The installer for Intel Macs is built and checked automatically too, on an
 Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an Intel Mac yet.
 
-![The Plan page: three squares chosen over the Alps and one over Corsica, the colours of the photos set beside the map, and the four steps to build them](docs/images/plan.jpg)
+![The Plan page: the map of Europe, four tiles already built showing in green over the western Alps and the Tuscan coast, and beside it the first two of the four steps](docs/images/plan.jpg)
 
 ## What you get
 
@@ -65,11 +65,11 @@ How it works, what it keeps on disk and how to clean it:
 
 | What it will cost | Works |
 |---|---|
-| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
+| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.jpg) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
 
 | Library | Settings |
 |---|---|
-| ![The Library: four tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
+| ![The Library: five tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
 
 ## Build times, measured
 
