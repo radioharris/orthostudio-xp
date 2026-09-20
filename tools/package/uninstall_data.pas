@@ -1,11 +1,14 @@
-; What the uninstaller offers to take with it, read by tools/package/build.py into [Code].
+; What the uninstaller says about what it leaves, read by tools/package/build.py into [Code].
 ;
-; The program folder goes with the uninstall; the settings and the data OrthoStudio XP downloaded
+; It removes the program and nothing else. The settings and the data OrthoStudio XP downloaded
 ; live apart, in %USERPROFILE%\.orthostudio (orthostudio.home.osxp_home), and can weigh tens of
-; gigabytes. The uninstaller offers to take them and takes nothing unless the answer is yes, which
-; is not what it starts on. Two things it never touches, and says so: a data folder chosen
-; elsewhere, on another disk, which it only names; and the scenery already installed into
-; X-Plane's Custom Scenery, which is the user's own work and outlives the tool that made it.
+; gigabytes, so leaving them without a word leaves the user wondering where the room went. It
+; names the folder instead, and warns what removing it by hand would cost: the tiles installed
+; into X-Plane are junctions into that folder (orthostudio/install/packs.py), not copies, so
+; taking it away empties X-Plane's scenery of every tile built here and leaves dead links behind.
+;
+; An offer to remove it was written and taken out again. A checkbox nobody reads twice cannot be
+; the thing standing between a user and hours of building.
 
 function OsxpHome: String;
 begin
@@ -18,8 +21,8 @@ var
   I: Integer;
   Line, Value: String;
 begin
-  // essential.data_dir of config.toml, read as a line rather than as TOML: the answer is shown,
-  // never acted on, so a line this misreads costs a sentence and no data
+  // essential.data_dir of config.toml, read as a line rather than as TOML: the answer is only
+  // ever shown, so a line this misreads costs a sentence and nothing else
   Result := '';
   if not LoadStringsFromFile(OsxpHome + '\config.toml', Lines) then
     Exit;
@@ -38,22 +41,22 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Home, Data, Question: String;
+  Data, Where, Note: String;
 begin
-  if CurUninstallStep <> usUninstall then
+  if CurUninstallStep <> usPostUninstall then
     Exit;
-  Home := OsxpHome;
-  if not DirExists(Home) then
+  if not DirExists(OsxpHome) then
     Exit;
-  Question :=
-    'Also remove your OrthoStudio XP settings and the data it downloaded?' + #13#10 + #13#10 +
-    Home + #13#10 + #13#10 +
-    'This cannot be undone. Choose No to keep them for a later installation.' + #13#10 + #13#10 +
-    'The tiles already installed into X-Plane''s Custom Scenery are yours, and are not touched.';
   Data := ChosenDataDir;
   if Data <> '' then
-    Question := Question + #13#10 + #13#10 +
-      'The data folder you chose is not touched either: ' + Data;
-  if MsgBox(Question, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-    DelTree(Home, True, True, True);
+    Where := OsxpHome + #13#10 + Data
+  else
+    Where := OsxpHome;
+  Note :=
+    'OrthoStudio XP is removed. Your settings, and the tiles and downloads it keeps, are left ' +
+    'where they are:' + #13#10 + #13#10 + Where + #13#10 + #13#10 +
+    'Install OrthoStudio XP again and it finds them. To free the room, remove them yourself, ' +
+    'knowing what it costs: the tiles you installed into X-Plane are junctions into that folder, ' +
+    'not copies, so removing it takes them out of X-Plane as well.';
+  MsgBox(Note, mbInformation, MB_OK);
 end;

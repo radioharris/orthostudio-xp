@@ -59,7 +59,7 @@ def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None
     assert "Tasks: webview2" in script
 
 
-def test_the_windows_uninstaller_offers_the_data_and_starts_on_no(tmp_path: Path) -> None:
+def test_the_windows_uninstaller_removes_the_program_and_nothing_else(tmp_path: Path) -> None:
     script = build.inno_setup_script(
         "0.1.9",
         tmp_path / "bundle",
@@ -69,13 +69,14 @@ def test_the_windows_uninstaller_offers_the_data_and_starts_on_no(tmp_path: Path
         tmp_path / build.WEBVIEW2_EXE,
     )
     code = script[script.index("\n[Code]\n") :]
-    assert code.count("procedure CurUninstallStepChanged") == 1
-    # No is where the question starts: the data can be tens of gigabytes and hours of building
-    assert "MB_DEFBUTTON2" in code
-    assert ".orthostudio" in code and "DelTree(Home" in code
-    # what it promises never to take: the user's own scenery, and a folder on another disk
-    assert "Custom Scenery" in code
-    assert "ChosenDataDir" in code and "DelTree(Data" not in code
+    after = code[code.index("procedure CurUninstallStepChanged") :]
+    # the tiles installed into X-Plane are junctions into that folder, not copies: taking it away
+    # empties X-Plane of every tile built here, so the uninstaller takes nothing and says where
+    assert "DelTree" not in after and "DeleteFile" not in after
+    assert "junctions" in after and ".orthostudio" in code
+    assert "MsgBox" in after and "mbInformation" in after
+    # a data folder chosen on another disk is named too, so the room is not lost track of
+    assert "ChosenDataDir" in after
 
 
 def test_the_app_bundle_describes_itself() -> None:

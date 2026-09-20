@@ -21,14 +21,15 @@ confirmation the first time (`README.md`).
 | Python | `Contents/Resources/python` | `python\` | `python/` |
 | started by | `Contents/MacOS/orthostudio` (shell script) | `python\pythonw.exe -m orthostudio.desktop` | `orthostudio-xp` (shell script) |
 
-Uninstalling on Windows asks whether the settings and the data OrthoStudio XP downloaded should
-go too (`tools/package/uninstall_data.pas`): they live apart from the program, in
-`%USERPROFILE%\.orthostudio`, and can weigh tens of gigabytes, so the uninstaller offers them and
-starts the question on No. Two things it never takes, and says so: a data folder chosen on another
-disk, which it reads from `config.toml` only to name it; and the scenery already installed into
-X-Plane's Custom Scenery, which is the user's own work and outlives the tool that made it. An
-install over an older version asks nothing and takes nothing: an installer that offers to delete
-data is a trap, and the tiles are hours of building.
+Uninstalling on Windows removes the program and nothing else, and says so
+(`tools/package/uninstall_data.pas`). The settings and the data OrthoStudio XP keeps live apart,
+in `%USERPROFILE%\.orthostudio` and in a data folder chosen elsewhere, and can weigh tens of
+gigabytes: the uninstaller names both, so the room is not lost track of, and warns what removing
+them by hand would cost. **The tiles installed into X-Plane are junctions into that folder, not
+copies** (`orthostudio/install/packs.py`): taking it away empties X-Plane of every tile built
+here and leaves dead links. An offer to remove it was written and taken out again, for that
+reason: a checkbox nobody reads twice cannot be the thing standing between a user and hours of
+building. An install over an older version asks nothing and takes nothing either.
 
 The Windows setup program and its uninstaller first stop an OrthoStudio XP running from the
 installation folder (`tools/package/stop_running.pas`, the `[Code]` of the script). A running
