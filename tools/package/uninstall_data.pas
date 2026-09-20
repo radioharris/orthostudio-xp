@@ -1,14 +1,14 @@
-; What the uninstaller says about what it leaves, read by tools/package/build.py into [Code].
-;
-; It removes the program and nothing else. The settings and the data OrthoStudio XP downloaded
-; live apart, in %USERPROFILE%\.orthostudio (orthostudio.home.osxp_home), and can weigh tens of
-; gigabytes, so leaving them without a word leaves the user wondering where the room went. It
-; names the folder instead, and warns what removing it by hand would cost: the tiles installed
-; into X-Plane are junctions into that folder (orthostudio/install/packs.py), not copies, so
-; taking it away empties X-Plane's scenery of every tile built here and leaves dead links behind.
-;
-; An offer to remove it was written and taken out again. A checkbox nobody reads twice cannot be
-; the thing standing between a user and hours of building.
+// What the uninstaller says about what it leaves, read by tools/package/build.py into [Code].
+//
+// It removes the program and nothing else. The settings and the data OrthoStudio XP downloaded
+// live apart, in %USERPROFILE%\.orthostudio (orthostudio.home.osxp_home), and can weigh tens of
+// gigabytes, so leaving them without a word leaves the user wondering where the room went. It
+// names the folder instead, and warns what removing it by hand would cost: the tiles installed
+// into X-Plane are junctions into that folder (orthostudio/install/packs.py), not copies, so
+// taking it away empties X-Plane's scenery of every tile built here and leaves dead links behind.
+//
+// An offer to remove it was written and taken out again. A checkbox nobody reads twice cannot be
+// the thing standing between a user and hours of building.
 
 function OsxpHome: String;
 begin

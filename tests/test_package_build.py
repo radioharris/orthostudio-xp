@@ -79,6 +79,24 @@ def test_the_windows_uninstaller_removes_the_program_and_nothing_else(tmp_path: 
     assert "ChosenDataDir" in after
 
 
+def test_the_installers_pascal_is_commented_the_way_pascal_is(tmp_path: Path) -> None:
+    """A line opened with ``;`` is a comment in an installer's other sections and nothing at all
+    in ``[Code]``, where Inno Setup asked for a BEGIN and stopped (CI, 2026-09-20). The Pascal
+    comments with ``//``."""
+    script = build.inno_setup_script(
+        "0.1.9",
+        tmp_path / "bundle",
+        tmp_path / "orthostudio.ico",
+        tmp_path,
+        "setup",
+        tmp_path / build.WEBVIEW2_EXE,
+    )
+    code = script[script.index("\n[Code]\n") :]
+    assert [line for line in code.splitlines() if line.lstrip().startswith(";")] == []
+    for part in (build.INNO_CODE, build.INNO_WEBVIEW2, build.INNO_UNINSTALL):
+        assert not part.read_text(encoding="utf-8").startswith(";"), part.name
+
+
 def test_the_app_bundle_describes_itself() -> None:
     info = build.macos_info_plist("0.1.0", "14.0")
     assert plistlib.loads(plistlib.dumps(info))["CFBundleExecutable"] == "orthostudio"
