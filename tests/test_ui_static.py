@@ -3034,3 +3034,18 @@ def test_the_legend_says_when_this_machine_has_no_airports() -> None:
     assert "missing = false" in ok
     for key in ("map.airports_missing", "map.airports_missing_hint"):
         assert f'"{key}"' in js, key
+
+
+def test_a_browser_only_system_is_told_at_the_top_of_the_page() -> None:
+    """The doctor's window check said it at the foot of the page, behind a fold nobody opens (a
+    user asked, 2026-09-20). It is said once at the top too, in the reader's own words, and stays
+    away once put away."""
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    note = js[js.index("function renderWindowNote") : js.index("function renderEngineBanner")]
+    assert "browser_only" in note and "details.install" in note  # what the doctor found
+    assert "WINDOW_NOTE_KEY" in note and "localStorage.setItem" in note  # put away, it stays away
+    assert "app.window_browser_only" in note
+    # the banner of problems still has its say: this only shows when there is nothing else
+    assert "renderWindowNote();" in js[js.index("function renderEngineBanner") :]
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".window-note {" in css and "--warn" not in css[css.index(".window-note {") :][:200]

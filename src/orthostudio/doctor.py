@@ -345,7 +345,10 @@ def _window() -> Check:
         "window",
         "warn",
         hint or "The browser opens instead of a window of its own",
-        {"browser_only": True, "hint": hint},
+        # the page puts its own words around "install" and shows it as a command or a link: the
+        # line at the foot of the page was the only place this was said, and it is a fold (a user
+        # asked, 2026-09-20)
+        {"browser_only": True, "hint": hint, "install": window.install()},
     )
 
 

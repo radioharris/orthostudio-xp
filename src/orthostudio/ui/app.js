@@ -1969,6 +1969,46 @@ async function loadStatus() {
 /** An engine older than the page (started before an update) cannot answer the new routes, and an
  * engine that answers with an error leaves every screen empty: say which it is and what to do,
  * instead of letting "Not Found" and greyed fields speak. */
+const WINDOW_NOTE_KEY = "osxp.windowNoteDone";
+
+/** A system that could hold a window of its own, and lacks what draws one, opens the browser
+ * instead. The doctor's `window` check says so at the foot of the page, behind a fold nobody
+ * opens (a user asked, 2026-09-20): this says it once, at the top, in the reader's own words,
+ * with the one line to run or to read beside it. Put away, it stays away. */
+function renderWindowNote() {
+  const checks = Array.isArray(state.status?.doctor) ? state.status.doctor : [];
+  const check = checks.find((c) => c && c.name === "window");
+  const install = check?.details?.browser_only ? check.details.install || "" : "";
+  let done = false;
+  try {
+    done = localStorage.getItem(WINDOW_NOTE_KEY) === "1";
+  } catch (_e) {
+    // a browser that keeps nothing: the note shows again, which is better than not at all
+  }
+  if (!install || done) {
+    $("window-note")?.remove();
+    return;
+  }
+  if ($("window-note")) return;
+  const note = h("p", { id: "window-note", class: "window-note" });
+  const away = () => {
+    try {
+      localStorage.setItem(WINDOW_NOTE_KEY, "1");
+    } catch (_e) {
+      // ignore
+    }
+    note.remove();
+  };
+  note.append(
+    t("app.window_browser_only"),
+    " ",
+    h("code", null, install),
+    " ",
+    h("button", { class: "btn btn-small", onclick: away }, t("app.window_browser_only_ok")),
+  );
+  $("main").prepend(note);
+}
+
 function renderEngineBanner() {
   const unread = state.status?.settings_problems || [];
   const words = state.engineOutdated
@@ -1981,6 +2021,7 @@ function renderEngineBanner() {
   let banner = $("engine-outdated");
   if (!words) {
     banner?.remove();
+    renderWindowNote();
     return;
   }
   if (!banner) {

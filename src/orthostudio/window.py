@@ -34,6 +34,7 @@ __all__ = [
     "away",
     "close_now",
     "hint",
+    "install",
     "on_quit",
     "possible",
     "puts_away_on_close",
@@ -80,6 +81,18 @@ def storage_dir() -> Path:
     from orthostudio.home import osxp_home
 
     return osxp_home() / "window"
+
+
+def install() -> str | None:
+    """What to do about it, in one line: the command on Linux, Microsoft's page on Windows.
+
+    Kept apart from :func:`hint`, whose sentence is English, so that the page can put its own
+    words around this and leave the command itself where it is written once."""
+    if sys.platform.startswith("linux"):
+        return f"sudo apt install {LINUX_PACKAGES}"
+    if sys.platform == "win32":
+        return WEBVIEW2_HELP
+    return None
 
 
 def hint() -> str | None:

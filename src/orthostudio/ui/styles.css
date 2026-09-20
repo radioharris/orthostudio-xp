@@ -808,6 +808,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 
 /* An engine older than the page (app.js renderEngineBanner): a restart fixes it. */
+.window-note {
+  margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius);
+  background: var(--bg-3); color: var(--fg-2); border: 1px solid var(--line);
+}
+.window-note code { margin: 0 4px; overflow-wrap: anywhere; }
+
 .engine-outdated {
   margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius); font-weight: 600;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn);
