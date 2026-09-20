@@ -141,3 +141,13 @@ def test_the_engine_starts_even_when_the_window_trimmings_fail(
     )
     assert started == [True]  # the engine ran
     assert said and "no AppKit" in said[0]  # and the failure was said
+
+
+def test_the_window_package_travels_everywhere() -> None:
+    """Left out of Linux, the advice the doctor gives there led nowhere: it names the system
+    packages to install, and they are useless without the package that uses them (2026-09-20).
+    The wheel is pure Python and asks nothing of the system by itself."""
+    lock = (Path(__file__).resolve().parents[1] / "uv.lock").read_text(encoding="utf-8")
+    asked = [line for line in lock.splitlines() if '{ name = "pywebview"' in line]
+    assert asked, "pywebview is not in the lock"
+    assert not any("sys_platform" in line for line in asked), asked

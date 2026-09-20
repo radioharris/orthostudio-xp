@@ -69,6 +69,8 @@ vast majority of Windows 10 machines. The 2 MB Evergreen bootstrapper is downloa
 (`fetch_webview2`), so a Windows build reaches Microsoft once, as it already reaches PyPI; turned
 down, nothing is installed and the app opens the browser. Linux asks for packages that need root
 and differ between distributions: nothing is offered there, and the `window` check names them.
+pywebview itself travels in the Linux archive like everywhere else, or naming those packages would
+be advice that leads nowhere: they are useless without the package that uses them.
 
 The Intel app (a user asked, 2026-09-17) is built on the same Apple Silicon Mac:
 `build.py --machine x86_64` asks uv for the Intel CPython (`cpython-<version>-macos-x86_64-none`),

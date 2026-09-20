@@ -22,9 +22,11 @@ dependencies = [
   "typer>=0.15",
   "ispc-texcomp>=1.0.1",
   "curl_cffi>=0.10",
-  # the window of its own (orthostudio/window.py); where it needs a library the system must carry,
-  # OrthoStudio XP installs nothing and opens the browser instead, so Linux asks for nothing here
-  "pywebview>=6.2; sys_platform == 'darwin' or sys_platform == 'win32'",
+  # the window of its own (orthostudio/window.py). A pure Python wheel, which asks nothing of the
+  # system by itself: the toolkit under it is what a system may lack, and where it does the
+  # browser opens instead. It travels everywhere, Linux included, or the advice the doctor gives
+  # there would lead nowhere: the packages it names are useless without this (2026-09-20).
+  "pywebview>=6.2",
 ]
 
 [project.optional-dependencies]

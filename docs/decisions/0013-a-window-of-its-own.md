@@ -67,8 +67,11 @@ which only the last three are supported) and a native Python interface (which wo
 - Linux keeps today's behaviour until the user installs the packages the check names. Windows and
   Linux are untested by their author, who has only a Mac: the browser fallback is what makes that
   acceptable, and a Windows pass is owed before the release.
-- pywebview is asked for on macOS and Windows only (`pyproject.toml`), so nothing new is required
-  to run the engine, the tests or CI on Linux.
+- pywebview travels everywhere, Linux included. It is a pure Python wheel and asks nothing of the
+  system by itself; what a system may lack is the toolkit under it, and where that is missing the
+  browser opens. Leaving it out of Linux made the advice the doctor gives there lead nowhere: it
+  names the packages to install, and they are useless without the package that uses them. Nothing
+  new is required to run the engine, the tests or CI anywhere.
 - `possible()` answers without importing the web view or the toolkit under it. Importing the
   toolkit is what opens a connection to the window server, and the process then grows an icon in
   the Dock: the engine asks this for the doctor's check, and a second icon beside the window's
