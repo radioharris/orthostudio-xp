@@ -128,9 +128,10 @@ where there is no icon to show that it runs, it still stops by itself five minut
 page closed, with no build running or waiting.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
-browser would show. On Linux, where that web view is a package your distribution installs and
-OrthoStudio XP will not install anything for you, the page opens in your browser instead; the
-`window` line of *Checks*, at the foot of the page, says so and names the package. What the
+browser would show. On Linux the page opens in your browser instead: the web view a
+window needs there is built for the distribution's own Python, and OrthoStudio XP carries its own,
+so nothing a user installs would reach it. The `window` line of *Checks*, at the foot of the page,
+says so, and the page says it once at the top. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. The
 app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app

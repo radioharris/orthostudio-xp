@@ -156,17 +156,13 @@ Python inside.
   run `./install.sh` in the extracted folder for an entry in the applications menu, or start
   `./orthostudio-xp` directly.
 
-Opening OrthoStudio XP starts it and shows its page in a window of its own, or brings that window
-back when it already runs. On macOS, closing that window puts it away rather than closing it: its
-icon stays in the Dock, a click brings the window back, a build goes on, and *Quit*, in the page
-or in the app's menu, is what stops it. On Windows and Linux, closing the window quits
-OrthoStudio XP and stops its engine with it, asking first when a build is running; what the build
-had already made is kept, so starting it again carries on from there. Opened in a browser instead
-of a window, it stops by itself five minutes after its last page is closed, unless a build is
-running or waiting. The window is drawn by the web view
-your system carries: on Linux that is a package your distribution installs, and until it is there
-the page opens in your browser instead, the *Checks* line at the foot of the page naming what to
-install. Its messages go to `serve.log`, in
+Opening OrthoStudio XP shows its page in a window of its own, which works like any window on your
+system; opening it again brings that window back. Quitting stops the engine, and asks first when a
+build is running: what was already built is kept, so building again carries on from there. On
+Linux it opens in your browser instead, as every version has: the web view a window needs there is
+built for your distribution's own Python, and OrthoStudio XP carries its own, so installing it
+would change nothing. In a browser it stops by itself five minutes after the last page is closed,
+with no build running or waiting. Its messages go to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
