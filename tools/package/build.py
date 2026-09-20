@@ -110,6 +110,9 @@ class Target:
 MAC_UV_ARCH = {"arm64": "aarch64", "x86_64": "x86_64"}
 """The machines of the macOS apps, and uv's name for each (a user asked for Intel Macs,
 2026-09-17)."""
+FOR_THIS_MAC = [False]
+"""``--this-mac``: the app is built for the Mac it runs on, not for the release (see
+:func:`check_oldest_macos`)."""
 MAC_OLDEST = {"arm64": "14.0", "x86_64": "15.0"}
 """The oldest macOS the README gives for each app. The wheels are chosen for the macOS the build
 runs on, and pyproj's Intel wheels ask for macOS 15: the Intel app is built on macOS 15."""
@@ -196,14 +199,25 @@ def minimum_macos(wheel_tags: Iterable[str], floor: str = "11.0") -> str:
     return ".".join(str(p) for p in best)
 
 
-def check_oldest_macos(machine: str, minimum: str) -> None:
+def check_oldest_macos(machine: str, minimum: str, *, for_this_mac: bool = False) -> None:
     """Fails when the wheels of the ``machine`` app ask for a newer macOS than the README gives
-    (:data:`MAC_OLDEST`): built on a newer macOS, the app would refuse the Macs it promises."""
+    (:data:`MAC_OLDEST`): built on a newer macOS, the app would refuse the Macs it promises.
+
+    ``for_this_mac`` says the app is for the Mac it is built on and will not be published, so what
+    it promises others does not matter (``--this-mac``).
+    """
 
     def version(text: str) -> tuple[int, ...]:
         return tuple(int(p) for p in text.split("."))
 
     promised = MAC_OLDEST[machine]
+    if for_this_mac and version(minimum) > version(promised):
+        print(
+            f"--this-mac: the app asks for macOS {minimum} where the README gives {promised}; "
+            "it is not the one to publish",
+            flush=True,
+        )
+        return
     if version(minimum) > version(promised):
         raise SystemExit(
             f"the {machine} app's wheels ask for macOS {minimum}, the README gives {promised}: "
@@ -534,7 +548,7 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     make_icns(resources / "orthostudio.icns")
     oldest = minimum_macos(wheel_tags(package))
     print(f"the app runs on macOS {oldest} and later", flush=True)
-    check_oldest_macos(target.machine, oldest)
+    check_oldest_macos(target.machine, oldest, for_this_mac=FOR_THIS_MAC[0])
     plist = macos_info_plist(version, oldest, target.machine)
     with (app / "Contents" / "Info.plist").open("wb") as f:
         plistlib.dump(plist, f)
@@ -837,6 +851,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--offline", action="store_true", help="take the packages from uv's cache only"
     )
     parser.add_argument(
+        "--this-mac",
+        action="store_true",
+        help="macOS only: an app for this Mac, not for the release (its wheels may ask for a "
+        "newer macOS than the README gives)",
+    )
+    parser.add_argument(
         "--machine",
         choices=sorted(MAC_UV_ARCH),
         help="macOS only: the machine of the app (x86_64: the Intel app, on Apple Silicon too)",
@@ -844,6 +864,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.offline:
         UV_OFFLINE.append("--offline")
+    FOR_THIS_MAC[0] = bool(getattr(args, "this_mac", False))
     target = this_target(args.machine)
     version = project_version()
     shutil.rmtree(WORK / target.system, ignore_errors=True)
