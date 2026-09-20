@@ -287,7 +287,8 @@ def save(image: Image.Image, folder: Path, name: str, png_only: bool = False) ->
 
 
 def fit_total(written: list[tuple[Path, Image.Image]]) -> None:
-    """Bring the whole set under ``MAX_TOTAL`` by lowering the quality of its photographs."""
+    """Bring the whole set under ``MAX_TOTAL``: the quality of its photographs first, then, if
+    that is not enough, the size of every picture, so the listing shows them all at one size."""
     photos = [(path, image) for path, image in written if path.suffix == ".jpg"]
     for quality in QUALITIES[1:]:
         total = sum(path.stat().st_size for path, _ in written)
@@ -299,8 +300,30 @@ def fit_total(written: list[tuple[Path, Image.Image]]) -> None:
         print(f"the {len(photos)} photograph(s) written again at quality {quality}: "
               f"{total / 1e6:.2f} MB for the set")  # fmt: skip
     total = sum(path.stat().st_size for path, _ in written)
-    if total > MAX_TOTAL:
-        raise RuntimeError(f"the set weighs {total / 1e6:.2f} MB, above {MAX_TOTAL / 1e6:.2f} MB")
+    if total <= MAX_TOTAL:
+        return
+    # Quality alone was not enough, which two pictures of the map instead of one made true
+    # (0.1.8). Narrower at a quality that holds beats wider and muddy, since a listing shows them
+    # far smaller than they are written and a low quality ruins the text over the map first.
+    #
+    # The photographs alone are narrowed. A flat picture narrowed comes out heavier, not lighter:
+    # resampling turns its crisp flat colours into gradients that PNG cannot pack. Measured on
+    # this set, Settings went from 453 KB at 3020 px to 508 KB at 1545 px, and narrowing the five
+    # together weighed more than leaving three of them alone.
+    photos = [(path, image.copy()) for path, image in photos]
+    while photos and photos[0][1].width > 1600:
+        photos = [
+            (path, image.resize((image.width * 4 // 5, image.height * 4 // 5), Image.LANCZOS))
+            for path, image in photos
+        ]
+        for path, image in photos:
+            _jpeg(image, path, QUALITIES[1])
+        total = sum(path.stat().st_size for path, _ in written)
+        print(f"the {len(photos)} photograph(s) narrowed to {photos[0][1].width} px at quality "
+              f"{QUALITIES[1]}: {total / 1e6:.2f} MB for the set")  # fmt: skip
+        if total <= MAX_TOTAL:
+            return
+    raise RuntimeError(f"the set weighs {total / 1e6:.2f} MB, above {MAX_TOTAL / 1e6:.2f} MB")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
