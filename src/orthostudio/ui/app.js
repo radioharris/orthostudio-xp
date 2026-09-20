@@ -160,6 +160,7 @@ const DECISION_KEYS = {
 /** Codes the report lists only when they happened, in plain words (the code in the tooltip). */
 const EXTRA_DECISION_KEYS = {
   SYS_UPSTREAM_FAILED: () => t("works.dec_upstream"),
+  DEM_OVERLAY_UNAVAILABLE: () => t("works.dec_no_overlay"),
   textures_second_pass: () => t("works.dec_second_pass"),
   textures_recovered: () => t("works.dec_recovered"),
 };
@@ -761,6 +762,11 @@ function mockOutcome(run) {
   });
   for (const tile of tiles) {
     if (tile.pack_dir) decisions.push({ tile: tile.tile, kind: "pack", path: tile.pack_dir, bytes: 2656881226 + 110000000 * tiles.indexOf(tile), installed: tile.installed });
+  }
+  // A relief laid over another reaches part of the country only: the first square of such a
+  // build gets none, so the line that says what was read can be seen in the mock as well.
+  if (doc.relief === "canada" || doc.relief === "south_america") {
+    decisions.push({ tile: tiles[0]?.tile, kind: "degraded", code: "DEM_OVERLAY_UNAVAILABLE", count: 1, message: "No elevation data over that cell: the relief laid under it is used alone there." });
   }
   const all = tiles.flatMap((x) => x.nodes);
   const report = {
@@ -3280,7 +3286,20 @@ function updateJobView(v, job) {
     clear(v.pill).append(jobStatusPill(job.status));
     v.status = job.status;
   }
-  const relief = [reliefWords(job.relief), job.relief_own ? t("works.relief_own") : ""].filter(Boolean).join(" + ");
+  // What was read, not only what was chosen. A user built Banff with "Canada's lidar relief",
+  // watched it through without an error, and got Copernicus: the lidar has not flown there, the
+  // composite quietly falls back, and this line named his choice back at him (2026-09-20).
+  const missing = decisionCounts(job).get("DEM_OVERLAY_UNAVAILABLE") || 0;
+  const gap = !missing
+    ? ""
+    : missing === 1
+      ? t("works.relief_gap_one")
+      : t("works.relief_gap", { n: fmtInt(missing) });
+  const chosen = reliefWords(job.relief);
+  const relief = [
+    chosen && gap ? `${chosen} (${gap})` : chosen,
+    job.relief_own ? t("works.relief_own") : "",
+  ].filter(Boolean).join(" + ");
   const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";

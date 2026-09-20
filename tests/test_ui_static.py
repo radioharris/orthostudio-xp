@@ -37,7 +37,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 UI = ui_dir()
 NODE = shutil.which("node")
-PAGE_MODULES = ("app.js", "geo.js", "map.js", "settings.js", "sources.js")
+PAGE_MODULES = ("app.js", "find.js", "geo.js", "map.js", "settings.js", "sources.js", "zoom.js")
 """The page's own modules: every visible string of theirs goes through a literal t() key."""
 TEXT_FILES = ("index.html", "i18n.js", "styles.css", *PAGE_MODULES)
 LEAFLET_SCRIPT = '<script src="static/vendor/leaflet/leaflet.js">'
@@ -3400,3 +3400,27 @@ def test_the_final_report_says_which_tiles_were_patched() -> None:
         assert tables[lang]["works.patches"] and tables[lang]["works.patches_none"]
     # the mock builds a tile with patches, so both halves can be seen without a folder of them
     assert "patch.osm`" in app_js
+
+
+def test_the_works_line_says_which_relief_was_read_not_only_which_was_chosen() -> None:
+    """A user built Banff with "Canada's lidar relief", watched it through without one error,
+    and got Copernicus: the lidar has not flown there, a composite relief falls back to what it
+    is laid over, and this line named his choice back at him (2026-09-20). The engine already
+    recorded DEM_OVERLAY_UNAVAILABLE per square; nothing read it."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "updateJobView")
+    assert 'decisionCounts(job).get("DEM_OVERLAY_UNAVAILABLE")' in body
+    assert 't("works.relief_gap_one")' in body and 't("works.relief_gap"' in body
+    # and the code reads as words in the list of decisions, not as its own name
+    assert "DEM_OVERLAY_UNAVAILABLE: () => t(\"works.dec_no_overlay\")" in app_js
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("works.relief_gap", "works.relief_gap_one", "works.dec_no_overlay"):
+            assert tables[lang][key], f"{lang} is missing {key}"
+    assert "{n}" in tables["en"]["works.relief_gap"]
+    assert "{n}" not in tables["en"]["works.relief_gap_one"]  # one square is not "1 square(s)"
+    # the mock builds such a job, so the line can be seen without flying to Canada
+    jobs = _mock_json("jobs")
+    assert jobs[0]["relief"] == "canada"
+    codes = [d.get("code") for d in _mock_json("job_done")["decisions"]]
+    assert "DEM_OVERLAY_UNAVAILABLE" in codes

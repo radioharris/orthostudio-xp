@@ -1111,7 +1111,7 @@
   ],
   "provider": "BI",
   "zl": 16,
-  "relief": "xplane",
+  "relief": "canada",
   "ok": false,
   "request": {
     "tiles": [
@@ -2408,6 +2408,13 @@
       "path": "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+005",
       "bytes": 2656881226,
       "installed": true
+    },
+    {
+      "tile": "+46+006",
+      "kind": "degraded",
+      "code": "DEM_OVERLAY_UNAVAILABLE",
+      "count": 1,
+      "message": "No elevation data from HRDEM over cell +46+006: the relief laid under it is used alone there."
     }
   ]
 }
