@@ -4357,10 +4357,18 @@ async function saveSettings(ev) {
   const err = $("settings-error");
   err.hidden = true;
   try {
+    // What the Plan shows is this build's choice, and Settings holds the one to start from: a
+    // save that did not touch them must leave them alone. It used to put both back whatever was
+    // saved, so a user who chose Bing in the Plan, changed only the relief here and saved, built
+    // the tile with the source of the settings without being told (2026-09-20).
+    const was = state.settings?.essential || {};
+    const source = state.settingsDraft?.essential || {};
+    const sourceChanged = was.provider !== source.provider;
+    const levelChanged = was.zoom_level !== source.zoom_level;
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
     state.settingsDraft = structuredClone(state.settings);
-    // The Plan follows what was saved: its source and level, and the cost worked out again.
-    $("zl-select").value = "";
+    // The Plan follows the source and the level only where this save changed them.
+    if (levelChanged) $("zl-select").value = "";
     planChanged();
     // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
     // and step 3 no longer shows a refusal made with the settings of before.
@@ -4370,7 +4378,7 @@ async function saveSettings(ev) {
     setTimeout(() => {
       if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
     }, 3000);
-    renderProviders(state.settings.essential?.provider);
+    renderProviders(sourceChanged ? state.settings.essential?.provider : null);
     renderPlanSettings();
   } catch (e) {
     err.hidden = false;

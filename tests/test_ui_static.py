@@ -2627,10 +2627,13 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
 def test_saved_settings_reach_the_plan() -> None:
     """A user changed a preset in Settings and the Plan kept its detail level: after Save the
     Plan takes the saved level and drops an estimate that no longer holds; leaving Settings with
-    answers not saved says so."""
+    answers not saved says so. Since 2026-09-20 it follows only what the save changed, which
+    test_saving_settings_leaves_the_plan_alone_unless_it_changed_them has the story of."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     save = _function_body(app_js, "saveSettings")
-    assert save.index('$("zl-select").value = "";') < save.index("renderProviders(state.settings")
+    assert save.index('if (levelChanged) $("zl-select").value = "";') < save.index(
+        "renderProviders(sourceChanged"
+    )
     assert "planChanged();" in save  # the cost is worked out again with what was saved
     assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
 
@@ -3306,3 +3309,25 @@ def test_the_usgs_relief_at_one_arc_second_is_offered_too() -> None:
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
     assert 'the USGS covers the United States only' not in i18n
     assert 'c.source === "NED1" ? "North America" : "the United States"' in i18n
+
+
+def test_saving_settings_leaves_the_plan_alone_unless_it_changed_them() -> None:
+    """A user chose Bing for his tile in the Plan, went to Settings to change the relief and
+    nothing else, saved, came back and built: the tile was built with the source of the settings,
+    Clarity, and nothing said so (2026-09-20). Saving put the source and the detail level of the
+    settings back into the Plan whatever had been saved, so a choice made for this build was
+    thrown away by a save that never touched it. The level went the same way.
+
+    The other direction has to keep working: changing the source in Settings is how the Plan is
+    given a new one."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "saveSettings")
+    # read before the save, so the comparison is against what was there before
+    assert body.index("const was = state.settings?.essential") < body.index('api("PUT"')
+    assert "const sourceChanged = was.provider !== source.provider;" in body
+    assert "const levelChanged = was.zoom_level !== source.zoom_level;" in body
+    assert 'if (levelChanged) $("zl-select").value = "";' in body
+    assert "renderProviders(sourceChanged ? state.settings.essential?.provider : null);" in body
+    # and neither of the two runs unguarded any more
+    assert '\n    $("zl-select").value = "";' not in app_js
+    assert "renderProviders(state.settings.essential?.provider);" not in app_js
