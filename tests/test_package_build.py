@@ -4,6 +4,7 @@ Python): ``docs/specs/packaging.md``."""
 from __future__ import annotations
 
 import plistlib
+import re
 import sys
 from pathlib import Path
 
@@ -291,3 +292,52 @@ def test_the_check_reads_the_last_start_of_the_log(tmp_path: Path) -> None:
     assert build.last_run(log) == '{"new": 2}'
     log.write_text("no header\n")
     assert build.last_run(log) == ""
+
+
+# Inno Setup's directory constants, from its documentation. Anything else it refuses at run time,
+# and only at run time: {userprofile} looks as ordinary as the rest, compiled without a word, and
+# met a user mid-uninstall as "Internal error: Unknown constant" (2026-09-20). An environment
+# variable is written {%NAME} and is a different thing.
+_FROM_THE_DOCUMENTATION = """
+    app win sys sysnative src sd commonpf commonpf32 commonpf64 commoncf commoncf32
+    commoncf64
+    tmp commonfonts dao dotnet11 dotnet20 dotnet2032 dotnet2064 dotnet40 dotnet4032 dotnet4064
+    group localappdata userappdata commonappdata usercf userdesktop commondesktop userdocs
+    commondocs userfavorites commonfavorites userfonts userpf usersavedgames usersendto
+    userstartmenu commonstartmenu userprograms commonprograms userstartup commonstartup
+    usertemplates commontemplates autopf autopf32 autopf64 autocf autocf32 autocf64 autoappdata
+    autodesktop autodocs autofonts autoprograms autostartmenu autostartup autotemplates
+    language cmd computername drive groupname hwnd wizardhwnd log srcexe uninstallexe
+    sysuserinfoname sysuserinfoorg userinfoname userinfoorg userinfoserial username"""
+INNO_CONSTANTS = frozenset(_FROM_THE_DOCUMENTATION.split())
+
+
+def test_the_installer_only_expands_constants_inno_setup_knows(tmp_path: Path) -> None:
+    script = build.inno_setup_script(
+        "0.1.8",
+        tmp_path,
+        tmp_path / "icon.ico",
+        tmp_path,
+        "out",
+        tmp_path / build.WEBVIEW2_EXE,
+    )
+    used = set(re.findall(r"ExpandConstant\('\{([^}\\']+)\}", script))
+    assert used, "no constant found: the reading of the script is wrong, not the script"
+    unknown = {c for c in used if not c.startswith("%") and c.split(":")[0] not in INNO_CONSTANTS}
+    assert not unknown, (
+        f"Inno Setup does not know {sorted(unknown)}; an environment variable is {{%NAME}}"
+    )
+
+
+def test_the_uninstaller_finds_the_users_folder_without_inventing_a_constant(
+    tmp_path: Path,
+) -> None:
+    """The folder it names is the one orthostudio.home.osxp_home keeps on Windows."""
+    script = build.inno_setup_script(
+        "0.1.8", tmp_path, tmp_path / "icon.ico", tmp_path, "out", tmp_path / build.WEBVIEW2_EXE
+    )
+    home = script[script.index("function OsxpHome") : script.index("function ChosenDataDir")]
+    assert "GetEnv('USERPROFILE')" in home and "\\.orthostudio" in home
+    # and it says nothing at all rather than guessing when Windows will not say where home is
+    assert "if Profile <> '' then" in home
+    assert "if (OsxpHome = '') or (not DirExists(OsxpHome)) then" in script

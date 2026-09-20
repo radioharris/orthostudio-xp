@@ -31,6 +31,12 @@ here and leaves dead links. An offer to remove it was written and taken out agai
 reason: a checkbox nobody reads twice cannot be the thing standing between a user and hours of
 building. An install over an older version asks nothing and takes nothing either.
 
+The Pascal the installer carries is only judged when it runs. Inno Setup compiles an unknown
+constant without a word and refuses it in front of the user: `{userprofile}`, which it does not
+have, reached one mid-uninstall as `Internal error: Unknown constant` and the message above was
+never shown (2026-09-20). The environment is read with `GetEnv`, and a test walks every
+`ExpandConstant` in the generated script against the constants Inno Setup documents.
+
 The Windows setup program and its uninstaller first stop an OrthoStudio XP running from the
 installation folder (`tools/package/stop_running.pas`, the `[Code]` of the script). A running
 engine holds `python\python3.dll`, and a user installing again read "DeleteFile failed; code 5"

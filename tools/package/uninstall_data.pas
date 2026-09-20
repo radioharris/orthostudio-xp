@@ -11,8 +11,16 @@
 // the thing standing between a user and hours of building.
 
 function OsxpHome: String;
+var
+  Profile: String;
 begin
-  Result := ExpandConstant('{userprofile}\.orthostudio');
+  // GetEnv, not ExpandConstant: there is no {userprofile} constant, and a constant that does not
+  // exist is only found when the uninstaller runs. It compiled, CI was happy, and a user was
+  // shown "Internal error: Unknown constant" instead of the message (2026-09-20).
+  Result := '';
+  Profile := GetEnv('USERPROFILE');
+  if Profile <> '' then
+    Result := Profile + '\.orthostudio';
 end;
 
 function ChosenDataDir: String;
@@ -24,7 +32,7 @@ begin
   // essential.data_dir of config.toml, read as a line rather than as TOML: the answer is only
   // ever shown, so a line this misreads costs a sentence and nothing else
   Result := '';
-  if not LoadStringsFromFile(OsxpHome + '\config.toml', Lines) then
+  if (OsxpHome = '') or (not LoadStringsFromFile(OsxpHome + '\config.toml', Lines)) then
     Exit;
   for I := 0 to GetArrayLength(Lines) - 1 do begin
     Line := Trim(Lines[I]);
@@ -45,7 +53,7 @@ var
 begin
   if CurUninstallStep <> usPostUninstall then
     Exit;
-  if not DirExists(OsxpHome) then
+  if (OsxpHome = '') or (not DirExists(OsxpHome)) then
     Exit;
   Data := ChosenDataDir;
   if Data <> '' then
