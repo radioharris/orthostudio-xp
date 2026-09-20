@@ -178,7 +178,11 @@ a { color: var(--accent); }
 .nav-btn[aria-current="page"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
 
 .topbar-tools { display: flex; align-items: center; gap: 6px; }
-.tool-select, .tool-btn {
+/* The three of them together, at one height: Quit took its height from .btn-small, which sets a
+   minimum and not a height, so it came out 24px against their 26 and stood 1px inside them. On
+   macOS that is invisible, on Windows the line box of its label makes more of it, and a user saw
+   the row sitting crooked (2026-09-20). */
+.tool-select, .tool-btn, .quit-btn {
   font: inherit; font-size: 12px; height: 26px; padding: 0 6px;
   background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }

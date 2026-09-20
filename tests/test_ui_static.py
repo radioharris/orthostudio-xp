@@ -3118,3 +3118,18 @@ def test_the_final_report_folds_before_it_runs_out_of_room() -> None:
     assert folds_at >= needs, (
         f"three columns need {needs}px of window, folded only under {folds_at}"
     )
+
+
+def test_the_three_tools_at_the_top_right_are_one_height() -> None:
+    """Quit took its height from .btn-small, which sets a minimum and not a height: 24px against
+    the 26px of the language select and the theme button beside it, so it stood 1px inside them.
+    Invisible on macOS, plain on Windows, where the line box of its label makes more of the
+    difference (a user, 2026-09-20)."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    start = css.index(".tool-select, .tool-btn")
+    rule = css[start : css.index("}", start)]
+    assert ".quit-btn" in rule[: rule.index("{")], "Quit is sized apart from the tools beside it"
+    assert "height: 26px" in rule
+    # .btn-small keeps its minimum for the buttons whose label may wrap; only these three are fixed
+    small = css[css.index(".btn-small {") :][: css[css.index(".btn-small {") :].index("}")]
+    assert "min-height" in small and "height: " not in small.replace("min-height", "")
