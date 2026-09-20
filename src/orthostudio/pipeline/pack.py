@@ -617,9 +617,21 @@ def install_receipt(
         if changed:
             packs.save(ini, backup=True)
         with Library(library_path) as lib:
-            lib.register(tile, manifest.provider, manifest.zl, pack_dir, "osxp", manifest.keys)
+            # Installing says nothing about who built the pack: a row that says Ortho4XP keeps
+            # saying it, or Delete would stop refusing a tile it did not build.
+            lib.register(
+                tile,
+                manifest.provider,
+                manifest.zl,
+                pack_dir,
+                "osxp",
+                manifest.keys,
+                keep_built_by=True,
+            )
             if overlay_target is not None:
-                lib.register(tile, "", 0, overlay_pack, "osxp", None, kind="overlay")
+                lib.register(
+                    tile, "", 0, overlay_pack, "osxp", None, kind="overlay", keep_built_by=True
+                )
             elif not has_overlay:
                 lib.forget(tile, kind="overlay", path=overlay_pack)
     return {

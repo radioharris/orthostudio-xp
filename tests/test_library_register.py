@@ -90,6 +90,14 @@ def test_installing_a_tile_never_changes_who_built_it(
         rows = [r for r in lib.list(tile=T) if r.kind == "ortho"]
     assert [r.built_by for r in rows] == ["ortho4xp"], "installing rewrote who built it"
 
+    # and a caller that does know is still believed, so importing the folder again puts right a
+    # row an older version got wrong
+    with Library(library) as lib:
+        lib.register(T, "BI", 16, files.pack_dir, "osxp", None)
+        assert [r.built_by for r in lib.list(tile=T) if r.kind == "ortho"] == ["osxp"]
+        lib.register(T, "BI", 16, files.pack_dir, "ortho4xp", None)
+        assert [r.built_by for r in lib.list(tile=T) if r.kind == "ortho"] == ["ortho4xp"]
+
     # and so the delete still refuses it, and takes nothing away
     with pytest.raises(OsxpError) as raised:
         delete_receipt(files.pack_dir, tile=T, custom_scenery=cs, library_path=library)

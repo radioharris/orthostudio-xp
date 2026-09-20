@@ -175,21 +175,29 @@ class Library:
         keys: dict[str, Any] | None = None,
         *,
         kind: PackKind = "ortho",
+        keep_built_by: bool = False,
     ) -> LibraryEntry:
         """Insert or update the row of (``tile``, ``kind``, ``path``).
 
         ``path`` is stored absolute: ``osxp build --out tiles --install`` gave a relative one,
         which ``osxp serve`` then read from its own working directory.
 
-        ``built_by`` is written when the row is created and **never changed afterwards**: who
-        built a pack is a fact about the pack, not about what is being done to it now. Installing
-        one went through here with ``"osxp"`` whatever the row said, so adding an imported tile to
-        X-Plane turned it into a tile OrthoStudio XP claimed to have built -- and Delete, which
-        refuses what it did not build, then deleted it where it stood, inside the Ortho4XP folder
-        (a user, 2026-09-20).
+        ``keep_built_by`` is for a caller that does not know who built the pack and must not
+        guess: installing one came through here with ``"osxp"`` whatever the row said, so adding
+        an imported tile to X-Plane turned it into a tile OrthoStudio XP claimed to have built --
+        and Delete, which refuses what it did not build, then deleted it where it stood, inside
+        the Ortho4XP folder (a user, 2026-09-20). A caller that does know -- a build, an import --
+        says so and is believed, so importing a folder again puts a wrong answer right.
         """
         now = time.time()
         path_s = str(Path(path).absolute())
+        if keep_built_by:
+            was = self._db.execute(
+                "SELECT built_by FROM tiles WHERE lat = ? AND lon = ? AND kind = ? AND path = ?",
+                (tile.lat, tile.lon, kind, path_s),
+            ).fetchone()
+            if was is not None:
+                built_by = was[0]
         keys_s = None if keys is None else json.dumps(keys, sort_keys=True)
         self._db.execute(
             """
@@ -197,7 +205,7 @@ class Library:
                                registered_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (lat, lon, kind, path) DO UPDATE SET
-                provider = excluded.provider, zl = excluded.zl,
+                provider = excluded.provider, zl = excluded.zl, built_by = excluded.built_by,
                 keys = excluded.keys, updated_at = excluded.updated_at
             """,
             (tile.lat, tile.lon, kind, path_s, provider, int(zl), built_by, keys_s, now, now),
