@@ -3066,3 +3066,29 @@ def test_a_check_that_failed_is_said_at_the_top_of_the_page() -> None:
     assert "app.checks_failed_show" in banner and "showChecks" in banner
     # it yields to what is more urgent: an engine that cannot answer says so first
     assert banner.index("app.engine_error") < banner.index("app.checks_failed")
+
+
+def test_the_map_leaves_room_for_the_status_bar_under_it() -> None:
+    """Sized as "100vh - 120px" since v0.1.7, the map ended one pixel past the foot of the window
+    and 29px under the status bar, on any screen short enough for the 820px cap not to save it:
+    the bottom of the legend was cut, in the browser exactly as in the window (measured at a
+    browser, a user, 2026-09-20)."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rule = css[css.index(".plan-map {") : css.index("@media (max-width: 960px) { .plan-map")]
+    assert "var(--statusbar-h)" in rule  # the bar at the foot has its room
+    assert "var(--map-top" in rule  # and so has whatever stands above the map
+    assert "calc(100vh - 120px)" not in css  # the formula that counted neither
+
+    js = (UI / "app.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:
+        start = js.index(f"function {name}")
+        return js[start : js.index("\nfunction ", start + 1)]
+
+    measure = body("measureMapTop")
+    assert ".plan-flow" in measure  # not the map: .map-col sticks to the top as the page scrolls
+    assert "offsetParent === null" in measure  # a hidden screen measures zero and is not written
+    # called where the page changes above the map, rather than watched: a ResizeObserver on a
+    # screen still hidden never reported it being shown (measured, 2026-09-20)
+    assert "measureMapTop();" in body("showScreen")
+    assert "measureMapTop();" in body("renderEngineBanner")

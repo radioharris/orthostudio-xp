@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "page",
+      "runtimeExecutable": ".venv/bin/orthostudio",
+      "runtimeArgs": ["serve", "--mock", "--no-open", "--port", "8642"],
+      "port": 8642
+    }
+  ]
+}

@@ -1914,6 +1914,7 @@ function showScreen(name, arg) {
   }
   state.screen = name;
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
+  measureMapTop(); // the map can only be measured once its screen is shown
   for (const btn of $("nav").querySelectorAll(".nav-btn")) {
     if (btn.dataset.screen === name) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
@@ -2045,6 +2046,7 @@ function renderEngineBanner() {
   if (!words) {
     banner?.remove();
     renderWindowNote();
+    measureMapTop();
     return;
   }
   if (!banner) {
@@ -2070,6 +2072,7 @@ function renderEngineBanner() {
       h("button", { class: "btn btn-small", onclick: showChecks }, t("app.checks_failed_show")),
     );
   }
+  measureMapTop(); // the banner sits above the map and pushes it down
 }
 
 function renderStatus() {
@@ -4422,6 +4425,7 @@ function rerenderAll() {
 
 async function boot() {
   trackStatusbarHeight();
+  window.addEventListener("resize", measureMapTop);
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   try {
@@ -4573,6 +4577,30 @@ async function boot() {
 
 /** The status bar is pinned at the bottom (a user asked): its height, which grows when its items
  * wrap, keeps Settings' sticky Save, the toast and scrolling to a field clear of it. */
+/**
+ * How far down the page the map starts, as --map-top, so its height can leave room for what is
+ * above it and for the status bar below it.
+ *
+ * "100vh - 120px" counted neither, and the map ended 29px under the status bar on every screen,
+ * in the browser as in the window: whatever the legend held in those pixels was cut off (a user,
+ * 2026-09-20). Measured rather than guessed, because the head above wraps in some languages and
+ * a banner can appear over it.
+ *
+ * .plan-flow is measured, not the map: .map-col sticks to the top as the page scrolls, which
+ * moves it, and the height must not follow. Called where the page changes above the map rather
+ * than watched: a ResizeObserver on a screen still hidden never reported it being shown
+ * (measured in the browser, 2026-09-20).
+ */
+function measureMapTop() {
+  const flow = document.querySelector(".plan-flow");
+  if (!flow || flow.offsetParent === null) return; // hidden: the stylesheet's fallback stands
+  let top = 0;
+  for (let el = flow; el; el = el.offsetParent) top += el.offsetTop;
+  const now = `${Math.round(top)}px`;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue("--map-top") !== now) root.style.setProperty("--map-top", now);
+}
+
 function trackStatusbarHeight() {
   const bar = $("statusbar");
   const set = () => document.documentElement.style.setProperty("--statusbar-h", `${bar.offsetHeight}px`);
