@@ -3045,6 +3045,8 @@ def test_a_browser_only_system_is_told_at_the_top_of_the_page() -> None:
     assert "browser_only" in note and "details.install" in note  # what the doctor found
     assert "WINDOW_NOTE_KEY" in note and "localStorage.setItem" in note  # put away, it stays away
     assert "app.window_browser_only" in note
+    # put away it must still be findable, so it says where it stays before it goes
+    assert "app.window_browser_only_again" in note
     # the banner of problems still has its say: this only shows when there is nothing else
     assert "renderWindowNote();" in js[js.index("function renderEngineBanner") :]
     css = (UI / "styles.css").read_text(encoding="utf-8")

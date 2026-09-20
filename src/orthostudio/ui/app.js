@@ -2004,6 +2004,10 @@ function renderWindowNote() {
     " ",
     h("code", null, install),
     " ",
+    // put away, it must still be findable: the doctor's window check keeps the whole sentence,
+    // and nothing said where (a user asked, 2026-09-20)
+    t("app.window_browser_only_again"),
+    " ",
     h("button", { class: "btn btn-small", onclick: away }, t("app.window_browser_only_ok")),
   );
   $("main").prepend(note);
