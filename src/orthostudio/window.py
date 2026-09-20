@@ -20,6 +20,7 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 __all__ = [
     "LINUX_HELP",
@@ -51,7 +52,7 @@ LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
 """What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
 why the message carries the link rather than a command for a system we did not recognise."""
 
-_window: object | None = None
+_window: Any = None
 """The window that is up, for what has to speak to its page from elsewhere."""
 
 LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
@@ -101,6 +102,8 @@ def _webview2_runtime() -> bool:
     """Whether Windows carries the WebView2 Runtime, read the way Microsoft says to read it: the
     ``pv`` value of the runtime's key, per machine or per user, present and above 0.0.0.0. The
     installer offers it from the same two keys (``tools/package/webview2.pas``)."""
+    if sys.platform != "win32":
+        return False
     import winreg
 
     guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -193,7 +196,7 @@ def ask_the_page_to_quit() -> None:
         window.destroy()  # no page, or a page that cannot stop the engine: the app goes
 
 
-_quitter: object | None = None
+_quitter: Any = None
 """Kept here because an NSApplication holds its delegate without keeping it alive."""
 
 
@@ -264,7 +267,7 @@ def show(
     global _window
     store = storage_dir() if storage is None else storage
     store.mkdir(parents=True, exist_ok=True)
-    _window = window = webview.create_window(
+    window = webview.create_window(
         title,
         url,
         width=size[0],
@@ -273,6 +276,9 @@ def show(
         # the page draws its own background for the theme it was given; white flashes on a dark one
         background_color="#14171d",
     )
+    if window is None:  # pywebview answers nothing when it could not make one
+        raise RuntimeError("the web view gave no window")
+    _window = window
 
     if on_close is not None:
 

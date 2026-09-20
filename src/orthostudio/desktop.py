@@ -380,7 +380,11 @@ def main(
     path = log_path() if log is None else Path(log)
     path.parent.mkdir(parents=True, exist_ok=True)
     starting = not argv
-    if starting and window is not False and in_a_window(path, show=window or None):
+    if (
+        starting
+        and window is not False
+        and in_a_window(path, show=window if callable(window) else None)
+    ):
         return 0
     if starting and (open_running if running is None else running)(ENGINE_PORT):
         with path.open("a", encoding="utf-8") as out:
