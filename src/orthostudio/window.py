@@ -73,6 +73,30 @@ It was Cmd+0 until 0.1.9. A menu's key is taken by AppKit before the page ever s
 Cmd+0 is what every browser uses to put the text back to its own size, which the page now needs
 (``ui/zoom.js``). Cmd+1 is the macOS way of asking for the first window."""
 
+ICON_NAMES = {"win32": "orthostudio.ico", "linux": "orthostudio.png"}
+"""What the window's icon is called where the system takes one from a file. macOS is not here:
+a ``.app`` carries its icon and the window takes it."""
+
+
+def icon_file() -> str | None:
+    """The app's own icon for the window, or None where there is none to give.
+
+    pywebview falls back to the icon of ``sys.executable`` (``platforms/winforms.py``), and on
+    Windows this app is started by ``pythonw.exe``: the window and its taskbar button carried
+    Python's icon (a user, 2026-09-20). The build writes the icon beside the installed tree
+    (``tools/package/build.py``), two folders up from ``python\\pythonw.exe``.
+    """
+    name = ICON_NAMES.get(sys.platform)
+    if name is None:
+        return None
+    here = Path(sys.executable).resolve()
+    for folder in (here.parent, *here.parents[1:3]):
+        candidate = folder / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 ZOOM_LIMITS = (0.5, 3.0)
 """What the page may ask for. A browser stops around there too, and a window scaled past it has
 no room left for the map."""
@@ -557,4 +581,11 @@ def show(
         if puts_away_on_close()
         else []
     )
-    webview.start(start, menu=menu, private_mode=False, storage_path=str(store))
+    icon = icon_file()
+    webview.start(
+        start,
+        menu=menu,
+        private_mode=False,
+        storage_path=str(store),
+        **({"icon": icon} if icon else {}),
+    )

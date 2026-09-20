@@ -182,8 +182,14 @@ a { color: var(--accent); }
    minimum and not a height, so it came out 24px against their 26 and stood 1px inside them. On
    macOS that is invisible, on Windows the line box of its label makes more of it, and a user saw
    the row sitting crooked (2026-09-20). */
-.tool-select, .tool-btn, .quit-btn {
-  font: inherit; font-size: 12px; height: 26px; padding: 0 6px;
+/* The three of them on one line and one height. Scoped to their bar so that this beats `.btn`,
+ * which `.quit-btn` also carries and which is declared further down with a min-height of its
+ * own; and held on both sides, because a `<select>` is drawn by the engine and WebView2 gives it
+ * metrics of its own, which left the Windows bar ragged where the Mac's was straight (a user,
+ * 2026-09-20). `line-height: 1` for the same reason: the glyphs, not only the boxes. */
+.topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn {
+  font: inherit; font-size: 12px; line-height: 1; padding: 0 6px; margin-block: 0;
+  height: 26px; min-height: 26px; max-height: 26px; align-self: center; vertical-align: middle;
   background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .tool-btn { width: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }

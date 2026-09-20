@@ -249,3 +249,33 @@ def test_the_window_zooms_its_page_because_a_browser_would() -> None:
     # Cmd+0 is what every browser uses to put the text back to its own size, and a menu's key is
     # taken by AppKit before the page sees it: the Window entry gave it up (it had it in 0.1.8)
     assert WINDOW_MENU_KEY != "0"
+
+
+def test_the_window_carries_the_apps_icon_and_not_pythons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows the app is started by `python\\pythonw.exe`, and pywebview takes the icon of
+    sys.executable when it is given none (`platforms/winforms.py`): the window and its taskbar
+    button carried Python's icon (a user, 2026-09-20). The build already writes the icon beside
+    the installed tree; the window just had to be told where."""
+    from orthostudio import window as win
+
+    app = tmp_path / "OrthoStudio XP"
+    (app / "python").mkdir(parents=True)
+    exe = app / "python" / "pythonw.exe"
+    exe.write_bytes(b"")
+    monkeypatch.setattr(win.sys, "executable", str(exe))
+    monkeypatch.setattr(win.sys, "platform", "win32")
+    assert win.icon_file() is None  # nothing written yet: the window opens as it always did
+    (app / "orthostudio.ico").write_bytes(b"")
+    assert win.icon_file() == str(app / "orthostudio.ico")
+
+    # macOS asks for none: a .app carries its icon and the window takes it
+    monkeypatch.setattr(win.sys, "platform", "darwin")
+    assert win.icon_file() is None
+
+    source = (Path(__file__).resolve().parents[1] / "src/orthostudio/window.py").read_text(
+        encoding="utf-8"
+    )
+    # and an icon that is not there must not be passed: pywebview runs abspath on it
+    assert '**({"icon": icon} if icon else {})' in source
