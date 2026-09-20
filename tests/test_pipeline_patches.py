@@ -160,7 +160,9 @@ def test_the_report_says_which_patches_a_tile_was_built_with(tmp_path: Path) -> 
     _patch(folder, "harbour.patch.osm")
     (folder / "objects").mkdir()
     (folder / "objects" / "crane.obj").write_text("OBJ8", encoding="utf-8")
-    # relative to the tile's own folder, and in the order a build reads them
+    # relative to the tile's own folder, and in the order a build reads them. That order is the
+    # name's, not the Path's: PurePath compares without regard to case on Windows, so the same
+    # folder gave "harbour" before "LFML" there and the other way round on macOS (the CI said so).
     assert patch_names(tmp_path / "Patches", TILE) == [
         "LFML.patch.osm",
         "harbour.patch.osm",

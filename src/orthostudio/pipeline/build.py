@@ -506,13 +506,23 @@ def patch_files(patches_dir: Path | None, tile: TileRef) -> list[Path]:
 
     The ``*.patch.osm`` files first, then the OBJ8 objects of the directories beside them
     (``vectors/patches.py`` reads both). Empty when the tile has no folder, or an empty one.
+
+    Sorted on the name, not on the ``Path``: ``PurePath`` compares without regard to case on
+    Windows, so the same folder gave one order there and another on macOS, and with it a
+    different key for the same patches (the Windows CI, 2026-09-20).
     """
     folder = patches_folder(patches_dir, tile)
     if folder is None:
         return []
-    files = sorted(p for p in folder.glob("*.patch.osm") if p.is_file())
-    objects = sorted(p for d in folder.iterdir() if d.is_dir() for p in sorted(d.rglob("*")))
-    return files + [p for p in objects if p.is_file()]
+
+    def in_order(paths: Iterable[Path]) -> list[Path]:
+        return sorted(paths, key=lambda p: p.relative_to(folder).as_posix())
+
+    files = in_order(p for p in folder.glob("*.patch.osm") if p.is_file())
+    objects = in_order(
+        p for d in folder.iterdir() if d.is_dir() for p in d.rglob("*") if p.is_file()
+    )
+    return files + objects
 
 
 def patch_names(patches_dir: Path | None, tile: TileRef) -> list[str]:
