@@ -188,3 +188,42 @@ async def test_a_user_tries_adds_and_removes_a_source_of_their_own(
             assert got["ok"] is False and got["image"] is None and got["status"] == 200
     finally:
         mgr.close()
+
+
+@pytest.mark.anyio
+async def test_the_colour_preview_says_when_a_source_has_no_photo_there(home: Path) -> None:
+    """Over open water Bing answers its own "no imagery" tile rather than a 404: 1033 bytes of
+    flat grey with a crossed-out picture on it. Drawn as it came, the page showed it twice under
+    the words "the ground where the map is looking", and a user read that as a broken preview
+    (2026-09-20, at 45.921 -6.372, in the Atlantic). The registry holds the signals of such a
+    tile already, and the page has the sentence for it."""
+    placeholder = b"\x89PNG\r\n\x1a\n" + b"\0" * (1033 - 8)  # Bing's, by its size in registry.toml
+    app, mgr = _app(home, body=placeholder)
+    try:
+        async with client_for(app) as c:
+            empty = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 45.921, "lon": -6.372})  # fmt: skip
+    finally:
+        mgr.close()
+    assert empty.status_code >= 400, "a tile that holds no photo was served as if it did"
+    body = empty.json()["error"]
+    assert body["code"] == "IMG_TILE_PLACEHOLDER"
+    assert "no photo at this place" in body["message"]
+
+    # and what is no image at all answers an error too: NET_UNAVAILABLE stood there, which is
+    # not a code this program has, so the route threw a ValueError instead (2026-09-20)
+    app, mgr = _app(home, body=b"<html>nope</html>")
+    try:
+        async with client_for(app) as c:
+            nothing = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14})  # fmt: skip
+    finally:
+        mgr.close()
+    assert nothing.status_code >= 400
+    assert nothing.json()["error"]["code"] == "NET_UNEXPECTED_STATUS"
+
+    app, mgr = _app(home, body=JPEG)  # and a real photo is still served as one
+    try:
+        async with client_for(app) as c:
+            ground = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14})  # fmt: skip
+    finally:
+        mgr.close()
+    assert ground.status_code == 200 and ground.headers["content-type"].startswith("image/")

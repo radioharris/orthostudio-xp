@@ -59,6 +59,7 @@ from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
     Provider,
+    is_placeholder,
     load_registry,
     new_source_code,
     read_user_sources,
@@ -948,12 +949,31 @@ def create_app(
             finally:
                 await client.aclose()
         kind = image_kind(result.body) if result.status == 200 else None
-        if kind is None:
+        # Over open water Bing answers its own "no imagery" tile, 1033 bytes of flat grey with a
+        # crossed-out picture on it, rather than a 404. Drawn as it came, the page showed it twice
+        # under the words "the ground where the map is looking", and a user read that as a broken
+        # preview (2026-09-20). The registry already holds the signals of such a tile, which the
+        # build has always used to fall back to the parent level; the page says "no image here".
+        empty = is_placeholder(source, result.headers, result.body) if kind else None
+        if empty:
             raise OsxpError(
-                "NET_UNAVAILABLE",
-                context={"host": provider, "attempts": "1"},
-                message=f"{provider} did not send an image for this place.",
-                remedy="Try again, or look at another place on the map.",
+                "IMG_TILE_PLACEHOLDER",
+                context={"provider": provider, "chunk": f"{level}/{int(x)}/{int(y)}"},
+                message=f"{source.name} has no photo at this place.",
+                remedy="Look at another place on the map; the colours still apply to a build.",
+            )
+        if kind is None:
+            # NET_UNAVAILABLE stood here, which is not a code this program has: raising it threw
+            # a ValueError out of the route, so a provider that answered nothing gave a traceback
+            # rather than the error this line meant to give (2026-09-20). The host, not the whole
+            # address, since a source of one's own can carry a key in it.
+            raise OsxpError(
+                "NET_UNEXPECTED_STATUS",
+                context={
+                    "provider": provider,
+                    "status": str(result.status),
+                    "url": url.split("/")[2] if "//" in url else provider,
+                },
             )
         return Response(
             content=result.body,
