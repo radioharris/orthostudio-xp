@@ -59,6 +59,25 @@ def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None
     assert "Tasks: webview2" in script
 
 
+def test_the_windows_uninstaller_offers_the_data_and_starts_on_no(tmp_path: Path) -> None:
+    script = build.inno_setup_script(
+        "0.1.9",
+        tmp_path / "bundle",
+        tmp_path / "orthostudio.ico",
+        tmp_path,
+        "setup",
+        tmp_path / build.WEBVIEW2_EXE,
+    )
+    code = script[script.index("\n[Code]\n") :]
+    assert code.count("procedure CurUninstallStepChanged") == 1
+    # No is where the question starts: the data can be tens of gigabytes and hours of building
+    assert "MB_DEFBUTTON2" in code
+    assert ".orthostudio" in code and "DelTree(Home" in code
+    # what it promises never to take: the user's own scenery, and a folder on another disk
+    assert "Custom Scenery" in code
+    assert "ChosenDataDir" in code and "DelTree(Data" not in code
+
+
 def test_the_app_bundle_describes_itself() -> None:
     info = build.macos_info_plist("0.1.0", "14.0")
     assert plistlib.loads(plistlib.dumps(info))["CFBundleExecutable"] == "orthostudio"

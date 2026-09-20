@@ -57,6 +57,7 @@ ENGINE_PORT = 8641
 two equal): the Windows installer asks a running engine to quit there."""
 INNO_CODE = Path(__file__).resolve().parent / "stop_running.pas"
 INNO_WEBVIEW2 = Path(__file__).resolve().parent / "webview2.pas"
+INNO_UNINSTALL = Path(__file__).resolve().parent / "uninstall_data.pas"
 WEBVIEW2_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 """Microsoft's Evergreen bootstrapper, the link they give to ship with an app."""
 WEBVIEW2_EXE = "MicrosoftEdgeWebview2Setup.exe"
@@ -309,8 +310,13 @@ def inno_setup_script(
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
     user can turn down. Turned down, or on a machine that has the runtime already, nothing is
-    installed and nothing is downloaded (:data:`INNO_WEBVIEW2`)."""
-    code = "\n".join(p.read_text(encoding="utf-8") for p in (INNO_CODE, INNO_WEBVIEW2)).replace(
+    installed and nothing is downloaded (:data:`INNO_WEBVIEW2`).
+
+    Uninstalling asks whether the settings and downloaded data, which live apart from the program
+    and can weigh tens of gigabytes, should go too; no is where the question starts, and a data
+    folder chosen on another disk is named, never taken (:data:`INNO_UNINSTALL`)."""
+    parts = (INNO_CODE, INNO_WEBVIEW2, INNO_UNINSTALL)
+    code = "\n".join(p.read_text(encoding="utf-8") for p in parts).replace(
         "%PORT%", str(ENGINE_PORT)
     )
     run = r"{app}\python\pythonw.exe"

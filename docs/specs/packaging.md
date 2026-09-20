@@ -21,6 +21,15 @@ confirmation the first time (`README.md`).
 | Python | `Contents/Resources/python` | `python\` | `python/` |
 | started by | `Contents/MacOS/orthostudio` (shell script) | `python\pythonw.exe -m orthostudio.desktop` | `orthostudio-xp` (shell script) |
 
+Uninstalling on Windows asks whether the settings and the data OrthoStudio XP downloaded should
+go too (`tools/package/uninstall_data.pas`): they live apart from the program, in
+`%USERPROFILE%\.orthostudio`, and can weigh tens of gigabytes, so the uninstaller offers them and
+starts the question on No. Two things it never takes, and says so: a data folder chosen on another
+disk, which it reads from `config.toml` only to name it; and the scenery already installed into
+X-Plane's Custom Scenery, which is the user's own work and outlives the tool that made it. An
+install over an older version asks nothing and takes nothing: an installer that offers to delete
+data is a trap, and the tiles are hours of building.
+
 The Windows setup program and its uninstaller first stop an OrthoStudio XP running from the
 installation folder (`tools/package/stop_running.pas`, the `[Code]` of the script). A running
 engine holds `python\python3.dll`, and a user installing again read "DeleteFile failed; code 5"
