@@ -31,13 +31,11 @@ EXECUTABLE = "orthostudio"
 
 LAUNCHER = """#!/bin/bash
 # OrthoStudio XP launcher (tools/package/checkout_app.py): starts this checkout's engine and
-# opens its page.
+# opens its page, through the same entry as the installed app (orthostudio.desktop), which opens
+# the page of the one already running instead of starting a second and doing nothing visible.
 REPO={repo}
-LOGS="$HOME/Library/Logs/OrthoStudio XP"
-mkdir -p "$LOGS"
 cd "$REPO" || exit 1
-echo "--- $(date '+%Y-%m-%d %H:%M:%S') OrthoStudio XP.app" >>"$LOGS/serve.log"
-exec "$REPO/.venv/bin/orthostudio" serve --open >>"$LOGS/serve.log" 2>&1
+exec "$REPO/.venv/bin/python" -m orthostudio.desktop "$@"
 """
 
 
