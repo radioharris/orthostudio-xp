@@ -1970,11 +1970,14 @@ async function loadStatus() {
  * engine that answers with an error leaves every screen empty: say which it is and what to do,
  * instead of letting "Not Found" and greyed fields speak. */
 function renderEngineBanner() {
+  const unread = state.status?.settings_problems || [];
   const words = state.engineOutdated
     ? t("app.engine_outdated")
     : state.engineError
       ? t("app.engine_error", { reason: state.engineError })
-      : null;
+      : unread.length
+        ? t("app.settings_unread", { list: unread.join(" · ") })
+        : null;
   let banner = $("engine-outdated");
   if (!words) {
     banner?.remove();
@@ -1985,6 +1988,12 @@ function renderEngineBanner() {
     $("main").prepend(banner);
   }
   clear(banner).append(words);
+  if (!state.engineOutdated && !state.engineError && unread.length) {
+    banner.append(
+      " ",
+      h("button", { class: "btn btn-small", onclick: () => showScreen("settings") }, t("app.settings_unread_open")),
+    );
+  }
   if (state.engineError && !state.engineOutdated) {
     banner.append(
       " ",

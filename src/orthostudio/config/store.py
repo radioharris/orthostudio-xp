@@ -12,7 +12,7 @@ import math
 import re
 import shutil
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -152,8 +152,17 @@ def _prune_unknown(
     return out
 
 
+MAX_DROPPED_SETTINGS = 32
+"""How many values a file may have that this version cannot read before it is refused outright:
+past that it is not a setting or two from another version, it is not our file."""
+
+
 def settings_from_dict(data: Mapping[str, Any], *, source: str = "") -> Settings:
-    """Validate a TOML-shaped mapping; unknown keys are ignored with a warning."""
+    """Validate a TOML-shaped mapping; unknown keys are ignored with a warning.
+
+    Strict: a value it cannot read raises. What a page sends must be told, where a file already
+    on disk is read as far as it can be (:func:`settings_and_problems`).
+    """
     warnings: list[str] = []
     pruned = _prune_unknown(data, Settings, "", warnings)
     for w in warnings:
@@ -164,8 +173,59 @@ def settings_from_dict(data: Mapping[str, Any], *, source: str = "") -> Settings
         raise validation_error(exc) from None
 
 
-def load_settings(path: Path | None = None) -> Settings:
-    """``Settings`` from ``path`` (default ``<osxp_home>/config.toml``); absent = defaults."""
+def _without(data: Mapping[str, Any], loc: Sequence[Any]) -> dict[str, Any]:
+    """``data`` with the leaf at ``loc`` taken out (the deepest key that exists)."""
+    out = {k: (dict(v) if isinstance(v, Mapping) else v) for k, v in data.items()}
+    here: Any = out
+    for key in list(loc)[:-1]:
+        if not isinstance(here, dict) or key not in here or not isinstance(here[key], dict):
+            return out
+        here[key] = dict(here[key])
+        here = here[key]
+    if isinstance(here, dict):
+        here.pop(loc[-1], None)
+    return out
+
+
+def settings_and_problems(
+    data: Mapping[str, Any], *, source: str = ""
+) -> tuple[Settings, list[str]]:
+    """The settings of a document, the values this version cannot read left out.
+
+    A single value it does not know used to refuse the whole file, and every screen of the page
+    then stayed empty: a user who had chosen a relief in a newer version, then opened an older
+    one, was told ``essential.relief.source = 'south_america'`` and nothing worked any more
+    (2026-09-20). A value that cannot be read is now dropped, its default is used, and the page
+    says which one, so that the app runs and the user can choose again. What is written on disk
+    is left alone until he saves.
+    """
+    warnings: list[str] = []
+    pruned = _prune_unknown(data, Settings, "", warnings)
+    for w in warnings:
+        log.warning("%s%s", f"{source}: " if source else "", w)
+    problems: list[str] = []
+    for _ in range(MAX_DROPPED_SETTINGS):
+        try:
+            return Settings.model_validate(pruned), problems
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            loc = [p for p in first.get("loc", ()) if p != "__root__"]
+            if not loc:
+                raise validation_error(exc) from None
+            name = ".".join(str(p) for p in loc)
+            value = first.get("input", "-")
+            problems.append(f"{name} = {value!r}: {first.get('msg', 'invalid value')}")
+            log.warning("%s%s ignored: %s", f"{source}: " if source else "", name, problems[-1])
+            pruned = _without(pruned, loc)
+    raise validation_error(ValidationError.from_exception_data("Settings", []))
+
+
+def load_settings(path: Path | None = None, problems: list[str] | None = None) -> Settings:
+    """``Settings`` from ``path`` (default ``<osxp_home>/config.toml``); absent = defaults.
+
+    ``problems`` collects the values this version could not read and left at their default
+    (:func:`settings_and_problems`), for a page that wants to say so.
+    """
     target = Path(path) if path is not None else default_config_path()
     try:
         raw = target.read_bytes()
@@ -179,7 +239,10 @@ def load_settings(path: Path | None = None) -> Settings:
             "CFG_LINE_INVALID",
             context={"path": str(target), "line": int(m.group(1)) if m else 0, "reason": str(exc)},
         ) from None
-    return settings_from_dict(data, source=str(target))
+    settings, found = settings_and_problems(data, source=str(target))
+    if problems is not None:
+        problems.extend(found)
+    return settings
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> None:

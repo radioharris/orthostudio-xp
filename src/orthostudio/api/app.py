@@ -603,6 +603,8 @@ def create_app(
         "settings_path": settings_path,
         "doctor": None,
         "doctor_at": 0.0,
+        # values of config.toml this version could not read, said by the status
+        "settings_problems": [],
         # the first run reads what is installed once, then the file answers (see settings())
         "first_run_done": False,
         "ui_dir": Path(ui_dir) if ui_dir is not None else None,
@@ -638,7 +640,13 @@ def create_app(
             fresh = _settings_of_a_first_run()
             if fresh is not None:
                 return fresh
-        return config.load_settings(state["settings_path"])
+        problems: list[str] = []
+        loaded = config.load_settings(state["settings_path"], problems)
+        # Values this version cannot read are left at their default rather than refusing the file
+        # (a user came back to an older version and every screen stayed empty, 2026-09-20); the
+        # page says which ones, from the status.
+        state["settings_problems"] = problems
+        return loaded
 
     def _settings_of_a_first_run() -> Any:
         """The defaults adjusted to what is already installed, written once, or ``None``.
@@ -722,6 +730,7 @@ def create_app(
                 ),
             },
             "doctor": checks,
+            "settings_problems": list(state["settings_problems"]),
             "home": str(home),
             # the page writes the paths under it with "~": docs/specs/ui.md 1.9
             "user_home": str(Path.home()),

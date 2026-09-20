@@ -23,7 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from icon import make_icns
 
 REPO = Path(__file__).resolve().parents[2]
-APP_NAME = "OrthoStudio XP"
+APP_NAME = "OrthoStudio XP (checkout)"
+"""Not the installed app's name: both would sit in the Dock under the same name and take the
+same port, and a user who clicked one got the other (2026-09-20)."""
 EXECUTABLE = "orthostudio"
 """The launcher inside the app and its icon file: a name without a space."""
 
@@ -60,7 +62,7 @@ def make_app(out_dir: Path = REPO / "dist") -> Path:
     info = {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
-        "CFBundleIdentifier": "org.orthostudio-xp.launcher",
+        "CFBundleIdentifier": "org.orthostudio-xp.launcher.checkout",
         "CFBundleExecutable": EXECUTABLE,
         "CFBundleIconFile": EXECUTABLE,
         "CFBundlePackageType": "APPL",

@@ -16,6 +16,7 @@ from orthostudio.config import (
     default_config_path,
     load_settings,
     save_settings,
+    settings_from_dict,
     toml_dumps,
 )
 from orthostudio.errors import OsxpError
@@ -113,11 +114,19 @@ def test_invalid_toml_is_cfg_line_invalid(tmp_path: Path) -> None:
     assert info.value.context["line"] == 2
 
 
-def test_invalid_value_is_cfg_value_invalid(tmp_path: Path) -> None:
+def test_an_invalid_value_in_the_file_is_reported_not_fatal(tmp_path: Path) -> None:
+    """It used to refuse the whole file, and every screen of the page then stayed empty. The
+    value is left at its default and named instead (2026-09-20); what the *page* sends is still
+    refused (``settings_from_dict``)."""
     p = tmp_path / "config.toml"
     p.write_text("[advanced]\nroad_level = 9\n", encoding="utf-8")
+    told: list[str] = []
+    settings = load_settings(p, told)
+    assert settings.advanced.road_level == 1  # the default
+    assert told == ["advanced.road_level = 9: Input should be 0, 1, 2, 3, 4 or 5"]
+
     with pytest.raises(OsxpError) as info:
-        load_settings(p)
+        settings_from_dict({"advanced": {"road_level": 9}})
     assert info.value.code == "CFG_VALUE_INVALID"
     assert info.value.context["name"] == "advanced.road_level"
     assert info.value.context["value"] == 9
@@ -140,3 +149,45 @@ def test_write_failure_is_reported(tmp_path: Path) -> None:
     with pytest.raises(OsxpError) as info:
         save_settings(Settings(), blocker / "config.toml")
     assert info.value.code == "CFG_TILE_WRITE_FAILED"
+
+
+def test_a_value_this_version_cannot_read_is_left_out_not_refused(tmp_path: Path) -> None:
+    """A user chose a relief in a newer version, opened an older one, and every screen stayed
+    empty: one value it did not know refused the whole file (2026-09-20). It is dropped, its
+    default is used, and the caller is told which one; what is on disk is left alone.
+    """
+    from orthostudio.config.store import load_settings, settings_and_problems
+
+    doc = {
+        "essential": {
+            "provider": "Arc",
+            "zoom_level": 42,  # out of range
+            "relief": {"source": "from_the_future"},  # unknown to this version
+        },
+        "advanced": {"road_level": 2},
+    }
+    settings, problems = settings_and_problems(doc, source="config.toml")
+    assert settings.essential.provider == "Arc"  # what could be read is kept
+    assert settings.advanced.road_level == 2
+    assert settings.essential.zoom_level == 16  # and the rest falls back
+    assert settings.essential.relief.source == "auto"
+    assert len(problems) == 2
+    assert any("essential.zoom_level" in p and "42" in p for p in problems)
+    assert any("essential.relief.source" in p and "from_the_future" in p for p in problems)
+
+    path = tmp_path / "config.toml"
+    path.write_text("[essential]\nzoom_level = 42\n", encoding="utf-8")
+    told: list[str] = []
+    assert load_settings(path, told).essential.zoom_level == 16
+    assert told and "zoom_level" in told[0]
+    assert "42" in path.read_text(encoding="utf-8")  # the file is not rewritten behind his back
+
+
+def test_what_a_page_sends_is_still_refused() -> None:
+    """Tolerance is for a file already on disk: a bad value sent by the page must be told."""
+    from orthostudio.config.store import settings_from_dict
+    from orthostudio.errors import OsxpError
+
+    with pytest.raises(OsxpError) as excinfo:
+        settings_from_dict({"essential": {"zoom_level": 42}})
+    assert excinfo.value.code == "CFG_VALUE_INVALID"

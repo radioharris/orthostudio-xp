@@ -240,8 +240,18 @@ folder. The import of Ortho4XP *tiles* reads their tile cfg (`install.md` 5).
 | Situation | Code |
 |---|---|
 | `config.toml` is not valid TOML | `CFG_LINE_INVALID` |
-| a value fails validation (load or `Settings(...)`) | `CFG_VALUE_INVALID` |
+| a value the **page** sends fails validation (`settings_from_dict`, `PUT /api/settings`) | `CFG_VALUE_INVALID` |
+| a value **already on disk** fails validation | none: it is left out, its default is used, and it is named (below) |
 | the file cannot be written | `CFG_TILE_WRITE_FAILED` (the registry's write error for configurations) |
+
+**A value this version cannot read does not refuse the file** (`settings_and_problems`, up to
+`MAX_DROPPED_SETTINGS` of them). It used to: one unknown value made `load_settings` raise, every
+route that reads the settings answered `422`, and every screen of the page stayed as empty as it
+was drawn. A user who chose a relief in a newer version and then opened an older one was told
+`essential.relief.source = 'south_america'` and had nothing left to click; the same would happen
+to anyone who edits the file by hand. The value is now dropped, its default is used, the engine
+logs it and `GET /api/status` carries it in `settings_problems`, which the page says in the banner
+at the top with *Open Settings*. What is on disk is left as it is until the user saves.
 
 ## 6. Wanted differences from Ortho4XP
 
