@@ -341,3 +341,40 @@ def test_the_uninstaller_finds_the_users_folder_without_inventing_a_constant(
     # and it says nothing at all rather than guessing when Windows will not say where home is
     assert "if Profile <> '' then" in home
     assert "if (OsxpHome = '') or (not DirExists(OsxpHome)) then" in script
+
+
+def test_the_disk_image_is_asked_again_when_the_machine_is_busy() -> None:
+    """The tag build of 0.1.9 failed on `hdiutil create: Resource busy`, minutes after the same
+    commit had packaged cleanly on the same runner: Spotlight and the mounts of other jobs share
+    that disk. The publish job depends on every installer, so one busy machine held the whole
+    release back. The failure says more about the machine than about the image, so it is asked
+    again rather than reported."""
+    import build as packaging
+
+    assert packaging.DMG_TRIES >= 2 and packaging.DMG_RETRY_S > 0
+    source = Path(packaging.__file__).read_text(encoding="utf-8")
+    dmg = source[source.index("def build_macos") :]
+    dmg = dmg[: dmg.index("\ndef ", 1)]
+    assert "run_again_if_it_fails(make, tries=DMG_TRIES" in dmg
+    assert 'run(\n        [\n            "hdiutil", "create"' not in dmg  # not the plain call
+
+    # it raises on the last try, so a machine that is really broken still stops the build
+    calls: list[int] = []
+
+    class Done:
+        def __init__(self, code: int) -> None:
+            self.returncode, self.stdout, self.stderr = code, "", "busy"
+
+    def always_busy(*_args: object, **_kw: object) -> Done:
+        calls.append(1)
+        return Done(1)
+
+    real_run, real_sleep = packaging.subprocess.run, packaging.time.sleep
+    packaging.subprocess.run = always_busy  # type: ignore[assignment]
+    packaging.time.sleep = lambda _s: None  # type: ignore[assignment]
+    try:
+        with pytest.raises(SystemExit):
+            packaging.run_again_if_it_fails(["hdiutil"], tries=3, wait_s=0)
+    finally:
+        packaging.subprocess.run, packaging.time.sleep = real_run, real_sleep
+    assert len(calls) == 3

@@ -55,6 +55,13 @@ ENTRY_MODULE = "orthostudio.desktop"
 ENGINE_PORT = 8641
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
 two equal): the Windows installer asks a running engine to quit there."""
+
+DMG_TRIES = 3
+DMG_RETRY_S = 20.0
+"""`hdiutil create` answers "Resource busy" now and then on a build machine, where Spotlight and
+the mounts of other jobs share the disk: the tag build of 0.1.9 failed on it, minutes after the
+same commit had packaged cleanly. It is the machine, not the image, so it is asked again."""
+
 INNO_CODE = Path(__file__).resolve().parent / "stop_running.pas"
 INNO_WEBVIEW2 = Path(__file__).resolve().parent / "webview2.pas"
 INNO_UNINSTALL = Path(__file__).resolve().parent / "uninstall_data.pas"
@@ -397,6 +404,25 @@ def run(
     return done.stdout.strip()
 
 
+def run_again_if_it_fails(cmd: Sequence[str | Path], *, tries: int, wait_s: float) -> str:
+    """:func:`run`, asked again while it fails, and raising on the last try.
+
+    For a command whose failure says more about the machine than about what it was asked to do.
+    """
+    for attempt in range(1, tries + 1):
+        print("+", " ".join(str(c) for c in cmd), flush=True)
+        done = subprocess.run([str(c) for c in cmd], text=True, capture_output=True, check=False)
+        if not done.returncode:
+            return done.stdout.strip()
+        if done.stderr.strip():
+            print(done.stderr.strip()[-2000:], flush=True)
+        if attempt == tries:
+            raise SystemExit(f"{cmd[0]} failed with exit code {done.returncode}")
+        print(f"{cmd[0]} failed; trying again ({attempt + 1} of {tries})", flush=True)
+        time.sleep(wait_s)
+    raise AssertionError("unreachable")
+
+
 def clean_env() -> dict[str, str]:
     """The environment without the virtual environment ``uv run`` activates: uv would otherwise
     take that environment's Python for the one to pack, and sync into it."""
@@ -618,12 +644,15 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     # fastest of the three, since it compresses on every core (measured 2026-09-19). macOS mounts
     # LZMA images from 10.15, and this app asks for macOS 14 (MAC_OLDEST).
     plain = stage / "plain.dmg"
-    run(
-        [
-            "hdiutil", "create", "-volname", f"{APP_NAME} {version}", "-srcfolder", image,
-            "-ov", "-format", "UDZO", plain,
-        ]
-    )  # fmt: skip
+    make = [
+        "hdiutil", "create", "-volname", f"{APP_NAME} {version}", "-srcfolder", image,
+        "-ov", "-format", "UDZO", plain,
+    ]  # fmt: skip
+    # `hdiutil create` answers "Resource busy" now and then on a build machine, where Spotlight
+    # and the mounts of other jobs are on the same disk: the tag build of 0.1.9 failed on it and
+    # the same commit had packaged cleanly minutes before. It is the machine, not the image, so
+    # it is asked again rather than reported.
+    run_again_if_it_fails(make, tries=DMG_TRIES, wait_s=DMG_RETRY_S)
     run(["hdiutil", "convert", plain, "-format", "ULMO", "-o", out])
     plain.unlink()
     return out, image / app.name / "Contents" / "Resources" / "python" / "bin" / "python3"
