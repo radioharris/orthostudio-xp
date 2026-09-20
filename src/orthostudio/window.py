@@ -27,12 +27,14 @@ __all__ = [
     "LINUX_PACKAGES",
     "MIN_SIZE",
     "POLL_S",
+    "ROOM_FOR_THE_SYSTEM",
     "SIZE",
     "WEBVIEW2_HELP",
     "ask",
     "ask_the_page_to_quit",
     "away",
     "close_now",
+    "fits_the_screen",
     "hint",
     "install",
     "on_quit",
@@ -48,7 +50,13 @@ POLL_S = 2.0
 """How often ``closes_when`` is asked, while the window is open."""
 
 SIZE = (1440, 920)
-"""The window a first run opens. Narrower than 1280, the Plan's two columns crowd each other."""
+"""The window a first run opens, when the screen has room for it. Narrower than 1280, the Plan's
+two columns crowd each other."""
+
+ROOM_FOR_THE_SYSTEM = (60, 140)
+"""What a screen keeps for itself, which its reported size does not take out: a menu bar and a
+Dock, a taskbar. Asked for the whole height, the window went under them and the map's legend was
+cut off on a 14-inch laptop (a user, 2026-09-20)."""
 
 MIN_SIZE = (1024, 700)
 
@@ -357,6 +365,26 @@ def close_now() -> None:
         _window.destroy()
 
 
+def fits_the_screen(
+    size: tuple[int, int], screens: object, room: tuple[int, int] = ROOM_FOR_THE_SYSTEM
+) -> tuple[int, int]:
+    """``size``, brought down to what the first screen has room for (:data:`ROOM_FOR_THE_SYSTEM`).
+
+    Never up: a window larger than the page needs is only emptier. Never below :data:`MIN_SIZE`
+    either, where the Plan's two columns stop fitting side by side; a screen that small is one
+    where the window is scrolled rather than crowded.
+    """
+    try:
+        first = next(iter(screens))  # type: ignore[call-overload]
+        room_for = (int(first.width) - room[0], int(first.height) - room[1])
+    except Exception:  # a system that will not say: what was asked for stands
+        return size
+    return (
+        max(MIN_SIZE[0], min(size[0], room_for[0])),
+        max(MIN_SIZE[1], min(size[1], room_for[1])),
+    )
+
+
 def show(
     url: str,
     *,
@@ -391,14 +419,22 @@ def show(
     global _window
     store = storage_dir() if storage is None else storage
     store.mkdir(parents=True, exist_ok=True)
+    width, height = fits_the_screen(size, webview.screens)
     window = webview.create_window(
         title,
         url,
-        width=size[0],
-        height=size[1],
+        width=width,
+        height=height,
         min_size=MIN_SIZE,
         # the page draws its own background for the theme it was given; white flashes on a dark one
         background_color="#14171d",
+        # pywebview keeps text from being selected by default, which a browser never does: a path,
+        # a tile's name, an error, the very command this app tells a user to run, none of them
+        # could be copied out of the window (2026-09-20)
+        text_select=True,
+        # and the page keeps its own zoom: on a trackpad, pinching is how the map is zoomed, and a
+        # window that zoomed itself instead would take that away
+        zoomable=False,
     )
     if window is None:  # pywebview answers nothing when it could not make one
         raise RuntimeError("the web view gave no window")

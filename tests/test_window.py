@@ -125,7 +125,11 @@ def test_the_engine_starts_even_when_the_window_trimmings_fail(
         assert callable(func)
         func()
 
-    fake = type("W", (), {"create_window": lambda *a, **k: FakeWindow(), "start": fake_start})
+    fake = type(
+        "W",
+        (),
+        {"create_window": lambda *a, **k: FakeWindow(), "start": fake_start, "screens": []},
+    )
     monkeypatch.setitem(__import__("sys").modules, "webview", fake)
     monkeypatch.setitem(
         __import__("sys").modules,
@@ -183,3 +187,35 @@ def test_a_window_nobody_can_have_is_not_a_warning(monkeypatch: pytest.MonkeyPat
     assert doctor._window().status == "skip"  # an orange pill nobody can clear is noise
     monkeypatch.setattr(window, "install", lambda: "sudo apt install something")
     assert doctor._window().status == "warn"  # there is something to do: it is worth a colour
+
+
+class FakeScreen:
+    def __init__(self, width: int, height: int) -> None:
+        self.width, self.height = width, height
+
+
+def test_the_window_is_brought_down_to_what_the_screen_has_room_for() -> None:
+    """Asked for its whole height, the window went under the menu bar and the Dock, and the map's
+    legend was cut off on a 14-inch laptop (a user, 2026-09-20)."""
+    small = window.fits_the_screen(window.SIZE, [FakeScreen(1512, 982)])
+    assert small == (1440, 982 - window.ROOM_FOR_THE_SYSTEM[1])
+    # a screen with room to spare gets the size as asked, never more: a bigger window is emptier
+    assert window.fits_the_screen(window.SIZE, [FakeScreen(3840, 2160)]) == window.SIZE
+    # and never below what the Plan's two columns need side by side
+    assert window.fits_the_screen(window.SIZE, [FakeScreen(800, 600)]) == window.MIN_SIZE
+    # a system that will not say keeps what was asked for
+    assert window.fits_the_screen(window.SIZE, []) == window.SIZE
+
+
+def test_the_window_lets_text_be_selected_like_a_browser_does() -> None:
+    """pywebview keeps text from being selected by default, and injects user-select: none over
+    the whole body. A browser never does: a path, a tile's name, an error, the very command this
+    app tells a user to run, none of them could be copied out of the window (2026-09-20)."""
+    source = (Path(__file__).resolve().parents[1] / "src/orthostudio/window.py").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("webview.create_window(")
+    call = source[start : source.index("if window is None", start)]
+    assert "text_select=True" in call
+    # and the page keeps the pinch: it is how the map is zoomed
+    assert "zoomable=False" in call
