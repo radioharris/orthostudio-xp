@@ -27,7 +27,8 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
-import { bindFind, findForget } from "./find.js";
+import { bindFind, bindFindKeys, findForget } from "./find.js";
+import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -4443,12 +4444,19 @@ function rerenderAll() {
 /**
  * Whether this page is OrthoStudio XP's own window rather than a tab in a browser.
  *
- * pywebview writes `window.pywebview` into the page it opens (`webview/js/api.js`). It decides
- * two things: who gets Cmd+F (in a browser its own Find is better than ours), and whether the
- * page that says the engine stopped talks about a tab or a window.
+ * pywebview writes `window.pywebview` into the page it opens (`webview/js/api.js`), and it is
+ * not there yet when the page boots: it announces itself with `pywebviewready`. Asked once at
+ * boot, this answered no in the window itself, and neither Cmd+F nor the zoom was ever bound
+ * (measured in a real WKWebView, 2026-09-20).
  */
 export function inOwnWindow() {
   return typeof window !== "undefined" && Boolean(window.pywebview);
+}
+
+/** Run `then` if this is the window, as soon as the window says so. Never in a browser. */
+export function whenInOwnWindow(then) {
+  if (inOwnWindow()) then();
+  else window.addEventListener("pywebviewready", then, { once: true });
 }
 
 async function boot() {
@@ -4463,13 +4471,15 @@ async function boot() {
     // ignore
   }
   applyStatic(document);
-  if (inOwnWindow()) {
-    // No tab to close in a window of its own, and the app is not reopened from there either.
+  bindFind(); // the bar's own field and buttons: the same page runs in a browser
+  whenInOwnWindow(() => {
+    // No tab to close in a window of its own.
     const stopped = $("stopped").querySelector("p");
     stopped.dataset.i18n = "quit.stopped_text_window";
     stopped.textContent = t("quit.stopped_text_window");
-  }
-  bindFind(inOwnWindow());
+    bindFindKeys();
+    bindZoom((text) => toast(text));
+  });
   $("mock-badge").hidden = !MOCK;
 
   $("nav").addEventListener("click", (ev) => {

@@ -185,13 +185,8 @@ export function findForget() {
   findAgain({ keep: true });
 }
 
-/**
- * Cmd+F / Ctrl+F, and the bar's own buttons.
- *
- * `inWindow` says whether the page runs in OrthoStudio XP's own window: only there are the keys
- * taken, since a browser's Find does more than this one.
- */
-export function bindFind(inWindow) {
+/** The bar's own field and buttons, which a browser needs too: it is the same page there. */
+export function bindFind() {
   const { box, input } = findBar();
   if (!box) return;
   input.addEventListener("input", () => findAgain());
@@ -207,7 +202,15 @@ export function bindFind(inWindow) {
   document.getElementById("find-prev")?.addEventListener("click", () => findStep(-1));
   document.getElementById("find-next")?.addEventListener("click", () => findStep(1));
   document.getElementById("find-close")?.addEventListener("click", () => closeFind());
-  if (!inWindow) return;
+}
+
+/**
+ * Cmd+F and Ctrl+F, taken only in OrthoStudio XP's own window: a browser's own Find does more
+ * than this one, and stealing the key there would be a loss.
+ */
+export function bindFindKeys() {
+  const { box } = findBar();
+  if (!box) return;
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
       e.preventDefault();

@@ -3223,7 +3223,7 @@ def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert "window.pywebview" in _function_body(app_js, "inOwnWindow")
-    assert "bindFind(inOwnWindow());" in app_js
+    assert "bindFindKeys();" in _function_body(app_js, "boot")
     assert "findForget();" in _function_body(app_js, "showScreen")
 
     got = _node_json(
@@ -3331,3 +3331,46 @@ def test_saving_settings_leaves_the_plan_alone_unless_it_changed_them() -> None:
     # and neither of the two runs unguarded any more
     assert '\n    $("zl-select").value = "";' not in app_js
     assert "renderProviders(state.settings.essential?.provider);" not in app_js
+
+
+def test_the_page_keeps_the_zoom_keys_and_where_it_was_left() -> None:
+    """Cmd+plus, Cmd+minus and Cmd+0, which the window took away with the browser. Bound only
+    once pywebview says the window is there: asked at boot, `window.pywebview` is not written
+    yet, and neither the zoom nor Cmd+F was ever bound in the window itself (measured in a real
+    WKWebView, 2026-09-20)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "pywebviewready" in _function_body(app_js, "whenInOwnWindow")
+    boot = _function_body(app_js, "boot")
+    assert "bindFind();" in boot  # the bar's buttons work in a browser too
+    assert "bindFindKeys();" in boot and "bindZoom((text) => toast(text));" in boot
+    assert boot.index("whenInOwnWindow(") < boot.index("bindFindKeys();")
+
+    got = _node_json(
+        "zoom.js",
+        """(() => {
+          const store = {};
+          globalThis.localStorage = {
+            getItem: (k) => (k in store ? store[k] : null),
+            setItem: (k, v) => { store[k] = v; },
+            removeItem: (k) => { delete store[k]; },
+          };
+          return {
+            up: m.nextZoom(1, 1),
+            down: m.nextZoom(1, -1),
+            ceiling: m.nextZoom(2, 1),
+            floor: m.nextZoom(0.67, -1),
+            offStep: m.nextZoom(1.04, 1),
+            normal: m.NORMAL,
+            fresh: m.savedZoom(),
+          };
+        })()""",
+    )
+    assert got == {
+        "up": 1.1,
+        "down": 0.9,
+        "ceiling": 2,  # the ends hold rather than wrapping round
+        "floor": 0.67,
+        "offStep": 1.1,  # a size that is not a step starts from the nearest one
+        "normal": 1,
+        "fresh": 1,  # nothing remembered: the page opens at its own size
+    }

@@ -219,3 +219,33 @@ def test_the_window_lets_text_be_selected_like_a_browser_does() -> None:
     assert "text_select=True" in call
     # and the page keeps the pinch: it is how the map is zoomed
     assert "zoomable=False" in call
+
+
+def test_the_window_zooms_its_page_because_a_browser_would() -> None:
+    """A user found the text bigger in the window than in his browser, and had no way to make it
+    smaller: a WKWebView will not zoom unless it is asked in Objective-C, and pywebview turns the
+    browser's own shortcuts off in WebView2 (`AreBrowserAcceleratorKeysEnabled` follows `debug`),
+    so Ctrl+plus did nothing on Windows either (2026-09-20).
+
+    The page keeps the keys and the window does the scaling: a CSS zoom would take `100vh` with
+    it and cut the map off at the foot, which is the bug 0.1.8 had just fixed."""
+    from orthostudio.window import WINDOW_MENU_KEY, ZOOM_LIMITS, PageTools
+
+    source = (Path(__file__).resolve().parents[1] / "src/orthostudio/window.py").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("webview.create_window(")
+    call = source[start : source.index("if window is None", start)]
+    assert "js_api=PageTools()" in call
+    assert "setPageZoom_" in source and "ZoomFactor" in source  # macOS, then Windows
+
+    # asked without a window, it says no rather than raising: the page then leaves the size alone
+    tools = PageTools()
+    assert tools.set_zoom(1.5) is False
+    assert tools.set_zoom("not a number") is False  # type: ignore[arg-type]
+    low, high = ZOOM_LIMITS
+    assert low < 1 < high
+
+    # Cmd+0 is what every browser uses to put the text back to its own size, and a menu's key is
+    # taken by AppKit before the page sees it: the Window entry gave it up (it had it in 0.1.8)
+    assert WINDOW_MENU_KEY != "0"

@@ -65,9 +65,80 @@ WINDOW_MENU = "Window"
 apps that list their windows in it; pywebview builds none, and without it the Dock's icon was the
 only way back (a user asked, 2026-09-20)."""
 
-WINDOW_MENU_KEY = "0"
-"""Cmd+0 for that entry, which a pywebview menu cannot carry and :func:`_window_menu_shortcut`
-puts there by hand."""
+WINDOW_MENU_KEY = "1"
+"""Cmd+1 for that entry, which a pywebview menu cannot carry and :func:`_window_menu_shortcut`
+puts there by hand.
+
+It was Cmd+0 until 0.1.9. A menu's key is taken by AppKit before the page ever sees it, and
+Cmd+0 is what every browser uses to put the text back to its own size, which the page now needs
+(``ui/zoom.js``). Cmd+1 is the macOS way of asking for the first window."""
+
+ZOOM_LIMITS = (0.5, 3.0)
+"""What the page may ask for. A browser stops around there too, and a window scaled past it has
+no room left for the map."""
+
+
+class PageTools:
+    """What the page may ask of the window it runs in (pywebview's ``js_api``).
+
+    Only the zoom, for now. The window has none of its own: a WKWebView is asked through
+    ``pageZoom``, a WebView2 through ``ZoomFactor``, and pywebview turns the browser's own
+    shortcuts off in WebView2 (``platforms/edgechromium.py``: ``AreBrowserAcceleratorKeysEnabled``
+    follows ``debug``), so Ctrl+plus did nothing on Windows either. A user who found the text
+    bigger in the window than in his browser had no way to make it smaller (2026-09-20).
+    """
+
+    def set_zoom(self, factor: float) -> bool:
+        """Draw the page ``factor`` times its size; whether it could be done.
+
+        False when this system's view will not say: the page then leaves the zoom where it is
+        rather than scaling itself with CSS, which would take `100vh` with it and cut the map.
+        """
+        try:
+            low, high = ZOOM_LIMITS
+            wanted = max(low, min(high, float(factor)))
+        except (TypeError, ValueError):
+            return False
+        view = _web_view()
+        if view is None:
+            return False
+        try:
+            if hasattr(view, "setPageZoom_"):  # WKWebView, macOS 11 and later
+                view.setPageZoom_(wanted)
+                return True
+            if hasattr(view, "ZoomFactor"):  # WebView2, through its WinForms control
+                view.ZoomFactor = wanted
+                return True
+        except Exception:
+            return False
+        return False
+
+
+def _web_view() -> Any:
+    """The platform's own view inside the window, or None where it cannot be reached.
+
+    pywebview does not offer it, so this reaches for the one it keeps. Guarded: a version that
+    keeps it elsewhere costs the zoom, not the window.
+    """
+    if _window is None:
+        return None
+    uid = getattr(_window, "uid", None)
+    for module in ("webview.platforms.cocoa", "webview.platforms.winforms"):
+        try:
+            platform = __import__(module, fromlist=["BrowserView"])
+            instance = platform.BrowserView.instances.get(uid)
+        except Exception:
+            continue
+        if instance is None:
+            continue
+        view = getattr(instance, "webview", None)  # macOS keeps the WKWebView here
+        if view is not None:
+            return view
+        browser = getattr(instance, "browser", None)  # Windows keeps an EdgeChrome
+        if browser is not None:
+            return getattr(browser, "webview", None)
+    return None
+
 
 LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
 """What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
@@ -433,8 +504,10 @@ def show(
         # could be copied out of the window (2026-09-20)
         text_select=True,
         # and the page keeps its own zoom: on a trackpad, pinching is how the map is zoomed, and a
-        # window that zoomed itself instead would take that away
+        # window that zoomed itself instead would take that away. Cmd+plus and Ctrl+plus are the
+        # page's business too, through PageTools.set_zoom.
         zoomable=False,
+        js_api=PageTools(),
     )
     if window is None:  # pywebview answers nothing when it could not make one
         raise RuntimeError("the web view gave no window")
