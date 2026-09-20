@@ -753,7 +753,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .report { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: 10px 12px; margin-top: 12px; }
 .report-grid { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(330px, 1.8fr) minmax(200px, 1.1fr); gap: 10px 20px; align-items: start; }
 .report-grid > * { min-width: 0; overflow-x: auto; }
-@media (max-width: 920px) { .report-grid { grid-template-columns: 1fr; } }
+/* The three columns ask for 740px and cannot go under it: 170 + 330 + 200 and two 20px gutters.
+   Add the report's own 26, the 260px job list beside it with its 20px gap, and the page's 24, and
+   they need 1070px of window. Folded at 920 they overflowed everything above them from 920 to
+   1070: a horizontal scrollbar, and the decisions cut off on the right (a user, at the smallest
+   window the app allows, 2026-09-20). Below, one column, which needs nothing of anybody. */
+@media (max-width: 1080px) { .report-grid { grid-template-columns: 1fr; } }
 .report table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 .report th, .report td { padding: 2px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .report th:first-child, .report td:first-child { text-align: left; }

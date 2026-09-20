@@ -3092,3 +3092,29 @@ def test_the_map_leaves_room_for_the_status_bar_under_it() -> None:
     # screen still hidden never reported it being shown (measured, 2026-09-20)
     assert "measureMapTop();" in body("showScreen")
     assert "measureMapTop();" in body("renderEngineBanner")
+
+
+def test_the_final_report_folds_before_it_runs_out_of_room() -> None:
+    """Its three columns cannot go below 740px: 170 + 330 + 200, and two 20px gutters. Beside the
+    260px job list, inside the report's own border and the page's padding, that asks for 1070px of
+    window, and it folded only under 920: from 920 to 1070 it pushed the page wider than the
+    window, and the decisions were cut off at the right (a user, at the smallest window the app
+    allows, 2026-09-20).
+
+    The room it needs is read back from the stylesheet rather than written down here, so that
+    narrowing a column or widening the job list moves the fold with it."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    grid = css[css.index(".report-grid {") :][:220]
+    columns = [int(px) for px in re.findall(r"minmax\((\d+)px", grid)]
+    gap = int(re.search(r"gap: \d+px (\d+)px", grid).group(1))
+    assert len(columns) == 3, columns
+    beside = int(re.search(r"\.cols-works \{ grid-template-columns: (\d+)px", css).group(1))
+    between = int(re.search(r"^\.cols \{[^}]*gap: (\d+)px", css, re.MULTILINE).group(1))
+    page = int(re.search(r"--pad: (\d+)px", css).group(1))
+    report = 12 * 2 + 2  # .report: its padding either side, and its border
+
+    needs = sum(columns) + gap * 2 + report + beside + between + page * 2
+    folds_at = int(re.search(r"@media \(max-width: (\d+)px\) \{ \.report-grid", css).group(1))
+    assert folds_at >= needs, (
+        f"three columns need {needs}px of window, folded only under {folds_at}"
+    )

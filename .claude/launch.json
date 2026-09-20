@@ -4,8 +4,25 @@
     {
       "name": "page",
       "runtimeExecutable": ".venv/bin/orthostudio",
-      "runtimeArgs": ["serve", "--mock", "--no-open", "--port", "8642"],
+      "runtimeArgs": [
+        "serve",
+        "--mock",
+        "--no-open",
+        "--port",
+        "8642"
+      ],
       "port": 8642
+    },
+    {
+      "name": "page-real",
+      "runtimeExecutable": ".venv/bin/orthostudio",
+      "runtimeArgs": [
+        "serve",
+        "--no-open",
+        "--port",
+        "8643"
+      ],
+      "port": 8643
     }
   ]
 }

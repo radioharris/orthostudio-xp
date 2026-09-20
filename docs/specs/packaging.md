@@ -68,6 +68,13 @@ one, with a link, and OrthoStudio XP installs nothing on a system it does not ow
 the web view and the app carries `pyobjc`, so a macOS build refuses an app whose `window` check is
 not `ok` (`check_launch`).
 
+The window opens at 1440x920, brought down to what the first screen has room for (`fits_the_screen`,
+`ROOM_FOR_THE_SYSTEM`), and cannot be made smaller than 1024x700 (`MIN_SIZE`), where the Plan's two
+columns stop fitting side by side. The page folds on its own under that width and must keep doing
+so: a block that cannot shrink pushes the page wider than the window, which shows as a horizontal
+scrollbar and as text cut off at the right, both of which a user met at the smallest window the app
+allows (`tests/test_ui_static.py::test_the_final_report_folds_before_it_runs_out_of_room`).
+
 The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
 own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is
 missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
