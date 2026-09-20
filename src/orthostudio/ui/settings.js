@@ -289,6 +289,7 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
         { value: "auto", label: t("settings.q.relief_auto"), note: t("settings.q.relief_auto_note"), recommended: true },
         { value: "copernicus", label: t("settings.q.relief_cop30"), note: t("settings.q.relief_cop30_note") },
         { value: "usgs", label: t("settings.q.relief_usgs"), note: t("settings.q.relief_usgs_note") },
+        { value: "usgs1", label: t("settings.q.relief_usgs1"), note: t("settings.q.relief_usgs1_note") },
         { value: "canada", label: t("settings.q.relief_canada"), note: t("settings.q.relief_canada_note") },
         { value: "south_america", label: t("settings.q.relief_anadem"), note: t("settings.q.relief_anadem_note") },
         { value: "file", label: t("settings.q.relief_file"), note: t("settings.q.relief_file_note") },
@@ -389,6 +390,7 @@ export function settingsSummary(settings) {
   if (relief === "file") parts.push(t("plan.s.relief_file"));
   else if (relief === "copernicus") parts.push(t("plan.s.relief_cop30"));
   else if (relief === "usgs") parts.push(t("plan.s.relief_usgs"));
+  else if (relief === "usgs1") parts.push(t("plan.s.relief_usgs1"));
   else if (relief === "canada") parts.push(t("plan.s.relief_canada"));
   else if (relief === "south_america") parts.push(t("plan.s.relief_anadem"));
   else parts.push(t("plan.s.relief_auto"));

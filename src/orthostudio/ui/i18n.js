@@ -82,6 +82,7 @@ const STRINGS = {
     "plan.s.relief_auto": "relief d'X-Plane 12",
     "plan.s.relief_cop30": "relief Copernicus",
     "plan.s.relief_usgs": "relief USGS (États-Unis)",
+    "plan.s.relief_usgs1": "relief USGS (Amérique du Nord)",
     "plan.s.relief_anadem": "relief ANADEM (Amérique du Sud)",
     "plan.s.relief_canada": "relief lidar du Canada",
     "plan.s.relief_file": "relief de votre fichier",
@@ -305,6 +306,8 @@ const STRINGS = {
     "works.cleared": "Lots retirés de la liste : {n}.",
     "works.job": "Lot {id}",
     "works.stop": "Stop",
+    "works.again": "Reconstruire",
+    "works.again_help": "Relance les mêmes tuiles : ce qui a déjà été construit est réutilisé, seul ce qui manque est refait.",
     "works.retry": "Réessayer les manquantes",
     "works.settings": "Réglages",
     "works.progress": "Avancement",
@@ -344,6 +347,7 @@ const STRINGS = {
     "works.relief_xplane": "relief d'X-Plane",
     "works.relief_cop30": "relief Copernicus",
     "works.relief_usgs": "relief USGS",
+    "works.relief_usgs1": "relief USGS 1\u0022",
     "works.relief_anadem": "relief ANADEM",
     "works.relief_canada": "relief lidar du Canada",
     "works.relief_file": "fichier de relief",
@@ -627,6 +631,8 @@ const STRINGS = {
     "settings.q.relief_cop30_note": "plus fin que celui d'X-Plane ; environ 40 Mo téléchargés par carré d'un degré, gardés ensuite",
     "settings.q.relief_usgs": "Le relief détaillé des États-Unis (USGS 3DEP, 1/3 de seconde d'arc)",
     "settings.q.relief_usgs_note": "le plus fin qui existe en accès libre, environ 10 m au sol : les reliefs marqués y gagnent. États-Unis seulement, Alaska et Hawaï compris ; environ 400 Mo par carré d'un degré, gardés ensuite. Ailleurs, la tuile est refusée plutôt que construite plate.",
+    "settings.q.relief_usgs1": "Le relief USGS d'Amérique du Nord (1 seconde d'arc)",
+    "settings.q.relief_usgs1_note": "la même finesse que Copernicus, mais une autre mesure : États-Unis, Canada, Mexique et Alaska. Au Canada il a été interpolé depuis les courbes de niveau des anciennes cartes, donc il peut marcher en terrasses là où Copernicus est lisse ; aux États-Unis, préférez le 1/3 de seconde ci-dessus. Environ 50 Mo par carré d'un degré, gardés ensuite. Ailleurs, la tuile est refusée plutôt que construite plate.",
     "settings.q.relief_canada": "Le relief lidar du Canada (HRDEM), Copernicus ailleurs",
     "settings.q.relief_anadem": "Le relief d'Amérique du Sud (ANADEM), Copernicus ailleurs",
     "settings.q.relief_anadem_note": "le sol nu sous la forêt : Copernicus voit la cime des arbres, et en Amazonie il place le sol 17 m trop haut (mesuré sur 262 000 points). ANADEM retire cette végétation, du Venezuela à la Terre de Feu ; ailleurs Copernicus prend le relais, sans trou ni marche. Environ 33 Mo gardés par carré, lus en une dizaine de secondes.",
@@ -864,6 +870,7 @@ const STRINGS = {
     "plan.s.relief_auto": "X-Plane 12 relief",
     "plan.s.relief_cop30": "Copernicus relief",
     "plan.s.relief_usgs": "USGS relief (United States)",
+    "plan.s.relief_usgs1": "USGS relief (North America)",
     "plan.s.relief_anadem": "ANADEM relief (South America)",
     "plan.s.relief_canada": "Canadian lidar relief",
     "plan.s.relief_file": "relief from your file",
@@ -1087,6 +1094,8 @@ const STRINGS = {
     "works.cleared": "Jobs removed from the list: {n}.",
     "works.job": "Job {id}",
     "works.stop": "Stop",
+    "works.again": "Build again",
+    "works.again_help": "Builds the same tiles again: what is already built is reused, only what is missing is redone.",
     "works.retry": "Retry the missing ones",
     "works.settings": "Settings",
     "works.progress": "Progress",
@@ -1126,6 +1135,7 @@ const STRINGS = {
     "works.relief_xplane": "X-Plane relief",
     "works.relief_cop30": "Copernicus relief",
     "works.relief_usgs": "USGS relief",
+    "works.relief_usgs1": "USGS relief, 1\u0022",
     "works.relief_anadem": "ANADEM relief",
     "works.relief_canada": "Canadian lidar relief",
     "works.relief_file": "own relief file",
@@ -1409,6 +1419,8 @@ const STRINGS = {
     "settings.q.relief_cop30_note": "finer than X-Plane's; about 40 MB downloaded per one-degree square, kept afterwards",
     "settings.q.relief_usgs": "The detailed relief of the United States (USGS 3DEP, 1/3 arc-second)",
     "settings.q.relief_usgs_note": "the finest openly available, about 10 m on the ground: sharp relief gains the most. United States only, Alaska and Hawaii included; about 400 MB per one-degree square, kept afterwards. Elsewhere the tile is refused rather than built flat.",
+    "settings.q.relief_usgs1": "The USGS relief of North America (1 arc-second)",
+    "settings.q.relief_usgs1_note": "as fine as Copernicus, but measured differently: the United States, Canada, Mexico and Alaska. Over Canada it was interpolated from the contour lines of the old maps, so it can step in terraces where Copernicus is smooth; inside the United States prefer the 1/3 arc-second above. About 50 MB per one-degree square, kept afterwards. Elsewhere the tile is refused rather than built flat.",
     "settings.q.relief_canada": "Canada's lidar relief (HRDEM), Copernicus elsewhere",
     "settings.q.relief_anadem": "The relief of South America (ANADEM), Copernicus elsewhere",
     "settings.q.relief_anadem_note": "the bare ground under the forest: Copernicus sees the treetops, and over the Amazon it puts the ground 17 m too high (measured on 262,000 points). ANADEM takes that vegetation out, from Venezuela to Tierra del Fuego; everywhere else Copernicus takes over, with no hole and no step. About 33 MB kept per square, read in about ten seconds.",
@@ -1644,7 +1656,7 @@ const CODES = {
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["Pas de relief pour {tile} : son fichier de décor X-Plane 12 manque ({path}). OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région du décor X-Plane 12 avec l'installeur d'X-Plane, ou donnez un fichier d'altitudes dans Réglages."]
       : String(c.source || "").startsWith("NED")
-        ? ["Pas de relief pour cette tuile : l'USGS ne couvre que les États-Unis. OrthoStudio XP ne construit pas une tuile plate.", "Dans Réglages, choisissez « Le relief d'X-Plane 12 » ou « Le relief Copernicus » pour cette région."]
+        ? [`Pas de relief pour cette tuile : l'USGS ne couvre que ${c.source === "NED1" ? "l'Amérique du Nord" : "les États-Unis"}. OrthoStudio XP ne construit pas une tuile plate.`, "Dans Réglages, choisissez « Le relief d'X-Plane 12 » ou « Le relief Copernicus » pour cette région."]
         : DOWNLOADED_RELIEF.has(String(c.source || ""))
           ? [`Le relief ${reliefWord("fr", c.source)} de cette tuile n'a pas pu être obtenu ({reason}). OrthoStudio XP ne construit pas une tuile plate.`, "Réessayez ; si cela se reproduit, choisissez « Le relief d'X-Plane 12 » dans Réglages, qui ne demande aucun téléchargement, et signalez-le."]
           : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
@@ -1692,7 +1704,7 @@ const CODES = {
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["No relief for {tile}: its X-Plane 12 scenery file is missing ({path}). OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery with the X-Plane installer, or provide an elevation file in Settings."]
       : String(c.source || "").startsWith("NED")
-        ? ["No relief for this tile: the USGS covers the United States only. OrthoStudio XP does not build a flat tile.", "In Settings, choose “The relief of X-Plane 12” or “The Copernicus relief” for this region."]
+        ? [`No relief for this tile: the USGS covers ${c.source === "NED1" ? "North America" : "the United States"} only. OrthoStudio XP does not build a flat tile.`, "In Settings, choose “The relief of X-Plane 12” or “The Copernicus relief” for this region."]
         : DOWNLOADED_RELIEF.has(String(c.source || ""))
           ? [`The ${reliefWord("en", c.source)} relief of this tile could not be obtained ({reason}). OrthoStudio XP does not build a flat tile.`, "Try again; if it happens again, choose “The relief of X-Plane 12” in Settings, which downloads nothing, and report it."]
           : LOOKS_LIKE_A_PATH.test(String(c.source || ""))

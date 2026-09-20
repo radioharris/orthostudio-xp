@@ -201,7 +201,10 @@ async def test_the_colour_preview_says_when_a_source_has_no_photo_there(home: Pa
     app, mgr = _app(home, body=placeholder)
     try:
         async with client_for(app) as c:
-            empty = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 45.921, "lon": -6.372})  # fmt: skip
+            empty = await c.get(
+                "/api/photo-sample",
+                params={"provider": "BI", "lat": 45.921, "lon": -6.372},
+            )
     finally:
         mgr.close()
     assert empty.status_code >= 400, "a tile that holds no photo was served as if it did"
@@ -214,7 +217,9 @@ async def test_the_colour_preview_says_when_a_source_has_no_photo_there(home: Pa
     app, mgr = _app(home, body=b"<html>nope</html>")
     try:
         async with client_for(app) as c:
-            nothing = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14})  # fmt: skip
+            nothing = await c.get(
+                "/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14}
+            )
     finally:
         mgr.close()
     assert nothing.status_code >= 400
@@ -223,7 +228,9 @@ async def test_the_colour_preview_says_when_a_source_has_no_photo_there(home: Pa
     app, mgr = _app(home, body=JPEG)  # and a real photo is still served as one
     try:
         async with client_for(app) as c:
-            ground = await c.get("/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14})  # fmt: skip
+            ground = await c.get(
+                "/api/photo-sample", params={"provider": "BI", "lat": 46.2, "lon": 6.14}
+            )
     finally:
         mgr.close()
     assert ground.status_code == 200 and ground.headers["content-type"].startswith("image/")

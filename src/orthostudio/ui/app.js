@@ -3217,7 +3217,10 @@ function buildJobView(box, job, previous) {
   v.pill = h("span", { class: "job-pill" });
   v.meta = h("span", { class: "help num" });
   v.stop = h("button", { type: "button", class: "btn btn-small btn-danger", onclick: cancelJob }, t("works.stop"));
-  const head = h("div", { class: "job-head" }, h("h2", null, t("works.job", { id: job.id })), v.pill, v.meta, h("span", { class: "spacer" }), v.stop);
+  // A build that failed or was stopped offered nothing but a Retry buried in an error card, and
+  // only for the handful of codes that carry action "retry" (a user, 2026-09-20).
+  v.again = h("button", { type: "button", class: "btn btn-small", title: t("works.again_help"), onclick: retryJob }, t("works.again"));
+  const head = h("div", { class: "job-head" }, h("h2", null, t("works.job", { id: job.id })), v.pill, v.meta, h("span", { class: "spacer" }), v.again, v.stop);
 
   v.progress = h("b");
   v.elapsed = h("b");
@@ -3259,6 +3262,7 @@ function buildJobView(box, job, previous) {
 function reliefWords(relief) {
   if (relief === "copernicus") return t("works.relief_cop30");
   if (relief === "usgs") return t("works.relief_usgs");
+  if (relief === "usgs1") return t("works.relief_usgs1");
   if (relief === "canada") return t("works.relief_canada");
   if (relief === "south_america") return t("works.relief_anadem");
   if (relief === "file") return t("works.relief_file");
@@ -3278,6 +3282,8 @@ function updateJobView(v, job) {
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
   setText(v.stop, waiting ? t("works.unqueue") : t("works.stop"));
+  // Nothing to redo in a build that finished with everything built.
+  v.again.hidden = active || (job.status === "done" && !(job.errors || []).length);
 
   const progress = jobProgress(job);
   setText(v.progress, fmtPercent(progress));

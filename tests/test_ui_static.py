@@ -3257,3 +3257,52 @@ def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
         "words": ["The Copernicus relief"] + ["copernicus twice: copernicus"] * 2,
         "nothing": 0,
     }
+
+
+def test_a_build_that_stopped_short_offers_to_be_built_again() -> None:
+    """The engine has had POST /api/jobs/{id}/retry all along, and the page called it from one
+    place only: a button inside an error card, drawn for the handful of codes that carry the
+    action "retry" (network, missing textures, OSM mirror, elevation). A build that failed for
+    any other reason, or was stopped, offered nothing at all (a user, 2026-09-20). The button now
+    sits in the job's own header, beside Stop, and is left out only where there is nothing to
+    redo: a build under way, and one that finished with everything built."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    head = _function_body(app_js, "buildJobView")
+    assert 'onclick: retryJob' in head and 't("works.again")' in head
+    assert "v.again, v.stop" in head  # beside Stop, before it: Stop is the dangerous one
+    update = _function_body(app_js, "updateJobView")
+    rule = 'v.again.hidden = active || (job.status === "done" && !(job.errors || []).length);'
+    assert rule in update
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        assert tables[lang]["works.again"] and tables[lang]["works.again_help"]
+
+
+def test_the_usgs_relief_at_one_arc_second_is_offered_too() -> None:
+    """A user on X-Plane.Org asked for the USGS NED at 1 arc-second, saying it reaches Canada.
+    It does: only the 1/3" layer stops at the border (the 1" answers for the United States,
+    Canada, Mexico and Alaska, probed 2026-09-20), and the engine has read `NED1` all along.
+    The list offered the 1/3" one alone, and the refusal claimed the USGS is the United States."""
+    from orthostudio.config import Settings
+    from orthostudio.config.overrides import to_build_overrides
+
+    chosen = Settings.model_validate({"essential": {"relief": {"source": "usgs1"}}})
+    assert to_build_overrides(chosen)["custom_dem"] == "NED1"
+
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    assert '{ value: "usgs1", label: t("settings.q.relief_usgs1")' in code
+    assert 'relief === "usgs1"' in code  # and the Plan says which relief a build will use
+    assert 'relief === "usgs1"' in (UI / "app.js").read_text(encoding="utf-8")  # so does Works
+
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("settings.q.relief_usgs1", "settings.q.relief_usgs1_note",
+                    "plan.s.relief_usgs1", "works.relief_usgs1"):
+            assert tables[lang][key], f"{lang} is missing {key}"
+    # the note warns what the measurement showed: over Canada it was drawn from contour lines
+    assert "contour" in tables["en"]["settings.q.relief_usgs1_note"]
+    assert "courbes de niveau" in tables["fr"]["settings.q.relief_usgs1_note"]
+    # and the refusal no longer sends a Canadian user away from a layer that covers them
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert 'the USGS covers the United States only' not in i18n
+    assert 'c.source === "NED1" ? "North America" : "the United States"' in i18n

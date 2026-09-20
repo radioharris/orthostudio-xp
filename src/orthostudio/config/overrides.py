@@ -103,6 +103,11 @@ def _custom_dem(relief: Any) -> str:
         return "COP30"
     if relief.source == "usgs":
         return "NED1/3"
+    if relief.source == "usgs1":
+        # The seamless 1" layer, which the 1/3" one is not: it answers over the United States,
+        # Canada, Mexico and Alaska (measured 2026-09-20, after a user asked for it on
+        # X-Plane.Org). Over Canada it was interpolated from contour lines, not measured.
+        return "NED1"
     if relief.source == "south_america":
         # ANADEM takes the vegetation out of Copernicus over South America, and Copernicus
         # answers everywhere else (``dem/sources.py``; a user asked for it, 2026-09-20).
