@@ -154,13 +154,30 @@ def artefact_name(version: str, target: Target) -> str:
 
 
 def macos_launcher() -> str:
-    """``Contents/MacOS/orthostudio``: the Python inside the app runs the desktop entry."""
+    """``Contents/MacOS/orthostudio``: the Python inside the app runs the desktop entry.
+
+    Opened with no argument, from the Finder or the Dock, the launcher leaves the engine running
+    and ends at once. It would otherwise be the engine's own process, and macOS would hold an app
+    that runs and never opens a window: told to open it again, it brings the running one in front
+    instead of starting it, and there is nothing to bring. The icon bounced and nothing came, and
+    the page could only be reached by its address (2026-09-20). Ended, the app is started again at
+    every click, and ``orthostudio.desktop.open_running`` opens the page of the engine already
+    running. Given arguments, from a terminal or from ``check_launch``, it stays the process that
+    runs them and gives back their status.
+    """
     return (
         "#!/bin/bash\n"
         "# OrthoStudio XP (tools/package/build.py): the engine and its page, from the Python\n"
         "# inside the app. Its output goes to ~/Library/Logs/OrthoStudio XP/serve.log.\n"
         'CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"\n'
-        f'exec "$CONTENTS/Resources/python/bin/python3" -m {ENTRY_MODULE} "$@"\n'
+        'PYTHON="$CONTENTS/Resources/python/bin/python3"\n'
+        "if [ $# -eq 0 ]; then\n"
+        "  # opened from the Finder or the Dock: the engine runs on and this launcher ends, so\n"
+        "  # that macOS holds no app without a window to bring in front at the next click\n"
+        f'  "$PYTHON" -m {ENTRY_MODULE} </dev/null &\n'
+        "  exit 0\n"
+        "fi\n"
+        f'exec "$PYTHON" -m {ENTRY_MODULE} "$@"\n'
     )
 
 

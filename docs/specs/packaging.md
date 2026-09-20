@@ -38,6 +38,16 @@ macOS" (the user's first installed app, 2026-09-14). Started from a terminal the
 natively, which is why only a launch by macOS shows it (section 6). The doctor's `architecture`
 check says it on any installation.
 
+Opened with no argument, from the Finder or the Dock, the macOS launcher leaves the engine
+running and ends at once, where it used to become the engine itself (`macos_launcher`, and the same
+in `checkout_app.py`). macOS brings a running app in front rather than starting it again, and an
+engine whose only window is a page in a browser has nothing to bring in front: the icon bounced and
+nothing came, and the page could only be reached by its address (2026-09-20). Ended, the app is
+started again at every click, and `orthostudio.desktop.open_running` opens the page of the engine
+already running. Given arguments, from a terminal or from `check_launch`, the launcher stays the
+process that runs them and gives back their status. Windows and Linux start their command afresh at
+every click and need nothing of the sort.
+
 The Intel app (a user asked, 2026-09-17) is built on the same Apple Silicon Mac:
 `build.py --machine x86_64` asks uv for the Intel CPython (`cpython-<version>-macos-x86_64-none`),
 which uv runs under Rosetta to choose the Intel wheels of the lock, and the checks run it the same

@@ -119,7 +119,9 @@ in your browser; nothing leaves your computer except the downloads of imagery an
 OrthoStudio XP app to start it: the browser says "Opening OrthoStudio XP…" at once, then shows the
 page as soon as it is ready (opened again while it runs, the app just shows the page); *Quit*, at the
 top right of the page, stops it, after asking when a build is running. Closing the browser tab does
-not stop OrthoStudio XP at once: a build goes on, and reopening the app brings the page back. Five
+not stop OrthoStudio XP at once: a build goes on, and reopening the app brings the page back. On
+macOS its icon leaves the Dock while it runs, since the page in your browser is its only window:
+drag the app from Applications into the Dock to keep it there to click. Five
 minutes after its last page closed, with no build running or waiting, the app stops by itself, since
 nothing else would show that it still runs. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,

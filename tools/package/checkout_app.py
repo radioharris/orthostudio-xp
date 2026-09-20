@@ -35,7 +35,14 @@ LAUNCHER = """#!/bin/bash
 # the page of the one already running instead of starting a second and doing nothing visible.
 REPO={repo}
 cd "$REPO" || exit 1
-exec "$REPO/.venv/bin/python" -m orthostudio.desktop "$@"
+PYTHON="$REPO/.venv/bin/python"
+if [ $# -eq 0 ]; then
+  # opened from the Finder or the Dock: the engine runs on and this launcher ends, so that macOS
+  # holds no app without a window to bring in front at the next click (macos_launcher in build.py)
+  "$PYTHON" -m orthostudio.desktop </dev/null &
+  exit 0
+fi
+exec "$PYTHON" -m orthostudio.desktop "$@"
 """
 
 

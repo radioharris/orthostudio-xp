@@ -13,6 +13,7 @@ PACKAGE = Path(__file__).resolve().parents[1] / "tools" / "package"
 sys.path.insert(0, str(PACKAGE))
 
 import build  # noqa: E402
+import checkout_app  # noqa: E402
 import icon  # noqa: E402
 
 MAC = build.Target("macos", "arm64")
@@ -34,6 +35,22 @@ def test_the_launchers_run_the_python_inside_by_a_relative_path() -> None:
         assert "/Users/" not in text and "/home/" not in text
     assert "$CONTENTS/Resources/python/bin/python3" in build.macos_launcher()
     assert '"$HERE/python/bin/python3"' in build.linux_launcher()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [build.macos_launcher(), checkout_app.LAUNCHER],
+    ids=["installed", "checkout"],
+)
+def test_a_macos_launcher_opened_without_arguments_ends_and_leaves_the_engine(text: str) -> None:
+    # macOS brings a running app in front instead of starting it again, and an engine that never
+    # opens a window has nothing to bring: the icon bounced and nothing came (2026-09-20)
+    started, _, rest = text.partition("if [ $# -eq 0 ]; then")
+    assert started and "exec" not in rest.partition("fi")[0]
+    assert "-m orthostudio.desktop </dev/null &" in rest and "exit 0" in rest
+    # given arguments, from a terminal or from check_launch, it stays the process that runs them
+    assert rest.partition("fi")[2].strip().startswith("exec ")
+    assert '-m orthostudio.desktop "$@"' in rest.partition("fi")[2]
 
 
 def test_the_app_bundle_describes_itself() -> None:
