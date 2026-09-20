@@ -1,6 +1,6 @@
 [project]
 name = "orthostudio-xp"
-version = "0.1.7"
+version = "0.1.8"
 description = "Orthophoto scenery for X-Plane 12: Ortho4XP's rules, a new architecture, faster."
 readme = "README.md"
 license = "GPL-3.0-or-later"
