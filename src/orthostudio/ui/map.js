@@ -264,9 +264,6 @@ export function createPlanMap(ctx) {
     timer: 0, // the next reading after a failure
   };
   let map = null;
-  /** How the map got its view: "default" (Europe, no tile known yet), "tiles", or "moved" since. */
-  let firstView = null;
-  let fittingView = false;
   let base = null;
   let baseKey = null;
   let zoomControl = null;
@@ -1134,9 +1131,6 @@ export function createPlanMap(ctx) {
     layers.draft = L.layerGroup().addTo(m);
     el.classList.toggle("is-mock", Boolean(ctx.mock));
     el.setAttribute("aria-label", t("map.label"));
-    m.on("movestart", () => {
-      if (!fittingView) firstView = "moved"; // the view is the reader's now: libraryChanged keeps it
-    });
     m.on("moveend", () => {
       renderGrid();
       renderBanner();
@@ -1379,22 +1373,13 @@ export function createPlanMap(ctx) {
     const selected = ctx.tiles();
     const names = selected.length ? selected : installedTiles();
     const cells = names.map(parseTile).filter(Boolean);
-    // Without animation: a view taken again when the library comes jumps rather than flies, and
-    // its move is known for the page's own (the movestart handler of createMap).
-    fittingView = true;
-    try {
-      if (!cells.length) {
-        map.fitBounds(EUROPE, { animate: false });
-        firstView = "default";
-        return;
-      }
-      const bounds = L.latLngBounds([cells[0].lat, cells[0].lon], [cells[0].lat + 1, cells[0].lon + 1]);
-      for (const c of cells) bounds.extend([c.lat, c.lon]).extend([c.lat + 1, c.lon + 1]);
-      map.fitBounds(bounds, { maxZoom: ZONE_MIN_ZOOM, padding: [16, 16], animate: false });
-      firstView = "tiles";
-    } finally {
-      fittingView = false;
+    if (!cells.length) {
+      map.fitBounds(EUROPE);
+      return;
     }
+    const bounds = L.latLngBounds([cells[0].lat, cells[0].lon], [cells[0].lat + 1, cells[0].lon + 1]);
+    for (const c of cells) bounds.extend([c.lat, c.lon]).extend([c.lat + 1, c.lon + 1]);
+    map.fitBounds(bounds, { maxZoom: ZONE_MIN_ZOOM, padding: [16, 16] });
   }
 
   function addZoomControl() {
@@ -2287,9 +2272,6 @@ export function createPlanMap(ctx) {
       renderSizes();
     },
     libraryChanged() {
-      // The page shows its screen before the engine answers: a map drawn before the library came
-      // opened on Europe, and goes to the tiles installed, unless it was moved meanwhile.
-      if (map && firstView === "default" && installedTiles().length) setInitialView();
       renderGrid();
     },
     /** The running build moved on: its tiles are drawn again when what it does with them changed

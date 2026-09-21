@@ -101,11 +101,11 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   that no imagery came from that source for this view. Mock mode: a canvas `L.GridLayer`
   painting a neutral grid with the theme's tokens, no request.
 - **Initial view**: the selected tiles, else the installed ones (`GET /api/library`, loaded at
-  boot), else Europe; `fitBounds` with at most zoom 9, without animation. The map is created the
-  first time the Plan is shown (Leaflet needs a visible container) and `invalidateSize()` runs on
-  each return. The page shows its screen before the engine answers (2.5, *The first screen*): a
-  map drawn before the library came opened on Europe, and takes the view of the installed tiles
-  when the library comes, unless it was moved meanwhile (`map.js` `libraryChanged`, `firstView`).
+  boot), else Europe; `fitBounds` with at most zoom 9. The map is created the first time the Plan
+  is shown (Leaflet needs a visible container) and `invalidateSize()` runs on
+  each return. The page shows its screen before the engine answers (2.5, *The first screen*), and
+  the map alone waits for the library's answer, or its failure (`state.libraryKnown`): it opens on
+  the installed tiles as it always did, rather than on Europe first and then jump.
 - **Tile grid** (SVG, pane under the zones): 1° lines for the viewport only from zoom 5; selected
   tiles outlined in the accent colour (blue) and installed tiles in green at every zoom; a tile both
   installed and chosen keeps its green outline and shows its blue one 4px inside it, both 2.5px
@@ -169,7 +169,12 @@ toast says "Tiles unselected: N." Under the chips, a chosen tile that has hand-m
 so, with its files: "-20-044 will be built with your patches: SBCF.patch.osm." (`GET
 /api/patches`, read when the page opens, when the Plan shows and after Settings are saved; a user
 took "Patches: none" in a report for his patch not being found, when it was for another square,
-2026-09-21). Then:
+2026-09-21). A chosen tile already built says so, "+46+007 already built ▸", with what it was built
+with folded under it (the Library's block); what a build now would change (another source, another
+detail level, other colours) is never folded: a warning line under the tile's, a `--help-gap` apart,
+its "!" mark before it and its second line under its first (`app.js` `renderTilesBuilt`), and the
+tile's chip in the warning's colour, which says the same on hover, so that the square a build would
+change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
 
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
@@ -882,11 +887,15 @@ the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
 **The first screen** (2026-09-22): the page shows the screen of its address at once, then fills it
 in as the engine answers. It used to wait for every answer (status, zones, library, sources,
 settings, their schema, jobs) before showing any screen; the menu is wired before that wait, so
-users on Windows, where the status was slow, saw the menu alone until they clicked a tab. The
-Plan's source and detail level, and Settings, are drawn as soon as their own answers are in
-(`boot`, `early`), the map takes its view from the library when it comes, the screen is drawn
-again once every answer is in, and until the status says, Settings reads *Looking for X-Plane 12…*
-rather than *Not detected*. The engine's part is `api.md` (`GET /api/status`, `GET /api/sizes`).
+users on Windows, where the status was slow, saw the menu alone until they clicked a tab. The top
+bar's version and *Quit*, and the banner of an engine older than the page, come from
+`GET /api/engine`, which answers at once (`renderEngine`); the Plan's source and detail level, and
+Settings, are drawn as soon as their own answers are in (`boot`, `early`); the map shows when the
+library has answered, on the installed tiles; the screen is drawn again once every answer is in.
+Only what the status says waits for it: the status bar, the notice of an X-Plane not found, the
+line of the Library that names the X-Plane it speaks of, the checks' banner, and a build already
+running on the map. Until the status says, Settings reads *Looking for X-Plane 12…* rather than
+*Not detected*. The engine's part is `api.md` (`GET /api/status`, `GET /api/sizes`).
 
 **When the engine does not answer** (`renderEngineBanner`): a banner at the top of every screen,
 the same one that announces an engine older than the page. An engine that answers *with an error*

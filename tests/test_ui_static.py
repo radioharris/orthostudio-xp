@@ -2932,33 +2932,54 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_a_chosen_tile_a_build_would_change_is_marked_at_a_glance() -> None:
+    """Under the chips, what a build would change is a warning line; a user asked it to line up
+    and stand apart from the tile's line, and the tile's chip to take its colour (2026-09-22)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "dataset: { tile: name }" in _function_body(app_js, "renderTiles")
+    built = _function_body(app_js, "renderTilesBuilt")
+    assert 'chip.classList.toggle("is-warn", Boolean(change));' in built
+    assert "if (change) chip.title = change;" in built
+    # the text in an element of its own: its second line goes under its first, not under the mark
+    assert 'h("p", { class: "tiles-built-warn" }, h("span", null, change))' in built
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    warn = rules[".tiles-built-warn"]
+    assert "display: flex;" in warn and "padding-left" not in warn
+    assert "gap: var(--help-gap);" in rules[".tiles-built-item"]
+    chip = rules[".chip.is-warn"]
+    assert "var(--warn)" in chip and "var(--warn-soft)" in chip
+
+
 def test_the_screen_shows_before_the_engine_answers() -> None:
     """Users on Windows saw the menu alone until they clicked it: the page waited for every answer
     of the engine before showing a screen, and one of them was slow (2026-09-22). The screen now
-    shows first and fills in: the Plan's source and Settings do not wait for the status, the map
-    drawn before the library takes its first view from it, and the sizes come on their own."""
+    shows first and fills in: the top bar, the Plan's source and Settings do not wait for the
+    status, the map waits for the library alone, and the sizes come on their own."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     boot = _function_body(app_js, "boot")
     wait = boot.index("await Promise.allSettled([")
     assert boot.index("routeFromHash();") < wait < boot.rindex("routeFromHash();")
-    early = boot[
-        boot.index("const early = Promise.allSettled([providers, settings, schema])") : wait
-    ]
+    first = boot.index("const early = Promise.allSettled([providers, settings, schema])")
+    early = boot[first:wait]
     assert 'renderProviders(state.settings?.essential?.provider || "BI");' in early
     assert 'if (state.screen === "settings") renderSettings();' in early
-    assert "planMap.libraryChanged();" in boot[wait:]
+    # the top bar from the engine's quick answer, not from the status
+    assert 'api("GET", "/api/engine").then(renderEngine, () => {});' in boot[:wait]
+    engine = _function_body(app_js, "renderEngine")
+    assert "if (!e || state.status) return;" in engine and "renderEngineBanner();" in engine
+    # the map waits for the library, to open on the tiles installed rather than on Europe first
+    library = boot[boot.index('api("GET", "/api/library")') :]
+    finished = library[library.index(".finally(() => {") :]
+    assert "state.libraryKnown = true;" in finished
+    assert 'if (state.screen === "plan") planMap.show();' in finished
+    assert "if (state.libraryKnown) planMap?.show();" in _function_body(app_js, "showScreen")
     status = _function_body(app_js, "loadStatus")
     assert "  loadSizes();" in status  # not awaited
     sizes = _function_body(app_js, "loadSizes")
     assert 'api("GET", "/api/sizes")' in sizes and "renderDiskSizes();" in sizes
     assert "renderStatus()" not in sizes  # the checks' open fold stays open
     assert "renderDiskSizes();" in _function_body(app_js, "renderStatus")
-    assert 'if (p === "/api/sizes")' in app_js  # the mock engine answers it too
-    map_js = (UI / "map.js").read_text(encoding="utf-8")
-    assert (
-        'if (map && firstView === "default" && installedTiles().length) setInitialView();' in map_js
-    )
-    assert 'if (!fittingView) firstView = "moved";' in map_js
+    assert 'if (p === "/api/sizes")' in app_js and 'if (p === "/api/engine")' in app_js  # mock
     # until the status comes, X-Plane is looked for, not "not detected"
     settings_js = (UI / "settings.js").read_text(encoding="utf-8")
     assert 'let detected = t("settings.q.xplane_looking");' in settings_js

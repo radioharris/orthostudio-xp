@@ -381,6 +381,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   width: 18px; height: 18px; border-radius: 50%; font-size: 14px; line-height: 1; padding: 0;
 }
 .chip button:hover { background: var(--line); color: var(--fg); }
+/* a chosen square a build would change (app.js renderTilesBuilt): the warning's colour */
+.chip.is-warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
 
 /* ----------------------------------------------------------- plan panel */
 
@@ -692,11 +694,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* the Library's block, in the narrower column of step 1 */
 .tiles-built-detail .library-built-head { margin: 2px 0 4px; }
 .tiles-built-detail .kv { grid-template-columns: 6rem 1fr; font-size: var(--fs-2); }
-/* what a build would change: never folded, on its own line, marked so it is not missed */
-.tiles-built-warn { padding-left: 1.2em; color: var(--warn); font-size: var(--fs-2); font-weight: 600; }
+/* the tile's line, what it was built with when unfolded, and the warning: apart like a help text */
+.tiles-built-item { display: grid; gap: var(--help-gap); }
+/* what a build would change: never folded, on its own line, marked so it is not missed; under the
+   tile's line, and a second line of it under its first, not under the mark (a user, 2026-09-22) */
+.tiles-built-warn { display: flex; align-items: baseline; gap: 6px; color: var(--warn); font-size: var(--fs-2); font-weight: 600; }
 .tiles-built-warn::before {
-  content: "!"; display: inline-grid; place-items: center; width: 1.25em; height: 1.25em;
-  margin-right: 6px; border-radius: 50%; font-size: 0.85em; line-height: 1;
+  content: "!"; flex: none; display: inline-grid; place-items: center; width: 1.25em; height: 1.25em;
+  border-radius: 50%; font-size: 0.85em; line-height: 1;
   background: var(--warn); color: var(--bg);
 }
 

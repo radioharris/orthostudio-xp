@@ -189,6 +189,9 @@ const state = {
   log: [],
   source: null,
   library: [],
+  /** GET /api/library answered at boot, or failed: the map waits for it, to open on the tiles
+   * installed rather than on Europe and then jump (app.js boot). */
+  libraryKnown: false,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -1012,6 +1015,11 @@ export async function mockApi(method, path, body, options = {}) {
   if (p === "/api/reveal" && method === "POST") {
     if (!String(body?.path || "").startsWith("/")) throw mockError(403, "SYS_FORBIDDEN_PATH", `${body?.path} is not a folder of OrthoStudio XP, of X-Plane or of a tile of the library.`, "The page only shows the folders OrthoStudio XP works with.");
     return { revealed: body.path };
+  }
+  if (p === "/api/engine") {
+    // Like the engine: who serves, answered at once, even when the status is slow (fail=slow-status).
+    const status = await mockFile("status");
+    return { version: status.version, api_level: status.api_level, can_quit: status.can_quit, active_job: mockActiveRun()?.doc.id ?? null, engine: { root: "/mock", pid: 0 } };
   }
   if (p === "/api/update") {
     // `?mock=1&update=0.1.10`: that version is out, so the banner can be seen without a release.
@@ -2071,7 +2079,7 @@ function showScreen(name, arg) {
     loadPatches();
     renderPlanSettings();
     if (state.tiles.length) planChanged(); // the free disk space may have changed meanwhile
-    planMap?.show();
+    if (state.libraryKnown) planMap?.show(); // else boot shows it when the library answers
   }
 }
 
@@ -2106,6 +2114,16 @@ async function loadStatus() {
   renderEngineBanner();
   renderStatus();
   loadSizes(); // not awaited: measuring the disk must hold nothing back
+}
+
+/** GET /api/engine at boot: the top bar's version and Quit, and whether the engine is older than
+ * the page, before the status comes (the status says it all again). */
+function renderEngine(e) {
+  if (!e || state.status) return; // the status came first: it has said it
+  $("brand-version").textContent = e.version ? `v${e.version}` : "";
+  $("quit-btn").hidden = !e.can_quit;
+  state.engineOutdated = (Number(e.api_level) || 1) < PAGE_API_LEVEL;
+  renderEngineBanner();
 }
 
 /** The sizes of the status bar, asked whenever the status is: after a build or a library action
@@ -2493,7 +2511,7 @@ function renderTiles() {
   const box = clear($("tile-chips"));
   for (const name of state.tiles) {
     box.append(
-      h("span", { class: "chip" }, name, h("button", { type: "button", "aria-label": t("plan.remove_tile", { tile: name }), onclick: () => removeTile(name) }, "×")),
+      h("span", { class: "chip", dataset: { tile: name } }, name, h("button", { type: "button", "aria-label": t("plan.remove_tile", { tile: name }), onclick: () => removeTile(name) }, "×")),
     );
   }
   $("tile-count").textContent = state.tiles.length ? t("plan.tile_count", { n: state.tiles.length }) : t("plan.tile_none");
@@ -2526,6 +2544,7 @@ function renderTilesBuilt() {
     const p = state.providers.find((x) => x.code === code);
     return p ? sourceLabel(p) : code;
   };
+  const warned = new Map(); // tile -> what a build would change, for its chip
   for (const name of state.tiles) {
     const rows = state.library.filter((r) => r.tile === name && (r.kind == null || r.kind === "ortho"));
     const e = rows.find((r) => r.installed) || rows[0];
@@ -2554,12 +2573,22 @@ function renderTilesBuilt() {
     // the square's colours, against those the tile was built with: the Library's own test, so the
     // two say the same (a user moved a slider and was told nothing here, 2026-09-21)
     if (photoDiffers(e)) changes.push(t("plan.built_colours"));
+    const change = changes.length ? t("plan.built_change", { changes: changes.join(t("plan.built_and")) }) : null;
+    if (change) warned.set(name, change);
     box.append(
       h("div", { class: "tiles-built-item" },
         h("p", { class: "tiles-built-line" }, toggle),
         detail,
-        changes.length ? h("p", { class: "tiles-built-warn" }, t("plan.built_change", { changes: changes.join(t("plan.built_and")) })) : null),
+        change ? h("p", { class: "tiles-built-warn" }, h("span", null, change)) : null),
     );
+  }
+  // Its chip in the warning's colour, what it says on hover: the square a build would change is
+  // found at a glance among the chosen ones (a user asked, 2026-09-22).
+  for (const chip of $("tile-chips").querySelectorAll(".chip")) {
+    const change = warned.get(chip.dataset.tile);
+    chip.classList.toggle("is-warn", Boolean(change));
+    if (change) chip.title = change;
+    else chip.removeAttribute("title");
   }
 }
 
@@ -5136,6 +5165,10 @@ async function boot() {
   // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu
   // alone until they clicked it (2026-09-22).
   routeFromHash();
+  // Who serves, answered at once: the version, Quit, and the banner of an engine older than the
+  // page do not wait for the status. An engine without the route (before API level 14) says
+  // nothing here, and the status says it.
+  api("GET", "/api/engine").then(renderEngine, () => {});
   const providers = api("GET", "/api/providers").then((p) => {
     state.providers = Array.isArray(p) ? p : p.providers || [];
   });
@@ -5156,11 +5189,16 @@ async function boot() {
   const results = await Promise.allSettled([
     loadStatus(),
     planMap.load(),
-    api("GET", "/api/library").then((l) => {
-      state.library = Array.isArray(l) ? l : [];
-      renderTilesBuilt(); // the squares chosen before the library arrived
-      planMap.libraryChanged(); // the map shown before it: its green tiles, and its first view
-    }),
+    api("GET", "/api/library")
+      .then((l) => {
+        state.library = Array.isArray(l) ? l : [];
+        renderTilesBuilt(); // the squares chosen before the library arrived
+      })
+      .finally(() => {
+        // The map opens on the tiles installed, as it always did, rather than on Europe first.
+        state.libraryKnown = true;
+        if (state.screen === "plan") planMap.show();
+      }),
     providers,
     settings,
     schema,
