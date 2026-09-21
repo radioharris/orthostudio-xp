@@ -3674,3 +3674,12 @@ def test_importing_ortho4xp_tiles_is_one_step_and_says_where_it_looked() -> None
         assert tables[lang]["library.import_none"] and tables[lang]["library.import_choose_first"]
     # the help says which folder before anything else
     assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
+
+
+def test_my_sources_is_a_button_that_can_be_seen() -> None:
+    """A user could not find "My sources…" in the Plan at all: it was a quiet button, with no
+    border, grey text and the panel's own background, so it did not read as a button
+    (2026-09-21)."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    tag = html[html.index('id="sources-open"') - 120 : html.index('id="sources-open"')]
+    assert "btn-quiet" not in tag and "btn btn-small" in tag
