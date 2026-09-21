@@ -198,7 +198,15 @@
 
         <!-- Step 3 -->
         <section class="plan-step" aria-labelledby="step3-title">
-          <h2 class="plan-step-title" id="step3-title"><span class="plan-step-num" aria-hidden="true">3</span><span data-i18n="step3.title">Check what it will cost</span></h2>
+          <!-- The step's own state beside its title, where it takes no room (app.js renderPlanPanel). -->
+          <div class="plan-step-head">
+            <h2 class="plan-step-title" id="step3-title"><span class="plan-step-num" aria-hidden="true">3</span><span data-i18n="step3.title">Check what it will cost</span></h2>
+            <div class="actions estimate-actions">
+              <button type="button" class="btn btn-small" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
+              <span class="spinner" id="estimate-spinner" hidden aria-hidden="true"></span>
+              <span class="help" id="estimate-status"></span>
+            </div>
+          </div>
           <p class="plan-step-lead" data-i18n="step3.lead">Disk space, download and time, worked out before anything is built.</p>
           <div class="plan-xplane" id="plan-xplane" role="status" hidden>
             <p id="plan-xplane-text"></p>
@@ -207,11 +215,6 @@
           <div class="plan-settings">
             <p class="help" id="plan-settings-summary" aria-live="polite"></p>
             <button type="button" class="btn btn-small" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
-          </div>
-          <div class="actions estimate-actions">
-            <button type="button" class="btn btn-small" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
-            <span class="spinner" id="estimate-spinner" hidden aria-hidden="true"></span>
-            <span class="help" id="estimate-status"></span>
           </div>
           <div class="plan-error" id="plan-error" role="alert" hidden></div>
           <div id="plan-panel" class="plan-panel">

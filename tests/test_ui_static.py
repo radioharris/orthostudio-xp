@@ -2668,7 +2668,7 @@ def test_step_3_says_when_x_plane_is_not_found() -> None:
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     assert '<div class="plan-error" id="plan-error" role="alert" hidden></div>' in html
     assert 'id="plan-xplane-choose" data-i18n="plan.xplane_choose"' in html
-    assert html.index('id="plan-xplane"') < html.index('id="estimate-btn"')
+    assert html.index('id="plan-xplane"') < html.index('id="plan-panel"')  # above the cost
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert "renderPlanXplane();" in _function_body(app_js, "renderStatus")
     assert "renderPlanXplane();" in _function_body(app_js, "renderPlanSettings")
@@ -3884,6 +3884,22 @@ def test_the_mock_has_a_folder_of_patches() -> None:
     assert got["saved"]["ok"]["exists"] is True
     assert got["empty"]["ok"]["tiles"] == {}
     assert got["missing"]["ok"]["exists"] is False
+
+
+def test_step_3_says_it_is_working_beside_its_title() -> None:
+    """The spinner, "Working out the cost…" and *Estimate again* had a line of their own under
+    the build settings, kept 24px high so the cost did not jump when it showed: most of the time
+    it stood as 24px of nothing between the settings and the cost (a user, 2026-09-21). Beside
+    the step's title they take no room, and nothing jumps either."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    head = html[html.index('<div class="plan-step-head">') :]
+    head = head[: head.index('<p class="plan-step-lead" data-i18n="step3.lead">')]
+    for part in ("step3-title", "estimate-btn", "estimate-spinner", "estimate-status"):
+        assert f'id="{part}"' in head, part
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "min-height" not in rules.get(".estimate-actions", "")
+    assert "margin: 0;" in rules[".plan-step-head > .estimate-actions"]
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:

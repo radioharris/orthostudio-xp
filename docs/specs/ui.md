@@ -322,7 +322,9 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   when the Plan is shown again (the free disk space may have changed). One estimate takes 0.1 to
   0.5 s for one to six tiles on an M4 Pro. Until the answer, the figures of before stay, dimmed,
   with "Working out the cost…"; an answer older than the last change is dropped (`planChanged`,
-  `estimate`). There is no button: *Estimate again* shows only after a refusal. The answer gives
+  `estimate`). There is no button: *Estimate again* shows only after a refusal. That state sits
+  beside the step's title, where it takes no room: on a line of its own under the build settings
+  it stood as 24px of nothing between them and the cost (a user, 2026-09-21). The answer gives
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");

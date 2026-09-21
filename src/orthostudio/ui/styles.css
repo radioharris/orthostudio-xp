@@ -391,8 +391,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .actions-build + .help { margin-top: var(--help-gap); }
 #build-note.is-fail { color: var(--fail); }
 #build-queue { margin-top: 0; }
-/* Step 3 follows the Plan by itself: while the cost is worked out again, the figures of before are dimmed. */
-.estimate-actions { margin-top: var(--gap); min-height: 24px; }
+/* Step 3 follows the Plan by itself: while the cost is worked out again, the figures of before are
+   dimmed, and beside the step's title a spinner says so. On a line of its own under the build
+   settings, that state stood as 24px of nothing between them and the cost (a user, 2026-09-21). */
+.plan-step-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-bottom: var(--title-gap); }
+.plan-step-head > .plan-step-title { margin: 0; flex: 1 1 auto; }
+.plan-step-head > .estimate-actions { margin: 0; flex: none; }
 .plan-panel.is-stale { opacity: 0.55; transition: opacity 0.15s; }
 .plan-panel:empty { display: none; }
 /* A path typed, or chosen with the button beside it (the platform's own folder dialog). */
