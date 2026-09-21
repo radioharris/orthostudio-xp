@@ -2937,7 +2937,8 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     it, each over a wider line of ``--map-casing`` that parts them from each other and from the
     photo: on the same line the green hid the blue, and a thin blue beside the green hardly showed
     (a user chose this drawing, 2026-09-22). Too small on the screen for both, the tile shows the
-    blue."""
+    blue. The outlines are drawn on whole pixels: blended over two, the parting line faded at the
+    zooms where Leaflet leaves the layer between two pixels."""
     if NODE is None:
         pytest.skip("node is not installed")
     map_js = (UI / "map.js").read_text(encoding="utf-8")
@@ -2970,16 +2971,23 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     assert "installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;" in body
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index('className: "osxp-tile-installed"')
-    assert casing < green < body.index('className: "osxp-tile-selected"')
+    green = body.index("className: `osxp-tile-installed${both}`")
+    assert casing < green < body.index("className: `osxp-tile-selected${both}`")
+    assert 'const both = inner ? " is-both" : "";' in body
     assert "for (const b of [box, inner])" in body
     assert "L.rectangle(inner || box," in body
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-installed"]
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-selected"]
-    # 5px under a 3px line, 4px apart: a 1px line each side of each of them
+    # 5px under lines of 2.5px, 4px apart: a line of 1 to 1.5px each side of each of them, which
+    # whole pixels keep at two pixels of a Retina screen wherever the layer lies
     casing_rule = rules[".plan-map .osxp-tile-casing"]
     assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
+    both_rule = ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both"
+    assert "stroke-width: 2.5;" in rules[both_rule]
+    marks = ("selected", "installed", "casing")
+    crisp = ", ".join(f".plan-map .osxp-tile-{mark}" for mark in marks)
+    assert "shape-rendering: crispEdges;" in rules[crisp]
     for theme in (":root", ':root:not([data-theme="light"])', ':root[data-theme="dark"]'):
         assert "--map-casing:" in rules[theme], theme
 

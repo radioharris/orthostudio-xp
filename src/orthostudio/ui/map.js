@@ -1707,11 +1707,12 @@ export function createPlanMap(ctx) {
           layers.tiles.addLayer(L.rectangle(b, { pane: "osxpGrid", className: "osxp-tile-casing", interactive: false, fill: false, weight: 5 }));
         }
       }
+      const both = inner ? " is-both" : "";
       if (installed.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-installed", interactive: false, fill: false, weight: 3 }));
+        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
       }
       if (selected.has(name)) {
-        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: "osxp-tile-selected", interactive: false, fill: false, weight: 3 }));
+        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}`, interactive: false, fill: false, weight: 3 }));
       }
       // Over the others: a tile the running build works on pulses, one waiting for its turn is
       // dashed, a failed one dashed red (buildingTiles in app.js).
