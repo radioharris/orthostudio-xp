@@ -4428,7 +4428,8 @@ const FOLDER_OPENING_TOAST_MS = 800;
 let folderAsked = false;
 
 /** A folder chosen in the platform's own dialog, opened by the engine (POST /api/choose-folder):
- * its path, or null when the user cancelled or no dialog could open (a toast says why).
+ * its path, or null when the user cancelled or no dialog could open (a toast says why, and
+ * `onMissing` runs: the field to type the path in can then be shown).
  *
  * While the dialog opens, a second click says so instead of asking the engine again: nothing
  * showed for seconds on Windows, and the click after it answered "SYS_BUSY: A folder dialog is
@@ -4450,7 +4451,7 @@ function photoSampleUrl(provider, at = null) {
   return { ...where, url: `/api/photo-sample?${q}` };
 }
 
-async function chooseFolder(prompt, start = null) {
+async function chooseFolder(prompt, start = null, onMissing = null) {
   if (folderAsked) {
     toast(t("folder.already_open"));
     return null;
@@ -4462,6 +4463,7 @@ async function chooseFolder(prompt, start = null) {
     return res?.path || null;
   } catch (err) {
     toast(errorMessage(err), "fail");
+    if (errorDetail(err)?.code === "SYS_NO_FOLDER_DIALOG") onMissing?.();
     return null;
   } finally {
     clearTimeout(slow);
@@ -4469,33 +4471,63 @@ async function chooseFolder(prompt, start = null) {
   }
 }
 
+/** The Ortho4XP folder imported last in this session. */
+let ortho4xpFolder = null;
+
+/** Where the import's folder dialog opens: the folder imported last, else the Ortho4XP folder of
+ * the newest imported tile (…/Ortho4XP/Tiles/zOrtho4XP_…), else wherever the dialog likes. */
+export function ortho4xpStart(library = state.library) {
+  if (ortho4xpFolder) return ortho4xpFolder;
+  const rows = libraryTiles(library).filter((e) => e.built_by === "ortho4xp").sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  for (const e of rows) {
+    const m = String(e.path || "").match(/^(.+)[\\/]Tiles[\\/][^\\/]+$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** The field to type the folder in: only where no folder dialog can open (a Linux without zenity
+ * or kdialog, an engine older than the page). */
+function showImportPath() {
+  $("import-path-field").hidden = false;
+  $("import-path").focus();
+}
+
 /**
- * Import in one step. A user pressed Import with the field still empty and nothing happened at all,
- * and could not tell which folder was meant (2026-09-21). With no folder typed, the button opens
- * the folder dialog and imports what was chosen; the answer counts the tiles, not the overlays
- * pack beside them, and says where it looked when it found none.
+ * "Import my Ortho4XP tiles…", one button. A user pressed Import with the field still empty and
+ * nothing happened at all, and could not tell which folder was meant (2026-09-21); the button then
+ * opened the folder dialog when no folder was typed, and "Choose…" beside it did the same: two
+ * buttons for one thing (the same user). It now asks for the folder, then imports it; the answer
+ * counts the tiles, not the overlays pack beside them, names the folder, and says where it looked
+ * when it found none. A cancel changes nothing.
  */
 async function importOrtho4xp(ev) {
   ev.preventDefault();
   const out = $("import-result");
-  let dir = $("import-path").value.trim();
-  if (!dir) {
-    const picked = state.engineOutdated ? null : await chooseFolder(t("library.import_prompt"), null);
-    if (!picked) {
-      // cancelled, or no dialog on this system (whose error has been said): which folder, then
-      out.textContent = t("library.import_choose_first");
+  let dir = null;
+  if (!$("import-path-field").hidden) {
+    dir = $("import-path").value.trim();
+    if (!dir) {
+      out.textContent = t("library.import_type_first");
+      $("import-path").focus();
       return;
     }
-    dir = picked;
-    $("import-path").value = picked;
+  } else if (state.engineOutdated) {
+    showImportPath();
+    out.textContent = t("library.import_type_first");
+    return;
+  } else {
+    dir = await chooseFolder(t("library.import_prompt"), ortho4xpStart(), showImportPath);
+    if (!dir) return;
   }
   out.textContent = t("app.loading");
   try {
     const res = await api("POST", "/api/library/import-ortho4xp", { folder: dir });
+    ortho4xpFolder = dir;
     const entries = Array.isArray(res) ? res : res?.entries || []; // an older engine sent the list
     const tiles = entries.filter((e) => e.kind == null || e.kind === "ortho").length;
     const where = (Array.isArray(res?.searched) && res.searched.length ? res.searched : [dir]).map(homely).join(", ");
-    out.textContent = tiles ? t("library.imported", { n: fmtInt(tiles) }) : t("library.import_none", { where });
+    out.textContent = tiles ? t("library.imported", { n: fmtInt(tiles), where: homely(dir) }) : t("library.import_none", { where });
     await loadLibrary();
     loadStatus();
   } catch (err) {
@@ -4832,10 +4864,6 @@ async function boot() {
   $("build-install-btn").addEventListener("click", () => build(true));
   $("build-only-btn").addEventListener("click", () => build(false));
   $("import-form").addEventListener("submit", importOrtho4xp);
-  $("import-choose").addEventListener("click", async () => {
-    const path = await chooseFolder(t("library.import_prompt"), $("import-path").value.trim() || null);
-    if (path) $("import-path").value = path;
-  });
   $("disk-free").addEventListener("click", freeSpace);
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);

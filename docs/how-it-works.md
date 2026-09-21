@@ -272,9 +272,10 @@ back or built again.
 OrthoStudio XP does not need Ortho4XP: it never runs it and a build never reads an Ortho4XP folder.
 It downloads its own OpenStreetMap data and elevation files. The only time it looks into an Ortho4XP
 folder is when you import the tiles Ortho4XP built there, from the Library (*Import my Ortho4XP
-tiles*) or with `osxp import-ortho4xp <folder>`: they are listed beside yours, can be installed
-and compared, and nothing is written into that folder. *Remove from the list* takes an imported tile
-off the list again (once it is out of X-Plane), and leaves its files where they are.
+tiles…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`: they are listed beside
+yours, can be installed and compared, and nothing is written into that folder. *Remove from the
+list* takes an imported tile off the list again (once it is out of X-Plane), and leaves its files
+where they are.
 
 In `scenery_packs.ini`, OrthoStudio XP puts the overlays just above the photo tiles, both below
 custom airports and object packs (such as simHeaven) and above AutoOrtho and base meshes. Before its

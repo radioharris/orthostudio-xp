@@ -602,11 +602,18 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 Any other error (a network failure included) shows the engine's words, or the page's for the
 codes `i18n.js` knows.
 
-*Import my Ortho4XP tiles* asks for a directory path → `POST /api/library/import-ortho4xp
-{folder}` and shows how many entries were added. The path is typed, or chosen with *Choose…* beside
-the field (user request, 2026-09-15): a page cannot learn the full path of a folder picked in the
-browser, so the engine opens the platform's own folder dialog (`POST /api/choose-folder`, "Choose
-the Ortho4XP folder (the one holding Ortho4XP.py)"), which fills the field. The status bar's count is `library_count`, which counts tiles, not rows.
+*Import my Ortho4XP tiles…* is one button (user report, 2026-09-21: a field, *Choose…* beside it
+and *Import* were two buttons for one thing, and the field left empty imported nothing without a
+word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
+/api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py)": a page cannot learn
+the full path of a folder picked in the browser), starting at the folder imported last, else at
+the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then imports it: `POST
+/api/library/import-ortho4xp {folder}`. The line under the button counts the tiles, not the
+overlays pack beside them, and names the folder ("2 tile(s) imported from ~/Ortho4XP."); finding
+none, it says where it looked (`searched`). A cancel changes nothing. Where no dialog opens (a
+Linux without zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the
+page), the field *Ortho4XP folder* appears and the button imports what is typed in it. The status
+bar's count is `library_count`, which counts tiles, not rows.
 
 ### 2.4 Settings
 
@@ -861,7 +868,7 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), *Choose…* beside the Ortho4XP folder of the Library and
+label for both read as the same button), *Import my Ortho4XP tiles…* in the Library (above) and
 *Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in

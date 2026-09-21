@@ -3689,24 +3689,63 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
             assert tables[lang][key], f"{lang} is missing {key}"
 
 
-def test_importing_ortho4xp_tiles_is_one_step_and_says_where_it_looked() -> None:
+def test_importing_ortho4xp_tiles_is_one_button_that_says_where_it_looked() -> None:
     """A user pressed "Import my Ortho4XP tiles" with the field still empty: nothing happened at
-    all, and he could not tell which folder was meant (2026-09-21). The button now opens the folder
-    dialog when no folder is typed, and imports what was chosen; the answer counts tiles, not the
-    overlays pack beside them, and says where it looked when it found none."""
+    all, and he could not tell which folder was meant (2026-09-21). The button then opened the
+    folder dialog when no folder was typed, and "Choose…" beside it did the same: two buttons for
+    one thing (the same user). One button now asks for the folder and imports it; the field to
+    type it in shows only where no dialog opens. The answer counts tiles, not the overlays pack
+    beside them, names the folder, and says where it looked when it found none."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    form = html[html.index('<form id="import-form"') :]
+    form = form[: form.index("</form>")]
+    assert 'id="import-choose"' not in html and "library.import_choose" not in html
+    assert '<div class="field field-wide" id="import-path-field" hidden>' in form
+    assert form.count("<button") == 1 and 'type="submit"' in form
+    # the answer right under the button, the help after it
+    assert html.index('id="import-result"') < html.index('data-i18n="library.import_help"')
     app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'id="import-choose"' not in app_js and '$("import-choose")' not in app_js
     body = _function_body(app_js, "importOrtho4xp")
-    assert "if (!dir) return;" not in body  # the silent no-op
-    assert 'await chooseFolder(t("library.import_prompt"), null)' in body
-    assert 't("library.import_choose_first")' in body  # cancelled: which folder, then
+    assert "if (!dir) return;" in body  # a cancel changes nothing
+    assert 'await chooseFolder(t("library.import_prompt"), ortho4xpStart(), showImportPath)' in body
+    assert 't("library.import_type_first")' in body  # the field shown and still empty
     assert 'e.kind == null || e.kind === "ortho"' in body  # tiles, not the overlays pack
+    assert 't("library.imported", { n: fmtInt(tiles), where: homely(dir) })' in body
     assert 't("library.import_none", { where })' in body and "res?.searched" in body
     assert "Array.isArray(res) ? res" in body  # an older engine answered with the list alone
+    # no dialog on this system: the field to type the path in is shown
+    choose = _function_body(app_js, "chooseFolder")
+    assert 'if (errorDetail(err)?.code === "SYS_NO_FOLDER_DIALOG") onMissing?.();' in choose
+    assert '$("import-path-field").hidden = false;' in _function_body(app_js, "showImportPath")
     tables = _i18n_tables()
     for lang in ("en", "fr"):
-        assert tables[lang]["library.import_none"] and tables[lang]["library.import_choose_first"]
+        assert "library.import_choose" not in tables[lang]
+        assert "library.import_choose_first" not in tables[lang]
+        assert tables[lang]["library.import"].endswith("…")  # it opens a dialog
+        assert "{where}" in tables[lang]["library.imported"]
+        assert tables[lang]["library.import_none"] and tables[lang]["library.import_type_first"]
     # the help says which folder before anything else
     assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
+
+
+def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
+    rows = [
+        {"tile": "+43+005", "kind": "ortho", "built_by": "osxp", "path": "/t/zOrthoStudio_+43+005",
+         "updated_at": 9},
+        {"tile": "+44+005", "kind": "ortho", "built_by": "ortho4xp", "updated_at": 1,
+         "path": "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005"},
+        {"tile": "+45+005", "kind": "ortho", "built_by": "ortho4xp", "updated_at": 2,
+         "path": "C:\\Ortho4XP-1.40\\Tiles\\zOrtho4XP_+45+005"},
+        {"tile": "+45+005", "kind": "overlay", "built_by": "ortho4xp", "updated_at": 3,
+         "path": "/elsewhere/yOrtho4XP_Overlays"},
+    ]  # fmt: skip
+    got = _node_mock(
+        f"const rows = {json.dumps(rows)};\n"
+        "const got = [rows, rows.slice(0, 2), rows.slice(0, 1), []].map(m.ortho4xpStart);\n"
+        "process.stdout.write(JSON.stringify(got), () => process.exit(0));"
+    )
+    assert got == ["C:\\Ortho4XP-1.40", "/Users/pilot/Ortho4XP", None, None]
 
 
 def test_my_sources_is_a_button_that_can_be_seen() -> None:

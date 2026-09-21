@@ -267,18 +267,17 @@
       <p class="lead" data-i18n="library.lead">The tiles on this computer, and whether X-Plane shows them. Removing a tile from X-Plane keeps its files, so you can add it back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).</p>
     </div>
     <div class="toolbar">
+      <!-- One button: it asks for the folder in the platform's dialog, then imports. The field is
+           shown only where no dialog can open (app.js importOrtho4xp). -->
       <form id="import-form" class="field-row">
-        <div class="field field-wide">
+        <div class="field field-wide" id="import-path-field" hidden>
           <label for="import-path" data-i18n="library.import_path">Ortho4XP folder</label>
-          <div class="path-row">
-            <input id="import-path" type="text" spellcheck="false" placeholder="/Users/…/Ortho4XP">
-            <button type="button" class="btn" id="import-choose" data-i18n="library.import_choose">Choose…</button>
-          </div>
+          <input id="import-path" type="text" spellcheck="false" placeholder="/Users/…/Ortho4XP">
         </div>
-        <button type="submit" class="btn" data-i18n="library.import">Import my Ortho4XP tiles</button>
+        <button type="submit" class="btn" data-i18n="library.import">Import my Ortho4XP tiles…</button>
       </form>
-      <p class="help" data-i18n="library.import_help">The folder holding Ortho4XP.py, not its Tiles folder. Nothing is copied or moved: your tiles stay in that folder, and they are listed here so OrthoStudio XP can put them into X-Plane and take them out again. It never deletes a tile Ortho4XP built.</p>
       <p class="help" id="import-result" aria-live="polite"></p>
+      <p class="help" data-i18n="library.import_help">The folder holding Ortho4XP.py, not its Tiles folder. Nothing is copied or moved: your tiles stay in that folder, and they are listed here so OrthoStudio XP can put them into X-Plane and take them out again. It never deletes a tile Ortho4XP built.</p>
     </div>
     <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
     <div class="library-overlays" id="library-overlays" role="status" hidden></div>
