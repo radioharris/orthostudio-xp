@@ -182,6 +182,14 @@ class PackManifest:
     ``saturation``); empty when they were the plain ones. The page compares them with the square's
     setting and says when the tile in X-Plane no longer matches it (a user, 2026-09-18). The zones
     of the tile may carry others: this is the square's answer."""
+    built: dict[str, Any] = field(default_factory=dict)
+    """What the tile was built with, for the page to say (a user asked where to see it,
+    2026-09-21): the OrthoStudio XP ``version``; the ``relief`` read and the overlays
+    ``relief_laid`` over it, both from the relief artefact itself, and the overlays
+    ``relief_asked``, so that one asked and not laid (Canada's lidar where it never flew) can be
+    told apart from one laid; the hand-made ``patches``; and the ``zones`` that reached the tile.
+    Empty for a pack written before 0.1.10. Only what the build decided: no date, which would make
+    two identical builds different -- the page reads the manifest's own time instead."""
 
     def to_toml(self) -> str:
         lines = [f'format = "{PACK_FORMAT}"', "", "[tile]"]
@@ -199,6 +207,10 @@ class PackManifest:
             lines += ["", "[photo]"]
             for name in sorted(self.photo):
                 lines.append(f"{name} = {_toml_value(self.photo[name])}")
+        if self.built:
+            lines += ["", "[built]"]
+            for name in sorted(self.built):
+                lines.append(f"{name} = {_toml_value(self.built[name])}")
         return "\n".join(lines) + "\n"
 
     @classmethod
@@ -218,6 +230,7 @@ class PackManifest:
             artefacts=artefacts,
             files=dict(doc.get("files", {})),
             photo={k: float(v) for k, v in dict(doc.get("photo", {})).items()},
+            built=dict(doc.get("built", {})),
         )
 
     @property
@@ -237,6 +250,8 @@ def _toml_value(value: Any) -> str:
         return json.dumps(value)  # a JSON string is a valid TOML basic string
     if isinstance(value, list | tuple):
         return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    if isinstance(value, dict):  # an inline table, keys in order so that it never changes
+        return "{ " + ", ".join(f"{k} = {_toml_value(value[k])}" for k in sorted(value)) + " }"
     raise TypeError(f"unsupported manifest value {value!r}")
 
 
@@ -495,6 +510,37 @@ def _upstream(store: Store, key: str, names: dict[str, str], out: dict[str, Arte
                 _upstream(store, ref.key, names, out)
 
 
+def relief_read(store: Store, key: str | None) -> dict[str, Any]:
+    """The relief a DSF was built on, from the relief artefact among its ancestors.
+
+    ``{"relief": base source, "relief_laid": overlays really laid}``, as the relief stage wrote
+    them in its ``meta.json``; empty when there is none to read (a store cleaned since, or a test
+    without one). An overlay asked for that had nothing on the square is not in ``relief_laid``:
+    that is how a lidar relief chosen where the lidar never flew shows for what it is.
+    """
+    if key is None:
+        return {}
+    seen: set[str] = set()
+    todo = [key]
+    with contextlib.suppress(Exception):
+        while todo:
+            current = todo.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            for ref in store.why(current).inputs:
+                if ref.key is None:
+                    continue
+                if ref.name == "dem":
+                    meta = json.loads((store.path(ref.key) / "meta.json").read_text("utf-8"))
+                    return {
+                        "relief": str(meta.get("source", "")),
+                        "relief_laid": [str(x) for x in meta.get("laid_over", [])],
+                    }
+                todo.append(ref.key)
+    return {}
+
+
 _UPSTREAM_NAMES = {"vectors": "vectors", "mesh": "mesh", "masks": "masks", "rasters": "xp12"}
 
 
@@ -511,6 +557,7 @@ def assemble_pack(
     link: bool = True,
     tile_cfg: str = "",
     photo: dict[str, float] | None = None,
+    built: dict[str, Any] | None = None,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact)."""
@@ -531,12 +578,18 @@ def assemble_pack(
             if entry is not None:
                 artefacts[label] = entry
     _upstream(store, dsf.key, _UPSTREAM_NAMES, artefacts)
+    # What the build decided, and the relief the DSF really stands on (``relief_read``). A pack
+    # written again after a repair is given the facts of the one it replaces, so it does not change.
+    facts = {**(built or {})}
+    if built is not None and "relief" not in facts:
+        facts.update(relief_read(store, dsf.key))
     manifest = PackManifest(
         tile=tile.name,
         provider=provider,
         zl=zl,
         artefacts=artefacts,
         photo={k: float(v) for k, v in (photo or {}).items() if v},
+        built=facts,
         files={
             "dsf": tile.dsf_relpath.as_posix(),
             "dsf_size": files.dsf_size,
@@ -1339,6 +1392,10 @@ class PackEnv:
     out_root: Path
     custom_scenery: Path | None = None
     library_path: Path | None = None
+    built: dict[str, Any] | None = None
+    """What the tile is built with (``PackManifest.built``), kept here rather than in the params
+    because the params are the key: a version or a list of patches there would never let a pack be
+    found again."""
 
 
 _ENV: ContextVar[PackEnv | None] = ContextVar("osxp_pack_env", default=None)
@@ -1383,6 +1440,7 @@ def _tile_pack(ctx: RunContext) -> None:
             "contrast": params.photo_contrast,
             "saturation": params.photo_saturation,
         },
+        built=env.built,
     )
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 

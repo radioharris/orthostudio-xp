@@ -31,6 +31,7 @@ from typing import Any, Literal, cast
 import blake3
 from pydantic import Field
 
+from orthostudio import __version__
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
 from orthostudio.dem.sources import (
@@ -1243,8 +1244,35 @@ def _mesh_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     return run
 
 
+def built_facts(spec: BuildSpec) -> dict[str, Any]:
+    """What the build decided for this tile, for its manifest (``PackManifest.built``).
+
+    The overlays of the relief that were *asked for*: the pack adds the relief really read, and the
+    page tells the two apart (a lidar asked for where it never flew, 2026-09-20). The hand-made
+    patches by name, and each zone that reached the tile by its level and its source.
+    """
+    asked = [x for x in str(spec.config.get("custom_dem") or "").split(";")[1:] if x]
+    zones = []
+    for entry in spec.config.get("zone_list") or []:
+        with contextlib.suppress(TypeError, ValueError):
+            _coords, zl, provider = entry
+            zones.append({"zl": int(zl), "provider": str(provider or spec.provider)})
+    return {
+        "version": __version__,
+        "relief_asked": asked,
+        "patches": patch_names(spec.patches_dir, spec.tile),
+        "zones": zones,
+    }
+
+
 def _pack_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
-    penv = PackEnv(env.store, Path(spec.out_dir), spec.custom_scenery, env.library_path)
+    penv = PackEnv(
+        env.store,
+        Path(spec.out_dir),
+        spec.custom_scenery,
+        env.library_path,
+        built=built_facts(spec),
+    )
 
     def run(ctx: NodeContext) -> ArtifactRef:
         with pack_env(penv):
@@ -2276,6 +2304,8 @@ def _verify_effects(
                 "contrast": cast(PackParams, nodes.pack.params).photo_contrast,
                 "saturation": cast(PackParams, nodes.pack.params).photo_saturation,
             },
+            # the facts of the pack it replaces: a repair puts back what was, it decides nothing
+            built=manifest.built or None,
         )
         repaired.append("pack")
     installed = False
