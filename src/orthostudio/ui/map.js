@@ -989,8 +989,40 @@ export function createPlanMap(ctx) {
     if (zs.draft.kind === "shape") finishShape();
   }
 
+  // What a built tile was built with, while the pointer rests on its green outline (a user asked,
+  // 2026-09-21). An element of our own rather than a Leaflet tooltip: those need the outline to be
+  // interactive, and an interactive outline would take the clicks that choose the squares.
+  let tip = null;
+
+  function hideTip() {
+    if (tip) tip.hidden = true;
+  }
+
+  function showTip(ev) {
+    const lat = Math.floor(clampLat(ev.latlng.lat));
+    const lon = Math.floor(wrapLon(ev.latlng.lng));
+    const name = tileName(lat, lon);
+    const text = installedTiles().includes(name) ? ctx.builtSummary?.(name) : null;
+    if (!text) return hideTip();
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "map-tip";
+      tip.setAttribute("role", "tooltip");
+      map.getContainer().append(tip);
+    }
+    tip.textContent = text;
+    tip.hidden = false;
+    const p = ev.containerPoint;
+    tip.style.left = `${p.x + 14}px`;
+    tip.style.top = `${p.y + 14}px`;
+  }
+
   function onMapMouseMove(ev) {
-    if (!zs.draft || !band) return;
+    if (!zs.draft || !band) {
+      showTip(ev);
+      return;
+    }
+    hideTip(); // drawing a zone: the tip would sit in the way
     const oe = ev.originalEvent || {};
     let cursor = ev.latlng;
     if (zs.draft.kind === "shape" && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
@@ -1113,6 +1145,7 @@ export function createPlanMap(ctx) {
     m.on("click", onMapClick);
     m.on("dblclick", onMapDblClick);
     m.on("mousemove", onMapMouseMove);
+    m.on("mouseout", hideTip);
     m.on("mouseout", () => renderBand(null));
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {

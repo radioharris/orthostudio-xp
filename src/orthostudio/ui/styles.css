@@ -611,6 +611,19 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* ----------------------------------------------------------- library */
 
 .library-zl { color: var(--fg-3); font-size: 11.5px; }
+/* Under the chosen squares: those already built, and what a build now would change. */
+.tiles-built:empty { display: none; }
+.tiles-built { margin: 6px 0 0; display: grid; gap: 4px; }
+.tiles-built-line { margin: 0; }
+.tiles-built-line strong { color: var(--warn); font-weight: 600; }
+
+/* The map's own tooltip over a built tile (map.js showTip): it follows the pointer and never
+ * takes a click, which belongs to choosing the squares. */
+.map-tip {
+  position: absolute; z-index: 800; pointer-events: none; max-width: 360px;
+  padding: 4px 8px; border-radius: var(--radius); font-size: 12px; line-height: 1.35;
+  background: var(--fg); color: var(--bg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
 /* What a tile was built with (app.js builtLines): the "built by" cell opens a row under it. */
 .built-toggle {
   font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer;

@@ -2363,6 +2363,38 @@ function renderTiles() {
   renderSourceOptions(); // the countries' sources that cover the tiles come first
   $("tiles-clear").hidden = !state.tiles.length;
   planMap?.tilesChanged();
+  renderTilesBuilt();
+}
+
+/**
+ * Under the chosen squares, those already built, what with, and what a build now would change
+ * (a user asked to see it where he decides to build again, 2026-09-21). The imagery source and
+ * the detail level are the Plan's own, so they are the two compared; a build here never touches a
+ * tile Ortho4XP built, which gets a tile of OrthoStudio XP's beside it.
+ */
+function renderTilesBuilt() {
+  const box = $("tiles-built");
+  if (!box) return;
+  clear(box);
+  const provider = $("provider-select")?.value;
+  const zl = Number($("zl-select")?.value) || 0;
+  for (const name of state.tiles) {
+    const summary = builtSummary(name);
+    if (!summary) continue;
+    const line = h("p", { class: "help tiles-built-line" }, t("plan.built_already", { summary }));
+    const rows = state.library.filter((r) => r.tile === name && (r.kind == null || r.kind === "ortho"));
+    const e = rows.find((r) => r.installed) || rows[0];
+    if (e?.built_by === "osxp") {
+      const changes = [];
+      if (provider && e.provider && provider !== e.provider) {
+        const named = (code) => { const p = state.providers.find((x) => x.code === code); return p ? sourceLabel(p) : code; };
+        changes.push([named(provider), named(e.provider)]);
+      }
+      if (zl && e.zl && zl !== Number(e.zl)) changes.push([`ZL${zl}`, `ZL${e.zl}`]);
+      for (const [now, was] of changes) line.append(" ", h("strong", null, t("plan.built_change", { now, was })));
+    }
+    box.append(line);
+  }
 }
 
 function addTilesFromText() {
@@ -3689,6 +3721,7 @@ async function loadLibrary() {
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
+    renderTilesBuilt(); // the chosen squares a build has just made, or a delete has just taken
     // The status bar counts the same tiles: a build that ends or installs a tile, a tile deleted,
     // show at once there too (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
     if (state.status) {
@@ -3936,6 +3969,19 @@ export function builtLines(e, providers = []) {
     lines.push([t("library.built_patches"), (facts.patches || []).length ? facts.patches.join(", ") : t("library.built_none")]);
   }
   return { head, lines };
+}
+
+/** One line for the map's tooltip over a built tile: what it was built with, the tile's own name
+ * first. The row X-Plane shows wins when a tile was built into two folders. */
+export function builtSummary(name, library = state.library, providers = state.providers) {
+  const rows = library.filter((r) => r.tile === name && (r.kind == null || r.kind === "ortho"));
+  const e = rows.find((r) => r.installed) || rows[0];
+  if (!e) return null;
+  if (e.built_by !== "osxp") return `${name} · ${t("library.by_ortho4xp")}`;
+  const source = providers.find((p) => p.code === e.provider);
+  const facts = e.built?.facts || {};
+  const parts = [name, source ? sourceLabel(source) : e.provider, e.zl ? `ZL${e.zl}` : null, facts.relief ? reliefSentence(facts) : null];
+  return parts.filter(Boolean).join(" · ");
 }
 
 /** The unfolded part of a Library row: the head line, then the facts. */
@@ -4687,6 +4733,7 @@ async function boot() {
   $("source-try").addEventListener("click", trySource);
   $("sources-form").addEventListener("submit", addSource);
   $("provider-select").addEventListener("change", () => {
+    renderTilesBuilt();
     renderProviderAttribution();
     renderSourceCoverage();
     renderZlOptions();
@@ -4694,6 +4741,7 @@ async function boot() {
     planMap?.planChanged();
   });
   $("zl-select").addEventListener("change", () => {
+    renderTilesBuilt();
     planChanged();
     planMap?.planChanged();
   });
@@ -4753,6 +4801,7 @@ async function boot() {
     planProvider: () => $("provider-select").value,
     planZl: () => Number($("zl-select").value),
     library: () => state.library,
+    builtSummary,
     building: () => buildingOnMap(),
     engineOutdated: () => Boolean(state.engineOutdated),
     photoSliders,
@@ -4772,6 +4821,7 @@ async function boot() {
     planMap.load(),
     api("GET", "/api/library").then((l) => {
       state.library = Array.isArray(l) ? l : [];
+      renderTilesBuilt(); // the squares chosen before the library arrived
     }),
     api("GET", "/api/providers").then((p) => {
       state.providers = Array.isArray(p) ? p : p.providers || [];

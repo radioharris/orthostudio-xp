@@ -3573,3 +3573,64 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     # focus comes back to a row by its place among the tiles, not among the parts under them
     assert 'classList.contains("library-built")' in _function_body(app_js, "libraryRows")
     assert "body.append(...libraryRow(e));" in _function_body(app_js, "renderLibrary")
+
+
+def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
+    """Where the user decides to build again (2026-09-21): a tooltip over a built tile's green
+    outline, and under the chosen squares a line for each one already built, with what a build
+    now would change of the Plan's own two choices, the imagery source and the detail level."""
+    got = _node_json(
+        "app.js",
+        """(() => {
+          const facts = {version: "0.1.10", relief: "COP30", relief_laid: [],
+                         relief_asked: ["HRDEM"]};
+          const library = [
+            {tile: "+43+005", kind: "ortho", built_by: "osxp", installed: true, provider: "BI",
+             zl: 16, built: {facts, at: 1}},
+            {tile: "+43+005", kind: "overlay", built_by: "osxp", installed: true},
+            {tile: "+44+005", kind: "ortho", built_by: "ortho4xp", installed: true, provider: "",
+             zl: 0, built: null},
+          ];
+          const providers = [{code: "BI", name: "Bing Maps"}];
+          return {
+            ours: m.builtSummary("+43+005", library, providers),
+            imported: m.builtSummary("+44+005", library, providers),
+            none: m.builtSummary("+40+010", library, providers),
+          };
+        })()""",
+    )
+    assert got == {
+        "ours": "+43+005 · Bing Maps · ZL16 · "
+        "Copernicus: Canada's lidar asked, none on this square",
+        "imported": "+44+005 · Ortho4XP",
+        "none": None,
+    }
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    # said again whenever what it depends on changes: the squares, the library, source and level
+    assert "renderTilesBuilt();" in _function_body(app_js, "renderTiles")
+    assert "renderTilesBuilt();" in _function_body(app_js, "loadLibrary")
+    boot = _function_body(app_js, "boot")
+    assert boot.count("renderTilesBuilt();") >= 3  # library at boot, source, level
+    built = _function_body(app_js, "renderTilesBuilt")
+    assert 't("plan.built_change", { now, was })' in built
+    assert 'e?.built_by === "osxp"' in built  # an Ortho4XP tile is never built again here
+
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+
+    def nested(name: str) -> str:
+        """A function of the map's factory, indented two spaces, to its closing brace."""
+        match = re.search(rf"\n  function {name}\(.*?\n  \}}\n", map_js, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    tip = nested("showTip")
+    assert "ctx.builtSummary?.(name)" in tip and "installedTiles().includes(name)" in tip
+    # an element of the map's own: a Leaflet tooltip needs the outline to be interactive, and an
+    # interactive outline would take the clicks that choose the squares
+    assert "bindTooltip" not in tip
+    assert "hideTip();" in nested("onMapMouseMove")  # not while drawing a zone
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "pointer-events: none" in css[css.index(".map-tip {") :][:300]
+    for lang in ("en", "fr"):
+        tables = _i18n_tables()
+        assert tables[lang]["plan.built_already"] and tables[lang]["plan.built_change"]
