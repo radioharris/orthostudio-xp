@@ -616,6 +616,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .tiles-built { margin: 6px 0 0; display: grid; gap: 4px; }
 .tiles-built-line, .tiles-built-detail, .tiles-built-warn { margin: 0; }
 .tiles-built-detail { padding-left: 1.2em; }
+/* the Library's block, in the narrower column of step 1 */
+.tiles-built-detail .library-built-head { margin: 2px 0 4px; font-size: 12px; }
+.tiles-built-detail .kv { grid-template-columns: 6rem 1fr; font-size: 12.5px; }
 /* what a build would change: never folded, on its own line, marked so it is not missed */
 .tiles-built-warn { padding-left: 1.2em; color: var(--warn); font-size: 12.5px; font-weight: 600; }
 .tiles-built-warn::before {

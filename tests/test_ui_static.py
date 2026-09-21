@@ -3613,7 +3613,7 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     assert boot.count("renderTilesBuilt();") >= 3  # library at boot, source, level
     built = _function_body(app_js, "renderTilesBuilt")
     # short by default: what it was built with is folded, and stays as the user left it
-    assert 'class: "help tiles-built-detail", hidden: !open' in built
+    assert 'class: "tiles-built-detail", hidden: !open }, builtBlock(e)' in built  # as the Library
     assert "tilesBuiltOpen.has(name)" in built
     # what a build would change is never folded: it has to be read before Build is pressed
     warn = built[built.index('class: "tiles-built-warn"') - 120 :]

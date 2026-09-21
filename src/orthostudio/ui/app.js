@@ -2397,7 +2397,9 @@ function renderTilesBuilt() {
       continue;
     }
     const open = tilesBuiltOpen.has(name);
-    const detail = h("p", { class: "help tiles-built-detail", hidden: !open }, builtSummary(name, state.library, state.providers, false));
+    // the very block the Library unfolds: the two places say the same thing, zones and colours
+    // included (a user asked for them here too, 2026-09-21)
+    const detail = h("div", { class: "tiles-built-detail", hidden: !open }, builtBlock(e));
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
     const toggle = h("button", { type: "button", class: "built-toggle", title: t("plan.built_details"), "aria-expanded": open ? "true" : "false" }, t("plan.built_tile", { tile: name }), " ", chevron);
     toggle.addEventListener("click", () => {
