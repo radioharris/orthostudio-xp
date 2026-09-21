@@ -2374,9 +2374,9 @@ const tilesBuiltOpen = new Set();
  * to see it where he decides to build again, 2026-09-21). Short by default, since several squares
  * are often chosen: one line per tile, and what it was built with folded under it. What a build
  * would change is never folded: it is the one part that asks something of the user, and it has to
- * be read before Build is pressed. The imagery source and the detail level are the Plan's own, so
- * they are the two compared; a build here never touches a tile Ortho4XP built, which gets a tile of
- * OrthoStudio XP's beside it.
+ * be read before Build is pressed. Compared: the Plan's own two choices, the imagery source and the
+ * detail level, and the square's colours; a build here never touches a tile Ortho4XP built, which
+ * gets a tile of OrthoStudio XP's beside it.
  */
 function renderTilesBuilt() {
   const box = $("tiles-built");
@@ -2413,6 +2413,9 @@ function renderTilesBuilt() {
     const changes = [];
     if (provider && e.provider && provider !== e.provider) changes.push(t("plan.built_instead", { now: named(provider), was: named(e.provider) }));
     if (zl && e.zl && zl !== Number(e.zl)) changes.push(t("plan.built_instead", { now: `ZL${zl}`, was: `ZL${e.zl}` }));
+    // the square's colours, against those the tile was built with: the Library's own test, so the
+    // two say the same (a user moved a slider and was told nothing here, 2026-09-21)
+    if (photoDiffers(e)) changes.push(t("plan.built_colours"));
     box.append(
       h("div", { class: "tiles-built-item" },
         h("p", { class: "tiles-built-line" }, toggle),
@@ -4488,6 +4491,8 @@ function renderPlanSettings() {
  * writes the **squares'**: one square selected changes that one, six change the six -- which is
  * also "one colour for this build" (a user, 2026-09-18). */
 function renderTileColours() {
+  // a colour moved changes what a build of a tile already built would make: said with the rest
+  renderTilesBuilt();
   const box = clear($("tile-colours"));
   const select = $("tile-colours-select");
   const help = $("tile-colours-help");
