@@ -548,8 +548,13 @@ ambiguous when the tile was built into two output folders):
   its next start);
 - built by OrthoStudio XP only: *Delete…* (danger style), after the confirmation below →
   `POST /api/library/{name}/delete`. OrthoStudio XP never deletes a tile of Ortho4XP;
+- imported from Ortho4XP, in its place: *Remove from the list* → `POST /api/library/{name}/forget`
+  (user request, 2026-09-21): the Library forgets the tile and its files stay where Ortho4XP put
+  them; a toast says so. Disabled while the tile is in X-Plane, with a tooltip saying to remove it
+  from X-Plane first: off the list, the Library could no longer take it out;
 - files missing (`present === false`): no X-Plane button, only *Delete…* (OrthoStudio XP rows); the
-  engine then forgets the tile.
+  engine then forgets the tile. An imported tile still in X-Plane keeps *Remove from X-Plane*, its
+  way to *Remove from the list*.
 
 While a request runs, the row's buttons are disabled (and the row `aria-busy`), across
 re-renders too, so a double click sends nothing twice. When the engine answers, success or
@@ -588,6 +593,8 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 | `XP_RUNNING` (409) | any change while X-Plane runs, a delete of a tile X-Plane does not show included | X-Plane is running: OrthoStudio XP does not change its scenery while it runs. Quit X-Plane, then try again. |
 | `SYS_BUSY` (409) | a delete while a build runs | A build is running: tiles can be deleted only between builds. Wait for the build to finish (see Works), or stop it, then delete the tile again. |
 | `SYS_PACK_NOT_OSXP` (409) | a delete of a pack OrthoStudio XP did not build (nothing is touched) | This tile was not built by OrthoStudio XP, so OrthoStudio XP does not delete it. Nothing was deleted. You can remove it from X-Plane, or delete its folder yourself. |
+| `SYS_PACK_IN_XPLANE` (409) | *Remove from the list* of a tile X-Plane shows (the button is disabled then; another window) | This tile is in X-Plane. Remove it from X-Plane first, then from the list. |
+| `SYS_PACK_NOT_IMPORTED` (409) | *Remove from the list* of a tile OrthoStudio XP built | OrthoStudio XP built this tile. Delete takes it away, and the list with it. |
 | `SYS_WRITE_FAILED` | a deletion stopped halfway (a file held open) | OrthoStudio XP could not delete all of this tile's files. Quit X-Plane and any program that may use them, then delete the tile again: what is already deleted stays deleted. |
 | `SYS_WORKING_DIR_INVALID` (422) | the row's pack is no longer where the library had it | This tile was deleted or moved meanwhile. The list is up to date now. |
 | `XP_PACK_CONFLICT` (409) | X-Plane's folder of that name is something else, or a link to another copy of the tile | X-Plane already has a folder of this name, and it is not this copy of the tile. Remove the other copy from X-Plane, or move or rename that folder in Custom Scenery, then try again. |

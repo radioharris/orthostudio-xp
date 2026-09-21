@@ -217,6 +217,15 @@ class InstallRequest(BaseModel):
     ``None``: the newest row of the name."""
 
 
+class ForgetRequest(BaseModel):
+    """``POST /api/library/{name}/forget``: take an imported tile off the list."""
+
+    model_config = ConfigDict(extra="forbid")
+    xplane_dir: str | None = Field(default=None, max_length=1024)
+    path: str | None = Field(default=None, max_length=4096)
+    """The ``path`` of the library row, as ``GET /api/library`` gives it."""
+
+
 class UninstallRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     xplane_dir: str | None = Field(default=None, max_length=1024)

@@ -34,6 +34,7 @@ from orthostudio.api.models import (
     ChooseFolderRequest,
     CleanRequest,
     DeleteRequest,
+    ForgetRequest,
     ImportRequest,
     InstallRequest,
     JobRequest,
@@ -1532,6 +1533,59 @@ def create_app(
             return await asyncio.to_thread(run)
         except TileInBuildError as err:
             return tile_in_build(err, IN_BUILD_PACK)
+
+    @app.post("/api/library/{name}/forget")
+    async def library_forget(name: str, req: ForgetRequest | None = None) -> Any:
+        """Take a tile imported from Ortho4XP off the list, and touch nothing on the disk: the way
+        back from an import (a user asked, 2026-09-21). Importing the folder again lists it again.
+
+        Refused for a tile OrthoStudio XP built, whose way out is Delete; and while X-Plane shows
+        the tile, whose link the Library would otherwise no longer know to take out.
+        """
+        req = req or ForgetRequest()
+
+        def look() -> tuple[Any, bool]:
+            entry = library_pack(name, path=req.path, library_path=default_library_path())
+            xp = xplane_dir(req.xplane_dir)
+            cs = custom_scenery_dir(xp) if xp is not None else None
+            shown = cs is not None and is_installed(
+                entry.path, cs, library_path=default_library_path()
+            )
+            return entry, shown
+
+        entry, shown = await asyncio.to_thread(look)
+        if entry.built_by == "osxp":
+            return _plain_error(
+                "SYS_PACK_NOT_IMPORTED",
+                f"{entry.tile.name} was built by OrthoStudio XP: Delete takes it away, and the "
+                "list with it.",
+                "Use Delete for a tile OrthoStudio XP built.",
+                status=409,
+                context={"tile": entry.tile.name, "path": str(entry.path)},
+            )
+        if shown:
+            return _plain_error(
+                "SYS_PACK_IN_XPLANE",
+                f"{entry.tile.name} is in X-Plane: taken off the list now, the Library could no "
+                "longer take it out.",
+                "Remove it from X-Plane first, then remove it from the list.",
+                status=409,
+                context={"tile": entry.tile.name, "path": str(entry.path)},
+            )
+
+        def forget() -> dict[str, Any]:
+            with Library(default_library_path()) as lib:
+                n = lib.forget(entry.tile, kind="ortho", path=entry.path)
+                # the overlay row the import wrote goes with the tile's last imported pack: a tile
+                # imported from two Ortho4XP folders keeps it for the other
+                ortho = lib.list(tile=entry.tile, kind="ortho")
+                if not any(r.built_by == "ortho4xp" for r in ortho):
+                    for row in lib.list(tile=entry.tile, kind="overlay"):
+                        if row.built_by == "ortho4xp":
+                            n += lib.forget(entry.tile, kind="overlay", path=row.path)
+            return {"tile": entry.tile.name, "forgotten": n, "path": str(entry.path)}
+
+        return await asyncio.to_thread(forget)
 
     @app.post("/api/library/{name}/delete")
     async def library_delete(name: str, req: DeleteRequest | None = None) -> Any:

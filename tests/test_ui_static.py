@@ -3465,24 +3465,57 @@ def test_the_import_says_it_takes_nothing_from_the_ortho4xp_folder() -> None:
         assert takes not in body, f"the import {takes}s something"
 
 
-def test_a_tile_we_did_not_build_says_why_it_has_no_delete() -> None:
-    """Delete is drawn for tiles OrthoStudio XP built and nothing was drawn for the others, so a
-    user who had just imported his Ortho4XP tiles looked for the button and did not find it
-    (2026-09-20). The lead says it and the "Built by" column says it; neither is where the eye
-    goes. The reason now sits where the button would be, with the whole of it under the
-    pointer."""
+def test_an_imported_tile_can_be_taken_off_the_list() -> None:
+    """Delete is drawn for tiles OrthoStudio XP built; an imported tile first had nothing in its
+    place, then a "not deletable here" (2026-09-20), and a user asked for a way back from an
+    import (2026-09-21). "Remove from the list" forgets the tile and touches nothing on the disk;
+    not while X-Plane shows the tile, which the Library could then no longer take out."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = app_js[app_js.index("const deleteButton = byOsxp") :]
     row = row[: row.index("\n  let missing")]
-    assert 't("library.delete_not_ours")' in row
-    assert 't("library.delete_not_ours_help")' in row
-    assert ": null;" not in row  # what stood there before
+    assert "onclick: () => forgetLibraryTile(e)" in row and 't("library.forget")' in row
+    assert "disabled: busy || Boolean(e.installed)" in row
+    assert 'e.installed ? t("library.forget_installed") : t("library.forget_help")' in row
+    assert "delete_not_ours" not in app_js  # what stood there before
+    # an imported tile still in X-Plane whose files are gone keeps its way out of X-Plane
+    assert "if (e.installed && (present || !byOsxp)) {" in _function_body(app_js, "libraryRow")
+    forget = _function_body(app_js, "forgetLibraryTile")
+    assert 'libraryRequest(e, "forget")' in forget and "runLibraryChange(e," in forget
+    assert 't("library.forgotten", { tile: e.tile })' in forget
+    for code in ("SYS_PACK_IN_XPLANE", "SYS_PACK_NOT_IMPORTED"):
+        assert f"  {code}: () => [" in app_js, code
     tables = _i18n_tables()
     for lang in ("en", "fr"):
-        assert tables[lang]["library.delete_not_ours"]
-        # and it says what to do instead, both halves of it
-        words = tables[lang]["library.delete_not_ours_help"]
-        assert len(words) > 60, f"{lang} says too little"
+        assert "delete_not_ours" not in str(tables[lang])
+        for key in ("forget", "forget_help", "forget_installed", "forgotten", "err_in_xplane",
+                    "err_not_imported", "err_not_imported_remedy"):  # fmt: skip
+            assert tables[lang][f"library.{key}"], (lang, key)
+        assert "{tile}" in tables[lang]["library.forgotten"]
+    # and it says the files stay, with the way back
+    assert "Ortho4XP" in tables["en"]["library.forget_help"]
+    assert "again" in tables["en"]["library.forget_help"]
+
+
+def test_the_mock_takes_an_imported_tile_off_the_list_like_the_engine() -> None:
+    script = """
+    const before = (await call("GET", "/api/library")).ok;
+    const out = {
+      shown: await call("POST", "/api/library/zOrtho4XP_+44+005/forget", {}),
+      built: await call("POST", "/api/library/+43+005/forget", {}),
+      forgot: await call("POST", "/api/library/zOrtho4XP_+44+006/forget", {}),
+      again: await call("POST", "/api/library/zOrtho4XP_+44+006/forget", {}),
+    };
+    const after = (await call("GET", "/api/library")).ok;
+    const kept = new Set(after.map((e) => `${e.kind} ${e.path}`));
+    out.gone = before.filter((e) => !kept.has(`${e.kind} ${e.path}`)).map((e) => [e.tile, e.kind]);
+    process.stdout.write(JSON.stringify(out), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["shown"] == {"status": 409, "code": "SYS_PACK_IN_XPLANE"}
+    assert got["built"] == {"status": 409, "code": "SYS_PACK_NOT_IMPORTED"}
+    assert got["forgot"]["ok"]["tile"] == "+44+006" and got["forgot"]["ok"]["forgotten"] == 1
+    assert got["again"] == {"status": 422, "code": "SYS_WORKING_DIR_INVALID"}
+    assert got["gone"] == [["+44+006", "ortho"]]
 
 
 def test_the_page_says_when_a_newer_version_is_out() -> None:

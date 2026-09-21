@@ -1183,6 +1183,24 @@ export async function mockApi(method, path, body, options = {}) {
     const { tile, kind, provider, zl, path: packPath, name, built_by: builtBy } = row;
     return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched };
   }
+  m = p.match(/^\/api\/library\/([^/]+)\/forget$/);
+  if (m) {
+    // Like the engine: the Library forgets an imported tile, and nothing on the disk changes.
+    if (!mock.library) mock.library = await mockFile("library");
+    const entry = mockLibraryRow(decodeURIComponent(m[1]), body?.path ?? null);
+    if (entry.built_by === "osxp") {
+      throw mockError(409, "SYS_PACK_NOT_IMPORTED", `${entry.tile} was built by OrthoStudio XP: Delete takes it away, and the list with it.`, "Use Delete for a tile OrthoStudio XP built.");
+    }
+    if (entry.installed) {
+      throw mockError(409, "SYS_PACK_IN_XPLANE", `${entry.tile} is in X-Plane: taken off the list now, the Library could no longer take it out.`, "Remove it from X-Plane first, then remove it from the list.");
+    }
+    const before = mock.library.length;
+    mock.library = mock.library.filter((e) => e !== entry);
+    // its overlay row goes with the tile's last imported pack
+    const imported = (e) => e.tile === entry.tile && e.built_by === "ortho4xp";
+    if (!libraryTiles(mock.library).some(imported)) mock.library = mock.library.filter((e) => !(imported(e) && e.kind === "overlay"));
+    return { tile: entry.tile, forgotten: before - mock.library.length, path: entry.path };
+  }
   m = p.match(/^\/api\/library\/([^/]+)\/(install|uninstall|delete)$/);
   if (m) {
     if (!mock.library) mock.library = await mockFile("library");
@@ -4044,7 +4062,9 @@ function libraryRow(e) {
   // Two action columns, so that the buttons line up from row to row. A tile whose files are gone
   // can only be deleted (the engine then forgets it); only OrthoStudio XP deletes the tiles it built.
   let xplaneButton = null;
-  if (present && e.installed) {
+  // An imported tile still in X-Plane whose files are gone keeps its way out of X-Plane: it has no
+  // Delete, and is taken off the list only once out of X-Plane.
+  if (e.installed && (present || !byOsxp)) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
@@ -4054,7 +4074,10 @@ function libraryRow(e) {
   // (2026-09-20). It is now said where the button would be.
   const deleteButton = byOsxp
     ? h("button", { type: "button", class: "btn btn-small btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
-    : h("span", { class: "help", title: t("library.delete_not_ours_help") }, t("library.delete_not_ours"));
+    // the way back from an import: off the list, and nothing on the disk touched (a user asked
+    // for it, 2026-09-21), in place of a "not deletable here" that offered nothing. Not while
+    // X-Plane shows the tile: the Library could no longer take it out.
+    : h("button", { type: "button", class: "btn btn-small", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
   let missing = null;
   if (!present) {
     missing = pill(t("library.missing"), "warn");
@@ -4286,6 +4309,8 @@ const LIBRARY_REFUSALS = {
   SYS_BUSY: () => [t("library.err_busy"), t("library.err_busy_remedy")],
   SYS_TILE_IN_BUILD: () => [t("library.err_in_build"), t("library.err_in_build_remedy")],
   SYS_PACK_NOT_OSXP: () => [t("library.err_not_osxp"), t("library.err_not_osxp_remedy")],
+  SYS_PACK_IN_XPLANE: () => [t("library.err_in_xplane"), t("library.forget_installed")],
+  SYS_PACK_NOT_IMPORTED: () => [t("library.err_not_imported"), t("library.err_not_imported_remedy")],
   SYS_WRITE_FAILED: () => [t("library.err_write_failed"), t("library.err_write_failed_remedy")],
   SYS_WORKING_DIR_INVALID: () => [t("library.err_gone"), t("library.err_gone_remedy")],
   XP_PACK_CONFLICT: () => [t("library.err_conflict"), t("library.err_conflict_remedy")],
@@ -4386,6 +4411,13 @@ async function deleteLibraryTile(e) {
   if (libraryBusy.has(libraryKey(e)) || !(await confirmDelete(e))) return;
   const req = libraryRequest(e, "delete");
   await runLibraryChange(e, () => api("POST", req.path, req.body), (res) => toast(deletedMessage(res?.tile || e.tile, res?.freed_bytes, res?.warning)));
+}
+
+/** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
+ * files stay where Ortho4XP put them. */
+function forgetLibraryTile(e) {
+  const req = libraryRequest(e, "forget");
+  return runLibraryChange(e, () => api("POST", req.path, req.body), () => toast(t("library.forgotten", { tile: e.tile })));
 }
 
 /** How long the folder dialog may take to show before the page says it is on its way (the File

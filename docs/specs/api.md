@@ -81,6 +81,7 @@ by default; tests inject a generator of synthetic events.
 | `POST /api/library/{name}/install` | `{xplane_dir?, link?, path?}` | the install receipt (section 2.3); 409 `SYS_TILE_IN_BUILD` for a pack OrthoStudio XP built whose tile is in the running or a queued job: the end of that build decides what X-Plane shows of the tile (an Ortho4XP pack of the tile stays free) |
 | `POST /api/library/{name}/uninstall` | `{xplane_dir?, path?}` | the uninstall receipt `{removed, pack, overlay_parked, overlay_pack_removed, pack_deleted, ...}` (`install.md` 4.1); 409 `XP_PACK_CONFLICT` when what Custom Scenery holds under that name is not the pack of the row at `path`; 409 `SYS_TILE_IN_BUILD` as for install |
 | `POST /api/library/{name}/delete` | `{xplane_dir?, path?}` | the delete receipt `{format: "osxp-delete-1", name, tile, removed_from_xplane, pack_deleted, freed_bytes, custom_scenery, warning}` (section 2.3, `install.md` 4.2); 409 `SYS_BUSY` while a job is active, 409 `SYS_PACK_NOT_OSXP` for a tile OrthoStudio XP did not build, 409 `XP_RUNNING` while X-Plane runs |
+| `POST /api/library/{name}/forget` | `{xplane_dir?, path?}` | takes a tile imported from Ortho4XP off the list, and changes nothing on the disk: `{tile, forgotten, path}`, `forgotten` the number of rows removed (the pack's, and the tile's `yOrtho4XP_Overlays` rows with the last imported pack of the tile); 409 `SYS_PACK_IN_XPLANE` while X-Plane shows the pack, 409 `SYS_PACK_NOT_IMPORTED` for a tile OrthoStudio XP built (Delete is its way out); 422 `SYS_WORKING_DIR_INVALID` when no such row |
 | `GET /api/disk` | – | what the Library's *Free space* would give back, measured with a dry run: `{store_bytes, unused_bytes, images_bytes, mapcache_bytes, relief_bytes, tiles, building}`; `unused_bytes` is the tile data no pack on disk needs, whatever its age, and `relief_bytes` the elevation cells downloaded and kept (counted apart: a user emptied everything and 1.4 GB of them stayed, 2026-09-18) |
 | `POST /api/clean` | `{images?, relief?}` | frees it: `{format: "osxp-clean-1", freed_bytes, images_freed_bytes, relief_freed_bytes, removed}`; with `images`, the downloaded image pieces and the map background go too, and with `relief` the elevation cells (its own choice: the relief of a square costs far less to fetch again than its imagery). No grace period, so 409 `SYS_BUSY` while a job runs here or another process builds into the store (`Store.building_pids`); no build starts meanwhile |
 | `GET /api/zones` | – | `{format, revision, zones, problems}` and `ETag: "<revision>"` (`map-zones.md` 3): the saved zones read one by one, a problem listed per bad zone, never a refusal of the whole file (200 unless the file cannot be read at all); `revision` `""` and no zone when none was saved |
@@ -186,6 +187,13 @@ Custom Scenery or a copy of another build. The button of that row takes it out; 
 owns is the user's to remove by hand. Without the check, the Uninstall of one row took out the
 other row's link, or deleted its pack when that was built straight into Custom Scenery (an
 uninstall deletes a real folder holding `orthostudio.toml`).
+
+`POST /api/library/{name}/forget` is the way back from an import (a user asked, 2026-09-21): the
+Library forgets the row at `path` (without `path`, the newest row of the name), and every file
+stays where Ortho4XP put it; importing the folder again lists the tile again. Refused while
+X-Plane shows the pack (`SYS_PACK_IN_XPLANE`): off the list, the Library could no longer take
+it out of X-Plane. The page's *Remove from the list* is disabled meanwhile, and an imported
+tile still in X-Plane whose files are gone keeps its *Remove from X-Plane*.
 
 `POST /api/library/{name}/delete` deletes a tile OrthoStudio XP built, for good: `delete_receipt`
 (`pipeline/pack.py`, `install.md` 4.2), the same function as `osxp uninstall --delete`.
@@ -635,7 +643,9 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   Ortho4XP tree, install / uninstall on a copied `Custom Scenery`; delete of an installed tile
   (link, `scenery_packs.ini` lines, folder and rows gone, `warning` null), without an X-Plane, of a
   folder already gone, the refusals (`SYS_PACK_NOT_OSXP` for a Ortho4XP row and a folder without
-  `orthostudio.toml`, `SYS_BUSY` while a job runs), `path` choosing between an Ortho4XP and an
+  `orthostudio.toml`, `SYS_BUSY` while a job runs); forget of an imported tile (its rows gone, its
+  folder byte for byte the same, refused in X-Plane and for an OrthoStudio XP tile, the overlay row
+  kept for a tile imported twice), `path` choosing between an Ortho4XP and an
   OrthoStudio XP row of one tile for delete, install and uninstall (409 `XP_PACK_CONFLICT` when the
   link leads to the other row's pack); `installed` true only for the linked pack; no build while a
   tile is deleted; 415 `SYS_BAD_CONTENT_TYPE` for a form or plain-text body; `size_bytes`,

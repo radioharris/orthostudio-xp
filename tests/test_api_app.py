@@ -448,6 +448,97 @@ async def test_library_import_install_uninstall(
     assert (os.readlink(real) if real.is_symlink() else None) == real_before
 
 
+def _files(root: Path) -> dict[str, bytes | None]:
+    """Every file and folder under ``root``, with the bytes of the files."""
+    return {
+        p.relative_to(root).as_posix(): (p.read_bytes() if p.is_file() else None)
+        for p in sorted(root.rglob("*"))
+    }
+
+
+@pytest.mark.anyio
+async def test_library_forget_takes_an_imported_tile_off_the_list_and_nothing_else(
+    app, home: Path, xplane: Path, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    """A user who imported his Ortho4XP tiles had no way back (2026-09-21): Remove from the list
+    forgets the rows of the import, and every file stays where Ortho4XP put it. Refused while
+    X-Plane shows the tile, and for a tile OrthoStudio XP built, whose way out is Delete."""
+    from orthostudio.install import Library, default_library_path
+    from orthostudio.model import TileRef
+
+    ortho4xp_dir = _ortho4xp_folder(tmp_path)
+    overlay = ortho4xp_dir / "yOrtho4XP_Overlays" / "Earth nav data" / "+40+000" / "+43+005.dsf"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_bytes(b"XPLNEDSF overlay")
+    imported = ortho4xp_dir / "Tiles" / "zOrtho4XP_+43+005"
+    osxp_pack = _osxp_pack(home, "+43+005")  # the same tile, built
+    with Library(default_library_path()) as lib:
+        lib.register(TileRef(43, 5), "BI", 16, osxp_pack, "osxp", {})
+    files = _files(ortho4xp_dir)
+    rows = lambda doc: sorted((r["kind"], r["built_by"]) for r in doc)  # noqa: E731
+    async with client_for(app) as c:
+        r = await c.post("/api/library/import-ortho4xp", json={"folder": str(ortho4xp_dir)})
+        assert r.status_code == 200, r.text
+        listed = rows((await c.get("/api/library")).json())
+        assert listed == [("ortho", "ortho4xp"), ("ortho", "osxp"), ("overlay", "ortho4xp")]
+        one = {"path": str(imported)}
+        assert (await c.post("/api/library/zOrtho4XP_+43+005/install", json=one)).is_success
+
+        # in X-Plane: taken off the list, the Library could no longer take it out
+        r = await c.post("/api/library/zOrtho4XP_+43+005/forget", json=one)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_PACK_IN_XPLANE"
+        assert r.json()["error"]["remedy"]
+        assert rows((await c.get("/api/library")).json()) == listed
+        assert (await c.post("/api/library/zOrtho4XP_+43+005/uninstall", json=one)).is_success
+
+        # a tile OrthoStudio XP built goes with Delete
+        r = await c.post("/api/library/+43+005/forget", json={"path": str(osxp_pack)})
+        assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_PACK_NOT_IMPORTED"
+        assert osxp_pack.is_dir()
+
+        r = await c.post("/api/library/zOrtho4XP_+43+005/forget", json=one)
+        assert r.status_code == 200, r.text
+        assert r.json() == {"tile": "+43+005", "forgotten": 2, "path": str(imported)}
+        assert rows((await c.get("/api/library")).json()) == [("ortho", "osxp")]
+        r = await c.post("/api/library/zOrtho4XP_+43+005/forget", json=one)
+        assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_WORKING_DIR_INVALID"
+
+        # nothing on the disk changed, and importing the folder again lists the tile again
+        assert _files(ortho4xp_dir) == files and osxp_pack.is_dir()
+        r = await c.post("/api/library/import-ortho4xp", json={"folder": str(ortho4xp_dir)})
+        assert rows((await c.get("/api/library")).json()) == listed
+
+
+@pytest.mark.anyio
+async def test_library_forget_keeps_the_overlay_of_a_tile_imported_twice(
+    app, home: Path, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    """The same tile imported from two Ortho4XP folders: the overlay rows go with the last pack."""
+    first = _ortho4xp_folder(tmp_path / "a")
+    second = _ortho4xp_folder(tmp_path / "b")
+    for folder in (first, second):
+        dsf = folder / "yOrtho4XP_Overlays" / "Earth nav data" / "+40+000" / "+43+005.dsf"
+        dsf.parent.mkdir(parents=True)
+        dsf.write_bytes(b"XPLNEDSF overlay")
+    async with client_for(app) as c:
+        for folder in (first, second):
+            r = await c.post("/api/library/import-ortho4xp", json={"folder": str(folder)})
+            assert r.status_code == 200, r.text
+        pack = str(first / "Tiles" / "zOrtho4XP_+43+005")
+        r = await c.post("/api/library/zOrtho4XP_+43+005/forget", json={"path": pack})
+        assert r.status_code == 200 and r.json()["forgotten"] == 1
+        left = [(e["kind"], e["path"]) for e in (await c.get("/api/library")).json()]
+        assert sorted(left) == [
+            ("ortho", str(second / "Tiles" / "zOrtho4XP_+43+005")),
+            ("overlay", str(first / "yOrtho4XP_Overlays")),
+            ("overlay", str(second / "yOrtho4XP_Overlays")),
+        ]
+        pack = str(second / "Tiles" / "zOrtho4XP_+43+005")
+        r = await c.post("/api/library/zOrtho4XP_+43+005/forget", json={"path": pack})
+        assert r.status_code == 200 and r.json()["forgotten"] == 3
+        assert (await c.get("/api/library")).json() == []
+
+
 # -- delete, sizes, counts (docs/specs/api.md 2.3, install.md 4.2) ----------------------------
 
 
