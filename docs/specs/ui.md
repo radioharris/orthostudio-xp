@@ -67,7 +67,10 @@ Every button has a frame: the quiet, frameless ones read as text (*My sources…
 Finder*, 2026-09-21). Every list draws its own up and down arrows (`--select-arrow`, one SVG per
 theme in its `--fg-2`): Chromium, in Windows' window and in Chrome, drew a chevron almost touching
 the right edge where the Mac's window drew its arrows clear of it (a user put the two side by side,
-2026-09-21). Settings' questions are cards of a line each (`inline-block`) in their two
+2026-09-21). A field's title is text: a click on a label naming a field outside it is left to the
+text (`app.js` `isTitleClick`), so a double-click selects the name to copy instead of putting the
+caret in the field or ticking a box (2026-09-21); a label around its own box ("On", a question's
+choice) still ticks it. Settings' questions are cards of a line each (`inline-block`) in their two
 columns: as blocks, WebKit carried the space under the first column's last card to the top of the
 second, 12px lower than the first in the Mac's window and not in Windows'.
 

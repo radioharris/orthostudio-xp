@@ -4862,8 +4862,26 @@ export function whenInOwnWindow(then) {
   else window.addEventListener("pywebviewready", then, { once: true });
 }
 
+/**
+ * Whether a click lands on a field's title: a label naming a field outside it. A label hands its
+ * clicks to its field, the web's way of making the target bigger: a user who double-clicked a
+ * setting's name to copy it saw the caret jump into the field, or a check box tick (2026-09-21).
+ * A title is text, as in the Mac's and Windows' own windows, and such a click is left to the text.
+ * A label around its own box ("On", a question's choice, "Also delete the downloaded images") is
+ * that box's target, and keeps it.
+ */
+export function isTitleClick(target) {
+  const label = target?.closest?.("label");
+  const control = label?.control;
+  return Boolean(control) && !label.contains(control);
+}
+
 async function boot() {
   trackStatusbarHeight();
+  // before any other listener: the click is the text's, not the field's
+  document.addEventListener("click", (ev) => {
+    if (isTitleClick(ev.target)) ev.preventDefault();
+  }, true);
   window.addEventListener("resize", measureMapTop);
   setLanguage(detectLanguage());
   $("lang-select").value = language();

@@ -3930,6 +3930,26 @@ def test_a_list_draws_the_same_arrows_in_every_engine() -> None:
     assert arrows == fg2 and len(arrows) == 3, (arrows, fg2)
 
 
+def test_a_fields_title_is_text() -> None:
+    """A label hands its clicks to its field: a user who double-clicked a setting's name to copy
+    it saw the caret jump into the field, or a check box tick (2026-09-21). A click on a title (a
+    label naming a field outside it) is left to the text; a label around its own box ("On", a
+    choice) is still that box's target."""
+    got = _node_json(
+        "app.js",
+        "(() => { const box = {}; const at = (label) => ({ closest: () => label });"
+        " return ["
+        " m.isTitleClick(at({ control: box, contains: () => false })),"  # a title
+        " m.isTitleClick(at({ control: box, contains: (x) => x === box })),"  # around its box
+        " m.isTitleClick(at({ control: null, contains: () => false })),"  # names nothing
+        " m.isTitleClick(at(null)), m.isTitleClick(null)]; })()",
+    )
+    assert got == [True, False, False, False, False]
+    boot = _function_body((UI / "app.js").read_text(encoding="utf-8"), "boot")
+    assert 'document.addEventListener("click", (ev) => {' in boot
+    assert "if (isTitleClick(ev.target)) ev.preventDefault();\n  }, true);" in boot
+
+
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
     rows = [
         {"tile": "+43+005", "kind": "ortho", "built_by": "osxp", "path": "/t/zOrthoStudio_+43+005",
