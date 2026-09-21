@@ -9,6 +9,8 @@
   --fg-3: #8a8780;
   --line: #d8d6cf;
   --line-2: #c4c1b8;
+  /* the arrows of a list, in --fg-2 (an image cannot read the tokens) */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5' fill='none' stroke='%235a5852' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --accent: #1f5fa8;
   --accent-fg: #ffffff;
   --accent-soft: #e2ecf8;
@@ -69,6 +71,7 @@
     --fg-3: #7d7a73;
     --line: #34373c;
     --line-2: #45494f;
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5' fill='none' stroke='%23b0ada5' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --accent: #7db0ee;
     --accent-fg: #0f1a2a;
     --accent-soft: #1f2d40;
@@ -94,6 +97,7 @@
   --fg-3: #7d7a73;
   --line: #34373c;
   --line-2: #45494f;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5' fill='none' stroke='%23b0ada5' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --accent: #7db0ee;
   --accent-fg: #0f1a2a;
   --accent-soft: #1f2d40;
@@ -225,8 +229,9 @@ a { color: var(--accent); }
 .topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn {
   font: inherit; font-size: 12px; padding: 0 6px; margin-block: 0;
   height: 26px; min-height: 26px; max-height: 26px; align-self: center; vertical-align: middle;
-  background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
+  background-color: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
+.topbar-tools .tool-select { padding-right: 22px; background-position: right 7px center; }
 .tool-btn { width: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .tool-btn svg { width: 16px; height: 16px; }
 
@@ -266,6 +271,14 @@ input[type="text"], input[type="number"], input[type="search"], select, textarea
   height: 28px; padding: 0 8px; min-width: 0; width: 100%;
 }
 input[type="number"] { font-variant-numeric: tabular-nums; }
+/* A list draws its own arrows: each engine drew its own, Chromium's (Windows, Chrome) a chevron
+   almost touching the right edge where the Mac's window drew its up and down arrows clear of it,
+   and a user saw the two differ (2026-09-21). The Mac's, the same everywhere. */
+select {
+  appearance: none; -webkit-appearance: none; padding-right: 24px;
+  background-image: var(--select-arrow); background-repeat: no-repeat;
+  background-position: right 8px center; background-size: 8px 12px;
+}
 input:disabled, select:disabled { opacity: 0.55; }
 input[aria-invalid="true"] { border-color: var(--fail); }
 

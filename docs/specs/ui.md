@@ -64,7 +64,10 @@ the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--bloc
 a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
 fields, pills), the map and the top and status bars keep sizes of their own; a test lists them.
 Every button has a frame: the quiet, frameless ones read as text (*My sources…*, then *Show in
-Finder*, 2026-09-21). Settings' questions are cards of a line each (`inline-block`) in their two
+Finder*, 2026-09-21). Every list draws its own up and down arrows (`--select-arrow`, one SVG per
+theme in its `--fg-2`): Chromium, in Windows' window and in Chrome, drew a chevron almost touching
+the right edge where the Mac's window drew its arrows clear of it (a user put the two side by side,
+2026-09-21). Settings' questions are cards of a line each (`inline-block`) in their two
 columns: as blocks, WebKit carried the space under the first column's last card to the top of the
 second, 12px lower than the first in the Mac's window and not in Windows'.
 

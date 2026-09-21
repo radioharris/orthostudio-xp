@@ -163,6 +163,8 @@ def test_no_external_url() -> None:
     # comments, and the page disables its attribution prefix, the only link it would render.
     for name in TEXT_FILES:
         text = (UI / name).read_text(encoding="utf-8")
+        # an SVG's namespace is a name, never fetched: the lists' arrows are drawn in the stylesheet
+        text = text.replace("http://www.w3.org/2000/svg", "")
         assert not re.search(r"https?://", text), name
     for path in (UI / "mock").glob("*.json"):
         assert not re.search(r"https?://", path.read_text(encoding="utf-8")), path.name
@@ -3900,6 +3902,32 @@ def test_step_3_says_it_is_working_beside_its_title() -> None:
     rules = dict(_css_rules(css))
     assert "min-height" not in rules.get(".estimate-actions", "")
     assert "margin: 0;" in rules[".plan-step-head > .estimate-actions"]
+
+
+def test_a_list_draws_the_same_arrows_in_every_engine() -> None:
+    """Chromium (Windows, and Chrome) drew a list's arrow as a chevron almost touching its right
+    edge, where the Mac's window drew up and down arrows clear of it: a user put the two side by
+    side (2026-09-21). The page draws its own, the Mac's, in each theme's --fg-2."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    lists = rules["select"]
+    for part in (
+        "appearance: none;",
+        "-webkit-appearance: none;",
+        "padding-right: 24px;",
+        "background-image: var(--select-arrow);",
+        "background-position: right 8px center;",
+    ):
+        assert part in lists, part
+    # the top bar's list keeps it: its shared rule sets the colour only, not the whole background
+    shared = rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]
+    assert "background-color: var(--bg-2);" in shared and "background:" not in shared
+    assert "padding-right: 22px;" in rules[".topbar-tools .tool-select"]
+    # one arrow per theme, in its --fg-2 (an image cannot read the tokens)
+    arrow = r"--select-arrow: url\(\"data:image/svg\+xml,[^\"]*stroke='%23(\w{6})'"
+    arrows = re.findall(arrow, css)
+    fg2 = re.findall(r"--fg-2: #(\w{6});", css)
+    assert arrows == fg2 and len(arrows) == 3, (arrows, fg2)
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
