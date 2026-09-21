@@ -676,6 +676,7 @@ def test_the_page_and_the_engine_agree_on_the_api_level() -> None:
 
 LIBRARY_ROW_KEYS = {
     "photo",  # the colours the pack was built with, or null
+    "built",  # {facts, at}: what the pack was built with, and when (null for what we did not build)
     "tile",
     "kind",
     "provider",
@@ -3518,3 +3519,57 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
     assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
     # the setting says that GitHub sees the address, rather than leaving it to be found out
     assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]
+
+
+def test_the_library_says_what_each_tile_was_built_with() -> None:
+    """A user asked where to see which data a tile was built with (2026-09-21). The "Built by" cell
+    of a tile OrthoStudio XP built opens a row under it; an imported tile's settings are
+    Ortho4XP's, which nothing here reads, so it has none. The relief is said as it really was: a
+    lidar asked for where it never flew says so, which is how a user at Banff would have known."""
+    got = _node_json(
+        "app.js",
+        """(() => {
+          const facts = {version: "0.1.10", relief: "COP30", relief_laid: [],
+                         relief_asked: ["HRDEM"], patches: ["CBH2.patch.osm"],
+                         zones: [{zl: 17, provider: "BI"}, {zl: 17, provider: "BI"},
+                                 {zl: 18, provider: "BI"}]};
+          const row = {provider: "BI", zl: 16, photo: null, built: {at: 1790000000, facts}};
+          const full = m.builtLines(row, [{code: "BI", name: "Bing Maps"}]);
+          const old = m.builtLines({...row, built: {at: 1790000000, facts: {}}});
+          return {
+            lines: full.lines,
+            head: full.head.includes("0.1.10"),
+            oldHead: old.head.includes("before OrthoStudio XP 0.1.10"),
+            oldLabels: old.lines.map(([k]) => k),
+            unknown: m.builtLines({provider: "BI", built: null}).lines.length,
+            laid: m.reliefSentence({relief: "COP30", relief_laid: ["HRDEM"],
+                                    relief_asked: ["HRDEM"]}),
+            own: m.reliefSentence({relief: "XP12", relief_laid: ["/Users/me/lidar"],
+                                   relief_asked: ["/Users/me/lidar"]}),
+          };
+        })()""",
+    )
+    assert got["lines"] == [
+        ["Imagery", "Bing Maps"],
+        ["Detail", "Standard · ZL16"],
+        ["Relief", "Copernicus: Canada's lidar asked, none on this square"],
+        ["Colours", "as delivered"],
+        ["Zones", "3: 2 at ZL17, 1 at ZL18"],
+        ["Patches", "CBH2.patch.osm"],
+    ]
+    assert got["head"]
+    # a pack written before 0.1.10 knows its imagery, detail and colours, and says no more
+    assert got["oldHead"] and got["oldLabels"] == ["Imagery", "Detail", "Colours"]
+    assert got["unknown"] == 0
+    assert got["laid"] == "Copernicus, with Canada's lidar over it"
+    assert got["own"] == "X-Plane 12, with your own files over it"
+
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
+    assert 'class: "library-built"' in row and "colspan: 8" in row
+    assert "byOsxp ?" in row  # none for an imported tile
+    assert "return detail ? [row, detail] : [row];" in row
+    # focus comes back to a row by its place among the tiles, not among the parts under them
+    assert 'classList.contains("library-built")' in _function_body(app_js, "libraryRows")
+    assert "body.append(...libraryRow(e));" in _function_body(app_js, "renderLibrary")

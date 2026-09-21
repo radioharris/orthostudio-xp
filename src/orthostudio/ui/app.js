@@ -17,6 +17,7 @@ import {
   fmtRange,
   homely,
   language,
+  reliefName,
   setLanguage,
   setUserHome,
   t,
@@ -3882,6 +3883,71 @@ function imageryCell(e) {
   return h("td", { title: tip || null }, text, level ? [" ", h("span", { class: "library-zl" }, `ZL${zl}`)] : null);
 }
 
+/** The relief a tile stands on, in words: the base, what was laid over it, and what was asked for
+ * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). */
+export function reliefSentence(facts) {
+  const laidCodes = facts?.relief_laid || [];
+  const base = facts?.relief ? reliefName(facts.relief) : "—";
+  const laid = laidCodes.map(reliefName);
+  const missing = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a)).map(reliefName);
+  const over = laid.length ? t("library.built_relief_laid", { base, over: laid.join(", ") }) : base;
+  return missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
+}
+
+function coloursWords(photo) {
+  const values = ["brightness", "contrast", "saturation"].map((k) => Number(photo?.[k]) || 0);
+  if (!values.some(Boolean)) return t("library.built_colours_plain");
+  const signed = (v) => `${v > 0 ? "+" : ""}${fmtNum(v, 2)}`;
+  return t("library.built_colours_set", { brightness: signed(values[0]), contrast: signed(values[1]), saturation: signed(values[2]) });
+}
+
+function zonesWords(zones) {
+  if (!zones?.length) return t("library.built_none");
+  const byLevel = new Map();
+  for (const z of zones) byLevel.set(z.zl, (byLevel.get(z.zl) || 0) + 1);
+  const parts = [...byLevel].sort((a, b) => a[0] - b[0]).map(([zl, n]) => t("library.built_zone_at", { n: fmtInt(n), zl }));
+  return `${fmtInt(zones.length)}: ${parts.join(", ")}`;
+}
+
+/**
+ * What a tile of the Library was built with: `{head, lines}`, lines as [label, value] (a user asked
+ * where to see it, 2026-09-21). `e.built` is `{facts, at}` from the engine; the facts are empty for a
+ * pack written before 0.1.10, which kept only its imagery, detail and colours, and that is said
+ * rather than guessed. The date is the manifest's own time: the manifest carries none, so that two
+ * identical builds stay identical.
+ */
+export function builtLines(e, providers = []) {
+  if (!e?.built) return { head: t("library.built_unknown"), lines: [] };
+  const facts = e.built.facts || {};
+  const old = !facts.version;
+  const date = fmtDate(e.built.at);
+  const head = old ? t("library.built_when_old", { date }) : t("library.built_when", { date, version: facts.version });
+  const source = providers.find((p) => p.code === e.provider);
+  const zl = Number(e.zl) || 0;
+  const level = zl ? tOpt(`detail.${zl}`) : null;
+  const lines = [
+    [t("library.built_imagery"), source ? sourceLabel(source) : String(e.provider || "—")],
+    [t("library.built_detail"), zl ? [level, `ZL${zl}`].filter(Boolean).join(" · ") : "—"],
+  ];
+  if (!old) lines.push([t("library.built_relief"), reliefSentence(facts)]);
+  lines.push([t("library.built_colours"), coloursWords(e.photo)]);
+  if (!old) {
+    lines.push([t("library.built_zones"), zonesWords(facts.zones)]);
+    lines.push([t("library.built_patches"), (facts.patches || []).length ? facts.patches.join(", ") : t("library.built_none")]);
+  }
+  return { head, lines };
+}
+
+/** The unfolded part of a Library row: the head line, then the facts. */
+function builtBlock(e) {
+  const { head, lines } = builtLines(e, state.providers);
+  return h("div", { class: "library-built-body" }, h("p", { class: "library-built-head" }, head), lines.length ? kv(lines) : null);
+}
+
+/** Rows whose "built with" part is open, kept across the redraws of the table, which come every
+ * few seconds while a build installs its tiles. */
+const libraryOpen = new Set();
+
 /** A small folder, drawn like the page's other icons (the template in index.html). */
 function folderIcon() {
   return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
@@ -3933,15 +3999,34 @@ function libraryRow(e) {
   const revealButton = present && e.path
     ? h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
     : null;
-  return h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
+  // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
+  // imported one's settings are Ortho4XP's, which nothing here can read.
+  const open = libraryOpen.has(key);
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 8 }, builtBlock(e))) : null;
+  let builtCell = t("library.by_ortho4xp");
+  if (byOsxp) {
+    const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
+    const toggle = h("button", { type: "button", class: "built-toggle", title: t("library.built_toggle"), "aria-expanded": open ? "true" : "false" }, t("library.by_osxp"), " ", chevron);
+    toggle.addEventListener("click", () => {
+      const now = !libraryOpen.has(key);
+      if (now) libraryOpen.add(key);
+      else libraryOpen.delete(key);
+      detail.hidden = !now;
+      toggle.setAttribute("aria-expanded", now ? "true" : "false");
+      chevron.textContent = now ? "▾" : "▸";
+    });
+    builtCell = toggle;
+  }
+  const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
     h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
-    h("td", null, byOsxp ? t("library.by_osxp") : t("library.by_ortho4xp")),
+    h("td", null, builtCell),
     h("td", { class: "library-action" }, revealButton),
     h("td", { class: "library-action" }, xplaneButton),
     h("td", { class: "library-action" }, deleteButton));
+  return detail ? [row, detail] : [row];
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -4033,7 +4118,7 @@ function renderLibrary() {
     body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
     return;
   }
-  for (const e of rows) body.append(libraryRow(e));
+  for (const e of rows) body.append(...libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
 }
 
@@ -4091,8 +4176,10 @@ function tilesBuiltOtherwise(names) {
   return out;
 }
 
+/** The rows of tiles, not the "built with" parts unfolded under them: focus comes back to a row by
+ * its place among the tiles. */
 function libraryRows() {
-  return [...$("library-body").rows];
+  return [...$("library-body").rows].filter((r) => !r.classList.contains("library-built"));
 }
 
 function libraryRowByKey(key) {

@@ -17,7 +17,33 @@
   "size_bytes": null,
   "present": false,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": {
+   "facts": {
+    "version": "0.1.10",
+    "relief": "COP30",
+    "relief_laid": [],
+    "relief_asked": [],
+    "patches": [
+     "LFMN.patch.osm"
+    ],
+    "zones": [
+     {
+      "zl": 17,
+      "provider": "BI"
+     },
+     {
+      "zl": 17,
+      "provider": "BI"
+     },
+     {
+      "zl": 18,
+      "provider": "BI"
+     }
+    ]
+   },
+   "at": 1790000000
+  }
  },
  {
   "tile": "+43+004",
@@ -34,7 +60,8 @@
   "size_bytes": null,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": null
  },
  {
   "tile": "+43+005",
@@ -63,6 +90,19 @@
    "brightness": -0.06,
    "contrast": -0.03,
    "saturation": -0.3
+  },
+  "built": {
+   "facts": {
+    "version": "0.1.10",
+    "relief": "COP30",
+    "relief_laid": [],
+    "relief_asked": [
+     "HRDEM"
+    ],
+    "patches": [],
+    "zones": []
+   },
+   "at": 1790000000
   }
  },
  {
@@ -80,7 +120,8 @@
   "size_bytes": null,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": null
  },
  {
   "tile": "+43+006",
@@ -100,7 +141,11 @@
   "size_bytes": 3874560000,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": {
+   "facts": {},
+   "at": 1790000000
+  }
  },
  {
   "tile": "+43+006",
@@ -117,7 +162,8 @@
   "size_bytes": null,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": null
  },
  {
   "tile": "+44+005",
@@ -134,7 +180,8 @@
   "size_bytes": 1104000000,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": null
  },
  {
   "tile": "+44+006",
@@ -151,6 +198,7 @@
   "size_bytes": 2950000000,
   "present": true,
   "overlay": null,
-  "photo": null
+  "photo": null,
+  "built": null
  }
 ]

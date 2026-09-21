@@ -416,6 +416,32 @@ const STRINGS = {
     "library.no_zl": "\u2014",
     "library.actions": "Actions",
     "library.empty": "Aucune tuile. Construisez-en une, ou importez vos tuiles Ortho4XP.",
+    "library.built_toggle": "Avec quoi cette tuile a été construite",
+    "library.built_when": "Construite le {date} avec OrthoStudio XP {version}",
+    "library.built_when_old": "Construite le {date}, avant OrthoStudio XP 0.1.10, qui ne gardait que ses images, son détail et ses couleurs.",
+    "library.built_unknown": "Rien ne peut être lu de la façon dont cette tuile a été construite.",
+    "library.built_imagery": "Images",
+    "library.built_detail": "Détail",
+    "library.built_relief": "Relief",
+    "library.built_colours": "Couleurs",
+    "library.built_zones": "Zones",
+    "library.built_patches": "Retouches",
+    "library.built_none": "aucune",
+    "library.built_colours_plain": "telles que livrées",
+    "library.built_colours_set": "luminosité {brightness}, contraste {contrast}, saturation {saturation}",
+    "library.built_relief_laid": "{base}, avec {over} par-dessus",
+    "library.built_relief_missing": "{base} : {asked} demandé, rien sur ce carré",
+    "library.built_zone_at": "{n} en ZL{zl}",
+    "relief.name.XP12": "X-Plane 12",
+    "relief.name.COP30": "Copernicus",
+    "relief.name.NED1": "USGS 1\u2033",
+    "relief.name.NED1/3": "USGS 1/3\u2033",
+    "relief.name.HRDEM": "le lidar canadien",
+    "relief.name.ANADEM": "ANADEM",
+    "relief.name.View": "viewfinderpanoramas",
+    "relief.name.SRTM": "SRTM",
+    "relief.name.ALOS": "ALOS",
+    "relief.name.own": "vos fichiers",
     "library.by_osxp": "OrthoStudio XP",
     "library.by_ortho4xp": "Ortho4XP",
     "library.missing": "fichiers manquants",
@@ -1219,6 +1245,32 @@ const STRINGS = {
     "library.no_zl": "\u2014",
     "library.actions": "Actions",
     "library.empty": "No tile. Build one, or import your Ortho4XP tiles.",
+    "library.built_toggle": "What this tile was built with",
+    "library.built_when": "Built on {date} with OrthoStudio XP {version}",
+    "library.built_when_old": "Built on {date}, before OrthoStudio XP 0.1.10, which kept only its imagery, detail and colours.",
+    "library.built_unknown": "Nothing can be read of how this tile was built.",
+    "library.built_imagery": "Imagery",
+    "library.built_detail": "Detail",
+    "library.built_relief": "Relief",
+    "library.built_colours": "Colours",
+    "library.built_zones": "Zones",
+    "library.built_patches": "Patches",
+    "library.built_none": "none",
+    "library.built_colours_plain": "as delivered",
+    "library.built_colours_set": "brightness {brightness}, contrast {contrast}, saturation {saturation}",
+    "library.built_relief_laid": "{base}, with {over} over it",
+    "library.built_relief_missing": "{base}: {asked} asked, none on this square",
+    "library.built_zone_at": "{n} at ZL{zl}",
+    "relief.name.XP12": "X-Plane 12",
+    "relief.name.COP30": "Copernicus",
+    "relief.name.NED1": "USGS 1\u2033",
+    "relief.name.NED1/3": "USGS 1/3\u2033",
+    "relief.name.HRDEM": "Canada's lidar",
+    "relief.name.ANADEM": "ANADEM",
+    "relief.name.View": "viewfinderpanoramas",
+    "relief.name.SRTM": "SRTM",
+    "relief.name.ALOS": "ALOS",
+    "relief.name.own": "your own files",
     "library.by_osxp": "OrthoStudio XP",
     "library.by_ortho4xp": "Ortho4XP",
     "library.missing": "files missing",
@@ -1931,6 +1983,14 @@ export function fmtDate(ts) {
   const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
   if (Number.isNaN(d.getTime())) return String(ts);
   return new Intl.DateTimeFormat(locale(), { dateStyle: "short", timeStyle: "short" }).format(d);
+}
+
+/** The name of a relief source as a build records it (``COP30``, ``HRDEM``...), in the page's
+ * language; a path is a file or a folder of the user's own. */
+export function reliefName(source) {
+  const code = String(source || "");
+  if (/[\\/]/.test(code) && code !== "NED1/3") return t("relief.name.own");
+  return tOpt(`relief.name.${code}`) || code;
 }
 
 export { STRINGS };

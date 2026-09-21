@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import time
+import tomllib
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,7 @@ from orthostudio.pipeline.home import (
 from orthostudio.pipeline.pack import (
     LEFT_OVERLAY,
     MANIFEST_NAME,
+    PackManifest,
     delete_receipt,
     install_receipt,
     is_installed,
@@ -378,6 +380,7 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
     # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
     states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
     photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and r.path.is_dir()])
+    built = _pack_built([r.path for r in rows if r.kind == "ortho" and r.built_by == "osxp"])
     shared_links: dict[Path, Path] = {}
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -408,9 +411,33 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 "size_bytes": size,
                 "present": present,
                 "photo": photos.get(r.path),
+                "built": built.get(r.path),
                 "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
             }
         )
+    return out
+
+
+def _pack_built(pack_dirs: list[Path]) -> dict[Path, dict[str, Any] | None]:
+    """What each of these packs was built with, and when: ``{"facts", "at"}``, None when
+    nothing can say.
+
+    ``facts`` is the manifest's ``[built]`` (``PackManifest.built``), empty for a pack written
+    before 0.1.10, which the page says as such rather than guessing. ``at`` is the time the
+    manifest was written, which is when the pack was assembled: the manifest carries no date of
+    its own, so that two identical builds stay identical (a user asked where to see what a tile
+    was built with, 2026-09-21).
+    """
+    out: dict[Path, dict[str, Any] | None] = {}
+    for pack_dir in pack_dirs:
+        out[pack_dir] = None
+        manifest_path = pack_dir / MANIFEST_NAME
+        try:
+            manifest = PackManifest.from_toml(manifest_path.read_text(encoding="utf-8"))
+            at = manifest_path.stat().st_mtime
+        except (OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+            continue
+        out[pack_dir] = {"facts": manifest.built, "at": at}
     return out
 
 
