@@ -151,6 +151,7 @@ takes space in its **data folder**: `~/.orthostudio` too, unless Settings name a
   library.sqlite   the tiles OrthoStudio XP knows (the Library screen)
   jobs/            build journals
   airports.sqlite  X-Plane's airports, for the search of the Plan
+  update.json      the latest version GitHub named, and when it was asked (once a day at most)
 
 the data folder (~/.orthostudio unless Settings name another one)/
   chunks/          image pieces downloaded (raw material)          ≈ 0.9 GB per ZL16 tile

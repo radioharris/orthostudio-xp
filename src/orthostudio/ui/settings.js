@@ -426,6 +426,8 @@ export const EXPERT_GROUPS = [
   { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
   { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
+  // Nothing to do with the tiles: what the app itself does, which is why it has a group of its own.
+  { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.check_updates"] },
 ];
 
 /** Settings OrthoStudio XP no longer offers (the study's "Removed / automatic"): shown only when a saved
@@ -433,6 +435,7 @@ export const EXPERT_GROUPS = [
 export const RETIRED = ["advanced.ratio_bathy", "advanced.imprint_masks_to_dds", "expert.mesh_zl", "expert.masks_custom_extent", "expert.masks_use_dem_too"];
 
 const FIELD_TEXT = {
+  "expert.check_updates": [() => t("settings.x.check_updates"), () => t("settings.x.check_updates_hint")],
   [THREE_STEPS]: [() => t("settings.x.three_steps"), () => t("settings.x.three_steps_hint")],
   "essential.airports.zoom_level": [() => t("settings.x.airports_zl"), () => t("settings.x.airports_zl_hint")],
   "essential.airports.extent_km": [() => t("settings.x.airports_extent"), () => t("settings.x.airports_extent_hint")],

@@ -921,6 +921,15 @@ export async function mockApi(method, path, body, options = {}) {
     if (!String(body?.path || "").startsWith("/")) throw mockError(403, "SYS_FORBIDDEN_PATH", `${body?.path} is not a folder of OrthoStudio XP, of X-Plane or of a tile of the library.`, "The page only shows the folders OrthoStudio XP works with.");
     return { revealed: body.path };
   }
+  if (p === "/api/update") {
+    // `?mock=1&update=0.1.10`: that version is out, so the banner can be seen without a release.
+    // The link stays on the page: its files carry no address outside it (test_no_external_url),
+    // and the engine is the one that knows GitHub's.
+    const current = (await mockFile("status")).version;
+    const latest = PARAMS.get("update") || null;
+    const available = Boolean(latest) && latest !== current;
+    return { current, latest, url: available ? `#release-${latest}` : null, available };
+  }
   if (p === "/api/status") {
     const status = await mockFile("status");
     if (MOCK_FAIL === "xplane") status.xplane.running = true;
@@ -2024,6 +2033,63 @@ function renderWindowNote() {
     h("button", { class: "btn btn-small", onclick: away }, t("app.window_browser_only_ok")),
   );
   $("main").prepend(note);
+}
+
+const UPDATE_DISMISSED_KEY = "osxp.updateDismissed";
+
+/**
+ * A newer version, said once at the top of the page with a link to its release page, where the
+ * notes and the installers are. Nothing is downloaded or installed: a user who did not read the
+ * forum stayed on the version he had, with bugs fixed since, and nothing told him (2026-09-21).
+ * "Not now" hides it until the next version; the engine asks GitHub at most once a day, and not
+ * at all when Settings say no (orthostudio/update.py).
+ */
+async function loadUpdate() {
+  try {
+    state.update = await api("GET", "/api/update");
+  } catch (_err) {
+    return; // no answer, or an engine older than the question: there is nothing to say
+  }
+  renderUpdateNote();
+}
+
+function renderUpdateNote() {
+  const u = state.update;
+  let dismissed = null;
+  try {
+    dismissed = localStorage.getItem(UPDATE_DISMISSED_KEY);
+  } catch (_e) {
+    // a browser that keeps nothing shows the note again next time, which is no harm
+  }
+  if (!u?.available || !u.url || dismissed === u.latest) {
+    if ($("update-note")) {
+      $("update-note").remove();
+      measureMapTop();
+    }
+    return;
+  }
+  if ($("update-note")) return;
+  const note = h("p", { id: "update-note", class: "window-note update-note", role: "status" });
+  const later = () => {
+    try {
+      localStorage.setItem(UPDATE_DISMISSED_KEY, u.latest);
+    } catch (_e) {
+      // ignore: it shows again next time
+    }
+    note.remove();
+    measureMapTop();
+  };
+  note.append(
+    t("app.update_available", { version: u.latest, current: u.current }),
+    " ",
+    // A link, not a button calling window.open: the window hands a clicked target="_blank" link
+    // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
+    h("a", { class: "btn btn-small btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
+    " ",
+    h("button", { type: "button", class: "btn btn-small", onclick: later }, t("app.update_later")),
+  );
+  $("main").prepend(note);
+  measureMapTop(); // it sits above the map and pushes it down
 }
 
 /** The checks the doctor failed, by name. Something OrthoStudio XP needs is not working, and a
@@ -4642,6 +4708,7 @@ async function boot() {
   // of those waiting cannot be chosen again.
   if (!state.jobId && state.status?.active_job) watchJob(state.status.active_job);
   jobsChanged();
+  loadUpdate(); // not awaited: a slow GitHub must never hold the page back
 }
 
 /** The status bar is pinned at the bottom (a user asked): its height, which grows when its items

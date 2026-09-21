@@ -1064,3 +1064,48 @@ async def test_the_page_files_are_revalidated_on_every_load(tmp_path: Path) -> N
                 assert r.headers["cache-control"] == PAGE_CACHE_CONTROL, path
     finally:
         manager.close()
+
+
+@pytest.mark.anyio
+async def test_the_page_is_told_when_a_newer_version_is_out(
+    app,  # type: ignore[no-untyped-def]
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /api/update: a user who did not read the forum stayed on his version, with bugs fixed
+    since, and nothing told him (2026-09-21). GitHub is asked at most once a day, the answer is
+    kept in the home, and Settings can say no -- in which case GitHub is not asked at all."""
+    from orthostudio import __version__, update
+
+    asked: list[int] = []
+
+    def fetch() -> str:
+        asked.append(1)
+        return "999.0.0"
+
+    monkeypatch.setattr(update, "latest_release", fetch)
+    # check() takes latest_release as a default argument, bound when the module was read
+    real_check = update.check
+    monkeypatch.setattr(
+        update, "check", lambda current, *, path: real_check(current, path=path, fetch=fetch)
+    )
+    async with client_for(app) as c:
+        r = await c.get("/api/update")
+        assert r.status_code == 200, r.text
+        assert r.json() == {
+            "current": __version__,
+            "latest": "999.0.0",
+            "url": "https://github.com/radioharris/orthostudio-xp/releases/tag/v999.0.0",
+            "available": True,
+        }
+        assert (home / update.CACHE_NAME).is_file()
+
+        # said no in Settings: the answer is "nothing", and GitHub is not asked
+        asked.clear()
+        (home / update.CACHE_NAME).unlink()
+        settings = (await c.get("/api/settings")).json()
+        settings["expert"]["check_updates"] = False
+        assert (await c.put("/api/settings", json=settings)).status_code == 200
+        off = (await c.get("/api/update")).json()
+        assert off["available"] is False and off["url"] is None
+        assert asked == [] and not (home / update.CACHE_NAME).exists()

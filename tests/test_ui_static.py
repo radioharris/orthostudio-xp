@@ -3482,3 +3482,39 @@ def test_a_tile_we_did_not_build_says_why_it_has_no_delete() -> None:
         # and it says what to do instead, both halves of it
         words = tables[lang]["library.delete_not_ours_help"]
         assert len(words) > 60, f"{lang} says too little"
+
+
+def test_the_page_says_when_a_newer_version_is_out() -> None:
+    """A user who did not read the forum stayed on the version he had, with bugs fixed since, and
+    nothing told him (2026-09-21). One line at the top, with a link to the release page; nothing
+    is downloaded or installed, and "Not now" hides it until the next version."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    load = _function_body(app_js, "loadUpdate")
+    assert 'api("GET", "/api/update")' in load
+    # asked once the page is up, and never waited for: a slow GitHub must not hold the page back
+    boot = _function_body(app_js, "boot")
+    assert "loadUpdate();" in boot and "await loadUpdate" not in boot
+    note = _function_body(app_js, "renderUpdateNote")
+    # a link, not window.open: the window hands only a clicked target="_blank" link to the
+    # system's browser
+    assert 'h("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
+    assert "window.open(" not in note  # a call; the comment above says why there is none
+    assert "UPDATE_DISMISSED_KEY, u.latest" in note  # put away for this version, not for ever
+    assert "measureMapTop();" in note  # it sits above the map
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in (
+            "app.update_available",
+            "app.update_open",
+            "app.update_later",
+            "settings.x.group_app",
+            "settings.x.check_updates",
+            "settings.x.check_updates_hint",
+        ):
+            assert tables[lang][key], f"{lang} is missing {key}"
+    # and it can be turned off, in a group of its own: it has nothing to do with the tiles
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    assert 'fields: ["expert.check_updates"]' in code
+    assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
+    # the setting says that GitHub sees the address, rather than leaving it to be found out
+    assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]

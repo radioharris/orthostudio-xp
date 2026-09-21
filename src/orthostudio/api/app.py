@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from orthostudio import __version__, config
+from orthostudio import __version__, config, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
 from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
@@ -701,6 +701,15 @@ def create_app(
         return job
 
     # -- status, providers -------------------------------------------------------------------
+
+    @app.get("/api/update")
+    async def update_check() -> dict[str, Any]:
+        """Whether a newer OrthoStudio XP has been published (``orthostudio.update``): GitHub is
+        asked at most once a day, and not at all when the setting says no."""
+        if not settings().expert.check_updates:
+            return {"current": __version__, "latest": None, "url": None, "available": False}
+        path = osxp_home() / update.CACHE_NAME
+        return await asyncio.to_thread(update.check, __version__, path=path)
 
     @app.get("/api/status")
     async def status(request: Request) -> dict[str, Any]:

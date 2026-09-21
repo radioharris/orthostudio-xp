@@ -128,6 +128,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `decal_on_sea` | bool | - | false | – | The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them. |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
 | `ovl_exclude_net` | list of int or str | - | `[]` | `ovl_exclude_net` | Indices of road types which one would like to left aside in the extraction of overlays. [...] |
+| `check_updates` | bool | - | `true` | – | OrthoStudio XP's own: asks GitHub once a day which version is the latest, and says at the top of the page when it is newer than this one (`GET /api/update`). GitHub then sees the computer's address, as the imagery servers do; nothing is downloaded or installed. |
 
 Where a hint is abbreviated with "[...]" above, the code carries the full text.
 

@@ -162,7 +162,9 @@ Python inside.
 Opening OrthoStudio XP shows its page in a window of its own, which works like any window on your
 system; opening it again brings that window back. It keeps a browser's habits: Cmd+F or Ctrl+F
 finds text on the page, and Cmd or Ctrl with `+`, `-` and `0` changes the text size, which it
-remembers. Quitting stops the engine, and asks first when a
+remembers. When a newer version is out, a line at the top of the page says so, with a link to its
+release page: nothing is downloaded or installed, GitHub is asked once a day at most, and Settings
+can turn it off. Quitting stops the engine, and asks first when a
 build is running: what was already built is kept, so building again carries on from there. On
 Linux it opens in your browser instead, as every version has: the web view a window needs there is
 built for your distribution's own Python, and OrthoStudio XP carries its own, so installing it

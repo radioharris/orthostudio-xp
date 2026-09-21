@@ -303,6 +303,17 @@ class Expert(BaseModel):
     )
     ovl_exclude_pol: list[int | str] = _field([0], "expert", "ovl_exclude_pol", "")
     ovl_exclude_net: list[int | str] = _field([], "expert", "ovl_exclude_net", "")
+    check_updates: bool = _field(
+        True,
+        "expert",
+        None,
+        "",
+        hint=(
+            "Asks GitHub once a day which version of OrthoStudio XP is the latest, and says so at "
+            "the top of the page when it is newer than this one. GitHub then sees this computer's "
+            "address, as the imagery servers do. Nothing is downloaded or installed."
+        ),
+    )
 
 
 # -- root ----------------------------------------------------------------------------------
