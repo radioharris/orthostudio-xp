@@ -3620,6 +3620,11 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     assert "hidden" not in warn[: warn.index("tiles-built-warn") + 40]
     assert 't("plan.built_change", { changes: changes.join(t("plan.built_and")) })' in built
     assert 'e.built_by !== "osxp"' in built  # an Ortho4XP tile is never built again here
+    # the square's colours too, by the Library's own test, and said again as soon as a slider
+    # moves: a user moved one and was told nothing here (2026-09-21)
+    assert 'if (photoDiffers(e)) changes.push(t("plan.built_colours"));' in built
+    colours = _function_body(app_js, "renderTileColours")
+    assert colours.index("renderTilesBuilt();") < colours.index("return")  # before any way out
 
     map_js = (UI / "map.js").read_text(encoding="utf-8")
 
@@ -3646,5 +3651,6 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
             "plan.built_instead",
             "plan.built_and",
             "plan.built_details",
+            "plan.built_colours",
         ):
             assert tables[lang][key], f"{lang} is missing {key}"
