@@ -165,6 +165,8 @@ the data folder (~/.orthostudio unless Settings name another one)/
     zOrthoStudio_+46+006/
       Earth nav data/+40+000/+46+006.dsf
       terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg
+                     orthostudio.toml: what the tile was built with (imagery, detail, relief
+                     really read, zones, patches), which the Library and the Plan show
     yOrthoStudio_Overlays/Earth nav data/+40+000/+46+006.dsf
   work/            build reports and temporary files
   osm/             the OpenStreetMap data downloaded

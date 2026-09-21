@@ -30,7 +30,10 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **Settings in plain words.** Questions about what you want to see in X-Plane (detail, airports,
   coast, water, relief, roads and forests), the recommended answer marked, three presets, and every
   Ortho4XP setting still there under "For experts" with a plain label.
-- **A Library.** Every tile on the computer, its size, whether X-Plane shows it; remove a tile from
+- **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
+  built with: the imagery, the detail, the relief really read (a lidar asked for where it never
+  flew says so), its zones and its patches; the Plan says it too, over a tile and under the
+  squares chosen. Remove a tile from
   X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP are listed too, and OrthoStudio XP never deletes them. A button shows a tile's folder in the Finder, the Windows File Explorer or the
