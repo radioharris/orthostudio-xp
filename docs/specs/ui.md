@@ -103,20 +103,21 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
 - **Initial view**: the selected tiles, else the installed ones (`GET /api/library`, loaded at
   boot), else Europe; `fitBounds` with at most zoom 9. The map is created the first time the
   Plan is shown (Leaflet needs a visible container) and `invalidateSize()` runs on each return.
-- **Tile grid** (SVG, pane under the zones): 1° lines for the viewport only from zoom 5;
-  selected tiles outlined in the accent colour (blue) and installed tiles in green at every zoom;
-  a tile both installed and chosen keeps its green outline and shows its blue one 4px inside it,
-  both 2.5px (`is-both`), each over a 5px line of `--map-casing` (`osxp-tile-casing`: dark on the
-  dark theme, light on the light one), which leaves a line between and around them against the
-  photo (`map.js` `insetBox`). Drawn on the same line, the green hid the blue; a thin blue beside
-  the green hardly showed (a user, 2026-09-22, chose this among four drawings on the photo). The
-  blue alone when the tile is too small on the screen to hold both. Tile outlines are drawn on
-  whole pixels (`shape-rendering: crispEdges`): Leaflet leaves the vector layer between two pixels
-  after some moves, and blended over two pixels the parting line faded at some zooms and not at
-  others (the same user); on whole pixels WebKit widens each line to the pixel, which the 2.5px
-  gives back, so a Retina screen shows 3px of green, 1px of casing and 3px of blue at every zoom.
-  Labels (`+46+006`) from zoom 7, in the north-west corner of the visible part of each tile when
-  it can hold them, at most 400 cells.
+- **Tile grid** (SVG, pane under the zones): 1° lines for the viewport only from zoom 5; selected
+  tiles outlined in the accent colour (blue) and installed tiles in green at every zoom; a tile both
+  installed and chosen keeps its green outline and shows its blue one 4px inside it, both 2.5px
+  (`is-both`), each over a 5px line of `--map-casing` (`osxp-tile-casing`: dark on the dark theme,
+  light on the light one), which leaves a line between and around them against the photo (`map.js`
+  `insetBox`). Drawn on the same line, the green hid the blue; a thin blue beside the green hardly
+  showed (a user, 2026-09-22, chose this among four drawings on the photo). The green alone when the
+  tile is too small on the screen to hold both, under 16px (zoom 4 and out; zoom 5, where tiles are
+  chosen, gives 22px): zoomed out on the world, the map shows which tiles are installed (the same
+  user). Tile outlines are drawn on whole pixels (`shape-rendering: crispEdges`): Leaflet leaves the
+  vector layer between two pixels after some moves, and blended over two pixels the parting line
+  faded at some zooms and not at others (the same user); on whole pixels WebKit widens each line to
+  the pixel, which the 2.5px gives back, so a Retina screen shows 3px of green, 1px of casing and
+  3px of blue at every zoom. Labels (`+46+006`) from zoom 7, in the north-west corner of the visible
+  part of each tile when it can hold them, at most 400 cells.
 - **The running build on the map** (user request, 2026-09-14: the selection empties when a build
   starts, and nothing then showed which tiles were being built): over the rest, a tile of the
   build one of whose steps runs pulses in the accent colour, one that waits for its turn (or

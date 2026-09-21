@@ -218,7 +218,9 @@ you agree with them again without building anything.
 
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square both built and chosen, to build it again, keeps its green outline with the
-blue one just inside it, and a thin line between them sets both off from the photo.
+blue one just inside it, and a thin line between them sets both off from the photo. Zoomed out on
+the world, where a square is too small for both, it stays green: the map then shows which tiles
+you have.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from

@@ -2936,15 +2936,17 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     """A tile both installed and chosen keeps its green outline and shows its blue one 4px inside
     it, each over a wider line of ``--map-casing`` that parts them from each other and from the
     photo: on the same line the green hid the blue, and a thin blue beside the green hardly showed
-    (a user chose this drawing, 2026-09-22). Too small on the screen for both, the tile shows the
-    blue. The outlines are drawn on whole pixels: blended over two, the parting line faded at the
-    zooms where Leaflet leaves the layer between two pixels."""
+    (a user chose this drawing, 2026-09-22). Too small on the screen for both, under 16px, the
+    tile shows the green: zoomed out on the world, the map shows which tiles are installed (the
+    same user). The outlines are drawn on whole pixels: blended over two, the parting line faded at
+    the zooms where Leaflet leaves the layer between two pixels."""
     if NODE is None:
         pytest.skip("node is not installed")
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     found = re.search(r"\n  function insetBox\(box, px\) \{.*?\n  \}\n", map_js, re.S)
     assert found is not None
-    # A map of 100 pixels a degree, then of 2: the inset is counted in pixels, whatever the zoom.
+    # Maps of 100, 16 and 15 pixels a degree: the inset is counted in pixels, whatever the zoom,
+    # and a tile of 16px still holds both outlines (zoom 5, where tiles are chosen, gives 22px).
     fake_map = """
       const L = { point: (x, y) => ({ x, y }) };
       let scale = 100;
@@ -2954,16 +2956,19 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
       };
     """
     run = """
-      const big = insetBox([[43, 5], [44, 6]], 4);
-      scale = 2;
-      process.stdout.write(JSON.stringify([big, insetBox([[43, 5], [44, 6]], 4)]));
+      const got = [100, 16, 15].map((s) => { scale = s; return insetBox([[43, 5], [44, 6]], 4); });
+      process.stdout.write(JSON.stringify(got));
     """
     got = _run_node(fake_map + found.group(0) + run)
     assert got[0] == [
         [pytest.approx(43.04), pytest.approx(5.04)],
         [pytest.approx(43.96), pytest.approx(5.96)],
     ]
-    assert got[1] is None
+    assert got[1] == [
+        [pytest.approx(43.25), pytest.approx(5.25)],
+        [pytest.approx(43.75), pytest.approx(5.75)],
+    ]
+    assert got[2] is None
 
     grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert grid is not None
@@ -2976,6 +2981,8 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     assert 'const both = inner ? " is-both" : "";' in body
     assert "for (const b of [box, inner])" in body
     assert "L.rectangle(inner || box," in body
+    # too small for both, the blue is left out and the green shows
+    assert "if (selected.has(name) && (inner || !installed.has(name))) {" in body
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-installed"]
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-selected"]

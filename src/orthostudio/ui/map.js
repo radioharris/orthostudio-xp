@@ -1667,7 +1667,7 @@ export function createPlanMap(ctx) {
   function insetBox(box, px) {
     const nw = map.latLngToLayerPoint([box[1][0], box[0][1]]);
     const se = map.latLngToLayerPoint([box[0][0], box[1][1]]);
-    if (se.x - nw.x < 6 * px || se.y - nw.y < 6 * px) return null;
+    if (se.x - nw.x < 4 * px || se.y - nw.y < 4 * px) return null;
     const inNw = map.layerPointToLatLng(L.point(nw.x + px, nw.y + px));
     const inSe = map.layerPointToLatLng(L.point(se.x - px, se.y - px));
     return [[inSe.lat, inNw.lng], [inNw.lat, inSe.lng]];
@@ -1700,7 +1700,8 @@ export function createPlanMap(ctx) {
       // Installed and chosen: the green outline, the blue one inside it, and a line between and
       // around them (--map-casing, dark on the dark theme), so that they stand out from each other
       // and from the photo. On the same line the green hid the blue, and a thin blue beside the
-      // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the blue.
+      // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the green:
+      // from far away the map is there to show which tiles are installed (the same user).
       const inner = installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;
       if (inner) {
         for (const b of [box, inner]) {
@@ -1711,7 +1712,7 @@ export function createPlanMap(ctx) {
       if (installed.has(name)) {
         layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
       }
-      if (selected.has(name)) {
+      if (selected.has(name) && (inner || !installed.has(name))) {
         layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}`, interactive: false, fill: false, weight: 3 }));
       }
       // Over the others: a tile the running build works on pulses, one waiting for its turn is
