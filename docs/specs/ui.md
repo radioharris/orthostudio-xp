@@ -104,9 +104,15 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   boot), else Europe; `fitBounds` with at most zoom 9. The map is created the first time the
   Plan is shown (Leaflet needs a visible container) and `invalidateSize()` runs on each return.
 - **Tile grid** (SVG, pane under the zones): 1° lines for the viewport only from zoom 5;
-  selected tiles filled with the accent colour and installed tiles outlined in green at every
-  zoom; labels (`+46+006`) from zoom 7, in the north-west corner of the visible part of each
-  tile when it can hold them, at most 400 cells.
+  selected tiles outlined in the accent colour (blue) and installed tiles in green at every zoom;
+  a tile both installed and chosen keeps its 3px green outline and shows its 3px blue one 4px
+  inside it, each over a 5px line of `--map-casing` (`osxp-tile-casing`: dark on the dark theme,
+  light on the light one), which leaves a 1px line between and around them against the photo
+  (`map.js` `insetBox`). Drawn on the same line, the green hid the blue; a thin blue beside the
+  green hardly showed (a user, 2026-09-22, chose this among four drawings on the photo). The blue
+  alone when the tile is too small on the screen to hold both; labels (`+46+006`) from zoom 7, in
+  the north-west corner of the visible part of each tile when it can hold them, at most 400
+  cells.
 - **The running build on the map** (user request, 2026-09-14: the selection empties when a build
   starts, and nothing then showed which tiles were being built): over the rest, a tile of the
   build one of whose steps runs pulses in the accent colour, one that waits for its turn (or

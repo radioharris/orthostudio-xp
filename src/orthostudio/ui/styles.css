@@ -23,6 +23,9 @@
   --hit: #6b7f96;
   --skip: #a09d95;
   --focus: #1f5fa8;
+  /* The line each side of a map mark that sets it off from the photo and from the next mark:
+     against the mark's colour, light where the marks are dark and dark where they are light. */
+  --map-casing: rgba(255, 255, 255, 0.75);
   --radius: 4px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -84,6 +87,7 @@
     --hit: #8fa2b8;
     --skip: #6b6964;
     --focus: #9cc4f5;
+    --map-casing: rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }
 }
@@ -110,6 +114,7 @@
   --hit: #8fa2b8;
   --skip: #6b6964;
   --focus: #9cc4f5;
+  --map-casing: rgba(0, 0, 0, 0.6);
   color-scheme: dark;
 }
 
@@ -636,6 +641,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Marks are outlines, never fills: a translucent colour over the ground lies about the photo
    underneath, and the map now shows the very colours a build will encode (a user, 2026-09-18). */
 .plan-map .osxp-tile-selected { stroke: var(--accent); stroke-width: 3; fill: none; }
+/* Installed and chosen: a line on each side of the green and of the blue inside it, so that
+   both stand out from each other and from the photo (map.js renderGrid). */
+.plan-map .osxp-tile-casing { stroke: var(--map-casing); stroke-width: 5; fill: none; }
 .plan-map .osxp-tile-installed { stroke: var(--ok); stroke-width: 3; fill: none; }
 /* The running build (map.js renderGrid): the tile worked on pulses, a waiting one is dashed. */
 .plan-map .osxp-tile-working { stroke: var(--accent); stroke-width: 4; fill: none; animation: tile-pulse 1.4s ease-in-out infinite; }

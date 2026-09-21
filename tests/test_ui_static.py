@@ -2932,6 +2932,58 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_a_chosen_installed_tile_shows_both_outlines() -> None:
+    """A tile both installed and chosen keeps its green outline and shows its blue one 4px inside
+    it, each over a wider line of ``--map-casing`` that parts them from each other and from the
+    photo: on the same line the green hid the blue, and a thin blue beside the green hardly showed
+    (a user chose this drawing, 2026-09-22). Too small on the screen for both, the tile shows the
+    blue."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    found = re.search(r"\n  function insetBox\(box, px\) \{.*?\n  \}\n", map_js, re.S)
+    assert found is not None
+    # A map of 100 pixels a degree, then of 2: the inset is counted in pixels, whatever the zoom.
+    fake_map = """
+      const L = { point: (x, y) => ({ x, y }) };
+      let scale = 100;
+      const map = {
+        latLngToLayerPoint: ([lat, lng]) => ({ x: lng * scale, y: -lat * scale }),
+        layerPointToLatLng: (p) => ({ lat: -p.y / scale, lng: p.x / scale }),
+      };
+    """
+    run = """
+      const big = insetBox([[43, 5], [44, 6]], 4);
+      scale = 2;
+      process.stdout.write(JSON.stringify([big, insetBox([[43, 5], [44, 6]], 4)]));
+    """
+    got = _run_node(fake_map + found.group(0) + run)
+    assert got[0] == [
+        [pytest.approx(43.04), pytest.approx(5.04)],
+        [pytest.approx(43.96), pytest.approx(5.96)],
+    ]
+    assert got[1] is None
+
+    grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
+    assert grid is not None
+    body = grid.group(0)
+    assert "installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;" in body
+    # the casings under both lines, then the green on the edge, then the blue inside it
+    casing = body.index('className: "osxp-tile-casing"')
+    green = body.index('className: "osxp-tile-installed"')
+    assert casing < green < body.index('className: "osxp-tile-selected"')
+    assert "for (const b of [box, inner])" in body
+    assert "L.rectangle(inner || box," in body
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-installed"]
+    assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-selected"]
+    # 5px under a 3px line, 4px apart: a 1px line each side of each of them
+    casing_rule = rules[".plan-map .osxp-tile-casing"]
+    assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
+    for theme in (":root", ':root:not([data-theme="light"])', ':root[data-theme="dark"]'):
+        assert "--map-casing:" in rules[theme], theme
+
+
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     """Both tiles were done up to Coast, and the first Imagery said "pending" for a long while on
     Windows: it waited for its DSF, shown under Assembly, and the second waits for the first's

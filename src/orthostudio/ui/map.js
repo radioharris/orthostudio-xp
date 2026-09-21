@@ -1662,6 +1662,17 @@ export function createPlanMap(ctx) {
       .map((e) => e.tile);
   }
 
+  /** `box` ([[south, west], [north, east]]) drawn `px` pixels inside itself at the map's zoom, or
+   * null when the tile is too small on the screen for it. */
+  function insetBox(box, px) {
+    const nw = map.latLngToLayerPoint([box[1][0], box[0][1]]);
+    const se = map.latLngToLayerPoint([box[0][0], box[1][1]]);
+    if (se.x - nw.x < 6 * px || se.y - nw.y < 6 * px) return null;
+    const inNw = map.layerPointToLatLng(L.point(nw.x + px, nw.y + px));
+    const inSe = map.layerPointToLatLng(L.point(se.x - px, se.y - px));
+    return [[inSe.lat, inNw.lng], [inNw.lat, inSe.lng]];
+  }
+
   /** 1° grid and tile labels for the viewport only; selected and installed tiles at every zoom. */
   function renderGrid() {
     if (!map) return;
@@ -1686,11 +1697,21 @@ export function createPlanMap(ctx) {
       const c = parseTile(name);
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
-      if (selected.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-selected", interactive: false, fill: false, weight: 3 }));
+      // Installed and chosen: the green outline, the blue one inside it, and a line between and
+      // around them (--map-casing, dark on the dark theme), so that they stand out from each other
+      // and from the photo. On the same line the green hid the blue, and a thin blue beside the
+      // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the blue.
+      const inner = installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;
+      if (inner) {
+        for (const b of [box, inner]) {
+          layers.tiles.addLayer(L.rectangle(b, { pane: "osxpGrid", className: "osxp-tile-casing", interactive: false, fill: false, weight: 5 }));
+        }
       }
       if (installed.has(name)) {
         layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: "osxp-tile-installed", interactive: false, fill: false, weight: 3 }));
+      }
+      if (selected.has(name)) {
+        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: "osxp-tile-selected", interactive: false, fill: false, weight: 3 }));
       }
       // Over the others: a tile the running build works on pulses, one waiting for its turn is
       // dashed, a failed one dashed red (buildingTiles in app.js).

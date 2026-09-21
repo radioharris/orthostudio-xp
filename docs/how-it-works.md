@@ -216,6 +216,10 @@ clears everything, and *Go back to the colours already built* gives each square 
 tile you already have on the disk -- the Library says which tiles no longer match, and this is how
 you agree with them again without building anything.
 
+**What the map marks.** A square you already have in X-Plane is outlined in green, a square you
+chose in blue. A square both built and chosen, to build it again, keeps its green outline with the
+blue one just inside it, and a thin line between them sets both off from the photo.
+
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
 OpenFreeMap, a free service that renders OpenStreetMap without a key; OrthoStudio XP serves it
