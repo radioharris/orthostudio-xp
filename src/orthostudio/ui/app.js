@@ -27,7 +27,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, patchesFoundText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
@@ -2503,7 +2503,9 @@ function loadSettingsPatches() {
     (found) => {
       if (settingsPatchesDir !== dir) return; // the field changed again meanwhile
       state.settingsPatches = found;
-      if (state.screen === "settings") renderSettings();
+      // in place: the screen drawn again for it flashed in the Mac's window
+      const line = document.querySelector('[data-focus-key="x:expert.patches_dir"]')?.closest(".gen-field")?.querySelector(".hint-found");
+      if (line) line.textContent = patchesFoundText(found);
     },
     () => {},
   );
@@ -4604,7 +4606,7 @@ async function importOrtho4xp(ev) {
 // ------------------------------------------------------------------ Settings: questions in plain words
 
 /** The Settings screen (settings.js): questions, presets, For experts; the draft is saved by Save. */
-function renderSettings(message, kind) {
+function renderSettings(message, kind, from) {
   if (!state.schema || !state.settingsDraft) return;
   loadSettingsPatches();
   renderSettingsView(
@@ -4623,8 +4625,8 @@ function renderSettings(message, kind) {
       chooseFolder: state.engineOutdated ? null : chooseFolder,
       photoSample: photoSampleUrl,
       patches: state.settingsPatches || null,
-      changed: (text, level) => renderSettings(text, level),
-      touched: () => renderSettingsStatus(),
+      from: from || null,
+      changed: (text, level, where) => renderSettings(text, level, where),
     },
   );
   renderSettingsStatus(message, kind);

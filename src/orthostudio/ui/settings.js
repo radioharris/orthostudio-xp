@@ -507,23 +507,6 @@ const UNIT_TEXT = {
   "expert.sea_texture_blur": () => "px",
 };
 
-/**
- * A number changed and not drawn yet. Its arrows change a number in place, and the screen is drawn
- * again once the focus has left the number fields: drawn again at each step, the field was replaced
- * under its arrows, and the Mac's took a second to answer and read the next click as the other
- * arrow (a user, 2026-09-21). Drawn after the focus has moved, so that a field clicked next keeps
- * it; not while it is in another number field, whose arrows would be replaced in turn.
- */
-let numbersPending = false;
-
-function numbersLeft(view) {
-  setTimeout(() => {
-    if (!numbersPending || document.activeElement?.matches?.('input[type="number"]')) return;
-    numbersPending = false;
-    view.changed();
-  }, 0);
-}
-
 export function fieldLabel(path) {
   return FIELD_TEXT[path] ? FIELD_TEXT[path][0]() : path;
 }
@@ -615,12 +598,23 @@ export function matchesSearch(text, words) {
 export function renderSettingsView(parts, view) {
   const saved = captureFocus(parts.root);
   const scroll = keptScroll();
+  // A field of For experts changed (`view.from`): its grid stays as it is, under the eyes, and only
+  // what shows the same setting elsewhere is drawn again. Drawn whole at each change, the page
+  // flashed in the Mac's window whenever a field was left, and a number field was replaced under
+  // its own arrows (a user, 2026-09-21).
+  const from = view.from || null;
   renderPresets(parts.presets, view);
-  renderQuestions(parts.questions, view);
-  renderExperts(parts.experts, view);
+  if (!from || questionsShow(from.path)) renderQuestions(parts.questions, view);
+  if (!from) renderExperts(parts.experts, view);
   applySearch(parts, view);
   restoreFocus(parts.root, saved);
   scroll?.restore();
+}
+
+/** Whether a question shows the setting at `path`: one it asks, or any essential setting, which
+ * its notes and choices may name. */
+export function questionsShow(path) {
+  return String(path).startsWith("essential.") || Object.values(QUESTION_PATHS).some((paths) => paths.includes(path));
 }
 
 /**
@@ -993,13 +987,16 @@ function expertField(view, path, prop) {
   const d = view.draft;
   const id = `x-${path.replace(/\W+/g, "-")}`;
   const key = { focusKey: `x:${path}` };
+  // a change of this grid, which stays as it is (renderSettingsView)
+  const changed = (text, level, shown = path) => view.changed(text, level, { from: "experts", path: shown });
   let control;
   if (path === THREE_STEPS) {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", placeholder: "100, 200, 100", dataset: key });
     control.value = threeStepsText(d);
     control.addEventListener("change", () => {
-      if (applyThreeSteps(d, control.value)) view.changed();
-      else view.changed(t("settings.x.three_steps_invalid"), "fail");
+      // the coast's profile and widths, which the questions show
+      if (applyThreeSteps(d, control.value)) changed(undefined, undefined, "essential.coast_transition.profile");
+      else changed(t("settings.x.three_steps_invalid"), "fail");
     });
   } else if (Array.isArray(prop.enum)) {
     const names = OPTION_TEXT[path] || {};
@@ -1008,14 +1005,14 @@ function expertField(view, path, prop) {
     control.addEventListener("change", () => {
       const raw = control.value;
       setPath(d, path, typeof prop.enum[0] === "number" ? Number(raw) : raw);
-      view.changed();
+      changed();
     });
   } else if (prop.type === "boolean") {
     control = h("input", { type: "checkbox", id, dataset: key });
     control.checked = Boolean(getPath(d, path));
     control.addEventListener("change", () => {
       setPath(d, path, control.checked);
-      view.changed();
+      changed();
     });
   } else if (prop.type === "integer" || prop.type === "number") {
     const min = prop.minimum ?? prop.exclusiveMinimum;
@@ -1029,35 +1026,28 @@ function expertField(view, path, prop) {
         return;
       }
       setPath(d, path, n);
-      if (!view.touched) {
-        view.changed();
-        return;
-      }
-      numbersPending = true;
-      view.touched(); // "Changes not saved yet" at once, the fields as they are
-      if (document.activeElement !== control) numbersLeft(view);
+      changed();
     });
-    control.addEventListener("blur", () => numbersLeft(view));
   } else if (prop.type === "array") {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = (getPath(d, path) || []).join(", ");
     control.addEventListener("change", () => {
       setPath(d, path, parseList(control.value));
-      view.changed();
+      changed();
     });
   } else if (path === PATCHES_DIR) {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", placeholder: t("settings.x.patches_placeholder", { path: patchesDefault(view) }), dataset: key });
     control.value = getPath(d, path) ?? "";
     control.addEventListener("change", () => {
       setPath(d, path, control.value.trim());
-      view.changed();
+      changed();
     });
   } else {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = getPath(d, path) ?? "";
     control.addEventListener("change", () => {
       setPath(d, path, control.value);
-      view.changed();
+      changed();
     });
   }
   // The folder field gets the platform's own dialog, like the X-Plane and data folders: a user
@@ -1068,7 +1058,7 @@ function expertField(view, path, prop) {
         if (!picked) return;
         control.value = picked;
         setPath(d, path, picked);
-        view.changed();
+        changed();
       } }, t("settings.x.patches_choose"))
     : null;
   const unit = UNIT_TEXT[path] ? UNIT_TEXT[path]() : prop.unit || "";
@@ -1083,8 +1073,9 @@ function expertField(view, path, prop) {
   else if (unit && control.tagName === "INPUT") field.append(h("div", { class: "with-unit" }, control, h("span", { class: "unit" }, unit)));
   else if (choose) field.append(h("div", { class: "path-row" }, control, choose));
   else field.append(control);
-  const found = path === PATCHES_DIR ? patchesFoundText(view.patches) : "";
-  field.append(h("div", { class: "hint" }, fieldHint(path), found ? h("span", { class: "hint-found" }, found) : null));
+  // what the folder holds, filled in place when the engine answers (app.js loadSettingsPatches)
+  const found = path === PATCHES_DIR ? h("span", { class: "hint-found" }, patchesFoundText(view.patches)) : null;
+  field.append(h("div", { class: "hint" }, fieldHint(path), found));
   return field;
 }
 

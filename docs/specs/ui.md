@@ -716,10 +716,12 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    one-sentence note, its unit in the control's frame and its name in Ortho4XP as a small badge, on the
    aligned grid of the old form (enum as a select with named options for the road levels, the sea
    level at the shore and the coast fade precision; boolean as a switch; number with its
-   `minimum`/`maximum`, whose arrows step it in place: the screen is drawn again once the focus
-   has left the number fields, since a field replaced under its arrows at each step answered a
-   second late and read the next click as the other arrow, 2026-09-21; list as comma-separated
-   text). The fade in three steps is one text field of
+   `minimum`/`maximum`; list as comma-separated text). A change under *For experts* leaves its
+   grid as it is: the presets are drawn again, and the questions when they show the same setting
+   (an essential one, or one a question asks: `settings.js` `questionsShow`). Drawn whole at each
+   change, the page flashed in the Mac's window whenever a field was left, and a number's arrows
+   were replaced under the pointer, answered a second late and read the next click as the other
+   arrow (a user, 2026-09-21). The fade in three steps is one text field of
    three widths ("100, 200, 100"): three valid widths set `profile = "3steps"`, an empty field goes
    back to `sand` at 100 m, anything else is refused with a message. The settings OrthoStudio XP no
    longer offers (`ratio_bathy`, `imprint_masks_to_dds`, `mesh_zl`, `masks_custom_extent`, and

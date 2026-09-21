@@ -313,6 +313,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .gen-field > .hint { font-size: var(--fs-2); color: var(--fg-2); padding: var(--help-gap) 0 var(--block-gap); }
 /* what the folder of patches holds, said under its note */
 .hint-found { display: block; margin-top: var(--gap); color: var(--fg); }
+.hint-found:empty { display: none; }
 /* A field holding a folder takes two columns: a path and its Choose button do not fit in one. */
 .form-grid .field-span2 { grid-column: span 2; }
 @media (max-width: 700px) { .form-grid .field-span2 { grid-column: auto; } }

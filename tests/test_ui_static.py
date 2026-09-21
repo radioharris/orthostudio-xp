@@ -3844,7 +3844,10 @@ def test_the_patches_are_named_before_anything_is_built() -> None:
     assert "loadSettingsPatches();" in _function_body(app_js, "renderSettings")
     assert "patches: state.settingsPatches || null," in app_js
     settings_js = (UI / "settings.js").read_text(encoding="utf-8")
-    assert "path === PATCHES_DIR ? patchesFoundText(view.patches)" in settings_js
+    assert (
+        'path === PATCHES_DIR ? h("span", { class: "hint-found" }, patchesFoundText(view.patches))'
+        in settings_js
+    )
     words = _node_json(
         "settings.js",
         "[null, {dir: null}, {dir: '/p', exists: false, tiles: {}}, {dir: '/p', exists: true,"
@@ -3950,27 +3953,38 @@ def test_a_fields_title_is_text() -> None:
     assert "if (isTitleClick(ev.target)) ev.preventDefault();\n  }, true);" in boot
 
 
-def test_a_number_steps_in_place_and_a_box_is_not_tied_to_its_title() -> None:
-    """Two things a user saw under For experts (2026-09-21). A number's arrows took a second to
-    answer, and the next click was read as the other arrow: each step drew the screen again and
-    replaced the field under the arrows, and the new field did not know which one the pointer was
-    on. And a press on a check box's title showed the box pressed, a flash."""
+def test_a_change_under_for_experts_leaves_its_grid_as_it_is() -> None:
+    """Three things a user saw under For experts (2026-09-21), from one cause: each change drew the
+    whole screen again. The page flashed in the Mac's window whenever a field was left; a number's
+    arrows were replaced under the pointer, took a second to answer and read the next click as
+    the other arrow. A change of the grid now leaves the grid as it is: the presets are drawn
+    again, and the questions when they show the same setting. And a press on a check box's title
+    showed the box pressed, a flash: the box is named by its title without being tied to it."""
     settings_js = (UI / "settings.js").read_text(encoding="utf-8")
-    number = settings_js[settings_js.index('control = h("input", { type: "number", id,') :]
-    number = number[: number.index('} else if (prop.type === "array")')]
-    assert "view.touched(); // " in number and "numbersPending = true;" in number
-    assert 'control.addEventListener("blur", () => numbersLeft(view));' in number
-    assert "view.changed();" in number  # only for a page that has no lighter redraw
-    left = _function_body(settings_js, "numbersLeft")
-    assert "setTimeout(" in left  # once the focus has moved, so a field clicked next keeps it
-    assert "document.activeElement?.matches?.('input[type=\"number\"]')" in left
+    view = _function_body(settings_js, "renderSettingsView")
+    assert "if (!from || questionsShow(from.path)) renderQuestions(parts.questions, view);" in view
+    assert "if (!from) renderExperts(parts.experts, view);" in view
+    field = _function_body(settings_js, "expertField")
+    assert 'view.changed(text, level, { from: "experts", path: shown })' in field
+    assert field.count("changed();") >= 6 and "view.changed();" not in field
+    # the coast's three widths set the profile and the widths, which the questions show
+    assert 'changed(undefined, undefined, "essential.coast_transition.profile")' in field
+    shown = _node_json(
+        "settings.js",
+        "['essential.airports.zoom_level', 'advanced.ratio_water_pct', 'expert.photo_contrast',"
+        " 'advanced.water_smoothing', 'expert.patches_dir'].map(m.questionsShow)",
+    )
+    assert shown == [True, True, True, False, False]
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "from: from || null," in app_js
+    assert "changed: (text, level, where) => renderSettings(text, level, where)," in app_js
+    # what the folder of patches holds is filled in place, not by drawing the screen again
+    ask = _function_body(app_js, "loadSettingsPatches")
+    assert "line.textContent = patchesFoundText(found);" in ask and "renderSettings(" not in ask
     # the check box is named by its title without being tied to it
     assert 'const tied = control.type !== "checkbox";' in settings_js
     assert 'control.setAttribute("aria-labelledby", `${id}-title`);' in settings_js
     assert "tied ? { for: id } : { id: `${id}-title` }" in settings_js
-    app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "touched: () => renderSettingsStatus()," in app_js
-    assert "settings.unsaved" in _function_body(app_js, "renderSettingsStatus")
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
