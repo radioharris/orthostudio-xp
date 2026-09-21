@@ -296,8 +296,16 @@ def _ortho4xp_custom_build_dir(folder: Path) -> str:
     return ""
 
 
-def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
-    """``zOrtho4XP_*`` directories of ``Tiles/`` and of the custom build dir, deduplicated."""
+def ortho4xp_searched(folder: Path) -> list[Path]:
+    """Where an import looks for tiles: ``Tiles/`` of the folder, and the build folder the Ortho4XP
+    GUI remembers when one is set. For the page to say where it looked when it found nothing: a
+    user pressed Import and could not tell what had happened (2026-09-21)."""
+    roots, single = _ortho4xp_roots(Path(folder))
+    return [*roots, *([single] if single is not None else [])]
+
+
+def _ortho4xp_roots(folder: Path) -> tuple[list[Path], Path | None]:
+    """The folders holding ``zOrtho4XP_*`` tiles, and a custom build dir that is itself one tile."""
     roots: list[Path] = [folder / IMPORT_TILES_DIR]
     custom = _ortho4xp_custom_build_dir(folder)
     single: Path | None = None
@@ -306,6 +314,12 @@ def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
             roots.append(Path(custom.rstrip("/")))
         else:
             single = Path(custom)
+    return roots, single
+
+
+def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
+    """``zOrtho4XP_*`` directories of ``Tiles/`` and of the custom build dir, deduplicated."""
+    roots, single = _ortho4xp_roots(folder)
     seen: set[Path] = set()
     for root in roots:
         if not root.is_dir():

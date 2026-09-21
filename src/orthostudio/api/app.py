@@ -77,6 +77,7 @@ from orthostudio.install import (
     packs_of_their_own,
     xplane_running,
 )
+from orthostudio.install.library import ortho4xp_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
 from orthostudio.pipeline.build import BuildEnv
@@ -1393,21 +1394,25 @@ def create_app(
     async def import_ortho4xp(req: ImportRequest) -> Any:
         folder = check_ortho4xp_folder(req.folder)
 
-        def run() -> list[dict[str, Any]]:
+        def run() -> dict[str, Any]:
             with Library(default_library_path()) as lib:
                 rows = lib.import_ortho4xp(folder)
-            return [
-                {
-                    "tile": r.tile.name,
-                    "kind": r.kind,
-                    "provider": r.provider,
-                    "zl": _display_zl(r.kind, r.zl),
-                    "path": str(r.path),
-                    "name": r.path.name,
-                    "built_by": r.built_by,
-                }
-                for r in rows
-            ]
+            # where it looked as well as what it found: finding nothing then says where not
+            return {
+                "entries": [
+                    {
+                        "tile": r.tile.name,
+                        "kind": r.kind,
+                        "provider": r.provider,
+                        "zl": _display_zl(r.kind, r.zl),
+                        "path": str(r.path),
+                        "name": r.path.name,
+                        "built_by": r.built_by,
+                    }
+                    for r in rows
+                ],
+                "searched": [str(p) for p in ortho4xp_searched(folder)],
+            }
 
         return await asyncio.to_thread(run)
 

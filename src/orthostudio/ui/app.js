@@ -1170,14 +1170,18 @@ export async function mockApi(method, path, body, options = {}) {
   }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
+    // like the engine: what was found, and where it looked. A folder named "empty" finds nothing,
+    // so that the other answer can be seen too.
+    const searched = [`${body.folder}/Tiles`];
+    if (/empty/i.test(body.folder)) return { entries: [], searched };
     const now = Date.now() / 1000;
-    const row = { tile: "+42+009", kind: "ortho", provider: "BI", zl: 16, path: `${body.folder}/Tiles/zOrtho4XP_+42+009`, name: "zOrtho4XP_+42+009", built_by: "ortho4xp", installed: false, keys: null, registered_at: now, updated_at: now, size_bytes: 1650000000, present: true, overlay: null };
+    const row = { tile: "+42+009", kind: "ortho", provider: "BI", zl: 16, path: `${body.folder}/Tiles/zOrtho4XP_+42+009`, name: "zOrtho4XP_+42+009", built_by: "ortho4xp", installed: false, keys: null, registered_at: now, updated_at: now, size_bytes: 1650000000, present: true, photo: null, built: null, overlay: null };
     if (!mock.library.some((e) => e.path === row.path)) {
       mock.library.push(row);
       mockSortLibrary();
     }
     const { tile, kind, provider, zl, path: packPath, name, built_by: builtBy } = row;
-    return [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }];
+    return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched };
   }
   m = p.match(/^\/api\/library\/([^/]+)\/(install|uninstall|delete)$/);
   if (m) {
@@ -4433,16 +4437,33 @@ async function chooseFolder(prompt, start = null) {
   }
 }
 
+/**
+ * Import in one step. A user pressed Import with the field still empty and nothing happened at all,
+ * and could not tell which folder was meant (2026-09-21). With no folder typed, the button opens
+ * the folder dialog and imports what was chosen; the answer counts the tiles, not the overlays
+ * pack beside them, and says where it looked when it found none.
+ */
 async function importOrtho4xp(ev) {
   ev.preventDefault();
-  const dir = $("import-path").value.trim();
-  if (!dir) return;
   const out = $("import-result");
+  let dir = $("import-path").value.trim();
+  if (!dir) {
+    const picked = state.engineOutdated ? null : await chooseFolder(t("library.import_prompt"), null);
+    if (!picked) {
+      // cancelled, or no dialog on this system (whose error has been said): which folder, then
+      out.textContent = t("library.import_choose_first");
+      return;
+    }
+    dir = picked;
+    $("import-path").value = picked;
+  }
   out.textContent = t("app.loading");
   try {
     const res = await api("POST", "/api/library/import-ortho4xp", { folder: dir });
-    const n = Array.isArray(res) ? res.length : res?.imported ?? res?.entries?.length ?? 0;
-    out.textContent = t("library.imported", { n });
+    const entries = Array.isArray(res) ? res : res?.entries || []; // an older engine sent the list
+    const tiles = entries.filter((e) => e.kind == null || e.kind === "ortho").length;
+    const where = (Array.isArray(res?.searched) && res.searched.length ? res.searched : [dir]).map(homely).join(", ");
+    out.textContent = tiles ? t("library.imported", { n: fmtInt(tiles) }) : t("library.import_none", { where });
     await loadLibrary();
     loadStatus();
   } catch (err) {

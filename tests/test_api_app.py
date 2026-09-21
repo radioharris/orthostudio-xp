@@ -416,8 +416,10 @@ async def test_library_import_install_uninstall(
         assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_WORKING_DIR_INVALID"
         r = await c.post("/api/library/import-ortho4xp", json={"folder": str(ortho4xp_dir)})
         assert r.status_code == 200, r.text
-        (row,) = r.json()
+        (row,) = r.json()["entries"]
         assert row["tile"] == "+43+005" and row["built_by"] == "ortho4xp" and row["zl"] == 16
+        # and where it looked, for a page to say when it found nothing
+        assert r.json()["searched"] == [str(ortho4xp_dir.resolve() / "Tiles")]
         r = await c.get("/api/library")
         (row,) = r.json()
         assert row["name"] == "zOrtho4XP_+43+005" and row["installed"] is False

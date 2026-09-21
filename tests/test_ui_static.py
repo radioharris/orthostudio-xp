@@ -3654,3 +3654,23 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
             "plan.built_colours",
         ):
             assert tables[lang][key], f"{lang} is missing {key}"
+
+
+def test_importing_ortho4xp_tiles_is_one_step_and_says_where_it_looked() -> None:
+    """A user pressed "Import my Ortho4XP tiles" with the field still empty: nothing happened at
+    all, and he could not tell which folder was meant (2026-09-21). The button now opens the folder
+    dialog when no folder is typed, and imports what was chosen; the answer counts tiles, not the
+    overlays pack beside them, and says where it looked when it found none."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "importOrtho4xp")
+    assert "if (!dir) return;" not in body  # the silent no-op
+    assert 'await chooseFolder(t("library.import_prompt"), null)' in body
+    assert 't("library.import_choose_first")' in body  # cancelled: which folder, then
+    assert 'e.kind == null || e.kind === "ortho"' in body  # tiles, not the overlays pack
+    assert 't("library.import_none", { where })' in body and "res?.searched" in body
+    assert "Array.isArray(res) ? res" in body  # an older engine answered with the list alone
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        assert tables[lang]["library.import_none"] and tables[lang]["library.import_choose_first"]
+    # the help says which folder before anything else
+    assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
