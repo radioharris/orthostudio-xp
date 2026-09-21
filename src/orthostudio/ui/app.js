@@ -4624,8 +4624,14 @@ function renderSettings(message, kind) {
       photoSample: photoSampleUrl,
       patches: state.settingsPatches || null,
       changed: (text, level) => renderSettings(text, level),
+      touched: () => renderSettingsStatus(),
     },
   );
+  renderSettingsStatus(message, kind);
+}
+
+/** "Changes not saved yet", or the message of the last change: the line beside Save. */
+function renderSettingsStatus(message, kind) {
   const dirty = !sameValue(state.settingsDraft, state.settings);
   $("settings-status").textContent = message || (dirty ? t("settings.unsaved") : "");
   $("settings-status").classList.toggle("is-fail", kind === "fail");

@@ -507,6 +507,23 @@ const UNIT_TEXT = {
   "expert.sea_texture_blur": () => "px",
 };
 
+/**
+ * A number changed and not drawn yet. Its arrows change a number in place, and the screen is drawn
+ * again once the focus has left the number fields: drawn again at each step, the field was replaced
+ * under its arrows, and the Mac's took a second to answer and read the next click as the other
+ * arrow (a user, 2026-09-21). Drawn after the focus has moved, so that a field clicked next keeps
+ * it; not while it is in another number field, whose arrows would be replaced in turn.
+ */
+let numbersPending = false;
+
+function numbersLeft(view) {
+  setTimeout(() => {
+    if (!numbersPending || document.activeElement?.matches?.('input[type="number"]')) return;
+    numbersPending = false;
+    view.changed();
+  }, 0);
+}
+
 export function fieldLabel(path) {
   return FIELD_TEXT[path] ? FIELD_TEXT[path][0]() : path;
 }
@@ -1012,8 +1029,15 @@ function expertField(view, path, prop) {
         return;
       }
       setPath(d, path, n);
-      view.changed();
+      if (!view.touched) {
+        view.changed();
+        return;
+      }
+      numbersPending = true;
+      view.touched(); // "Changes not saved yet" at once, the fields as they are
+      if (document.activeElement !== control) numbersLeft(view);
     });
+    control.addEventListener("blur", () => numbersLeft(view));
   } else if (prop.type === "array") {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = (getPath(d, path) || []).join(", ");
@@ -1048,7 +1072,11 @@ function expertField(view, path, prop) {
       } }, t("settings.x.patches_choose"))
     : null;
   const unit = UNIT_TEXT[path] ? UNIT_TEXT[path]() : prop.unit || "";
-  const labelRow = h("div", { class: "label-row" }, h("label", { for: id }, fieldLabel(path)));
+  // A check box's title names it without being tied to it: tied, a press on the title showed the
+  // box pressed, a flash (a user, 2026-09-21). The box still reads the title as its name.
+  const tied = control.type !== "checkbox";
+  if (!tied) control.setAttribute("aria-labelledby", `${id}-title`);
+  const labelRow = h("div", { class: "label-row" }, h("label", tied ? { for: id } : { id: `${id}-title` }, fieldLabel(path)));
   if (prop.ortho4xp) labelRow.append(h("span", { class: "badge-ortho4xp", title: t("settings.ortho4xp", { name: prop.ortho4xp }) }, prop.ortho4xp));
   const field = h("div", { class: choose ? "field gen-field field-span2" : "field gen-field" }, labelRow);
   if (control.type === "checkbox") field.append(h("label", { class: "switch", for: id }, control, h("span", { class: "help" }, t("settings.x.on"))));

@@ -3950,6 +3950,29 @@ def test_a_fields_title_is_text() -> None:
     assert "if (isTitleClick(ev.target)) ev.preventDefault();\n  }, true);" in boot
 
 
+def test_a_number_steps_in_place_and_a_box_is_not_tied_to_its_title() -> None:
+    """Two things a user saw under For experts (2026-09-21). A number's arrows took a second to
+    answer, and the next click was read as the other arrow: each step drew the screen again and
+    replaced the field under the arrows, and the new field did not know which one the pointer was
+    on. And a press on a check box's title showed the box pressed, a flash."""
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    number = settings_js[settings_js.index('control = h("input", { type: "number", id,') :]
+    number = number[: number.index('} else if (prop.type === "array")')]
+    assert "view.touched(); // " in number and "numbersPending = true;" in number
+    assert 'control.addEventListener("blur", () => numbersLeft(view));' in number
+    assert "view.changed();" in number  # only for a page that has no lighter redraw
+    left = _function_body(settings_js, "numbersLeft")
+    assert "setTimeout(" in left  # once the focus has moved, so a field clicked next keeps it
+    assert "document.activeElement?.matches?.('input[type=\"number\"]')" in left
+    # the check box is named by its title without being tied to it
+    assert 'const tied = control.type !== "checkbox";' in settings_js
+    assert 'control.setAttribute("aria-labelledby", `${id}-title`);' in settings_js
+    assert "tied ? { for: id } : { id: `${id}-title` }" in settings_js
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "touched: () => renderSettingsStatus()," in app_js
+    assert "settings.unsaved" in _function_body(app_js, "renderSettingsStatus")
+
+
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
     rows = [
         {"tile": "+43+005", "kind": "ortho", "built_by": "osxp", "path": "/t/zOrthoStudio_+43+005",
