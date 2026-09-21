@@ -73,7 +73,12 @@ caret in the field or ticking a box (2026-09-21); a label around its own box ("O
 choice) still ticks it. A check box of *For experts* is named by its title (`aria-labelledby`)
 without being tied to it: tied, a press on the title showed the box pressed, a flash. Settings' questions are cards of a line each (`inline-block`) in their two
 columns: as blocks, WebKit carried the space under the first column's last card to the top of the
-second, 12px lower than the first in the Mac's window and not in Windows'.
+second, 12px lower than the first in the Mac's window and not in Windows'. A table wider than its
+box scrolls sideways, and one that is wider keeps its scrollbar from the start (`app.js`
+`markWideTables`, `.table-wrap.is-wide`, checked when a screen, step 3's estimate or the Library is
+drawn, and when the window's size changes): where scrollbars take room (a mouse, macOS set to show
+them always, Windows), WebKit added the scrollbar after placing what follows the table, and the line
+under step 3's per-tile table overlapped the table until the page moved (a user, 2026-09-22).
 
 ## 2. The four screens
 

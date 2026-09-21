@@ -2052,6 +2052,20 @@ async function watchJob(jobId) {
 
 const SCREENS = ["plan", "works", "library", "settings"];
 
+/**
+ * A table wider than its box scrolls sideways (`.table-wrap`). Where the scrollbar takes room (a
+ * mouse, macOS set to always show it, Windows), WebKit added it after placing what follows the
+ * table, which then overlapped the table until the page moved (a user, 2026-09-22). A table that
+ * is wider keeps its scrollbar from the start (`.table-wrap.is-wide`), and what follows is placed
+ * again under it. Asked when a screen, the Plan's estimate or the Library is drawn, and when the
+ * window's size changes; a hidden table measures nothing and loses the mark.
+ */
+function markWideTables() {
+  for (const wrap of document.querySelectorAll(".table-wrap")) {
+    wrap.classList.toggle("is-wide", wrap.scrollWidth > wrap.clientWidth + 1);
+  }
+}
+
 function showScreen(name, arg) {
   if (!SCREENS.includes(name)) name = "plan";
   if (state.screen === "settings" && name !== "settings" && state.settingsDraft && !sameValue(state.settingsDraft, state.settings)) {
@@ -2081,6 +2095,7 @@ function showScreen(name, arg) {
     if (state.tiles.length) planChanged(); // the free disk space may have changed meanwhile
     if (state.libraryKnown) planMap?.show(); // else boot shows it when the library answers
   }
+  markWideTables(); // the screen's tables measured now that it shows
 }
 
 function routeFromHash() {
@@ -3320,6 +3335,7 @@ function renderPlanPanel() {
     mb: fmtMB(net.mb),
     disk: fmtGB(disk.needed),
   })));
+  markWideTables(); // the per-tile table is often wider than step 3's column
 }
 
 // ------------------------------------------------------------------ Works
@@ -4411,10 +4427,12 @@ function renderLibrary() {
   renderOverlayNotices(rows);
   if (!rows.length) {
     body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
+    markWideTables();
     return;
   }
   for (const e of rows) body.append(...libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
+  markWideTables();
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
@@ -5030,6 +5048,7 @@ async function boot() {
     if (isTitleClick(ev.target)) ev.preventDefault();
   }, true);
   window.addEventListener("resize", measureMapTop);
+  window.addEventListener("resize", markWideTables);
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   try {

@@ -673,6 +673,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* ----------------------------------------------------------- tables */
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); }
+/* A table wider than its box keeps its scrollbar from the start (app.js markWideTables): WebKit
+   added it after placing what follows, which overlapped the table until the page moved. */
+.table-wrap.is-wide { overflow-x: scroll; }
 .table { border-collapse: collapse; width: 100%; font-size: var(--fs); }
 .table th, .table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .table th { font-weight: 600; color: var(--fg-2); font-size: var(--fs-2); background: var(--bg-3); position: sticky; top: 0; }

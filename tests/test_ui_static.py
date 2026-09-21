@@ -2932,6 +2932,38 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_a_table_wider_than_its_box_keeps_its_scrollbar() -> None:
+    """Where a scrollbar takes room, WebKit added a table's after placing what follows it: the line
+    under step 3's per-tile table overlapped the table until the page moved (a user, 2026-09-22).
+    A table that is wider keeps its scrollbar from the start, checked whenever tables are drawn."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    helper = _function_body(app_js, "markWideTables")
+    run = """
+      const made = [];
+      function wrap(scrollWidth, clientWidth) {
+        const classes = new Set(["table-wrap"]);
+        const toggle = (name, on) => (on ? classes.add(name) : classes.delete(name));
+        made.push(classes);
+        return { scrollWidth, clientWidth, classList: { toggle } };
+      }
+      // wider than its box, as wide, and hidden (a screen not shown measures nothing)
+      const document = { querySelectorAll: () => [wrap(535, 378), wrap(378, 378), wrap(0, 0)] };
+    """
+    end = "markWideTables(); process.stdout.write(JSON.stringify(made.map((c) => [...c])));"
+    got = _run_node(run + helper + end)
+    assert got == [["table-wrap", "is-wide"], ["table-wrap"], ["table-wrap"]]
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "overflow-x: scroll;" in rules[".table-wrap.is-wide"]
+    assert "overflow-x: auto;" in rules[".table-wrap"]
+    # wherever tables are drawn, and when the window's size changes
+    for name in ("showScreen", "renderPlanPanel"):
+        assert "markWideTables();" in _function_body(app_js, name), name
+    assert _function_body(app_js, "renderLibrary").count("markWideTables();") == 2
+    assert 'window.addEventListener("resize", markWideTables);' in _function_body(app_js, "boot")
+
+
 def test_a_chosen_tile_a_build_would_change_is_marked_at_a_glance() -> None:
     """Under the chips, what a build would change is a warning line; a user asked it to line up
     and stand apart from the tile's line, and the tile's chip to take its colour (2026-09-22)."""
