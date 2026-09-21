@@ -186,6 +186,10 @@ const state = {
   log: [],
   source: null,
   library: [],
+  /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
+  patches: null,
+  /** The same for the folder Settings shows, saved or not. */
+  settingsPatches: null,
   busy: false,
   jobsClearing: false,
 };
@@ -917,6 +921,17 @@ export async function mockApi(method, path, body, options = {}) {
     // fail=slow-dialog: the File Explorer's took seconds to show on a user's Windows
     if (MOCK_FAIL === "slow-dialog") await new Promise((resolve) => setTimeout(resolve, 2500));
     return { path: /ortho4xp/i.test(body?.prompt || "") ? "/Users/pilot/Ortho4XP" : "/Users/pilot/X-Plane 12" };
+  }
+  if (p === "/api/patches" && method === "GET") {
+    // Like the engine: the saved folder, or the one Settings shows (`dir`, empty for the default).
+    // The default holds patches for a square of the mock's library and for SBCF's, whose Ortho4XP
+    // tree a user sent; a folder named "empty" holds none, "missing" is not there.
+    const typed = url.searchParams.get("dir");
+    const saved = typed == null ? (await mockFile("settings")).expert?.patches_dir || "" : typed;
+    const dir = saved.trim() || "/Users/pilot/.orthostudio/patches";
+    if (/missing/i.test(dir)) return { dir, exists: false, tiles: {} };
+    if (/empty/i.test(dir)) return { dir, exists: true, tiles: {} };
+    return { dir, exists: true, tiles: { "-20-044": ["SBCF.patch.osm"], "+43+005": ["LFML.patch.osm", "harbour.patch.osm"] } };
   }
   if (p === "/api/reveal" && method === "POST") {
     if (!String(body?.path || "").startsWith("/")) throw mockError(403, "SYS_FORBIDDEN_PATH", `${body?.path} is not a folder of OrthoStudio XP, of X-Plane or of a tile of the library.`, "The page only shows the folders OrthoStudio XP works with.");
@@ -1973,6 +1988,7 @@ function showScreen(name, arg) {
   }
   if (name === "settings") renderSettings();
   if (name === "plan") {
+    loadPatches();
     renderPlanSettings();
     if (state.tiles.length) planChanged(); // the free disk space may have changed meanwhile
     planMap?.show();
@@ -2386,6 +2402,7 @@ function renderTiles() {
   $("tiles-clear").hidden = !state.tiles.length;
   planMap?.tilesChanged();
   renderTilesBuilt();
+  renderTilesPatched();
 }
 
 /** Tiles of the chosen squares whose details are unfolded, kept across the redraws. */
@@ -2445,6 +2462,51 @@ function renderTilesBuilt() {
         changes.length ? h("p", { class: "tiles-built-warn" }, t("plan.built_change", { changes: changes.join(t("plan.built_and")) })) : null),
     );
   }
+}
+
+/**
+ * Under the chosen squares, those a build will read hand-made patches for, and which files (a
+ * user took "Patches: none" in a report for his patch not being found, when it was for another
+ * square, 2026-09-21). From GET /api/patches: read when the page opens, when the Plan shows (a
+ * patch may have been dropped into the folder meanwhile) and after Settings are saved.
+ */
+function renderTilesPatched() {
+  const box = $("tiles-patched");
+  if (!box) return;
+  clear(box);
+  const found = state.patches?.tiles || {};
+  for (const name of state.tiles) {
+    const files = found[name];
+    if (files?.length) box.append(h("p", { class: "help tiles-patched-line" }, t("plan.patched", { tile: name, files: files.join(", ") })));
+  }
+}
+
+/** The patches of the saved folder, for the Plan. An engine older than the route says nothing. */
+async function loadPatches() {
+  try {
+    state.patches = await api("GET", "/api/patches");
+  } catch (_err) {
+    state.patches = null;
+  }
+  renderTilesPatched();
+}
+
+/** The folder Settings last asked about (`null`: none yet), so a redraw asks only when it changes. */
+let settingsPatchesDir = null;
+
+/** The patches of the folder Settings shows, saved or not: listed again when the field changes. */
+function loadSettingsPatches() {
+  const dir = String(state.settingsDraft?.expert?.patches_dir ?? "").trim();
+  if (dir === settingsPatchesDir) return;
+  settingsPatchesDir = dir;
+  api("GET", `/api/patches?dir=${encodeURIComponent(dir)}`).then(
+    (found) => {
+      if (settingsPatchesDir !== dir) return; // the field changed again meanwhile
+      state.settingsPatches = found;
+      if (state.screen === "settings") renderSettings();
+    },
+    () => {},
+  );
 }
 
 function addTilesFromText() {
@@ -4544,6 +4606,7 @@ async function importOrtho4xp(ev) {
 /** The Settings screen (settings.js): questions, presets, For experts; the draft is saved by Save. */
 function renderSettings(message, kind) {
   if (!state.schema || !state.settingsDraft) return;
+  loadSettingsPatches();
   renderSettingsView(
     { root: $("settings-form"), presets: $("settings-presets"), questions: $("settings-questions"), experts: $("settings-expert-fields"), note: $("settings-search-note") },
     {
@@ -4559,6 +4622,7 @@ function renderSettings(message, kind) {
       reveal: state.status?.platform ? { label: revealLabel(state.status.platform), open: revealPath } : null,
       chooseFolder: state.engineOutdated ? null : chooseFolder,
       photoSample: photoSampleUrl,
+      patches: state.settingsPatches || null,
       changed: (text, level) => renderSettings(text, level),
     },
   );
@@ -4719,6 +4783,7 @@ async function saveSettings(ev) {
     }, 3000);
     renderProviders();  // the list of sources, never the one the Plan shows
     renderPlanSettings();
+    loadPatches(); // the folder of patches may be another one now
   } catch (e) {
     err.hidden = false;
     // the page's words for the code and its remedy: which folder, and what to do (a user on a
@@ -4961,6 +5026,7 @@ async function boot() {
   if (!state.jobId && state.status?.active_job) watchJob(state.status.active_job);
   jobsChanged();
   loadUpdate(); // not awaited: a slow GitHub must never hold the page back
+  loadPatches();
 }
 
 /** The status bar is pinned at the bottom (a user asked): its height, which grows when its items

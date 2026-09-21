@@ -493,13 +493,44 @@ def patches_folder(patches_dir: Path | None, tile: TileRef) -> Path | None:
         folder
         for base in (root, root / "Patches")
         for folder in (base / tile.name, base / tile.folder / tile.name)
-        if folder.is_dir()
+        if folder.is_dir() and not _is_cell_folder(folder)
     ]
     # a directory that holds something wins over an empty one left beside it
     with_files = [
         f for f in found if any(f.glob("*.patch.osm")) or any(p.is_dir() for p in f.iterdir())
     ]
     return (with_files or found or [None])[0]
+
+
+def _tile_named(name: str) -> TileRef | None:
+    """The tile a directory is named after (``+46+006``), or ``None``."""
+    try:
+        ref = TileRef.parse(name)
+    except ValueError:
+        return None
+    return ref if -90 <= ref.lat < 90 and -180 <= ref.lon < 180 else None
+
+
+def _subdirs(folder: Path) -> list[Path]:
+    try:
+        return sorted(p for p in folder.iterdir() if p.is_dir())
+    except OSError:
+        return []
+
+
+def _is_cell_folder(folder: Path) -> bool:
+    """Whether ``folder`` is a 10° cell of an Ortho4XP tree rather than a tile's own folder.
+
+    The tile at a cell's corner has the cell's name: ``-20-050`` is a tile, and the cell holding
+    SBCF's ``-20-044``. Taken for the tile's folder, the cell gave the corner tile the patches of
+    every tile in it. A cell holds tiles of its own, and no patch.
+    """
+    if any(folder.glob("*.patch.osm")):
+        return False
+    return any(
+        (ref := _tile_named(d.name)) is not None and ref.folder == folder.name
+        for d in _subdirs(folder)
+    )
 
 
 def patch_files(patches_dir: Path | None, tile: TileRef) -> list[Path]:
@@ -536,6 +567,39 @@ def patch_names(patches_dir: Path | None, tile: TileRef) -> list[str]:
     if folder is None:
         return []
     return [str(p.relative_to(folder)) for p in patch_files(patches_dir, tile)]
+
+
+def patched_tiles(patches_dir: Path | None) -> dict[str, list[str]]:
+    """Every tile the folder of patches has something for, with what a build of it reads
+    (:func:`patch_names`), tile by tile from south-west to north-east.
+
+    For the page to name them before anything is built: a user saw "Patches: none" in a report
+    and took it that his patch had not been found, when it was for another square (2026-09-21).
+    The same layouts as :func:`patches_folder`: ``<tile>``, ``<10° cell>/<tile>``, each also
+    under ``Patches``.
+    """
+    if patches_dir is None:
+        return {}
+    root = Path(patches_dir).expanduser()
+    seen: set[TileRef] = set()
+    for base in (root, root / "Patches"):
+        for child in _subdirs(base):
+            ref = _tile_named(child.name)
+            if ref is None:
+                continue
+            seen.add(ref)
+            if ref.folder == child.name:  # perhaps a 10° cell: the tiles in it
+                seen.update(
+                    inner
+                    for d in _subdirs(child)
+                    if (inner := _tile_named(d.name)) is not None and inner.folder == child.name
+                )
+    found: dict[str, list[str]] = {}
+    for ref in sorted(seen):
+        names = patch_names(root, ref)
+        if names:
+            found[ref.name] = names
+    return found
 
 
 def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:

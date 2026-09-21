@@ -539,6 +539,37 @@ async def test_library_forget_keeps_the_overlay_of_a_tile_imported_twice(
         assert (await c.get("/api/library")).json() == []
 
 
+@pytest.mark.anyio
+async def test_the_page_can_ask_which_tiles_have_patches(app, home: Path, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """``GET /api/patches``: the saved folder of patches (else ``$OSXP_HOME/patches``), or the one
+    Settings shows before it is saved (``dir``, empty for the default). A user took "Patches:
+    none" in a report for his patch not being found, when it was for another square
+    (2026-09-21): the Plan and Settings now name them before anything is built."""
+    sbcf = home / "patches" / "-20-050" / "-20-044" / "SBCF.patch.osm"
+    sbcf.parent.mkdir(parents=True)
+    sbcf.write_text("<osm/>", encoding="utf-8")
+    mine = tmp_path / "mine" / "+46+006" / "a.patch.osm"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("<osm/>", encoding="utf-8")
+    async with client_for(app) as c:
+        r = await c.get("/api/patches")
+        assert r.status_code == 200, r.text
+        assert r.json() == {"dir": str(home / "patches"), "exists": True,
+                            "tiles": {"-20-044": ["SBCF.patch.osm"]}}  # fmt: skip
+        # the folder Settings shows, not saved yet; empty is the default folder
+        r = await c.get("/api/patches", params={"dir": str(tmp_path / "mine")})
+        assert r.json()["tiles"] == {"+46+006": ["a.patch.osm"]}
+        default = (await c.get("/api/patches", params={"dir": ""})).json()
+        assert default["dir"] == str(home / "patches")
+        r = await c.get("/api/patches", params={"dir": str(tmp_path / "nowhere")})
+        assert r.json() == {"dir": str(tmp_path / "nowhere"), "exists": False, "tiles": {}}
+        # once saved, the setting is the folder asked about
+        doc = (await c.get("/api/settings")).json()
+        doc["expert"]["patches_dir"] = str(tmp_path / "mine")
+        assert (await c.put("/api/settings", json=doc)).status_code == 200
+        assert (await c.get("/api/patches")).json()["tiles"] == {"+46+006": ["a.patch.osm"]}
+
+
 # -- delete, sizes, counts (docs/specs/api.md 2.3, install.md 4.2) ----------------------------
 
 

@@ -257,7 +257,9 @@ directory, whichever you have. *Choose…* opens the folder dialog; left empty, 
 XP reads its own `patches` folder, `~/.orthostudio/patches`, which it makes empty when it starts
 so that there is somewhere to drop them. A tile that has a
 directory there is built with its patches, and editing a patch builds that tile again by itself; a
-tile without one is built as before.
+tile without one is built as before. Settings names the tiles the folder has patches for, the Plan
+says which of the tiles you chose will be built with them and which files, and the report of a build
+lists the tiles it built with patches.
 
 **With AutoOrtho, XPME or Ortho4XP tiles.** For each square X-Plane shows the ground of one pack
 only: the OrthoStudio XP tile, listed above AutoOrtho, XPME and the other base meshes. But it draws

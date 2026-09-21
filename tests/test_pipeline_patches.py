@@ -11,7 +11,7 @@ from pathlib import Path
 
 import test_api_fakes as fakes
 from orthostudio.model import TileRef
-from orthostudio.pipeline.build import patch_names, patches_folder, patches_ref
+from orthostudio.pipeline.build import patch_names, patched_tiles, patches_folder, patches_ref
 
 home = fakes.home
 xplane = fakes.xplane
@@ -172,3 +172,53 @@ def test_the_report_says_which_patches_a_tile_was_built_with(tmp_path: Path) -> 
     ref = patches_ref(tmp_path / "Patches", TILE)
     assert ref is not None
     assert patch_names(tmp_path / "Patches", OTHER) == []
+
+
+def test_a_cell_is_not_the_folder_of_the_tile_at_its_corner(tmp_path: Path) -> None:
+    """The tile at a 10° cell's corner has the cell's name: ``-20-050`` is a tile, and the cell of
+    an Ortho4XP tree holding SBCF's ``-20-044``. Taken for the corner tile's own folder, the cell
+    gave -20-050 the patch of SBCF (found on a user's machine, 2026-09-21)."""
+    corner = TileRef(-20, -50)
+    assert corner.folder == corner.name
+    root = tmp_path / "patches"
+    _patch(root / "-20-050" / "-20-044", name="SBCF.patch.osm")
+    assert patch_names(root, corner) == [] and patches_ref(root, corner) is None
+    assert patch_names(root, TileRef(-20, -44)) == ["SBCF.patch.osm"]
+    # the corner tile's own folder, inside its cell, is read
+    _patch(root / "-20-050" / "-20-050", name="corner.patch.osm")
+    assert patch_names(root, corner) == ["corner.patch.osm"]
+    # and a flat folder of the corner tile, holding its patch, is still the tile's
+    flat = tmp_path / "flat"
+    _patch(flat / "-20-050", name="mine.patch.osm")
+    assert patch_names(flat, corner) == ["mine.patch.osm"]
+
+
+def test_the_folder_says_which_tiles_it_has_patches_for(tmp_path: Path) -> None:
+    """For the page to name them before anything is built: a user saw "Patches: none" in a
+    report and took it that his patch had not been found, when it was for another square
+    (2026-09-21). Every layout a build reads, and nothing a build would not."""
+    assert patched_tiles(None) == {} and patched_tiles(tmp_path / "nowhere") == {}
+    root = tmp_path / "patches"
+    _patch(root / "+46+006")  # made by hand
+    _patch(root / "Patches" / "-20-050" / "-20-044", name="SBCF.patch.osm")  # Ortho4XP's tree
+    _patch(root / "Patches" / "-20-050" / "-20-050", name="corner.patch.osm")
+    (root / "+44+006" / "objects").mkdir(parents=True)  # objects alone are patches too
+    (root / "+44+006" / "objects" / "tower.obj").write_text("OBJ8", encoding="utf-8")
+    (root / "+45+005").mkdir()  # an empty tile folder: no patch
+    (root / "notes").mkdir()  # not a tile
+    found = patched_tiles(root)
+    assert found == {
+        "-20-050": ["corner.patch.osm"],
+        "-20-044": ["SBCF.patch.osm"],
+        "+44+006": [str(Path("objects") / "tower.obj")],
+        "+46+006": ["a.patch.osm"],
+    }
+    assert list(found) == ["-20-050", "-20-044", "+44+006", "+46+006"]  # south-west first
+    # what a build of each tile reads, name for name
+    for name, files in found.items():
+        assert patch_names(root, TileRef.parse(name)) == files
+    # the folder named in Settings may be the cell itself, as for a build
+    assert patched_tiles(root / "Patches" / "-20-050") == {
+        "-20-050": ["corner.patch.osm"],
+        "-20-044": ["SBCF.patch.osm"],
+    }

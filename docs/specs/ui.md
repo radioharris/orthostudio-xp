@@ -144,7 +144,11 @@ detail". On the line of the count, shown when tiles are selected, a small trash,
 tiles* (user request, 2026-09-14), empties the selection at once. Unlike the trash of the zones
 and of the jobs it does not ask: nothing on the disk changes (tiles already built stay installed)
 and the selection is not saved anyway. The estimate goes with it, the focus moves to step 1 and a
-toast says "Tiles unselected: N." Then:
+toast says "Tiles unselected: N." Under the chips, a chosen tile that has hand-made patches says
+so, with its files: "-20-044 will be built with your patches: SBCF.patch.osm." (`GET
+/api/patches`, read when the page opens, when the Plan shows and after Settings are saved; a user
+took "Patches: none" in a report for his patch not being found, when it was for another square,
+2026-09-21). Then:
 
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
@@ -712,7 +716,10 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    *Folder of hand-made mesh patches* (`expert.patches_dir`) is the one expert field holding a
    folder: it takes two columns, its placeholder is the folder used when it is left empty
    (`<status.home>/patches`) and *Choose…* beside it opens the platform's dialog (a user of the
-   X-Plane.Org page asked what to type in it, 2026-09-17).
+   X-Plane.Org page asked what to type in it, 2026-09-17). Under its note, what the folder shown
+   holds, saved or not (`GET /api/patches?dir=`, asked again when the field changes): "Patches
+   found for 1 tile(s): -20-044.", the first six tiles named and the rest counted, "No tile has
+   patches in this folder yet." or "This folder does not exist."
 
 *Are the photo colours right for you?* (`essential.photo_look`) offers the look in plain words --
 as delivered, toned down, toned down a lot, my own values -- and, on *my own values*, the three

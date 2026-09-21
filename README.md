@@ -59,7 +59,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
 - **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
   and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
-  as they are, in the tree they come in.
+  as they are, in the tree they come in. Settings says which tiles the folder has patches for, and
+  the Plan which of the tiles you chose will be built with them.
 - **A cache.** Every step's result is kept under a fingerprint of what produced it: an unchanged
   tile builds again in a second, a new zone rebuilds only what it touches, and imagery is never
   downloaded twice. `osxp clean --all` gives the space back when you want it.

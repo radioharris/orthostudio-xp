@@ -3818,6 +3818,74 @@ def test_what_the_macs_window_showed_wrong() -> None:
     assert grid.index("report-title") < grid.index("report-title-decisions") < grid.index("summary")
 
 
+def test_the_patches_are_named_before_anything_is_built() -> None:
+    """A user saw "Patches: none" in a report and took it that his patch had not been found, when
+    it was for another square (2026-09-21). The Plan names the chosen tiles that have patches, and
+    which files; Settings says what the folder shown holds, saved or not; the report says "none
+    for these tiles"."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    order = [html.index(f'id="{name}"') for name in ("tiles-built", "tiles-patched", "tile-count")]
+    assert order == sorted(order)
+    plan = _function_body(app_js, "renderTilesPatched")
+    assert "state.patches?.tiles" in plan and "for (const name of state.tiles)" in plan
+    assert 't("plan.patched", { tile: name, files: files.join(", ") })' in plan
+    assert "renderTilesPatched();" in _function_body(app_js, "renderTiles")
+    # read when the page opens, when the Plan shows (a patch dropped in meanwhile), after a save
+    assert 'api("GET", "/api/patches")' in _function_body(app_js, "loadPatches")
+    for name in ("boot", "showScreen", "saveSettings"):
+        assert "loadPatches();" in _function_body(app_js, name), name
+    # Settings asks about the folder it shows, and only when it changes
+    ask = _function_body(app_js, "loadSettingsPatches")
+    assert "`/api/patches?dir=${encodeURIComponent(dir)}`" in ask
+    assert "if (dir === settingsPatchesDir) return;" in ask
+    assert "loadSettingsPatches();" in _function_body(app_js, "renderSettings")
+    assert "patches: state.settingsPatches || null," in app_js
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "path === PATCHES_DIR ? patchesFoundText(view.patches)" in settings_js
+    words = _node_json(
+        "settings.js",
+        "[null, {dir: null}, {dir: '/p', exists: false, tiles: {}}, {dir: '/p', exists: true,"
+        " tiles: {}}, {dir: '/p', exists: true, tiles: {'-20-044': ['SBCF.patch.osm']}},"
+        " {dir: '/p', exists: true, tiles: Object.fromEntries(['+41+001', '+42+001', '+43+001',"
+        " '+44+001', '+45+001', '+46+001', '+47+001', '+48+001'].map((n) => [n, ['a']]))}]"
+        ".map((f) => m.patchesFoundText(f))",
+    )
+    assert words[:2] == ["", ""]
+    assert words[2:5] == [
+        "This folder does not exist.",
+        "No tile has patches in this folder yet.",
+        "Patches found for 1 tile(s): -20-044.",
+    ]
+    assert words[5] == (
+        "Patches found for 8 tile(s): +41+001, +42+001, +43+001, +44+001, +45+001, +46+001"
+        " and 2 more."
+    )
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("plan.patched", "settings.x.patches_found", "settings.x.patches_more",
+                    "settings.x.patches_none", "settings.x.patches_missing"):  # fmt: skip
+            assert tables[lang][key], (lang, key)
+    assert tables["en"]["works.patches_none"] == "none for these tiles"
+    assert tables["fr"]["works.patches_none"] == "aucune pour ces tuiles"
+
+
+def test_the_mock_has_a_folder_of_patches() -> None:
+    script = """
+    const out = {
+      saved: await call("GET", "/api/patches"),
+      empty: await call("GET", "/api/patches?dir=" + encodeURIComponent("/Users/pilot/empty")),
+      missing: await call("GET", "/api/patches?dir=/nowhere/missing"),
+    };
+    process.stdout.write(JSON.stringify(out), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["saved"]["ok"]["tiles"]["-20-044"] == ["SBCF.patch.osm"]
+    assert got["saved"]["ok"]["exists"] is True
+    assert got["empty"]["ok"]["tiles"] == {}
+    assert got["missing"]["ok"]["exists"] is False
+
+
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
     rows = [
         {"tile": "+43+005", "kind": "ortho", "built_by": "osxp", "path": "/t/zOrthoStudio_+43+005",

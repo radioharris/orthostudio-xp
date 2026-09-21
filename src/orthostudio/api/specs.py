@@ -51,6 +51,7 @@ __all__ = [
     "check_ortho4xp_folder",
     "check_xplane_dir",
     "make_specs",
+    "patches_dir_of",
     "plan_answer",
     "request_zones",
     "resolve_xplane",
@@ -132,6 +133,14 @@ def resolve_xplane(explicit: str | None, settings_dir: str | None) -> Path | Non
         p = Path(settings_dir).expanduser()
         return p if is_xplane_dir(p) else None
     return detect_xplane()
+
+
+def patches_dir_of(settings: Any, typed: str | None = None) -> Path | None:
+    """The folder of hand-made mesh patches: ``typed`` (what Settings shows before it is saved),
+    else the one the settings name, else ``$OSXP_HOME/patches`` when it is there."""
+    named = typed if typed is not None else getattr(settings.expert, "patches_dir", "")
+    named = str(named or "").strip()
+    return Path(named).expanduser() if named else default_patches_dir()
 
 
 def typed_overrides(raw: dict[str, Any]) -> dict[str, Any]:
@@ -256,8 +265,7 @@ def make_specs(
             context={"provider": provider, "extent": source.extent, "tiles": " ".join(uncovered)},
         )
     # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
-    patches = str(getattr(settings.expert, "patches_dir", "") or "").strip()
-    patches_dir = Path(patches).expanduser() if patches else default_patches_dir()
+    patches_dir = patches_dir_of(settings)
     max_zl = reg[provider].max_zl
     if zl > max_zl:
         raise OsxpError(

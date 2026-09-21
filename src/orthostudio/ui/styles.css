@@ -298,6 +298,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .gen-field { display: grid; grid-row: span 3; grid-template-rows: subgrid; gap: 0; }
 .gen-field > .label-row { align-self: end; margin-bottom: var(--label-gap); }
 .gen-field > .hint { font-size: var(--fs-2); color: var(--fg-2); padding: var(--help-gap) 0 var(--block-gap); }
+/* what the folder of patches holds, said under its note */
+.hint-found { display: block; margin-top: var(--gap); color: var(--fg); }
 /* A field holding a folder takes two columns: a path and its Choose button do not fit in one. */
 .form-grid .field-span2 { grid-column: span 2; }
 @media (max-width: 700px) { .form-grid .field-span2 { grid-column: auto; } }
@@ -651,9 +653,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .library-zl { color: var(--fg-3); font-size: var(--fs-3); }
 /* Under the chosen squares: those already built, and what a build now would change. */
-.tiles-built:empty { display: none; }
-.tiles-built { margin: 6px 0 0; display: grid; gap: 4px; }
-.tiles-built-line, .tiles-built-detail, .tiles-built-warn { margin: 0; }
+.tiles-built:empty, .tiles-patched:empty { display: none; }
+.tiles-built, .tiles-patched { margin: 6px 0 0; display: grid; gap: 4px; }
+.tiles-built-line, .tiles-built-detail, .tiles-built-warn, .tiles-patched-line { margin: 0; }
 .tiles-built-detail { padding-left: 1.2em; }
 /* the Library's block, in the narrower column of step 1 */
 .tiles-built-detail .library-built-head { margin: 2px 0 4px; }

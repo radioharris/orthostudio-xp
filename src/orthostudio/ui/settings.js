@@ -8,7 +8,7 @@
 // node), the DOM last; app.js owns the saved settings, the draft, and the Save button.
 
 import { photoValues } from "./colour.js";
-import { fmtNum, homely, t } from "./i18n.js";
+import { fmtInt, fmtNum, homely, t } from "./i18n.js";
 import { colourPreview } from "./preview.js";
 import { detailLabel, detailName } from "./map.js";
 import { sourceGroups, sourceLabel } from "./sources.js";
@@ -1055,6 +1055,24 @@ function expertField(view, path, prop) {
   else if (unit && control.tagName === "INPUT") field.append(h("div", { class: "with-unit" }, control, h("span", { class: "unit" }, unit)));
   else if (choose) field.append(h("div", { class: "path-row" }, control, choose));
   else field.append(control);
-  field.append(h("div", { class: "hint" }, fieldHint(path)));
+  const found = path === PATCHES_DIR ? patchesFoundText(view.patches) : "";
+  field.append(h("div", { class: "hint" }, fieldHint(path), found ? h("span", { class: "hint-found" }, found) : null));
   return field;
+}
+
+/**
+ * What the folder of patches shown holds, saved or not (GET /api/patches): the tiles it has
+ * patches for, so that a pilot sees his are found before anything is built. A user took
+ * "Patches: none" in a report for his patch not being found, when it was for another square
+ * (2026-09-21). The first tiles are named, the rest counted.
+ */
+export function patchesFoundText(found, named = 6) {
+  if (!found || !found.dir) return "";
+  if (found.exists === false) return t("settings.x.patches_missing");
+  const tiles = Object.keys(found.tiles || {});
+  if (!tiles.length) return t("settings.x.patches_none");
+  const first = tiles.slice(0, named).join(", ");
+  const rest = tiles.length - named;
+  const list = rest > 0 ? t("settings.x.patches_more", { tiles: first, n: fmtInt(rest) }) : first;
+  return t("settings.x.patches_found", { n: fmtInt(tiles.length), tiles: list });
 }

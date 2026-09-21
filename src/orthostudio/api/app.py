@@ -49,7 +49,13 @@ from orthostudio.api.models import (
 )
 from orthostudio.api.presence import Presence
 from orthostudio.api.serve import package_root
-from orthostudio.api.specs import check_ortho4xp_folder, make_specs, plan_answer, resolve_xplane
+from orthostudio.api.specs import (
+    check_ortho4xp_folder,
+    make_specs,
+    patches_dir_of,
+    plan_answer,
+    resolve_xplane,
+)
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import clean, disk_bytes
 from orthostudio.dem.sources import default_elevation_dir
@@ -81,7 +87,7 @@ from orthostudio.install import (
 from orthostudio.install.library import ortho4xp_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
-from orthostudio.pipeline.build import BuildEnv
+from orthostudio.pipeline.build import BuildEnv, patched_tiles
 from orthostudio.pipeline.home import (
     check_data_dir,
     data_root,
@@ -1390,6 +1396,25 @@ def create_app(
         xp = await asyncio.to_thread(xplane_dir, xplane_dir_q)
         cs = custom_scenery_dir(xp) if xp is not None else None
         return await asyncio.to_thread(_library_rows, cs)
+
+    @app.get("/api/patches")
+    async def patches(
+        typed: str | None = Query(default=None, alias="dir", max_length=4096),
+    ) -> Any:
+        """The tiles the folder of hand-made mesh patches has something for, and what a build of
+        each reads (``pipeline.build.patched_tiles``): for the Plan and Settings to name them
+        before anything is built (a user took "Patches: none" in a report for his patch not being
+        found, 2026-09-21). ``dir`` is the folder Settings shows before it is saved."""
+
+        def run() -> dict[str, Any]:
+            folder = patches_dir_of(settings(), typed)
+            return {
+                "dir": None if folder is None else str(folder),
+                "exists": folder is not None and folder.is_dir(),
+                "tiles": patched_tiles(folder),
+            }
+
+        return await asyncio.to_thread(run)
 
     @app.post("/api/library/import-ortho4xp")
     async def import_ortho4xp(req: ImportRequest) -> Any:
