@@ -126,7 +126,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 18
+API_LEVEL = 19
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
