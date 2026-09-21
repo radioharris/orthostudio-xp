@@ -3729,22 +3729,69 @@ def test_importing_ortho4xp_tiles_is_one_button_that_says_where_it_looked() -> N
     assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
 
 
-def test_the_text_under_a_field_is_as_far_from_it_everywhere() -> None:
-    """A user found the text under the fields uneven and cramped: 3px in the Plan, 4px in Settings,
-    1px under the Library's import (2026-09-21), and asked for the same 5px everywhere. One
-    length, used by every place a help text sits under a field (measured in the page: 5px)."""
+def _css_rules(css: str) -> list[tuple[str, str]]:
+    """``(selector, body)`` of every rule of the page's stylesheet, comments left out; the rules
+    inside an ``@media`` block are read as the rules they are."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    css = re.sub(r"@media[^{]*\{", "", css)
+    return [(sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)]
+
+
+# The only rules with a size of their own: controls and bars, not text (see the "styles" block).
+OWN_SIZES = {
+    ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn",
+    ".btn-small",
+    ".chip button",
+    ".map-notice",
+    ".map-legend",
+    ".plan-step-num",
+    ".map-tip",
+    ".statusbar",
+    ".find-input",
+    ".experts-chevron::before",
+}
+
+
+def test_the_text_follows_one_set_of_styles() -> None:
+    """A user found the page chaotic: eleven sizes of text, titles standing 0 to 14px above their
+    text, and asked for it to work like a word processor's template, where every text has a style
+    defined once (2026-09-21). Seven styles (three titles, text, secondary, label, small), their
+    sizes and the spaces between things are tokens; no rule but a control's or a bar's sets a size
+    of its own."""
     css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert re.search(r"--help-gap: 5px;", css)
-    for rule in (
-        ".field > .help { margin-top: calc(var(--help-gap) - 3px); }",  # the Plan
-        ".toolbar > .help { margin: var(--help-gap) 0 0; }",  # the Library's import
-        ".disk-check + .help { margin-top: calc(var(--help-gap) - 3px); }",  # Disk space
-        "padding: var(--help-gap) 0 14px;",  # For experts
-        ".question-help { margin: var(--help-gap) 0 8px;",  # Settings' questions
+    for token, value in (
+        ("--fs-title-1", "18px"), ("--fs-title-2", "15px"), ("--fs-title-3", "13.5px"),
+        ("--fs", "13.5px"), ("--fs-2", "12.5px"), ("--fs-3", "11.5px"),
+        ("--title-gap", "6px"), ("--label-gap", "4px"), ("--help-gap", "5px"), ("--gap", "8px"),
+        ("--block-gap", "12px"), ("--section-gap", "20px"),
+    ):  # fmt: skip
+        assert re.search(rf"^  {re.escape(token)}: {re.escape(value)};", css, re.M), token
+    rules = _css_rules(css)
+    own = {sel for sel, body in rules if re.search(r"font-size: [\d.]+px", body)}
+    assert own == OWN_SIZES, own ^ OWN_SIZES
+    # a title stands the same space above what follows it, whatever its level
+    base = dict(rules)
+    assert "margin: 0 0 var(--title-gap);" in base["h1, h2, h3"]
+    assert "uppercase" not in base["h2, .h2"]  # "DISK SPACE" and "JOBS" were a style of their own
+    assert "margin-bottom: var(--title-gap);" in base[".question > legend"]  # floated: its own
+    for title in (".plan-step-title", ".job-head h2", ".cost h3"):
+        assert "font-size" not in base[title], title  # the style's own
+    assert ".dialog-title" not in base
+    # the same space everywhere from a field to the text under it (5px, measured in the page)
+    for sel, rule in (
+        (".field > .help", "margin-top: calc(var(--help-gap) - var(--label-gap));"),
+        (".toolbar > .help", "margin: var(--help-gap) 0 0;"),
+        (".disk-check + .help", "margin-top: calc(var(--help-gap) - 3px);"),
+        (".gen-field > .hint", "padding: var(--help-gap) 0 var(--block-gap);"),
+        (".question-help", "margin: var(--help-gap) 0 var(--gap);"),
+        (".actions-build + .help", "margin-top: var(--help-gap);"),
     ):
-        assert rule in css, rule
-    # the Plan's "- 3px" is the field's own gap
-    assert ".field { display: flex; flex-direction: column; gap: 3px;" in css
+        assert rule in base[sel], sel
+    assert "gap: var(--label-gap);" in base[".field"]  # the label to its field
+    # a field's name looks the same in the Plan, in Settings and under For experts
+    label = next(sel for sel, _ in rules if ".sub-question-title," in sel)
+    for part in (".field > label:not(.switch)", ".label-row > label", "fieldset > legend"):
+        assert part in label, part
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:

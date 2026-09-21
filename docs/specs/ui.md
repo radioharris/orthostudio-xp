@@ -44,10 +44,25 @@ visible, numbers use `font-variant-numeric: tabular-nums`, controls are native (
 `<input>`, `<button>`, `<details>`), the navigation is a `<nav>` of buttons with
 `aria-current`. No icon font: the few glyphs are inline SVG in `index.html`.
 
-The text under a field (an input, a list, a check box, the Library's import button) starts 5px
-below it on every screen, one token, `--help-gap` (a user found 3px in the Plan, 4px in Settings
-and 1px in the Library uneven and cramped, 2026-09-21). Notes under a row of action buttons, such
-as the Plan's build note, keep their wider space.
+**Text styles**, as in a word processor's template (a user found eleven sizes of text and titles
+standing 0 to 14px above their text, and asked for one style per kind of text, 2026-09-21). Every
+text is one of seven styles, defined once at the top of `styles.css` with tokens:
+
+| Style | Look | For |
+|---|---|---|
+| Title 1 | 18px, bold | the four screens |
+| Title 2 | 15px, bold | a card, a column or a dialog: the Plan's steps, Settings' questions, *For experts*, *Disk space*, *Jobs*, a job, a dialog |
+| Title 3 | 13.5px, bold | inside a card or a column: a group of expert settings, the presets, the parts of the cost, *Errors*, *Decisions* |
+| Text | 13.5px | what the page says |
+| Secondary | 12.5px, grey | the sentence under a title, the text under a field, notes |
+| Label | 12.5px, bold, grey | a field's name, a column's heading |
+| Small | 11.5px | units, tags, counts, the notes of a zone or a job |
+
+And one set of spaces: a title stands 6px above what follows it (`--title-gap`), a label 4px above
+its field (`--label-gap`), a field 5px above the text under it (`--help-gap`), a paragraph 8px above
+the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--block-gap`), the parts of
+a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
+fields, pills), the map and the top and status bars keep sizes of their own; a test lists them.
 
 ## 2. The four screens
 
