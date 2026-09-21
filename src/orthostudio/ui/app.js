@@ -2366,11 +2366,17 @@ function renderTiles() {
   renderTilesBuilt();
 }
 
+/** Tiles of the chosen squares whose details are unfolded, kept across the redraws. */
+const tilesBuiltOpen = new Set();
+
 /**
- * Under the chosen squares, those already built, what with, and what a build now would change
- * (a user asked to see it where he decides to build again, 2026-09-21). The imagery source and
- * the detail level are the Plan's own, so they are the two compared; a build here never touches a
- * tile Ortho4XP built, which gets a tile of OrthoStudio XP's beside it.
+ * Under the chosen squares, those already built, and what a build now would change (a user asked
+ * to see it where he decides to build again, 2026-09-21). Short by default, since several squares
+ * are often chosen: one line per tile, and what it was built with folded under it. What a build
+ * would change is never folded: it is the one part that asks something of the user, and it has to
+ * be read before Build is pressed. The imagery source and the detail level are the Plan's own, so
+ * they are the two compared; a build here never touches a tile Ortho4XP built, which gets a tile of
+ * OrthoStudio XP's beside it.
  */
 function renderTilesBuilt() {
   const box = $("tiles-built");
@@ -2378,22 +2384,39 @@ function renderTilesBuilt() {
   clear(box);
   const provider = $("provider-select")?.value;
   const zl = Number($("zl-select")?.value) || 0;
+  const named = (code) => {
+    const p = state.providers.find((x) => x.code === code);
+    return p ? sourceLabel(p) : code;
+  };
   for (const name of state.tiles) {
-    const summary = builtSummary(name);
-    if (!summary) continue;
-    const line = h("p", { class: "help tiles-built-line" }, t("plan.built_already", { summary }));
     const rows = state.library.filter((r) => r.tile === name && (r.kind == null || r.kind === "ortho"));
     const e = rows.find((r) => r.installed) || rows[0];
-    if (e?.built_by === "osxp") {
-      const changes = [];
-      if (provider && e.provider && provider !== e.provider) {
-        const named = (code) => { const p = state.providers.find((x) => x.code === code); return p ? sourceLabel(p) : code; };
-        changes.push([named(provider), named(e.provider)]);
-      }
-      if (zl && e.zl && zl !== Number(e.zl)) changes.push([`ZL${zl}`, `ZL${e.zl}`]);
-      for (const [now, was] of changes) line.append(" ", h("strong", null, t("plan.built_change", { now, was })));
+    if (!e) continue;
+    if (e.built_by !== "osxp") {
+      box.append(h("p", { class: "help tiles-built-line" }, t("plan.built_tile_o4x", { tile: name })));
+      continue;
     }
-    box.append(line);
+    const open = tilesBuiltOpen.has(name);
+    const detail = h("p", { class: "help tiles-built-detail", hidden: !open }, builtSummary(name, state.library, state.providers, false));
+    const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
+    const toggle = h("button", { type: "button", class: "built-toggle", title: t("plan.built_details"), "aria-expanded": open ? "true" : "false" }, t("plan.built_tile", { tile: name }), " ", chevron);
+    toggle.addEventListener("click", () => {
+      const now = !tilesBuiltOpen.has(name);
+      if (now) tilesBuiltOpen.add(name);
+      else tilesBuiltOpen.delete(name);
+      detail.hidden = !now;
+      toggle.setAttribute("aria-expanded", now ? "true" : "false");
+      chevron.textContent = now ? "▾" : "▸";
+    });
+    const changes = [];
+    if (provider && e.provider && provider !== e.provider) changes.push(t("plan.built_instead", { now: named(provider), was: named(e.provider) }));
+    if (zl && e.zl && zl !== Number(e.zl)) changes.push(t("plan.built_instead", { now: `ZL${zl}`, was: `ZL${e.zl}` }));
+    box.append(
+      h("div", { class: "tiles-built-item" },
+        h("p", { class: "tiles-built-line" }, toggle),
+        detail,
+        changes.length ? h("p", { class: "tiles-built-warn" }, t("plan.built_change", { changes: changes.join(t("plan.built_and")) })) : null),
+    );
   }
 }
 
@@ -3973,14 +3996,14 @@ export function builtLines(e, providers = []) {
 
 /** One line for the map's tooltip over a built tile: what it was built with, the tile's own name
  * first. The row X-Plane shows wins when a tile was built into two folders. */
-export function builtSummary(name, library = state.library, providers = state.providers) {
+export function builtSummary(name, library = state.library, providers = state.providers, withName = true) {
   const rows = library.filter((r) => r.tile === name && (r.kind == null || r.kind === "ortho"));
   const e = rows.find((r) => r.installed) || rows[0];
   if (!e) return null;
-  if (e.built_by !== "osxp") return `${name} · ${t("library.by_ortho4xp")}`;
+  if (e.built_by !== "osxp") return withName ? `${name} · ${t("library.by_ortho4xp")}` : t("library.by_ortho4xp");
   const source = providers.find((p) => p.code === e.provider);
   const facts = e.built?.facts || {};
-  const parts = [name, source ? sourceLabel(source) : e.provider, e.zl ? `ZL${e.zl}` : null, facts.relief ? reliefSentence(facts) : null];
+  const parts = [withName ? name : null, source ? sourceLabel(source) : e.provider, e.zl ? `ZL${e.zl}` : null, facts.relief ? reliefSentence(facts) : null];
   return parts.filter(Boolean).join(" · ");
 }
 

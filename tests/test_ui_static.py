@@ -3612,8 +3612,14 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     boot = _function_body(app_js, "boot")
     assert boot.count("renderTilesBuilt();") >= 3  # library at boot, source, level
     built = _function_body(app_js, "renderTilesBuilt")
-    assert 't("plan.built_change", { now, was })' in built
-    assert 'e?.built_by === "osxp"' in built  # an Ortho4XP tile is never built again here
+    # short by default: what it was built with is folded, and stays as the user left it
+    assert 'class: "help tiles-built-detail", hidden: !open' in built
+    assert "tilesBuiltOpen.has(name)" in built
+    # what a build would change is never folded: it has to be read before Build is pressed
+    warn = built[built.index('class: "tiles-built-warn"') - 120 :]
+    assert "hidden" not in warn[: warn.index("tiles-built-warn") + 40]
+    assert 't("plan.built_change", { changes: changes.join(t("plan.built_and")) })' in built
+    assert 'e.built_by !== "osxp"' in built  # an Ortho4XP tile is never built again here
 
     map_js = (UI / "map.js").read_text(encoding="utf-8")
 
@@ -3633,4 +3639,12 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     assert "pointer-events: none" in css[css.index(".map-tip {") :][:300]
     for lang in ("en", "fr"):
         tables = _i18n_tables()
-        assert tables[lang]["plan.built_already"] and tables[lang]["plan.built_change"]
+        for key in (
+            "plan.built_tile",
+            "plan.built_tile_o4x",
+            "plan.built_change",
+            "plan.built_instead",
+            "plan.built_and",
+            "plan.built_details",
+        ):
+            assert tables[lang][key], f"{lang} is missing {key}"
