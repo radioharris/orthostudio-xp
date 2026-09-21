@@ -3729,6 +3729,24 @@ def test_importing_ortho4xp_tiles_is_one_button_that_says_where_it_looked() -> N
     assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
 
 
+def test_the_text_under_a_field_is_as_far_from_it_everywhere() -> None:
+    """A user found the text under the fields uneven and cramped: 3px in the Plan, 4px in Settings,
+    1px under the Library's import (2026-09-21), and asked for the same 5px everywhere. One
+    length, used by every place a help text sits under a field (measured in the page: 5px)."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert re.search(r"--help-gap: 5px;", css)
+    for rule in (
+        ".field > .help { margin-top: calc(var(--help-gap) - 3px); }",  # the Plan
+        ".toolbar > .help { margin: var(--help-gap) 0 0; }",  # the Library's import
+        ".disk-check + .help { margin-top: calc(var(--help-gap) - 3px); }",  # Disk space
+        "padding: var(--help-gap) 0 14px;",  # For experts
+        ".question-help { margin: var(--help-gap) 0 8px;",  # Settings' questions
+    ):
+        assert rule in css, rule
+    # the Plan's "- 3px" is the field's own gap
+    assert ".field { display: flex; flex-direction: column; gap: 3px;" in css
+
+
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:
     rows = [
         {"tile": "+43+005", "kind": "ortho", "built_by": "osxp", "path": "/t/zOrthoStudio_+43+005",

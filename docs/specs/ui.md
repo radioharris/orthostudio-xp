@@ -44,6 +44,11 @@ visible, numbers use `font-variant-numeric: tabular-nums`, controls are native (
 `<input>`, `<button>`, `<details>`), the navigation is a `<nav>` of buttons with
 `aria-current`. No icon font: the few glyphs are inline SVG in `index.html`.
 
+The text under a field (an input, a list, a check box, the Library's import button) starts 5px
+below it on every screen, one token, `--help-gap` (a user found 3px in the Plan, 4px in Settings
+and 1px in the Library uneven and cramped, 2026-09-21). Notes under a row of action buttons, such
+as the Plan's build note, keep their wider space.
+
 ## 2. The four screens
 
 ### 2.1 Plan
