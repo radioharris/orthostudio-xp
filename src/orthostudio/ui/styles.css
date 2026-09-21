@@ -269,9 +269,17 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 input:disabled, select:disabled { opacity: 0.55; }
 input[aria-invalid="true"] { border-color: var(--fail); }
 
-.with-unit { display: flex; align-items: center; gap: 6px; }
-.with-unit input { flex: 1; }
-.unit { color: var(--fg-3); font-size: var(--fs-2); white-space: nowrap; }
+/* A number and its unit in one frame, the unit after the field's arrows: inside the field, the
+   Mac's arrows covered it ("passes" under For experts, a user, 2026-09-21). The same frame in the
+   Plan and in Settings. */
+.with-unit {
+  display: flex; align-items: center; min-width: 0; height: 28px;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius);
+}
+.with-unit:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+.with-unit input { flex: 1 1 auto; height: 100%; border: 0; background: transparent; }
+.with-unit input:focus-visible { outline: none; }
+.unit { flex: none; padding: 0 8px 0 4px; color: var(--fg-3); font-size: var(--fs-2); white-space: nowrap; }
 
 .switch { display: inline-flex; align-items: center; gap: 8px; height: 28px; cursor: pointer; }
 .switch input { width: 34px; height: 18px; margin: 0; accent-color: var(--accent); }
@@ -293,9 +301,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A field holding a folder takes two columns: a path and its Choose button do not fit in one. */
 .form-grid .field-span2 { grid-column: span 2; }
 @media (max-width: 700px) { .form-grid .field-span2 { grid-column: auto; } }
-.form-grid .with-unit { position: relative; display: block; }
-.form-grid .with-unit input { padding-right: 3.2em; }
-.form-grid .with-unit .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; }
 .label-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .badge-ortho4xp {
   font-family: var(--mono); font-size: var(--fs-3); font-weight: 400; color: var(--fg-3);
@@ -312,7 +317,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
-.btn-quiet { border-color: transparent; color: var(--fg-2); }
 .btn-small { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .btn-danger { color: var(--fail); border-color: var(--fail); }
 /* An action that undoes something, which must be seen: the quiet, borderless button was
@@ -838,16 +842,24 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .log .lvl-warning { color: var(--warn); }
 
 .report { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); margin-top: var(--block-gap); }
-.report-grid { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(330px, 1.8fr) minmax(200px, 1.1fr); gap: 10px 20px; align-items: start; }
+.report-grid {
+  display: grid; grid-template-columns: minmax(170px, 1fr) minmax(330px, 1.8fr) minmax(200px, 1.1fr); gap: 0px 20px; align-items: start;
+  grid-template-areas: "title title decisions-title" "summary steps decisions";
+}
 .report-grid > * { min-width: 0; overflow-x: auto; }
-/* a column's title level with the tops of the columns beside it */
-.report-grid .section-title { margin-top: 0; }
+/* Two titles on one line, the report's over its figures and steps and Decisions over its list: a
+   user saw Decisions stand lower than Final report (2026-09-21). */
+.report-title { grid-area: title; }
+.report-title-decisions { grid-area: decisions-title; }
+.report-summary { grid-area: summary; }
+.report-steps { grid-area: steps; }
+.report-decisions { grid-area: decisions; }
 /* The three columns ask for 740px and cannot go under it: 170 + 330 + 200 and two 20px gutters.
-   Add the report's own 26, the 260px job list beside it with its 20px gap, and the page's 24, and
-   they need 1070px of window. Folded at 920 they overflowed everything above them from 920 to
+   Add the report's own 30, the 260px job list beside it with its 20px gap, and the page's 24, and
+   they need 1074px of window. Folded at 920 they overflowed everything above them from 920 to
    1070: a horizontal scrollbar, and the decisions cut off on the right (a user, at the smallest
    window the app allows, 2026-09-20). Below, one column, which needs nothing of anybody. */
-@media (max-width: 1080px) { .report-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1080px) { .report-grid { grid-template-columns: 1fr; grid-template-areas: "title" "summary" "steps" "decisions-title" "decisions"; } .report-summary, .report-steps { margin-bottom: var(--block-gap); } }
 .report table { border-collapse: collapse; width: 100%; font-size: var(--fs-2); }
 .report th, .report td { padding: 2px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .report th:first-child, .report td:first-child { text-align: left; }
@@ -964,7 +976,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .presets-status { margin: var(--help-gap) 0 0; }
 /* Cards of unequal heights packed in columns, read down the first column then the next. */
 .settings-questions { columns: 360px 2; column-gap: var(--block-gap); }
+/* Each card a line of its own (inline-block, full width): WebKit carried the space under the last
+   card of the first column over to the top of the second, which then stood 12px lower than the
+   first in the Mac's window and not in Windows' (a user, 2026-09-21). */
 .question {
+  display: inline-block; width: 100%; vertical-align: top;
   margin: 0 0 var(--block-gap); padding: var(--card-pad); border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg-2); min-width: 0; break-inside: avoid;
 }

@@ -3114,7 +3114,8 @@ def test_the_final_report_folds_before_it_runs_out_of_room() -> None:
     beside = int(re.search(r"\.cols-works \{ grid-template-columns: (\d+)px", css).group(1))
     between = int(re.search(r"^\.cols \{[^}]*gap: (\d+)px", css, re.MULTILINE).group(1))
     page = int(re.search(r"--pad: (\d+)px", css).group(1))
-    report = 12 * 2 + 2  # .report: its padding either side, and its border
+    side = int(re.search(r"--card-pad: \d+px (\d+)px", css).group(1))
+    report = side * 2 + 2  # .report: its padding either side, and its border
 
     needs = sum(columns) + gap * 2 + report + beside + between + page * 2
     folds_at = int(re.search(r"@media \(max-width: (\d+)px\) \{ \.report-grid", css).group(1))
@@ -3792,6 +3793,29 @@ def test_the_text_follows_one_set_of_styles() -> None:
     label = next(sel for sel, _ in rules if ".sub-question-title," in sel)
     for part in (".field > label:not(.switch)", ".label-row > label", "fieldset > legend"):
         assert part in label, part
+
+
+def test_what_the_macs_window_showed_wrong() -> None:
+    """Four things a user saw in the Mac's window (2026-09-21): Settings' second column standing
+    12px lower than the first (WebKit carried the space under the first column's last card over
+    to the top of the second), *Show in Finder* reading as text, the arrows of a number field
+    covering its unit, and *Decisions* standing lower than *Final report*."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    # cards of a line each: nothing is carried over a column break
+    assert "display: inline-block; width: 100%; vertical-align: top;" in rules[".question"]
+    # every button has a frame
+    for name in (*PAGE_MODULES, "index.html", "styles.css"):
+        assert "btn-quiet" not in (UI / name).read_text(encoding="utf-8"), name
+    # a number and its unit in one frame, the unit after the field (and after its arrows)
+    assert "border: 1px solid var(--line-2);" in rules[".with-unit"]
+    assert "border: 0;" in rules[".with-unit input"]
+    assert "position: absolute" not in rules[".unit"] and ".form-grid .with-unit .unit" not in rules
+    # the report's two titles on one line, over their own columns
+    assert 'grid-template-areas: "title title decisions-title" "summary steps decisions";' in css
+    body = _function_body((UI / "app.js").read_text(encoding="utf-8"), "renderReport")
+    grid = body[body.index('h("div", { class: "report-grid" },') :]
+    assert grid.index("report-title") < grid.index("report-title-decisions") < grid.index("summary")
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:

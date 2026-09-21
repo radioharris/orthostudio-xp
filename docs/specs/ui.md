@@ -63,6 +63,10 @@ its field (`--label-gap`), a field 5px above the text under it (`--help-gap`), a
 the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--block-gap`), the parts of
 a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
 fields, pills), the map and the top and status bars keep sizes of their own; a test lists them.
+Every button has a frame: the quiet, frameless ones read as text (*My sources…*, then *Show in
+Finder*, 2026-09-21). Settings' questions are cards of a line each (`inline-block`) in their two
+columns: as blocks, WebKit carried the space under the first column's last card to the top of the
+second, 12px lower than the first in the Mac's window and not in Windows'.
 
 ## 2. The four screens
 
@@ -444,7 +448,10 @@ top to bottom:
   `decisionCounts`): its size and whether it is in X-Plane come from the report's tile when it
   says (`pack_bytes`, `installed`), else from its `pack` decision; its missing textures from its
   `textures` decision, else from its `TEX_MISSING` error's `context.count`. (The engine gives both
-  for the same tiles: adding them read "Install 6 / 6" for 3 tiles installed out of 6.)
+  for the same tiles: adding them read "Install 6 / 6" for 3 tiles installed out of 6.) Three
+  columns under two titles on one line, *Final report* over the figures and the steps and
+  *Decisions* over its list (a user saw *Decisions* stand lower than *Final report*, 2026-09-21);
+  one column under 1080px, each title above its own part.
 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus
@@ -693,7 +700,7 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    remembered in `localStorage` (a user found the old one-word summary too well hidden,
    2026-09-18). It holds every other setting in groups (airports, coast and sea,
    lakes and rivers, terrain, roads, light and ground, X-Plane objects), each with a plain label, a
-   one-sentence note, its unit inside the control and its name in Ortho4XP as a small badge, on the
+   one-sentence note, its unit in the control's frame and its name in Ortho4XP as a small badge, on the
    aligned grid of the old form (enum as a select with named options for the road levels, the sea
    level at the shore and the coast fade precision; boolean as a switch; number with its
    `minimum`/`maximum`; list as comma-separated text). The fade in three steps is one text field of
@@ -812,7 +819,9 @@ Layout of the expert fields (user request, 2026-09-13: a hint clamped to three l
 opened on hover pushed the fields around it, and controls did not line up): a grid of equal
 columns (`minmax(260px, 1fr)`); each field spans three rows shared with the fields beside it
 (`grid-template-rows: subgrid`: label line, control, note), so the controls of a row line up
-even when a label wraps; every control fills its column, its unit inside. A field holding a folder
+even when a label wraps; every control fills its column. A number and its unit share one frame,
+the unit after the field and so after its arrows (inside the field, the Mac's arrows covered it,
+2026-09-21); the Plan's radius is drawn the same way. A field holding a folder
 takes two columns (`.field-span2`, one column again under 700 px): a path and its *Choose…* button
 do not fit in one. Nothing changes size on hover. *Save* → `PUT /api/settings` with the whole document; *Reset* reloads
 `GET /api/settings` (or the schema defaults on the *Defaults* button). Validation errors

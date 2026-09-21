@@ -787,7 +787,7 @@ function renderQuestions(box, view) {
       } }, t("settings.q.xplane_choose"))
     : null;
   const showXp = view.reveal && xp && xp.detected && xp.path
-    ? h("button", { type: "button", class: "btn btn-small btn-quiet reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
     : null;
   // More than one X-Plane 12 on the machine: a user installed a tile into the one he had
   // forgotten, and found nothing in the Custom Scenery of the one he flies (2026-09-17).
@@ -910,7 +910,7 @@ function dataQuestion(view) {
       } }, t("settings.q.data_choose"))
     : null;
   const show = view.reveal && now && !now.warn
-    ? h("button", { type: "button", class: "btn btn-small btn-quiet reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
     : null;
   return questionBox(view, "data",
     now ? h("p", { class: `question-detected${now.warn ? " is-warn" : ""}` }, now.text, show ? [" ", show] : null) : null,

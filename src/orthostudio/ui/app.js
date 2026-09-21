@@ -3713,8 +3713,12 @@ function renderReport(job) {
         h("button", { type: "button", class: "btn btn-small", onclick: () => showScreen("library") }, t("works.open_library")))
     : null;
   return h("section", { class: "report" },
-    h("h3", null, t("works.report")),
-    h("div", { class: "report-grid" }, summary, table, h("div", null, h("h3", { class: "section-title" }, t("works.decisions")), decisions)),
+    h("div", { class: "report-grid" },
+      h("h3", { class: "report-title" }, t("works.report")),
+      h("h3", { class: "report-title-decisions" }, t("works.decisions")),
+      h("div", { class: "report-summary" }, summary),
+      h("div", { class: "report-steps" }, table),
+      h("div", { class: "report-decisions" }, decisions)),
     notInstalled);
 }
 
