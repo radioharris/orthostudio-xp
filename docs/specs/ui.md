@@ -661,9 +661,15 @@ In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody u
 what each setting really does, and the wording of every question: `settings-plain-language.md`).
 `settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
 `app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
-answer; the focus, the caret and the window's scroll position survive it (user report,
-2026-09-14: an answer changed at the bottom brought the top of the screen back, since removing the
-focused answer made the browser lay out the half-drawn page). Nothing is saved before *Save*; *Undo
+answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a
+field's value, a control whose attributes changed; what has not changed is not touched, whatever
+the change (a user saw the whole screen flash in the Mac's window each time a field was left, and a
+number answer late under its own arrows, and asked for one method for every case, 2026-09-21). A
+canvas drawn later says what it shows in `data-version`. The draft keeps its identity (`setDraft`),
+since the parts left in place keep handlers that write into it. The focus, the caret and the
+window's scroll position survive a redraw (user report, 2026-09-14: an answer changed at the bottom
+brought the top of the screen back, since removing the focused answer made the browser lay out the
+half-drawn page). Nothing is saved before *Save*; *Undo
 my changes* goes back to the saved settings, *Default values* to the schema's defaults
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder and the data folder kept,
 since they are this computer's and no look of the tiles; a draft that differs from the saved settings says
@@ -716,12 +722,7 @@ since they are this computer's and no look of the tiles; a draft that differs fr
    one-sentence note, its unit in the control's frame and its name in Ortho4XP as a small badge, on the
    aligned grid of the old form (enum as a select with named options for the road levels, the sea
    level at the shore and the coast fade precision; boolean as a switch; number with its
-   `minimum`/`maximum`; list as comma-separated text). A change under *For experts* leaves its
-   grid as it is: the presets are drawn again, and the questions when they show the same setting
-   (an essential one, or one a question asks: `settings.js` `questionsShow`). Drawn whole at each
-   change, the page flashed in the Mac's window whenever a field was left, and a number's arrows
-   were replaced under the pointer, answered a second late and read the next click as the other
-   arrow (a user, 2026-09-21). The fade in three steps is one text field of
+   `minimum`/`maximum`; list as comma-separated text). The fade in three steps is one text field of
    three widths ("100, 200, 100"): three valid widths set `profile = "3steps"`, an empty field goes
    back to `sand` at 100 m, anything else is refused with a message. The settings OrthoStudio XP no
    longer offers (`ratio_bathy`, `imprint_masks_to_dds`, `mesh_zl`, `masks_custom_extent`, and

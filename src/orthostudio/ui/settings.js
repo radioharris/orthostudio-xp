@@ -598,23 +598,21 @@ export function matchesSearch(text, words) {
 export function renderSettingsView(parts, view) {
   const saved = captureFocus(parts.root);
   const scroll = keptScroll();
-  // A field of For experts changed (`view.from`): its grid stays as it is, under the eyes, and only
-  // what shows the same setting elsewhere is drawn again. Drawn whole at each change, the page
-  // flashed in the Mac's window whenever a field was left, and a number field was replaced under
-  // its own arrows (a user, 2026-09-21).
-  const from = view.from || null;
-  renderPresets(parts.presets, view);
-  if (!from || questionsShow(from.path)) renderQuestions(parts.questions, view);
-  if (!from) renderExperts(parts.experts, view);
+  // Drawn apart, then only what differs is put in (`view.dom.morph`): drawn anew at each change,
+  // the whole screen flashed in the Mac's window, and a number field was replaced under its own
+  // arrows (a user, 2026-09-21). What has not changed stays as it is, whatever the change.
+  const morph = view.dom.morph;
+  const twin = (box) => (morph ? box.cloneNode(false) : box);
+  const drawn = { presets: twin(parts.presets), questions: twin(parts.questions), experts: twin(parts.experts) };
+  renderPresets(drawn.presets, view);
+  renderQuestions(drawn.questions, view);
+  renderExperts(drawn.experts, view);
+  searchFilter(drawn, searchWords(view.search || "")); // compared as they will be shown
+  if (morph) for (const part of ["presets", "questions", "experts"]) morph(parts[part], drawn[part]);
+  countExperts(parts.experts);
   applySearch(parts, view);
   restoreFocus(parts.root, saved);
   scroll?.restore();
-}
-
-/** Whether a question shows the setting at `path`: one it asks, or any essential setting, which
- * its notes and choices may name. */
-export function questionsShow(path) {
-  return String(path).startsWith("essential.") || Object.values(QUESTION_PATHS).some((paths) => paths.includes(path));
 }
 
 /**
@@ -629,42 +627,49 @@ export function questionsShow(path) {
  */
 let expertsWereOpen;
 
-export function applySearch(parts, view) {
-  const words = searchWords(view.search || "");
+/** Hide what the search leaves out, and count what it keeps. Set only where it changes, so that
+ * a part drawn the same stays untouched. */
+function searchFilter(parts, words) {
   const searching = words.length > 0;
   let shown = 0;
   let total = 0;
   for (const box of [...parts.questions.querySelectorAll(".question"), ...parts.experts.querySelectorAll(".gen-field")]) {
     total += 1;
     const hit = !searching || matchesSearch(box.textContent, words);
-    box.hidden = !hit;
+    if (box.hidden !== !hit) box.hidden = !hit;
     if (hit) shown += 1;
   }
   // A group of expert settings with nothing left in it takes its title away too.
   for (const group of parts.experts.querySelectorAll(".expert-group")) {
-    group.hidden = searching && ![...group.querySelectorAll(".gen-field")].some((f) => !f.hidden);
+    const empty = searching && ![...group.querySelectorAll(".gen-field")].some((f) => !f.hidden);
+    if (group.hidden !== empty) group.hidden = empty;
   }
+  return { shown, total };
+}
+
+export function applySearch(parts, view) {
+  const words = searchWords(view.search || "");
+  const searching = words.length > 0;
+  const { shown, total } = searchFilter(parts, words);
   // The presets answer several questions at once: they are not a setting anyone searches for.
-  if (parts.presets) parts.presets.hidden = searching;
+  if (parts.presets && parts.presets.hidden !== searching) parts.presets.hidden = searching;
   // A match under the band is no use behind it: a search opens it, and closing the search puts
   // the band back the way the user had it.
   const experts = parts.experts.closest("details");
   if (experts) {
     if (searching && expertsWereOpen === undefined) expertsWereOpen = experts.open;
-    if (searching) experts.open = true;
+    if (searching && !experts.open) experts.open = true;
     else if (expertsWereOpen !== undefined) {
       experts.open = expertsWereOpen;
       expertsWereOpen = undefined;
     }
   }
   if (!parts.note) return;
-  parts.note.hidden = !searching;
-  parts.note.classList.toggle("is-warn", searching && shown === 0);
-  parts.note.textContent = !searching
-    ? ""
-    : shown
-      ? t("settings.search_found", { n: shown, total })
-      : t("settings.search_none");
+  // written only where it changes, like the rest of the screen (app.js morphChildren)
+  const note = !searching ? "" : shown ? t("settings.search_found", { n: shown, total }) : t("settings.search_none");
+  if (parts.note.hidden !== !searching) parts.note.hidden = !searching;
+  if (parts.note.classList.contains("is-warn") !== (searching && shown === 0)) parts.note.classList.toggle("is-warn");
+  if (parts.note.textContent !== note) parts.note.textContent = note;
 }
 
 /**
@@ -975,11 +980,15 @@ function renderExperts(box, view) {
   for (const g of EXPERT_GROUPS) box.append(group(g.title(), g.fields));
   const retired = retiredShown(view.draft, view.schema);
   if (retired.length) box.append(group(t("settings.x.group_retired"), retired, t("settings.x.retired_help")));
-  // How many settings are behind the band: a user did not know there was anything there
-  // (2026-09-18). Counted from what was just drawn, so it can never drift.
+}
+
+/** How many settings are behind the band: a user did not know there was anything there
+ * (2026-09-18). Counted from what is shown, so it can never drift. */
+function countExperts(box) {
   const count = box.querySelectorAll(".gen-field").length;
   const label = box.parentElement?.querySelector(".experts-count");
-  if (label) label.textContent = count ? t("settings.experts_count", { count }) : "";
+  const text = count ? t("settings.experts_count", { count }) : "";
+  if (label && label.textContent !== text) label.textContent = text;
 }
 
 function expertField(view, path, prop) {
@@ -987,16 +996,13 @@ function expertField(view, path, prop) {
   const d = view.draft;
   const id = `x-${path.replace(/\W+/g, "-")}`;
   const key = { focusKey: `x:${path}` };
-  // a change of this grid, which stays as it is (renderSettingsView)
-  const changed = (text, level, shown = path) => view.changed(text, level, { from: "experts", path: shown });
   let control;
   if (path === THREE_STEPS) {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", placeholder: "100, 200, 100", dataset: key });
     control.value = threeStepsText(d);
     control.addEventListener("change", () => {
-      // the coast's profile and widths, which the questions show
-      if (applyThreeSteps(d, control.value)) changed(undefined, undefined, "essential.coast_transition.profile");
-      else changed(t("settings.x.three_steps_invalid"), "fail");
+      if (applyThreeSteps(d, control.value)) view.changed();
+      else view.changed(t("settings.x.three_steps_invalid"), "fail");
     });
   } else if (Array.isArray(prop.enum)) {
     const names = OPTION_TEXT[path] || {};
@@ -1005,14 +1011,14 @@ function expertField(view, path, prop) {
     control.addEventListener("change", () => {
       const raw = control.value;
       setPath(d, path, typeof prop.enum[0] === "number" ? Number(raw) : raw);
-      changed();
+      view.changed();
     });
   } else if (prop.type === "boolean") {
     control = h("input", { type: "checkbox", id, dataset: key });
     control.checked = Boolean(getPath(d, path));
     control.addEventListener("change", () => {
       setPath(d, path, control.checked);
-      changed();
+      view.changed();
     });
   } else if (prop.type === "integer" || prop.type === "number") {
     const min = prop.minimum ?? prop.exclusiveMinimum;
@@ -1026,28 +1032,28 @@ function expertField(view, path, prop) {
         return;
       }
       setPath(d, path, n);
-      changed();
+      view.changed();
     });
   } else if (prop.type === "array") {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = (getPath(d, path) || []).join(", ");
     control.addEventListener("change", () => {
       setPath(d, path, parseList(control.value));
-      changed();
+      view.changed();
     });
   } else if (path === PATCHES_DIR) {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", placeholder: t("settings.x.patches_placeholder", { path: patchesDefault(view) }), dataset: key });
     control.value = getPath(d, path) ?? "";
     control.addEventListener("change", () => {
       setPath(d, path, control.value.trim());
-      changed();
+      view.changed();
     });
   } else {
     control = h("input", { type: "text", id, spellcheck: "false", autocomplete: "off", dataset: key });
     control.value = getPath(d, path) ?? "";
     control.addEventListener("change", () => {
       setPath(d, path, control.value);
-      changed();
+      view.changed();
     });
   }
   // The folder field gets the platform's own dialog, like the X-Plane and data folders: a user
@@ -1058,7 +1064,7 @@ function expertField(view, path, prop) {
         if (!picked) return;
         control.value = picked;
         setPath(d, path, picked);
-        changed();
+        view.changed();
       } }, t("settings.x.patches_choose"))
     : null;
   const unit = UNIT_TEXT[path] ? UNIT_TEXT[path]() : prop.unit || "";

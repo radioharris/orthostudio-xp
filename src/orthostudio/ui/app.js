@@ -27,7 +27,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, patchesFoundText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
@@ -225,6 +225,79 @@ function h(tag, attrs, ...children) {
 function clear(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
   return el;
+}
+
+/**
+ * Make the children of `live` show what those of `fresh` show, changing only what differs: a text,
+ * an attribute, a field's value. A screen drawn anew at each change flashed in the Mac's window,
+ * whose engine painted every node again, and a number field was replaced under its own arrows (a
+ * user, 2026-09-21): what has not changed is not touched now, whatever the change. Children are
+ * matched by `id`, else by `data-focus-key`, else by their place among those of the same kind.
+ */
+export function morphChildren(live, fresh) {
+  const keyOf = (n) => (n.nodeType === 1 ? n.id || n.dataset?.focusKey || null : null);
+  const kindOf = (n) => (n.nodeType === 1 ? n.tagName : `#${n.nodeType}`);
+  const keyed = new Map();
+  const unkeyed = new Map();
+  for (const n of live.childNodes) {
+    const key = keyOf(n);
+    if (key) keyed.set(key, n);
+    else unkeyed.set(kindOf(n), [...(unkeyed.get(kindOf(n)) || []), n]);
+  }
+  const wanted = [...fresh.childNodes].map((n) => {
+    const key = keyOf(n);
+    const match = key ? keyed.get(key) : unkeyed.get(kindOf(n))?.shift();
+    if (key) keyed.delete(key);
+    return match ? morphNode(match, n) : n;
+  });
+  // in order, moving only what is out of place; what is left over goes
+  let at = live.firstChild;
+  for (const n of wanted) {
+    if (n === at) at = at.nextSibling;
+    else live.insertBefore(n, at);
+  }
+  while (at) {
+    const next = at.nextSibling;
+    live.removeChild(at);
+    at = next;
+  }
+}
+
+/** Elements whose handlers act on what they were drawn with: one of them whose attributes change
+ * is replaced, and comes in with handlers of its own. */
+const MORPH_WHOLE = new Set(["INPUT", "SELECT", "TEXTAREA", "BUTTON", "CANVAS"]);
+
+function sameAttributes(a, b) {
+  if (a.attributes.length !== b.attributes.length) return false;
+  for (const { name, value } of a.attributes) if (b.getAttribute(name) !== value) return false;
+  return true;
+}
+
+/**
+ * `live` made to show what `fresh` shows, when it can be kept, else `fresh` to put in its place.
+ * A control's state lives in its properties (value, ticked), set where it differs, except the value
+ * of the field being typed in, which is the user's. An element whose content is drawn later (a
+ * canvas) says what it shows in `data-version`, and is kept or replaced whole by it.
+ */
+function morphNode(live, fresh) {
+  if (live.nodeType !== fresh.nodeType) return fresh;
+  if (live.nodeType !== 1) {
+    if (live.nodeValue !== fresh.nodeValue) live.nodeValue = fresh.nodeValue;
+    return live;
+  }
+  if (live.tagName !== fresh.tagName) return fresh;
+  const versioned = live.dataset.version != null || fresh.dataset.version != null;
+  if (versioned || MORPH_WHOLE.has(live.tagName)) {
+    if (!sameAttributes(live, fresh)) return fresh;
+  } else {
+    for (const { name } of [...live.attributes]) if (!fresh.hasAttribute(name)) live.removeAttribute(name);
+    for (const { name, value } of fresh.attributes) if (live.getAttribute(name) !== value) live.setAttribute(name, value);
+  }
+  if (!versioned) morphChildren(live, fresh);
+  const typing = typeof document !== "undefined" && live === document.activeElement;
+  if ("value" in fresh && live.tagName !== "LI" && !typing && live.value !== fresh.value) live.value = fresh.value;
+  if ("checked" in fresh && live.checked !== fresh.checked) live.checked = fresh.checked;
+  return live;
 }
 
 function pill(text, kind) {
@@ -2503,9 +2576,7 @@ function loadSettingsPatches() {
     (found) => {
       if (settingsPatchesDir !== dir) return; // the field changed again meanwhile
       state.settingsPatches = found;
-      // in place: the screen drawn again for it flashed in the Mac's window
-      const line = document.querySelector('[data-focus-key="x:expert.patches_dir"]')?.closest(".gen-field")?.querySelector(".hint-found");
-      if (line) line.textContent = patchesFoundText(found);
+      if (state.screen === "settings") renderSettings();
     },
     () => {},
   );
@@ -2839,7 +2910,7 @@ async function removeSource(p) {
     const r = await api("DELETE", `/api/sources/${encodeURIComponent(p.code)}`);
     if (r.settings_provider) {
       state.settings = await api("GET", "/api/settings");
-      state.settingsDraft = structuredClone(state.settings);
+      setDraft(structuredClone(state.settings));
     }
     await reloadProviders(r.settings_provider);
     renderSourcesList();
@@ -4606,13 +4677,25 @@ async function importOrtho4xp(ev) {
 // ------------------------------------------------------------------ Settings: questions in plain words
 
 /** The Settings screen (settings.js): questions, presets, For experts; the draft is saved by Save. */
-function renderSettings(message, kind, from) {
+/** Put `next` in the draft of Settings, keeping the draft itself: the parts of the screen that stay
+ * drawn keep their handlers, which write into that object (morphChildren). */
+function setDraft(next) {
+  const draft = state.settingsDraft;
+  if (!draft || typeof draft !== "object" || !next || typeof next !== "object") {
+    state.settingsDraft = next;
+    return;
+  }
+  for (const key of Object.keys(draft)) delete draft[key];
+  Object.assign(draft, next);
+}
+
+function renderSettings(message, kind) {
   if (!state.schema || !state.settingsDraft) return;
   loadSettingsPatches();
   renderSettingsView(
     { root: $("settings-form"), presets: $("settings-presets"), questions: $("settings-questions"), experts: $("settings-expert-fields"), note: $("settings-search-note") },
     {
-      dom: { h, clear },
+      dom: { h, clear, morph: morphChildren },
       draft: state.settingsDraft,
       search: state.settingsSearch,
       schema: state.schema,
@@ -4625,8 +4708,7 @@ function renderSettings(message, kind, from) {
       chooseFolder: state.engineOutdated ? null : chooseFolder,
       photoSample: photoSampleUrl,
       patches: state.settingsPatches || null,
-      from: from || null,
-      changed: (text, level, where) => renderSettings(text, level, where),
+      changed: (text, level) => renderSettings(text, level),
     },
   );
   renderSettingsStatus(message, kind);
@@ -4635,8 +4717,10 @@ function renderSettings(message, kind, from) {
 /** "Changes not saved yet", or the message of the last change: the line beside Save. */
 function renderSettingsStatus(message, kind) {
   const dirty = !sameValue(state.settingsDraft, state.settings);
-  $("settings-status").textContent = message || (dirty ? t("settings.unsaved") : "");
-  $("settings-status").classList.toggle("is-fail", kind === "fail");
+  const line = $("settings-status");
+  const text = message || (dirty ? t("settings.unsaved") : "");
+  if (line.textContent !== text) line.textContent = text;
+  if (line.classList.contains("is-fail") !== (kind === "fail")) line.classList.toggle("is-fail");
 }
 
 /** The Plan says in a few words what the build will use, and where to change it. */
@@ -4779,7 +4863,7 @@ async function saveSettings(ev) {
     // the settings a save had really changed still moved the plan he had set up under him
     // (a user, 2026-09-20 and the day after).
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
-    state.settingsDraft = structuredClone(state.settings);
+    setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
     // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
     // and step 3 no longer shows a refusal made with the settings of before.
@@ -4803,7 +4887,7 @@ async function saveSettings(ev) {
 }
 
 function resetSettings() {
-  state.settingsDraft = structuredClone(state.settings);
+  setDraft(structuredClone(state.settings));
   $("settings-error").hidden = true;
   renderSettings();
 }
@@ -4811,7 +4895,7 @@ function resetSettings() {
 /** The default value of every setting, to save or not. */
 function defaultSettings() {
   if (!state.schema) return;
-  state.settingsDraft = defaultsKeepingFolders(state.schema, state.settingsDraft);
+  setDraft(defaultsKeepingFolders(state.schema, state.settingsDraft));
   renderSettings();
 }
 
@@ -5034,7 +5118,7 @@ async function boot() {
     }),
     api("GET", "/api/settings").then((s) => {
       state.settings = s;
-      state.settingsDraft = structuredClone(s);
+      setDraft(structuredClone(s));
     }),
     api("GET", "/api/settings/schema").then((s) => {
       state.schema = s;

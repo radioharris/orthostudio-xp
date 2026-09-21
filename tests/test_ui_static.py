@@ -3170,9 +3170,10 @@ def test_a_setting_can_be_found_by_name_or_by_its_ortho4xp_name() -> None:
     # drawn, then filtered, then the focus and the scroll put back: filtering moves the page
     body = _function_body(code, "renderSettingsView")
     assert body.index("renderExperts(") < body.index("applySearch(") < body.index("restoreFocus(")
-    filt = _function_body(code, "applySearch")
+    filt = _function_body(code, "searchFilter")
     assert ".question" in filt and ".gen-field" in filt  # both the questions and the experts
     assert "expert-group" in filt  # a group with nothing left in it hides its title too
+    assert "searchFilter(parts, words)" in _function_body(code, "applySearch")
 
     got = _node_json(
         "settings.js",
@@ -3953,38 +3954,146 @@ def test_a_fields_title_is_text() -> None:
     assert "if (isTitleClick(ev.target)) ev.preventDefault();\n  }, true);" in boot
 
 
-def test_a_change_under_for_experts_leaves_its_grid_as_it_is() -> None:
-    """Three things a user saw under For experts (2026-09-21), from one cause: each change drew the
-    whole screen again. The page flashed in the Mac's window whenever a field was left; a number's
-    arrows were replaced under the pointer, took a second to answer and read the next click as
-    the other arrow. A change of the grid now leaves the grid as it is: the presets are drawn
-    again, and the questions when they show the same setting. And a press on a check box's title
-    showed the box pressed, a flash: the box is named by its title without being tied to it."""
+FAKE_DOM = """
+// Just enough of a DOM for app.js morphChildren: nodes, attributes, dataset, a focused element.
+class Node {
+  constructor(type) { this.nodeType = type; this.childNodes = []; this.parentNode = null; }
+  get firstChild() { return this.childNodes[0] || null; }
+  get nextSibling() {
+    const s = this.parentNode ? this.parentNode.childNodes : [];
+    return s[s.indexOf(this) + 1] || null;
+  }
+  removeChild(n) {
+    this.childNodes.splice(this.childNodes.indexOf(n), 1);
+    n.parentNode = null;
+    return n;
+  }
+  insertBefore(n, ref) {
+    if (n.parentNode) n.parentNode.removeChild(n);
+    const i = ref ? this.childNodes.indexOf(ref) : this.childNodes.length;
+    this.childNodes.splice(i, 0, n); n.parentNode = this; return n;
+  }
+  append(...ns) { for (const n of ns) this.insertBefore(n, null); return this; }
+}
+class Text extends Node { constructor(v) { super(3); this.nodeValue = v; } }
+class Element extends Node {
+  constructor(tag, attrs = {}) {
+    super(1); this.tagName = tag.toUpperCase(); this.attrs = new Map(Object.entries(attrs || {}));
+    const el = this;
+    const name = (k) => "data-" + String(k).replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+    this.dataset = new Proxy({}, { get: (_, k) => el.attrs.get(name(k)) });
+  }
+  get attributes() { return [...this.attrs].map(([name, value]) => ({ name, value })); }
+  get id() { return this.attrs.get("id") || ""; }
+  getAttribute(n) { return this.attrs.has(n) ? this.attrs.get(n) : null; }
+  setAttribute(n, v) { this.attrs.set(n, String(v)); }
+  removeAttribute(n) { this.attrs.delete(n); }
+  hasAttribute(n) { return this.attrs.has(n); }
+}
+class Input extends Element {
+  constructor(attrs, value) { super("input", attrs); this.value = value; this.checked = false; }
+}
+globalThis.document = { activeElement: null, getElementById: () => null };
+const node = (k) => (typeof k === "string" ? new Text(k) : k);
+const el = (tag, attrs, ...kids) => new Element(tag, attrs).append(...kids.map(node));
+const m = await import("./app.js");
+"""
+
+
+def test_a_screen_drawn_again_changes_only_what_differs() -> None:
+    """A user saw the Settings screen flash in the Mac's window each time a field was left, and a
+    number field answer late under its own arrows, since each change drew the whole screen anew;
+    and asked for one method that works in all cases, not fixes one by one (2026-09-21). The screen
+    is drawn apart and only what differs is put in (app.js morphChildren)."""
+    script = (
+        FAKE_DOM
+        + """
+    const out = {};
+    // unchanged: every node stays; a text that changed is set in place
+    const note = new Text("ZL18");
+    const live = el("div", null, el("p", { id: "a" }, "same"), el("p", { id: "b" }, note));
+    const [a, b] = live.childNodes;
+    const next = el("div", null, el("p", { id: "a" }, "same"), el("p", { id: "b" }, "ZL17"));
+    m.morphChildren(live, next);
+    out.kept = live.childNodes[0] === a && live.childNodes[1] === b && b.firstChild === note;
+    out.text = note.nodeValue;
+    // an element's attribute is set in place; a control whose attributes change is replaced
+    const box = el("div", { class: "help" });
+    const field = new Input({ type: "number", "data-focus-key": "x" }, "17");
+    const host = el("div", null, box, field);
+    const wanted = new Input({ type: "number", "data-focus-key": "x", min: "12" }, "17");
+    m.morphChildren(host, el("div", null, el("div", { class: "help is-warn" }), wanted));
+    out.attribute = host.childNodes[0] === box && box.getAttribute("class");
+    out.replaced = host.childNodes[1] === wanted;
+    // a value is set in place, except in the field being typed in
+    const typed = new Input({ "data-focus-key": "t" }, "abc");
+    const other = new Input({ "data-focus-key": "o" }, "1");
+    const form = el("form", null, typed, other);
+    document.activeElement = typed;
+    const key = (k) => ({ "data-focus-key": k });
+    const drawn = [new Input(key("t"), "ab"), new Input(key("o"), "2")];
+    m.morphChildren(form, el("form", null, ...drawn));
+    const [t0, o0] = form.childNodes;
+    out.values = [t0 === typed && typed.value, o0 === other && other.value];
+    document.activeElement = null;
+    // what is drawn later (a canvas) is kept or replaced whole by what it says it shows
+    const shot = el("div", { "data-version": "v1" }, el("canvas"), "drawn");
+    const panel = el("div", null, shot);
+    const again = el("div", { "data-version": "v1" }, el("canvas"), "waiting");
+    m.morphChildren(panel, el("div", null, again));
+    out.version = panel.childNodes[0] === shot && shot.childNodes[1].nodeValue;
+    const newer = el("div", { "data-version": "v2" }, el("canvas"));
+    m.morphChildren(panel, el("div", null, newer));
+    out.versionChanged = panel.childNodes[0] === newer;
+    // matched by key wherever they are: reordered, removed, added
+    const x = el("p", { id: "x" }), y = el("p", { id: "y" }), z = el("p", { id: "z" });
+    const list = el("div", null, x, y, z);
+    const w = el("p", { id: "w" });
+    m.morphChildren(list, el("div", null, el("p", { id: "z" }), el("p", { id: "x" }), w));
+    out.order = list.childNodes.map((n) => n.id).join(" ");
+    out.moved = list.childNodes[0] === z && list.childNodes[1] === x && list.childNodes[2] === w;
+    process.stdout.write(JSON.stringify(out));
+    """
+    )
+    got = _run_node(script)
+    assert got == {
+        "kept": True,
+        "text": "ZL17",
+        "attribute": "help is-warn",
+        "replaced": True,
+        "values": ["abc", "2"],
+        "version": "drawn",
+        "versionChanged": True,
+        "order": "z x w",
+        "moved": True,
+    }
+
+
+def test_settings_are_drawn_apart_and_morphed_in() -> None:
+    """Settings draws its three parts apart, filters them as the search will show them, and puts
+    in only what differs; the draft keeps its identity, since the parts left in place keep handlers
+    that write into it. The cases handled one by one before it are gone."""
     settings_js = (UI / "settings.js").read_text(encoding="utf-8")
     view = _function_body(settings_js, "renderSettingsView")
-    assert "if (!from || questionsShow(from.path)) renderQuestions(parts.questions, view);" in view
-    assert "if (!from) renderExperts(parts.experts, view);" in view
-    field = _function_body(settings_js, "expertField")
-    assert 'view.changed(text, level, { from: "experts", path: shown })' in field
-    assert field.count("changed();") >= 6 and "view.changed();" not in field
-    # the coast's three widths set the profile and the widths, which the questions show
-    assert 'changed(undefined, undefined, "essential.coast_transition.profile")' in field
-    shown = _node_json(
-        "settings.js",
-        "['essential.airports.zoom_level', 'advanced.ratio_water_pct', 'expert.photo_contrast',"
-        " 'advanced.water_smoothing', 'expert.patches_dir'].map(m.questionsShow)",
+    assert "box.cloneNode(false)" in view and "searchFilter(drawn," in view
+    assert (
+        'for (const part of ["presets", "questions", "experts"]) morph(parts[part], drawn[part]);'
+        in view
     )
-    assert shown == [True, True, True, False, False]
+    for gone in ("questionsShow", "numbersPending", "view.from", "view.touched"):
+        assert gone not in settings_js, gone
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "from: from || null," in app_js
-    assert "changed: (text, level, where) => renderSettings(text, level, where)," in app_js
-    # what the folder of patches holds is filled in place, not by drawing the screen again
-    ask = _function_body(app_js, "loadSettingsPatches")
-    assert "line.textContent = patchesFoundText(found);" in ask and "renderSettings(" not in ask
+    assert "dom: { h, clear, morph: morphChildren }," in app_js
+    assert "state.settingsDraft = structuredClone" not in app_js  # always setDraft
+    assert app_js.count("setDraft(") >= 6
+    set_draft = _function_body(app_js, "setDraft")
+    assert "for (const key of Object.keys(draft)) delete draft[key];" in set_draft
+    # a canvas drawn later says what it shows
+    preview = (UI / "preview.js").read_text(encoding="utf-8")
+    assert '"data-version": JSON.stringify([sample.url, look, size])' in preview
     # the check box is named by its title without being tied to it
     assert 'const tied = control.type !== "checkbox";' in settings_js
     assert 'control.setAttribute("aria-labelledby", `${id}-title`);' in settings_js
-    assert "tied ? { for: id } : { id: `${id}-title` }" in settings_js
 
 
 def test_the_import_dialog_opens_at_the_ortho4xp_folder_already_imported() -> None:

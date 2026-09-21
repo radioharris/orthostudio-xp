@@ -34,7 +34,8 @@ export function colourPreview(h, sample, look, options = {}) {
     words.push(h("p", { class: "question-help photo-where" },
       t(whereKey, { tile: sample.tile, lat: fmtNum(sample.lat, 3), lon: fmtNum(sample.lon, 3) })));
   }
-  const box = h("div", { class: "photo-preview" },
+  // what the canvases show, drawn once the image is there: compared by it (app.js sameNode)
+  const box = h("div", { class: "photo-preview", "data-version": JSON.stringify([sample.url, look, size]) },
     h("div", { class: "photo-shot" }, before,
       h("span", { class: "photo-label" }, t("settings.q.colours_preview_before"))),
     h("div", { class: "photo-shot" }, after,
