@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
-  "api_level": 19,
+  "api_level": 20,
   "platform": "mac",
   "can_quit": true,
   "xplane": {
@@ -23,8 +23,6 @@
   "home": "/Users/pilot/.orthostudio",
   "user_home": "/Users/pilot",
   "data_dir": {"path": "/Users/pilot/.orthostudio", "chosen": false, "present": true},
-  "store_bytes": 1830000000,
-  "chunks_bytes": 412000000,
   "library_count": 5,
   "language": "fr"
 }

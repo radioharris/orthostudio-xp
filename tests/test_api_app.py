@@ -4,6 +4,7 @@ and a copied ``Custom Scenery``. ``httpx.ASGITransport``: no server, no network,
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from pathlib import Path
@@ -48,7 +49,11 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         assert xp_status["path"] == str(xplane) and xp_status["detected"] is True
         # the other X-Plane 12 of the machine, for the page to name them
         assert xp_status["running"] is False and isinstance(xp_status["others"], list)
-        assert doc["store_bytes"] == 0 and doc["chunks_bytes"] == 0 and doc["library_count"] == 0
+        assert doc["library_count"] == 0
+        # the sizes are measured apart (GET /api/sizes): on Windows they held the status up
+        assert "store_bytes" not in doc and "chunks_bytes" not in doc
+        sizes = (await c.get("/api/sizes")).json()
+        assert sizes == {"store_bytes": 0, "chunks_bytes": 0}
         names = {c["name"] for c in doc["doctor"]}
         assert {"python", "encoder", "xplane", "disk"} <= names
         assert doc["active_job"] is None
@@ -737,7 +742,7 @@ async def test_library_delete_without_xplane_and_of_a_folder_already_gone(
 
 
 @pytest.mark.anyio
-async def test_status_counts_a_hard_linked_store_file_once(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
+async def test_sizes_count_a_hard_linked_store_file_once(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
     """``store_bytes`` said 50.3 GB for a store ``du`` measured at 24 GB: the index adds a DDS up
     once per artefact that hard-links it (``texture.dds`` and ``tile.textures``)."""
     dds = home / "store" / "texture.dds" / "ab" / ("ab" + "0" * 62)
@@ -749,7 +754,7 @@ async def test_status_counts_a_hard_linked_store_file_once(app, home: Path, xpla
     (home / "chunks").mkdir()
     (home / "chunks" / "1_2.chunks").write_bytes(b"j" * 300)
     async with client_for(app) as c:
-        doc = (await c.get("/api/status")).json()
+        doc = (await c.get("/api/sizes")).json()
     assert doc["store_bytes"] == 5000 and doc["chunks_bytes"] == 300
 
 
@@ -1188,6 +1193,87 @@ async def test_the_page_files_are_revalidated_on_every_load(tmp_path: Path) -> N
                 assert r.headers["cache-control"] == PAGE_CACHE_CONTROL, path
     finally:
         manager.close()
+
+
+@pytest.mark.anyio
+async def test_the_page_files_keep_their_type_whatever_the_system_says(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python asks Windows' registry the type of a file, and a program may have written
+    ``text/plain`` there for ``.js``: browsers refused the page's modules, and users saw the menu
+    alone, in every browser (2026-09-22). The page's own kinds of file keep their type."""
+    import starlette.responses
+
+    from orthostudio.ui import ui_dir
+
+    # what such a registry answers, for every file
+    monkeypatch.setattr(starlette.responses, "guess_type", lambda *_a, **_k: ("text/plain", None))
+    manager = JobManager(jobs_dir=tmp_path / "jobs", build=fakes.FakeBuild(), env_factory=None)
+    app = create_app(
+        env_factory=None, jobs=manager, settings_path=tmp_path / "config.toml", ui_dir=ui_dir()
+    )
+    try:
+        async with client_for(app) as c:
+            for path, wanted in (
+                ("/static/app.js", "text/javascript"),
+                ("/static/vendor/leaflet/leaflet.js", "text/javascript"),
+                ("/static/styles.css", "text/css"),
+                ("/static/mock/status.json", "application/json"),
+            ):
+                r = await c.get(path)
+                assert r.status_code == 200, path
+                assert r.headers["content-type"].split(";")[0] == wanted, path
+    finally:
+        manager.close()
+
+
+@pytest.mark.anyio
+async def test_the_status_measures_no_folder(
+    app,  # type: ignore[no-untyped-def]
+    home: Path,
+    xplane: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sizes are ``GET /api/sizes``: on Windows their walk opens each file of the store, and
+    users saw the menu alone while the page waited for the status (2026-09-22)."""
+    import orthostudio.api.app as app_module
+
+    def walk(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("the status measured a folder")
+
+    monkeypatch.setattr(app_module, "disk_bytes", walk)
+    async with client_for(app) as c:
+        r = await c.get("/api/status")
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.anyio
+async def test_pages_asking_the_sizes_together_share_one_measure(
+    app,  # type: ignore[no-untyped-def]
+    home: Path,
+    xplane: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A measure can take long on Windows: a page opened meanwhile, or reloaded, waits for the
+    one under way rather than starting another walk of the same folders."""
+    import time
+
+    import orthostudio.api.app as app_module
+
+    measures: list[int] = []
+
+    def slow() -> dict[str, int]:
+        measures.append(1)
+        time.sleep(0.2)
+        return {"store_bytes": 1, "chunks_bytes": 2}
+
+    monkeypatch.setattr(app_module, "_sizes", slow)
+    async with client_for(app) as c:
+        first, second = await asyncio.gather(c.get("/api/sizes"), c.get("/api/sizes"))
+        assert first.json() == second.json() == {"store_bytes": 1, "chunks_bytes": 2}
+        assert len(measures) == 1
+        await c.get("/api/sizes")  # the measure over, the next one measures again
+    assert len(measures) == 2
 
 
 @pytest.mark.anyio

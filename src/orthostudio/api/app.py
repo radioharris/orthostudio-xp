@@ -126,7 +126,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 19
+API_LEVEL = 20
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -143,7 +143,10 @@ the setting ``essential.data_dir`` (an older engine refuses a settings document 
 ``data_dir`` in the status and ``CFG_DATA_DIR_*``, 14 = ``GET /api/engine`` (who serves the
 port, answered at once) and ``POST /api/presence`` (a page is open), 15 = ``others`` in the
 status's ``xplane`` (the other X-Plane 12 folders of the machine), 16 = ``relief`` in a job
-(which relief its tiles are built on). A page
+(which relief its tiles are built on), 17 = ``GET /api/photo-sample``, 18 = the squares' own
+colours in the zones document, 19 = ``POST /api/library/{name}/forget`` and ``GET /api/patches``,
+20 = ``GET /api/sizes`` (the sizes of the store and of the downloaded images, no longer in the
+status). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -154,12 +157,32 @@ it a browser kept an old ``geo.js`` next to a new ``map.js`` after an update, an
 start: an ES module import of a missing export fails the whole page."""
 
 
-class _RevalidatedStaticFiles(StaticFiles):
-    """``StaticFiles`` answering with ``Cache-Control: no-cache`` (``PAGE_CACHE_CONTROL``)."""
+PAGE_MEDIA_TYPES: dict[str, str] = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
+"""The type of each kind of file of the page, fixed here rather than asked of the system. Python
+asks Windows' registry, where a program may have written ``text/plain`` for ``.js``, and a browser
+refuses to run a module of that type: users on Windows saw the menu alone, greyed, in every
+browser, and nothing answered a click (2026-09-22)."""
 
-    def file_response(self, *args: Any, **kwargs: Any) -> Any:
-        response = super().file_response(*args, **kwargs)
+
+class _RevalidatedStaticFiles(StaticFiles):
+    """``StaticFiles`` answering with ``Cache-Control: no-cache`` (``PAGE_CACHE_CONTROL``), and
+    with the type of ``PAGE_MEDIA_TYPES`` for the page's own kinds of file."""
+
+    def file_response(self, full_path: Any, *args: Any, **kwargs: Any) -> Any:
+        response = super().file_response(full_path, *args, **kwargs)
         response.headers["Cache-Control"] = PAGE_CACHE_CONTROL
+        media_type = PAGE_MEDIA_TYPES.get(Path(full_path).suffix.lower())
+        if media_type is not None and isinstance(response, FileResponse):
+            response.headers["Content-Type"] = media_type
         return response
 
 
@@ -303,13 +326,23 @@ class _GuardMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _dir_bytes(path: Path) -> int:
+def _dir_bytes(path: Path, *, links: bool = True) -> int:
     """Bytes of the files under ``path`` on the disk (``orthostudio.clean.disk_bytes``); 0
     if unreadable."""
     try:
-        return disk_bytes([path])
+        return disk_bytes([path], links=links)
     except OSError:
         return 0
+
+
+def _sizes() -> dict[str, int]:
+    """``GET /api/sizes``: the store's bytes on the disk and the downloaded images'. The images are
+    never hard-linked, so their sizes come from the folder listings alone (``links=False``): on
+    Windows that saves opening each file."""
+    return {
+        "store_bytes": _store_bytes(default_store_root()),
+        "chunks_bytes": _dir_bytes(default_chunks_root(), links=False),
+    }
 
 
 def _store_bytes(root: Path) -> int:
@@ -639,6 +672,8 @@ def create_app(
         "settings_path": settings_path,
         "doctor": None,
         "doctor_at": 0.0,
+        # the measure of GET /api/sizes under way, shared by the pages that ask meanwhile
+        "sizes": None,
         # values of config.toml this version could not read, said by the status
         "settings_problems": [],
         # the first run reads what is installed once, then the file answers (see settings())
@@ -748,15 +783,30 @@ def create_app(
 
     @app.get("/api/status")
     async def status(request: Request) -> dict[str, Any]:
+        """What this machine looks like, for the page's screens and its status bar. What takes
+        time runs side by side in worker threads, never on the loop: listing the processes there
+        held every other request of the page. The sizes of the store and of the downloaded images
+        are ``GET /api/sizes``, measured apart: on Windows each file of the store is opened, and
+        some users saw the menu alone while the page waited for them (2026-09-22)."""
         xp = await asyncio.to_thread(xplane_dir)
-        checks = await asyncio.to_thread(doctor_checks)
-        home = osxp_home()
-        lib = default_library_path()
-        count = 0
-        if lib.is_file():
+
+        def library_count() -> int:
             # tiles, not rows: an installed OrthoStudio XP tile has an ortho row and an overlay row
+            lib = default_library_path()
+            if not lib.is_file():
+                return 0
             with Library(lib) as library:
-                count = len({r.tile for r in library.list(kind="ortho")})
+                return len({r.tile for r in library.list(kind="ortho")})
+
+        checks, running, others, own, missing, count = await asyncio.gather(
+            asyncio.to_thread(doctor_checks),
+            asyncio.to_thread(lambda: xp is not None and xplane_running()),
+            asyncio.to_thread(other_xplane_dirs, xp),
+            asyncio.to_thread(lambda: [] if xp is None else packs_of_their_own(xp)),
+            asyncio.to_thread(data_root_missing),
+            asyncio.to_thread(library_count),
+        )
+        home = osxp_home()
         active = manager.active()
         root = data_root()
         return {
@@ -765,14 +815,12 @@ def create_app(
             "xplane": {
                 "path": None if xp is None else str(xp),
                 "detected": xp is not None,
-                "running": xplane_running() if xp is not None else False,
+                "running": running,
                 # a user installed a tile into an X-Plane 12 he had forgotten (2026-09-17)
-                "others": [str(p) for p in await asyncio.to_thread(other_xplane_dirs, xp)],
+                "others": [str(p) for p in others],
                 # packs that bring their own roads, forests and buildings: the Settings question
                 # about the overlays answers itself when one of them is there (2026-09-20)
-                "packs_of_their_own": (
-                    [] if xp is None else await asyncio.to_thread(packs_of_their_own, xp)
-                ),
+                "packs_of_their_own": own,
             },
             "doctor": checks,
             "settings_problems": list(state["settings_problems"]),
@@ -780,13 +828,7 @@ def create_app(
             # the page writes the paths under it with "~": docs/specs/ui.md 1.9
             "user_home": str(Path.home()),
             # where the tiles and the downloads go: an external disk may be unplugged
-            "data_dir": {
-                "path": str(root),
-                "chosen": root != home,
-                "present": await asyncio.to_thread(data_root_missing) is None,
-            },
-            "store_bytes": await asyncio.to_thread(_store_bytes, default_store_root()),
-            "chunks_bytes": await asyncio.to_thread(_dir_bytes, default_chunks_root()),
+            "data_dir": {"path": str(root), "chosen": root != home, "present": missing is None},
             "library_count": count,
             "language": _language(request),
             "active_job": None if active is None else active.id,
@@ -797,11 +839,21 @@ def create_app(
             "engine": {"root": str(package_root()), "pid": os.getpid()},
         }
 
+    @app.get("/api/sizes")
+    async def sizes() -> dict[str, Any]:
+        """The bytes of the store and of the downloaded images on the disk, for the status bar,
+        which shows them when they come: no screen waits for them (``GET /api/status``). Pages
+        that ask while a measure runs share it."""
+        task = state["sizes"]
+        if task is None or task.done():
+            task = state["sizes"] = asyncio.ensure_future(asyncio.to_thread(_sizes))
+        return await asyncio.shield(task)
+
     @app.get("/api/engine")
     async def engine() -> dict[str, Any]:
         """Which OrthoStudio XP serves this port, answered at once: a second launch of the app
-        recognises the running one with it (``serve.running_osxp``). ``/api/status`` measures the
-        store and lists the processes first, which took longer on Windows than the launch waited,
+        recognises the running one with it (``serve.running_osxp``). ``/api/status`` measured the
+        store and listed the processes first, which took longer on Windows than the launch waited,
         and the app showed nothing (2026-09-17)."""
         active = manager.active()
         return {

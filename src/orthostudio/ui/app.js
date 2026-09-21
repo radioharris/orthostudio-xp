@@ -171,6 +171,9 @@ const EXTRA_DECISION_KEYS = {
 const state = {
   screen: "plan",
   status: null,
+  /** GET /api/sizes: the store's and the downloaded images' bytes, which the status bar shows when
+   * they come (measured apart from the status: no screen waits for them). */
+  sizes: null,
   providers: [],
   settings: null,
   schema: null,
@@ -1020,6 +1023,9 @@ export async function mockApi(method, path, body, options = {}) {
     return { current, latest, url: available ? `#release-${latest}` : null, available };
   }
   if (p === "/api/status") {
+    // fail=slow-status: the status took long on users' Windows, and the page waited for it with
+    // the menu alone (2026-09-22)
+    if (MOCK_FAIL === "slow-status") await delay(6000);
     const status = await mockFile("status");
     if (MOCK_FAIL === "xplane") status.xplane.running = true;
     if (MOCK_FAIL === "no-xplane") {
@@ -1037,6 +1043,7 @@ export async function mockApi(method, path, body, options = {}) {
     status.active_job = mockActiveRun()?.doc.id ?? null;
     return status;
   }
+  if (p === "/api/sizes") return { store_bytes: 1830000000, chunks_bytes: 412000000 };
   if (p === "/api/providers") return [...(await mockFile("providers")), ...structuredClone(mock.sources || [])];
   if (p === "/api/sources/test" && method === "POST") {
     mockCheckSourceAddress(body?.url_template);
@@ -2078,7 +2085,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 19;
+const PAGE_API_LEVEL = 20;
 
 async function loadStatus() {
   try {
@@ -2098,6 +2105,25 @@ async function loadStatus() {
   state.engineOutdated = (Number(state.status?.api_level) || 1) < PAGE_API_LEVEL;
   renderEngineBanner();
   renderStatus();
+  loadSizes(); // not awaited: measuring the disk must hold nothing back
+}
+
+/** The sizes of the status bar, asked whenever the status is: after a build or a library action
+ * they change too. Measured apart, since on Windows it can take long (a user, 2026-09-22). */
+async function loadSizes() {
+  if (state.engineOutdated) return; // an engine before API level 20 has no /api/sizes
+  try {
+    state.sizes = await api("GET", "/api/sizes");
+  } catch (_err) {
+    return; // the status bar keeps what it showed: the sizes are a hint, never an error
+  }
+  renderDiskSizes(); // that line alone: the rest of the bar, the checks' open fold, stays
+}
+
+/** The status bar's sizes of the store and of the downloaded images: "…" until measured. */
+function renderDiskSizes() {
+  const sizes = state.sizes;
+  $("status-store").textContent = `${t("status.store")}: ${sizes ? fmtBytes(sizes.store_bytes) : "…"} · ${t("status.chunks")}: ${sizes ? fmtBytes(sizes.chunks_bytes) : "…"}`;
 }
 
 /** An engine older than the page (started before an update) cannot answer the new routes, and an
@@ -2290,7 +2316,7 @@ function renderStatus() {
   doc.append(h("details", null, summary, h("div", { class: "popover" }, list)));
 
   $("quit-btn").hidden = !s.can_quit;
-  $("status-store").textContent = `${t("status.store")}: ${fmtBytes(s.store_bytes)} · ${t("status.chunks")}: ${fmtBytes(s.chunks_bytes)}`;
+  renderDiskSizes();
   $("status-library").textContent = t("status.library", { n: fmtInt(s.library_count ?? 0) });
   // Where the tiles and the downloads go: OrthoStudio XP's folder, or the data folder chosen in
   // Settings, whose disk may not be plugged in.
@@ -5106,31 +5132,45 @@ async function boot() {
   renderTiles();
   renderPlanPanel();
   startPresence();
+  // The screen shows at once and fills in as the engine answers. It used to wait for every
+  // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu
+  // alone until they clicked it (2026-09-22).
+  routeFromHash();
+  const providers = api("GET", "/api/providers").then((p) => {
+    state.providers = Array.isArray(p) ? p : p.providers || [];
+  });
+  const settings = api("GET", "/api/settings").then((s) => {
+    state.settings = s;
+    setDraft(structuredClone(s));
+  });
+  const schema = api("GET", "/api/settings/schema").then((s) => {
+    state.schema = s;
+  });
+  // The Plan's source and detail level, and Settings, as soon as what they show is known,
+  // whatever the rest takes.
+  const early = Promise.allSettled([providers, settings, schema]).then(() => {
+    renderProviders(state.settings?.essential?.provider || "BI");
+    renderPlanSettings();
+    if (state.screen === "settings") renderSettings();
+  });
   const results = await Promise.allSettled([
     loadStatus(),
     planMap.load(),
     api("GET", "/api/library").then((l) => {
       state.library = Array.isArray(l) ? l : [];
       renderTilesBuilt(); // the squares chosen before the library arrived
+      planMap.libraryChanged(); // the map shown before it: its green tiles, and its first view
     }),
-    api("GET", "/api/providers").then((p) => {
-      state.providers = Array.isArray(p) ? p : p.providers || [];
-    }),
-    api("GET", "/api/settings").then((s) => {
-      state.settings = s;
-      setDraft(structuredClone(s));
-    }),
-    api("GET", "/api/settings/schema").then((s) => {
-      state.schema = s;
-    }),
+    providers,
+    settings,
+    schema,
     api("GET", "/api/jobs").then((j) => {
       state.jobs = Array.isArray(j) ? j : [];
     }),
+    early,
   ]);
   for (const r of results) if (r.status === "rejected") toast(errorMessage(r.reason), "fail");
-  renderProviders(state.settings?.essential?.provider || "BI");
-  renderPlanSettings();
-  routeFromHash();
+  routeFromHash(); // the screen shown before the answers, drawn again with them
   // A build started before the page was opened (or reloaded) shows on the map too, and the tiles
   // of those waiting cannot be chosen again.
   if (!state.jobId && state.status?.active_job) watchJob(state.status.active_job);

@@ -184,6 +184,61 @@ def test_disk_bytes_counts_a_hard_linked_file_once_and_follows_no_link(tmp_path:
     assert freed_bytes([folder]) == 10  # both links are inside
 
 
+def test_disk_bytes_without_links_reads_the_listing_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a folder's listing gives no hard links, and asking a file for them opens it: the
+    downloaded images, never linked, are measured from the listing alone (``links=False``), which
+    a big cache behind an antivirus needed (2026-09-22). Windows' listing is played here."""
+    import contextlib
+
+    import orthostudio.clean as clean_module
+
+    folder = tmp_path / "chunks"
+    (folder / "16").mkdir(parents=True)
+    (folder / "16" / "a.chunks").write_bytes(b"x" * 10)
+    (folder / "b.chunks").write_bytes(b"y" * 20)
+    real_scandir, real_lstat = os.scandir, os.lstat
+
+    class WindowsEntry:
+        """A listed file as Windows lists it: its size, no links and no inode."""
+
+        def __init__(self, entry: os.DirEntry[str]) -> None:
+            self._entry, self.name, self.path = entry, entry.name, entry.path
+
+        def is_dir(self, follow_symlinks: bool = True) -> bool:
+            return self._entry.is_dir(follow_symlinks=follow_symlinks)
+
+        def is_file(self, follow_symlinks: bool = True) -> bool:
+            return self._entry.is_file(follow_symlinks=follow_symlinks)
+
+        def stat(self, follow_symlinks: bool = True) -> os.stat_result:
+            st = self._entry.stat(follow_symlinks=follow_symlinks)
+            times = (int(st.st_atime), int(st.st_mtime), int(st.st_ctime))
+            return os.stat_result(
+                (st.st_mode, 0, st.st_dev, 0, st.st_uid, st.st_gid, st.st_size, *times)
+            )
+
+    @contextlib.contextmanager
+    def windows_scandir(path: str):  # type: ignore[no-untyped-def]
+        with real_scandir(path) as it:
+            yield [WindowsEntry(e) for e in it]
+
+    asked: list[str] = []
+
+    def lstat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        asked.append(os.fspath(path))  # type: ignore[arg-type]
+        return real_lstat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(clean_module.os, "scandir", windows_scandir)
+    monkeypatch.setattr(clean_module.os, "lstat", lstat)
+    assert disk_bytes([folder], links=False) == 30
+    assert asked == [os.fspath(folder)]  # the folder itself, and no file
+    asked.clear()
+    assert disk_bytes([folder]) == 30
+    assert len(asked) == 3  # the folder, then each file for its links
+
+
 @pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
 def test_an_unreadable_folder_is_not_mistaken_for_an_empty_one(tmp_path: Path) -> None:
     folder = tmp_path / "store"

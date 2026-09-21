@@ -390,14 +390,38 @@ def _chunks(chunks_root: Path) -> Check:
             f"tile store {root} (empty, created on first build)",
             {"path": str(root), "exists": False},
         )
-    files = list(root.rglob("*.chunks"))
-    size = sum(f.stat().st_size for f in files)
+    count, size = _containers(root)
     return Check(
         "chunks",
         "ok",
-        f"tile store {root}: {len(files)} texture container(s), {size / 1e9:.2f} GB",
-        {"path": str(root), "containers": len(files), "bytes": size},
+        f"tile store {root}: {count} texture container(s), {size / 1e9:.2f} GB",
+        {"path": str(root), "containers": count, "bytes": size},
     )
+
+
+def _containers(root: Path) -> tuple[int, int]:
+    """How many ``*.chunks`` files lie under ``root``, and their bytes, read from the folder
+    listings: asked of each file, as before, it opened every one on Windows, and a big cache
+    behind an antivirus held the status, and the page's first screen, a long time (2026-09-22).
+    Links are not followed; what cannot be read is left out."""
+    count = size = 0
+    folders = [os.fspath(root)]
+    while folders:
+        try:
+            with os.scandir(folders.pop()) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    folders.append(entry.path)
+                elif entry.name.endswith(".chunks") and entry.is_file(follow_symlinks=False):
+                    count += 1
+                    size += entry.stat(follow_symlinks=False).st_size
+            except OSError:
+                continue
+    return count, size
 
 
 def run_doctor(

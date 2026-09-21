@@ -2932,6 +2932,39 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_the_screen_shows_before_the_engine_answers() -> None:
+    """Users on Windows saw the menu alone until they clicked it: the page waited for every answer
+    of the engine before showing a screen, and one of them was slow (2026-09-22). The screen now
+    shows first and fills in: the Plan's source and Settings do not wait for the status, the map
+    drawn before the library takes its first view from it, and the sizes come on their own."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    boot = _function_body(app_js, "boot")
+    wait = boot.index("await Promise.allSettled([")
+    assert boot.index("routeFromHash();") < wait < boot.rindex("routeFromHash();")
+    early = boot[
+        boot.index("const early = Promise.allSettled([providers, settings, schema])") : wait
+    ]
+    assert 'renderProviders(state.settings?.essential?.provider || "BI");' in early
+    assert 'if (state.screen === "settings") renderSettings();' in early
+    assert "planMap.libraryChanged();" in boot[wait:]
+    status = _function_body(app_js, "loadStatus")
+    assert "  loadSizes();" in status  # not awaited
+    sizes = _function_body(app_js, "loadSizes")
+    assert 'api("GET", "/api/sizes")' in sizes and "renderDiskSizes();" in sizes
+    assert "renderStatus()" not in sizes  # the checks' open fold stays open
+    assert "renderDiskSizes();" in _function_body(app_js, "renderStatus")
+    assert 'if (p === "/api/sizes")' in app_js  # the mock engine answers it too
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    assert (
+        'if (map && firstView === "default" && installedTiles().length) setInitialView();' in map_js
+    )
+    assert 'if (!fittingView) firstView = "moved";' in map_js
+    # until the status comes, X-Plane is looked for, not "not detected"
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    assert 'let detected = t("settings.q.xplane_looking");' in settings_js
+    assert 'else if (xp) detected = t("settings.q.xplane_not_detected");' in settings_js
+
+
 def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     """A tile both installed and chosen keeps its green outline and shows its blue one 4px inside
     it, each over a wider line of ``--map-casing`` that parts them from each other and from the

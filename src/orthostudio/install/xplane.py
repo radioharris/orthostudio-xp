@@ -192,6 +192,14 @@ OrthoStudio XP's overlays as well, so everything was drawn twice (2026-09-20); t
 question said to choose one, but nothing checked."""
 
 
+def _is_dir(entry: os.DirEntry[str]) -> bool:
+    """Whether a listed entry is a folder, a link to one included; an unreadable one is not."""
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
 def packs_of_their_own(xplane: Path) -> list[str]:
     """The names of :data:`SCENERY_OF_ITS_OWN` installed in ``<xp>/Custom Scenery``, in order.
 
@@ -202,10 +210,14 @@ def packs_of_their_own(xplane: Path) -> list[str]:
     from orthostudio.install.scenery_packs import SceneryPacks
 
     custom = custom_scenery_dir(xplane)
+    # the listing tells a folder without asking each one, which on Windows means opening it:
+    # hundreds of packs are common (2026-09-22)
     try:
-        folders = [p.name for p in custom.iterdir() if p.is_dir()]
+        with os.scandir(custom) as it:
+            entries = list(it)
     except OSError:
         return []
+    folders = [e.name for e in entries if _is_dir(e)]
     disabled: set[str] = set()
     ini = custom / "scenery_packs.ini"
     if ini.is_file():
@@ -240,6 +252,9 @@ def _run(cmd: list[str]) -> str | None:
             cmd,
             capture_output=True,
             text=True,
+            # tasklist writes in the console's code page: a program name the engine cannot
+            # decode must not fail the status, which asks whether X-Plane runs (2026-09-22)
+            errors="replace",
             timeout=10,
             check=False,
             creationflags=NO_CONSOLE_WINDOW,

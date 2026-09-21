@@ -169,3 +169,27 @@ def test_the_window_check_says_what_to_install_when_there_is_none(
 
     monkeypatch.setattr(window, "possible", lambda: True)
     assert doctor._window().status == "ok"
+
+
+def test_the_chunks_check_reads_the_listings_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asked of each container, the size opened every one on Windows, and a big cache behind an
+    antivirus held the status, and the page's first screen, a long time (2026-09-22)."""
+    from orthostudio import doctor
+
+    root = tmp_path / "chunks"
+    (root / "BI" / "16").mkdir(parents=True)
+    (root / "BI" / "16" / "1_2.chunks").write_bytes(b"x" * 10)
+    (root / "BI" / "3_4.chunks").write_bytes(b"y" * 20)
+    (root / "BI" / "partial.tmp").write_bytes(b"z" * 5)
+    real_stat = os.stat
+
+    def stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        assert not os.fspath(path).endswith(".chunks"), "a container was asked its size"  # type: ignore[arg-type]
+        return real_stat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "stat", stat)
+    check = doctor._chunks(root)
+    assert check.status == "ok"
+    assert check.details["containers"] == 2 and check.details["bytes"] == 30

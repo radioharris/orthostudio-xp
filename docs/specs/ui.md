@@ -101,8 +101,11 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   that no imagery came from that source for this view. Mock mode: a canvas `L.GridLayer`
   painting a neutral grid with the theme's tokens, no request.
 - **Initial view**: the selected tiles, else the installed ones (`GET /api/library`, loaded at
-  boot), else Europe; `fitBounds` with at most zoom 9. The map is created the first time the
-  Plan is shown (Leaflet needs a visible container) and `invalidateSize()` runs on each return.
+  boot), else Europe; `fitBounds` with at most zoom 9, without animation. The map is created the
+  first time the Plan is shown (Leaflet needs a visible container) and `invalidateSize()` runs on
+  each return. The page shows its screen before the engine answers (2.5, *The first screen*): a
+  map drawn before the library came opened on Europe, and takes the view of the installed tiles
+  when the library comes, unless it was moved meanwhile (`map.js` `libraryChanged`, `firstView`).
 - **Tile grid** (SVG, pane under the zones): 1° lines for the viewport only from zoom 5; selected
   tiles outlined in the accent colour (blue) and installed tiles in green at every zoom; a tile both
   installed and chosen keeps its green outline and shows its blue one 4px inside it, both 2.5px
@@ -866,12 +869,24 @@ from the engine (`422`) are shown next to the form, in the page's words for the 
 
 From `GET /api/status`: version, X-Plane path and whether it runs (a warning when it does,
 since installation is refused then), doctor summary (`n ok · n warn · n fail`, the details in
-a popover), store and chunk sizes, library count, and OrthoStudio XP's folder, or the data folder
-chosen in Settings with a *disk not plugged in* pill while it is missing. Language and theme
+a popover), library count, and OrthoStudio XP's folder, or the data folder chosen in Settings with
+a *disk not plugged in* pill while it is missing. The store and chunk sizes come from
+`GET /api/sizes`, asked after each status and not awaited (`loadSizes`): "…" until they come, then
+that line alone is drawn again (`renderDiskSizes`), so the doctor's popover stays open. On Windows
+their walk opens every file of the store, and the page used to wait for them. Language and theme
 switches. A refusal for want of the data folder (`CFG_DATA_DIR_MISSING`, `CFG_DATA_DIR_INVALID`)
 has a *Settings* button that focuses its field. The library count follows every read of the library
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
+
+**The first screen** (2026-09-22): the page shows the screen of its address at once, then fills it
+in as the engine answers. It used to wait for every answer (status, zones, library, sources,
+settings, their schema, jobs) before showing any screen; the menu is wired before that wait, so
+users on Windows, where the status was slow, saw the menu alone until they clicked a tab. The
+Plan's source and detail level, and Settings, are drawn as soon as their own answers are in
+(`boot`, `early`), the map takes its view from the library when it comes, the screen is drawn
+again once every answer is in, and until the status says, Settings reads *Looking for X-Plane 12…*
+rather than *Not detected*. The engine's part is `api.md` (`GET /api/status`, `GET /api/sizes`).
 
 **When the engine does not answer** (`renderEngineBanner`): a banner at the top of every screen,
 the same one that announces an engine older than the page. An engine that answers *with an error*
@@ -1003,7 +1018,9 @@ settings' `data_dir` that folder) and refuses `POST /api/plan` and `POST /api/jo
 whose name says exFAT or FAT32 is refused with 422 `CFG_DATA_DIR_INVALID` (`why: links`), and
 changing it while a mock build runs with 409 `SYS_BUSY`; `fail=busy` refuses every delete as if a
 build were running; `fail=clean` deletes the tile but answers a `warning` (and `freed_bytes` 0), as
-when the cache space could not be freed.
+when the cache space could not be freed; `fail=slow-status` answers the status after 6 s, as it
+came on users' Windows (2.5, *The first screen*). `GET /api/sizes` answers the sizes the status
+used to carry.
 
 Map and zones in mock mode: the base layer is the neutral canvas grid (no request);
 `GET /api/zones` answers `mock/zones.json` (three zones: LFML and LSGG at level 18, the

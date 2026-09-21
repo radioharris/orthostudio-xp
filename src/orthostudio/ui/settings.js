@@ -785,7 +785,10 @@ function renderQuestions(box, view) {
   // (simHeaven X-World) brings the roads, forests and buildings. Then what the tiles look like.
   const xp = view.xplane;
   const found = Boolean(xp && xp.detected && xp.path);
-  const detected = found ? t("settings.q.xplane_detected", { path: homely(xp.path) }) : t("settings.q.xplane_not_detected");
+  // The status can come after the screen (app.js boot): until it does, nothing is "not detected".
+  let detected = t("settings.q.xplane_looking");
+  if (found) detected = t("settings.q.xplane_detected", { path: homely(xp.path) });
+  else if (xp) detected = t("settings.q.xplane_not_detected");
   // "empty = the detected folder" only when there is one.
   const folder = h("input", { type: "text", id: "q-xplane-dir", class: "question-path", spellcheck: "false", autocomplete: "off", placeholder: found ? t("settings.q.xplane_placeholder") : "", dataset: { focusKey: "q:xplane" } });
   folder.value = getPath(d, "essential.xplane_dir") || "";

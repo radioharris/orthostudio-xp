@@ -180,3 +180,14 @@ def test_detect_real_install() -> None:
 
 def test_real_running_is_bool() -> None:
     assert isinstance(xplane_running(), bool)
+
+
+def test_a_program_name_the_locale_cannot_read_fails_nothing() -> None:
+    """tasklist writes in the console's code page: a name the engine's locale cannot read must not
+    fail the status, which lists the programs to say whether X-Plane runs (2026-09-22)."""
+    import sys
+
+    out = xplane._run(
+        [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'X-Plane.exe \\xff\\x81')"]
+    )
+    assert out is not None and out.startswith("X-Plane.exe ")

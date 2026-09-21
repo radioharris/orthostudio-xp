@@ -139,14 +139,15 @@ def needed_keys(store: Store, roots: Iterable[str]) -> set[str]:
     return keep | store.reachable(textures)
 
 
-def _file_stats(root: Path) -> Iterator[os.stat_result]:
+def _file_stats(root: Path, *, links: bool = True) -> Iterator[os.stat_result]:
     """The ``lstat`` of every regular file under ``root``, or of ``root`` when it is one.
 
     Links below ``root`` are neither followed nor counted. What vanishes or cannot be read below
     ``root`` is skipped (``osxp serve`` writes the map cache meanwhile); a ``root`` that exists but
     cannot be listed raises ``OSError``, so that a caller can tell it from an empty folder. One
     ``scandir`` per folder and one ``lstat`` per file: 18 000 files in 70 ms on the reference Mac
-    (warm cache).
+    (warm cache). On Windows the listing gives the size but not the hard links, which cost opening
+    each file; ``links=False`` does without them, for a folder whose files are never linked.
     """
     try:
         st = os.lstat(root)
@@ -177,24 +178,25 @@ def _file_stats(root: Path) -> Iterator[os.stat_result]:
                 if not entry.is_file(follow_symlinks=False):
                     continue
                 st = entry.stat(follow_symlinks=False)
-                if not st.st_nlink:  # Windows' scandir leaves links and inode at 0: ask the file
+                if links and not st.st_nlink:  # Windows' scandir leaves links at 0: ask the file
                     st = os.lstat(entry.path)
             except OSError:
                 continue
             yield st
 
 
-def disk_bytes(paths: Iterable[Path]) -> int:
+def disk_bytes(paths: Iterable[Path], *, links: bool = True) -> int:
     """Bytes the files under ``paths`` take on the disk, a file hard-linked several times once.
 
     Like ``du``, in file sizes rather than blocks. The store's index adds a DDS up once per
     artefact that links it: it said 50 GB for a store ``du`` measured at 24 GB. Raises
-    ``OSError`` when a path exists but cannot be listed; a missing one counts 0.
+    ``OSError`` when a path exists but cannot be listed; a missing one counts 0. ``links=False``
+    reads the sizes from the folder listings alone (``_file_stats``), for files never linked.
     """
     seen: set[tuple[int, int]] = set()
     total = 0
     for root in paths:
-        for st in _file_stats(Path(root)):
+        for st in _file_stats(Path(root), links=links):
             if st.st_nlink > 1:
                 inode = (st.st_dev, st.st_ino)
                 if inode in seen:
