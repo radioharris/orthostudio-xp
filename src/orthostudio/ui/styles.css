@@ -1121,6 +1121,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* One line per group of squares: the button, then the level they take once they are chosen. */
 .route-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .route-group + .route-group { margin-top: 6px; }
+/* Beside its button, not under it: a list is full width everywhere else (a user, 2026-09-22). */
+.route-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
 /* Under the flight plan's row, not inside its field: the buttons line up with the field itself
    (a user, 2026-09-22), as the airport's Add does. */
 .route-help { margin: var(--help-gap) 0 0; }

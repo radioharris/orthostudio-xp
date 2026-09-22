@@ -202,6 +202,7 @@ const STRINGS = {
     "detail.19": "Maximum",
     "detail.20": "Ultra",
     "detail.option": "{name}, environ {size} par pixel · ZL{zl}",
+    "detail.short": "{name} · ZL{zl}",
 
     "map.label": "Carte des tuiles et des zones",
     "map.zoom_in": "Zoom avant",
@@ -1078,6 +1079,7 @@ const STRINGS = {
     "detail.19": "Maximum",
     "detail.20": "Ultra",
     "detail.option": "{name}, about {size} per pixel · ZL{zl}",
+    "detail.short": "{name} · ZL{zl}",
 
     "map.label": "Map of tiles and zones",
     "map.zoom_in": "Zoom in",

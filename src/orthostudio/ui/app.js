@@ -25,7 +25,7 @@ import {
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, routeLength, tileName, tilesAlong, validateZonesDocument, zoneTextureKeys } from "./geo.js";
-import { createPlanMap, detailLabel } from "./map.js";
+import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
@@ -2951,7 +2951,7 @@ function renderRouteLevels(maxZl, lat) {
     if (!chosen.length) continue;
     const levels = [...new Set(chosen.map(tileZl))];
     clear(sel);
-    sel.append(...zlOptions(maxZl, lat));
+    sel.append(...zlOptions(maxZl, lat, { short: true }));
     sel.value = String(levels.length === 1 ? levels[0] : planZl());
     const label = id === "route-ends-zl" ? t("plan.route_ends_zl") : t("plan.route_all_zl");
     sel.setAttribute("aria-label", label);
@@ -3275,11 +3275,15 @@ function normalizeLevels() {
   }
 }
 
-/** Every level the source gives, in plain words, sized at a latitude. */
-function zlOptions(maxZl, lat) {
+/** Every level the source gives, in plain words, sized at a latitude.
+ *
+ * `short` leaves the ground size out ("Standard · ZL16"): beside a button of the flight plan the
+ * whole sentence sent the list to a line of its own (a user, 2026-09-22). */
+function zlOptions(maxZl, lat, { short = false } = {}) {
   const out = [];
   for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {
-    out.push(h("option", { value: zl }, detailLabel(zl, lat)));
+    const label = short ? t("detail.short", { name: detailName(zl), zl }) : detailLabel(zl, lat);
+    out.push(h("option", { value: zl }, label));
   }
   return out;
 }

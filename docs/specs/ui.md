@@ -868,8 +868,10 @@ has no scroll anchoring; the element that was pressed is measured before the ren
 is scrolled back by what it moved. Used by the flight plan's two buttons, the airport's *Add*
 and the two folded ways.
 
-**A level for each group** (2026-09-22): beside each of the two buttons, shown once its squares
-are chosen, a list gives them their own detail level, so that the departure and the arrival are
+**A level for each group** (2026-09-22): beside each of the two buttons, on the same line and
+shown once its squares are chosen, a list gives them their own detail level, written short
+(`detail.short`, "Standard · ZL16": the whole sentence of step 1's list sent it to a line of its
+own, a user the same day), so that the departure and the arrival are
 sharper than the squares along the route. One rule holds it together, so that no level is ever
 hidden: step 1's list shows the level of the chosen squares; when they differ it reads *Several
 levels* (an option nobody can pick) and every chip says its own (`+46+006 · ZL17`); a level
