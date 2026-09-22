@@ -1049,9 +1049,13 @@ export function createPlanMap(ctx) {
   let skipClick = false;
   const SWEEP_MOVE_PX = 4;
 
-  function sweepPress(ev) {
+  function sweepPress(ev, latlng) {
     if (zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
-    sweep = { x: ev.clientX, y: ev.clientY, started: false, taken: new Set() };
+    // Started on a square already chosen, the rectangle takes squares out rather than in: sweeping
+    // back over them is how a user asked to drop them (2026-09-22).
+    const under = tileName(Math.floor(latlng.lat), Math.floor(wrapLon(latlng.lng)));
+    const removing = ctx.tiles().includes(under);
+    sweep = { x: ev.clientX, y: ev.clientY, from: latlng, started: false, capped: false, removing };
     map.dragging.disable(); // the map would follow the pointer; taken back when the button is up
   }
 
@@ -1061,25 +1065,42 @@ export function createPlanMap(ctx) {
       const moved = Math.abs(ev.clientX - sweep.x) + Math.abs(ev.clientY - sweep.y);
       if (moved < SWEEP_MOVE_PX) return;
       sweep.started = true;
+      ctx.sweep.start(sweep.removing);
       hideTip();
     }
-    const lat = Math.floor(latlng.lat);
-    const lon = Math.floor(wrapLon(latlng.lng));
-    if (lat < -90 || lat > 89 || lon < -180 || lon > 179) return;
-    const name = tileName(lat, lon);
-    if (sweep.taken.has(name)) return;
-    sweep.taken.add(name);
-    ctx.chooseTiles([name]);
+    const box = [
+      [wrapLon(sweep.from.lng), clampLat(sweep.from.lat)],
+      [wrapLon(latlng.lng), clampLat(latlng.lat)],
+    ];
+    sweep.capped = ctx.sweep.to(tilesInBounds(box));
+    drawSweepBox(sweep.from, latlng, sweep.removing);
+  }
+
+  /** The whole squares the rectangle takes, or takes out, drawn while the pointer moves. */
+  function drawSweepBox(from, to, removing) {
+    layers.draft.clearLayers();
+    const south = Math.floor(Math.min(from.lat, to.lat));
+    const north = Math.ceil(Math.max(from.lat, to.lat));
+    const west = Math.floor(Math.min(from.lng, to.lng));
+    const east = Math.ceil(Math.max(from.lng, to.lng));
+    layers.draft.addLayer(
+      L.rectangle([[south, west], [north, east]], { pane: "osxpDraft", className: `osxp-sweep-box${removing ? " is-removing" : ""}`, interactive: false, weight: 2 }),
+    );
   }
 
   function sweepEnd() {
     if (!sweep) return;
-    const { started, taken } = sweep;
+    const { started, capped, removing } = sweep;
     sweep = null;
     map?.dragging.enable();
+    layers.draft.clearLayers();
     if (!started) return;
     skipClick = true; // the click that follows the drag would toggle the square under the pointer
-    if (taken.size) ctx.toast(t("map.swept", { n: taken.size }));
+    const n = ctx.sweep.end();
+    if (!n) return;
+    if (removing) ctx.toast(t("map.swept_out", { n }));
+    else if (capped) ctx.toast(t("map.swept_max", { n }));
+    else ctx.toast(t("map.swept", { n }));
   }
 
   function onMapMouseMove(ev) {
@@ -1224,7 +1245,7 @@ export function createPlanMap(ctx) {
     el.addEventListener("mousedown", (ev) => {
       if (!ev.shiftKey || ev.button !== 0) return;
       ev.preventDefault(); // no text selection on Shift+click
-      sweepPress(ev);
+      sweepPress(ev, m.mouseEventToLatLng(ev));
     });
     document.addEventListener("mouseup", sweepEnd);
     setBaseLayer(true);

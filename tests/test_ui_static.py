@@ -4478,37 +4478,50 @@ def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
     assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
 
 
-def test_shift_and_a_drag_choose_the_squares_swept() -> None:
+def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
     """Clicking every square of a route one by one was long (a user, 2026-09-22): Shift held, the
-    mouse down and the pointer swept over the map chooses each square it crosses. A Shift+click
-    that does not move still puts a point of a free shape, and the click that ends a sweep chooses
-    nothing more."""
+    mouse down and the pointer moved draws a rectangle, and every whole square in it is chosen as
+    it goes; drawn back, they leave again. Started on a square already chosen, the rectangle takes
+    squares out instead. A Shift+click that does not move still puts a point of a free shape, and
+    the click that ends the drag chooses nothing more."""
     js = (UI / "map.js").read_text(encoding="utf-8")
-    press = re.search(r"\n  function sweepPress\(ev\) \{.*?\n  \}\n", js, re.S)
+    press = re.search(r"\n  function sweepPress\(ev, latlng\) \{.*?\n  \}\n", js, re.S)
     assert press is not None
     assert "map.getZoom() < GRID_MIN_ZOOM" in press.group(0)
     assert "map.dragging.disable()" in press.group(0)  # the map would follow the pointer
+    assert "ctx.tiles().includes(under)" in press.group(0)  # from a chosen square: it takes out
     to = re.search(r"\n  function sweepTo\(latlng, ev\) \{.*?\n  \}\n", js, re.S)
     assert to is not None
     assert "SWEEP_MOVE_PX" in to.group(0)  # a click that does not move is still a zone's point
-    assert "ctx.chooseTiles([name])" in to.group(0)
-    end = re.search(r"\n  function sweepEnd\(\) \{.*?\n  \}\n", js, re.S)
-    assert end is not None
-    assert "map?.dragging.enable()" in end.group(0) and "skipClick = true" in end.group(0)
-    assert 't("map.swept"' in end.group(0)
+    assert "ctx.sweep.to(tilesInBounds(box))" in to.group(0)
+    assert "drawSweepBox(sweep.from, latlng, sweep.removing)" in to.group(0)
+    end_fn = re.search(r"\n  function sweepEnd\(\) \{.*?\n  \}\n", js, re.S)
+    assert end_fn is not None
+    assert "map?.dragging.enable()" in end_fn.group(0) and "skipClick = true" in end_fn.group(0)
+    assert 'if (removing) ctx.toast(t("map.swept_out", { n }));' in end_fn.group(0)
     click = re.search(r"\n  function onMapClick\(ev\) \{.*?\n  \}\n", js, re.S)
     assert click is not None and "if (skipClick)" in click.group(0)
     assert 'el.addEventListener("mousedown"' in js
     assert 'document.addEventListener("mouseup", sweepEnd)' in js
     help_list = re.search(r"\n  function renderHelp\(\) \{.*?\n  \}\n", js, re.S)
     assert help_list is not None and 't("map.sc_sweep", { shift })' in help_list.group(0)
+
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    taking = _function_body(app_js, "sweepTo")
+    assert "sweepBefore.filter((name) => !inside.has(name))" in taking  # the rectangle, taken out
+    assert "wanted.length >= MAX_BUILD_TILES" in taking  # never more than one build takes
+    assert "tilesInBuilds(activeJobs())" in taking  # a tile being built is not chosen again
+    assert "sweep: { start: sweepStart, to: sweepTo, end: sweepEnd }," in app_js
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".plan-map .osxp-sweep-box {" in css and ".osxp-sweep-box.is-removing {" in css
     for lang in ("en", "fr"):
         texts = _node_json(
             "i18n.js",
             f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
-            ' [m.t("map.sc_sweep", {shift: "Shift"}), m.t("map.swept", {n: 7})])',
+            ' [m.t("map.sc_sweep", {shift: "Shift"}), m.t("map.swept", {n: 7}),'
+            ' m.t("map.swept_out", {n: 3}), m.t("map.swept_max", {n: 500})])',
         )
-        assert "Shift" in texts[0] and "7" in texts[1], texts
+        assert "Shift" in texts[0] and "7" in texts[1] and "3" in texts[2] and "500" in texts[3]
 
 
 def test_the_routes_ends_are_marked_on_the_map() -> None:

@@ -17,8 +17,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 
 ## What you get
 
-- **A page with a map.** Click the squares you want, or sweep over them with Shift held, see the
-  tiles already in X-Plane, draw
+- **A page with a map.** Click the squares you want, or draw a rectangle over them with Shift
+  held, see the tiles already in X-Plane, draw
   sharper zones around airports or anywhere you fly low (one zone may cover several tiles, and
   the list shows those of the squares you chose), check the size and the time before building,
   then build and install in one click. The map shows the aerial imagery or, in one click, the

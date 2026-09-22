@@ -670,6 +670,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .plan-map .osxp-zone.is-selected { stroke-width: 5; }
 .plan-map .osxp-zone.is-invalid { stroke-dasharray: 6 4; }
 .plan-map .osxp-zone-outline { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+/* The rectangle of a sweep: the whole squares it takes, while the pointer moves. */
+.plan-map .osxp-sweep-box { stroke: var(--accent); stroke-dasharray: 4 3; fill: var(--accent); fill-opacity: 0.12; }
+.plan-map .osxp-sweep-box.is-removing { stroke: var(--fg-2); fill: var(--fg-2); }
 .plan-map .osxp-draft { stroke: var(--zl); stroke-width: 2.5; fill: none; }
 .plan-map .osxp-draft-band { stroke: var(--zl); stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
 .plan-map .osxp-draft-band.is-rect { fill: var(--zl); fill-opacity: 0.12; }

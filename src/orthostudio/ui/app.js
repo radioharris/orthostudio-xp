@@ -2520,6 +2520,56 @@ function keepInPlace(el, fn) {
   if (Math.abs(moved) > 1) window.scrollBy(0, moved);
 }
 
+let sweepBefore = null;
+let sweepRemoves = false;
+
+/** A sweep on the map (`map.js`): the squares chosen before it, then those of its rectangle, in
+ * one render. Started on a square already chosen, it takes the rectangle's out instead (a user,
+ * 2026-09-22); the rectangle followed back takes back what it did, either way. */
+function sweepStart(remove = false) {
+  sweepBefore = [...state.tiles];
+  sweepRemoves = Boolean(remove);
+}
+
+/** The squares of the rectangle now; `true` when it holds more than one build takes. */
+function sweepTo(names) {
+  if (sweepBefore === null) return false;
+  const inside = new Set(names);
+  let capped = false;
+  let wanted;
+  if (sweepRemoves) {
+    wanted = sweepBefore.filter((name) => !inside.has(name));
+  } else {
+    const building = tilesInBuilds(activeJobs());
+    wanted = [...sweepBefore];
+    const seen = new Set(wanted);
+    for (const name of names) {
+      if (seen.has(name) || building.has(name)) continue;
+      if (wanted.length >= MAX_BUILD_TILES) {
+        capped = true;
+        break;
+      }
+      seen.add(name);
+      wanted.push(name);
+    }
+  }
+  const same = wanted.length === state.tiles.length && wanted.every((n, i) => n === state.tiles[i]);
+  if (!same) {
+    state.tiles = wanted;
+    renderTiles();
+    renderZlOptions();
+    planChanged();
+  }
+  return capped;
+}
+
+/** How many squares the sweep took in, or took out. */
+function sweepEnd() {
+  const n = sweepBefore === null ? 0 : Math.abs(state.tiles.length - sweepBefore.length);
+  sweepBefore = null;
+  return n;
+}
+
 function addTiles(names) {
   const building = tilesInBuilds(activeJobs());
   const skipped = [];
@@ -5513,6 +5563,7 @@ async function boot() {
     planProvider: () => $("provider-select").value,
     planZl,
     tileZl,
+    sweep: { start: sweepStart, to: sweepTo, end: sweepEnd },
     /** The squares of the route's departure and arrival, which the map draws in its colour. */
     routeEnds: () => new Set(state.route ? routeEndTiles() : []),
     library: () => state.library,
