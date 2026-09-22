@@ -890,7 +890,10 @@ words on the left since they share that width), shown once its
 squares are chosen, a list gives them their own detail level, written short
 (`detail.short`, "Standard · ZL16": the whole sentence of step 1's list sent it to a line of its
 own, a user the same day), so that the departure and the arrival are
-sharper than the squares along the route. One rule holds it together, so that no level is ever
+sharper than the squares along the route. The route's list starts at **ZL14** (`ROUTE_ALONG_ZL`,
+`routeAlongZl`, brought down when the source stops lower), the ends' at step 1's level: a route
+is flown over at altitude, the ends are where one lands, and a long route is a lot of squares
+(a user, 2026-09-22). One rule holds it together, so that no level is ever
 hidden: step 1's list shows the level of the chosen squares; when they differ it reads *Several
 levels* (an option nobody can pick) and every chip says its own (`+46+006 · ZL17`); a level
 chosen there is every chosen square's again, and the squares stop carrying their own

@@ -4587,6 +4587,14 @@ def test_a_flight_plan_gives_its_ends_and_its_route_two_levels() -> None:
     assert chips is not None and "chosenLevels().length > 1" in chips.group(0)
     request = re.search(r"\nasync function planRequest\(\) \{.*?\n\}\n", js, re.S)
     assert request is not None and "tiles_zl: own" in request.group(0)
+    # the squares along the route start at 14: flown over, not landed on (a user, 2026-09-22)
+    assert "const ROUTE_ALONG_ZL = 14;" in js
+    assert "Math.min(ROUTE_ALONG_ZL, top)" in js  # never above what the source offers
+    levels = re.search(r"\nfunction renderRouteLevels\(maxZl, lat\) \{.*?\n\}\n", js, re.S)
+    assert levels is not None
+    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : planZl()' in levels.group(0)
+    click = js[js.index('$("route-all").addEventListener') :][:200]
+    assert "routeAlongZl()" in click and "planZl()" not in click
     listed = js.index('$("zl-select").addEventListener("change"')
     assert js.index("state.tileZl = {};", listed) < js.index("planChanged();", listed)
     for lang, several in (("en", "Several levels"), ("fr", "Plusieurs niveaux")):

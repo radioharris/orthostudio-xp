@@ -265,7 +265,9 @@ line is the one you will fly. Two buttons then choose the squares: departure and
 what you look at when you are low, and the squares along the route. Each says how many squares it
 would add before you press it, because a route across a country is tens of gigabytes: from Geneva
 to Palma, three squares against nine. Beside each button, a list gives that group its own detail
-level: the airports at their sharpest, the way between them lighter. The detail level of step 1
+level: the airports at their sharpest, the way between them lighter. The route starts at ZL14,
+the ground you fly over rather than land on; the two ends start at the level of step 1. Either
+list changes what its button will add. The detail level of step 1
 then reads *Several levels* and each square says its own; choosing a level there puts every
 chosen square back on one. Only the name goes to simbrief.com, only when you press that button,
 and the route is never saved with your tiles.

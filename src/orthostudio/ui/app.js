@@ -3000,9 +3000,10 @@ function renderRouteLevels(maxZl, lat) {
     sel.hidden = !chosen.length;
     if (!chosen.length) continue;
     const levels = [...new Set(chosen.map(tileZl))];
+    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : planZl();
     clear(sel);
     sel.append(...zlOptions(maxZl, lat, { short: true }));
-    sel.value = String(levels.length === 1 ? levels[0] : planZl());
+    sel.value = String(levels.length === 1 ? levels[0] : fallback);
     const label = id === "route-ends-zl" ? t("plan.route_ends_zl") : t("plan.route_all_zl");
     sel.setAttribute("aria-label", label);
   }
@@ -3299,6 +3300,24 @@ function planZl() {
   return Number(state.planZl) || 16;
 }
 
+/** What the squares along a route take unless the pilot says otherwise (a user, 2026-09-22).
+ *
+ * A route crosses country flown over at altitude, where the ground is scenery and not a place to
+ * look at; its two ends are where one lands, and those keep step 1's level. A long route is also
+ * a lot of squares, and each level up is four times the imagery. */
+const ROUTE_ALONG_ZL = 14;
+
+/** The highest level the chosen imagery source offers. */
+function sourceMaxZl() {
+  const p = currentProvider();
+  return Math.min(19, p ? p.max_zl : 19);
+}
+
+/** The level of the squares along a route, never above what the source offers. */
+function routeAlongZl(top = sourceMaxZl()) {
+  return Math.min(ROUTE_ALONG_ZL, top);
+}
+
 /** The level a square will be built at: its own (the flight plan's groups), else step 1's. */
 function tileZl(name) {
   return Number(state.tileZl[name]) || planZl();
@@ -3344,20 +3363,19 @@ function zlOptions(maxZl, lat, { short = false } = {}) {
  * its ends and its route two levels, it reads "Several levels" and each chip says its own. */
 function renderZlOptions() {
   const sel = $("zl-select");
-  const p = currentProvider();
-  const maxZl = Math.min(19, p ? p.max_zl : 19);
+  const top = sourceMaxZl();
   const lat = state.tiles.length ? tileLat(state.tiles[0]) + 0.5 : planMap?.mapLatitude() ?? 45;
   // a source that stops lower brings every level down with it, the squares' own included
   // what the squares carry wins over what the list still shows: a level chosen for one group
   // of the route left the list on the level of before, which then took it back (2026-09-22)
   const wanted = Number(state.planZl) || Number(sel.value) || state.settings?.essential?.zoom_level || 16;
-  state.planZl = Math.min(Number(wanted), maxZl);
+  state.planZl = Math.min(Number(wanted), top);
   for (const name of Object.keys(state.tileZl)) {
-    state.tileZl[name] = Math.min(state.tileZl[name], maxZl);
+    state.tileZl[name] = Math.min(state.tileZl[name], top);
   }
   normalizeLevels();
   clear(sel);
-  sel.append(...zlOptions(maxZl, lat));
+  sel.append(...zlOptions(top, lat));
   const levels = chosenLevels();
   if (state.tiles.length && levels.length > 1) {
     sel.append(h("option", { value: "", disabled: true }, t("plan.zl_several")));
@@ -3366,7 +3384,7 @@ function renderZlOptions() {
     sel.value = String(planZl());
   }
   $("zl-help").textContent = t("plan.zl_help", { lat: fmtNum(lat, 1) });
-  renderRouteLevels(maxZl, lat);
+  renderRouteLevels(top, lat);
 }
 
 // ------------------------------------------------------------------ Plan: estimate + build
@@ -5471,7 +5489,7 @@ async function boot() {
     }
   });
   $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || planZl()));
-  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || planZl()));
+  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
   $("route-simbrief").addEventListener("click", routeFromSimbrief);
   $("route-clear").addEventListener("click", clearRoute);
   // the radius applies to both ends of the route: the counts on the buttons follow it
