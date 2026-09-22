@@ -22,7 +22,7 @@ pack is shared by every tile. OrthoStudio XP writes the same pack under its own 
 | Lines | What Ortho4XP does | OrthoStudio XP |
 |---|---|---|
 | 11-12 | module globals `ovl_exclude_pol = [0]`, `ovl_exclude_net = []` (cfg `O4_Config_Utils.py:93-108`) | `OverlayExclusions` (section 4) |
-| 15, 40-52 | source = `<custom_overlay_src>/Earth nav data/<10x10>/<tile>.dsf`; absent -> message, `return 0` | `overlay_source_path`; absent -> `DSF_OVERLAY_SOURCE_MISSING` |
+| 15, 40-52 | source = `<custom_overlay_src>/Earth nav data/<10x10>/<tile>.dsf`; absent -> message, `return 0` | `overlay_source_path`, which also looks in X-Plane 12's Demo Areas (`dsf-xp12-rasters.md` 2); absent -> `DSF_OVERLAY_SOURCE_MISSING` |
 | 17-25 | `7z` from `PATH` (macOS, Linux) or `Utils/win/7z.exe`; `Utils/<os>/DSFTool` | py7zr in-process; DSFTool path is an explicit argument (`find_dsftool` helps) |
 | 53-64 | copy of the source into `tmp/<tile>.dsf` | no copy: a plain DSF is read in place, a 7z one is extracted into the work directory |
 | 65-79 | first two bytes `7z` -> rename `.7z`, `os.system("7z e -o<tmp> ...")`, return code ignored | py7zr `extract`; exactly one member expected; failures -> `DSF_SOURCE_DECOMPRESS_FAILED`; magic `XPLNEDSF` checked -> `DSF_SOURCE_CORRUPTED` |
@@ -137,7 +137,7 @@ is built again.
 def overlay_source_path(global_scenery_dir, tile) -> Path
     # <dir>/Earth nav data/<10x10>/<tile>.dsf ; <dir> is the folder above "Earth nav data"
     # (Ortho4XP's custom_overlay_src); an X-Plane root is accepted and resolved to
-    # Global Scenery/X-Plane 12 Global Scenery
+    # Global Scenery/X-Plane 12 Global Scenery; a tile only in the Demo Areas beside it is taken there
 def materialize_source(src, workdir, *, tile) -> Path     # plain DSF in place, 7z extracted
 def run_dsftool(dsftool, mode, src, dst, *, timeout_s=600.0) -> DsfToolRun(returncode, seconds, stdout)
 def find_dsftool(*, own_dir=None) -> Path | None          # native/dsftool/{mac,win,lin}/DSFTool[.exe]

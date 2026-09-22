@@ -195,7 +195,9 @@ data in `.orthostudio` in your user folder (or the data folder chosen in Setting
 OrthoStudio XP works with the X-Plane 12 of the same computer: it takes the relief, roads, forests
 and buildings from X-Plane's scenery and adds the tiles to its Custom Scenery. The part of the
 world you build must be installed in X-Plane 12, whose installer lets you choose which parts: step
-3 of the Plan says when a square's is not. It finds X-Plane by
+3 of the Plan says when a square's is not. The regions of X-Plane's demo (Maui to Kauai, the coast
+of Oregon and Washington, south-east Alaska), which its installer keeps in `X-Plane 12 Demo Areas`,
+are read there. It finds X-Plane by
 itself; when it cannot (X-Plane in an unusual folder, or a virtual machine whose X-Plane is on the
 host), step 3 of the Plan says so, and its button opens the Settings question where you choose
 the folder.

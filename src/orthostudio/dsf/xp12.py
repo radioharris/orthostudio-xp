@@ -20,6 +20,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 
 __all__ = [
+    "DEMO_AREAS",
     "SEVENZIP_MAGIC",
     "Xp12Rasters",
     "clamp_bathymetry",
@@ -33,6 +34,12 @@ SEVENZIP_MAGIC = b"7z\xbc\xaf\x27\x1c"
 LARGE_SUBATOM = 100
 """A DEMS sub-atom longer than this is raster data, not a ``DEMI`` info (``:428``)."""
 EXPECTED_NAMES = ("elevation", "sea_level")
+DEMO_AREAS = "X-Plane 12 Demo Areas"
+"""The folder X-Plane 12's installer puts beside ``X-Plane 12 Global Scenery`` for the areas of its
+demo, and the only one with some of their tiles even when every part of the world is installed:
+Maui to Kauai, the coast of Oregon and Washington, south-east Alaska (``+20-160`` of the Global
+Scenery is an empty folder). X-Plane draws both as its own scenery; a user who had installed them
+all read that Hawaii's was not (2026-09-22)."""
 
 
 @dataclass(frozen=True)
@@ -74,8 +81,15 @@ class _MemoryFactory(WriterFactory):
 
 
 def global_scenery_dsf(global_scenery_dir: Path, tile: TileRef) -> Path:
-    """``<dir>/Earth nav data/<10x10>/<tile>.dsf`` (``:363-367``)."""
-    return Path(global_scenery_dir) / "Earth nav data" / tile.folder / f"{tile.name}.dsf"
+    """``<dir>/Earth nav data/<10x10>/<tile>.dsf`` (``:363-367``), else the same file in the
+    ``DEMO_AREAS`` folder beside ``<dir>`` when only that one has it; the first when neither
+    does, the file the messages name."""
+    path = Path(global_scenery_dir) / tile.dsf_relpath
+    if not path.is_file():
+        demo = Path(global_scenery_dir).parent / DEMO_AREAS / tile.dsf_relpath
+        if demo.is_file():
+            return demo
+    return path
 
 
 def read_global_scenery_dsf(path: Path, tile: TileRef) -> bytes:

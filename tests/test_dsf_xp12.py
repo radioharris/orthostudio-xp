@@ -13,9 +13,10 @@ import pytest
 
 from orthostudio.dsf import Xp12Rasters, extract_xp12_rasters, rasters_from_dsf
 from orthostudio.dsf.container import Atom, DsfFile, parse_dsf
-from orthostudio.dsf.xp12 import clamp_bathymetry, global_scenery_dsf
+from orthostudio.dsf.xp12 import DEMO_AREAS, clamp_bathymetry, global_scenery_dsf
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
+from orthostudio.overlays.source import overlay_source_path
 
 TILE = TileRef(43, 5)
 
@@ -103,6 +104,29 @@ def test_extract_from_7z_and_plain_files(tmp_path: Path, rasters_pair) -> None:
     from_7z = extract_xp12_rasters(scenery, TILE)
     assert from_7z == from_plain == rasters_from_dsf(data)
     assert isinstance(from_7z, Xp12Rasters)
+
+
+def test_a_tile_only_in_the_demo_areas_is_read_there(tmp_path: Path, rasters_pair) -> None:
+    """X-Plane 12 keeps Maui to Kauai in ``X-Plane 12 Demo Areas`` only, and ``+20-160`` of its
+    Global Scenery is an empty folder: a user who had installed every part of the world read
+    that Hawaii's scenery was not (2026-09-22)."""
+    elev, bathy = rasters_pair
+    data = synthetic_dsf(elev, bathy)
+    gs = tmp_path / "Global Scenery" / "X-Plane 12 Global Scenery"
+    demo = tmp_path / "Global Scenery" / DEMO_AREAS
+    oahu, innsbruck, sea = TileRef(21, -158), TileRef(47, 11), TileRef(20, -160)
+    (gs / oahu.dsf_relpath).parent.mkdir(parents=True)
+    for root, tile in ((demo, oahu), (demo, innsbruck), (gs, innsbruck)):
+        path = root / tile.dsf_relpath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    assert global_scenery_dsf(gs, oahu) == demo / oahu.dsf_relpath
+    assert extract_xp12_rasters(gs, oahu) == rasters_from_dsf(data)
+    assert overlay_source_path(tmp_path, 21, -158) == demo / oahu.dsf_relpath  # from X-Plane's root
+    assert global_scenery_dsf(gs, innsbruck) == gs / innsbruck.dsf_relpath  # in both: the first
+    with pytest.raises(OsxpError) as exc:
+        extract_xp12_rasters(gs, sea)
+    assert exc.value.context["path"] == str(gs / sea.dsf_relpath)  # in neither: the first named
 
 
 def test_errors_are_coded(tmp_path: Path, rasters_pair) -> None:

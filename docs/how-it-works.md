@@ -104,7 +104,12 @@ nothing to press first. *Build* waits only when the disk cannot hold the build, 
 
 **Where X-Plane is.** OrthoStudio XP works with the X-Plane 12 installed on the same computer: it
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its
-Custom Scenery. It finds X-Plane by itself, first in the list X-Plane's installer keeps, then in the
+Custom Scenery. X-Plane's scenery is in `Global Scenery/X-Plane 12 Global Scenery`, except the
+regions of its demo (Maui to Kauai, the coast of Oregon and Washington, south-east Alaska), which
+its installer keeps in `Global Scenery/X-Plane 12 Demo Areas` only: OrthoStudio XP reads both, the
+first when a square is in both. Until 0.1.11 it read only the first, and said Hawaii's scenery was
+not installed to a user who had installed it all. It finds X-Plane by itself, first in the list
+X-Plane's installer keeps, then in the
 usual folders (`~/X-Plane 12` or `/Applications/X-Plane 12` on a Mac; `C:\X-Plane 12`, or
 `X-Plane 12` on the desktop or in your user folder, on Windows). With more than one X-Plane 12 on
 the computer it takes the first, names the others in Settings, and the Library says which one its

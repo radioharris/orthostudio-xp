@@ -170,7 +170,11 @@ unaffected.
 ### 2.4 Global Scenery and the XP12 rasters
 
 `--global-scenery DIR` names the X-Plane 12 Global Scenery (or the X-Plane folder); by default
-it is `<detect_xplane()>/Global Scenery/X-Plane 12 Global Scenery`. When the tile's DSF is not there
+it is `<detect_xplane()>/Global Scenery/X-Plane 12 Global Scenery`. A tile's DSF is looked up there,
+then in `X-Plane 12 Demo Areas` beside it (`global_scenery_dsf`), where X-Plane 12 keeps the regions
+of its demo, some only there (Hawaii from Maui to Kauai, 2026-09-22); the relief of the 3x3 block,
+the `xp12` rasters and the overlay all read it through `global_source`. When the tile's DSF is
+in neither
 the `xp12` and `overlay` nodes fail (`DSF_GLOBAL_SCENERY_MISSING`) and the DSF is not built:
 never an empty artefact. `--no-xp12-rasters` is the explicit choice of a
 DSF without `DEMS` (XP11 sea level); `--no-overlay` skips the overlay pack.

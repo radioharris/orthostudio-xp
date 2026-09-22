@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from orthostudio.dsf.xp12 import DEMO_AREAS
 from orthostudio.errors import OsxpError
 from orthostudio.graph import Store
 from orthostudio.imagery.providers import load_registry
@@ -265,6 +266,24 @@ def test_missing_global_scenery_is_a_coded_error(tmp_path: Path, env: BuildEnv) 
     )
     assert g.xp12 is None and g.overlay is None
     assert g.dsf.inputs["rasters"] is None and g.pack.inputs["overlay"] is None
+
+
+def test_a_tile_of_x_planes_demo_areas_is_built_from_them(tmp_path: Path, env: BuildEnv) -> None:
+    """The relief, the XP12 rasters and the overlay read a tile X-Plane 12 keeps in its Demo Areas
+    only, beside the Global Scenery (Oahu, 2026-09-22), and a neighbour's relief there too."""
+    oahu = TileRef(21, -158)
+    assert env.global_scenery is not None
+    demo = env.global_scenery.parent / DEMO_AREAS
+    for tile in (oahu, oahu.neighbour(0, -1)):
+        p = demo / tile.dsf_relpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"XPLNEDSF" + tile.name.encode())
+    (g,) = _declare([_spec(tmp_path, tile=oahu, relief="xplane")], _sched(env), env)
+    dsf = demo / oahu.dsf_relpath
+    assert g.xp12 is not None and g.xp12.inputs["source"].path == dsf
+    assert g.overlay is not None and g.overlay.inputs["source"].path == dsf
+    assert g.by_role["dem"].inputs["xp12"].path == dsf
+    assert g.by_role["dem"].inputs["xp12_w"].path == demo / oahu.neighbour(0, -1).dsf_relpath
 
 
 def test_install_needs_custom_scenery(tmp_path: Path, env: BuildEnv) -> None:

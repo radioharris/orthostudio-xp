@@ -20,7 +20,7 @@ for inland water, and a depth above the terrain would draw water in the air.
 
 | Line | Rule | OrthoStudio XP |
 |---|---|---|
-| `:363-367` | source `<custom_overlay_src>/Earth nav data/<10x10>/<tile>.dsf` | `global_scenery_dir / "Earth nav data" / tile.folder / f"{tile.name}.dsf"` |
+| `:363-367` | source `<custom_overlay_src>/Earth nav data/<10x10>/<tile>.dsf` | `global_scenery_dsf`: `global_scenery_dir / tile.dsf_relpath`, else the same path under `X-Plane 12 Demo Areas` beside `global_scenery_dir` (`DEMO_AREAS`), where X-Plane 12's installer keeps the regions of its demo, some only there: Maui to Kauai (`+20-160` of the Global Scenery is an empty folder), the coast of Oregon and Washington, south-east Alaska. Ortho4XP reads one folder, so those tiles need `custom_overlay_src` changed |
 | `:368-375` | missing file: error message, empty atoms | `OsxpError("DSF_GLOBAL_SCENERY_MISSING", tile, path)` |
 | `:376-388` | copy to a temporary file (copy failure: error) | read in place; `DSF_GLOBAL_SCENERY_COPY_FAILED` only if the read fails |
 | `:390-397` | first two bytes `7z` -> `7z e` into the tmp dir, else the file is a plain DSF | `py7zr` when the file starts with `7z\xbc\xaf\x27\x1c` (the archive holds one DSF; the first member is taken); failure -> `DSF_SOURCE_DECOMPRESS_FAILED` |

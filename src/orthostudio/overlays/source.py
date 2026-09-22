@@ -1,7 +1,8 @@
 """Locate and materialise the Global Scenery DSF of a tile (spec section 2, lines 40-79).
 
 The source folder is the one just above ``Earth nav data`` (Ortho4XP's ``custom_overlay_src``,
-typically ``<X-Plane>/Global Scenery/X-Plane 12 Global Scenery``). X-Plane 12 ships its DSFs
+typically ``<X-Plane>/Global Scenery/X-Plane 12 Global Scenery``, or ``X-Plane 12 Demo Areas``
+beside it for a tile only they have). X-Plane 12 ships its DSFs
 as 7z archives (``7z\\xbc\\xaf\\x27\\x1c`` magic, one member); py7zr extracts them in-process
 into the work directory. A plain DSF is used where it is: DSFTool only reads it.
 """
@@ -12,9 +13,10 @@ from pathlib import Path
 
 import py7zr
 
+from orthostudio.dsf.xp12 import global_scenery_dsf
 from orthostudio.errors import OsxpError
+from orthostudio.model import TileRef
 from orthostudio.overlays.dsftool import DSF_MAGIC
-from orthostudio.tilefiles.paths import round_latlon, short_latlon
 
 __all__ = [
     "SEVENZIP_MAGIC",
@@ -62,9 +64,10 @@ def resolve_global_scenery_dir(global_scenery_dir: Path) -> Path:
 
 
 def overlay_source_path(global_scenery_dir: Path, lat: int, lon: int) -> Path:
-    """``<dir>/Earth nav data/+40+000/+43+005.dsf`` (``O4_Overlay_Utils.py:40-44``)."""
+    """``<dir>/Earth nav data/+40+000/+43+005.dsf`` (``O4_Overlay_Utils.py:40-44``), or the one
+    of X-Plane 12's Demo Areas (:func:`orthostudio.dsf.xp12.global_scenery_dsf`)."""
     root = resolve_global_scenery_dir(global_scenery_dir)
-    return root / EARTH_NAV_DATA / round_latlon(lat, lon) / (short_latlon(lat, lon) + ".dsf")
+    return global_scenery_dsf(root, TileRef(lat, lon))
 
 
 def _read_head(path: Path, n: int) -> bytes:
