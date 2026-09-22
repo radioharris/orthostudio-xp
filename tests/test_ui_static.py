@@ -2932,6 +2932,22 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_settings_name_the_author_and_the_licence() -> None:
+    """The notices GPL v3 asks an interactive program to show (its Appropriate Legal Notices): who
+    holds the copyright, the licence, and that there is no warranty, which a reuse of the page must
+    keep showing (the user asked, 2026-09-22; NOTICE says the same)."""
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), m.t("settings.credits"))))',
+    )
+    for text in words:
+        assert text.startswith("OrthoStudio XP © 2026 radioharris"), text
+        assert "GPL v3" in text and "LICENSE" in text and "OpenStreetMap" in text
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert 'data-i18n="settings.credits">OrthoStudio XP © 2026 radioharris' in html
+
+
 def test_the_data_folder_can_be_found_and_its_refusal_read() -> None:
     """A French tester (2026-09-22) could not find his tiles in the hidden `~/.orthostudio`, and
     tried an external disk "without success": the refusal of an exFAT disk showed at the foot of

@@ -703,6 +703,10 @@ or FAT32, for instance)…", which also says where a disk's format is read (Disk
 Properties). The refusal used to show at the foot of the form, under every question, where a user
 saving from the data folder's question never saw it, and began "Settings rejected by the engine"
 (a French tester, 2026-09-22).
+Under the form, the credits line begins with the notices GPL v3 asks an interactive program to
+show (its Appropriate Legal Notices): "OrthoStudio XP © 2026 radioharris, free software under the GNU
+GPL v3 or later, without warranty (the LICENSE file comes with the app)", then the credits of the
+map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says the same.
 
 1. **Presets**: three buttons, *Recommended* (ZL16, main airports at ZL18), *Best quality* (ZL17,
    every airfield at ZL18), *Light on disk* (ZL15, nothing extra), each with its size per tile
