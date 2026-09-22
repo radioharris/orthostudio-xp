@@ -1118,5 +1118,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   background: var(--bg-3);
 }
 .route-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
+/* Under the flight plan's row, not inside its field: the buttons line up with the field itself
+   (a user, 2026-09-22), as the airport's Add does. */
+.route-help { margin: var(--help-gap) 0 0; }
 /* What went wrong with the airport or the flight plan, right under them, not in step 3. */
 .way-error { margin: var(--help-gap) 0 0; color: var(--fail); }
