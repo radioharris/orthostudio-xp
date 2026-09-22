@@ -985,6 +985,10 @@ export function createPlanMap(ctx) {
   }
 
   function onMapClick(ev) {
+    if (skipClick) {  // the end of a sweep, not a click on the square under the pointer
+      skipClick = false;
+      return;
+    }
     const oe = ev.originalEvent || {};
     if (oe.detail > 1) return; // the second click of a double-click
     const mod = Boolean(oe.ctrlKey || oe.metaKey);
@@ -1033,7 +1037,56 @@ export function createPlanMap(ctx) {
     tip.style.top = `${p.y + 14}px`;
   }
 
+  /**
+   * Shift and the mouse held down: every square the pointer sweeps is chosen (a user asked to
+   * choose a row of squares without clicking each one, 2026-09-22).
+   *
+   * ``pending`` holds the press until the pointer has moved a few pixels, so that Shift+click
+   * still puts a point of a free shape where it always did; from there the map stops panning and
+   * each new square is added at once, which the chips and the map show as it goes.
+   */
+  let sweep = null;
+  let skipClick = false;
+  const SWEEP_MOVE_PX = 4;
+
+  function sweepPress(ev) {
+    if (zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
+    sweep = { x: ev.clientX, y: ev.clientY, started: false, taken: new Set() };
+    map.dragging.disable(); // the map would follow the pointer; taken back when the button is up
+  }
+
+  function sweepTo(latlng, ev) {
+    if (!sweep || !map) return;
+    if (!sweep.started) {
+      const moved = Math.abs(ev.clientX - sweep.x) + Math.abs(ev.clientY - sweep.y);
+      if (moved < SWEEP_MOVE_PX) return;
+      sweep.started = true;
+      hideTip();
+    }
+    const lat = Math.floor(latlng.lat);
+    const lon = Math.floor(wrapLon(latlng.lng));
+    if (lat < -90 || lat > 89 || lon < -180 || lon > 179) return;
+    const name = tileName(lat, lon);
+    if (sweep.taken.has(name)) return;
+    sweep.taken.add(name);
+    ctx.chooseTiles([name]);
+  }
+
+  function sweepEnd() {
+    if (!sweep) return;
+    const { started, taken } = sweep;
+    sweep = null;
+    map?.dragging.enable();
+    if (!started) return;
+    skipClick = true; // the click that follows the drag would toggle the square under the pointer
+    if (taken.size) ctx.toast(t("map.swept", { n: taken.size }));
+  }
+
   function onMapMouseMove(ev) {
+    if (sweep) {
+      sweepTo(ev.latlng, ev.originalEvent || {});
+      if (sweep?.started) return;
+    }
     if (!zs.draft || !band) {
       showTip(ev);
       return;
@@ -1169,8 +1222,11 @@ export function createPlanMap(ctx) {
     m.on("mouseout", () => renderBand(null));
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {
-      if (ev.shiftKey) ev.preventDefault(); // no text selection on Shift+click
+      if (!ev.shiftKey || ev.button !== 0) return;
+      ev.preventDefault(); // no text selection on Shift+click
+      sweepPress(ev);
     });
+    document.addEventListener("mouseup", sweepEnd);
     setBaseLayer(true);
     renderBorders();
     refreshAirports();
@@ -1978,6 +2034,7 @@ export function createPlanMap(ctx) {
     clear(ul).append(
       h("li", null, t("zones.sc_square", { mod: keyMod })),
       h("li", null, t("zones.sc_point", { shift })),
+      h("li", null, t("map.sc_sweep", { shift })),
       h("li", null, t("zones.sc_snap", { mod: keyMod, shift })),
       h("li", null, t("zones.sc_finish", { back: keyBack() })),
       h("li", null, t("zones.sc_delete", { del: keyDelete() })),

@@ -137,6 +137,12 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   build under way: when the one it watched ends, it follows the next (`followBuildUnderWay`). The Library is read again a
   moment after each tile's install and when the build ends, so installed tiles turn green one after
   the other.
+- **Shift and a drag choose the squares swept** (`sweepPress`, `sweepTo`, `sweepEnd`, a user who
+  clicked every square of a route one by one, 2026-09-22): the press holds until the pointer has
+  moved 4 px, so a Shift+click still puts a point of a free shape; from there the map stops
+  panning, every square the pointer crosses is chosen at once (`chooseTiles`, one by one, so the
+  chips and the map follow), the click that ends the drag is dropped (`skipClick`) and a toast
+  says how many. Below `GRID_MIN_ZOOM` nothing is swept, as nothing is clicked.
 - **The route's ends** (2026-09-22): a chosen square of the flight plan's departure or arrival is
   outlined in the route's own colour (`--route`, the line's), not the blue of the others: on a plan
   across Europe, 28 squares of one blue left nothing to tell them apart (a user). The squares are

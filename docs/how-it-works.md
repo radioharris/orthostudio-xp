@@ -270,6 +270,10 @@ then reads *Several levels* and each square says its own; choosing a level there
 chosen square back on one. Only the name goes to simbrief.com, only when you press that button,
 and the route is never saved with your tiles.
 
+**Choosing many squares at once.** Hold Shift, press the mouse on the map and sweep: every square
+the pointer crosses is chosen, and a line says how many. A Shift+click without moving still puts a
+point of a free shape, as before.
+
 **A zone alone builds nothing.** A build makes whole tiles -- that is how X-Plane cuts its scenery
 -- so a zone drawn where no tile is chosen simply waits: it is saved with the others, its row says
 *outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing
