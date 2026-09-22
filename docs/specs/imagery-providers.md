@@ -106,13 +106,14 @@ when taken), the address checked first (http or https, and `{x}` `{y}` `{zoom}` 
 Tests never read the machine's own file: `tests/conftest.py` points it elsewhere unless a test sets
 `$OSXP_HOME`.
 
-### Initial content (decided by the user; 12 providers)
+### Initial content (decided by the user; 12 providers, and EOX since 0.1.12)
 
 | Code | Ortho4XP file | Template (OrthoStudio XP) | max_zl | in flight | Placeholder | Extent |
 |---|---|---|---|---|---|---|
 | BI | Global/BI.lay | `https://ecn.t{switch:0,1,2,3}.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=15312` (Ortho4XP: `http://r{switch:0,1,2,3}.ortho.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=136`, HTTP/1.1 clear; same bytes, see `docs/benchmarks/network.md` s. 1) | 19 | 128 (measured ceiling) | header `X-VE-Tile-Info: no-tile`, 1 033 bytes, blake3 `1abc2dcd…b484` | global |
 | Arc | Global/Arc.lay | `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}` (Ortho4XP: `http://`, the server redirects to https) | 19 | 128 (measured, `docs/benchmarks/network.md` 7; was 16, an HTTP/1.1 guess) | 2 521 bytes (Ortho4XP rule `:1029-1032`, `arcgisonline` in the URL) | global |
 | Arc@ | Global/Arc@.lay | unchanged (`https://clarity.maptiles.arcgis.com/...`) | 19 | 192 (HTTP/2, measured: `docs/benchmarks/network.md` 6 and 7) | none: the Ortho4XP rule tests `arcgisonline` in the URL, which this host does not contain; **open point**, to be measured | global |
+| EOX | Global/EOX.lay, EOX2.lay (`a.s2maps-tiles.eu`, refused: 403 in the audit) | `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{zoom}/{y}/{x}.jpg`, EOX's Sentinel-2 mosaic of 2024 ("EOxCloudless"), added for a pilot flying IFR long haul (2026-09-22); non-commercial use (CC BY-NC-SA 4.0), credit shown | 14 (10 m to the pixel) | 32 (measured: 8, 16, 32, 64 gave 76, 138, 224, 240 req/s) | none; over open sea a plain dark blue 256x256 PNG, which decodes like the JPEGs | global |
 | Lux | Luxembourg/Lux.lay | `https://{switch:wmts1,wmts2}.geoportail.lu/opendata/wmts/ortho_latest/GLOBAL_WEBMERCATOR_4_V3/{zoom}/{x}/{y}.jpeg` (Ortho4XP: `http://`) | 20 | 16 (measured: slower at 32) | none | Luxembourg (bounds of `Extents/LowRes/Luxembourg.ext`) |
 | NL, PDOK | Netherland/NL.lay, PDOK.lay (identical definitions, layer `Actueel_ortho25`) | WMTS concatenation, section 2 | 19 (matrices `00`..`19`) | 32 (measured: slower at 64) | none | Netherlands `3.06,50.72,7.26,53.76` |
 | PDOK18 / PDOK19 / PDOK20 | Netherland/PDOK1{8,9}.lay, PDOK20.lay | same, layers `2018_ortho25`, `2019_ortho25`, `2020_ortho25` | 19 | 32 (the same host) | none | Netherlands |

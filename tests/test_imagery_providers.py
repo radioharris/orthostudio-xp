@@ -20,6 +20,7 @@ EXPECTED_CODES = {
     "Arc",
     "Arc@",
     "BI",
+    "EOX",
     "Lux",
     "NL",
     "PDOK",
@@ -62,6 +63,7 @@ MEASURED_IN_FLIGHT = {
     "BI": 128,
     "Arc": 128,
     "Arc@": 192,
+    "EOX": 32,  # measured 2026-09-22, when it was added
     "Lux": 16,
     "NL": 32,
     "PDOK": 32,
@@ -76,6 +78,7 @@ MEASURED_IN_FLIGHT = {
 
 MEASURED_SERVER_RATES = {
     "Arc@": 522,
+    "EOX": 224,
     "Lux": 130,
     "NL": 181,
     "PDOK": 181,
@@ -157,6 +160,20 @@ def test_audit_urls_for_the_other_providers(registry: dict[str, Provider]) -> No
     assert tile_url(registry["SP"], 16047, 12355, 15).endswith(
         "TILEMATRIX=15&TILEROW=12355&TILECOL=16047"
     )
+
+
+def test_eox_sentinel_2_covers_the_world_at_zl14(registry: dict[str, Provider]) -> None:
+    """A pilot flying IFR long haul asked for EOX's Sentinel-2 mosaic, light on his machine
+    (2026-09-22). Ortho4XP's address of it was refused (docs/providers-audit.md); EOX serves it at
+    tiles.maps.eox.at, ten metres to the pixel, so ZL14 at most, after Bing and Esri."""
+    eox = registry["EOX"]
+    assert eox.max_zl == 14 and eox.extent is None and eox.covers(46, 6) and eox.covers(-34, 151)
+    assert (
+        tile_url(eox, 8428, 5995, 14)
+        == "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/14/5995/8428.jpg"
+    )
+    assert "EOX IT Services GmbH" in eox.attribution and "Copernicus Sentinel" in eox.attribution
+    assert list(registry)[:4] == ["BI", "Arc", "Arc@", "EOX"]
 
 
 def test_every_shipped_source_is_fetched_over_https() -> None:

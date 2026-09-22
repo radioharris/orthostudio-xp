@@ -1,6 +1,6 @@
 # OrthoStudio XP imagery provider registry (docs/specs/imagery-providers.md, section 4).
 #
-# Twelve providers alive in September 2026 without a key or token, converted from the
+# Thirteen providers alive in September 2026 without a key or token, converted from the
 # Ortho4XP definitions named in each comment (docs/providers-audit.md). Values marked
 # "assumed" are not in those files and wait for `osxp doctor --providers` to confirm them.
 # max_in_flight: the most requests in flight each server took on 2026-09-15, rising until it
@@ -43,6 +43,20 @@ server_req_per_s = 522
 attribution = "Esri World Imagery Clarity (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"
 name = "Esri World Imagery Clarity"
 terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
+
+[providers.EOX]
+# Providers/Global/EOX.lay and EOX2.lay asked a.s2maps-tiles.eu, which refused them (403, the
+# audit); EOX serves the same Sentinel-2 mosaic, now "EOxCloudless", at tiles.maps.eox.at (HTTP/2,
+# 2026-09-22). One pixel per 10 m of ground, so ZL14 at most: a pilot flying IFR long haul asked
+# for it, light on his machine. Over open sea it answers a plain dark blue 256x256 PNG, which
+# decodes like the JPEGs. Free for non-commercial use (CC BY-NC-SA 4.0), its credit shown.
+url_template = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{zoom}/{y}/{x}.jpg"
+max_zl = 14
+max_in_flight = 32  # 8, 16, 32, 64 gave 76, 138, 224, 240 req/s, no error (2026-09-22)
+server_req_per_s = 224
+attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
+name = "EOX Sentinel-2 cloudless"
+terms_url = "https://cloudless.eox.at/documentation/license"
 
 # ------------------------------------------------------------------ national
 

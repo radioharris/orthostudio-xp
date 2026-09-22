@@ -85,7 +85,8 @@ wait too: the end of the build decides what X-Plane shows of it. Tiles are delet
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and
 *Quit* cancels the waiting builds with the one running.
 
-**Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list. The
+**Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
+EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,

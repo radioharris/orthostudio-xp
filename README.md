@@ -132,7 +132,7 @@ Other differences in use:
 
 Ortho4XP remains the reference, and does things OrthoStudio XP does not do:
 
-- **many more imagery sources**: 71 definitions, mostly national, against 12 checked ones here (a
+- **many more imagery sources**: 71 definitions, mostly national, against 13 checked ones here (a
   source of your own can be added in the page), and a **combined** layer that stitches several of
   them into a single texture, each with its own extent, priority and colour filter — where
   OrthoStudio XP uses one source per tile, or per zone drawn inside it;
