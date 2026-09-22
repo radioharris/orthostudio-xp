@@ -252,6 +252,8 @@ def make_specs(
     essential = settings.essential
     provider = req.provider or essential.provider
     zl = req.zoom_level if req.zoom_level is not None else int(essential.zoom_level)
+    # a square may carry its own level: a route's ends sharper than the squares along it
+    levels = dict(getattr(req, "tiles_zl", None) or {})
     reg = registry if registry is not None else load_registry()
     if provider not in reg:
         known = ", ".join(sorted(reg))
@@ -272,6 +274,17 @@ def make_specs(
     # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
     patches_dir = patches_dir_of(settings)
     max_zl = reg[provider].max_zl
+    for name, own in sorted(levels.items()):
+        if own > max_zl:
+            raise OsxpError(
+                "CFG_VALUE_INVALID",
+                context={
+                    "name": f"tiles_zl[{name}]",
+                    "value": own,
+                    "type": "int",
+                    "range": f"10..{max_zl}",
+                },
+            )
     if zl > max_zl:
         raise OsxpError(
             "CFG_VALUE_INVALID",
@@ -321,7 +334,7 @@ def make_specs(
             BuildSpec(
                 tile=tile,
                 provider=provider,
-                zl=zl,
+                zl=levels.get(name, zl),
                 out_dir=out_dir,
                 global_scenery_dir=gs,
                 config=with_photo_zones(

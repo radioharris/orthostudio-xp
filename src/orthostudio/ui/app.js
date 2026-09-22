@@ -179,6 +179,11 @@ const state = {
   schema: null,
   settingsDraft: null,
   tiles: [],
+  /** The squares that carry a detail level of their own (`{tile: zl}`), set by the flight
+   * plan's two groups; the others take the level of step 1's list. */
+  tileZl: {},
+  /** The level of step 1's list, kept while the list reads "Several levels". */
+  planZl: null,
   airport: null,
   /** The flight plan drawn on the map: `{points: [{icao, name, lat, lon}]}` or null. */
   route: null,
@@ -1145,7 +1150,8 @@ export async function mockApi(method, path, body, options = {}) {
     const plan = await mockFile("plan");
     const tiles = body.tiles || [];
     const template = plan.tiles[0];
-    plan.tiles = tiles.map((name) => ({ ...structuredClone(template), tile: name, zl: body.zoom_level, provider: body.provider }));
+    const zlOf = (name) => body.tiles_zl?.[name] ?? body.zoom_level;
+    plan.tiles = tiles.map((name) => ({ ...structuredClone(template), tile: name, zl: zlOf(name), provider: body.provider }));
     const k = Math.max(1, tiles.length);
     for (const key of ["requests", "mb", "seconds_low", "seconds_high"]) plan.network[key] *= k;
     for (const key of ["seconds", "textures", "cached"]) plan.compute[key] *= k;
@@ -2498,6 +2504,22 @@ function tileLat(name) {
 
 /** Add tiles to the selection; returns those left out because they are in a build, under way or
  * waiting (a user asked that such a tile cannot be chosen again: it would be built twice). */
+/**
+ * Run `fn` and leave `el` where it was on the screen.
+ *
+ * The squares chosen sit at the top of step 1, so choosing more pushes everything under them down.
+ * Chrome puts the scroll back by itself (scroll anchoring); WebKit, which the app's own window
+ * uses, does not, and the page looked as if it had scrolled up under the button just pressed (a
+ * user, 2026-09-22).
+ */
+function keepInPlace(el, fn) {
+  const top = el?.getBoundingClientRect?.().top;
+  fn();
+  if (!el || !Number.isFinite(top)) return;
+  const moved = el.getBoundingClientRect().top - top;
+  if (Math.abs(moved) > 1) window.scrollBy(0, moved);
+}
+
 function addTiles(names) {
   const building = tilesInBuilds(activeJobs());
   const skipped = [];
@@ -2548,9 +2570,13 @@ function toggleTile(name) {
 
 function renderTiles() {
   const box = clear($("tile-chips"));
+  normalizeLevels();
+  // A chip says its level only while the squares differ: one flight plan, two levels (2026-09-22).
+  const mixed = chosenLevels().length > 1;
   for (const name of state.tiles) {
+    const label = mixed ? `${name} · ZL${tileZl(name)}` : name;
     box.append(
-      h("span", { class: "chip", dataset: { tile: name } }, name, h("button", { type: "button", "aria-label": t("plan.remove_tile", { tile: name }), onclick: () => removeTile(name) }, "×")),
+      h("span", { class: "chip", dataset: { tile: name } }, label, h("button", { type: "button", "aria-label": t("plan.remove_tile", { tile: name }), onclick: () => removeTile(name) }, "×")),
     );
   }
   $("tile-count").textContent = state.tiles.length ? t("plan.tile_count", { n: state.tiles.length }) : t("plan.tile_none");
@@ -2578,7 +2604,6 @@ function renderTilesBuilt() {
   if (!box) return;
   clear(box);
   const provider = $("provider-select")?.value;
-  const zl = Number($("zl-select")?.value) || 0;
   const named = (code) => {
     const p = state.providers.find((x) => x.code === code);
     return p ? sourceLabel(p) : code;
@@ -2608,6 +2633,7 @@ function renderTilesBuilt() {
     });
     const changes = [];
     if (provider && e.provider && provider !== e.provider) changes.push(t("plan.built_instead", { now: named(provider), was: named(e.provider) }));
+    const zl = tileZl(name);  // its own level, which a flight plan may have given it
     if (zl && e.zl && zl !== Number(e.zl)) changes.push(t("plan.built_instead", { now: `ZL${zl}`, was: `ZL${e.zl}` }));
     // the square's colours, against those the tile was built with: the Library's own test, so the
     // two say the same (a user moved a slider and was told nothing here, 2026-09-21)
@@ -2685,7 +2711,7 @@ function addTilesFromText() {
     return;
   }
   showPlanError(null);
-  sayTilesInBuild(addTiles(raw));
+  keepInPlace(input, () => sayTilesInBuild(addTiles(raw)));
   input.value = "";
 }
 
@@ -2697,7 +2723,7 @@ function addTileFromLatLon() {
     return;
   }
   showPlanError(null);
-  sayTilesInBuild(addTiles([tileName(lat, lon)]));
+  keepInPlace($("latlon-add"), () => sayTilesInBuild(addTiles([tileName(lat, lon)])));
 }
 
 /** Every 1° cell intersecting the bounding box of the circle (spec 2.1). */
@@ -2873,7 +2899,7 @@ async function addTilesFromIcao() {
   showWayError(null);
   const r = Math.max(1, Number($("radius-input").value) || 15);
   const names = tilesAround(airport.lat, airport.lon, r);
-  sayTilesInBuild(addTiles(names));
+  keepInPlace($("icao-add"), () => sayTilesInBuild(addTiles(names)));
   toast(t("plan.icao_added", { icao: airport.icao, name: airport.name || "", n: names.length, r }));
 }
 
@@ -2906,6 +2932,32 @@ function routeAllTiles() {
   return [...new Set([...tilesAlong(points), ...routeEndTiles()])];
 }
 
+/** The squares along the route, without those of the departure and the arrival: the two groups
+ * are chosen apart, so that each takes the level the pilot gives it (a user, 2026-09-22). */
+function routeAlongTiles() {
+  const ends = new Set(routeEndTiles());
+  return routeAllTiles().filter((name) => !ends.has(name));
+}
+
+/** The level of each group, shown once its squares are chosen: the one they carry now, and the one
+ * a change here gives them. */
+function renderRouteLevels(maxZl, lat) {
+  for (const id of ["route-ends-zl", "route-all-zl"]) {
+    const sel = $(id);
+    if (!sel) continue;
+    const group = id === "route-ends-zl" ? routeEndTiles() : routeAlongTiles();
+    const chosen = group.filter((name) => state.tiles.includes(name));
+    sel.hidden = !chosen.length;
+    if (!chosen.length) continue;
+    const levels = [...new Set(chosen.map(tileZl))];
+    clear(sel);
+    sel.append(...zlOptions(maxZl, lat));
+    sel.value = String(levels.length === 1 ? levels[0] : planZl());
+    const label = id === "route-ends-zl" ? t("plan.route_ends_zl") : t("plan.route_all_zl");
+    sel.setAttribute("aria-label", label);
+  }
+}
+
 function renderRoute() {
   const found = $("route-found");
   const points = state.route?.points || [];
@@ -2922,7 +2974,8 @@ function renderRoute() {
     }),
   );
   setText($("route-ends"), t("plan.route_ends", { n: ends.length }));
-  setText($("route-all"), t("plan.route_all", { n: all.length }));
+  setText($("route-all"), t("plan.route_all", { n: all.length - ends.length }));
+  renderZlOptions(); // the two groups' levels follow the route and the squares chosen
 }
 
 /** Read the codes, ask the engine where those airports are, and draw the line. */
@@ -3012,10 +3065,24 @@ function restoreRoute() {
   renderRoute();
 }
 
-function addRouteTiles(names) {
+/** A group of the route: its squares are chosen, and they carry the level shown beside its
+ * button, so that the ends and the route may differ. */
+function addRouteTiles(names, zl) {
   if (!names.length) return;
-  sayTilesInBuild(addTiles(names));
-  toast(t("plan.route_added", { n: names.length }));
+  let skipped = [];
+  keepInPlace($("route-found"), () => {
+    skipped = addTiles(names);
+    for (const name of names) {
+      if (state.tiles.includes(name)) state.tileZl[name] = zl;
+    }
+    renderTiles();
+    renderZlOptions();
+    renderTilesBuilt();
+    planChanged();
+    planMap?.planChanged();
+  });
+  sayTilesInBuild(skipped);
+  toast(t("plan.route_added", { n: names.length - skipped.length }));
 }
 
 // ------------------------------------------------------------------ Plan: provider, zoom
@@ -3177,19 +3244,75 @@ async function reloadProviders(select = null) {
   planChanged();
 }
 
-/** Detail levels in plain words, sized at the first tile's latitude (else the map centre's). */
+/** The level of step 1's list: what a square takes unless it carries one of its own. */
+function planZl() {
+  return Number(state.planZl) || 16;
+}
+
+/** The level a square will be built at: its own (the flight plan's groups), else step 1's. */
+function tileZl(name) {
+  return Number(state.tileZl[name]) || planZl();
+}
+
+/** The levels of the chosen squares, without repeats. */
+function chosenLevels() {
+  return [...new Set(state.tiles.map(tileZl))];
+}
+
+/**
+ * One rule, so that no level is ever hidden: the levels of the squares that are gone are dropped,
+ * and when every chosen square is at the same level, that level becomes step 1's and no square
+ * carries its own any more. Levels differ only while the flight plan's two groups differ.
+ */
+function normalizeLevels() {
+  for (const name of Object.keys(state.tileZl)) {
+    if (!state.tiles.includes(name)) delete state.tileZl[name];
+  }
+  const levels = chosenLevels();
+  if (state.tiles.length && levels.length === 1) {
+    state.planZl = levels[0];
+    for (const name of state.tiles) delete state.tileZl[name];
+  }
+}
+
+/** Every level the source gives, in plain words, sized at a latitude. */
+function zlOptions(maxZl, lat) {
+  const out = [];
+  for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {
+    out.push(h("option", { value: zl }, detailLabel(zl, lat)));
+  }
+  return out;
+}
+
+/** Detail levels in plain words, sized at the first tile's latitude (else the map centre's).
+ *
+ * The list shows the level of the chosen squares; when they differ, the flight plan having given
+ * its ends and its route two levels, it reads "Several levels" and each chip says its own. */
 function renderZlOptions() {
   const sel = $("zl-select");
   const p = currentProvider();
-  const maxZl = p ? p.max_zl : 19;
+  const maxZl = Math.min(19, p ? p.max_zl : 19);
   const lat = state.tiles.length ? tileLat(state.tiles[0]) + 0.5 : planMap?.mapLatitude() ?? 45;
-  const wanted = Number(sel.value) || state.settings?.essential?.zoom_level || 16;
-  clear(sel);
-  for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {
-    sel.append(h("option", { value: zl }, detailLabel(zl, lat)));
+  // a source that stops lower brings every level down with it, the squares' own included
+  // what the squares carry wins over what the list still shows: a level chosen for one group
+  // of the route left the list on the level of before, which then took it back (2026-09-22)
+  const wanted = Number(state.planZl) || Number(sel.value) || state.settings?.essential?.zoom_level || 16;
+  state.planZl = Math.min(Number(wanted), maxZl);
+  for (const name of Object.keys(state.tileZl)) {
+    state.tileZl[name] = Math.min(state.tileZl[name], maxZl);
   }
-  sel.value = String(Math.min(wanted, Math.min(19, maxZl)));
+  normalizeLevels();
+  clear(sel);
+  sel.append(...zlOptions(maxZl, lat));
+  const levels = chosenLevels();
+  if (state.tiles.length && levels.length > 1) {
+    sel.append(h("option", { value: "", disabled: true }, t("plan.zl_several")));
+    sel.value = "";
+  } else {
+    sel.value = String(planZl());
+  }
   $("zl-help").textContent = t("plan.zl_help", { lat: fmtNum(lat, 1) });
+  renderRouteLevels(maxZl, lat);
 }
 
 // ------------------------------------------------------------------ Plan: estimate + build
@@ -3202,10 +3325,13 @@ async function planRequest() {
     showPlanError(t("plan.zones_unavailable"));
     return null;
   }
+  const own = Object.fromEntries(state.tiles.filter((n) => state.tileZl[n]).map((n) => [n, state.tileZl[n]]));
   return {
     tiles: [...state.tiles],
     provider: $("provider-select").value,
-    zoom_level: Number($("zl-select").value),
+    zoom_level: planZl(),
+    // the squares of a flight plan's ends, or of its route, when the two levels differ
+    ...(Object.keys(own).length ? { tiles_zl: own } : {}),
     zones,
     // The squares' own colours travel with the zones: a request that carried its zones alone
     // built them without their colours (a user, 2026-09-18).
@@ -5290,8 +5416,8 @@ async function boot() {
       drawRoute();
     }
   });
-  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles()));
-  $("route-all").addEventListener("click", () => addRouteTiles(routeAllTiles()));
+  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || planZl()));
+  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || planZl()));
   $("route-simbrief").addEventListener("click", routeFromSimbrief);
   $("route-clear").addEventListener("click", clearRoute);
   // the radius applies to both ends of the route: the counts on the buttons follow it
@@ -5309,10 +5435,27 @@ async function boot() {
     planMap?.planChanged();
   });
   $("zl-select").addEventListener("change", () => {
+    // Chosen here, the level is every chosen square's: the flight plan's two levels give way to it.
+    state.planZl = Number($("zl-select").value) || planZl();
+    state.tileZl = {};
+    renderTiles();
+    renderZlOptions();
     renderTilesBuilt();
     planChanged();
     planMap?.planChanged();
   });
+  for (const [id, tiles] of [["route-ends-zl", routeEndTiles], ["route-all-zl", routeAlongTiles]]) {
+    $(id).addEventListener("change", (ev) => {
+      const zl = Number(ev.target.value);
+      if (!zl) return;
+      for (const name of tiles()) if (state.tiles.includes(name)) state.tileZl[name] = zl;
+      renderTiles();
+      renderZlOptions();
+      renderTilesBuilt();
+      planChanged();
+      planMap?.planChanged();
+    });
+  }
   $("estimate-btn").addEventListener("click", estimate);
   $("build-install-btn").addEventListener("click", () => build(true));
   $("build-only-btn").addEventListener("click", () => build(false));
@@ -5364,7 +5507,8 @@ async function boot() {
     chooseTiles: (names) => sayTilesInBuild(addTiles(names)),
     providers: () => state.providers,
     planProvider: () => $("provider-select").value,
-    planZl: () => Number($("zl-select").value),
+    planZl,
+    tileZl,
     library: () => state.library,
     builtSummary,
     building: () => buildingOnMap(),

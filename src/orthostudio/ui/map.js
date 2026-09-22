@@ -207,7 +207,8 @@ export function readZonesDocument(doc) {
 
 /**
  * ctx: {mock, api(method, path, body, {headers, keepalive}), toast, errorMessage, errorDetail, h,
- * clear, tiles(), toggleTile(name), providers(), planProvider(), planZl(), library(),
+ * clear, tiles(), toggleTile(name), providers(), planProvider(), planZl(), tileZl(name),
+ * library(),
  * onZonesChanged()}. api() rejects with an error carrying the HTTP `status` when the engine
  * answered, without one when it could not be reached.
  */
@@ -359,31 +360,33 @@ export function createPlanMap(ctx) {
     return byLevel.get(k);
   }
 
-  /** A zone at the tiles' own level and source adds nothing: its textures are the tile's. */
-  function addsNothing(z) {
+  /** A zone at a tile's own level and source adds nothing there: its textures are the tile's.
+   * Asked per tile since a flight plan may give its ends and its route two levels (2026-09-22). */
+  function addsNothingOn(z, tile) {
     const source = ctx.planProvider();
-    return z.zl === ctx.planZl() && (z.provider || source) === source;
+    return z.zl === ctx.tileZl(tile) && (z.provider || source) === source;
   }
 
   /** Approximate extra megabytes of one zone, over every tile it covers (section 7.0.4). */
   function zoneMB(z) {
-    if (addsNothing(z)) return 0;
     let n = 0;
-    for (const tile of zoneTiles(z)) n += zoneKeys(z, tile).length;
+    for (const tile of zoneTiles(z)) {
+      if (addsNothingOn(z, tile)) continue;
+      n += zoneKeys(z, tile).length;
+    }
     return n * TEXTURE_MB;
   }
 
   /** Megabytes of the selected tiles at their level, and of the zones inside them (shared textures once). */
   function selectionMB() {
     const source = ctx.planProvider();
-    const zl = ctx.planZl();
     let own = 0;
     let extra = 0;
     for (const tile of ctx.tiles()) {
-      own += tileTextureCount(tile, zl);
+      own += tileTextureCount(tile, ctx.tileZl(tile));
       const keys = new Set();
       for (const z of zs.zones) {
-        if (!usableZl(z.zl) || addsNothing(z) || !zoneTiles(z).includes(tile)) continue;
+        if (!usableZl(z.zl) || addsNothingOn(z, tile) || !zoneTiles(z).includes(tile)) continue;
         for (const k of zoneKeys(z, tile)) keys.add(`${z.provider || source}|${z.zl}|${k}`);
       }
       extra += keys.size;
@@ -2187,7 +2190,9 @@ export function createPlanMap(ctx) {
         onclick: () => ctx.chooseTiles(touched),
       }, t("zones.outside_add", { n: touched.length })));
     }
-    const tilesZl = Number(ctx.planZl());
+    // the level of the chosen squares this zone falls in, which a flight plan may vary
+    const inside = touched.filter((n) => selectedTiles.has(n));
+    const tilesZl = inside.length ? Math.max(...inside.map(ctx.tileZl)) : Number(ctx.planZl());
     if (usableZl(z.zl) && Number.isInteger(tilesZl) && z.zl < tilesZl) {
       // Less sharp than the tiles: the area comes out blurrier than the rest of the tile.
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.below_tiles", { level: detailName(tilesZl) })));

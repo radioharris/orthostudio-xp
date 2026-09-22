@@ -2328,7 +2328,8 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
     # now asks for other colours (2026-09-18)
     assert "onZonesChanged: () => {" in app_js
     assert "planChanged();" in app_js and "renderLibrary();" in app_js
-    assert app_js.count("planChanged();\n    planMap?.planChanged();") == 2  # source, level
+    # the source, step 1's level, and the level of a group of the flight plan (2026-09-22)
+    assert app_js.count("planChanged();\n    planMap?.planChanged();") == 3
     assert "state.plan = null;" not in "".join(
         _function_body(app_js, n) for n in ("addTiles", "removeTile", "clearTiles", "build")
     )
@@ -4474,6 +4475,53 @@ def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
         assert element in panel and element not in folded.group(0)
     # what stays folded: the two ways nobody uses to plan a flight
     assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
+
+
+def test_the_page_stays_where_it_was_when_squares_are_added() -> None:
+    """The squares chosen sit at the top of step 1, so choosing more pushes the buttons under them
+    down. Chrome puts the scroll back by itself, WebKit does not, and the app's own window looked
+    as if it had scrolled up under the button just pressed (a user, 2026-09-22)."""
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    helper = re.search(r"\nfunction keepInPlace\(el, fn\) \{.*?\n\}\n", js, re.S)
+    assert helper is not None
+    body = helper.group(0)
+    assert "getBoundingClientRect" in body and "window.scrollBy(0, moved)" in body
+    for name in ("addRouteTiles", "addTilesFromIcao", "addTileFromLatLon", "addTilesFromText"):
+        assert "keepInPlace(" in _function_body(js, name), name
+
+
+def test_a_flight_plan_gives_its_ends_and_its_route_two_levels() -> None:
+    """A pilot wanted his departure and arrival squares sharper than the squares along the route
+    (2026-09-22). Each group carries its level, chosen beside its button; step 1's list shows the
+    level of the chosen squares, or "Several levels" when they differ, and every chip then says
+    its own. A level chosen in that list is every chosen square's again."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    for element in ('id="route-ends-zl"', 'id="route-all-zl"'):
+        assert element in html and 'class="route-zl" hidden' in html
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    # the two groups are disjoint: the ends are not built twice at the route's level
+    along = re.search(r"\nfunction routeAlongTiles\(\) \{.*?\n\}\n", js, re.S)
+    assert along is not None and "!ends.has(name)" in along.group(0)
+    # one rule: uniform squares carry nothing of their own, and the list holds the level
+    rule = re.search(r"\nfunction normalizeLevels\(\) \{.*?\n\}\n", js, re.S)
+    assert rule is not None
+    assert "delete state.tileZl[name]" in rule.group(0)
+    options = re.search(r"\nfunction renderZlOptions\(\) \{.*?\n\}\n", js, re.S)
+    assert options is not None
+    assert 't("plan.zl_several")' in options.group(0) and "disabled: true" in options.group(0)
+    chips = re.search(r"\nfunction renderTiles\(\) \{.*?\n\}\n", js, re.S)
+    assert chips is not None and "chosenLevels().length > 1" in chips.group(0)
+    request = re.search(r"\nasync function planRequest\(\) \{.*?\n\}\n", js, re.S)
+    assert request is not None and "tiles_zl: own" in request.group(0)
+    listed = js.index('$("zl-select").addEventListener("change"')
+    assert js.index("state.tileZl = {};", listed) < js.index("planChanged();", listed)
+    for lang, several in (("en", "Several levels"), ("fr", "Plusieurs niveaux")):
+        texts = _node_json(
+            "i18n.js",
+            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
+            ' [m.t("plan.zl_several"), m.t("plan.route_all", {n: 9}), m.t("plan.route_ends_zl")])',
+        )
+        assert texts[0] == several and "9" in texts[1] and texts[2]
 
 
 def test_what_went_wrong_with_a_way_is_said_under_it() -> None:

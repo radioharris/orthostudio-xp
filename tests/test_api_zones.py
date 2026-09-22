@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from pydantic import ValidationError
 
 import test_api_fakes as fakes
 from orthostudio import config
@@ -331,6 +332,37 @@ async def test_a_saved_file_that_is_not_json_is_one_problem_and_refuses_builds_w
         r = await c.post("/api/plan", json={**body, "zones": []})
         assert r.status_code == 200, r.text  # the request's own zones: the file is not read
     assert path.read_bytes() == before
+
+
+def test_a_square_may_carry_its_own_detail_level(home: Path, xplane: Path) -> None:
+    """A flight plan gives its departure and arrival one level and the squares along the route
+    another (a user, 2026-09-22): ``tiles_zl`` names the squares that differ, the others take
+    ``zoom_level``. A level above what the source gives is refused like ``zoom_level``."""
+    settings = config.Settings()
+    req = PlanRequest.model_validate(
+        {
+            "tiles": ["+46+006", "+45+006", "+44+006"],
+            "zoom_level": 14,
+            "tiles_zl": {"+46+006": 17},
+            "overlay": False,
+            "xp12_rasters": False,
+        }
+    )
+    specs = make_specs(req, settings=settings)
+    assert [(s.tile.name, s.zl) for s in specs] == [
+        ("+46+006", 17),
+        ("+45+006", 14),
+        ("+44+006", 14),
+    ]
+    too_sharp = PlanRequest.model_validate(
+        {**req.model_dump(), "provider": "EOX", "tiles_zl": {"+46+006": 17}}  # EOX stops at ZL14
+    )
+    with pytest.raises(OsxpError) as exc:
+        make_specs(too_sharp, settings=settings)
+    assert exc.value.code == "CFG_VALUE_INVALID"
+    assert exc.value.context["name"] == "tiles_zl[+46+006]"
+    with pytest.raises(ValidationError):  # a level is a whole number from 10 to 19
+        PlanRequest.model_validate({"tiles": ["+46+006"], "tiles_zl": {"+46+006": 42}})
 
 
 def test_make_specs_with_a_zones_file_and_an_override_conflict(

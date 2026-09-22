@@ -855,11 +855,28 @@ index, and what the engine does not know as an airport is left out, so a route p
 elsewhere works), or the last plan of SimBrief (`GET /api/simbrief`, the name in Settings), whose
 navigation log gives the real path. The map draws it over the grid (`osxpRoute`, under the
 airports, no pointer event), and two buttons say how many squares each would add: **departure and
-arrival**, the squares within the radius of both ends, and **the whole route**, those the line
-crosses too (`geo.js` `tilesAlong`, sampled every 0.1°, well under the one degree a square
-measures). Nothing is chosen without a click, and step 3 still says what it costs: on a plan from
-Geneva to Palma, three squares against twelve. The route is kept in `localStorage`
-(`osxp.route`) alone, so a reload keeps the line and nothing of it is saved with the tiles.
+arrival**, the squares within the radius of both ends, and **along the route**, the squares the
+line crosses without those two (`geo.js` `tilesAlong`, sampled every 0.1°, well under the one
+degree a square measures; `routeAlongTiles`). Nothing is chosen without a click, and step 3 still
+says what it costs: on a plan from Geneva to Palma, three squares against nine. The route is kept
+in `localStorage` (`osxp.route`) alone, so a reload keeps the line and nothing of it is saved
+with the tiles.
+
+**The page stays where it is** when squares are chosen (`keepInPlace`, 2026-09-22): the chips at
+the top of step 1 push everything under them down, and WebKit, which the app's own window uses,
+has no scroll anchoring; the element that was pressed is measured before the render and the page
+is scrolled back by what it moved. Used by the flight plan's two buttons, the airport's *Add*
+and the two folded ways.
+
+**A level for each group** (2026-09-22): beside each of the two buttons, shown once its squares
+are chosen, a list gives them their own detail level, so that the departure and the arrival are
+sharper than the squares along the route. One rule holds it together, so that no level is ever
+hidden: step 1's list shows the level of the chosen squares; when they differ it reads *Several
+levels* (an option nobody can pick) and every chip says its own (`+46+006 · ZL17`); a level
+chosen there is every chosen square's again, and the squares stop carrying their own
+(`normalizeLevels`, `state.tileZl`). The request carries `tiles_zl` for the squares that differ
+(`api.md` 2.2), the engine builds each at its own level, and a source that stops lower brings
+them all down with it.
 An empty line, a code the engine does not know, a SimBrief name missing or refused: each is said
 right under the two ways (`#way-error`), not in step 3's box, where a user pressed *Draw* and saw
 nothing happen (2026-09-22).

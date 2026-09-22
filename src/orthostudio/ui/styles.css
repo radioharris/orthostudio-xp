@@ -1118,6 +1118,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   background: var(--bg-3);
 }
 .route-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
+/* One line per group of squares: the button, then the level they take once they are chosen. */
+.route-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.route-group + .route-group { margin-top: 6px; }
 /* Under the flight plan's row, not inside its field: the buttons line up with the field itself
    (a user, 2026-09-22), as the airport's Add does. */
 .route-help { margin: var(--help-gap) 0 0; }

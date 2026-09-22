@@ -148,7 +148,8 @@ status's ``xplane`` (the other X-Plane 12 folders of the machine), 16 = ``relief
 colours in the zones document, 19 = ``POST /api/library/{name}/forget`` and ``GET /api/patches``,
 20 = ``GET /api/sizes`` (the sizes of the store and of the downloaded images, no longer in the
 status), 21 = the setting ``essential.simbrief_user`` (an older engine refuses a settings document
-that holds it) and ``GET /api/simbrief``. A page
+that holds it), ``GET /api/simbrief`` and ``tiles_zl`` in a plan or a job (the detail level of some
+squares alone). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""

@@ -59,6 +59,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   The map is repainted with the very colours the build will encode, so you judge them on the ground
   you fly over rather than on a thumbnail. It is applied when the textures are encoded, so changing
   your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
+- **The squares of a flight plan.** Type your route, `LSGG LFMN`, or read your last SimBrief plan:
+  the map draws it, and two buttons choose the squares of the departure and the arrival, and those
+  along the route, each group at the detail level you give it.
 - **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
   and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
   as they are, in the tree they come in. Settings says which tiles the folder has patches for, and

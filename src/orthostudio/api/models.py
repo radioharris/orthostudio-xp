@@ -84,6 +84,10 @@ class PlanRequest(BaseModel):
     zones: list[ZoneModel] | None = None
     """``None``: the saved zones document; a list (possibly empty): exactly those zones
     (``map-zones.md`` 5). Each is validated like a zone of the document (``ZONE_INVALID``)."""
+    tiles_zl: dict[str, int] | None = None
+    """The detail level of some squares, by name, in place of ``zoom_level`` for those alone: a
+    flight plan gives its departure and arrival one level and the squares along the route another
+    (a user, 2026-09-22). A square absent from it takes ``zoom_level``."""
     tiles_settings: dict[str, TileChoiceModel] | None = None
     """What each square carries of its own (its colours), by name. ``None`` takes the saved
     document's, as ``zones`` does -- but a request that carries its own zones and not this built
@@ -100,6 +104,20 @@ class PlanRequest(BaseModel):
             name = _check_tile(t)
             if name not in out:
                 out.append(name)
+        return out
+
+    @field_validator("tiles_zl")
+    @classmethod
+    def _tiles_zl(cls, v: dict[str, int] | None) -> dict[str, int] | None:
+        if v is None:
+            return None
+        if len(v) > MAX_TILES:
+            raise ValueError(f"at most {MAX_TILES} tiles")
+        out: dict[str, int] = {}
+        for name, zl in v.items():
+            if isinstance(zl, bool) or not isinstance(zl, int) or not 10 <= zl <= 19:
+                raise ValueError("a detail level is a whole number from 10 to 19")
+            out[_check_tile(name)] = zl
         return out
 
     @field_validator("overrides")

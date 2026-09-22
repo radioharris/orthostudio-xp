@@ -112,10 +112,14 @@ why the sizes left the status (API level 20).
 
 ```
 PlanRequest {
-  tiles: ["+43+005", ...]            # 1-64 names sLLsLLL, |lat| <= 89, |lon| <= 179
+  tiles: ["+43+005", ...]            # 1-500 names sLLsLLL, |lat| <= 89, |lon| <= 179
   | airport: {icao: "LFML", radius_km: 0-300}   # exactly one of tiles / airport
   provider: str = settings.essential.provider   # a registry code
   zoom_level: int = settings.essential.zoom_level  # 10..19 and <= provider.max_zl
+  tiles_zl: {"+46+006": 17} | null = null       # the level of these squares alone, over
+                                     # zoom_level: a flight plan gives its ends and the squares
+                                     # along its route two levels (2026-09-22). Same range, and
+                                     # CFG_VALUE_INVALID names tiles_zl[<square>]
   overrides: {name: value} = {}      # Ortho4XP tile variables / overlay settings, typed like --set
   xplane_dir: str | null             # overrides Settings.essential.xplane_dir (validated)
   overlay: bool = true ; xp12_rasters: bool = true ; online: bool = false (plan: probe)
