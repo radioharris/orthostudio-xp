@@ -20,6 +20,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.sources.osm import (
     LAYERS,
+    MAX_ATTEMPTS,
     MIRRORS,
     SNAPSHOT_FORMAT,
     CurlTransport,
@@ -130,12 +131,27 @@ def test_overpass_query_is_json_with_the_ortho4xp_union() -> None:
 
 def test_mirror_registry_follows_adr_0005() -> None:
     codes = [m.code for m in MIRRORS]
-    assert codes == ["lz4", "fr", "mailru"]
+    assert codes == ["de", "z", "lz4", "fr", "mailru"]
     hosts = " ".join(m.interpreter for m in MIRRORS)
-    assert "//overpass-api.de" not in hosts  # never the round-robin name
     assert "kumi" not in hosts and "osm.jp" not in hosts
-    assert [m.last_resort for m in MIRRORS] == [False, False, True]
-    assert MIRRORS[0].cluster == "de"
+    assert [m.last_resort for m in MIRRORS] == [False, False, False, True, True]
+    # the three German names are one cluster: one per-IP quota, one breaker, two in flight
+    assert [m.cluster for m in MIRRORS] == ["de", "de", "de", "fr", "mailru"]
+    assert len(MIRRORS) == MAX_ATTEMPTS  # a layer may try each entry once
+
+
+def test_the_registry_holds_only_whole_planet_mirrors() -> None:
+    """2026-09-22. ``lz4`` answered nothing and ``overpass.openstreetmap.fr`` refused every
+    query ("only available to white-listed usages"), so both had to go. ``overpass.osm.ch``,
+    tried as a replacement, answers 200 with an empty ``elements`` list outside Switzerland:
+    tiles without airports, water or coastline, and no error anywhere. An empty answer is a
+    legitimate one, so only this rule catches it."""
+    hosts = " ".join(m.interpreter for m in MIRRORS)
+    assert "osm.ch" not in hosts  # Switzerland only: empty answers for the rest of the world
+    # .fr refuses everyone ("white-listed usages"), so it is asked only when nothing else is
+    # left: it costs 0.1 s there, and it serves again by itself the day it reopens
+    fr = next(m for m in MIRRORS if m.code == "fr")
+    assert fr.last_resort
 
 
 # -- parsing, digest, snapshot ---------------------------------------------------------------
@@ -155,7 +171,7 @@ def test_parse_overpass_json_rejects_a_foreign_document() -> None:
 
 
 def test_digest_ignores_mirror_date_and_order() -> None:
-    a = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="lz4")
+    a = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="de")
     shuffled = overpass_answer(list(reversed(COASTLINE_ELEMENTS)))
     b = snapshot_from_overpass(TILE, "coastline", shuffled, mirror="mailru")
     assert a.digest == b.digest
@@ -171,7 +187,7 @@ def test_digest_changes_when_a_tag_changes() -> None:
 
 
 def test_snapshot_json_round_trip() -> None:
-    a = snapshot_from_overpass(TILE, "water", WATER, mirror="fr")
+    a = snapshot_from_overpass(TILE, "water", WATER, mirror="z")
     b = OsmSnapshot.from_json(a.to_json())
     assert b == a
     assert orjson.loads(a.to_json())["format"] == SNAPSHOT_FORMAT
@@ -184,7 +200,7 @@ def test_snapshot_from_json_rejects_a_foreign_document() -> None:
 
 
 def test_snapshot_label_is_stable_and_content_based() -> None:
-    a = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="lz4")
+    a = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="de")
     again = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="mailru")
     water = snapshot_from_overpass(TILE, "water", WATER)
     assert snapshot_label([a]) == snapshot_label([again])
@@ -200,7 +216,7 @@ def test_snapshot_label_is_stable_and_content_based() -> None:
 
 def test_store_round_trip(tmp_path: Path) -> None:
     store = SnapshotStore(tmp_path)
-    snap = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="lz4")
+    snap = snapshot_from_overpass(TILE, "coastline", COASTLINE, mirror="de")
     path = store.save(snap)
     assert path == tmp_path / "osm" / "+40+000" / "+43+005" / "+43+005_coastline.osm.json.zst"
     assert store.load(TILE, "coastline") == snap
@@ -295,50 +311,65 @@ def run(coro: object) -> object:
 
 
 def test_first_mirror_answers() -> None:
-    t = ScriptedTransport({"lz4.overpass-api.de": [ok()]})
+    t = ScriptedTransport({"overpass-api.de": [ok()]})
     c = client(t)
     snap = asyncio.run(c.fetch_layer(TILE, "coastline"))
-    assert snap.mirror == "lz4"
+    assert snap.mirror == "de"
     assert snap.counts == {"nodes": 3, "ways": 1, "relations": 0}
-    assert [a.mirror for a in c.attempts] == ["lz4"]
-    assert c.health_snapshot()["lz4"].state == "closed"
+    assert [a.mirror for a in c.attempts] == ["de"]
+    assert c.health_snapshot()["de"].state == "closed"
 
 
 def test_429_fails_over_and_opens_the_whole_cluster() -> None:
+    """A 429 is the cluster's quota, not one machine's: ``lz4``, the sibling of ``z``, is not
+    asked either, and the layer goes straight to the mirror of another cluster."""
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(429, b"", {"retry-after": "30"}, 0.01)],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(429, b"", {"retry-after": "30"}, 0.01)],
+            "z.overpass-api.de": [ok()],
+            "lz4.overpass-api.de": [ok()],
+            "overpass.openstreetmap.fr": [HttpReply(403, b"white-listed usages only", {}, 0.01)],
+            "maps.mail.ru": [ok()],
         }
     )
     c = client(t)
     snap = asyncio.run(c.fetch_layer(TILE, "coastline"))
-    assert snap.mirror == "fr"
-    assert c.health_snapshot()["lz4"].state == "open"
-    assert [a.error for a in c.attempts] == ["OSM_MIRROR_REJECTED", None]
+    assert snap.mirror == "mailru"
+    assert [c.health_snapshot()[code].state for code in ("de", "z", "lz4")] == ["open"] * 3
+    # the other two German names are not asked; the last resorts are, in the registry's order
+    assert [h for h, _ in t.sent] == [
+        "overpass-api.de",
+        "overpass.openstreetmap.fr",
+        "maps.mail.ru",
+    ]
+    assert [a.error for a in c.attempts] == [
+        "OSM_MIRROR_REJECTED",
+        "OSM_MIRROR_REJECTED",
+        None,
+    ]
 
 
 def test_504_fails_over() -> None:
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(504, b"gateway timeout", {}, 0.01)],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(504, b"gateway timeout", {}, 0.01)],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "fr"
-    assert c.health_snapshot()["lz4"].state == "open"
+    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "z"
+    assert c.health_snapshot()["de"].state == "open"
 
 
 def test_transport_failure_fails_over() -> None:
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(0, b"", {}, 5.0, "ConnectTimeout")],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(0, b"", {}, 5.0, "ConnectTimeout")],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "fr"
+    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "z"
     assert c.attempts[0].error == "OSM_MIRROR_UNREACHABLE"
 
 
@@ -346,31 +377,31 @@ def test_a_remark_answer_is_retried_elsewhere() -> None:
     remark = overpass_answer([], remark="runtime error: Query timed out in 'query' at line 1")
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(200, remark, {}, 0.01)],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(200, remark, {}, 0.01)],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "fr"
+    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "z"
     assert c.attempts[0].error == "OSM_RESPONSE_ERROR"
     # a remark is not the mirror's fault: its breaker stays closed
-    assert c.health_snapshot()["lz4"].state == "closed"
+    assert c.health_snapshot()["de"].state == "closed"
 
 
 def test_a_truncated_body_is_retried_elsewhere() -> None:
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(200, COASTLINE[:120], {}, 0.01)],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(200, COASTLINE[:120], {}, 0.01)],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "fr"
+    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "z"
     assert c.attempts[0].error == "OSM_RESPONSE_TRUNCATED"
 
 
 def test_an_empty_answer_is_a_valid_answer() -> None:
-    t = ScriptedTransport({"lz4.overpass-api.de": [ok(overpass_answer([]))]})
+    t = ScriptedTransport({"overpass-api.de": [ok(overpass_answer([]))]})
     snap = asyncio.run(client(t).fetch_layer(TILE, "coastline"))
     assert snap.counts == {"nodes": 0, "ways": 0, "relations": 0}
 
@@ -378,21 +409,25 @@ def test_an_empty_answer_is_a_valid_answer() -> None:
 def test_the_last_resort_mirror_is_used_last() -> None:
     t = ScriptedTransport(
         {
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "z.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
             "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
-            "overpass.openstreetmap.fr": [HttpReply(504, b"", {}, 0.01)],
+            "overpass.openstreetmap.fr": [HttpReply(403, b"white-listed usages only", {}, 0.01)],
             "maps.mail.ru": [ok()],
         }
     )
     c = client(t)
     assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "mailru"
-    assert [a.mirror for a in c.attempts] == ["lz4", "fr", "mailru"]
+    assert [a.mirror for a in c.attempts] == ["de", "z", "lz4", "fr", "mailru"]
 
 
 def test_the_last_resort_mirror_can_be_refused() -> None:
     t = ScriptedTransport(
         {
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "z.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
             "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
-            "overpass.openstreetmap.fr": [HttpReply(504, b"", {}, 0.01)],
+            "overpass.openstreetmap.fr": [HttpReply(403, b"white-listed usages only", {}, 0.01)],
             "maps.mail.ru": [ok()],
         }
     )
@@ -403,6 +438,82 @@ def test_the_last_resort_mirror_can_be_refused() -> None:
     assert "maps.mail.ru" not in {h for h, _ in t.sent}
 
 
+def test_the_failure_says_what_each_mirror_answered() -> None:
+    """2026-09-22: three users read "could not be obtained from any mirror" and no more, while
+    the client knew that one machine timed out and another answered 403."""
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [HttpReply(0, b"", {}, 5.0, "ConnectTimeout")],
+            "z.overpass-api.de": [HttpReply(403, b"white-listed usages only", {}, 0.01)],
+            "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "maps.mail.ru": [HttpReply(504, b"", {}, 0.01)],
+        }
+    )
+    with pytest.raises(OsxpError) as err:
+        asyncio.run(client(t).fetch_layer(TILE, "coastline"))
+    said = err.value.context["attempts"]
+    assert "de: OSM_MIRROR_UNREACHABLE (ConnectTimeout)" in said
+    assert "z: OSM_MIRROR_REJECTED (HTTP 403)" in said
+    assert said in err.value.message  # and the user reads it, not only the journal
+
+
+def test_a_dead_machine_does_not_delay_its_sibling() -> None:
+    """``attempt_delay_s`` is politeness towards a cluster that pushed back (a 429, a 5xx, a
+    query it could not finish). A machine that does not answer at all says nothing about its
+    cluster: on 2026-09-22 ``lz4`` was dead and ``z``, its sibling, was the mirror to ask."""
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [HttpReply(0, b"", {}, 0.01, "ConnectTimeout")],
+            "z.overpass-api.de": [ok()],
+        }
+    )
+    c = client(t, attempt_delay_s=5.0)
+
+    async def timed() -> float:
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        await c.fetch_layer(TILE, "coastline")
+        return loop.time() - t0
+
+    assert asyncio.run(timed()) < 1.0
+
+    busy = ScriptedTransport(
+        {
+            "overpass-api.de": [HttpReply(503, b"", {}, 0.01)],
+            "z.overpass-api.de": [ok()],
+        }
+    )
+    slow = client(busy, attempt_delay_s=0.2)
+
+    async def timed_busy() -> float:
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        await slow.fetch_layer(TILE, "coastline")
+        return loop.time() - t0
+
+    assert asyncio.run(timed_busy()) >= 0.2  # the cluster said it was loaded: it is waited for
+
+
+def test_a_new_build_gives_every_mirror_another_chance() -> None:
+    """The breaker is right within a build and wrong between two: on 2026-09-22 a mirror put
+    aside for an hour made every later build fail in seconds, with quitting the app as the only
+    way out. ``MirrorBoard.reset()`` is what the job runner calls when a build starts."""
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01), ok()],
+            "z.overpass-api.de": [ok()],
+        }
+    )
+    board = MirrorBoard()
+    c = client(t, board=board, cooldown_s=3600.0)
+    asyncio.run(c.fetch_layer(TILE, "coastline"))
+    assert c.health_snapshot()["de"].state == "open"
+
+    board.reset()
+    assert c.health_snapshot()["de"].state == "closed"
+    assert asyncio.run(c.fetch_layer(TILE, "water")).mirror == "de"
+
+
 def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
     t = ScriptedTransport({})
     c = client(t)
@@ -411,52 +522,68 @@ def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert err.value.context["layer"] == "coastline"
     assert err.value.context["tile"] == "+43+005"
-    assert len(t.sent) == 3  # max_attempts, one per mirror, never eight on the same one
+    assert len(t.sent) == 5  # max_attempts, one per mirror, never eight on the same one
 
 
 def test_the_breaker_keeps_a_dead_mirror_out_of_the_next_layer() -> None:
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t)
     asyncio.run(c.fetch_layer(TILE, "coastline"))
     asyncio.run(c.fetch_layer(TILE, "water"))
     assert [h for h, _ in t.sent] == [
-        "lz4.overpass-api.de",
-        "overpass.openstreetmap.fr",
-        "overpass.openstreetmap.fr",
+        "overpass-api.de",
+        "z.overpass-api.de",
+        "z.overpass-api.de",
     ]
 
 
 def test_the_breaker_half_opens_after_the_cooldown() -> None:
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01), ok()],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01), ok()],
+            "z.overpass-api.de": [ok()],
         }
     )
     c = client(t, cooldown_s=0.05)
     asyncio.run(c.fetch_layer(TILE, "coastline"))
-    assert c.health_snapshot()["lz4"].state == "open"
+    assert c.health_snapshot()["de"].state == "open"
     asyncio.run(asyncio.sleep(0.06))
-    assert c.health_snapshot()["lz4"].state == "half-open"
-    assert asyncio.run(c.fetch_layer(TILE, "water")).mirror == "lz4"
-    assert c.health_snapshot()["lz4"].state == "closed"
+    assert c.health_snapshot()["de"].state == "half-open"
+    assert asyncio.run(c.fetch_layer(TILE, "water")).mirror == "de"
+    assert c.health_snapshot()["de"].state == "closed"
 
 
 def test_no_more_than_two_requests_in_flight_per_cluster() -> None:
-    """Two a cluster; each layer goes to the least busy one, so the two clusters answer four
-    layers at once, and the last resort is not asked while they answer."""
-    t = ScriptedTransport({"lz4.overpass-api.de": [ok()], "overpass.openstreetmap.fr": [ok()]})
+    """Two a *cluster*, not two a machine: ``z`` and ``lz4`` are one German cluster and one
+    per-IP quota, so five layers still run two at a time, and the last resort is left alone."""
+    t = ScriptedTransport({"overpass-api.de": [ok()], "z.overpass-api.de": [ok()]})
     t.delay = 0.02
     c = client(t)
     got = asyncio.run(c.fetch_tile(TILE, road_level=2))
     assert set(got) == {"airports", "big_roads", "small_roads", "coastline", "water"}
-    assert t.peak_by_host == {"lz4.overpass-api.de": 2, "overpass.openstreetmap.fr": 2}
-    assert t.peak == 4 and "maps.mail.ru" not in {h for h, _ in t.sent}
+    assert t.peak_by_host == {"overpass-api.de": 2}
+    assert t.peak == 2 and "maps.mail.ru" not in {h for h, _ in t.sent}
+
+
+def test_two_clusters_answer_four_layers_at_once() -> None:
+    """The quota is per cluster, so a second cluster doubles what a tile downloads at once. Two
+    of the three machines of the registry are one cluster today; the day a second public server
+    outside it is usable again, this is what it buys."""
+    mirrors = (
+        Mirror(code="a", interpreter="https://a.example/api/interpreter", cluster="a"),
+        Mirror(code="b", interpreter="https://b.example/api/interpreter", cluster="b"),
+    )
+    t = ScriptedTransport({"a.example": [ok()], "b.example": [ok()]})
+    t.delay = 0.02
+    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0)
+    asyncio.run(c.fetch_tile(TILE, road_level=2))
+    assert t.peak_by_host == {"a.example": 2, "b.example": 2}
+    assert t.peak == 4
 
 
 def test_a_mirror_found_dead_is_not_waited_for_again() -> None:
@@ -465,11 +592,11 @@ def test_a_mirror_found_dead_is_not_waited_for_again() -> None:
     lz4's slot now go elsewhere once it is found dead, at once, and so does the next tile."""
     t = ScriptedTransport(
         {
-            "lz4.overpass-api.de": [HttpReply(0, b"", {}, 0.2, "ConnectTimeout")],
-            "overpass.openstreetmap.fr": [ok()],
+            "overpass-api.de": [HttpReply(0, b"", {}, 0.2, "ConnectTimeout")],
+            "z.overpass-api.de": [ok()],
         }
     )
-    t.host_delay = {"lz4.overpass-api.de": 0.2}
+    t.host_delay = {"overpass-api.de": 0.2}
     board = MirrorBoard()
     c = client(t, attempt_delay_s=5.0, max_in_flight=1, board=board)
 
@@ -481,18 +608,18 @@ def test_a_mirror_found_dead_is_not_waited_for_again() -> None:
 
     assert asyncio.run(timed(c)) < 2.0  # no 5 s wait before another cluster's mirror
     hosts = [h for h, _ in t.sent]
-    assert hosts.count("lz4.overpass-api.de") == 1  # the others did not queue behind it
-    assert c.health_snapshot()["lz4"].state == "open"
+    assert hosts.count("overpass-api.de") == 1  # the others did not queue behind it
+    assert c.health_snapshot()["de"].state == "open"
 
     t.sent.clear()
     nxt = client(t, attempt_delay_s=5.0, board=board)  # the next tile of the build
     asyncio.run(timed(nxt))
-    assert {h for h, _ in t.sent} == {"overpass.openstreetmap.fr"}
-    assert client(t).health_snapshot()["lz4"].state == "closed"  # a board of its own
+    assert {h for h, _ in t.sent} == {"z.overpass-api.de"}
+    assert client(t).health_snapshot()["de"].state == "closed"  # a board of its own
 
 
 def test_the_tile_reports_each_layer_and_its_download_rate() -> None:
-    t = ScriptedTransport({"lz4.overpass-api.de": [ok()], "overpass.openstreetmap.fr": [ok()]})
+    t = ScriptedTransport({"overpass-api.de": [ok()], "z.overpass-api.de": [ok()]})
     t.delay = 0.01
     seen: list[tuple[float, str]] = []
     got = asyncio.run(
@@ -507,7 +634,7 @@ def test_the_tile_reports_each_layer_and_its_download_rate() -> None:
 
 
 def test_the_minimum_interval_between_two_requests_is_respected() -> None:
-    t = ScriptedTransport({"lz4.overpass-api.de": [ok()]})
+    t = ScriptedTransport({"overpass-api.de": [ok()]})
     c = client(t, min_interval_s=0.05, max_in_flight=1)
 
     async def two() -> float:

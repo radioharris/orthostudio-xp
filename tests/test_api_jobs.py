@@ -25,6 +25,7 @@ from orthostudio.api import (
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import error_json
 from orthostudio.errors import OsxpError
+from orthostudio.sources.osm import MIRRORS, shared_board
 from test_api_fakes import FakeBuild, client_for, make_spec, sse_messages
 
 anyio_backend = fakes.anyio_backend
@@ -98,6 +99,21 @@ def test_manager_runs_a_job_to_done(home: Path) -> None:
     lines = (home / "jobs" / f"{job.id}.jsonl").read_text().splitlines()
     assert [json.loads(line)["seq"] for line in lines] == list(range(1, len(lines) + 1))
     assert (home / "jobs" / f"{job.id}.json").is_file()
+
+
+def test_a_started_job_gives_every_overpass_mirror_another_chance(home: Path) -> None:
+    """2026-09-22: two Overpass machines were down, and the breaker then refused every later
+    build in four seconds for up to an hour, quitting the app being the only way out. A build
+    the user asks for says what the breaker cannot know: try them all again."""
+    board = shared_board()
+    board.register(MIRRORS, 600.0)
+    board.open(MIRRORS[0].code, reason="HTTP 504")
+    assert board.state(MIRRORS[0].code, time.monotonic()) == "open"
+
+    mgr = _manager(home, FakeBuild())
+    job = mgr.start([make_spec("+43+005", home=home)], install=False)
+    assert job.wait(10.0)
+    assert board.state(MIRRORS[0].code, time.monotonic()) == "closed"
 
 
 def test_manager_failure_then_retry_hits(home: Path) -> None:

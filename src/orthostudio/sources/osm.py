@@ -81,7 +81,9 @@ CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
 COOLDOWN_S = 600.0
 MAX_COOLDOWN_S = 3600.0
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 5
+"""Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
+are still reached when the three ordinary ones are down (2026-09-22: two of them were)."""
 ATTEMPT_DELAY_S = 5.0
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
@@ -106,18 +108,35 @@ class Mirror:
 
 MIRRORS: tuple[Mirror, ...] = (
     Mirror(
+        code="de",
+        interpreter="https://overpass-api.de/api/interpreter",
+        cluster="de",
+        status_url="https://overpass-api.de/api/status",
+        note="the public front door of the German cluster; answered when both its machine "
+        "names refused (2026-09-22)",
+    ),
+    Mirror(
+        code="z",
+        interpreter="https://z.overpass-api.de/api/interpreter",
+        cluster="de",
+        status_url="https://z.overpass-api.de/api/status",
+        note="second machine of the DE cluster; shares its per-IP quota of 2 with lz4",
+    ),
+    Mirror(
         code="lz4",
         interpreter="https://lz4.overpass-api.de/api/interpreter",
         cluster="de",
         status_url="https://lz4.overpass-api.de/api/status",
-        note="65.109.112.52; shares the per-IP quota of 2 with z.overpass-api.de",
+        note="65.109.112.52; silent on 2026-09-22, kept for the day it answers again",
     ),
     Mirror(
         code="fr",
         interpreter="https://overpass.openstreetmap.fr/api/interpreter",
         cluster="fr",
         status_url="https://overpass.openstreetmap.fr/api/status",
-        note="/api/status answers 403 while queries work; a 403 never disqualifies alone",
+        last_resort=True,
+        note="refuses every query since 2026-09-22 (HTTP 403, white-listed usages only); kept "
+        "as a last resort so that it serves again by itself the day it reopens",
     ),
     Mirror(
         code="mailru",
@@ -128,7 +147,29 @@ MIRRORS: tuple[Mirror, ...] = (
         note="third-party clone, last resort only (ADR 0005 decision 4)",
     ),
 )
-"""Registry of ADR 0005 decision 4, in order. A caller may pass its own tuple."""
+"""Registry of ADR 0005 decision 4, amended 2026-09-22, in order.
+
+That day every build failed with ``OSM_LAYER_UNAVAILABLE``, here and for two users:
+``lz4.overpass-api.de`` answered ``HTTP 504`` or nothing at all and ``overpass.openstreetmap.fr``
+now refuses every query with ``HTTP 403 This service is only available to white-listed usages``,
+which left the last resort alone, itself failing. ``.fr`` stays, but as a last resort: it is not
+asked while another name answers, its refusal costs 0.1 s when one is needed, and the day it
+serves the public again it does so without waiting for a release.
+
+``overpass-api.de`` leads the list although decision 4 wrote it off as a round-robin name. It is
+the public entry point of the German cluster, and that evening it was the only name of that
+cluster to answer at all: a query it served came back from 65.109.112.52, ``lz4``'s own machine,
+which was returning 504 under its own name. What decision 4 feared, a name hiding which machine
+was asked, costs nothing here: the quota, the minimum interval and the breaker are held per
+*cluster*, and all three German names are one cluster and one per-IP quota.
+
+**A mirror enters this list only once it has been seen to hold the whole planet.** The Swiss
+instance ``overpass.osm.ch``, tried first that day, answers ``200`` with an empty ``elements``
+list outside Switzerland: it would have built tiles without airports, water or coastline and
+reported nothing wrong. An empty answer is a legitimate one (a tile may have no coastline), so
+no code can tell the difference; only the check before adding can. A caller may pass its own
+tuple.
+"""
 
 
 # -- layers and queries --------------------------------------------------------------------
@@ -765,6 +806,30 @@ class MirrorBoard:
         with self._lock:
             self._states[code].requests += 1
 
+    def last_errors(self) -> dict[str, str]:
+        """Why each mirror put aside was put aside, for the message the user reads."""
+        with self._lock:
+            out: dict[str, str] = {}
+            for code, st in self._states.items():
+                if st.last_error:
+                    out[code] = st.last_error
+            return out
+
+    def reset(self) -> None:
+        """Give every mirror another chance, cooldowns back to their start.
+
+        A build the user asked for again says something the breaker cannot know: that the user
+        has waited, or fixed their network, or that a mirror is back. Without this, a night when
+        two mirrors were down left every later build failing in 4 s for up to an hour, and the
+        only way out was to quit the app (2026-09-22).
+        """
+        with self._lock:
+            for st in self._states.values():
+                st.open_until = 0.0
+                st.failures = 0
+                st.cooldown_s = COOLDOWN_S
+                st.last_error = None
+
 
 _SHARED_BOARD = MirrorBoard()
 
@@ -1027,11 +1092,15 @@ class OverpassClient:
         while attempt < self.max_attempts:
             mirror = self._pick(tried)
             if mirror is None:
-                reasons.append("no mirror available (every breaker open)")
+                aside = self._board.last_errors()
+                left = [f"{m.code}: {aside[m.code]}" for m in self.mirrors if m.code in aside]
+                reasons.append("no mirror left to try" + (f" ({'; '.join(left)})" if left else ""))
                 break
             if mirror.cluster == failed_cluster:
-                # another machine of the cluster that just failed: give the cluster a moment;
-                # a mirror elsewhere is asked at once
+                # another machine of the cluster that just pushed back: give the cluster a
+                # moment. A mirror elsewhere, and a sibling of a machine that simply did not
+                # answer, are asked at once (2026-09-22: lz4 was dead and z, its sibling, was
+                # the only mirror left; waiting 5 s for it made no sense).
                 await asyncio.sleep(self.attempt_delay_s)
             self._busy[mirror.cluster] += 1
             try:
@@ -1057,7 +1126,7 @@ class OverpassClient:
                     tile, spec, reply.body, mirror=mirror.code, query=query
                 )
             code, reason = outcome
-            failed_cluster = mirror.cluster
+            failed_cluster = mirror.cluster if _cluster_pushed_back(reply) else None
             reasons.append(f"{mirror.code}: {code} ({reason})")
             self.attempts.append(
                 Attempt(
@@ -1070,9 +1139,14 @@ class OverpassClient:
                     code,
                 )
             )
+        detail = "; ".join(reasons)
         raise OsxpError(
             "OSM_LAYER_UNAVAILABLE",
-            context={"layer": spec.name, "tile": tile.name, "attempts": "; ".join(reasons)},
+            context={"layer": spec.name, "tile": tile.name, "attempts": detail},
+            message=(
+                f"OSM layer {spec.name} for tile {tile.name} could not be obtained from any "
+                + (f"mirror ({detail})." if detail else "mirror.")
+            ),
         )
 
     async def fetch_tile(
@@ -1212,6 +1286,18 @@ class OverpassClient:
             self._board.failure(mirror.code)
             return "OSM_RESPONSE_ERROR", str(remark)[:200]
         return None
+
+
+def _cluster_pushed_back(reply: HttpReply) -> bool:
+    """Whether the failure says the *cluster* is loaded, and not that one machine is dead.
+
+    A 429, a 5xx and a 200 the query was too heavy for (a ``remark``, a truncated body) are the
+    cluster's answer: its other machine is asked after ``attempt_delay_s``. No answer at all, or
+    a refusal such as a 403, is that machine's own: its sibling is asked at once.
+    """
+    if reply.error is not None:
+        return False
+    return reply.status == 429 or reply.status >= 500 or reply.status == 200
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:

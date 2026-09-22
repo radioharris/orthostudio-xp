@@ -59,6 +59,7 @@ from orthostudio.pipeline.build import (
 from orthostudio.pipeline.home import osxp_home
 from orthostudio.pipeline.textures import default_workers
 from orthostudio.sched import Done, Failed, Progress, Started, Stats
+from orthostudio.sources.osm import shared_board
 
 __all__ = [
     "CancelRequested",
@@ -1294,6 +1295,10 @@ class JobManager:
 
     def _run(self, job: Job) -> None:
         job.begin()
+        # A build the user asked for is also a second chance for the Overpass mirrors: without
+        # this, a mirror put aside earlier is refused for up to an hour and every build after a
+        # bad night fails in seconds (``osm-source.md`` 4, breaker).
+        shared_board().reset()
         try:
             job._open_file()
         except OSError:

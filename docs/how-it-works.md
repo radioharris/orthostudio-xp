@@ -44,7 +44,9 @@ OpenStreetMap data when it does not have it yet: about 8 to 15 s a tile when the
 servers answer (measured 2026-09-14), with the layers received and the download rate shown in the
 step. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
 each goes on with its relief at once, and with the rest as soon as its own data is in. A server
-that does not answer is left aside for every tile, instead of being waited for by each.
+that does not answer is left aside for the rest of the build, instead of being waited for by every
+tile; a build you start again asks all of them once more, and says which one answered what when a
+tile fails for want of map data.
 
 | Step | What it does | Typical time (ZL16, one tile, M4 Pro) |
 |---|---|---|

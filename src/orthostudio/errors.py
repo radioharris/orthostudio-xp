@@ -139,8 +139,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "OSM layer {layer} for tile {tile} could not be obtained from any mirror.",
-        "Check the network and the Overpass mirrors, then retry. For the coastline only, "
-        "OrthoStudio XP can continue with the land-polygons fallback (--coast-fallback).",
+        "Check the connection and build again: a new build asks every map data server once "
+        "more. For the coastline only, OrthoStudio XP can continue with the land polygons "
+        "instead.",
     ),
     _spec(
         "OSM_CACHE_UNREADABLE",

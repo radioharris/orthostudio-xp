@@ -32,22 +32,51 @@ Nothing in this module imports or reads Ortho4XP (decision 0010).
 
 ## 2. The mirror registry
 
-Declared **by machine**, in the order of ADR 0005 decision 4. `overpass-api.de`,
-`z.overpass-api.de`, `overpass.kumi.systems`, `overpass.private.coffee` and
-`overpass.osm.jp` are deliberately absent (round-robin name, same machine as `lz4`, stale
-clone, dead).
+Declared **by name**, in the order of ADR 0005 decision 4 as amended on 2026-09-22.
 
 | Code | Interpreter | Cluster | Last resort | Note |
 |---|---|---|---|---|
-| `lz4` | `https://lz4.overpass-api.de/api/interpreter` | `de` | no | 65.109.112.52 ("lambert"); shares the per-IP quota of 2 with `z.overpass-api.de` |
-| `fr` | `https://overpass.openstreetmap.fr/api/interpreter` | `fr` | no | `/api/status` answers 403 while queries work: a 403 on the status endpoint alone never disqualifies a mirror |
-| `mailru` | `https://maps.mail.ru/osm/tools/overpass/api/interpreter` | `mailru` | **yes** | third-party clone, used only when the two above are unusable; a user may remove it from the registry |
+| `de` | `https://overpass-api.de/api/interpreter` | `de` | no | the public entry point of the German cluster; the only one of its three names that answered on the evening of 2026-09-22 |
+| `z` | `https://z.overpass-api.de/api/interpreter` | `de` | no | one machine of the German cluster |
+| `lz4` | `https://lz4.overpass-api.de/api/interpreter` | `de` | no | 65.109.112.52 ("lambert"), the same machine `overpass-api.de` served that evening while this name answered 504 |
+| `fr` | `https://overpass.openstreetmap.fr/api/interpreter` | `fr` | **yes** | refuses every query since 2026-09-22 (`HTTP 403`, white-listed usages only); kept as a last resort, where its refusal costs 0.1 s, so that it serves again by itself the day it reopens |
+| `mailru` | `https://maps.mail.ru/osm/tools/overpass/api/interpreter` | `mailru` | **yes** | third-party clone, used only when the others are unusable; a user may remove it from the registry |
+
+**Why this list changed (2026-09-22).** Every build failed with `OSM_LAYER_UNAVAILABLE`, here
+and for two users on other continents. Measured that day: `lz4.overpass-api.de` answered `504`
+or nothing at all and `overpass.openstreetmap.fr` answered every query with `HTTP 403 This
+service is only available to white-listed usages`, which left the last resort alone, itself
+answering 504. `.fr` stays, but as a last resort: it is never asked while another name answers,
+its refusal costs 0.1 s when it is, and the day it serves the public again it does so without
+waiting for a release.
+
+**The round-robin name leads the list**, against decision 4, which wrote it off. That evening it
+was the only name of the German cluster to answer, and the query it served came back from
+65.109.112.52 -- `lz4`'s own machine, which was returning 504 under its own name. What decision 4
+feared, a name that hides which machine was asked, costs nothing: the quota, the minimum interval
+and the breaker are held per **cluster**, and the three German names are one cluster and one
+per-IP quota. What it buys is three chances inside that cluster instead of one. Measured right
+after the change, on a bad evening: tile `+43+005`, four layers in 46 s, two served by `de` and
+two by the last resort, after `z` and `lz4` had refused.
+
+**A mirror enters the registry only once it has been seen to hold the whole planet.** Every
+other public instance was measured the same day and none is usable: `overpass.osm.ch` **holds
+Switzerland only** and answers `200` with an empty `elements` list everywhere else (tiles
+without airports, water or coastline, and nothing to show for it, since an empty answer is a
+legitimate one that no code can tell from this); `gall.openstreetmap.de` answers `/api/status`
+but refuses queries with a 429; `overpass.kumi.systems` and `overpass.private.coffee` are one
+machine (193.219.97.30) that accepts the connection and never finishes the TLS handshake;
+`overpass.osm.jp` has an expired certificate. A regional instance may enter the registry the day
+one is verified, with a cluster of its own, which would again run four layers at a time. The
+check is three small `aeroway` queries, one in
+Europe, one in America, one in Oceania: a mirror that answers `0 elements` to any of them is a
+regional extract.
 
 `Mirror(code, interpreter, status_url, cluster, last_resort, note)` is frozen. A caller may
 pass its own tuple of mirrors to `OverpassClient`; the default is `MIRRORS`.
 
 **Politeness** (`net-download.md` 5.5): `max_in_flight = 2` per cluster (not per code, so the
-DE cluster stays at two even if a user adds `z.`), a `min_interval_s = 1.0` between two
+DE cluster stays at two with both `z` and `lz4` in the registry), a `min_interval_s = 1.0` between two
 requests of the same cluster, a real `User-Agent` (`orthostudio/<version> (+OSM vector data for
 X-Plane scenery)`), `Accept-Encoding: gzip`, POST `data=<QL>` (no query string), and the
 `[out:json][timeout:<n>]` setting that lets the server cut a runaway query itself.
@@ -106,8 +135,9 @@ A reply is **usable** when the status is 200, the body parses as JSON, and the d
 
 **Which mirror.** Among the mirrors not tried yet for the layer and whose breaker is not open, the
 last resort only when no other is left, the client takes the one whose cluster has the fewest
-requests given and not ended (waiting for a slot or in flight), then the registry's order. With
-`lz4` and `.fr` healthy the four layers of a tile run two and two instead of two at a time. A
+requests given and not ended (waiting for a slot or in flight), then the registry's order. Two
+healthy clusters run the four layers of a tile two and two instead of two at a time; since
+2026-09-22 the three ordinary names are one cluster, so a tile downloads two layers at a time. A
 request that waited for its cluster's slot while another layer found the machine dead is not sent:
 it picks again, and no attempt is spent (2026-09-14: the layers queued behind a dead `lz4` each
 waited for its 5 s connect timeout).
@@ -117,13 +147,23 @@ each consecutive opening up to 3 600 s), *half-open* once the cooldown has passe
 request is a probe, a success closes the breaker and resets the cooldown, a failure re-opens
 it. A last-resort mirror is only chosen when every non-last-resort mirror is open or already
 tried for this layer. The states live on a `MirrorBoard`: the build's OSM downloads share the
-process's (`shared_board()`), so a mirror one tile found dead is not asked by the next tile nor
-by the next build before its cooldown ends; a client made without a board keeps one of its own.
+process's (`shared_board()`), so a mirror one tile found dead is not asked by the next tile of
+the same build; a client made without a board keeps one of its own.
 
-**Attempts.** `max_attempts = 3` *across mirrors*. A mirror of another cluster is asked at once;
-`attempt_delay_s = 5` is waited only before another machine of the cluster that just failed
-(the 5 s before every new attempt cost a tile 5 to 10 s when `lz4` was dead). Never the 2^n
-back-off of Ortho4XP (which costs up to 5 min 40 s per query, `errors.md`
+**A new build clears them** (`board.reset()`, called by the job runner when a job starts). The
+breaker knows that a machine failed a minute ago; it cannot know that the user has since waited,
+fixed their connection, or that the machine is back. Kept across builds, it turned one bad night
+into an hour of builds failing in four seconds each, with quitting the app as the only way out
+(2026-09-22). Within one build the cooldown still holds, which is what it was written for.
+
+**Attempts.** `max_attempts = 5` *across mirrors*, one per entry of the registry, so the last
+resorts are still reached when the three ordinary entries are down (2026-09-22: they were, for
+two of the four layers of a tile). A mirror of another cluster is
+asked at once; `attempt_delay_s = 5` is waited only before another machine of a cluster that
+**pushed back** — a 429, a 5xx, or a 200 whose query it could not finish (a `remark`, a
+truncated body). A machine that does not answer at all, or refuses with a 403, says nothing
+about its cluster, and its sibling is asked at once: on 2026-09-22 `lz4` was dead and `z`, its
+sibling, was the only mirror left to ask. Never the 2^n back-off of Ortho4XP (which costs up to 5 min 40 s per query, `errors.md`
 OSM_MIRROR_UNREACHABLE).
 
 **Progress.** `fetch_tile(progress=...)` reports each layer received, and every second while
@@ -134,8 +174,8 @@ to the Works page.
 
 **Health check.** `GET <status_url>` with a 5 s timeout, or a minimal query
 `[out:json][timeout:10];node(id:1);out ids;` when the mirror declares no status URL. No
-answer or a 5xx puts the mirror aside for `cooldown_s`; a 403 alone does not (the `.fr`
-mirror). The health check is optional: `fetch_layer` works without it and the breaker learns
+answer or a 5xx puts the mirror aside for `cooldown_s`; a 403 on the status endpoint alone does
+not (a mirror may refuse it and still serve queries). The health check is optional: `fetch_layer` works without it and the breaker learns
 from the queries themselves.
 
 ## 5. The OrthoStudio XP snapshot (format `osxp-osm-snapshot-1`)
@@ -145,7 +185,7 @@ One file per (tile, layer), zstd level 10 over an orjson document:
 ```json
 {"format": "osxp-osm-snapshot-1", "tile": "+43+005", "layer": "coastline",
  "selectors": ["way[\"natural\"=\"coastline\"]"], "query": "[out:json]…",
- "mirror": "lz4", "fetched_at": "2026-09-12T09:41:02Z",
+ "mirror": "de", "fetched_at": "2026-09-12T09:41:02Z",
  "generator": "Overpass API 0.7.62.11 87bfad18", "osm_base": "2026-09-11T20:46:21Z",
  "digest": "<blake3-64hex>", "counts": {"nodes": 39790, "ways": 179, "relations": 0},
  "elements": [{"type": "node", "id": …, "lat": …, "lon": …, "tags": {…}}, …]}
