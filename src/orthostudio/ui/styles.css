@@ -1118,3 +1118,5 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   background: var(--bg-3);
 }
 .route-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
+/* What went wrong with the airport or the flight plan, right under them, not in step 3. */
+.way-error { margin: var(--help-gap) 0 0; color: var(--fail); }

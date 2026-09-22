@@ -2848,6 +2848,16 @@ function onIcaoKey(ev) {
   }
 }
 
+/**
+ * What went wrong with step 1's two ways, an airport or a flight plan, said right under them. In
+ * step 3's box, far below the button, a user pressed Draw and saw nothing happen (2026-09-22).
+ */
+function showWayError(message) {
+  const box = $("way-error");
+  box.textContent = message || "";
+  box.hidden = !message;
+}
+
 async function addTilesFromIcao() {
   const code = $("icao-input").value.trim().toUpperCase();
   if (!code) return;
@@ -2856,11 +2866,11 @@ async function addTilesFromIcao() {
     try {
       airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
     } catch (_e) {
-      showPlanError(t("plan.icao_unknown", { icao: code }));
+      showWayError(t("plan.icao_unknown", { icao: code }));
       return;
     }
   }
-  showPlanError(null);
+  showWayError(null);
   const r = Math.max(1, Number($("radius-input").value) || 15);
   const names = tilesAround(airport.lat, airport.lon, r);
   sayTilesInBuild(addTiles(names));
@@ -2919,7 +2929,7 @@ function renderRoute() {
 async function drawRoute() {
   const codes = routeCodes($("route-input").value);
   if (codes.length < 2) {
-    showPlanError(t("plan.route_short"));
+    showWayError(t("plan.route_short"));
     return;
   }
   // A pasted route carries waypoints and DCT between its airports: what the engine does not know
@@ -2935,32 +2945,33 @@ async function drawRoute() {
     }
   }
   if (points.length < 2) {
-    showPlanError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
+    showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
     return;
   }
-  showPlanError(null);
+  showWayError(null);
   setRoute(points);
 }
 
 /** The last flight plan of the SimBrief name set in Settings, drawn as it was filed. */
 async function routeFromSimbrief() {
   if (!(state.settings?.essential?.simbrief_user || "").trim()) {
-    showPlanError(t("plan.route_simbrief_none"));
+    showWayError(t("plan.route_simbrief_none"));
     return;
   }
   let line;
   try {
     line = await api("GET", "/api/simbrief");
   } catch (err) {
-    showPlanError(null, err);
+    const d = errorDetail(err);
+    showWayError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
     return;
   }
   const points = (line?.points || []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
   if (points.length < 2) {
-    showPlanError(t("plan.route_short"));
+    showWayError(t("plan.route_short"));
     return;
   }
-  showPlanError(null);
+  showWayError(null);
   $("route-input").value = `${line.from} ${line.to}`;
   setRoute(points.map((p) => ({ ident: p.ident, name: p.name || "", lat: p.lat, lon: p.lon })));
   toast(t("plan.route_simbrief_ok", { from: line.from, to: line.to }));
@@ -2980,7 +2991,7 @@ function setRoute(points) {
 
 function clearRoute() {
   $("route-input").value = "";
-  showPlanError(null);
+  showWayError(null);
   setRoute(null);
 }
 

@@ -12,5 +12,6 @@
   {"icao": "LFTZ", "name": "La Môle Saint-Tropez", "lat": 43.2054, "lon": 6.4820},
   {"icao": "EGLL", "name": "London Heathrow", "lat": 51.4706, "lon": -0.4619},
   {"icao": "KJFK", "name": "New York John F Kennedy Intl", "lat": 40.6398, "lon": -73.7789},
-  {"icao": "LSZH", "name": "Zürich", "lat": 47.4647, "lon": 8.5492}
+  {"icao": "LSZH", "name": "Zürich", "lat": 47.4647, "lon": 8.5492},
+  {"icao": "LSGG", "name": "Genève", "lat": 46.2381, "lon": 6.1089}
 ]

@@ -4447,6 +4447,22 @@ def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
     assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
 
 
+def test_what_went_wrong_with_a_way_is_said_under_it() -> None:
+    """A user pressed Draw and saw nothing happen: an empty line or an unknown code was said in
+    step 3's box, far below the button (2026-09-22). The airport and the flight plan say it right
+    under them, and the field's own example works in the mock."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    at = [html.index(f'id="{name}"') for name in ("route-draw", "way-error", "route-found")]
+    assert at == sorted(at)
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    for name in ("addTilesFromIcao", "drawRoute", "routeFromSimbrief", "clearRoute"):
+        body = re.search(rf"\n(?:async )?function {name}\(\) \{{.*?\n\}}\n", js, re.S)
+        assert body is not None, name
+        assert "showWayError(" in body.group(0) and "showPlanError(" not in body.group(0), name
+    airports = json.loads((UI / "mock" / "airports.json").read_text(encoding="utf-8"))
+    assert {"LSGG", "LFMN"} <= {a["icao"] for a in airports}  # the placeholder, "LSGG LFMN"
+
+
 def test_the_squares_a_route_crosses_and_its_length() -> None:
     """``tilesAlong`` samples every leg well under the one degree a square measures, so a square
     the line only clips is still counted; ``routeLength`` measures on the sphere."""

@@ -854,6 +854,9 @@ crosses too (`geo.js` `tilesAlong`, sampled every 0.1°, well under the one degr
 measures). Nothing is chosen without a click, and step 3 still says what it costs: on a plan from
 Geneva to Palma, three squares against twelve. The route is kept in `localStorage`
 (`osxp.route`) alone, so a reload keeps the line and nothing of it is saved with the tiles.
+An empty line, a code the engine does not know, a SimBrief name missing or refused: each is said
+right under the two ways (`#way-error`), not in step 3's box, where a user pressed *Draw* and saw
+nothing happen (2026-09-22).
 
 **A street map beside the photo** (same user, same day): a third checkbox in the legend swaps the
 aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engine
