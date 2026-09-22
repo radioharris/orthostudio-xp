@@ -82,14 +82,15 @@ WINDOWS_APP_ID = "{{7C8E0F52-3B1D-4E4A-9B67-2D4F1A6C9E31}"
 installed app because the id is the same."""
 LICENCE_FILES = (
     ("LICENSE", "LICENSE-OrthoStudio-XP.txt"),
+    ("NOTICE", "NOTICE-OrthoStudio-XP.txt"),
     ("native/triangle4xp/README.md", "triangle4xp/README.md"),
     ("native/triangle4xp/CHANGES.md", "triangle4xp/CHANGES.md"),
     ("native/triangle4xp/Triangle4XP.c", "triangle4xp/Triangle4XP.c"),
     ("native/triangle4xp/CMakeLists.txt", "triangle4xp/CMakeLists.txt"),
     ("native/dsftool/README.md", "dsftool/README.md"),
 )
-"""Shipped with every installer: the GPL of OrthoStudio XP, and the sources and notice of
-modifications Triangle4XP's licence requires with its binary."""
+"""Shipped with every installer: the GPL of OrthoStudio XP and its notice (who holds its copyright),
+and the sources and notice of modifications Triangle4XP's licence requires with its binary."""
 
 
 @dataclass(frozen=True, slots=True)

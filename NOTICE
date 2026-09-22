@@ -1,0 +1,16 @@
+OrthoStudio XP
+Copyright (C) 2026 radioharris
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. It is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License, in LICENSE, for more details.
+
+OrthoStudio XP is a derivative work of Ortho4XP (https://github.com/oscarpilote/Ortho4XP), by Oscar
+Pilote and its contributors, licensed under the GNU GPL v3 too: it ports Ortho4XP's X-Plane rules
+into a new architecture.
+
+Triangle4XP (native/triangle4xp) is Jonathan Shewchuk's Triangle, modified by Oscar Pilote, under
+its own licence, which forbids including it in a commercial product without the author's
+agreement. DSFTool (native/dsftool) is Laminar Research's, under the MIT/X11 licence.
