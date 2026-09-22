@@ -156,8 +156,15 @@ fixed their connection, or that the machine is back. Kept across builds, it turn
 into an hour of builds failing in four seconds each, with quitting the app as the only way out
 (2026-09-22). Within one build the cooldown still holds, which is what it was written for.
 
-**Attempts.** `max_attempts = 5` *across mirrors*, one per entry of the registry, so the last
-resorts are still reached when the three ordinary entries are down (2026-09-22: they were, for
+**Rounds.** The whole registry is asked up to `rounds = 3` times for one layer, `round_pause_s`
+= 20 s before the second and 40 s before the third, the breakers cleared between them. A machine
+that answers 504, 429 or nothing is busy, not broken, and answers the same query a minute later;
+one pass and then a failed build threw away everything the tile had downloaded, which is how
+every build failed on the evening of 2026-09-22. A round is only repeated when something that
+refused may pass: `.fr`'s 403 will be the same in a minute, a 504 will not.
+
+**Attempts.** `max_attempts = 5` *across mirrors* within a round, one per entry of the registry,
+so the last resorts are still reached when the three ordinary entries are down (2026-09-22: they were, for
 two of the four layers of a tile). A mirror of another cluster is
 asked at once; `attempt_delay_s = 5` is waited only before another machine of a cluster that
 **pushed back** — a 429, a 5xx, or a 200 whose query it could not finish (a `remark`, a

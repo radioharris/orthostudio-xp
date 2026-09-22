@@ -22,6 +22,9 @@ dependencies = [
   "typer>=0.15",
   "ispc-texcomp>=1.0.1",
   "curl_cffi>=0.10",
+  # named, although curl_cffi installs it: the packaged app verifies with this bundle and
+  # not with the system's (orthostudio/net/certs.py)
+  "certifi>=2024.7",
   # the window of its own (orthostudio/window.py). A pure Python wheel, which asks nothing of the
   # system by itself: the toolkit under it is what a system may lack, and where it does the
   # browser opens instead. It travels everywhere, Linux included, or the advice the doctor gives

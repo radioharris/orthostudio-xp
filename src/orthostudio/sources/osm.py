@@ -32,6 +32,7 @@ import zstandard
 from orthostudio.errors import OsxpError
 from orthostudio.home import data_root
 from orthostudio.model import TileRef
+from orthostudio.net.certs import ca_bundle
 
 __all__ = [
     "ATTEMPT_DELAY_S",
@@ -44,6 +45,8 @@ __all__ = [
     "MAX_IN_FLIGHT",
     "MIRRORS",
     "PROGRESS_PERIOD_S",
+    "ROUNDS",
+    "ROUND_PAUSE_S",
     "SNAPSHOT_FORMAT",
     "USER_AGENT",
     "Attempt",
@@ -85,6 +88,15 @@ MAX_ATTEMPTS = 5
 """Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
 are still reached when the three ordinary ones are down (2026-09-22: two of them were)."""
 ATTEMPT_DELAY_S = 5.0
+ROUNDS = 3
+"""Times the whole registry is asked for one layer, when what refused it may pass.
+
+An Overpass machine that answers 504, 429 or nothing is busy, not broken: it answers the same
+query a minute later. One round over the mirrors and then a failed build wastes everything the
+tile had already downloaded, and on a bad evening every build failed that way (2026-09-22).
+"""
+ROUND_PAUSE_S = 20.0
+"""Waited before the second round, twice that before the third: a busy server needs a moment."""
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
 PROGRESS_PERIOD_S = 1.0
@@ -660,7 +672,7 @@ class CurlTransport:
         if self._session is None:
             from curl_cffi.requests import AsyncSession
 
-            self._session = AsyncSession()
+            self._session = AsyncSession(verify=ca_bundle())
         return self._session
 
     async def request(
@@ -876,6 +888,8 @@ class OverpassClient:
         cooldown_s: float = COOLDOWN_S,
         max_attempts: int = MAX_ATTEMPTS,
         attempt_delay_s: float = ATTEMPT_DELAY_S,
+        rounds: int = ROUNDS,
+        round_pause_s: float = ROUND_PAUSE_S,
         max_in_flight: int = MAX_IN_FLIGHT,
         min_interval_s: float = MIN_INTERVAL_S,
         allow_last_resort: bool = True,
@@ -895,6 +909,8 @@ class OverpassClient:
         self.cooldown_s = cooldown_s
         self.max_attempts = max_attempts
         self.attempt_delay_s = attempt_delay_s
+        self.rounds = max(1, rounds)
+        self.round_pause_s = round_pause_s
         self.max_in_flight = max_in_flight
         self.min_interval_s = min_interval_s
         self.allow_last_resort = allow_last_resort
@@ -1085,8 +1101,51 @@ class OverpassClient:
         """
         spec = self._resolve(layer, road_level)
         query = overpass_query(spec.selectors, tile, self.query_timeout_s)
-        tried: set[str] = set()
         reasons: list[str] = []
+        for round_no in range(self.rounds):
+            if round_no:
+                # every mirror refused, and at least one of them because it was busy: wait, give
+                # them all their breaker back, and ask the whole list again
+                await asyncio.sleep(self.round_pause_s * round_no)
+                self._board.reset()
+                reasons.append(f"round {round_no + 1}")
+            snap = await self._one_round(tile, spec, query, reasons, on_reply)
+            if snap is not None:
+                return snap
+            if not self._worth_another_round(reasons):
+                break
+        detail = "; ".join(reasons)
+        raise OsxpError(
+            "OSM_LAYER_UNAVAILABLE",
+            context={"layer": spec.name, "tile": tile.name, "attempts": detail},
+            message=(
+                f"OSM layer {spec.name} for tile {tile.name} could not be obtained from any "
+                + (f"mirror ({detail})." if detail else "mirror.")
+            ),
+        )
+
+    @staticmethod
+    def _worth_another_round(reasons: Sequence[str]) -> bool:
+        """Whether anything that refused may pass: a busy machine, never a refusal of principle.
+
+        ``.fr``'s 403 ("white-listed usages") is the same in a minute; a 504, a 429 and a silence
+        are not.
+        """
+        return any(
+            "UNREACHABLE" in why or "HTTP 5" in why or "HTTP 429" in why or "RESPONSE" in why
+            for why in reasons
+        )
+
+    async def _one_round(
+        self,
+        tile: TileRef,
+        spec: LayerSpec,
+        query: str,
+        reasons: list[str],
+        on_reply: Callable[[HttpReply], None] | None,
+    ) -> OsmSnapshot | None:
+        """One pass over the registry: the snapshot, or ``None`` when every mirror refused."""
+        tried: set[str] = set()
         attempt = 0
         failed_cluster: str | None = None
         while attempt < self.max_attempts:
@@ -1139,15 +1198,7 @@ class OverpassClient:
                     code,
                 )
             )
-        detail = "; ".join(reasons)
-        raise OsxpError(
-            "OSM_LAYER_UNAVAILABLE",
-            context={"layer": spec.name, "tile": tile.name, "attempts": detail},
-            message=(
-                f"OSM layer {spec.name} for tile {tile.name} could not be obtained from any "
-                + (f"mirror ({detail})." if detail else "mirror.")
-            ),
-        )
+        return None
 
     async def fetch_tile(
         self,

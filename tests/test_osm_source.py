@@ -22,6 +22,7 @@ from orthostudio.sources.osm import (
     LAYERS,
     MAX_ATTEMPTS,
     MIRRORS,
+    ROUNDS,
     SNAPSHOT_FORMAT,
     CurlTransport,
     HttpReply,
@@ -298,6 +299,7 @@ def client(transport: ScriptedTransport, **kw: object) -> OverpassClient:
         "attempt_delay_s": 0.0,
         "min_interval_s": 0.0,
         "cooldown_s": 60.0,
+        "round_pause_s": 0.0,
     }
     params.update(kw)
     return OverpassClient(MIRRORS, transport, **params)  # type: ignore[arg-type]
@@ -522,7 +524,36 @@ def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert err.value.context["layer"] == "coastline"
     assert err.value.context["tile"] == "+43+005"
-    assert len(t.sent) == 5  # max_attempts, one per mirror, never eight on the same one
+    # one attempt per mirror, three rounds over the list, never eight on the same machine
+    assert len(t.sent) == len(MIRRORS) * ROUNDS
+    assert t.by_host.keys() != {"overpass-api.de"}
+
+
+def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
+    """2026-09-22: every public Overpass machine was answering 504 on and off, and a single pass
+    over the list failed the tile and the whole build with it. A 504 means busy, not broken."""
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [HttpReply(504, b"", {}, 0.01), ok()],
+            "z.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "lz4.overpass-api.de": [HttpReply(504, b"", {}, 0.01)],
+            "overpass.openstreetmap.fr": [HttpReply(403, b"", {}, 0.01)],
+            "maps.mail.ru": [HttpReply(504, b"", {}, 0.01)],
+        }
+    )
+    c = client(t)
+    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "de"
+    assert len(t.sent) == len(MIRRORS) + 1  # a whole round refused, then the first of the next
+
+
+def test_a_refusal_of_principle_is_not_asked_twice() -> None:
+    """Only what may pass is worth another round: ``.fr``'s 403 will be the same in a minute."""
+    mirrors = (Mirror(code="fr", interpreter="https://fr.example/api/interpreter", cluster="fr"),)
+    t = ScriptedTransport({"fr.example": [HttpReply(403, b"white-listed usages only", {}, 0.01)]})
+    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0, round_pause_s=0.0)
+    with pytest.raises(OsxpError):
+        asyncio.run(c.fetch_layer(TILE, "coastline"))
+    assert len(t.sent) == 1
 
 
 def test_the_breaker_keeps_a_dead_mirror_out_of_the_next_layer() -> None:

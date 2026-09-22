@@ -39,6 +39,7 @@ from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException, Timeout
 
 from orthostudio import __version__
+from orthostudio.net.certs import ca_bundle
 
 __all__ = ["USER_AGENT", "FetchRequest", "FetchResult", "FetchStats", "Fetcher", "fetch_all"]
 
@@ -383,6 +384,7 @@ class Fetcher:
             allow_redirects=True,
             max_redirects=MAX_REDIRECTS,
             timeout=self._timeout(),
+            verify=ca_bundle(),
         )
         self._session_loop = loop
         return self._session
