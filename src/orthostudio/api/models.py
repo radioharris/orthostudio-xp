@@ -27,7 +27,10 @@ __all__ = [
     "tile_error",
 ]
 
-MAX_TILES = 64
+MAX_TILES = 500
+"""The most tiles one plan or build takes: 64 until 0.1.12, which a pilot flying IFR long haul
+took for a limit of the program (2026-09-22); a route across a continent crosses more squares.
+The estimate of 512 took 1.4 s, of 64 0.5 s, on an M4 Pro. The page says it in plain words."""
 MAX_OVERRIDES = 64
 _TILE_RE = re.compile(r"^([+-]\d{2})([+-]\d{3})$")
 _ICAO_RE = re.compile(r"^[A-Z0-9]{2,7}$")

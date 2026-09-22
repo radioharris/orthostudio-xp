@@ -344,6 +344,11 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 
 #### Step 3 · Check what it will cost
 
+- *Too many tiles*: above `MAX_BUILD_TILES` (500, the engine's `MAX_TILES`, a test keeps them
+  equal) the Plan asks nothing and says "One build takes at most 500 tiles, and N are chosen:
+  build them in two goes, the second waits in the queue."; *Build* then starts nothing. The
+  engine's refusal was a list error, which a user took for a limit of the program (64 then,
+  2026-09-22).
 - *X-Plane 12* (`app.js` `xplaneNotice`), shown only when `GET /api/status` knows no X-Plane
   folder: "X-Plane 12 was not found on this computer. OrthoStudio XP needs its folder: it takes
   the relief, roads, forests and buildings from it, and adds the tiles to it.", or, when Settings

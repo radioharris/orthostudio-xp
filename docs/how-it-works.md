@@ -78,8 +78,9 @@ most of all. The download time starts from the speed your connection showed on y
 speed the build actually shows, moving smoothly rather than jumping. A step reads *running* only
 while it works, and *waiting* when part of it is done and the rest waits for its turn.
 
-**Several builds.** One build runs at a time. A build started while another runs waits in a queue
-and starts as soon as the one before it ends; the Plan stays open to choose and queue more. A tile in
+**Several builds.** One build runs at a time, and takes up to 500 tiles. A build started while
+another runs waits in a queue and starts as soon as the one before it ends; the Plan stays open
+to choose and queue more. A tile in
 a build, under way or waiting, cannot be chosen again until that build ends, and its Library buttons
 wait too: the end of the build decides what X-Plane shows of it. Tiles are deleted only between
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and

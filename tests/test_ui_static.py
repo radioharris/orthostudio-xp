@@ -661,6 +661,35 @@ def test_ui_dir_is_the_package_directory() -> None:
     assert ui_dir() == Path(__file__).resolve().parents[1] / "src" / "orthostudio" / "ui"
 
 
+def test_the_plan_says_how_many_tiles_one_build_takes() -> None:
+    """A pilot flying IFR long haul asked whether 64 tiles a build was on purpose (2026-09-22): the
+    engine refused more with a list error. The cap is 500 now, the page knows it and says it in
+    plain words before asking anything, and a Build then starts nothing."""
+    import pytest
+    from pydantic import ValidationError
+
+    from orthostudio.api.models import MAX_TILES, PlanRequest
+
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    level = re.search(r"const MAX_BUILD_TILES = (\d+);", js)
+    assert level is not None and int(level.group(1)) == MAX_TILES == 500
+    body = re.search(r"\nfunction estimate\(\) \{.*?\n\}\n", js, re.S)
+    assert body is not None
+    code = body.group(0)
+    assert code.index("state.tiles.length > MAX_BUILD_TILES") < code.index("await planRequest()")
+    names = [f"+{lat:02d}+{lon:03d}" for lat in range(10, 40) for lon in range(0, 20)]
+    PlanRequest.model_validate({"tiles": names[:500], "zoom_level": 14})
+    with pytest.raises(ValidationError):
+        PlanRequest.model_validate({"tiles": names[:501], "zoom_level": 14})
+    for lang in ("en", "fr"):
+        text = _node_json(
+            "i18n.js",
+            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
+            ' m.t("plan.too_many_tiles", {max: 500, n: 612}))',
+        )
+        assert "500" in text and "612" in text, text
+
+
 def test_the_page_and_the_engine_agree_on_the_api_level() -> None:
     """The page asks for a restart when the engine is older than itself (a ``osxp serve`` started
     before an update showed "Not Found" and a blank map): both numbers move together."""

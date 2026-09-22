@@ -247,7 +247,9 @@ tile still in X-Plane whose files are gone keeps its *Remove from X-Plane*.
   body and without `Content-Type` is not: the page's library buttons send none (review of
   2026-09-13: an empty cross-site form reached the delete route).
 * Request bodies above 4 MB are refused (413; `MAX_BODY_BYTES`, `map-zones.md` 10). `tiles` is
-  capped at 64 names, `q` at 64 characters, `overrides` at 64 entries.
+  capped at 500 names (`MAX_TILES`: 64 until 0.1.12, which a pilot flying IFR long haul took for
+  a limit of the program; an estimate of 512 tiles takes 1.4 s), `q` at 64 characters,
+  `overrides` at 64 entries.
 * Every path received (`xplane_dir`, the import's `folder`) is expanded, resolved and checked for
   what it must contain before use; the API never lists arbitrary directories.
 * Nothing leaves the machine except the imagery / Overpass requests of a build and the

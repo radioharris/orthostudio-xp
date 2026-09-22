@@ -307,8 +307,9 @@ async def test_security_guards(app) -> None:  # type: ignore[no-untyped-def]
         big = b'{"tiles": ["' + b"x" * (4 * 1024 * 1024 + 1) + b'"]}'  # above MAX_BODY_BYTES
         r = await c.post("/api/plan", content=big, headers={"content-type": "application/json"})
         assert r.status_code == 413
-        r = await c.post("/api/plan", json={"tiles": [f"+{i:02d}+005" for i in range(10, 80)]})
-        assert r.status_code == 422  # more than 64 tiles
+        many = [f"+{lat:02d}+{lon:03d}" for lat in range(10, 80) for lon in range(5, 13)][:501]
+        r = await c.post("/api/plan", json={"tiles": many})
+        assert r.status_code == 422  # more than MAX_TILES, 500
         r = await c.get("/")
         assert r.status_code == 503 and r.json()["error"]["code"] == "SYS_RESOURCE_MISSING"
         assert "access-control-allow-origin" not in r.headers

@@ -3213,6 +3213,11 @@ async function planRequest() {
   };
 }
 
+/** The most tiles one build takes (orthostudio.api.models.MAX_TILES); a test keeps the two equal.
+ * Beyond it the Plan says so in plain words and asks nothing: the engine's answer was a list
+ * error that a user took for a limit of the program (64 then, 2026-09-22). */
+const MAX_BUILD_TILES = 500;
+
 /** How long the Plan waits after a change before working out the cost: a few clicks on the map
  * make one estimate (one takes 0.1 to 0.5 s for one to six tiles on an M4 Pro). */
 const ESTIMATE_DELAY_MS = 400;
@@ -3250,6 +3255,13 @@ function estimate() {
   const seq = ++estimateSeq;
   estimateRun = (async () => {
     if (!state.tiles.length) return;
+    if (state.tiles.length > MAX_BUILD_TILES) {
+      state.plan = null;
+      state.planStale = false;
+      showPlanError(t("plan.too_many_tiles", { max: MAX_BUILD_TILES, n: state.tiles.length }), null, "estimate");
+      renderPlanPanel();
+      return;
+    }
     state.planStale = true;
     renderPlanPanel();
     const req = await planRequest(); // null: the zones could not be loaded, and step 3 says so
