@@ -122,9 +122,9 @@ name = "PDOK 2020"
 terms_url = "https://www.pdok.nl/introductie/-/article/luchtfoto-pdok"
 
 [providers.SP]
-# Providers/Spain/SP.lay (max_threads=32 in the .lay; HTTP/1.1). Extent bounds from
-# Extents/LowRes/Spain.ext.
-url_template = "http://www.ign.es/wmts/pnoa-ma/geoserver/gwc/service/wmts?FORMAT=image/jpeg&VERSION=1.0.0&SERVICE=WMTS&REQUEST=GetTile&LAYER=OI.OrthoimageCoverage&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={zoom}&TILEROW={y}&TILECOL={x}"
+# Providers/Spain/SP.lay (max_threads=32 in the .lay; HTTP/1.1; its http:// answers the same over
+# https://, which is used: 2026-09-22). Extent bounds from Extents/LowRes/Spain.ext.
+url_template = "https://www.ign.es/wmts/pnoa-ma/geoserver/gwc/service/wmts?FORMAT=image/jpeg&VERSION=1.0.0&SERVICE=WMTS&REQUEST=GetTile&LAYER=OI.OrthoimageCoverage&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={zoom}&TILEROW={y}&TILECOL={x}"
 max_zl = 19  # assumed
 max_in_flight = 128  # 32, 64, 128 gave 152, 468, 584 req/s, no error
 server_req_per_s = 584

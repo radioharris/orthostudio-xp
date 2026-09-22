@@ -116,7 +116,7 @@ Tests never read the machine's own file: `tests/conftest.py` points it elsewhere
 | Lux | Luxembourg/Lux.lay | `https://{switch:wmts1,wmts2}.geoportail.lu/opendata/wmts/ortho_latest/GLOBAL_WEBMERCATOR_4_V3/{zoom}/{x}/{y}.jpeg` (Ortho4XP: `http://`) | 20 | 16 (measured: slower at 32) | none | Luxembourg (bounds of `Extents/LowRes/Luxembourg.ext`) |
 | NL, PDOK | Netherland/NL.lay, PDOK.lay (identical definitions, layer `Actueel_ortho25`) | WMTS concatenation, section 2 | 19 (matrices `00`..`19`) | 32 (measured: slower at 64) | none | Netherlands `3.06,50.72,7.26,53.76` |
 | PDOK18 / PDOK19 / PDOK20 | Netherland/PDOK1{8,9}.lay, PDOK20.lay | same, layers `2018_ortho25`, `2019_ortho25`, `2020_ortho25` | 19 | 32 (the same host) | none | Netherlands |
-| SP | Spain/SP.lay | unchanged (`http://www.ign.es/wmts/pnoa-ma/...GoogleMapsCompatible&TILEMATRIX={zoom}&TILEROW={y}&TILECOL={x}`) | 19 | 128 (measured; the .lay said `max_threads=32`) | none | Spain (`Extents/LowRes/Spain.ext`) |
+| SP | Spain/SP.lay | over HTTPS (`https://www.ign.es/wmts/pnoa-ma/...GoogleMapsCompatible&TILEMATRIX={zoom}&TILEROW={y}&TILECOL={x}`): the .lay's `http://` answers the same image over `https://` (2026-09-22) | 19 | 128 (measured; the .lay said `max_threads=32`) | none | Spain (`Extents/LowRes/Spain.ext`) |
 | JP | Japan/JP.lay | `https://cyberjapandata.gsi.go.jp/xyz/ort/{zoom}/{x}/{y}.jpg` (Ortho4XP: `http://`) | 18 | 64 (measured; the .lay said `max_threads=8`) | none | Japan `122.9,20.4,154.0,45.6` (Yonaguni to Minamitorishima, Okinotorishima to Hokkaido) |
 | USGS | United_States/USGS.lay | unchanged | 19 | 128 (HTTP/2, measured) | none | United States `-180.0,17.5,-64.0,71.5` (Puerto Rico and Hawaii to Alaska) |
 

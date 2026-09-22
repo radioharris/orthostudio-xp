@@ -159,6 +159,19 @@ def test_audit_urls_for_the_other_providers(registry: dict[str, Provider]) -> No
     )
 
 
+def test_every_shipped_source_is_fetched_over_https() -> None:
+    """The README says the downloads go over HTTPS: Spain's IGN was the last source over http://,
+    and its server answers the same image over https:// (2026-09-22). A source a user adds may
+    still be http://, so the shipped file alone is read here."""
+    import orthostudio.imagery
+
+    shipped = load_registry(Path(orthostudio.imagery.__file__).parent / "registry.toml")
+    assert (
+        shipped
+        and [c for c, p in shipped.items() if not p.url_template.startswith("https://")] == []
+    )
+
+
 def test_tile_url_rejects_tiles_outside_the_grid(registry: dict[str, Provider]) -> None:
     with pytest.raises(ValueError):
         tile_url(registry["BI"], 2**15, 0, 15)
