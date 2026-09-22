@@ -28,7 +28,9 @@ import {
   colouredRegions,
   decodeBorders,
   insertIndexForZl,
+  listedZones,
   metersPerPixel,
+  movedInList,
   newZoneId,
   normalizePhoto,
   normalizeZone,
@@ -231,6 +233,7 @@ export function createPlanMap(ctx) {
     saveError: null,
     notice: null, // () => text: a plain line after a conflict
     selected: null,
+    showAll: false, // step 2 lists every zone, not only those of the chosen tiles
     draft: null, // {kind: "rect" | "shape", vertices: [[lon, lat], ...]}
     nextZl: DEFAULT_ZONE_ZL,
     nextProvider: "", // "" = the tiles' imagery source
@@ -714,11 +717,11 @@ export function createPlanMap(ctx) {
     zs.zones.splice(insertIndexForZl(zs.zones, z.zl), 0, z);
   }
 
+  /** One row up or down in the list as shown, over the zones it leaves out (geo.js movedInList). */
   function moveZone(id, delta) {
-    const i = zs.zones.findIndex((z) => z.id === id);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= zs.zones.length) return;
-    [zs.zones[i], zs.zones[j]] = [zs.zones[j], zs.zones[i]];
+    const next = movedInList(zs.zones, listed(), id, delta);
+    if (!next) return;
+    zs.zones.splice(0, zs.zones.length, ...next);
     changed();
   }
 
@@ -739,25 +742,28 @@ export function createPlanMap(ctx) {
     ctx.toast(t("zones.deleted", { name: gone.name || t("zones.unnamed") }));
   }
 
-  /** The trash above the list: every zone at once, after asking (a user deleting a dozen zones
-   * one × at a time asked for it). The usual debounced PUT saves the empty list; tiles already
-   * built keep their sharper areas until they are built again. */
+  /** The trash above the list: the zones it shows at once, after asking (a user deleting a dozen
+   * zones one × at a time asked for it). Those of other tiles, which the list leaves out, stay: it
+   * never deletes what cannot be seen (2026-09-22). The usual debounced PUT saves the list; tiles
+   * already built keep their sharper areas until they are built again. */
   async function removeAllZones() {
-    if (!zs.loaded || !zs.zones.length || !(await confirmRemoveAll(zs.zones.length))) return;
-    const n = zs.zones.length;
-    if (!zs.loaded || !n) return; // reloaded or unreachable while the dialog was open
-    zs.zones.splice(0);
-    zs.marks.clear();
-    zs.selected = null;
+    const shown = listed().length;
+    if (!zs.loaded || !shown || !(await confirmRemoveAll(shown, zs.zones.length - shown))) return;
+    const gone = new Set(listed().map((z) => z.id));
+    if (!zs.loaded || !gone.size) return; // reloaded or unreachable while the dialog was open
+    zs.zones.splice(0, zs.zones.length, ...zs.zones.filter((z) => !gone.has(z.id)));
+    for (const id of gone) zs.marks.delete(id);
+    if (gone.has(zs.selected)) zs.selected = null;
     changed();
     $("zones-panel").focus({ preventScroll: true }); // the trash is hidden now
-    ctx.toast(t("zones.cleared", { n }));
+    ctx.toast(t("zones.cleared", { n: gone.size }));
   }
 
-  function confirmRemoveAll(n) {
+  function confirmRemoveAll(n, others) {
     const dialog = $("zones-clear-confirm");
     if (dialog.open) return Promise.resolve(false);
-    clear($("zones-clear-text")).append(h("p", null, t("zones.clear_count", { n })), h("p", null, t("zones.clear_kept")));
+    const lines = [t("zones.clear_count", { n }), ...(others ? [t("zones.clear_others", { n: others })] : []), t("zones.clear_kept")];
+    clear($("zones-clear-text")).append(...lines.map((line) => h("p", null, line)));
     dialog.returnValue = "";
     dialog.onkeydown = (ev) => {
       if (ev.key !== "Escape") return;
@@ -783,7 +789,13 @@ export function createPlanMap(ctx) {
     const moved = next !== zs.selected;
     zs.selected = next;
     if (moved) {
-      for (const li of $("zone-list").querySelectorAll(".zone-item")) {
+      const list = $("zone-list");
+      // A zone of another tile, clicked on the map, joins the list; deselected (Esc, a click on the
+      // map), it leaves it. Not when another row is chosen: the rows would move under the pointer.
+      const rows = new Set(listed().map((z) => z.id));
+      const shown = [...list.querySelectorAll(".zone-item")].map((li) => li.dataset.zone);
+      if (next ? !shown.includes(next) : shown.some((id) => !rows.has(id))) renderList();
+      for (const li of list.querySelectorAll(".zone-item")) {
         li.setAttribute("aria-current", String(li.dataset.zone === next));
       }
       renderZones();
@@ -1953,11 +1965,33 @@ export function createPlanMap(ctx) {
       const btn = $(`draw-${kind}`);
       if (btn) btn.disabled = !zs.loaded;
     }
-    const empty = $("zones-empty");
-    empty.hidden = !zs.loaded || zs.zones.length > 0;
-    $("zones-priority").hidden = zs.zones.length < 2;
-    $("zone-list-head").hidden = !zs.loaded || zs.zones.length === 0;
+    renderListHead();
     renderProblems();
+  }
+
+  /** The zones the list shows (geo.js listedZones): the selected one and those with a problem to
+   * fix always, so that a zone just drawn or clicked on the map is never out of sight. */
+  function listed({ all = zs.showAll } = {}) {
+    return listedZones(zs.zones, ctx.tiles(), {
+      all,
+      keep: (z) => z.id === zs.selected || zs.marks.has(z.id) || z.polygon.length < 3,
+      tilesOf: zoneTiles,
+    });
+  }
+
+  /** Around the list: the priority sentence and the trash when it has rows, and under it the
+   * zones of other tiles it leaves out, with the button that shows them or hides them again. */
+  function renderListHead() {
+    const shown = listed().length;
+    const outside = zs.zones.length - listed({ all: false }).length;
+    $("zones-empty").hidden = !zs.loaded || zs.zones.length > 0;
+    $("zones-priority").hidden = shown < 2;
+    $("zone-list-head").hidden = !zs.loaded || shown === 0;
+    $("zones-others").hidden = !zs.loaded || outside === 0;
+    const text = $("zones-others-text");
+    text.hidden = zs.showAll;
+    text.textContent = t("zones.others", { n: outside });
+    $("zones-others-toggle").textContent = zs.showAll ? t("zones.others_hide") : t("zones.others_show");
   }
 
   /** Above the list: the saved file's problems that name no zone of the list (the next save
@@ -2034,14 +2068,16 @@ export function createPlanMap(ctx) {
       clear(list);
       const selectedTiles = new Set(ctx.tiles());
       const source = providerByCode(ctx.planProvider());
-      zs.zones.forEach((z, i) => list.append(zoneItem(z, i, selectedTiles, source)));
+      const rows = listed();
+      rows.forEach((z, i) => list.append(zoneItem(z, i, rows.length, selectedTiles, source)));
       restoreFocus(list, saved);
     } finally {
       listRendering = false;
     }
+    renderListHead();
   }
 
-  function zoneItem(z, index, selectedTiles, source) {
+  function zoneItem(z, index, count, selectedTiles, source) {
     const label = z.name || t("zones.unnamed");
     const key = (part) => ({ focusKey: `${z.id}:${part}` });
     const disabled = !zs.loaded;
@@ -2097,7 +2133,7 @@ export function createPlanMap(ctx) {
     const button = (part, text, title, onclick, off) =>
       h("button", { type: "button", class: "btn btn-small btn-icon", "aria-label": title, title, disabled: disabled || off, dataset: key(part), onclick }, text);
     const up = button("up", "↑", t("zones.move_up", { name: label }), () => moveZone(z.id, -1), index === 0);
-    const down = button("down", "↓", t("zones.move_down", { name: label }), () => moveZone(z.id, 1), index === zs.zones.length - 1);
+    const down = button("down", "↓", t("zones.move_down", { name: label }), () => moveZone(z.id, 1), index === count - 1);
     const del = button("delete", "×", t("zones.delete", { name: label }), () => removeZone(z.id), false);
 
     const notes = h("div", { class: "zone-notes" });
@@ -2170,6 +2206,10 @@ export function createPlanMap(ctx) {
     $("draw-finish")?.addEventListener("click", finishShape);
     $("draw-cancel")?.addEventListener("click", cancelDraft);
     $("zones-clear")?.addEventListener("click", removeAllZones);
+    $("zones-others-toggle")?.addEventListener("click", () => {
+      zs.showAll = !zs.showAll;
+      renderList();
+    });
     $("map-hint-close")?.addEventListener("click", dismissHint);
     $("zones-retry")?.addEventListener("click", () => {
       if (!zs.loaded) {

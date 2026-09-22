@@ -182,14 +182,18 @@
           <p class="placeholder zones-empty" id="zones-empty" data-i18n="zones.empty" hidden>No zone yet: use one of the buttons above, then click on the map.</p>
           <div class="zone-list-head" id="zone-list-head" hidden>
             <p class="help zones-priority" id="zones-priority" data-i18n="zones.priority" hidden>Where zones overlap, the one higher in the list wins.</p>
-            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="zones-clear" data-i18n-title="zones.clear" title="Delete all zones">
+            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="zones-clear" data-i18n-title="zones.clear" title="Delete the zones in the list">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span class="sr-only" data-i18n="zones.clear">Delete all zones</span>
+              <span class="sr-only" data-i18n="zones.clear">Delete the zones in the list</span>
             </button>
           </div>
           <ol class="zone-list" id="zone-list"></ol>
+          <p class="help zones-others" id="zones-others" hidden>
+            <span id="zones-others-text"></span>
+            <button type="button" class="btn btn-small" id="zones-others-toggle">Show them</button>
+          </p>
           <details class="more">
             <summary data-i18n="zones.shortcuts">Shortcuts</summary>
             <ul class="shortcut-list" id="zones-help"></ul>
@@ -433,11 +437,11 @@
 <!-- The zone list's trash (map.js confirmRemoveAll), like the Library's delete. -->
 <dialog id="zones-clear-confirm" class="dialog" role="alertdialog" aria-labelledby="zones-clear-title" aria-describedby="zones-clear-text">
   <form method="dialog">
-    <h2 class="dialog-title" id="zones-clear-title" data-i18n="zones.clear_title">Delete all the zones?</h2>
+    <h2 class="dialog-title" id="zones-clear-title" data-i18n="zones.clear_title">Delete the zones in the list?</h2>
     <div class="dialog-text" id="zones-clear-text"></div>
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="zones.clear_keep">Keep them</button>
-      <button type="submit" class="btn btn-danger-solid" value="clear" data-i18n="zones.clear_confirm">Delete all</button>
+      <button type="submit" class="btn btn-danger-solid" value="clear" data-i18n="zones.clear_confirm">Delete them</button>
     </div>
   </form>
 </dialog>

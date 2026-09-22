@@ -350,6 +350,35 @@ export function insertIndexForZl(zones, zl) {
   return i < 0 ? zones.length : i;
 }
 
+/**
+ * The zones step 2 lists, in the list's order, which decides overlaps: every zone when `all` is
+ * set or no tile is chosen, else those touching one of the `chosen` tiles (names) and those
+ * `keep` holds. A helicopter pilot with a zone per landing site went through all of them to reach
+ * the few of one square (X-Plane.Org, 2026-09-22); the others stay on the map and in the file.
+ */
+export function listedZones(zones, chosen, { all = false, keep = () => false, tilesOf = (z) => tilesTouched(z.polygon) } = {}) {
+  const names = new Set(chosen);
+  if (all || !names.size) return zones.slice();
+  return zones.filter((z) => keep(z) || tilesOf(z).some((n) => names.has(n)));
+}
+
+/**
+ * The zones once the arrow of zone `id` moved it one row up (`delta` -1) or down (+1) in the
+ * `listed` rows: right before, or right after, the row it passes, over the zones the list leaves
+ * out. For two zones side by side in `zones`, the swap it always was; `null` at an end.
+ */
+export function movedInList(zones, listed, id, delta) {
+  const rows = listed.map((z) => z.id);
+  const at = rows.indexOf(id);
+  const past = at < 0 ? undefined : rows[at + delta];
+  const zone = zones.find((z) => z.id === id);
+  if (past === undefined || !zone) return null;
+  const out = zones.filter((z) => z.id !== id);
+  const j = out.findIndex((z) => z.id === past);
+  out.splice(delta < 0 ? j : j + 1, 0, zone);
+  return out;
+}
+
 /** Why one zone breaks the `osxp-zones-1` format (section 3), or null. `ids` holds the ids before it. */
 export function zoneProblem(zone, ids, providers) {
   if (!zone || typeof zone !== "object") return "a zone must be an object";

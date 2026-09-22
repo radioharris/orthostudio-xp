@@ -1927,10 +1927,11 @@ def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
     assert order == ["a", "b", "c"]  # same level: the zone changed last goes first
 
 
-def test_the_trash_deletes_every_zone_after_asking() -> None:
+def test_the_trash_deletes_the_zones_in_the_list_after_asking() -> None:
     """A user deleting a dozen zones row by row asked for a trash that deletes them all: shown above
-    the list when there are zones, it asks first, then empties the list, which the usual debounced
-    PUT saves (docs/specs/ui.md, Step 2)."""
+    the list when it has rows, it asks first, then deletes the zones the list shows, which the
+    usual debounced PUT saves (docs/specs/ui.md, Step 2). Those of other tiles, which the list
+    leaves out, stay: the trash never deletes what cannot be seen (2026-09-22)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     head_re = r'<div class="zone-list-head" id="zone-list-head" hidden>.*?\n {10}</div>'
     head = re.search(head_re, html, re.S)
@@ -1945,12 +1946,104 @@ def test_the_trash_deletes_every_zone_after_asking() -> None:
     body = re.search(r"\n  async function removeAllZones\(\) \{.*?\n  \}\n", map_js, re.S)
     assert body is not None
     code = body.group(0)
-    assert code.index("await confirmRemoveAll(") < code.index("zs.zones.splice(0);")
-    for step in ("zs.marks.clear();", "zs.selected = null;", "changed();", 't("zones.cleared"'):
+    assert "zs.zones.length - shown" in code  # the dialog says how many stay
+    assert code.index("await confirmRemoveAll(") < code.index("const gone = new Set(listed()")
+    steps = (
+        "!gone.has(z.id)",
+        "zs.marks.delete(id)",
+        "if (gone.has(zs.selected)) zs.selected = null;",
+        "changed();",
+        't("zones.cleared", { n: gone.size })',
+    )
+    for step in steps:
         assert step in code, step
+    assert "zs.zones.splice(0);" not in code  # never every zone at once any more
     assert 'dialog.returnValue === "clear"' in map_js
-    assert '$("zone-list-head").hidden = !zs.loaded || zs.zones.length === 0;' in map_js
+    assert 't("zones.clear_others", { n: others })' in map_js
+    assert '$("zone-list-head").hidden = !zs.loaded || shown === 0;' in map_js
     assert '$("zones-clear")?.addEventListener("click", removeAllZones);' in map_js
+    for lang in ("en", "fr"):
+        texts = _node_json(
+            "i18n.js",
+            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
+            ' ["zones.clear", "zones.clear_title", "zones.clear_others",'
+            ' "zones.clear_confirm"].map((k) => m.t(k, {n: 3})))',
+        )
+        assert all(texts) and not any("toutes" in s or " all" in s for s in texts), texts
+
+
+def test_the_zone_list_shows_the_zones_of_the_chosen_tiles() -> None:
+    """A helicopter pilot with a zone per landing site went through all of them to reach the few of
+    one square (X-Plane.Org, 2026-09-22): step 2 lists the zones touching a chosen tile, the
+    selected one and those with a problem to fix; a line under the list names the others and shows
+    them. The order is the list's, which decides overlaps, and the arrows move a zone among the
+    rows shown, over those left out."""
+    got = _node_json(
+        "geo.js",
+        """(() => {
+          const sq = (lon, lat) =>
+            [[lon + 0.1, lat + 0.1], [lon + 0.3, lat + 0.1], [lon + 0.3, lat + 0.3]];
+          const zones = [
+            {id: "a", zl: 19, polygon: sq(6, 46)},
+            {id: "b", zl: 18, polygon: sq(8, 47)},
+            {id: "c", zl: 17, polygon: sq(6, 46)},
+            {id: "d", zl: 17, polygon: [[5.9, 45.9], [6.1, 45.9], [6.1, 46.1]]},
+          ];
+          const ids = (list) => list && list.map((z) => z.id);
+          const shown = m.listedZones(zones, ["+46+006"]);
+          return {
+            shown: ids(shown),
+            none: ids(m.listedZones(zones, [])),
+            all: ids(m.listedZones(zones, ["+46+006"], {all: true})),
+            kept: ids(m.listedZones(zones, ["+46+006"], {keep: (z) => z.id === "b"})),
+            other: ids(m.listedZones(zones, ["+47+008"])),
+            up: ids(m.movedInList(zones, shown, "c", -1)),
+            down: ids(m.movedInList(zones, shown, "a", 1)),
+            swap: ids(m.movedInList(zones, zones, "c", -1)),
+            top: m.movedInList(zones, shown, "a", -1),
+            bottom: m.movedInList(zones, shown, "d", 1),
+          };
+        })()""",
+    )
+    assert got["shown"] == ["a", "c", "d"]  # b is in +47+008; d spans four tiles, +46+006 too
+    assert got["none"] == got["all"] == ["a", "b", "c", "d"]  # no tile chosen, or all asked for
+    assert got["kept"] == ["a", "b", "c", "d"]  # the selected zone is listed wherever it is
+    assert got["other"] == ["b"]
+    assert got["up"] == ["c", "a", "b", "d"]  # c passes a, the row above, and b on the way
+    assert got["down"] == ["b", "c", "a", "d"]  # a passes c, and b on the way: only a moves
+    assert got["swap"] == ["a", "c", "b", "d"]  # everything shown: the swap it always was
+    assert got["top"] is None and got["bottom"] is None
+
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    render = re.search(r"\n  function renderList\(\) \{.*?\n  \}\n", map_js, re.S)
+    assert render is not None and "const rows = listed();" in render.group(0)
+    assert "renderListHead();" in render.group(0)
+    listed = re.search(r"\n  function listed\(.*?\n  \}\n", map_js, re.S)
+    assert listed is not None
+    assert "z.id === zs.selected || zs.marks.has(z.id) || z.polygon.length < 3" in listed.group(0)
+    move = re.search(r"\n  function moveZone\(id, delta\) \{.*?\n  \}\n", map_js, re.S)
+    assert move is not None and "movedInList(zs.zones, listed(), id, delta)" in move.group(0)
+    assert "index === count - 1" in map_js  # the last row shown, not the last zone
+    # a zone of another tile clicked on the map joins the list, and leaves it once deselected
+    relist = "if (next ? !shown.includes(next) : shown.some((id) => !rows.has(id))) renderList();"
+    assert relist in map_js
+    toggle = map_js.index('$("zones-others-toggle")?.addEventListener("click"')
+    assert map_js.index("zs.showAll = !zs.showAll;", toggle) < map_js.index("renderList();", toggle)
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    at = [html.index(f'id="{name}"') for name in ("zone-list", "zones-others", "zones-help")]
+    assert at == sorted(at)  # under the list, above the shortcuts
+    for lang, words in (
+        ("en", "outside the selected tiles"),
+        ("fr", "hors des tuiles sélectionnées"),
+    ):
+        texts = _node_json(
+            "i18n.js",
+            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
+            ' [m.t("zones.others", {n: 12}), m.t("zones.others_show"),'
+            ' m.t("zones.others_hide")])',
+        )
+        assert "12" in texts[0] and words in texts[0] and texts[1] and words in texts[2], texts
 
 
 def test_the_job_list_empties_after_asking() -> None:

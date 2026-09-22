@@ -253,9 +253,13 @@ Plan screen, above the existing inputs (which stay):
 4. **Zone list** beside the map: name (editable), zoom level, provider, "région · N tuiles"
    when it covers several tiles, move up/down (priority, M4), delete; selecting a zone
    highlights it on the map; Delete removes the selected zone. Zones are coloured by zoom
-   level (legend). A trash above the list deletes every zone after asking (`ui.md`, Step 2).
+   level (legend). With tiles selected, the list shows the zones touching one of them, the
+   selected zone and those with a problem; a line under it names the others and shows them
+   (a helicopter pilot with a zone per landing site, 2026-09-22). A trash above the list deletes
+   the zones it shows after asking (`ui.md`, Step 2).
 5. Every change is saved with `PUT /api/zones` (debounced 500 ms); an error is a toast.
-6. The estimate and *Build* send `tiles` (the selection) and `zones` (the list shown). A zone
+6. The estimate and *Build* send `tiles` (the selection) and `zones` (those reaching a selected
+   tile, whether the list shows them or not). A zone
    that touches no selected tile gets a hint ("outside the selected tiles") and a button that
    adds the tiles it falls in, so a zone drawn first can be built without hunting for its tile.
 7. Mock mode (`?mock=1`): `mock/zones.json`; the base layer is a canvas grid layer (no request).

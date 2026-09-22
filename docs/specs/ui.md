@@ -284,12 +284,24 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   (or a click on it) selects the zone, highlights it on the map and pans to it when it is out of
   view; a zone picked on the map scrolls the list (never the page). The list keeps the focus and the
   caret of the control being edited across re-renders.
-- **Delete all zones** (user request, 2026-09-13): a small trash above the list, on the line of
-  the priority sentence, shown when the list has zones and loaded. It asks first ("Delete all the
-  zones?", the number of zones, "Tiles already built do not change: their sharper areas stay
-  until they are built again"; *Keep them* has the focus, Esc keeps them), then empties the list,
-  its marks and the selection, moves the focus to the zones step and says "Zones deleted: N."
-  The usual debounced `PUT /api/zones` saves the empty list; a drawing in progress stays.
+- **The zones of the selected tiles** (a helicopter pilot with a zone per landing site went through
+  all of them to reach the few of one square, X-Plane.Org, 2026-09-22): with tiles selected, the
+  list shows the zones touching one of them (positive-area rule), the selected zone and those
+  marked with a problem (`geo.js` `listedZones`); with none selected, every zone. A line under the
+  list says "N other zone(s) outside the selected tiles." with *Show them*, which lists them all
+  and becomes *Hide the zones outside the selected tiles* (for the session). The zones left out
+  stay on the map, in the file and in the requests. A zone picked on the map joins the list while
+  it is selected. The order is the list's own: ↑ / ↓ move a zone past the row shown above or below
+  it, over the zones left out (`movedInList`: only the moved zone changes place; side by side, the
+  swap it always was).
+- **Delete the zones in the list** (user request, 2026-09-13): a small trash above the list, on the
+  line of the priority sentence, shown when the list has rows and loaded. It asks first ("Delete
+  the zones in the list?", their number, how many zones outside the selected tiles stay when some
+  do, "Tiles already built do not change: their sharper areas stay until they are built again";
+  *Keep them* has the focus, Esc keeps them), then deletes the zones the list shows, their marks
+  and the selection if it was one of them, moves the focus to the zones step and says "Zones
+  deleted: N." The zones left out stay: the trash never deletes what cannot be seen (2026-09-22).
+  The usual debounced `PUT /api/zones` saves the list; a drawing in progress stays.
 - **Loading** (M3): `GET /api/zones` at boot answers `{"format", "revision", "zones",
   "problems"}` with `200` whenever the file is absent or readable (the engine's contract after
   the review of 2026-09-13).

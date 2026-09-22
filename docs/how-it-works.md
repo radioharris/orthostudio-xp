@@ -255,6 +255,13 @@ field I want inside this square? They appear from zoom 8 in, where there are few
 *outside the selected tiles*, and *Add N tile(s)* beside it chooses the tiles it falls in. Nothing
 is chosen for you: a zone can cover several tiles, and each tile is a download.
 
+**Many zones.** The list of step 2 shows the zones of the tiles you chose, and the line under it
+says how many others there are, with *Show them*: a helicopter pilot with a zone per landing site
+sees those of the square being built, not all of them. The others stay on the map and are kept. A
+zone you draw or click on the map is listed wherever it is. The order of the list still decides
+where two zones overlap, and the arrows move a zone among those shown. The trash above the list
+deletes the zones it shows, never those out of sight.
+
 **Your own elevation files.** Many countries publish lidar surveys far finer than the worldwide
 data, and enthusiasts republish them square by square (Sonny's models of Europe, for instance).
 Settings' *Do you have elevation files of your own?* takes the folder they are in: each tile takes

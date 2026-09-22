@@ -609,6 +609,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .zone-list { list-style: none; margin: var(--gap) 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 440px; overflow-y: auto; }
 .zone-list:empty { display: none; }
+/* Under the list: the zones of other tiles it leaves out, and the button that shows them. */
+.zones-others { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: var(--gap) 0 0; }
 .zone-item { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
 .zone-item[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .zone-item.is-invalid { border-color: var(--fail); }
