@@ -312,7 +312,10 @@ back or built again.
 OrthoStudio XP does not need Ortho4XP: it never runs it and a build never reads an Ortho4XP folder.
 It downloads its own OpenStreetMap data and elevation files. The only time it looks into an Ortho4XP
 folder is when you import the tiles Ortho4XP built there, from the Library (*Import my Ortho4XP
-tiles…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`: they are listed beside
+tiles…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
+Ortho4XP's own, the one holding `Ortho4XP.py`, where its `Tiles` and the build folder it remembers
+are read, or any folder holding its `zOrtho4XP_` tiles, such as a disk they were built on: a
+user's `M:\XPTilesZL14` was refused until 0.1.12. They are listed beside
 yours, can be installed and compared, and nothing is written into that folder. *Remove from the
 list* takes an imported tile off the list again (once it is out of X-Plane), and leaves its files
 where they are.

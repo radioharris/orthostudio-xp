@@ -37,7 +37,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   squares chosen. Remove a tile from
   X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
-  imported from Ortho4XP are listed too, and OrthoStudio XP never deletes them: *Remove from the
+  imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and
+  OrthoStudio XP never deletes them: *Remove from the
   list* takes one off the list, its files left where they are. A button shows a tile's folder in the Finder, the Windows File Explorer or the
   Linux file manager, and another, at the foot of the page, the folder the tiles go to.
 - **Installation handled.** Links in Custom Scenery under OrthoStudio XP's own names

@@ -8,6 +8,7 @@ import pytest
 
 from orthostudio.errors import OsxpError
 from orthostudio.install import Library, TileRef, default_library_path, pack_tile, tile_from_name
+from orthostudio.install.library import ortho4xp_searched
 
 REPO = Path(__file__).resolve().parents[1]
 T43 = TileRef(43, 5)
@@ -122,6 +123,36 @@ def test_import_ortho4xp_custom_build_dir_without_slash_is_one_pack(tmp_path: Pa
     assert [(e.tile, e.provider, e.zl, e.path) for e in entries] == [
         (TileRef(47, 7), "SP", 18, pack)
     ]
+
+
+def test_import_a_folder_of_tiles_kept_away_from_ortho4xp(tmp_path: Path) -> None:
+    """A user kept his tiles on another disk, ``M:\\XPTilesZL14``, away from Ortho4XP's folder,
+    and was refused whatever layout he copied around them (2026-09-22): a folder that is not
+    Ortho4XP's own is read as one holding its tiles, or as one of them."""
+    tiles = tmp_path / "XPTilesZL14"
+    _dsf(tiles / "zOrtho4XP_+46+006", TileRef(46, 6))
+    _write_cfg(tiles / "zOrtho4XP_+46+006", TileRef(46, 6), "BI", 14)
+    _dsf(tiles / "zOrtho4XP_+47+008", TileRef(47, 8))
+    _dsf(tiles / "yOrtho4XP_Overlays", TileRef(46, 6))
+    with Library(tmp_path / "lib.sqlite") as lib:
+        entries = lib.import_ortho4xp(tiles)
+        got = sorted((e.tile.name, e.kind, e.path.name) for e in entries)
+        assert got == [
+            ("+46+006", "ortho", "zOrtho4XP_+46+006"),
+            ("+46+006", "overlay", "yOrtho4XP_Overlays"),
+            ("+47+008", "ortho", "zOrtho4XP_+47+008"),
+        ]
+        geneva = next(e for e in entries if e.tile == TileRef(46, 6) and e.kind == "ortho")
+        assert geneva.provider == "BI" and geneva.zl == 14
+        # one tile chosen by itself
+        (alone,) = lib.import_ortho4xp(tiles / "zOrtho4XP_+47+008")
+        assert alone.tile == TileRef(47, 8) and alone.path == tiles / "zOrtho4XP_+47+008"
+    # Ortho4XP's own folder still looks in Tiles/ only, not in itself
+    own = tmp_path / "Ortho4XP"
+    own.mkdir()
+    (own / "Ortho4XP.py").write_text("# Ortho4XP\n")
+    assert ortho4xp_searched(own) == [own / "Tiles"]
+    assert ortho4xp_searched(tiles) == [tiles / "Tiles", tiles]
 
 
 def test_import_ortho4xp_rejects_missing_dir(tmp_path: Path) -> None:

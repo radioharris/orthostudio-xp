@@ -140,7 +140,8 @@ page shows code + remedy like any other error. Other schema violations are 422 `
 with the offending field in `context`. Unknown provider: `CFG_PROVIDER_UNKNOWN` (422). Zoom above
 the provider's `max_zl`: `CFG_VALUE_INVALID`. Unknown override name: `CFG_VALUE_INVALID` (raised by
 `BuildSpec.tile_config`). Bad `xplane_dir`: `XP_DIR_NOT_FOUND` (422). The import's `folder` must
-hold `Ortho4XP.py`, else `SYS_WORKING_DIR_INVALID` (422).
+hold `Ortho4XP.py` or `zOrtho4XP_` tiles (in it, in its `Tiles`, or be one of them: a user's
+tiles on another disk were refused, 2026-09-22), else `SYS_WORKING_DIR_INVALID` (422).
 
 The build specs come from `Settings` (`to_build_overrides`) then the request's `overrides`
 (request wins); the packs go to `<OSXP_HOME>/tiles`. The X-Plane folder is the request's, else

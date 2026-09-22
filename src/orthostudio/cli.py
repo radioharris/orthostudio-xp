@@ -855,7 +855,10 @@ def clean(
 @app.command("import-ortho4xp")
 def import_ortho4xp(
     folder: Annotated[
-        Path, typer.Argument(help="the Ortho4XP folder (the one holding Ortho4XP.py)")
+        Path,
+        typer.Argument(
+            help="the Ortho4XP folder (the one holding Ortho4XP.py), or a folder of its tiles"
+        ),
     ],
     library: Annotated[Path | None, typer.Option("--library", help="library sqlite file")] = None,
     json_output: Annotated[bool, _JSON_FLAG] = False,

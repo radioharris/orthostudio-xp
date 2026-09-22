@@ -407,6 +407,25 @@ def _ortho4xp_folder(root: Path) -> Path:
 
 
 @pytest.mark.anyio
+async def test_a_folder_of_ortho4xp_tiles_is_imported_without_ortho4xp(
+    app, home: Path, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    """Tiles kept away from Ortho4XP's folder, on another disk, came back SYS_WORKING_DIR_INVALID
+    "is not an Ortho4XP installation" (a user's M:\\XPTilesZL14, 2026-09-22)."""
+    tiles = _ortho4xp_folder(tmp_path) / "Tiles"  # holds zOrtho4XP_+43+005, no Ortho4XP.py
+    async with client_for(app) as c:
+        r = await c.post("/api/library/import-ortho4xp", json={"folder": str(tiles)})
+        assert r.status_code == 200, r.text
+        (row,) = r.json()["entries"]
+        assert row["tile"] == "+43+005" and row["built_by"] == "ortho4xp"
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        r = await c.post("/api/library/import-ortho4xp", json={"folder": str(empty)})
+        assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_WORKING_DIR_INVALID"
+        assert "holds neither Ortho4XP nor tiles it built" in r.json()["error"]["message"]
+
+
+@pytest.mark.anyio
 async def test_library_import_install_uninstall(
     app, home: Path, xplane: Path, tmp_path: Path
 ) -> None:  # type: ignore[no-untyped-def]

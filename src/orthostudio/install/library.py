@@ -53,6 +53,8 @@ SCHEMA_VERSION = 1
 IMPORT_TILES_DIR = "Tiles"
 IMPORT_GUI_PARAMS = ".last_gui_params.txt"
 IMPORT_GLOBAL_CFG = "Ortho4XP.cfg"
+ORTHO4XP_MAIN = "Ortho4XP.py"
+"""What Ortho4XP's own folder holds at its root."""
 
 BuiltBy = Literal["osxp", "ortho4xp"]
 PackKind = Literal["ortho", "overlay"]
@@ -297,29 +299,46 @@ def _ortho4xp_custom_build_dir(folder: Path) -> str:
 
 
 def ortho4xp_searched(folder: Path) -> list[Path]:
-    """Where an import looks for tiles: ``Tiles/`` of the folder, and the build folder the Ortho4XP
-    GUI remembers when one is set. For the page to say where it looked when it found nothing: a
-    user pressed Import and could not tell what had happened (2026-09-21)."""
-    roots, single = _ortho4xp_roots(Path(folder))
-    return [*roots, *([single] if single is not None else [])]
+    """Where an import looks for tiles: ``Tiles/`` of the folder, the folder itself when it is not
+    Ortho4XP's own, and the build folder the Ortho4XP GUI remembers when one is set. For the page
+    to say where it looked when it found nothing: a user pressed Import and could not tell what had
+    happened (2026-09-21)."""
+    roots, singles = _ortho4xp_roots(Path(folder))
+    return [*roots, *singles]
 
 
-def _ortho4xp_roots(folder: Path) -> tuple[list[Path], Path | None]:
-    """The folders holding ``zOrtho4XP_*`` tiles, and a custom build dir that is itself one tile."""
+def holds_ortho4xp_tiles(folder: Path) -> bool:
+    """Whether an import of ``folder`` finds at least one ``zOrtho4XP_*`` tile."""
+    return next(_ortho4xp_pack_dirs(Path(folder)), None) is not None
+
+
+def _ortho4xp_roots(folder: Path) -> tuple[list[Path], list[Path]]:
+    """The folders holding ``zOrtho4XP_*`` tiles, and those that are one tile each.
+
+    Ortho4XP keeps its tiles in ``Tiles/`` and in the build folder its GUI remembers. A folder that
+    is not Ortho4XP's own (no ``Ortho4XP.py``) is taken as one the tiles were built into or moved
+    to, holding them or being one of them: a user kept his on another disk, ``M:\\XPTilesZL14``,
+    and was refused whatever layout he copied around them (2026-09-22).
+    """
     roots: list[Path] = [folder / IMPORT_TILES_DIR]
+    singles: list[Path] = []
+    if not (folder / ORTHO4XP_MAIN).is_file():
+        if folder.name.startswith(IMPORTED_PACK_PREFIX):
+            singles.append(folder)
+        else:
+            roots.append(folder)
     custom = _ortho4xp_custom_build_dir(folder)
-    single: Path | None = None
     if custom:
         if custom.endswith("/"):
             roots.append(Path(custom.rstrip("/")))
         else:
-            single = Path(custom)
-    return roots, single
+            singles.append(Path(custom))
+    return roots, singles
 
 
 def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
-    """``zOrtho4XP_*`` directories of ``Tiles/`` and of the custom build dir, deduplicated."""
-    roots, single = _ortho4xp_roots(folder)
+    """``zOrtho4XP_*`` directories of the folders :func:`_ortho4xp_roots` names, deduplicated."""
+    roots, singles = _ortho4xp_roots(folder)
     seen: set[Path] = set()
     for root in roots:
         if not root.is_dir():
@@ -330,8 +349,10 @@ def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
                 if real not in seen:
                     seen.add(real)
                     yield child
-    if single is not None and single.is_dir() and single.resolve() not in seen:
-        yield single
+    for single in singles:
+        if single.is_dir() and single.resolve() not in seen:
+            seen.add(single.resolve())
+            yield single
 
 
 def _dsf_tiles(pack_dir: Path) -> list[TileRef]:
