@@ -3244,7 +3244,8 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
     green = body.index("className: `osxp-tile-installed${both}`")
-    assert casing < green < body.index("className: `osxp-tile-selected${both}`")
+    # the blue after the green, the route's ends in their own colour (2026-09-22)
+    assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
     assert 'const both = inner ? " is-both" : "";' in body
     assert "for (const b of [box, inner])" in body
     assert "L.rectangle(inner || box," in body
@@ -4475,6 +4476,33 @@ def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
         assert element in panel and element not in folded.group(0)
     # what stays folded: the two ways nobody uses to plan a flight
     assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
+
+
+def test_the_routes_ends_are_marked_on_the_map() -> None:
+    """On a flight plan across Europe, 28 squares of one blue left nothing to tell the departure
+    and the arrival from the way between them (a user, 2026-09-22): their squares take the route's
+    own colour, and the legend says so while a route is drawn."""
+    js = (UI / "map.js").read_text(encoding="utf-8")
+    grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", js, re.S)
+    assert grid is not None
+    drawn = grid.group(0)
+    assert "ctx.routeEnds?.()" in drawn
+    assert 'routeEnds.has(name) ? " is-route-end" : ""' in drawn
+    legend = re.search(r"\n  function renderLegend\(\) \{.*?\n  \}\n", js, re.S)
+    assert legend is not None and 't("map.legend_route_ends")' in legend.group(0)
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "routeEnds: () => new Set(state.route ? routeEndTiles() : [])" in app_js
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "--route: #e0572f;" in css  # map.js draws the line with the same colour
+    assert ".plan-map .osxp-tile-selected.is-route-end { stroke: var(--route); }" in css
+    assert ".legend-route-end { border: 2px solid var(--route); }" in css
+    for lang in ("en", "fr"):
+        text = _node_json(
+            "i18n.js",
+            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
+            ' m.t("map.legend_route_ends"))',
+        )
+        assert text and "{" not in text, text
 
 
 def test_the_page_stays_where_it_was_when_squares_are_added() -> None:

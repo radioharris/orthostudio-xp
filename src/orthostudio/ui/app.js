@@ -5513,6 +5513,8 @@ async function boot() {
     planProvider: () => $("provider-select").value,
     planZl,
     tileZl,
+    /** The squares of the route's departure and arrival, which the map draws in its colour. */
+    routeEnds: () => new Set(state.route ? routeEndTiles() : []),
     library: () => state.library,
     builtSummary,
     building: () => buildingOnMap(),

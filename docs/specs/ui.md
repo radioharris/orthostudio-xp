@@ -137,7 +137,12 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   build under way: when the one it watched ends, it follows the next (`followBuildUnderWay`). The Library is read again a
   moment after each tile's install and when the build ends, so installed tiles turn green one after
   the other.
-- **Legend over the map** (7.0.5): installed, selected, the tiles of the running build (being
+- **The route's ends** (2026-09-22): a chosen square of the flight plan's departure or arrival is
+  outlined in the route's own colour (`--route`, the line's), not the blue of the others: on a plan
+  across Europe, 28 squares of one blue left nothing to tell them apart (a user). The squares are
+  read from the route itself (`routeEnds`), so they are marked however they were chosen.
+- **Legend over the map** (7.0.5): installed, selected, *Departure and arrival* while a route is
+  drawn, the tiles of the running build (being
   built, waiting, failed: only the states on the map), and the detail levels in use by the
   zones (plus the level being drawn), in their colours: Ortho4XP's (15 cyan, 16 green, 17 yellow,
   18 orange, 19 red) extended to 12-14 and 20, shared by both themes because they sit on imagery.

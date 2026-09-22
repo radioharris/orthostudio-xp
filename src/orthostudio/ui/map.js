@@ -208,6 +208,7 @@ export function readZonesDocument(doc) {
 /**
  * ctx: {mock, api(method, path, body, {headers, keepalive}), toast, errorMessage, errorDetail, h,
  * clear, tiles(), toggleTile(name), providers(), planProvider(), planZl(), tileZl(name),
+ * routeEnds(),
  * library(),
  * onZonesChanged()}. api() rejects with an error carrying the HTTP `status` when the engine
  * answered, without one when it could not be reached.
@@ -1723,6 +1724,7 @@ export function createPlanMap(ctx) {
   /** 1° grid and tile labels for the viewport only; selected and installed tiles at every zoom. */
   function renderGrid() {
     if (!map) return;
+    const routeEnds = ctx.routeEnds?.() ?? new Set();
     layers.grid.clearLayers();
     layers.tiles.clearLayers();
     layers.labels.clearLayers();
@@ -1760,7 +1762,10 @@ export function createPlanMap(ctx) {
         layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
       }
       if (selected.has(name) && (inner || !installed.has(name))) {
-        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}`, interactive: false, fill: false, weight: 3 }));
+        // The route's departure and arrival in the route's own colour: on a plan across Europe
+        // every square was the same blue and the two ends were lost in it (a user, 2026-09-22).
+        const end = routeEnds.has(name) ? " is-route-end" : "";
+        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
       }
       // Over the others: a tile the running build works on pulses, one waiting for its turn is
       // dashed, a failed one dashed red (buildingTiles in app.js).
@@ -1905,6 +1910,9 @@ export function createPlanMap(ctx) {
     const hadFocus = document.activeElement !== null && box.querySelector(".legend-toggle input") === document.activeElement;
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
     const items = [row("legend-installed", t("map.legend_installed")), row("legend-selected", t("map.legend_selected"))];
+    if ((ctx.route?.() || {}).points?.length >= 2) {
+      items.push(row("legend-route-end", t("map.legend_route_ends")));
+    }
     const states = new Set(buildingNow().values());
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));

@@ -60,6 +60,9 @@
   --zl-17: #e9c518;
   --zl-18: #ff9a1f;
   --zl-19: #ff3b30;
+  /* The flight plan's line and the squares of its departure and arrival: it lies on the
+     imagery too, so both themes share it (map.js draws the line with the same colour). */
+  --route: #e0572f;
   --zl-20: #ff3fb4;
   color-scheme: light;
 }
@@ -517,6 +520,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .legend-swatch { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .legend-installed { border: 2px solid var(--ok); }
 .legend-selected { border: 2px solid var(--accent); }
+/* The route's own colour, the line's, for the squares of its departure and arrival. */
+.legend-route-end { border: 2px solid var(--route); }
 .legend-working { border: 2px solid var(--accent); background: var(--accent); animation: tile-pulse 1.4s ease-in-out infinite; }
 .legend-queued { border: 2px dashed var(--accent); }
 .legend-failed { border: 2px dashed var(--fail); }
@@ -645,6 +650,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Marks are outlines, never fills: a translucent colour over the ground lies about the photo
    underneath, and the map now shows the very colours a build will encode (a user, 2026-09-18). */
 .plan-map .osxp-tile-selected { stroke: var(--accent); stroke-width: 3; fill: none; }
+.plan-map .osxp-tile-selected.is-route-end { stroke: var(--route); }
 /* Installed and chosen: a line on each side of the green and of the blue inside it, so that
    both stand out from each other and from the photo (map.js renderGrid). */
 .plan-map .osxp-tile-casing { stroke: var(--map-casing); stroke-width: 5; fill: none; }
