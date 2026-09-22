@@ -1144,10 +1144,11 @@ wheels = [
 
 [[package]]
 name = "orthostudio-xp"
-version = "0.1.12"
+version = "0.1.13"
 source = { editable = "." }
 dependencies = [
     { name = "blake3" },
+    { name = "certifi" },
     { name = "curl-cffi" },
     { name = "httpx", extra = ["http2"] },
     { name = "ispc-texcomp" },
@@ -1186,6 +1187,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "blake3", specifier = ">=1.0" },
+    { name = "certifi", specifier = ">=2024.7" },
     { name = "curl-cffi", specifier = ">=0.10" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28" },
