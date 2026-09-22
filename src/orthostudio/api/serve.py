@@ -16,6 +16,7 @@ from typing import Any
 from orthostudio.api import presence
 from orthostudio.errors import OsxpError
 from orthostudio.home import make_patches_dir
+from orthostudio.logs import setup_logging
 
 __all__ = [
     "DEFAULT_PORT",
@@ -192,6 +193,9 @@ def serve(
 
     from orthostudio.api.app import create_app
 
+    # what the engine does goes to serve.log beside uvicorn's own lines: a build that stopped on
+    # the Data stage left no trace there at all (a user on Linux, 2026-09-22)
+    setup_logging(log_level)
     url = f"http://{HOST}:{port}/" + ("?mock=1" if mock else "")
     try:
         _check_port(port)

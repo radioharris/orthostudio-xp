@@ -75,7 +75,11 @@ __all__ = [
 log = logging.getLogger("orthostudio.api.jobs")
 
 LOG_PERIOD_S = 1.0
-"""At most one ``log`` event per node per second (textures progress lines)."""
+"""At most one ``log`` event per node per second (the stages' progress lines)."""
+FILE_LOG_PERIOD_S = 10.0
+"""And at most one of them per node every ten seconds in ``serve.log``: enough to see where a
+build stands, or stops, without a line a second per tile (a user on Linux whose build stopped
+on the Data stage found nothing of it in the file, 2026-09-22)."""
 STATS_MIN_PERIOD_S = 0.5
 """The scheduler sends ``Stats`` after every node and every second; the journal keeps at most
 two ``stats`` lines a second (a burst of sixty hits was sixty lines)."""
@@ -351,6 +355,7 @@ class Job:
         self._done = threading.Event()
         self._file: Any = None
         self._last_log: dict[str, float] = {}
+        self._last_file_log: dict[str, float] = {}
         self._stats: dict[str, Any] | None = None
         self._clock: Callable[[], float] = clock if clock is not None else time.perf_counter
         """One clock for the journal's ``ts``, the node times and the estimate."""
@@ -528,10 +533,16 @@ class Job:
                 message=event.message,
                 weight_s=_weight_json(st),
             )
+            # every stage leaves a line, not the images alone: a build that stopped while
+            # downloading its OpenStreetMap data showed a bar and wrote nothing (2026-09-22)
             last_log = self._last_log.get(st.node, now - LOG_PERIOD_S)
-            if st.stage == "imagery" and now - last_log >= LOG_PERIOD_S:
+            if event.message and now - last_log >= LOG_PERIOD_S:
                 self._last_log[st.node] = now
                 self._append("log", **base, message=event.message)
+                last_file = self._last_file_log.get(st.node, now - FILE_LOG_PERIOD_S)
+                if now - last_file >= FILE_LOG_PERIOD_S:
+                    self._last_file_log[st.node] = now
+                    log.info("%s: %s", st.node, event.message)
         elif isinstance(event, Done):
             if not (event.hit and st.status == "done"):  # keep what the first pass built
                 st.status = "hit" if event.hit else "done"
@@ -540,6 +551,11 @@ class Job:
                 st.wall_s = event.wall_s
                 st.ended_at = now
             st.fraction = 1.0
+            # the file says which node ended and when: what a build that stops leaves behind is
+            # then the stage it never finished (2026-09-22)
+            log.info(
+                "%s: %s in %.1f s", st.node, "already built" if event.hit else "done", event.wall_s
+            )
             self._append(
                 "done",
                 **base,

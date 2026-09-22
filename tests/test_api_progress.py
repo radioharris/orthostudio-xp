@@ -286,6 +286,49 @@ def test_replay_progress_elapsed_and_phase(
 # -- rules, one at a time ----------------------------------------------------------------
 
 
+def test_every_stage_leaves_a_line_in_the_log(tmp_path: Path) -> None:
+    """A build that stopped while downloading its OpenStreetMap data showed a bar going nowhere and
+    wrote nothing: only the images wrote log lines (a user on Linux, 2026-09-22). The file gets one
+    line per node every ten seconds, the job's own every second."""
+    import logging
+
+    from orthostudio.api.jobs import FILE_LOG_PERIOD_S
+
+    lines: list[str] = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())  # type: ignore[method-assign]
+    file_log = logging.getLogger("orthostudio.api.jobs")
+    file_log.addHandler(handler)
+    level = file_log.level
+    file_log.setLevel(logging.INFO)
+    try:
+        clock = Clock()
+        job = _job([_spec("+46+006", install=False)], clock, tmp_path)
+        node = "+46+006/osm"
+        job.on_event(Started(node, "net", KEY))
+        job.on_event(Progress(node, 0.4, "2 of 5 layers, 1.2 MB, 42 s"))
+        clock.t += 0.2
+        job.on_event(Progress(node, 0.4, ""))  # nothing to say, nothing written
+        clock.t += FILE_LOG_PERIOD_S + 1
+        job.on_event(Progress(node, 0.6, "3 of 5 layers, 2.0 MB, 53 s"))
+        job.on_event(Done(node, KEY, False, 53.0, REF))
+    finally:
+        file_log.removeHandler(handler)
+        file_log.setLevel(level)
+    logged = [e for e in job.events() if e["event"] == "log"]
+    assert [e["message"] for e in logged] == [
+        "2 of 5 layers, 1.2 MB, 42 s",
+        "3 of 5 layers, 2.0 MB, 53 s",
+    ]
+    assert all(e["stage"] == "data" for e in logged)
+    # the file: the two progress lines ten seconds apart, and the node's end
+    assert [x for x in lines if "layers" in x] == [
+        f"{node}: 2 of 5 layers, 1.2 MB, 42 s",
+        f"{node}: 3 of 5 layers, 2.0 MB, 53 s",
+    ]
+    assert f"{node}: done in 53.0 s" in lines
+
+
 def test_stage_status_rules() -> None:
     assert stage_status(["pending", "pending"]) == "pending"
     assert stage_status(["running", "pending"]) == "running"

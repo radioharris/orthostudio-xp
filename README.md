@@ -176,7 +176,7 @@ build is running: what was already built is kept, so building again carries on f
 Linux it opens in your browser instead, as every version has: the web view a window needs there is
 built for your distribution's own Python, and OrthoStudio XP carries its own, so installing it
 would change nothing. In a browser it stops by itself five minutes after the last page is closed,
-with no build running or waiting. Its messages go to `serve.log`, in
+with no build running or waiting. What it does, stage by stage, goes to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
