@@ -484,22 +484,26 @@ def patches_folder(patches_dir: Path | None, tile: TileRef) -> Path | None:
     (``O4_File_Names.long_latlon``), and a pack published for it keeps that tree: the patch of
     SBCF a user sent is ``Ortho4XP/Patches/-20-050/-20-044/SBCF.patch.osm`` (2026-09-17). A
     folder made by hand is usually just ``<tile>``. Both are read, and so is a folder holding
-    the ``Patches`` directory itself, which is what an unzipped pack gives.
+    the ``Patches`` directory itself, which is what an unzipped pack gives, and the tile's own
+    directory chosen as the folder: the one where the ``.patch.osm`` is seen, which
+    ``how-it-works.md`` said would do and which found nothing (2026-09-22).
     """
     if patches_dir is None:
         return None
     root = Path(patches_dir).expanduser()
-    found = [
+    candidates = [
         folder
         for base in (root, root / "Patches")
         for folder in (base / tile.name, base / tile.folder / tile.name)
-        if folder.is_dir() and not _is_cell_folder(folder)
     ]
+    if root.name == tile.name:
+        candidates.append(root)
+    found = [f for f in candidates if f.is_dir() and not _is_cell_folder(f)]
     # a directory that holds something wins over an empty one left beside it
     with_files = [
         f for f in found if any(f.glob("*.patch.osm")) or any(p.is_dir() for p in f.iterdir())
     ]
-    return (with_files or found or [None])[0]
+    return (with_files or found)[0] if found else None
 
 
 def _tile_named(name: str) -> TileRef | None:
@@ -576,12 +580,14 @@ def patched_tiles(patches_dir: Path | None) -> dict[str, list[str]]:
     For the page to name them before anything is built: a user saw "Patches: none" in a report
     and took it that his patch had not been found, when it was for another square (2026-09-21).
     The same layouts as :func:`patches_folder`: ``<tile>``, ``<10° cell>/<tile>``, each also
-    under ``Patches``.
+    under ``Patches``, and the tile's own directory.
     """
     if patches_dir is None:
         return {}
     root = Path(patches_dir).expanduser()
     seen: set[TileRef] = set()
+    if (own := _tile_named(root.name)) is not None:  # :func:`patch_names` tells it from a cell
+        seen.add(own)
     for base in (root, root / "Patches"):
         for child in _subdirs(base):
             ref = _tile_named(child.name)

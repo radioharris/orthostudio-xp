@@ -477,7 +477,9 @@ coastline now has no source.
   `osxp build --patches`; `serve` makes that folder empty at start, `make_patches_dir`, so
   that a pilot looking for it finds it). `patches_folder` finds the tile's directory in either layout, `<tile>`
   or Ortho4XP's `[Patches/]<10° cell>/<tile>` (`O4_File_Names.long_latlon`; the SBCF patch a user
-  sent is `Ortho4XP/Patches/-20-050/-20-044/SBCF.patch.osm`), and `patches_ref` gives it as a
+  sent is `Ortho4XP/Patches/-20-050/-20-044/SBCF.patch.osm`), or is that directory itself when
+  Settings names it (`-20-044`, where the `.patch.osm` is seen: `how-it-works.md` said it
+  would do, and it found nothing until 2026-09-22), and `patches_ref` gives it as a
   source input keyed by the names and contents of its `*.patch.osm` files and of the OBJ8
   objects in its subdirectories, so editing a patch builds the tile again; no folder, or a tile
   without its own directory, keeps the input absent, as decision 0010 left it; `airports` stays absent (the stage builds the

@@ -193,6 +193,28 @@ def test_a_cell_is_not_the_folder_of_the_tile_at_its_corner(tmp_path: Path) -> N
     assert patch_names(flat, corner) == ["mine.patch.osm"]
 
 
+def test_the_tiles_own_folder_can_be_the_one_chosen(tmp_path: Path) -> None:
+    """A pilot chooses the directory where the ``.patch.osm`` is seen, ``-20-044`` of the Ortho4XP
+    tree: ``how-it-works.md`` said it would do, and Settings said it held no patch (2026-09-22)."""
+    sbcf, corner = TileRef(-20, -44), TileRef(-20, -50)
+    cell = tmp_path / "Patches" / "-20-050"
+    own = cell / "-20-044"
+    _patch(own, name="SBCF.patch.osm")
+    assert patches_folder(own, sbcf) == own
+    assert patch_names(own, sbcf) == ["SBCF.patch.osm"]
+    assert patches_ref(own, sbcf) is not None
+    assert patched_tiles(own) == {"-20-044": ["SBCF.patch.osm"]}
+    assert patch_names(own, OTHER) == []  # that tile's patches only
+    # the cell, named like the tile at its corner, is still not that tile's own directory
+    assert patch_names(cell, corner) == []
+    assert patched_tiles(cell) == {"-20-044": ["SBCF.patch.osm"]}
+    # objects alone in the tile's own directory are its patches too
+    lone = tmp_path / "mine" / "+44+006"
+    (lone / "objects").mkdir(parents=True)
+    (lone / "objects" / "tower.obj").write_text("OBJ8", encoding="utf-8")
+    assert patched_tiles(lone) == {"+44+006": [str(Path("objects") / "tower.obj")]}
+
+
 def test_the_folder_says_which_tiles_it_has_patches_for(tmp_path: Path) -> None:
     """For the page to name them before anything is built: a user saw "Patches: none" in a
     report and took it that his patch had not been found, when it was for another square

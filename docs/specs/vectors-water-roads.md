@@ -202,7 +202,8 @@ rejected ways are counted and reported, not inserted).
 ## 4. Rules of the patch builder (`:639-968`)
 
 Patches are `<tile>/*.patch.osm` files (JOSM XML, read with every tag kept; Ortho4XP holds them
-under `Patches/<10° cell>/<tile>`, and `pipeline.build.patches_folder` reads either tree) and
+under `Patches/<10° cell>/<tile>`, and `pipeline.build.patches_folder` reads either tree, or the
+tile's own directory named as the folder) and
 directories of OBJ8 files. A file none of whose ways could be used is reported as
 `OSM_PATCH_INVALID` ("no way of this file could be used") unless it already said what it refused,
 and the stage logs what it did use (`N patch polygon(s), M line(s)...`): a patch that changed
