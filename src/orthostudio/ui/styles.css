@@ -1126,6 +1126,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   gap: 6px 8px; align-items: center;
 }
 .route-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
+/* The two buttons share a width, so their words start at the same place, on the left. */
+.route-groups .btn { text-align: left; }
 .route-clear { grid-column: 1 / -1; justify-self: start; }
 /* Under the flight plan's row, not inside its field: the buttons line up with the field itself
    (a user, 2026-09-22), as the airport's Add does. */

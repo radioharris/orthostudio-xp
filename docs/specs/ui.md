@@ -869,7 +869,8 @@ is scrolled back by what it moved. Used by the flight plan's two buttons, the ai
 and the two folded ways.
 
 **A level for each group** (2026-09-22): beside each of the two buttons, in a grid of two
-columns so that the buttons share one width and the lists line up (`.route-groups`), shown once its
+columns so that the buttons share one width and the lists line up (`.route-groups`, the buttons'
+words on the left since they share that width), shown once its
 squares are chosen, a list gives them their own detail level, written short
 (`detail.short`, "Standard · ZL16": the whole sentence of step 1's list sent it to a line of its
 own, a user the same day), so that the departure and the arrival are
