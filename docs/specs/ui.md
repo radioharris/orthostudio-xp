@@ -868,8 +868,9 @@ has no scroll anchoring; the element that was pressed is measured before the ren
 is scrolled back by what it moved. Used by the flight plan's two buttons, the airport's *Add*
 and the two folded ways.
 
-**A level for each group** (2026-09-22): beside each of the two buttons, on the same line and
-shown once its squares are chosen, a list gives them their own detail level, written short
+**A level for each group** (2026-09-22): beside each of the two buttons, in a grid of two
+columns so that the buttons share one width and the lists line up (`.route-groups`), shown once its
+squares are chosen, a list gives them their own detail level, written short
 (`detail.short`, "Standard · ZL16": the whole sentence of step 1's list sent it to a line of its
 own, a user the same day), so that the departure and the arrival are
 sharper than the squares along the route. One rule holds it together, so that no level is ever

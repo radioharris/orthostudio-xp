@@ -1119,10 +1119,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .route-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
 /* One line per group of squares: the button, then the level they take once they are chosen. */
-.route-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.route-group + .route-group { margin-top: 6px; }
-/* Beside its button, not under it: a list is full width everywhere else (a user, 2026-09-22). */
+/* Two columns, the buttons then the levels, so that the lists line up under one another and the
+   buttons share one width (a user, 2026-09-22). A list is full width everywhere else. */
+.route-groups {
+  display: grid; grid-template-columns: max-content minmax(0, max-content);
+  gap: 6px 8px; align-items: center;
+}
 .route-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
+.route-clear { grid-column: 1 / -1; justify-self: start; }
 /* Under the flight plan's row, not inside its field: the buttons line up with the field itself
    (a user, 2026-09-22), as the airport's Add does. */
 .route-help { margin: var(--help-gap) 0 0; }
