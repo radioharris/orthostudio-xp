@@ -2359,6 +2359,13 @@ function renderStatus() {
   place.append(where);
   place.title = data?.chosen ? t("status.data_dir", { path: where }) : "";
   if (data?.present === false) place.append(" ", pill(t("status.data_missing"), "fail"));
+  // And a button that shows it in the Finder: `.orthostudio` starts with a dot, which hides it
+  // there, and a user looked for his tiles in vain (2026-09-22).
+  const shown = dataFolderShown(s);
+  if (shown) {
+    const label = revealLabel(s.platform);
+    place.append(h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
+  }
 }
 
 // ------------------------------------------------------------------ the file manager, quitting

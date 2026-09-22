@@ -144,6 +144,9 @@ one).
 OrthoStudio XP keeps your settings and its lists in `~/.orthostudio` (or `$OSXP_HOME`), and what
 takes space in its **data folder**: `~/.orthostudio` too, unless Settings name another folder under
 *Where should the tiles and the downloaded imagery go?*, on an external disk for instance.
+The status bar names that folder at its right end, and the button beside it shows it in the
+Finder, the Windows File Explorer or the Linux file manager: `.orthostudio` starts with a dot,
+which hides it in the Finder, and a user looked for his tiles there in vain (2026-09-22).
 
 ```
 ~/.orthostudio/
@@ -197,6 +200,12 @@ the computer's own disk instead.
 
 `tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
+
+**Before building a tile again.** When a square you choose is already built, step 1 of the Plan
+says so, "+46+007 already built", with what it was built with folded under it, as in the Library.
+What a build now would change is never folded: another imagery source, another detail level or
+other colours, said in yellow under the tile's line, and the square's chip turns yellow too, so
+the one a build would change is found at a glance among the chosen squares.
 
 **The colours of the photos.** *Are the photo colours right for you?* takes aerial imagery as the
 source delivers it, tones it down a little, a lot, or by your own numbers (brightness, contrast and

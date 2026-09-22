@@ -8,7 +8,7 @@ architecture that builds them faster. It would not exist without Ortho4XP.
 
 **Status: beta.** OrthoStudio XP builds and installs tiles end to end on macOS (Apple Silicon),
 and on Windows with its installer (tried on Windows 11 on ARM, where the x64 app runs under
-emulation, more slowly; not yet on a PC with an Intel or AMD processor). Its Linux installer is
+emulation, more slowly). Its Linux installer is
 built and checked automatically, but nobody has built a tile with it yet; a first try on Linux will
 probably come later. The installer for Intel Macs is built and checked automatically too, on an
 Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an Intel Mac yet.
@@ -38,7 +38,7 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP are listed too, and OrthoStudio XP never deletes them: *Remove from the
   list* takes one off the list, its files left where they are. A button shows a tile's folder in the Finder, the Windows File Explorer or the
-  Linux file manager.
+  Linux file manager, and another, at the foot of the page, the folder the tiles go to.
 - **Installation handled.** Links in Custom Scenery under OrthoStudio XP's own names
   (`zOrthoStudio_<tile>`, `yOrthoStudio_Overlays`), `scenery_packs.ini` in the right order, a
   backup of the original, overlays kept in step with their tiles, or left out when simHeaven
@@ -179,8 +179,23 @@ with no build running or waiting. Its messages go to `serve.log`, in
 `~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
 
+OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at
+127.0.0.1, shown in a window of its own. Nothing goes through a server of ours, and its downloads
+from the imagery, map and elevation services go over HTTPS, except a source you add yourself with
+an `http://` address. Opened in a browser instead, the page may be called "not secure" because it
+is not HTTPS, which is harmless here: it never leaves your computer.
+
+An antivirus with a behaviour-based ransomware protection (Trend Micro's, for one) may take a build
+for ransomware and stop it: a build writes thousands of files in a few minutes, compressed
+textures that look as random as encrypted files do, replaces files by writing new ones, and adds
+links and a line to `scenery_packs.ini` in X-Plane's folder. If yours does, allow OrthoStudio XP
+in its settings: the program is in `%LOCALAPPDATA%\Programs\OrthoStudio XP` on Windows, and its
+data in `.orthostudio` in your user folder (or the data folder chosen in Settings).
+
 OrthoStudio XP works with the X-Plane 12 of the same computer: it takes the relief, roads, forests
-and buildings from X-Plane's scenery and adds the tiles to its Custom Scenery. It finds X-Plane by
+and buildings from X-Plane's scenery and adds the tiles to its Custom Scenery. The part of the
+world you build must be installed in X-Plane 12, whose installer lets you choose which parts: step
+3 of the Plan says when a square's is not. It finds X-Plane by
 itself; when it cannot (X-Plane in an unusual folder, or a virtual machine whose X-Plane is on the
 host), step 3 of the Plan says so, and its button opens the Settings question where you choose
 the folder.

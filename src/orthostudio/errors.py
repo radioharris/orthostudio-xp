@@ -587,9 +587,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "DSF_GLOBAL_SCENERY_MISSING",
         _B,
         _S,
-        "Global Scenery DSF for {tile} was not found.",
-        "Set the X-Plane directory; Global Scenery for {tile} must be installed (X-Plane "
-        'installer, "Global Scenery").',
+        "X-Plane 12's own scenery for {tile} was not found (its Global Scenery DSF).",
+        "Install the region with {tile} with X-Plane's installer (Add or Remove Scenery); if "
+        "it is installed, set the X-Plane directory.",
     ),
     _spec(
         "DSF_GLOBAL_SCENERY_COPY_FAILED",

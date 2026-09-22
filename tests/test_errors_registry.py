@@ -230,9 +230,10 @@ def test_to_json_is_stable_and_compact() -> None:
         '{"action":"stop","cause":null,"code":"DSF_GLOBAL_SCENERY_MISSING",'
         '"context":{"path":"/X-Plane 12/Global Scenery/X-Plane 12 Global Scenery/Earth nav data'
         '/+40+000/+43+005.dsf","tile":"+43+005"},"domain":"DSF",'
-        '"message":"Global Scenery DSF for +43+005 was not found.",'
-        '"remedy":"Set the X-Plane directory; Global Scenery for +43+005 must be installed '
-        '(X-Plane installer, \\"Global Scenery\\").","schema":1,"severity":"blocking"}'
+        '"message":"X-Plane 12\'s own scenery for +43+005 was not found (its Global Scenery '
+        'DSF).","remedy":"Install the region with +43+005 with X-Plane\'s installer (Add or '
+        'Remove Scenery); if it is installed, set the X-Plane directory.","schema":1,'
+        '"severity":"blocking"}'
     )
     assert err.to_json() == expected
     # Same input, same output, whatever the insertion order of the context.

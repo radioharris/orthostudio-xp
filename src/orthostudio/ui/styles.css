@@ -934,6 +934,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-item { display: inline-flex; align-items: center; gap: 6px; }
 .status-home { margin-left: auto; color: var(--fg-3); font-family: var(--mono); font-size: var(--fs-3); }
 .status-item .pill { height: 16px; }
+/* the folder's button (app.js renderStatus), as tall as the bar's pills so the bar keeps its height */
+.status-home .status-reveal { min-height: 18px; height: 18px; width: 22px; color: var(--fg-2); }
+.status-home .status-reveal svg { width: 13px; height: 13px; }
 .status-item details { position: relative; }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }
@@ -1073,6 +1076,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .expert-group { margin-top: var(--block-gap); }
 .expert-group-title { padding-top: 10px; border-top: 1px solid var(--line); }
 .settings-actions { position: sticky; bottom: var(--statusbar-h); z-index: 5; background: var(--bg); padding: 10px 0; margin-top: var(--block-gap); border-top: 1px solid var(--line); }
+/* A refused save says why in this bar, which stays on screen: at the foot of the form, under every
+   question, a user saving from the data folder's question never saw it (2026-09-22). */
+.settings-actions .error-inline { flex-basis: 100%; margin: 0; }
 .settings-status.is-fail { color: var(--fail); }
 .settings-credits { margin: var(--block-gap) 0 0; }
 .plan-settings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap); }

@@ -697,7 +697,12 @@ half-drawn page). Nothing is saved before *Save*; *Undo
 my changes* goes back to the saved settings, *Default values* to the schema's defaults
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder and the data folder kept,
 since they are this computer's and no look of the tiles; a draft that differs from the saved settings says
-"Changes not saved yet". The action bar sticks to the bottom.
+"Changes not saved yet". The action bar sticks to the bottom, and a save the engine refuses says
+why in it, in the page's words for the code: "Not saved: The disk of /Volumes/… will not do (exFAT
+or FAT32, for instance)…", which also says where a disk's format is read (Disk Utility, the disk's
+Properties). The refusal used to show at the foot of the form, under every question, where a user
+saving from the data folder's question never saw it, and began "Settings rejected by the engine"
+(a French tester, 2026-09-22).
 
 1. **Presets**: three buttons, *Recommended* (ZL16, main airports at ZL18), *Best quality* (ZL17,
    every airfield at ZL18), *Light on disk* (ZL15, nothing extra), each with its size per tile
@@ -880,7 +885,9 @@ from the engine (`422`) are shown next to the form, in the page's words for the 
 From `GET /api/status`: version, X-Plane path and whether it runs (a warning when it does,
 since installation is refused then), doctor summary (`n ok · n warn · n fail`, the details in
 a popover), library count, and OrthoStudio XP's folder, or the data folder chosen in Settings with
-a *disk not plugged in* pill while it is missing. The store and chunk sizes come from
+a *disk not plugged in* pill while it is missing, and beside it a button that shows it in the file
+manager (`renderStatus`, `revealPath`; *Show in Finder* on a Mac): `.orthostudio` starts with a
+dot, which hides it in the Finder, and a user looked for his tiles in vain (2026-09-22). The store and chunk sizes come from
 `GET /api/sizes`, asked after each status and not awaited (`loadSizes`): "…" until they come, then
 that line alone is drawn again (`renderDiskSizes`), so the doctor's popover stays open. On Windows
 their walk opens every file of the store, and the page used to wait for them. Language and theme

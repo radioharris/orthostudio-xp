@@ -2932,6 +2932,48 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert "watchJob(state.status.active_job)" in boot
 
 
+def test_the_data_folder_can_be_found_and_its_refusal_read() -> None:
+    """A French tester (2026-09-22) could not find his tiles in the hidden `~/.orthostudio`, and
+    tried an external disk "without success": the refusal of an exFAT disk showed at the foot of
+    the form, under every question, and began "Settings rejected by the engine". The status bar
+    now shows the folder in the file manager, and the refusal says why in the Save bar, with where
+    a disk's format is read."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    status = _function_body(app_js, "renderStatus")
+    assert "const shown = dataFolderShown(s);" in status and "revealPath(shown)" in status
+    assert "status-reveal" in status and "revealLabel(s.platform)" in status
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "height: 18px;" in rules[".status-home .status-reveal"]  # the bar keeps its height
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    actions = html[html.index('<div class="actions settings-actions">') :]
+    assert actions.index('id="settings-error"') < actions.index("</div>")  # in the Save bar
+    assert "flex-basis: 100%;" in rules[".settings-actions .error-inline"]
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), [m.t("settings.invalid", {detail: "x"}), '
+        'm.codeText("CFG_DATA_DIR_INVALID", {path: "/Volumes/T7", why: "links"})])))',
+    )
+    (fr_saved, fr_links), (en_saved, en_links) = words
+    assert fr_saved == "Non enregistré : x" and en_saved == "Not saved: x"
+    assert "Utilitaire de disque" in fr_links[1] and "Disk Utility" in en_links[1]
+
+
+def test_a_missing_x_plane_region_is_said_plainly() -> None:
+    """Building Hawaii, a user read "the Global DSF was missing" and, from the engine, command-line
+    options (2026-09-22): the region was not installed in his X-Plane 12. The page names the square
+    and says what to do; the estimate of step 3 already stops on it, before anything downloads."""
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), m.codeText("DSF_GLOBAL_SCENERY_MISSING", {tile: "+19-156"}))))',
+    )
+    for message, remedy in words:
+        assert "+19-156" in message and "DSF" not in message
+        assert "X-Plane" in remedy and "--" not in remedy
+    assert "installeur" in words[0][1] and "installer" in words[1][1]
+
+
 def test_a_table_wider_than_its_box_keeps_its_scrollbar() -> None:
     """Where a scrollbar takes room, WebKit added a table's after placing what follows it: the line
     under step 3's per-tile table overlapped the table until the page moved (a user, 2026-09-22).

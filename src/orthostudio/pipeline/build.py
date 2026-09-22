@@ -1773,9 +1773,12 @@ def declare(
                 raise OsxpError(
                     "DSF_GLOBAL_SCENERY_MISSING",
                     context={"tile": name, "path": str(global_scenery_dsf(Path(where), tile))},
-                    remedy="Give --global-scenery (the X-Plane 12 Global Scenery folder) or "
-                    "--xplane; --no-xp12-rasters --no-overlay builds without it (no XP12 sea "
-                    "level, no overlay pack).",
+                    # plain words first: the page shows its own, the command line these (a
+                    # user of the app read only the options below, 2026-09-22)
+                    remedy=f"Install the region with {name} with X-Plane's installer (Add or "
+                    "Remove Scenery). From the command line, --global-scenery or --xplane names "
+                    "the folder, and --no-xp12-rasters --no-overlay builds without it (no XP12 "
+                    "sea level, no overlay pack).",
                 )
             if spec.xp12_rasters:
                 xp12 = reg.node(

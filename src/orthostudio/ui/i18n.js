@@ -580,7 +580,7 @@ const STRINGS = {
     "settings.defaults": "Valeurs par défaut",
     "settings.saved": "Réglages enregistrés.",
     "settings.unsaved": "Changements pas encore enregistrés.",
-    "settings.invalid": "Réglages refusés par le moteur : {detail}",
+    "settings.invalid": "Non enregistré : {detail}",
     "settings.ortho4xp": "Nom dans Ortho4XP : {name}",
     "settings.recommended": "conseillé",
     "settings.search": "Chercher un réglage",
@@ -1428,7 +1428,7 @@ const STRINGS = {
     "settings.defaults": "Default values",
     "settings.saved": "Settings saved.",
     "settings.unsaved": "Changes not saved yet.",
-    "settings.invalid": "Settings rejected by the engine: {detail}",
+    "settings.invalid": "Not saved: {detail}",
     "settings.ortho4xp": "Name in Ortho4XP: {name}",
     "settings.recommended": "recommended",
     "settings.search": "Search the settings",
@@ -1709,14 +1709,14 @@ const DATA_DIR_WHY = {
     file: ["{path} est un fichier, pas un dossier.", "Choisissez un dossier."],
     xplane: ["{path} est dans le dossier Custom Scenery d'X-Plane, dont X-Plane lit chaque dossier comme un décor.", "Choisissez un dossier en dehors de Custom Scenery."],
     unwritable: ["OrthoStudio XP ne peut pas écrire dans {path}.", "Choisissez un dossier où vous pouvez écrire : un disque peut être en lecture seule."],
-    links: ["Le disque de {path} ne convient pas (exFAT ou FAT32, par exemple) : chaque tuile y prendrait trois fois plus de place.", "Choisissez un dossier sur un disque formaté en APFS ou Mac OS Extended (Mac), NTFS (Windows) ou ext4 (Linux). Reformater un disque efface son contenu."],
+    links: ["Le disque de {path} ne convient pas (exFAT ou FAT32, par exemple) : chaque tuile y prendrait trois fois plus de place.", "Choisissez un dossier sur un disque formaté en APFS ou Mac OS Extended (Mac), NTFS (Windows) ou ext4 (Linux) ; l'Utilitaire de disque (Mac) ou les Propriétés du disque (Windows) disent son format. Reformater un disque efface son contenu."],
   },
   en: {
     relative: ["“{path}” is not a full path.", "Choose the folder with “Choose the folder for the tiles…”, or type its full path."],
     file: ["{path} is a file, not a folder.", "Choose a folder."],
     xplane: ["{path} is inside X-Plane's Custom Scenery, where X-Plane reads every folder as scenery.", "Choose a folder outside Custom Scenery."],
     unwritable: ["OrthoStudio XP cannot write to {path}.", "Choose a folder you can write to: a disk may be read-only."],
-    links: ["The disk of {path} will not do (exFAT or FAT32, for instance): each tile would take three times the space there.", "Choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux). Formatting a disk erases it."],
+    links: ["The disk of {path} will not do (exFAT or FAT32, for instance): each tile would take three times the space there.", "Choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux); Disk Utility (Mac) or the disk's Properties (Windows) tell its format. Formatting a disk erases it."],
   },
 };
 
@@ -1752,7 +1752,7 @@ const CODES = {
     OSM_COAST_OPEN_END: ["Le trait de côte OSM est ouvert : la mer ne peut pas être déterminée.", "Corrigez la côte dans JOSM ou attendez le repli land-polygons."],
     OSM_LAKE_TREATED_AS_SEA: ["Un lac dépasse max_area : il est traité comme la mer.", "Augmentez max_area dans Avancé si ce n'est pas voulu."],
     OSM_RUNWAY_REJECTED: ["Une piste OSM a été rejetée (géométrie invalide).", "Aucune action ; corrigez OSM si l'aéroport compte."],
-    DSF_GLOBAL_SCENERY_MISSING: ["Le DSF de Global Scenery est introuvable pour cette tuile.", "Vérifiez le dossier X-Plane dans Réglages."],
+    DSF_GLOBAL_SCENERY_MISSING: ["Le décor d'X-Plane 12 de {tile} n'est pas installé.", "Installez cette partie du monde avec l'installeur d'X-Plane (ajouter ou retirer des scènes), puis réessayez. S'il est installé, vérifiez le dossier X-Plane dans Réglages."],
     XP_RUNNING: ["X-Plane est en cours d'exécution : l'installation est refusée.", "Quittez X-Plane puis installez depuis la Bibliothèque."],
     XP_DIR_NOT_FOUND: (c) => {
       const remedy = "Choisissez le dossier où X-Plane 12 est installé : il contient « Resources » et « Custom Scenery ».";
@@ -1800,7 +1800,7 @@ const CODES = {
     OSM_COAST_OPEN_END: ["The OSM coastline is open: the sea cannot be determined.", "Fix the coast in JOSM or wait for the land-polygons fallback."],
     OSM_LAKE_TREATED_AS_SEA: ["A lake exceeds max_area: it is treated as sea.", "Raise max_area in Advanced if unwanted."],
     OSM_RUNWAY_REJECTED: ["An OSM runway was rejected (invalid geometry).", "No action; fix OSM if the airport matters."],
-    DSF_GLOBAL_SCENERY_MISSING: ["The Global Scenery DSF is missing for this tile.", "Check the X-Plane folder in Settings."],
+    DSF_GLOBAL_SCENERY_MISSING: ["X-Plane 12's own scenery for {tile} is not installed.", "Install that part of the world with X-Plane's installer (Add or Remove Scenery), then try again. If it is installed, check the X-Plane folder in Settings."],
     XP_RUNNING: ["X-Plane is running: installation is refused.", "Quit X-Plane, then install from the Library."],
     XP_DIR_NOT_FOUND: (c) => {
       const remedy = "Choose the folder X-Plane 12 is installed in: it holds “Resources” and “Custom Scenery”.";
