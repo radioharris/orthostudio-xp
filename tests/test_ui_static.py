@@ -4852,3 +4852,18 @@ def test_the_flight_plan_is_not_offered_in_this_release() -> None:
 
     notes = (UI / ".." / ".." / ".." / "docs" / "releases" / "0.1.14.md").resolve()
     assert "SimBrief" not in notes.read_text(encoding="utf-8"), "and the notes do not promise it"
+
+
+def test_the_map_is_told_when_its_box_changes() -> None:
+    """Leaflet works out where a click landed from the size it last measured, and it measures
+    only when told. Nothing told it: `invalidateSize` was called when the map was shown and
+    never again, so a window resized, a panel opened or the browser's own zoom changed put every
+    click somewhere else than where the pointer was (a user drawing a shape, 2026-09-24)."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    watched = (
+        "new ResizeObserver(() => m.invalidateSize({ animate: false, pan: false })).observe(el)"
+    )
+    assert watched in map_js, "the map's own element is watched"
+    # and it is set up where the map is made, on that map's element
+    assert map_js.index("function createMap") < map_js.index(watched)
+    assert map_js.index(watched) < map_js.index("function refreshAirports")

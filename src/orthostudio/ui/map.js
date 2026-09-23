@@ -1313,6 +1313,13 @@ export function createPlanMap(ctx) {
       sweepPress(ev, m.mouseEventToLatLng(ev));
     });
     document.addEventListener("mouseup", sweepEnd);
+    // Leaflet works out where a click landed from the size it last measured, and it measures
+    // only when told. Nothing told it: the window resized, a panel opened, the browser's own
+    // zoom changed, and every click after that fell somewhere else than where the pointer was
+    // (a user drawing a shape, 2026-09-24). Watched, it is told.
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => m.invalidateSize({ animate: false, pan: false })).observe(el);
+    }
     setBaseLayer(true);
     renderBorders();
     refreshAirports();
