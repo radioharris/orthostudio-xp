@@ -196,3 +196,37 @@ def test_the_chain_falls_through_to_the_next_source(tmp_path: Path) -> None:
     got = Chain([closed, open_one]).layers(TILE, SPECS)
     assert got and got.source == "library"
     assert got.notes == ("library: not held",)
+
+
+# -- the key a release carries ----------------------------------------------------------------
+
+
+def test_the_address_and_key_are_read_in_three_steps(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """What the user set, then what the build carries, then nothing at all. The repository is
+    public, so it holds neither: a build from source reaches no library and downloads every tile
+    live, as every version before this one (2026-09-23)."""
+    from orthostudio.sources import chain as chain_mod
+    from orthostudio.sources.library import LibrarySource
+
+    monkeypatch.setattr(chain_mod, "shipped_library", lambda: ("https://carried", "carried-key"))
+
+    # nothing set: the build's own address and key answer
+    (carried,) = [s for s in chain_mod.sources_from_settings({}) if isinstance(s, LibrarySource)]
+    assert (carried.base, carried.token) == ("https://carried", "carried-key")
+
+    # the user's own server wins over it
+    mine = {"osm_library": "https://mine/data", "osm_library_token": "my-key"}
+    (chosen,) = [s for s in chain_mod.sources_from_settings(mine) if isinstance(s, LibrarySource)]
+    assert (chosen.base, chosen.token) == ("https://mine/data", "my-key")
+
+    # a build from source carries nothing: no library in the chain at all
+    monkeypatch.setattr(chain_mod, "shipped_library", lambda: ("", ""))
+    assert not [s for s in chain_mod.sources_from_settings({}) if isinstance(s, LibrarySource)]
+
+
+def test_this_repository_carries_no_key() -> None:
+    """The one test that must never be made to pass by adding a file."""
+    from orthostudio.sources.library import shipped_library
+
+    shipped_library.cache_clear()
+    assert shipped_library() == ("", "")

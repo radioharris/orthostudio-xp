@@ -197,10 +197,7 @@ class OsmJob:
             progress=self.progress,
         )
 
-
-    def _prepared(
-        self, tile: TileRef, specs: Sequence[LayerSpec]
-    ) -> dict[str, OsmSnapshot] | None:
+    def _prepared(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
         """The layers from a prepared source, and the line the page shows when one answers."""
         if self.chain is None or self.refresh:
             return None

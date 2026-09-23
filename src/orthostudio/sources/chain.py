@@ -29,8 +29,9 @@ import orjson
 import zstandard
 
 from orthostudio.model import TileRef
+from orthostudio.sources.library import LibrarySource, shipped_library
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
-from orthostudio.sources.prepared import snapshot_from_xml
+from orthostudio.sources.prepared import EMPTY_LAYER_BYTES, PublicSource, snapshot_from_xml
 
 __all__ = [
     "Chain",
@@ -44,13 +45,9 @@ log = logging.getLogger("orthostudio.sources.chain")
 
 GIVE_UP_AFTER = 2
 """Failures of one source in a single build before it is asked nothing more."""
-EMPTY_BYTES = 200
-"""A layer file smaller than this holds no element at all (an empty document is about 100 bytes).
-
-Not an answer, whoever it comes from: 22 % of the tiles the one public library lists hold no road
-at all, and a build that took them would lay scenery with no roads and say nothing (2026-09-19,
-measured again unchanged on 2026-09-23).
-"""
+EMPTY_BYTES = EMPTY_LAYER_BYTES
+"""A layer file smaller than this holds no element at all, whoever publishes it
+(``prepared.EMPTY_LAYER_BYTES``)."""
 
 
 class PreparedSource(Protocol):
@@ -189,17 +186,17 @@ def sources_from_settings(
     is asked first, so its manifest is read by the time the public one is reached. No manifest,
     no whitelist, and that source stays inert.
     """
-    from orthostudio.sources.library import LibrarySource
-    from orthostudio.sources.prepared import PublicSource
-
     out: list[PreparedSource] = []
     folder = str(settings.get("osm_folder", "") or "").strip()
     if folder:
         out.append(FolderSource(folder))
-    url = str(settings.get("osm_library", "") or "").strip()
+    # what the user set wins; what the build carries answers when they set nothing; and a build
+    # from source carries nothing, so it downloads every tile live as every version did before
+    shipped_url, shipped_token = shipped_library()
+    url = str(settings.get("osm_library", "") or "").strip() or shipped_url
     library: LibrarySource | None = None
     if url:
-        token = str(settings.get("osm_library_token", "") or "")
+        token = str(settings.get("osm_library_token", "") or "") or shipped_token
         library = LibrarySource(url, token, cache_dir=cache_dir)
         out.append(library)
     if settings.get("osm_prepared_public", True):

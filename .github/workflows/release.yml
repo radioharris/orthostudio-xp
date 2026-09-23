@@ -46,6 +46,17 @@ jobs:
           cmake -S native/triangle4xp -B native/triangle4xp/build -DCMAKE_BUILD_TYPE=Release
           cmake --build native/triangle4xp/build --config Release
       - run: uv sync --frozen --no-dev
+      # The address and the key of the prepared library, which the repository does not hold: it
+      # is public. Without them the installer reaches no library and downloads every tile live,
+      # exactly as every version before 0.1.15 (docs/specs/osm-prepared.md).
+      - name: Carry the prepared library
+        if: ${{ secrets.OSXP_LIBRARY_URL != '' }}
+        shell: bash
+        env:
+          URL: ${{ secrets.OSXP_LIBRARY_URL }}
+          TOKEN: ${{ secrets.OSXP_LIBRARY_TOKEN }}
+        run: |
+          python -c "import json,os,pathlib; pathlib.Path('src/orthostudio/library.json').write_text(json.dumps({'url': os.environ['URL'], 'token': os.environ['TOKEN']}))"
       - run: >-
           uv run --no-sync python tools/package/build.py --check
           ${{ matrix.machine && format('--machine {0}', matrix.machine) || '' }}

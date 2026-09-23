@@ -19,23 +19,39 @@ source, which is what ``chain.py`` is for.
 
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 
 import orjson
 import zstandard
 
 from orthostudio.model import TileRef
-from orthostudio.sources.chain import EMPTY_BYTES
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
+from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
-__all__ = ["LIBRARY_TIMEOUT_S", "LibraryIndex", "LibrarySource", "parse_manifest"]
+__all__ = [
+    "LIBRARY_TIMEOUT_S",
+    "LibraryIndex",
+    "LibrarySource",
+    "parse_manifest",
+    "shipped_library",
+]
 
 log = logging.getLogger("orthostudio.sources.library")
 
+SHIPPED_NAME = "library.json"
+"""Where a release carries the address and the key: written when the installers are built, from
+the secrets of the repository, never committed.
+
+The repository is public, so neither may live in it. A build from source therefore has no key,
+reaches no library, and downloads every tile live, which is the behaviour of every version before
+this one. Whoever runs their own server fills the two settings instead.
+"""
 MANIFEST_NAME = "manifest.json"
 FORMAT = "osxp-baked-1"
 LIBRARY_TIMEOUT_S = 30.0
@@ -219,3 +235,16 @@ class LibrarySource:
             log.warning("%s: %s of %s holds another tile or layer", self.name, spec.name, tile.name)
             return None
         return snap
+
+
+@functools.cache
+def shipped_library() -> tuple[str, str]:
+    """The address and key this build carries, or two empty strings when it carries none."""
+    try:
+        raw = (resources.files("orthostudio") / SHIPPED_NAME).read_bytes()
+        doc = orjson.loads(raw)
+    except (OSError, ModuleNotFoundError, orjson.JSONDecodeError):
+        return "", ""
+    if not isinstance(doc, dict):
+        return "", ""
+    return str(doc.get("url", "") or ""), str(doc.get("token", "") or "")
