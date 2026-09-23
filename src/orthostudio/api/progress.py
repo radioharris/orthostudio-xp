@@ -191,6 +191,14 @@ RATE_TAU_S = 10.0
 """Time constant of a running node's recent rate (an exponential average of its progress
 between reports): long enough to smooth half-second reports, short enough to forget the slow
 start of the fetcher and to follow a line that slows."""
+SILENT_S = 60.0
+"""A node silent for this long is not extrapolated any more, and the estimate falls back to what
+the weights say. The rate decays with the silence, and the time left is what is missing divided
+by it: a step that stopped reporting made that division approach zero and the page announced
+1 308 980 335 hours remaining (a user, 2026-09-23)."""
+ETA_MAX_S = 24 * 3600.0
+"""Beyond a day, an estimate is not information: the page is told nothing rather than a number
+nobody can act on."""
 EXTRAPOLATE_FROM = 0.02
 """A running node is extrapolated once it has gained this much since it started moving..."""
 EXTRAPOLATE_MIN_S = 2.0
@@ -496,8 +504,13 @@ def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
     if gained < EXTRAPOLATE_FROM or span < EXTRAPOLATE_MIN_S:
         return None
     last = n.fraction_at if n.fraction_at is not None else now
-    rate = n.rate * math.exp(-max(0.0, now - last - REPORT_GRACE_S) / RATE_TAU_S)
-    left = (1.0 - n.fraction) / rate - max(0.0, now - last)
+    silence = max(0.0, now - last)
+    if silence >= SILENT_S:  # nothing to extrapolate from: the weights answer instead
+        return None
+    rate = n.rate * math.exp(-max(0.0, silence - REPORT_GRACE_S) / RATE_TAU_S)
+    if rate <= 0.0:
+        return None
+    left = (1.0 - n.fraction) / rate - silence
     by_gain = (gained - EXTRAPOLATE_FROM) / (TRUST_AT - EXTRAPOLATE_FROM)
     by_time = (span - EXTRAPOLATE_MIN_S) / (TRUST_AFTER_S - EXTRAPOLATE_MIN_S)
     return max(0.0, left), min(1.0, max(0.0, min(by_gain, by_time)))
@@ -719,7 +732,7 @@ def estimate(
     else:
         confidence = 1.0
     band = BAND_MAX - (BAND_MAX - BAND_MIN) * confidence
-    if not math.isfinite(eta):
+    if not math.isfinite(eta) or eta > ETA_MAX_S:
         return Estimate(progress, None, None, None)
     low = eta * (1.0 - BAND_LOW_SHARE * band)
     high = eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band)

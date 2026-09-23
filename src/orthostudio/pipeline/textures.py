@@ -22,6 +22,7 @@ import dataclasses
 import errno
 import io
 import json
+import logging
 import os
 import shutil
 import signal
@@ -110,12 +111,21 @@ __all__ = [
     "write_ter_files",
 ]
 
+log = logging.getLogger("orthostudio.pipeline.textures")
+
 REPORT_NAME = "osxp_textures.json"
 _PROGRESS_PERIOD_S = 0.5
 _PROGRESS_LINE_PERIOD_S = 5.0
 _DEFAULT_ENCODE_S = 0.4
 _PLAN_BATCH = 32
 
+ENCODE_TIMEOUT_S = 300.0
+"""How long one texture's worker may take before the build gives up on it.
+
+A texture encodes in a second or so, and this is not a budget but a rope end: a worker that never
+answers used to hold the whole step, with nothing in flight and nothing said, until the app was
+quit (a user, 2026-09-23). Past this, the texture is one failed texture among many and the build
+goes on."""
 CORRUPT_RETRIES = 2
 """Extra requests for a 200 body that is not a complete image (Ortho4XP ``max_baddata_retries``)."""
 
@@ -826,6 +836,8 @@ class _Pipeline:
         self.states: list[_TexState] = []
         self.by_index: dict[int, _TexState] = {}
         self.pool: ProcessPoolExecutor | None = None
+        self.encode_timeouts = 0
+        """Textures whose worker never answered (:data:`ENCODE_TIMEOUT_S`)."""
         self.io_tasks: set[asyncio.Task[None]] = set()
         self.encode_tasks: set[asyncio.Task[None]] = set()
         self.needed_parents: set[ParentKey] = set()
@@ -1739,7 +1751,30 @@ class _Pipeline:
     async def _after_worker(self, st: _TexState, awaitable: Any, dest: Path) -> None:
         t = st.texture
         try:
-            result: WorkerResult = await awaitable
+            result: WorkerResult = await asyncio.wait_for(awaitable, ENCODE_TIMEOUT_S)
+        except TimeoutError:
+            # A worker that never comes back used to hold the whole build: a user watched the
+            # imagery step sit at 196 textures of 696 with nothing in flight, and only quitting
+            # the app freed it (2026-09-23). A texture encodes in a second; past the timeout it
+            # is one failed texture, said plainly, and the build carries on.
+            self.encoding -= 1
+            self.encode_timeouts += 1
+            log.warning(
+                "%s: encoder did not answer in %.0f s (%d so far); the texture is marked failed",
+                texture_name(t),
+                ENCODE_TIMEOUT_S,
+                self.encode_timeouts,
+            )
+            stuck = OsxpError(
+                "TEX_ENCODE_FAILED",
+                context={
+                    "texture": texture_name(t),
+                    "encoder": self.encoder,
+                    "reason": f"no answer in {ENCODE_TIMEOUT_S:.0f} s",
+                },
+            )
+            self._finish(st, "failed", error=_error_dict(stuck))
+            return
         except asyncio.CancelledError:
             self.encoding -= 1
             self._finish(st, "cancelled")

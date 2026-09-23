@@ -1243,3 +1243,34 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
     assert state["stats"]["done"] + state["stats"]["failed"] == sum(
         len(stage["nodes"]) for tile in state["tiles"] for stage in tile["stages"].values()
     )
+
+
+def test_a_step_that_stops_reporting_does_not_announce_a_billion_hours() -> None:
+    """A user read "Remaining 1 308 980 335 h 33 min" on a build whose imagery step had stopped
+    moving (2026-09-23). The time left is what is missing divided by the recent rate, and that
+    rate decays with the silence: the longer nothing happened, the longer the announcement.
+
+    A node silent for ``SILENT_S`` is not extrapolated any more, the weights answer in its place,
+    and an estimate above ``ETA_MAX_S`` is no estimate at all: the page is told nothing rather
+    than a number nobody can act on.
+    """
+    from orthostudio.api.progress import ETA_MAX_S, SILENT_S, _extrapolation
+
+    class Stalled:
+        status = "running"
+        fraction0 = 0.0
+        fraction0_at = 0.0
+        fraction = 0.28  # 196 textures of 696, as the user had
+        rate = 0.01
+        fraction_at = 0.0
+        weight_s = 100.0
+        started_at = 0.0
+
+    node = cast(Any, Stalled())
+    moving = _extrapolation(node, 5.0)
+    assert moving is not None and moving[0] < ETA_MAX_S
+    assert _extrapolation(node, SILENT_S) is None
+    assert _extrapolation(node, 6 * 3600.0) is None  # never a billion hours again
+
+    node.rate = 0.0  # a line that gives nothing: no division by it either
+    assert _extrapolation(node, 1.0) is None
