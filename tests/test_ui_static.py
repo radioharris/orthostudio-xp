@@ -4592,9 +4592,13 @@ def test_a_flight_plan_gives_its_ends_and_its_route_two_levels() -> None:
     assert "Math.min(ROUTE_ALONG_ZL, top)" in js  # never above what the source offers
     levels = re.search(r"\nfunction renderRouteLevels\(maxZl, lat\) \{.*?\n\}\n", js, re.S)
     assert levels is not None
-    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : planZl()' in levels.group(0)
+    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl)' in levels.group(0)
     click = js[js.index('$("route-all").addEventListener') :][:200]
     assert "routeAlongZl()" in click and "planZl()" not in click
+    # the ends take what the pilot chose in step 1, not what the chosen squares happen to share:
+    # the test that runs the two buttons is below (2026-09-23)
+    ends = js[js.index('$("route-ends").addEventListener') :][:200]
+    assert "routeEndsZl()" in ends and "planZl()" not in ends
     listed = js.index('$("zl-select").addEventListener("change"')
     assert js.index("state.tileZl = {};", listed) < js.index("planChanged();", listed)
     for lang, several in (("en", "Several levels"), ("fr", "Plusieurs niveaux")):
@@ -4658,3 +4662,75 @@ def test_a_route_is_read_from_what_a_pilot_types() -> None:
     # a pasted route keeps its four-letter tokens; the engine leaves out what is not an airport
     assert with_fixes == ["LSGG", "DCT", "DCT", "LFMN"]
     assert empty == []
+
+
+# -- the levels of a flight plan, run rather than read -----------------------------------------
+
+
+def _run_in_node(script: str) -> str:
+    """Run a piece of the page in node, so a rule about its state is checked and not merely read.
+
+    The tests around it assert that the source says a thing; this one asks the source to do it,
+    which is what an ordering bug needs (2026-09-23).
+    """
+    import tempfile
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "run.mjs"
+        path.write_text(script, encoding="utf-8")
+        out = subprocess.run([node, str(path)], capture_output=True, text=True, check=False)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.strip()
+
+
+def test_the_two_ends_of_a_route_keep_step_ones_level_whichever_button_is_pressed_first() -> None:
+    """Pressing "along the route" first put every chosen square at ZL14, so step 1's list followed
+    them there, and "departure and arrival" then took ZL14 from it: the ends came out blurred and
+    step 1 was quietly rewritten, all depending on the order the two buttons were pressed in
+    (2026-09-23). The bug lived between two functions that are each correct on their own, which is
+    why reading them could not find it."""
+    app_js = (ui_dir() / "app.js").read_text(encoding="utf-8")
+    pieces = [
+        _function_body(app_js, name)
+        for name in (
+            "planZl",
+            "routeAlongZl",
+            "routeEndsZl",
+            "tileZl",
+            "chosenLevels",
+            "normalizeLevels",
+        )
+    ]
+    along = re.search(r"\nconst ROUTE_ALONG_ZL = \d+;", app_js)
+    assert along is not None
+    script = (
+        "const state = { tiles: [], tileZl: {}, planZl: 16, zlChosen: 16, settings: null };\n"
+        "const sourceMaxZl = () => 18;\n"
+        + along.group(0)
+        + "\n".join(pieces)
+        + """
+function add(names, zl) {                    // what addRouteTiles does to the levels
+  for (const n of names) {
+    if (!state.tiles.includes(n)) state.tiles.push(n);
+    state.tileZl[n] = zl;
+  }
+  normalizeLevels();
+}
+function press(order) {
+  state.tiles = []; state.tileZl = {}; state.planZl = 16; state.zlChosen = 16;
+  for (const which of order) {
+    if (which === "ends") add(["+46+006", "+43+007"], routeEndsZl());
+    else add(["+45+006", "+44+006"], routeAlongZl());
+  }
+  return { ends: tileZl("+46+006"), along: tileZl("+45+006"), step1: state.planZl };
+}
+console.log(JSON.stringify({ a: press(["ends", "along"]), b: press(["along", "ends"]) }));
+"""
+    )
+    got = json.loads(_run_in_node(script))
+    assert got["a"]["ends"] == 16 and got["a"]["along"] == 14
+    assert got["b"]["ends"] == 16, "the ends keep step 1's level whichever button came first"
+    assert got["b"]["along"] == 14

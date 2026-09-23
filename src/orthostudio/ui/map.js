@@ -1311,17 +1311,37 @@ export function createPlanMap(ctx) {
    * at the points between. It is an aid to choosing squares, so it is drawn over the grid and
    * takes no pointer event; nothing of it is built or saved with the tiles.
    */
+  /**
+   * The route's points with their longitudes unrolled, so that a leg crossing the antimeridian is
+   * drawn the short way. Tokyo to Honolulu is 62 degrees eastward over the Pacific, which is what
+   * ``tilesAlong`` counts and what the two buttons offer; drawn from the raw longitudes it went
+   * the other way, over Asia and the Atlantic, and the map moved to the Gulf of Guinea to show it
+   * (2026-09-23). Leaflet draws a longitude past 180 where it belongs.
+   */
+  function routeLine(points) {
+    let lon = points[0].lon;
+    return points.map((p, i) => {
+      if (i) {
+        let step = p.lon - lon;
+        if (step > 180) step -= 360;
+        if (step < -180) step += 360;
+        lon += step;
+      }
+      return [p.lat, lon];
+    });
+  }
+
   function drawRoute() {
     if (!map || !layers.route) return;
     layers.route.clearLayers();
     const points = (ctx.route?.() || {}).points || [];
     if (points.length < 2) return;
-    const line = points.map((p) => [p.lat, p.lon]);
+    const line = routeLine(points);
     L.polyline(line, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
     L.polyline(line, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
     points.forEach((p, i) => {
       const end = i === 0 || i === points.length - 1;
-      L.circleMarker([p.lat, p.lon], {
+      L.circleMarker(line[i], {
         pane: "osxpRoute",
         radius: end ? 5 : 3,
         weight: 2,
@@ -2431,7 +2451,7 @@ export function createPlanMap(ctx) {
       if (!fit || !map || points.length < 2) return;
       // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map
       // (measured 2026-09-19), while the zoom it computes is right.
-      const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lon]));
+      const bounds = L.latLngBounds(routeLine(points));
       const zoom = Math.min(9, map.getBoundsZoom(bounds, false, L.point(60, 60)));
       map.setView(bounds.getCenter(), zoom);
     },

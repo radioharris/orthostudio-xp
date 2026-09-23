@@ -184,6 +184,9 @@ const state = {
   tileZl: {},
   /** The level of step 1's list, kept while the list reads "Several levels". */
   planZl: null,
+  // what the pilot last chose in step 1's list, which is not always what the chosen squares
+  // share: the flight plan's two ends take this one (2026-09-23)
+  zlChosen: null,
   airport: null,
   /** The flight plan drawn on the map: `{points: [{icao, name, lat, lon}]}` or null. */
   route: null,
@@ -3000,7 +3003,7 @@ function renderRouteLevels(maxZl, lat) {
     sel.hidden = !chosen.length;
     if (!chosen.length) continue;
     const levels = [...new Set(chosen.map(tileZl))];
-    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : planZl();
+    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl);
     clear(sel);
     sel.append(...zlOptions(maxZl, lat, { short: true }));
     sel.value = String(levels.length === 1 ? levels[0] : fallback);
@@ -3316,6 +3319,18 @@ function sourceMaxZl() {
 /** The level of the squares along a route, never above what the source offers. */
 function routeAlongZl(top = sourceMaxZl()) {
   return Math.min(ROUTE_ALONG_ZL, top);
+}
+
+/** What the departure and arrival take unless the pilot says otherwise: the level chosen in step
+ * 1's list, and not the one the chosen squares happen to share.
+ *
+ * Pressing "along the route" on an empty selection put every square at ZL14, so step 1's list
+ * followed them there, and the two ends then landed at ZL14 as well: the one thing this feature
+ * exists to prevent, and it depended on the order the two buttons were pressed in (2026-09-23).
+ */
+function routeEndsZl(top = sourceMaxZl()) {
+  const chosen = Number(state.zlChosen) || Number(state.settings?.essential?.zoom_level) || planZl();
+  return Math.min(chosen, top);
 }
 
 /** The level a square will be built at: its own (the flight plan's groups), else step 1's. */
@@ -5488,7 +5503,7 @@ async function boot() {
       drawRoute();
     }
   });
-  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || planZl()));
+  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || routeEndsZl()));
   $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
   $("route-simbrief").addEventListener("click", routeFromSimbrief);
   $("route-clear").addEventListener("click", clearRoute);
@@ -5509,6 +5524,7 @@ async function boot() {
   $("zl-select").addEventListener("change", () => {
     // Chosen here, the level is every chosen square's: the flight plan's two levels give way to it.
     state.planZl = Number($("zl-select").value) || planZl();
+    state.zlChosen = state.planZl;  // what the pilot asked for, which the ends keep
     state.tileZl = {};
     renderTiles();
     renderZlOptions();
