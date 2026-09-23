@@ -9,6 +9,7 @@ Every check is data (``Check``) so the CLI can print it or emit JSON.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import platform
 import shutil
@@ -276,6 +277,59 @@ def _triangle() -> Check:
     )
 
 
+def _map_data(offline: bool) -> Check:
+    """Which map data servers answer, and what they say.
+
+    The question nobody could answer on 2026-09-22: two of the three public Overpass machines the
+    app asked had become unusable -- one silent, one refusing everyone -- and it was found by
+    three users' failed builds. ``check_health`` existed and nothing called it. Now the doctor
+    does, so the answer takes five seconds and comes before the complaints.
+    """
+    if offline:
+        return Check("map_data", "skip", "network probe skipped (pass --online to run it)", {})
+    from orthostudio.sources.osm import MIRRORS, OverpassClient
+
+    async def probe() -> dict[str, Any]:
+        client = OverpassClient(health_timeout_s=5.0)
+        async with client:
+            health = await client.check_health()
+        return {
+            code: {
+                "state": h.state,
+                "status": h.status,
+                "seconds": round(h.elapsed_s, 2),
+                "error": h.error,
+            }
+            for code, h in health.items()
+        }
+
+    t0 = time.perf_counter()
+    try:
+        answers = asyncio.run(probe())
+    except Exception as exc:  # the probe must never crash the doctor
+        return Check("map_data", "fail", f"the probe failed: {type(exc).__name__}: {exc}", {})
+    details: dict[str, Any] = {
+        "seconds": round(time.perf_counter() - t0, 2),
+        "servers": answers,
+        "asked": [m.code for m in MIRRORS],
+    }
+    ordinary = [m.code for m in MIRRORS if not m.last_resort]
+    answered = [code for code in ordinary if answers.get(code, {}).get("state") != "open"]
+    names = ", ".join(f"{c} {answers[c].get('status') or answers[c].get('error') or '?'}"
+                      for c in ordinary)  # fmt: skip
+    if not answered:
+        return Check("map_data", "fail", f"no map data server answered ({names})", details)
+    if len(answered) < len(ordinary):
+        silent = ", ".join(c for c in ordinary if c not in answered)
+        return Check(
+            "map_data",
+            "warn",
+            f"{len(answered)} of {len(ordinary)} answered; silent: {silent}",
+            details,
+        )
+    return Check("map_data", "ok", f"{len(answered)} map data servers answered", details)
+
+
 def _bing(offline: bool) -> Check:
     if offline:
         return Check("bing", "skip", "network probe skipped (pass --online to run it)", {})
@@ -447,6 +501,7 @@ def run_doctor(
         _junctions,
         _window,
         lambda: _bing(offline),
+        lambda: _map_data(offline),
         lambda: _store(store_root),
         lambda: _chunks(chunks_root),
     ):

@@ -43,6 +43,7 @@ def test_doctor_json_offline(tmp_path: Path) -> None:
         "junctions",
         "window",
         "bing",
+        "map_data",
         "store",
         "chunks",
     ]
@@ -53,6 +54,7 @@ def test_doctor_json_offline(tmp_path: Path) -> None:
         and "ispc" in by_name["encoder"]["details"]["available"]
     )
     assert by_name["bing"]["status"] == "skip"
+    assert by_name["map_data"]["status"] == "skip"  # offline asks no server anything
     assert by_name["disk"]["status"] in ("ok", "warn")
     text = runner.invoke(app, ["doctor", "--offline"])
     assert text.exit_code == 0 and "[skip] bing" in text.output
