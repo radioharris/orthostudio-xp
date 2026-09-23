@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -884,3 +885,52 @@ def test_a_round_that_asks_nobody_is_not_repeated() -> None:
     took = run(go())
     assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
     assert len(transport.sent) <= len(MIRRORS), "nobody is asked twice while the quota holds"
+
+
+def test_a_quota_refusal_never_doubles_whether_or_not_a_delay_is_named() -> None:
+    """The public servers mostly send 429 with no ``Retry-After``. Telling a quota refusal apart
+    by whether that header came meant the commonest one fell through to the cooldown built for a
+    machine that is down: the cluster shut for ten minutes, then twenty, then forty, which is the
+    outage of 22 September made by us instead of by them (found in review, 2026-09-23)."""
+    from orthostudio.sources.osm import COOLDOWN_S, QUOTA_COOLDOWN_S, MirrorBoard, _retry_after
+
+    def closes(*, seconds: float | None, quota: bool) -> list[int]:
+        board = MirrorBoard()
+        board.register(MIRRORS, COOLDOWN_S)
+        out: list[int] = []
+        for _ in range(3):
+            board.open("de", reason="t", seconds=seconds, quota=quota)
+            state = board._states["de"]
+            out.append(round(state.open_until - time.monotonic()))
+            state.open_until = 0.0
+        return out
+
+    assert closes(seconds=None, quota=True) == [QUOTA_COOLDOWN_S] * 3
+    assert closes(seconds=5.0, quota=True) == [5, 5, 5]
+    assert closes(seconds=7200.0, quota=True) == [3600, 3600, 3600]  # an hour is the most
+    doubling = closes(seconds=None, quota=False)  # a machine that is down still doubles
+    assert doubling == [COOLDOWN_S, 2 * COOLDOWN_S, 4 * COOLDOWN_S]
+
+    # and the header is read however it is written (RFC 9110 allows a date)
+    assert _retry_after({"retry-after": "5.5"}) == 5.5
+    assert _retry_after({"retry-after": "nonsense"}) is None
+    assert (_retry_after({"retry-after": "Wed, 23 Sep 2036 20:00:00 GMT"}) or 0) > 0
+
+
+def test_a_429_shuts_the_cluster_for_what_it_asked_and_no_longer() -> None:
+    """Through the client, not the board: what a tile actually meets."""
+    quota = HttpReply(429, b"", {}, 0.01)  # no Retry-After, as they send
+    transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
+    c = client(transport, rounds=1)
+
+    async def go() -> None:
+        with pytest.raises(OsxpError):
+            await c.fetch_layer(TileRef(43, 5), "coastline")
+
+    run(go())
+    aside = c._board.last_errors()
+    assert aside, "every mirror answered 429"
+    for code in aside:
+        state = c._board._states[code]
+        left = state.open_until - time.monotonic()
+        assert left <= 61.0, f"{code} is shut for {left:.0f} s over a quota refusal"

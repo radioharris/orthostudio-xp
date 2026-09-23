@@ -83,6 +83,13 @@ DEFAULT_QUERY_TIMEOUT_S = 120
 CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
 COOLDOWN_S = 600.0
+QUOTA_COOLDOWN_S = 60.0
+"""How long a server that refused our address is left alone when it names no delay itself.
+
+Most of them name none. Long enough that a build stops asking, short enough that the next tile
+tries again; the doubling cooldown meant for a machine that is down would shut the whole cluster
+for ten minutes, then twenty (found in review, 2026-09-23)."""
+
 MAX_COOLDOWN_S = 3600.0
 MAX_ATTEMPTS = 5
 """Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
@@ -831,22 +838,29 @@ class MirrorBoard:
                 code=code, healthy=state != "open", state=state, error=st.last_error
             )
 
-    def open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
+    def open(
+        self, code: str, *, reason: str, seconds: float | None = None, quota: bool = False
+    ) -> None:
         with self._lock:
             st = self._states[code]
             st.failures += 1
             st.last_error = reason
             # a server that named a delay is left alone until it has passed, whatever a round of
             # this layer or of another would like
-            st.rate_limited = seconds is not None
-            if seconds is not None:
-                # the server named a delay: that is the answer, not a floor to argue with. Taking
-                # max(cooldown, Retry-After) shut three machines for ten minutes over a five
-                # second quota refusal, and armed twenty for the next (2026-09-23).
-                st.open_until = time.monotonic() + min(max(seconds, 1.0), MAX_COOLDOWN_S)
+            st.rate_limited = quota
+            if quota:
+                # What was refused is our address, not this machine, so the wait is what the
+                # server asked for and the doubling meant for a machine that is down does not
+                # apply. Telling the two apart by whether a ``Retry-After`` header came is what
+                # the first attempt at this did, and the servers mostly send none: a 429 then
+                # shut the whole cluster for ten minutes, then twenty, then forty, which is the
+                # outage of 2026-09-22 made by us rather than by them (found in review,
+                # 2026-09-23). A delay longer than an hour is still capped, since no build waits
+                # that long for one layer.
+                wait = QUOTA_COOLDOWN_S if seconds is None else max(seconds, 1.0)
+                st.open_until = time.monotonic() + min(wait, MAX_COOLDOWN_S)
             else:
                 st.open_until = time.monotonic() + st.cooldown_s
-                # a quota refusal says nothing about the machine, so it does not double either
                 st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
 
     def close(self, code: str, cooldown_s: float) -> None:
@@ -1018,13 +1032,17 @@ class OverpassClient:
         now = time.monotonic()
         return {m.code: self._board.health(m.code, now) for m in self.mirrors}
 
-    def _open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
-        self._board.open(code, reason=reason, seconds=seconds)
+    def _open(
+        self, code: str, *, reason: str, seconds: float | None = None, quota: bool = False
+    ) -> None:
+        self._board.open(code, reason=reason, seconds=seconds, quota=quota)
 
-    def _open_cluster(self, cluster: str, *, reason: str, seconds: float | None = None) -> None:
+    def _open_cluster(
+        self, cluster: str, *, reason: str, seconds: float | None = None, quota: bool = False
+    ) -> None:
         for m in self.mirrors:
             if m.cluster == cluster:
-                self._open(m.code, reason=reason, seconds=seconds)
+                self._open(m.code, reason=reason, seconds=seconds, quota=quota)
 
     def _close(self, code: str) -> None:
         self._board.close(code, self.cooldown_s)
@@ -1138,7 +1156,7 @@ class OverpassClient:
             if reply.status == 200:
                 self._close(mirror.code)
         elif reply.status == 429:
-            self._open_cluster(mirror.cluster, reason="health: HTTP 429")
+            self._open_cluster(mirror.cluster, reason="health: HTTP 429", quota=True)
         else:
             self._open(mirror.code, reason=reply.error or f"health: HTTP {reply.status}")
         now = time.monotonic()
@@ -1426,7 +1444,7 @@ class OverpassClient:
             return "OSM_MIRROR_UNREACHABLE", reply.error
         if reply.status == 429:
             delay = _retry_after(reply.headers)
-            self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay)
+            self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay, quota=True)
             # not a failure of the machine: the public servers count requests per address, and a
             # whole region is hundreds of them. Said in those words, since "HTTP 429" told a user
             # nothing while he wondered why his builds had turned random (2026-09-23).
@@ -1468,10 +1486,26 @@ def _cluster_pushed_back(reply: HttpReply) -> bool:
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    raw = headers.get("retry-after")
+    """The delay a server asks for, in seconds, however it writes it.
+
+    RFC 9110 allows a count of seconds or a date, and a server is free to write ``5.5``. Reading
+    only a bare integer sent everything else down the path meant for a machine that is down
+    (found in review, 2026-09-23).
+    """
+    raw = (headers.get("retry-after") or "").strip()
     if not raw:
         return None
     try:
-        return float(int(raw.strip()))
+        return max(0.0, float(raw))
     except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
         return None
+    import datetime as dt
+
+    now = dt.datetime.now(when.tzinfo or dt.UTC)
+    return max(0.0, (when - now).total_seconds())
