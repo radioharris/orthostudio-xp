@@ -25,6 +25,7 @@ from collections import deque
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -57,7 +58,7 @@ from orthostudio.graph import (
 )
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
-from orthostudio.install import detect_xplane, global_scenery_dir
+from orthostudio.install import Library, detect_xplane, global_scenery_dir
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
@@ -1647,13 +1648,32 @@ and never reached the scenery, so a tile of the store built then must be built a
 without overlays keeps the key it has always had, and nothing else is rebuilt."""
 
 
-def _weighed_and_dated(path: Path) -> str | None:
-    """``name:size:when-last-written`` of a file, or ``None`` when it cannot be read."""
+@lru_cache(maxsize=512)
+def _contents_of(path_s: str, _size: int, _mtime_ns: int) -> str:
+    """``name:digest`` of a file, remembered while its size and date stay as they are."""
+    return f"{Path(path_s).name}:{digest_file(path_s)[:16]}"
+
+
+def _by_its_contents(path: Path) -> str | None:
+    """What marks a file of the user's own in the key, or ``None`` when it cannot be read.
+
+    Its size and the time it was last written used to be the mark, and a file restored from a
+    backup, copied with ``cp -R`` or brought back by a cloud folder keeps every byte and changes
+    its date: the relief, the mesh, the DSF and every texture were built again for nothing, which
+    is hours (found in review, 2026-09-23). It also missed the other way, since a tool that keeps
+    timestamps could change a file without changing the mark.
+
+    The size and the date are still used, as the key of a small cache, so one file that covers
+    five hundred squares is read once. Reading is not the cost: 25 MB measured in 2 ms.
+    """
     try:
         stat = path.stat()
     except OSError:
         return None
-    return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    try:
+        return _contents_of(str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
 
 
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
@@ -1678,9 +1698,9 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
         path = Path(part)
         if path.is_dir():
             own = cell_file_in_folder(path, spec.tile.lat, spec.tile.lon)
-            mark = None if own is None else _weighed_and_dated(own)
+            mark = None if own is None else _by_its_contents(own)
         elif path.is_file():
-            mark = _weighed_and_dated(path)
+            mark = _by_its_contents(path)
         elif index == 0:
             continue  # a source named as the base (COP30, the X-Plane relief): not ours to weigh
         else:
@@ -2481,7 +2501,36 @@ def _verify_effects(
             )
             repaired.append("install")
         installed = True
+    if not installed:
+        _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
+
+
+def _remember_the_tile(
+    spec: BuildSpec, pack_dir: Path, manifest: PackManifest, env: BuildEnv
+) -> None:
+    """Put a tile that was built but not installed into the library.
+
+    Only ``install_receipt`` ever wrote a row, so a user who built without installing saw "No
+    tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
+    tile(s) -- 4.09 GB", with nothing offering to install them and nothing saying where they
+    were (found in review, 2026-09-23).
+
+    Here rather than in the pack rule, because the rule is cached: a tile whose pack was already
+    in the store would never have been recorded. ``keep_built_by`` so that a tile imported from
+    Ortho4XP and rebuilt here does not lose what it is.
+    """
+    # a build is not lost over its library row
+    with contextlib.suppress(Exception), Library(env.library_path) as lib:
+        lib.register(
+            spec.tile,
+            manifest.provider,
+            manifest.zl,
+            pack_dir,
+            "osxp",
+            manifest.keys,
+            keep_built_by=True,
+        )
 
 
 def _learn_texture_cost(scheduler: Scheduler, graphs: Sequence[TileNodes], col: _Collector) -> None:

@@ -342,3 +342,27 @@ def test_taking_a_tile_out_leaves_the_users_own_copy_alone() -> None:
     ]
     # and a tile that is only his archive is not ours to take out at all
     assert packs.remove("zOrthoStudio_+43+005") is False
+
+
+def test_a_tile_goes_above_the_mesh_as_well_as_above_autoortho() -> None:
+    """The insertion looked for AutoOrtho and stopped there, so an AutoOrtho line sitting below
+    a base mesh put the tile below the mesh too. X-Plane draws the higher one, so the square
+    never appeared in the sim while the Library said it was installed (found in review,
+    2026-09-23)."""
+    for lines in (
+        b"SCENERY_PACK Custom Scenery/XPME_Europe/\nSCENERY_PACK Custom Scenery/z_autoortho/\n",
+        b"SCENERY_PACK Custom Scenery/z_autoortho/\nSCENERY_PACK Custom Scenery/XPME_Europe/\n",
+    ):
+        packs = SceneryPacks.from_bytes(
+            b"I\n1000 Version\nSCENERY\n\nSCENERY_PACK *GLOBAL_AIRPORTS*\n" + lines
+        )
+        packs.ensure("zOrthoStudio_+46+006", kind="ortho")
+        order = [
+            line.split(" ", 1)[1]
+            for line in packs.to_bytes().decode().splitlines()
+            if line.startswith("SCENERY_PACK")
+        ]
+        mine = next(i for i, n in enumerate(order) if "zOrthoStudio" in n)
+        assert mine < next(i for i, n in enumerate(order) if "XPME" in n), order
+        assert mine < next(i for i, n in enumerate(order) if "autoortho" in n), order
+        assert mine > next(i for i, n in enumerate(order) if "GLOBAL_AIRPORTS" in n), order

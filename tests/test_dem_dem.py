@@ -6,6 +6,8 @@ Spec: ``docs/specs/dem.md`` sections 8 and 9 (acceptance A6, A7).
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -559,13 +561,20 @@ def test_a_relief_file_of_ones_own_is_weighed_so_a_better_one_is_read(tmp_path: 
     own.write_bytes(b"\x01" * 4000)  # the same path, a better file
     assert stamp(str(own)) != before, "so the tile is built again"
 
+    # and it is the bytes that are weighed, not the date: a file restored from a backup, copied
+    # with cp -R or brought back by a cloud folder used to rebuild the relief, the mesh, the DSF
+    # and every texture for nothing (found in review, 2026-09-23)
+    own.write_bytes(b"\x00" * 2000)
+    os.utime(own, (time.time() + 500, time.time() + 500))
+    assert stamp(str(own)) == before, "the same bytes are the same relief"
+
     folder = tmp_path / "lidar"
     folder.mkdir()
     (folder / "N49W122.hgt").write_bytes(b"\x00" * 100)
     was = stamp(f"COP30;{folder}")
     assert stamp("COP30") == "", "a named source alone keeps the key it has always had"
     assert stamp("COP30;HRDEM") == "2:HRDEM", "and so does a source named as an overlay"
-    assert was.startswith("2:N49W122.hgt:100:"), "a folder of one's own is weighed as before"
+    assert was.startswith("2:N49W122.hgt:"), "a folder of one's own is weighed as before"
 
 
 def test_the_relief_of_ones_own_says_what_to_do_about_it(tmp_path: Path) -> None:

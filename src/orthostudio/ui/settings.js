@@ -8,6 +8,7 @@
 // node), the DOM last; app.js owns the saved settings, the draft, and the Save button.
 
 import { photoValues } from "./colour.js";
+import { FLIGHT_PLAN } from "./release.js";
 import { fmtInt, fmtNum, homely, t } from "./i18n.js";
 import { colourPreview } from "./preview.js";
 import { detailLabel, detailName } from "./map.js";
@@ -822,7 +823,9 @@ function renderQuestions(box, view) {
     h("div", { class: "sub-question" }, h("label", { class: "sub-question-title", for: "q-xplane-dir" }, t("settings.q.xplane_other")),
       h("div", { class: "path-row" }, folder, choose))));
   box.append(dataQuestion(view));
-  box.append(simbriefQuestion(view));
+  // it asks for a SimBrief name and its help points at a Plan button this release does
+  // not have (found in review, 2026-09-23)
+  if (FLIGHT_PLAN) box.append(simbriefQuestion(view));
   box.append(questionBox(view, "overlays", radios(view, "overlays", "q-overlays", getPath(d, "essential.overlays"))));
 
   const providerChoices = questionChoices("provider", d, { providers: view.providers });

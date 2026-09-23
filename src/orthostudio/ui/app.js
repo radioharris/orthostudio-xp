@@ -24,6 +24,7 @@ import {
   tOpt,
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
+import { FLIGHT_PLAN } from "./release.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, routeLength, tileName, tilesAlong, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
@@ -3498,18 +3499,6 @@ async function planRequest() {
 /** The most tiles one build takes (orthostudio.api.models.MAX_TILES); a test keeps the two equal.
  * Beyond it the Plan says so in plain words and asks nothing: the engine's answer was a list
  * error that a user took for a limit of the program (64 then, 2026-09-22). */
-/**
- * Whether the flight plan is offered. It waits for 0.1.15.
- *
- * Choosing squares along a route is a whole feature of its own -- a field, two buttons, two
- * detail levels, SimBrief, the line on the map -- and it arrived in the same release as three
- * user faults that people are waiting on. A release carrying both is one nobody can check: most
- * of what the reviews found before 0.1.14 was cut landed in this feature, and none of it in the
- * faults. So it is closed here rather than taken out: its code, its tests and its words stay,
- * the page does not offer it, and turning it back on is this one line (2026-09-23).
- */
-const FLIGHT_PLAN = false;
-
 const MAX_BUILD_TILES = 500;
 
 /** How long the Plan waits after a change before working out the cost: a few clicks on the map

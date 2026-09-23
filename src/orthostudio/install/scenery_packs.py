@@ -269,12 +269,15 @@ class SceneryPacks:
             last_ortho = next((i for i, x in reversed(entries) if x.is_ortho), None)
             if last_ortho is not None:
                 return max(last_ortho + 1, floor)
+        # Above **both**, whichever comes first. It looked for AutoOrtho and stopped there, so
+        # an AutoOrtho line below a base mesh put the tile below the mesh too: X-Plane then draws
+        # the mesh, the square never appears in the sim, and the Library says installed (found in
+        # review, 2026-09-23).
         first_ao = next((i for i, x in entries if x.is_autoortho and i >= floor), None)
-        if first_ao is not None:
-            return first_ao
         first_mesh = next((i for i, x in entries if x.is_mesh and i >= floor), None)
-        if first_mesh is not None:
-            return first_mesh
+        above = [i for i in (first_ao, first_mesh) if i is not None]
+        if above:
+            return min(above)
         return len(self.body)
 
     # ------------------------------------------------------------ mutators

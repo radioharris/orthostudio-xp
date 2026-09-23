@@ -4809,8 +4809,16 @@ def test_the_flight_plan_is_not_offered_in_this_release() -> None:
     """Choosing squares along a route is a feature of its own, and it arrived in the same
     release as three faults users are waiting on. It waits for 0.1.15: its code, its tests and
     its words stay, the page does not offer it, and one line turns it back on (2026-09-23)."""
+    release_js = (UI / "release.js").read_text(encoding="utf-8")
+    assert "export const FLIGHT_PLAN = false;" in release_js, "the switch is off for this release"
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "const FLIGHT_PLAN = false;" in app_js, "the switch is off for this release"
+    assert 'import { FLIGHT_PLAN } from "./release.js";' in app_js, "and there is one of it"
+
+    # Settings asked for a SimBrief name and its help pointed at a Plan button this release does
+    # not have (found in review, 2026-09-23)
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "if (FLIGHT_PLAN) box.append(simbriefQuestion(view));" in settings_js
+    assert 'import { FLIGHT_PLAN } from "./release.js";' in settings_js
 
     wiring = _function_body(app_js, "wireFlightPlan")
     assert '$("plan-route").hidden = !FLIGHT_PLAN;' in wiring

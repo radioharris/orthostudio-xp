@@ -169,3 +169,59 @@ def test_the_credit_of_the_imagery_travels_with_the_pack(tmp_path: Path) -> None
     bare.mkdir()
     _write_credits(bare, T, {"version": "0"})
     assert not (bare / CREDITS_NAME).exists()
+
+
+def test_a_tile_built_without_installing_is_in_the_library(tmp_path: Path) -> None:
+    """Only installing ever wrote a library row, so a user who built without installing read "No
+    tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
+    tile(s) -- 4.09 GB", with nothing offering to install them and nothing saying where they
+    were (found in review, 2026-09-23)."""
+    import inspect
+
+    from orthostudio.install import Library
+    from orthostudio.pipeline.build import _remember_the_tile, _verify_effects
+    from orthostudio.pipeline.pack import PackManifest
+
+    library = tmp_path / "library.sqlite"
+    pack_dir = tmp_path / "tiles" / "zOrthoStudio_+51+000"
+    pack_dir.mkdir(parents=True)
+    tile = TileRef(51, 0)
+    from orthostudio.pipeline.pack import ArtefactEntry
+
+    manifest = PackManifest(
+        tile=tile.name,
+        provider="BI",
+        zl=16,
+        artefacts={"dsf": ArtefactEntry("d" * 64, "e" * 64, "tile.dsf")},
+    )
+
+    class JustTheLibrary:  # all ``_remember_the_tile`` reads of the environment
+        def __init__(self, path: Path) -> None:
+            self.library_path = path
+
+    env = JustTheLibrary(library)
+
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, env)
+    with Library(library) as lib:
+        rows = lib.list(tile=tile)
+    assert [(r.provider, r.zl, r.built_by, r.path) for r in rows] == [("BI", 16, "osxp", pack_dir)]
+
+    # a tile imported from Ortho4XP and then built here keeps what it is, or Delete would stop
+    # refusing a folder it did not make
+    with Library(library) as lib:
+        lib.register(tile, "BI", 16, pack_dir, "ortho4xp", None)
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, env)
+    with Library(library) as lib:
+        assert lib.list(tile=tile)[0].built_by == "ortho4xp"
+
+    # and a library that will not open never costs anyone his build
+    broken = JustTheLibrary(tmp_path / "no" / "such.sqlite")
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, broken)
+
+    # the wiring, read rather than run: building a TileNodes costs more than the change itself
+    body = inspect.getsource(_verify_effects)
+    assert "if not installed:\n        _remember_the_tile(" in body
+
+
+def _spec_for(tile: TileRef, tmp_path: Path) -> BuildSpec:
+    return BuildSpec(tile=tile, provider="BI", zl=16, out_dir=tmp_path / "tiles", config={})
