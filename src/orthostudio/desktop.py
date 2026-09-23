@@ -17,6 +17,7 @@ launch or in a virtual machine, and the app showed nothing meanwhile (a user ask
 
 from __future__ import annotations
 
+import contextlib
 import http.server
 import json
 import socket
@@ -54,6 +55,12 @@ __all__ = [
 
 APP_NAME = "OrthoStudio XP"
 LOG_NAME = "serve.log"
+LOG_MAX_BYTES = 8 * 1024 * 1024
+"""How large ``serve.log`` may grow before the run before it is set aside as ``serve.log.1``.
+
+It is appended to for ever, and since it holds every stage of every build a user asked to
+send it was being asked for a file without an end (found in review, 2026-09-23). One previous
+log is kept, which is what a report needs: the run that went wrong, and the one before it."""
 DEFAULT_ARGS = ("serve", "--open", "--quit-when-closed")
 ENGINE_ARGS = ("serve", "--no-open", "--quit-when-closed")
 """What the engine of a window is started with: the window shows the page, not the browser."""
@@ -141,6 +148,18 @@ def log_path() -> Path:
     if sys.platform.startswith("linux"):
         return osxp_home() / "log" / LOG_NAME
     return Path(user_log_dir(APP_NAME, appauthor=False)) / LOG_NAME
+
+
+def roll_log(path: Path, limit: int = LOG_MAX_BYTES) -> None:
+    """Set the log aside as ``<name>.1`` when it has grown past ``limit``, keeping one.
+
+    Nothing here may stop the app from starting: a log that cannot be moved is simply appended
+    to, which is what happened before this existed.
+    """
+    with contextlib.suppress(OSError):
+        if path.stat().st_size <= limit:
+            return
+        path.replace(path.with_name(path.name + ".1"))
 
 
 def opening_page(port: int, log: Path) -> bytes:
@@ -471,6 +490,7 @@ def main(
     not open the page again."""
     path = log_path() if log is None else Path(log)
     path.parent.mkdir(parents=True, exist_ok=True)
+    roll_log(path)
     starting = not argv
     if (
         starting

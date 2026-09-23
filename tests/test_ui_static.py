@@ -2247,7 +2247,14 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     assert toggle.index("tilesInBuilds(activeJobs()).has(name)") < toggle.index("addTiles([name])")
     assert 't("plan.tile_in_build"' in toggle
     add = _function_body(app_js, "addTiles")
-    assert "if (building.has(n)) skipped.push(n);" in add and "return skipped;" in add
+    assert "if (building.has(n)) skipped.push(n);" in add
+    assert "return { skipped, capped };" in add
+    # the cap lived in the mouse sweep alone, so a flight plan added nine hundred squares and the
+    # estimate then refused the whole selection (found in review, 2026-09-23)
+    assert "state.tiles.length >= MAX_BUILD_TILES" in add, "every way of adding squares is capped"
+    assert "sayTilesInBuild(addTiles(" in _function_body(
+        app_js, "addRouteTiles"
+    ) or "addTiles(names)" in _function_body(app_js, "addRouteTiles")
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
     row = _function_body(app_js, "libraryRow")
@@ -4778,3 +4785,17 @@ def test_a_route_that_goes_round_the_world_keeps_every_leg_the_short_way() -> No
     assert all(abs(step) <= 180 for step in steps), steps
     answer = _node_json("map.js", f"m.routePieces({json.dumps(round_world)})")
     assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_selection_full_of_squares_says_so_in_both_languages() -> None:
+    """The cap lived in the mouse sweep alone: a flight plan across a continent added its nine
+    hundred squares, and the estimate then refused the whole selection with no way forward but
+    taking four hundred out by hand (found in review, 2026-09-23)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 't("plan.tiles_capped"' in _function_body(app_js, "sayTilesInBuild")
+    assert 't("plan.tiles_capped"' in _function_body(app_js, "toggleTile")
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        words = tables[lang]["plan.tiles_capped"]
+        assert "{max}" in words and "{n}" in words, lang

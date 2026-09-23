@@ -380,3 +380,40 @@ def test_the_close_button_asks_again_on_a_later_close(monkeypatch: pytest.Monkey
     answer = desktop.on_close()
     assert answer is not None
     assert answer() is False and answer() is False  # a no never lets it through
+
+
+def test_a_log_that_has_grown_too_big_is_set_aside_and_one_is_kept(tmp_path: Path) -> None:
+    """It is appended to for ever, and it holds every stage of every build since 0.1.14: a user
+    asked to send it was being asked for a file without an end (found in review, 2026-09-23)."""
+    from orthostudio.desktop import LOG_MAX_BYTES, roll_log
+
+    log = tmp_path / "serve.log"
+    log.write_text("one line\n", encoding="utf-8")
+    roll_log(log)
+    assert log.read_text(encoding="utf-8") == "one line\n", "a small log is left alone"
+    assert not log.with_suffix(".log.1").exists()
+
+    log.write_text("x" * (LOG_MAX_BYTES + 1), encoding="utf-8")
+    roll_log(log)
+    assert not log.exists(), "the run that follows starts a fresh one"
+    assert log.with_name("serve.log.1").stat().st_size == LOG_MAX_BYTES + 1
+
+    # a second roll keeps one previous, not two
+    log.write_text("y" * (LOG_MAX_BYTES + 1), encoding="utf-8")
+    roll_log(log)
+    assert log.with_name("serve.log.1").read_text(encoding="utf-8")[0] == "y"
+    assert not log.with_name("serve.log.1.1").exists()
+
+    # and a log it cannot move must never stop the app from starting
+    roll_log(tmp_path / "not-there.log")
+
+
+def test_the_app_rolls_its_log_when_it_starts(tmp_path: Path) -> None:
+    from orthostudio.desktop import LOG_MAX_BYTES, main
+
+    log = tmp_path / "serve.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("z" * (LOG_MAX_BYTES + 1), encoding="utf-8")
+    main(["uninstall", "Genève"], log=log)  # any command: it is the start that rolls
+    assert log.with_name("serve.log.1").stat().st_size == LOG_MAX_BYTES + 1
+    assert "CFG_LATLON_INVALID" in log.read_text(encoding="utf-8")

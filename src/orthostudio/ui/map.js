@@ -2494,6 +2494,9 @@ export function createPlanMap(ctx) {
      */
     routeChanged(fit = false) {
       drawRoute();
+      // the grid paints a route's two ends differently, so it has to be drawn again: clearing a
+      // route left them painted until the map next moved (found in review, 2026-09-23)
+      renderGrid();
       const points = (ctx.route?.() || {}).points || [];
       if (!fit || !map || points.length < 2) return;
       // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map

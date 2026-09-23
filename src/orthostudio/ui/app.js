@@ -2573,23 +2573,40 @@ function sweepEnd() {
   return n;
 }
 
+/**
+ * Add squares to the selection, up to what one build takes.
+ *
+ * The cap lived in the mouse sweep alone: a flight plan across a continent added its nine
+ * hundred squares here, and the estimate then refused the whole selection, leaving the user to
+ * take four hundred out by hand (found in review, 2026-09-23). Every way of adding squares goes
+ * through this function, so the cap belongs here.
+ */
 function addTiles(names) {
   const building = tilesInBuilds(activeJobs());
   const skipped = [];
+  let capped = 0;
   for (const n of names) {
     if (state.tiles.includes(n) || skipped.includes(n)) continue;
     if (building.has(n)) skipped.push(n);
+    else if (state.tiles.length >= MAX_BUILD_TILES) capped += 1;
     else state.tiles.push(n);
   }
   renderTiles();
   renderZlOptions();
   planChanged();
-  return skipped;
+  return { skipped, capped };
 }
 
-/** The tiles `addTiles` left out, said under the estimate. */
-function sayTilesInBuild(skipped) {
-  if (skipped.length) showPlanError(t("plan.tiles_in_build", { tiles: skipped.join(" ") }));
+/** What `addTiles` left out, said under the estimate: squares already building, and the ones a
+ * build has no room for. */
+function sayTilesInBuild(left) {
+  const skipped = left?.skipped || [];
+  const capped = left?.capped || 0;
+  if (capped) {
+    showPlanError(t("plan.tiles_capped", { max: MAX_BUILD_TILES, n: capped }));
+  } else if (skipped.length) {
+    showPlanError(t("plan.tiles_in_build", { tiles: skipped.join(" ") }));
+  }
 }
 
 function removeTile(name) {
@@ -2618,7 +2635,7 @@ function clearTiles() {
 function toggleTile(name) {
   if (state.tiles.includes(name)) removeTile(name);
   else if (tilesInBuilds(activeJobs()).has(name)) toast(t("plan.tile_in_build", { tile: name }));
-  else addTiles([name]);
+  else if (addTiles([name]).capped) toast(t("plan.tiles_capped", { max: MAX_BUILD_TILES, n: 1 }));
 }
 
 function renderTiles() {
@@ -2944,8 +2961,8 @@ async function addTilesFromIcao() {
   if (!airport) {
     try {
       airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
-    } catch (_e) {
-      showWayError(t("plan.icao_unknown", { icao: code }));
+    } catch (err) {
+      showWayError(airportTrouble(err, code));
       return;
     }
   }
@@ -3038,6 +3055,24 @@ function renderRoute() {
   renderZlOptions(); // the two groups' levels follow the route and the squares chosen
 }
 
+/**
+ * What to say when the engine could not answer about an airport.
+ *
+ * It tells a code it does not hold (404) from a machine with no airport database at all (503,
+ * "set the X-Plane folder in Settings"), and the page said "unknown ICAO code" to both, sending
+ * a user hunting for a typo that was not there (found in review, 2026-09-23). The page keeps its
+ * own words for a code that really is unknown, since they are translated and the engine's are
+ * about a latitude.
+ */
+function airportTrouble(err, code) {
+  if (err instanceof ApiError && err.status !== 404) {
+    const d = errorDetail(err);
+    if (d?.code) return codeWords(d).filter(Boolean).join(" ");
+    return errorMessage(err);
+  }
+  return t("plan.icao_unknown", { icao: code });
+}
+
 /** Read the codes, ask the engine where those airports are, and draw the line. */
 async function drawRoute() {
   const codes = routeCodes($("route-input").value);
@@ -3049,16 +3084,19 @@ async function drawRoute() {
   // as an airport is left out, and the line says which two ends were kept.
   const points = [];
   const missing = [];
+  let trouble = null;  // the engine could not answer at all: that is what to say, not "unknown"
   for (const code of codes) {
     try {
       const airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
       points.push({ ident: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
-    } catch (_e) {
+    } catch (err) {
       missing.push(code);
+      if (trouble === null && err instanceof ApiError && err.status !== 404) trouble = airportTrouble(err, code);
     }
   }
   if (points.length < 2) {
-    showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
+    if (trouble) showWayError(trouble);
+    else showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
     return;
   }
   showWayError(null);
@@ -3129,9 +3167,9 @@ function restoreRoute() {
  * button, so that the ends and the route may differ. */
 function addRouteTiles(names, zl) {
   if (!names.length) return;
-  let skipped = [];
+  let left = { skipped: [], capped: 0 };
   keepInPlace($("route-found"), () => {
-    skipped = addTiles(names);
+    left = addTiles(names);
     for (const name of names) {
       if (state.tiles.includes(name)) state.tileZl[name] = zl;
     }
@@ -3141,8 +3179,8 @@ function addRouteTiles(names, zl) {
     planChanged();
     planMap?.planChanged();
   });
-  sayTilesInBuild(skipped);
-  toast(t("plan.route_added", { n: names.length - skipped.length }));
+  sayTilesInBuild(left);
+  toast(t("plan.route_added", { n: names.length - left.skipped.length - left.capped }));
 }
 
 // ------------------------------------------------------------------ Plan: provider, zoom

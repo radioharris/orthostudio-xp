@@ -171,6 +171,7 @@ const STRINGS = {
     "plan.busy_deleting": "Une tuile est en train d'être supprimée : la construction ne démarre qu'après. Réessayez dans un instant.",
     "plan.tile_in_build": "{tile} est déjà dans une construction, en cours ou en attente : vous pourrez la choisir de nouveau quand celle-ci sera finie.",
     "plan.tiles_in_build": "Déjà dans une construction, en cours ou en attente, donc laissées de côté : {tiles}.",
+    "plan.tiles_capped": "Une construction prend au plus {max} tuiles : {n} n'ont pas été ajoutées. Construisez celles-ci, puis ajoutez les suivantes.",
     "plan.tiles_in_build_refused": "Déjà dans une construction, en cours ou en attente : {tiles}. Retirez-les de la sélection, ou attendez la fin de cette construction.",
     "plan.started": "Construction lancée.",
 
@@ -1053,6 +1054,7 @@ const STRINGS = {
     "plan.busy_deleting": "A tile is being deleted: the build starts only after that. Try again in a moment.",
     "plan.tile_in_build": "{tile} is already in a build, under way or waiting: you can choose it again once that build ends.",
     "plan.tiles_in_build": "Already in a build, under way or waiting, so left out: {tiles}.",
+    "plan.tiles_capped": "One build takes at most {max} tiles, so {n} were not added. Build these, then add the rest.",
     "plan.tiles_in_build_refused": "Already in a build, under way or waiting: {tiles}. Take them out of the selection, or wait for that build to end.",
     "plan.started": "Build started.",
 
