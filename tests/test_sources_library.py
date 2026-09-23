@@ -10,11 +10,12 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import pytest
 import zstandard
 
 from orthostudio.model import TileRef
 from orthostudio.sources.chain import Chain
-from orthostudio.sources.library import LibrarySource, parse_manifest
+from orthostudio.sources.library import LibraryError, LibrarySource, parse_manifest
 from orthostudio.sources.osm import LAYERS, OsmNode, OsmSnapshot, OsmWay, SnapshotStore, layers_for
 
 TILE = TileRef(43, 5)
@@ -152,7 +153,10 @@ def test_a_file_that_is_not_the_one_announced_is_refused(tmp_path: Path) -> None
         if meta["layer"] == "water":
             meta["digest"] = "0" * 64
     served["manifest.json"] = json.dumps(manifest).encode()
-    assert _source(served).layers(TILE, SPECS) is None
+    src = _source(served)
+    with pytest.raises(LibraryError):  # the library is wrong, not merely short of this tile
+        src.layers(TILE, SPECS)
+    assert not Chain([src]).layers(TILE, SPECS)  # and the chain carries on to the next source
 
 
 def test_an_empty_road_layer_is_refused_before_it_is_downloaded(tmp_path: Path) -> None:
@@ -171,7 +175,10 @@ def test_a_corrupted_file_is_refused(tmp_path: Path) -> None:
     served = dict(_library(tmp_path / "lib"))
     key = next(k for k in served if k.endswith("_water.osm.json.zst"))
     served[key] = b"not a zstd frame"
-    assert _source(served).layers(TILE, SPECS) is None
+    src = _source(served)
+    with pytest.raises(LibraryError):
+        src.layers(TILE, SPECS)
+    assert not Chain([src]).layers(TILE, SPECS)
 
 
 def test_a_file_holding_another_tile_is_refused(tmp_path: Path) -> None:
@@ -198,7 +205,8 @@ def test_the_chain_falls_through_to_the_next_source(tmp_path: Path) -> None:
     closed = _source(_library(tmp_path / "lib"), token="wrong")
     open_one = _source(_library(tmp_path / "lib2"))
     got = Chain([closed, open_one]).layers(TILE, SPECS)
-    assert got and got.source == "library"
+    assert got and got.source.startswith("library")
+    assert "2026-09-21" in got.source  # the page says how old the data is
     assert got.notes == ("library: not held",)
 
 
@@ -234,3 +242,39 @@ def test_this_repository_carries_no_key() -> None:
 
     shipped_library.cache_clear()
     assert shipped_library() == ("", "")
+
+
+# -- what a production library does wrong -----------------------------------------------------
+
+
+def test_a_library_that_announces_what_it_does_not_hold_is_set_aside(tmp_path: Path) -> None:
+    """The case of an upload in progress: the manifest is there, the files are not yet. Every
+    tile then costs four requests before Overpass is asked, for every tile of the batch."""
+    served = dict(_library(tmp_path / "lib"))
+    for key in [k for k in served if k.endswith(".zst")]:
+        del served[key]  # announced, not there
+    src = _source(served)
+    chain = Chain([src])
+    for _ in range(4):
+        assert not chain.layers(TILE, SPECS)
+    assert chain.failures.get("library", 0) >= 2, "a library that lies must be set aside"
+
+
+def test_layers_baked_for_another_road_level_are_refused(tmp_path: Path) -> None:
+    """A library baked at road level 2 holds tertiary roads and no more. A build asking for level
+    5 wants tracks as well: the same layer name, a different question. Taking it would give a
+    scenery quietly missing every forest track, and nothing would say so."""
+    from orthostudio.sources.osm import layers_for
+
+    rich = layers_for(5)  # tertiary, unclassified, residential, service, track
+    poor = layers_for(2)  # tertiary alone
+    assert len(dict(zip([s.name for s in rich], rich, strict=True))["small_roads"].selectors) > len(
+        dict(zip([s.name for s in poor], poor, strict=True))["small_roads"].selectors
+    )
+
+    served = dict(_library(tmp_path / "lib"))  # baked with the level-1 layers
+    src = _source(served)
+    got = src.layers(TILE, [s for s in rich if s.name in {"big_roads", "water"}])
+    assert got is None or all(
+        got[name].selectors == next(s.selectors for s in rich if s.name == name) for name in got
+    )

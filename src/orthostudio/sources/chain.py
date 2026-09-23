@@ -132,7 +132,13 @@ class FolderSource:
             try:
                 raw = path.read_bytes()
                 if path.suffix == ".zst":
-                    return OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(raw))
+                    snap = OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(raw))
+                    if tuple(snap.selectors) != tuple(spec.selectors):
+                        # the same layer name, a different question (``library.py``)
+                        log.info("%s: %s of %s was prepared for other selectors", self.name,
+                                 spec.name, tile.name)  # fmt: skip
+                        return None
+                    return snap
                 return snapshot_from_xml(raw, tile, spec, mirror=self.name)
             except (OSError, ValueError, KeyError, orjson.JSONDecodeError, zstandard.ZstdError):
                 log.warning("%s: %s unreadable in %s", tile.name, spec.name, self.name)
@@ -173,7 +179,9 @@ class Chain:
             if missing:  # a source that says yes must hold the whole tile
                 notes.append(f"{source.name}: missing {', '.join(missing)}")
                 continue
-            return ChainResult(got, source.name, tuple(notes))
+            stamp = str(getattr(source, "stamp", "") or "")
+            name = f"{source.name} ({stamp})" if stamp else source.name
+            return ChainResult(got, name, tuple(notes))
         return ChainResult(None, "", tuple(notes))
 
 

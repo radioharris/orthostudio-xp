@@ -34,8 +34,21 @@ from orthostudio.model import TileRef
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
+
+class LibraryError(RuntimeError):
+    """The library announced a tile and then did not serve it.
+
+    Not the same as not holding it: a tile absent from the manifest costs nothing and the chain
+    moves on quietly, while a tile announced and refused costs four requests, for every tile of
+    the batch. Raised so that the chain counts it and sets the library aside (``chain.Chain``);
+    the case is an upload still in progress, a file deleted under the manifest, or a key revoked
+    mid-build.
+    """
+
+
 __all__ = [
     "LIBRARY_TIMEOUT_S",
+    "LibraryError",
     "LibraryIndex",
     "LibrarySource",
     "parse_manifest",
@@ -178,6 +191,9 @@ class LibrarySource:
         self.cache_dir = cache_dir
         self.ttl_s = ttl_s
         self.index: LibraryIndex | None = None
+        self.stamp = ""
+        """When the data was cut, as the manifest gives it: what the page shows beside the
+        source, since a prepared library is weeks behind and nothing else would say so."""
         self._read_at = 0.0
         self._missing = False
         """The manifest could not be read: the library is skipped without being asked again."""
@@ -207,6 +223,7 @@ class LibrarySource:
             self._missing = True
             return None
         self.index = index
+        self.stamp = index.extracted[:10]
         self._read_at = time.monotonic()
         if self.cache_dir is not None:
             self._keep(body)
@@ -258,21 +275,32 @@ class LibrarySource:
     ) -> OsmSnapshot | None:
         status, body = answer
         if status != 200 or not body:
-            log.info("%s: %s of %s answered HTTP %s", self.name, spec.name, tile.name, status)
-            return None
+            raise LibraryError(
+                f"{spec.name} of {tile.name} is in the manifest but answered HTTP {status}"
+            )
         try:
             snap = OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(body))
         except (ValueError, KeyError, zstandard.ZstdError, orjson.JSONDecodeError) as exc:
-            log.warning("%s: %s of %s unreadable (%s)", self.name, spec.name, tile.name, exc)
-            return None
+            raise LibraryError(f"{spec.name} of {tile.name} is unreadable ({exc})") from exc
         announced = str(entry.get("digest", ""))
         if announced and snap.digest != announced:
-            # the file is not the one the manifest lists: a stale copy, or a library rebaked
-            # under our feet. Either way it is not what was verified.
-            log.warning("%s: %s of %s is not the file announced", self.name, spec.name, tile.name)
-            return None
+            # not the file the manifest lists: a copy kept too long, or a library rebaked under
+            # our feet. Either way what we hold about this library is wrong, so it is set aside
+            # and its manifest read again at the next build, rather than every tile paying for it.
+            raise LibraryError(f"{spec.name} of {tile.name} is not the file announced")
         if snap.layer != spec.name or snap.tile.name != tile.name:
             log.warning("%s: %s of %s holds another tile or layer", self.name, spec.name, tile.name)
+            return None
+        if tuple(snap.selectors) != tuple(spec.selectors):
+            # the same layer name, a different question: small_roads baked at road level 2 holds
+            # tertiary roads and no more, and a build asking for level 5 wants the tracks too.
+            # Taking it would give a scenery quietly missing them (2026-09-23).
+            log.info(
+                "%s: %s of %s was baked for other selectors; the next source takes over",
+                self.name,
+                spec.name,
+                tile.name,
+            )
             return None
         return snap
 

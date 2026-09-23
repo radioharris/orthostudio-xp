@@ -262,3 +262,44 @@ def test_a_build_without_prepared_sources_behaves_as_before() -> None:
 
     job = OsmJob(fetch=lambda tile, specs: {"live": True})
     assert job.run(TILE, SPECS) == {"live": True}
+
+
+# -- the whole workflow, failure by failure ---------------------------------------------------
+
+
+def test_every_step_of_the_chain_falls_through_to_the_next(tmp_path: Path) -> None:
+    """The scenario a production day serves: a folder that holds nothing, a library that breaks,
+    a public library nobody verified, and the live servers behind them all."""
+    whole = {s.name: _snapshot(s.name) for s in SPECS}
+    folder = FolderSource(tmp_path / "empty")  # nothing in it
+    broken = _Fake("library", RuntimeError("no answer"))
+    public = _Fake("xpconnect", None)  # inert: no whitelist
+    live = _Fake("overpass", whole)
+
+    chain = Chain([folder, broken, public, live])
+    got = chain.layers(TILE, SPECS)
+    assert got and got.source == "overpass"
+    assert got.notes == (
+        "folder: not held",
+        "library: RuntimeError: no answer",
+        "xpconnect: not held",
+    )
+
+    # and the broken one is asked once more, then set aside for the rest of the build
+    for _ in range(3):
+        chain.layers(TILE, SPECS)
+    assert broken.asked == 2
+
+
+def test_a_source_that_answers_nothing_never_stops_the_build() -> None:
+    """Whatever a source does -- raising, returning nonsense, holding half a tile -- the tile
+    ends up with the live servers rather than with an error."""
+    whole = {s.name: _snapshot(s.name) for s in SPECS}
+    for bad in (
+        _Fake("odd", RuntimeError("boom")),
+        _Fake("odd", {"big_roads": _snapshot("big_roads")}),
+        _Fake("odd", {}),
+        _Fake("odd", None),
+    ):
+        got = Chain([bad, _Fake("overpass", whole)]).layers(TILE, SPECS)
+        assert got and got.source == "overpass"
