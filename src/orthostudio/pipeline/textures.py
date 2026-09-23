@@ -128,6 +128,10 @@ Python processes running for the user to find in the task manager and kill by ha
 2026-09-23). Twenty seconds is far more than a worker needs to notice it has nothing left to do.
 """
 
+MAX_ENCODE_ROPE_S = 1800.0
+"""The most a texture may ever be waited for. Without a ceiling the rope follows the measured
+mean, and one pathological encode dragged it into the hours."""
+
 ENCODE_TIMEOUT_S = 600.0
 """How long one texture's worker may take before the build gives up on it.
 
@@ -845,6 +849,14 @@ class _Pipeline:
         self.states: list[_TexState] = []
         self.by_index: dict[int, _TexState] = {}
         self.pool: ProcessPoolExecutor | None = None
+        self.encode_slots: asyncio.Semaphore | None = None
+        """At most the pool's own workers and two more are ever handed over at once, so the time
+        a texture waits for a worker is bounded and the rope below measures the encoding rather
+        than the queue (found in review, 2026-09-23)."""
+        self.workers_seen: list[Any] = []
+        """The worker processes, kept as they appear. Closing a pool sets its own ``_processes``
+        to ``None``, so a pool already closed by a cancel had nothing left to take down: the user
+        who pressed Stop found the same two Python processes in his task manager as before."""
         self.encode_timeouts = 0
         """Textures whose worker never answered (:data:`ENCODE_TIMEOUT_S`)."""
         self.io_tasks: set[asyncio.Task[None]] = set()
@@ -966,9 +978,16 @@ class _Pipeline:
                 ticker.cancel()
             with contextlib.suppress(BaseException):
                 await asyncio.gather(watcher, *([ticker] if ticker else []), return_exceptions=True)
-            await self._close_pool()
-            self.store.close()
-            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+            try:
+                # a second Ctrl-C lands here: whatever it interrupts, the store is closed and
+                # the scratch is swept, which a bare ``await`` in a ``finally`` did not promise
+                # (found in review, 2026-09-23)
+                with contextlib.suppress(BaseException):
+                    await self._close_pool()
+            finally:
+                self._take_workers_down()
+                self.store.close()
+                shutil.rmtree(self.tmp_dir, ignore_errors=True)
         report = self._report(plan_s, fetch_s)
         if self.progress_renderer is not None:
             self.progress_renderer.finish(self._snapshot())
@@ -1126,6 +1145,7 @@ class _Pipeline:
         self.pool = ProcessPoolExecutor(
             max_workers=self.workers, mp_context=get_context("spawn"), initializer=_worker_init
         )
+        self.encode_slots = asyncio.Semaphore(self.workers + 2)
 
     async def _close_pool(self) -> None:
         """Close the encoders, and take down whatever will not close.
@@ -1136,30 +1156,38 @@ class _Pipeline:
         """
         pool, self.pool = self.pool, None
         if pool is None:
+            self._take_workers_down()
             return
-        try:
+        # taken now, while they are still there to take: ``shutdown`` sets the pool's own list to
+        # ``None``, and a cancel has usually shut it already (found in review, 2026-09-23)
+        procs = getattr(pool, "_processes", None)
+        if procs:
+            self.workers_seen = list(procs.values())
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(
                 asyncio.to_thread(pool.shutdown, True, cancel_futures=True), POOL_CLOSE_S
             )
+        self._take_workers_down()
+
+    def _take_workers_down(self) -> None:
+        """End any encoder still running. Nothing here waits, and nothing kills a second time.
+
+        ``terminate`` is a polite signal a Python worker always honours; a ``kill`` after it
+        would race the pool's own reaper for the same process id, and the loser signals a number
+        the operating system may have given to somebody else (found in review, 2026-09-23).
+        """
+        alive = [p for p in self.workers_seen if p.exitcode is None and p.is_alive()]
+        self.workers_seen = []
+        if not alive:
             return
-        except TimeoutError:
-            pass
-        # ``_processes`` is not public, and there is no public way to ask: the alternative is to
-        # leave them running, which is what the user found in his task manager
-        alive = [p for p in getattr(pool, "_processes", {}).values() if p.is_alive()]
         log.warning(
-            "the encoders did not close in %.0f s; %d of them are being taken down",
+            "the encoders did not close in %.0f s; %d of them are being ended",
             POOL_CLOSE_S,
             len(alive),
         )
         for proc in alive:
             with contextlib.suppress(Exception):
                 proc.terminate()
-        for proc in alive:
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(proc.join, 2.0)
-                if proc.is_alive():
-                    proc.kill()
 
     # -- fetch -------------------------------------------------------------------------------
 
@@ -1766,6 +1794,24 @@ class _Pipeline:
             tmp_dir=self.tmp_dir,
             fsync=self.spec.fsync,
         )
+        self._spawn(self._encode_one(st, job, dest), st, encode=True)
+
+    async def _encode_one(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
+        """Wait for a worker, hand the texture over, then wait for its answer.
+
+        Every texture of a tile whose image pieces are already cached used to be handed to the
+        pool at once, so the rope below timed the queue and not the encoding: on a four-core
+        machine the last third of a tile passed it, was marked failed, and took the tile down
+        with it (found in review, 2026-09-23). Only as many as the pool can hold are handed over.
+        """
+        slots = self.encode_slots
+        if slots is None:
+            await self._hand_over(st, job, dest)
+            return
+        async with slots:
+            await self._hand_over(st, job, dest)
+
+    async def _hand_over(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
         st.submitted_at = time.perf_counter()
         if not self.t_first_submit:
             self.t_first_submit = st.submitted_at
@@ -1775,7 +1821,10 @@ class _Pipeline:
         else:
             fut: Future[WorkerResult] = self.pool.submit(_worker_run, job)
             awaitable = asyncio.wrap_future(fut)
-        self._spawn(self._after_worker(st, awaitable, dest), st, encode=True)
+            procs = getattr(self.pool, "_processes", None)
+            if procs:
+                self.workers_seen = list(procs.values())
+        await self._after_worker(st, awaitable, dest)
 
     async def _publish_hit(self, st: _TexState, src: Path, digest: str, dest: Path) -> None:
         try:
@@ -1801,12 +1850,16 @@ class _Pipeline:
         A user's own reports: 14 workers, 719 textures, 6.7 s each at the median and 60.6 s at
         the worst, the pool busy throughout (2026-09-23). A fixed 300 s would have fired on the
         last third of that tile, marked them failed and refused the tile, repeatably, on a build
-        that worked. So the rope follows what this run has measured and what is still queued.
+        that worked.
+
+        The wait before a worker starts is no longer part of it: ``_encode_one`` hands over only
+        as many textures as the pool can hold, so this times the encoding. What is left is a
+        floor wide enough for the slowest machine and a ceiling so that a worker which never
+        answers cannot hold the step for hours (both found in review, 2026-09-23).
         """
         seen = self.encode_seconds
         typical = (sum(seen) / len(seen)) if seen else _DEFAULT_ENCODE_S
-        queued = max(0, self.encoding) / max(1, self.workers)
-        return max(ENCODE_TIMEOUT_S, 4.0 * typical * (queued + 1.0))
+        return min(MAX_ENCODE_ROPE_S, max(ENCODE_TIMEOUT_S, 20.0 * typical))
 
     async def _after_worker(self, st: _TexState, awaitable: Any, dest: Path) -> None:
         t = st.texture
