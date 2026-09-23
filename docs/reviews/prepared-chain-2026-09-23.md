@@ -67,7 +67,7 @@ tools are fixed and the bake redone.
 | T1 | A square the extract covers only partly is published as if whole. Geofabrik clips to a country **polygon**, so every border square holds one side only -- Geneva, Strasbourg, the Pyrenees -- and the manifest lists them like any other. This is the failure we refuse from xpconnect, produced by our own tool. Fix: read the `.poly` beside the `.pbf` and publish only squares wholly inside it. | done |
 | T2 | **Node tags are dropped.** Only `airports` has a node selector, so every other layer emits a way's nodes bare. Overpass returns them with their tags, so a baked digest can never equal a live one, and for `airports` (whose `tags_of_interest` is "all") real data is lost. This, not two days of editing, is why every comparison said "digest different" while the identifiers matched. | done |
 | T3 | `--strategy=smart` completes `type=multipolygon` relations only. An aerodrome is `type=site`, so half its taxiways are dropped exactly as the lake was. Needs `-S types=any`, at both cutting levels. | done |
-| T4 | A way that **crosses** the square without a node inside it is missing; Overpass returns it. Long coastline segments, causeways, railway tangents. Needs a buffered cut and a segment test instead of a vertex test. | open, not observed in six tiles |
+| T4 | A way that **crosses** the square without a node inside it is missing; Overpass returns it. Long coastline segments, causeways, railway tangents. Needs a buffered cut and a segment test instead of a vertex test. | done, and it was real |
 | T5 | Relations whose members inside the square are nodes are dropped; a relation's node members are never emitted; member relations are never followed. | done |
 | T6 | The verification method cannot catch T2-T5: it compares identifier sets only, and excuses any difference whose element was edited after the cut. The sound method is Overpass **attic data** -- `[date:"&lt;the extract's date&gt;"]` -- after which any difference at all is a bake bug and the digests must match exactly. | done |
 | T7 | The manifest can announce what the files do not hold: the filter's road level is not compared with the bake's, `extracted` is the file's mtime rather than the OSM data date, a resumed run rewrites every tile's origin, the manifest is written non-atomically, the `.meta.json` sidecars are not listed, and `verified_elsewhere` is never written. | done |
@@ -97,3 +97,22 @@ at 15:01, node 6846497814 was deleted at 18:48, way 1252913018 stopped being an 
 15:01. In each case the extract holds the version valid at its timestamp and the attic query
 returns the one before it. The bake is right and the reference is late, which is the one direction
 of error that costs nothing.
+
+### T4, measured rather than argued
+
+The question was whether Overpass returns a way that crosses a square without a node inside it.
+Asked directly, on a 1.3 km box laid across one 5.3 km hop of Interstate 80 in Nevada: it returns
+the way, and `osmium extract` does not keep it. So the finding was real, and a tile of empty
+country would have been missing the one road in it.
+
+The fix is to cut each square with a margin of 0.1 degrees and then test every way against the
+exact square, a node inside it or a segment through it. The margin is one hop's length: a way can
+only cross the square without stopping if a single hop spans the crossing, so reaching one hop
+outside is enough, and the longest hop measured over our layers is 0.097 degrees (Nevada; Alaska
+0.036; Basel none at all). It costs about half again as long to read a square and changes nothing
+else: Basel gives the same 49 091 ways with the margin as without.
+
+Measured again afterwards, with the margin: **+40-117 (Nevada), +47+007 (Basel) and +51+000
+(London) are identical in all four layers**. Basel had five elements differing that morning and
+none by the afternoon, which is the same lag showing from the other side: the servers' copy of
+the past had caught up with the edits of 22 September.
