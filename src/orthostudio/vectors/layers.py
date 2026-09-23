@@ -198,6 +198,18 @@ def build_layers(request: object) -> LayerBuild:
         if cancel is not None and cancel.is_set():
             raise OsxpError("SYS_CANCELLED", context={"stage": "vectors", "tile": tile.name})
 
+    teller = getattr(request, "progress", None)
+
+    def say(fraction: float, what: str) -> None:
+        """What this family is, before it starts. A dense tile at road level 5 spends minutes
+        here, and this step used to say nothing at all from beginning to end (2026-09-23)."""
+        if teller is None:
+            return
+        try:
+            teller(fraction, f"{tile.name}: {what}")
+        except Exception:  # telling must never stop a build
+            log.debug("%s: the progress of the vectors could not be told", tile.name)
+
     events: list[OsxpError] = []
 
     def on_skip(code: str, context: dict[str, object]) -> None:
@@ -215,6 +227,7 @@ def build_layers(request: object) -> LayerBuild:
     airport_params = _airport_params(int(params.apt_smoothing_pix))
 
     # -- airports, steps 1 to 9 of include_airports (:196-213) -----------------------------
+    say(0.05, "airports")
     #
     # Everything here happens **before** any other family: the record and its geometry need
     # only OSM, and the smoothing that follows produces the raster all of them sample.
@@ -277,6 +290,7 @@ def build_layers(request: object) -> LayerBuild:
     timing.airports_s += time.perf_counter() - started
 
     # -- roads (include_roads, :223-355) ---------------------------------------------------
+    say(0.25, f"roads and railways at level {road_level}")
     check()
     started = time.perf_counter()
     roads: list[VectorLayer] = []
@@ -311,6 +325,7 @@ def build_layers(request: object) -> LayerBuild:
     timing.roads_s = time.perf_counter() - started
 
     # -- water first, because its large lakes are the sea-equivalent of the coast (A2) -----
+    say(0.55, "lakes and rivers")
     check()
     started = time.perf_counter()
     water_store = _required(layer_store(source, "water", on_skip=on_skip), source, "water")
@@ -333,6 +348,7 @@ def build_layers(request: object) -> LayerBuild:
     timing.water_s = time.perf_counter() - started
 
     # -- coastline (include_sea, :363-451) -------------------------------------------------
+    say(0.7, "the coastline")
     check()
     started = time.perf_counter()
     coast_store = _required(layer_store(source, "coastline", on_skip=on_skip), source, "coastline")

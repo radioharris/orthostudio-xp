@@ -1511,7 +1511,11 @@ def _vectors_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]
     """Bind the layer builders and the cancellation token for ``orthostudio.vectors@1``."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        job = VectorsJob(build_layers=build_layers, cancel=cast(Any, ctx.cancel_event))
+        job = VectorsJob(
+            build_layers=build_layers,
+            cancel=cast(Any, ctx.cancel_event),
+            progress=ctx.progress,
+        )
         with _active_env(env, ctx), vectors_job(job):
             return run_p0_rule(ctx)
 
