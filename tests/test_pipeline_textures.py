@@ -587,7 +587,7 @@ def test_running_out_of_open_files_is_not_called_a_permission() -> None:
     assert err.code == "SYS_WRITE_FAILED" and "Too many files were open" in err.message
     assert "permission" not in err.remedy.lower() and "Retry the missing ones" in err.remedy
     other = textures_mod._coded(PermissionError(errno.EACCES, "Permission denied", "/tiles/x.dds"))
-    assert other.remedy == "Fix permissions on the path." and "/tiles/x.dds" in other.message
+    assert "permission" in other.remedy.lower() and "/tiles/x.dds" in other.message
 
 
 def test_a_texture_the_source_has_nothing_for_is_not_shipped_as_grey(

@@ -1165,6 +1165,21 @@ def disk_trouble(exc: BaseException) -> OsxpError | None:
                 "SYS_WRITE_FAILED",
                 context={"path": where, "reason": "the disk is mounted read-only"},
             )
+        if exc.errno in (errno.EACCES, errno.EPERM):
+            # the commonest of the three: a network drive, an external disk, a folder belonging
+            # to somebody else, or macOS refusing a folder the app was never granted. The words
+            # say "use" rather than "write", because this reaches a read as well
+            return OsxpError(
+                "SYS_WRITE_FAILED",
+                context={"path": where, "reason": "permission denied"},
+                message=(
+                    f"OrthoStudio XP is not allowed to use {where or 'the folder it was given'}."
+                ),
+                remedy=(
+                    "Give yourself permission on that folder, or choose another working folder "
+                    "in Settings."
+                ),
+            )
     text = str(exc)
     if type(exc).__name__ == "OperationalError":
         if "readonly database" in text or "attempt to write a readonly" in text:
