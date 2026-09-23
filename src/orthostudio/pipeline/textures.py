@@ -119,7 +119,16 @@ _PROGRESS_LINE_PERIOD_S = 5.0
 _DEFAULT_ENCODE_S = 0.4
 _PLAN_BATCH = 32
 
-ENCODE_TIMEOUT_S = 300.0
+POOL_CLOSE_S = 20.0
+"""How long the encoders are given to close at the end of the step before they are taken down.
+
+Closing a pool joins its processes, and one that does not come back holds that line for ever: the
+step stayed at 99 %, every file written, Assembly never starting, and stopping the build left the
+Python processes running for the user to find in the task manager and kill by hand (a user,
+2026-09-23). Twenty seconds is far more than a worker needs to notice it has nothing left to do.
+"""
+
+ENCODE_TIMEOUT_S = 600.0
 """How long one texture's worker may take before the build gives up on it.
 
 A texture encodes in a second or so, and this is not a budget but a rope end: a worker that never
@@ -957,8 +966,7 @@ class _Pipeline:
                 ticker.cancel()
             with contextlib.suppress(BaseException):
                 await asyncio.gather(watcher, *([ticker] if ticker else []), return_exceptions=True)
-            if self.pool is not None:
-                self.pool.shutdown(wait=True, cancel_futures=True)
+            await self._close_pool()
             self.store.close()
             shutil.rmtree(self.tmp_dir, ignore_errors=True)
         report = self._report(plan_s, fetch_s)
@@ -1118,6 +1126,40 @@ class _Pipeline:
         self.pool = ProcessPoolExecutor(
             max_workers=self.workers, mp_context=get_context("spawn"), initializer=_worker_init
         )
+
+    async def _close_pool(self) -> None:
+        """Close the encoders, and take down whatever will not close.
+
+        Nothing here may wait without an end. The step's work is done by the time this runs, so
+        an encoder still holding on is not doing anything for anybody; waiting for it costs the
+        user his build and leaves its processes behind when he stops it (2026-09-23).
+        """
+        pool, self.pool = self.pool, None
+        if pool is None:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(pool.shutdown, True, cancel_futures=True), POOL_CLOSE_S
+            )
+            return
+        except TimeoutError:
+            pass
+        # ``_processes`` is not public, and there is no public way to ask: the alternative is to
+        # leave them running, which is what the user found in his task manager
+        alive = [p for p in getattr(pool, "_processes", {}).values() if p.is_alive()]
+        log.warning(
+            "the encoders did not close in %.0f s; %d of them are being taken down",
+            POOL_CLOSE_S,
+            len(alive),
+        )
+        for proc in alive:
+            with contextlib.suppress(Exception):
+                proc.terminate()
+        for proc in alive:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(proc.join, 2.0)
+                if proc.is_alive():
+                    proc.kill()
 
     # -- fetch -------------------------------------------------------------------------------
 
@@ -1748,21 +1790,39 @@ class _Pipeline:
         st.outcome.fmt = "bc3" if st.mask_digest else "bc1"
         self._finish(st, "hit")
 
+    def _encode_deadline(self) -> float:
+        """How long one texture may wait for its answer before the build gives up on it.
+
+        Not a budget: a rope end, so that a worker which never comes back cannot hold the step.
+        It has to be long enough that no healthy texture ever reaches it, and the wait before a
+        worker even starts is part of it: every texture of a tile is handed to the pool at once
+        when its image pieces are already in the cache.
+
+        A user's own reports: 14 workers, 719 textures, 6.7 s each at the median and 60.6 s at
+        the worst, the pool busy throughout (2026-09-23). A fixed 300 s would have fired on the
+        last third of that tile, marked them failed and refused the tile, repeatably, on a build
+        that worked. So the rope follows what this run has measured and what is still queued.
+        """
+        seen = self.encode_seconds
+        typical = (sum(seen) / len(seen)) if seen else _DEFAULT_ENCODE_S
+        queued = max(0, self.encoding) / max(1, self.workers)
+        return max(ENCODE_TIMEOUT_S, 4.0 * typical * (queued + 1.0))
+
     async def _after_worker(self, st: _TexState, awaitable: Any, dest: Path) -> None:
         t = st.texture
+        rope_s = self._encode_deadline()
         try:
-            result: WorkerResult = await asyncio.wait_for(awaitable, ENCODE_TIMEOUT_S)
+            result: WorkerResult = await asyncio.wait_for(awaitable, rope_s)
         except TimeoutError:
-            # A worker that never comes back used to hold the whole build: a user watched the
-            # imagery step sit at 196 textures of 696 with nothing in flight, and only quitting
-            # the app freed it (2026-09-23). A texture encodes in a second; past the timeout it
+            # A worker that never comes back would hold the step: nothing in flight, nothing
+            # said, and the end of the step waiting on it (a user, 2026-09-23). Past the rope it
             # is one failed texture, said plainly, and the build carries on.
             self.encoding -= 1
             self.encode_timeouts += 1
             log.warning(
                 "%s: encoder did not answer in %.0f s (%d so far); the texture is marked failed",
                 texture_name(t),
-                ENCODE_TIMEOUT_S,
+                rope_s,
                 self.encode_timeouts,
             )
             stuck = OsxpError(
@@ -1770,7 +1830,7 @@ class _Pipeline:
                 context={
                     "texture": texture_name(t),
                     "encoder": self.encoder,
-                    "reason": f"no answer in {ENCODE_TIMEOUT_S:.0f} s",
+                    "reason": f"no answer in {rope_s:.0f} s",
                 },
             )
             self._finish(st, "failed", error=_error_dict(stuck))
