@@ -537,6 +537,7 @@ def provider_json(p: Provider) -> dict[str, Any]:
         "max_zl": p.max_zl,
         "attribution": p.attribution,
         "terms_url": p.terms_url,
+        "licence": p.licence,
         "alive": None,
         "extent": p.extent,
         "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,

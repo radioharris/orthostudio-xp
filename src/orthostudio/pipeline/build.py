@@ -1349,6 +1349,10 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
     The overlays of the relief that were *asked for*: the pack adds the relief really read, and the
     page tells the two apart (a lidar asked for where it never flew, 2026-09-20). The hand-made
     patches by name, and each zone that reached the tile by its level and its source.
+
+    And who the imagery belongs to. A pack is a folder people pass around, and it carried the
+    code of the source and nothing else: EOX's Sentinel-2 is CC BY-NC-SA, so its credit has to
+    travel with the tile (found in review, 2026-09-23).
     """
     asked = [x for x in str(spec.config.get("custom_dem") or "").split(";")[1:] if x]
     zones = []
@@ -1356,12 +1360,18 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
         with contextlib.suppress(TypeError, ValueError):
             _coords, zl, provider = entry
             zones.append({"zl": int(zl), "provider": str(provider or spec.provider)})
-    return {
+    facts: dict[str, Any] = {
         "version": __version__,
         "relief_asked": asked,
         "patches": patch_names(spec.patches_dir, spec.tile),
         "zones": zones,
     }
+    source = load_registry().get(spec.provider)
+    if source is not None and source.attribution:
+        facts["imagery_credit"] = source.attribution
+    if source is not None and source.licence:
+        facts["imagery_licence"] = source.licence
+    return facts
 
 
 def _pack_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:

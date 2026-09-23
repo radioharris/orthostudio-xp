@@ -21,7 +21,7 @@ import re
 import shutil
 import threading
 import tomllib
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,6 +97,7 @@ ORTHO4XP_LOOK_UP = 4
 two, and a custom build dir a little more."""
 
 MANIFEST_NAME = "orthostudio.toml"
+CREDITS_NAME = "CREDITS.txt"
 RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
 DELETE_FORMAT = "osxp-delete-1"
@@ -602,7 +603,31 @@ def assemble_pack(
         },
     )
     atomic_write_text(files.pack_dir / MANIFEST_NAME, manifest.to_toml())
+    _write_credits(files.pack_dir, tile, facts)
     return manifest, files
+
+
+def _write_credits(pack_dir: Path, tile: TileRef, facts: Mapping[str, Any]) -> None:
+    """The imagery's credit, in plain words, beside the tile it was used for.
+
+    A pack is a folder people pass around, and the credit lived only in the page that built it.
+    EOX's Sentinel-2 is CC BY-NC-SA: the attribution has to travel with the work (found in
+    review, 2026-09-23). Deterministic, like the manifest: a pack written again is the same pack.
+    Nothing is written for a source that gives no credit.
+    """
+    credit = str(facts.get("imagery_credit") or "")
+    if not credit:
+        return
+    lines = [f"{tile.name}, built with OrthoStudio XP.", "", "Aerial imagery:", credit]
+    licence = str(facts.get("imagery_licence") or "")
+    if licence:
+        lines += ["", f"Licence: {licence}."]
+    lines += [
+        "",
+        "Roads, water and land use come from OpenStreetMap, (c) OpenStreetMap contributors,",
+        "available under the Open Database Licence (ODbL).",
+    ]
+    atomic_write_text(pack_dir / CREDITS_NAME, "\n".join(lines) + "\n")
 
 
 # -- install -------------------------------------------------------------------------------------

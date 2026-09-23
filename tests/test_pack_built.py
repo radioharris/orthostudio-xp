@@ -99,11 +99,14 @@ def test_the_build_says_what_it_asked_for(tmp_path: Path) -> None:
         },
         patches_dir=tmp_path / "Patches",
     )
+    from orthostudio.imagery.providers import load_registry
+
     assert built_facts(spec) == {
         "version": __version__,
         "relief_asked": ["HRDEM"],
         "patches": ["CBH2.patch.osm"],
         "zones": [{"zl": 17, "provider": "BI"}, {"zl": 18, "provider": "BI"}],
+        "imagery_credit": load_registry()["BI"].attribution,
     }
     # the X-Plane relief with nothing over it asks for no overlay
     plain = BuildSpec(tile=T, provider="BI", zl=16, out_dir=tmp_path / "t", config={})
@@ -131,3 +134,38 @@ def test_a_pack_written_before_this_version_reads_as_no_facts() -> None:
     old = PackManifest("+51-116", "BI", 16).to_toml()
     assert "[built]" not in old
     assert PackManifest.from_toml(old).built == {}
+
+
+def test_the_credit_of_the_imagery_travels_with_the_pack(tmp_path: Path) -> None:
+    """A pack is a folder people pass around, and it carried the code of the source and nothing
+    else. EOX's Sentinel-2 is CC BY-NC-SA, so its credit and its licence have to go with the tile
+    (found in review, 2026-09-23)."""
+    from orthostudio.imagery.providers import load_registry
+    from orthostudio.pipeline.pack import CREDITS_NAME, _write_credits
+
+    eox = load_registry()["EOX"]
+    assert eox.licence, "the source says what it is given under"
+
+    facts = built_facts(BuildSpec(tile=T, provider="EOX", zl=14, out_dir=tmp_path, config={}))
+    assert facts["imagery_credit"] == eox.attribution
+    assert facts["imagery_licence"] == eox.licence
+
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    _write_credits(pack, T, facts)
+    text = (pack / CREDITS_NAME).read_text("utf-8")
+    assert T.name in text
+    assert "EOX IT Services GmbH" in text
+    assert "non-commercial" in text
+    assert "OpenStreetMap" in text and "ODbL" in text
+
+    # written again, it is the same file: a pack must not change when it is repaired
+    before = text
+    _write_credits(pack, T, facts)
+    assert (pack / CREDITS_NAME).read_text("utf-8") == before
+
+    # a source that gives no credit leaves no file behind
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    _write_credits(bare, T, {"version": "0"})
+    assert not (bare / CREDITS_NAME).exists()

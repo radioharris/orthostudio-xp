@@ -1091,7 +1091,7 @@ export async function mockApi(method, path, body, options = {}) {
     let code = base;
     for (let n = 2; taken.has(code); n += 1) code = `${base}_${n}`;
     const name = String(body.name).trim();
-    const source = { code, name, max_zl: Number(body.max_zl) || 19, attribution: name, terms_url: "", alive: null, extent: null, extent_bounds: null, same_as: null, custom: true, url_template: String(body.url_template).trim() };
+    const source = { code, name, max_zl: Number(body.max_zl) || 19, attribution: name, terms_url: "", licence: "", alive: null, extent: null, extent_bounds: null, same_as: null, custom: true, url_template: String(body.url_template).trim() };
     mock.sources.push(source);
     return structuredClone(source);
   }
@@ -3194,7 +3194,11 @@ function renderSourceCoverage() {
 
 function renderProviderAttribution() {
   const p = currentProvider();
-  $("provider-attribution").textContent = p ? p.attribution || "" : "";
+  // the licence beside the credit: EOX's Sentinel-2 is non-commercial and the page said nothing
+  // of it, while the tiles it builds are folders people pass around (found in review, 2026-09-23)
+  const credit = p ? p.attribution || "" : "";
+  const licence = p ? p.licence || "" : "";
+  $("provider-attribution").textContent = credit && licence ? `${credit} ${licence}.` : credit;
 }
 
 // ------------------------------------------------------------------ Plan: the user's own sources

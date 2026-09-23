@@ -91,6 +91,11 @@ class Provider(BaseModel):
     extent_bounds: tuple[float, float, float, float] | None = None
     attribution: str = ""
     terms_url: str = ""
+    licence: str = ""
+    """The licence the imagery is given under, in the few words a pilot needs (``CC BY-NC-SA 4.0,
+    non-commercial use only``). Empty when the terms are the provider's own and have no short
+    name. It is shown beside the credit in the Plan and written into the pack, so that a tile
+    passed to somebody else carries what it is bound by (found in review, 2026-09-23)."""
     name: str = ""
     """Short name for the page's lists (``Bing Maps``); ``attribution`` stays the credit line."""
     same_as: str | None = None

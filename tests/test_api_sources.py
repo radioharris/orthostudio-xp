@@ -25,8 +25,8 @@ xplane = fakes.xplane
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 2000
 ADDRESS = "https://tiles.example.com/vt?lyrs=s&x={x}&y={y}&z={zoom}"
-PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "alive", "extent",
-                 "extent_bounds", "same_as", "custom"}  # fmt: skip
+PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "licence", "alive",
+                 "extent", "extent_bounds", "same_as", "custom"}  # fmt: skip
 
 
 def _app(
@@ -59,6 +59,8 @@ async def test_the_sources_say_what_they_cover_bing_and_esri_first(home: Path) -
     by = {r["code"]: r for r in rows}
     assert by["BI"]["name"] == "Bing Maps" and by["BI"]["extent"] is None
     assert by["BI"]["extent_bounds"] is None and by["BI"]["attribution"]
+    # a source whose imagery is not free for everything says so where the credit is read
+    assert "non-commercial" in by["EOX"]["licence"] and not by["BI"]["licence"]
     assert by["PDOK20"]["extent"] == "Netherlands"
     assert by["PDOK20"]["extent_bounds"] == [3.06, 50.72, 7.26, 53.76]
     assert by["NL"]["same_as"] == "PDOK" and by["PDOK"]["same_as"] is None

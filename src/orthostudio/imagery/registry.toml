@@ -57,6 +57,7 @@ server_req_per_s = 224
 attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
 name = "EOX Sentinel-2 cloudless"
 terms_url = "https://cloudless.eox.at/documentation/license"
+licence = "CC BY-NC-SA 4.0, non-commercial use only"
 
 # ------------------------------------------------------------------ national
 

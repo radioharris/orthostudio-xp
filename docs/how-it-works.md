@@ -180,9 +180,11 @@ the data folder (~/.orthostudio unless Settings name another one)/
   tiles/           the tiles ready for X-Plane                     ≈ no extra space
     zOrthoStudio_+46+006/
       Earth nav data/+40+000/+46+006.dsf
-      terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg
+      terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg   CREDITS.txt
                      orthostudio.toml: what the tile was built with (imagery, detail, relief
                      really read, zones, patches), which the Library and the Plan show
+                     CREDITS.txt: who the imagery belongs to and what it is given under, so a
+                     pack passed to somebody else carries its credit
     yOrthoStudio_Overlays/Earth nav data/+40+000/+46+006.dsf
   work/            build reports and temporary files
   osm/             the OpenStreetMap data downloaded
