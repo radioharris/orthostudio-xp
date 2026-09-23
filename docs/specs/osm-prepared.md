@@ -75,7 +75,9 @@ Three defences, in order of cost:
    square of Atlantic off the Sahara really has no road, no airport and no lake, only a
    coastline, and refusing those sent every empty square of a continent to the public servers to
    be told the same thing. What emptiness must never mean is a bake cut short, and that is the
-   coverage polygon's business.
+   coverage polygon's business. A folder is read the same way when a `manifest.json` sits beside
+   the files, which is what a copied library is; an Ortho4XP folder has none and keeps the strict
+   rule.
 2. **A library is used only where it has been verified.** For xpconnect this means a whitelist:
    the tiles we have compared, tile by tile, against a live count (`[out:csv(::count)]`, 13 bytes
    of answer, 13 s of their computation) or against our own bake of the same square. The

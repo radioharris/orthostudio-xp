@@ -29,7 +29,13 @@ from typing import Protocol
 
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
-from orthostudio.sources.library import LibrarySource, shipped_library, unpack
+from orthostudio.sources.library import (
+    LibraryIndex,
+    LibrarySource,
+    parse_manifest,
+    shipped_library,
+    unpack,
+)
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES, PublicSource, snapshot_from_xml
 
@@ -111,6 +117,29 @@ class FolderSource:
     def __init__(self, root: Path | str, *, name: str = "folder") -> None:
         self.root = Path(root).expanduser()
         self.name = name
+        self._index: LibraryIndex | bool | None = False
+        """The manifest of a copied library, when the folder is one: read once, on the first
+        tile asked for. ``False`` means not looked for yet."""
+
+    def index(self) -> LibraryIndex | None:
+        """The manifest beside the files, when the folder is a copy of a baked library.
+
+        Whoever copies a library to disk gets what the library gets: a square that really holds
+        no road is taken rather than sent to the public servers, because the manifest says what
+        each file's content must hash to. A folder without one, an Ortho4XP folder, keeps the
+        strict rule, which is the only honest thing to do with files that say nothing about
+        themselves (2026-09-23).
+        """
+        if self._index is False:
+            path = self.root / "manifest.json"
+            self._index = parse_manifest(path.read_bytes()) if path.is_file() else None
+        return self._index or None
+
+    def _vouched(self, tile: TileRef, spec: LayerSpec, snap: OsmSnapshot) -> bool:
+        """Whether a manifest beside the files announces this very document."""
+        index = self.index()
+        entry = index.entry(tile, spec.name) if index is not None else None
+        return bool(entry) and str(entry.get("digest", "")) == snap.digest  # type: ignore[union-attr]
 
     def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
         out: dict[str, OsmSnapshot] = {}
@@ -126,9 +155,10 @@ class FolderSource:
             if not path.is_file():
                 continue
             if path.stat().st_size < EMPTY_BYTES and spec.name != "coastline":
-                # an empty layer is an answer only where emptiness is the truth: an inland tile
-                # has no coastline, no tile at all has no roads
-                log.info("%s: %s is empty in %s", tile.name, spec.name, self.name)
+                # under this there is no document at all, not even the wrapper of an empty
+                # layer. An empty coastline is the exception: Ortho4XP's format writes one in
+                # 26 bytes, and an inland tile has no coast, which is not a failure of anything
+                log.info("%s: %s is a truncated file in %s", tile.name, spec.name, self.name)
                 return None
             try:
                 raw = path.read_bytes()
@@ -140,8 +170,13 @@ class FolderSource:
                         log.warning("%s: %s holds %s of %s", self.name, path.name,
                                     snap.layer, snap.tile.name)  # fmt: skip
                         return None
-                    if snap.is_empty and spec.name != "coastline":
-                        log.info("%s: %s of %s holds nothing", self.name, spec.name, tile.name)
+                    if (
+                        snap.is_empty
+                        and spec.name != "coastline"
+                        and not self._vouched(tile, spec, snap)
+                    ):
+                        log.info("%s: %s of %s holds nothing and says so on nobody's word",
+                                 self.name, spec.name, tile.name)  # fmt: skip
                         return None
                     if tuple(snap.selectors) != tuple(spec.selectors):
                         # the same layer name, a different question (``library.py``)

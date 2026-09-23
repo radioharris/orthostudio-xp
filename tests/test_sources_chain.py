@@ -345,3 +345,52 @@ def test_a_source_set_aside_says_so_once() -> None:
     assert len(said) == 1, "said once, not once per tile"
     assert "library" in said[0] and "map data live" in said[0]
     assert "Nothing to do" in said[0], "the remedy travels with the message"
+
+
+def test_a_copied_library_keeps_its_proofs_in_a_folder(tmp_path: Path) -> None:
+    """Whoever copies a library to disk gets what the library gets: a square that really holds
+    no road is taken, because the manifest says what each file's content must hash to. A folder
+    without a manifest keeps the strict rule (2026-09-23)."""
+    import json
+
+    from orthostudio.sources.osm import SnapshotStore
+
+    root = _our_library(tmp_path / "lib")
+    store = SnapshotStore(root)
+    empty = OsmSnapshot(
+        tile=TILE,
+        layer="big_roads",
+        selectors=tuple(LAYERS["big_roads"].selectors),
+        query="",
+        mirror="baked:test",
+        fetched_at="2026-09-23T00:00:00Z",
+        generator="test",
+        osm_base="",
+        nodes=(),
+        ways=(),
+        relations=(),
+        digest="f" * 64,
+    )
+    store.save(empty, sidecar=False)
+    assert FolderSource(root).layers(TILE, SPECS) is None, "nothing vouches for it yet"
+
+    files = {}
+    for spec in SPECS:
+        path = store.path_for(TILE, spec.name)
+        snap = store.load(TILE, spec.name)
+        assert snap is not None
+        files[str(path.relative_to(root))] = {
+            "tile": TILE.name,
+            "layer": spec.name,
+            "digest": snap.digest,
+            "bytes": path.stat().st_size,
+        }
+    manifest = {
+        "format": "osxp-baked-1",
+        "extracted": "2026-09-22",
+        "road_level": 1,
+        "files": files,
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    got = FolderSource(root).layers(TILE, SPECS)
+    assert got is not None and got["big_roads"].is_empty
