@@ -176,3 +176,54 @@ def test_a_source_that_answers_short_is_refused() -> None:
 def test_nothing_prepared_leaves_the_tile_to_overpass() -> None:
     got = Chain([]).layers(TILE, SPECS)
     assert not got and got.source == "" and got.snapshots is None
+
+
+# -- the library someone else publishes -------------------------------------------------------
+
+
+def test_the_public_library_is_inert_without_a_whitelist() -> None:
+    """No verification, no use. A build that cannot reach our own library has no whitelist, and
+    then it must not read theirs either: 22 % of the tiles they list hold no road at all, and
+    nothing in a file says it is short (2026-09-19, unchanged 2026-09-23)."""
+    from orthostudio.sources.prepared import PublicSource
+
+    asked: list[object] = []
+    source = PublicSource(fetch=lambda urls: asked.append(urls) or [])  # type: ignore[arg-type]
+    assert source.layers(TILE, SPECS) is None
+    assert asked == []  # not even their manifest is read
+
+
+def test_the_public_library_serves_only_the_tiles_we_verified() -> None:
+    from orthostudio.sources.prepared import PreparedIndex, PublicSource, layer_path
+
+    files = {layer_path(TILE, spec.name): {"sha256": "", "size": 5_000} for spec in SPECS}
+    index = PreparedIndex(version="2026-08-08", files=files)
+    calls: list[int] = []
+
+    def fetch(urls):  # type: ignore[no-untyped-def]
+        calls.append(len(urls))
+        return [(200, bz2.compress(XML)) for _ in urls]
+
+    allowed = PublicSource([TILE.name], index=index, fetch=fetch)
+    got = allowed.layers(TILE, SPECS)
+    assert got is not None and sorted(got) == sorted(s.name for s in SPECS)
+
+    elsewhere = PublicSource(["+00+000"], index=index, fetch=fetch)
+    assert elsewhere.layers(TILE, SPECS) is None
+    assert calls == [len(SPECS)]  # the second one asked nothing
+
+
+def test_a_whitelisted_tile_with_an_empty_road_layer_is_still_refused() -> None:
+    """The whitelist says the tile was complete when we looked; the manifest says this file is
+    empty now. The smaller claim wins."""
+    from orthostudio.sources.prepared import PreparedIndex, PublicSource, layer_path
+
+    files = {
+        layer_path(TILE, spec.name): {
+            "sha256": "",
+            "size": 120 if spec.name == "big_roads" else 5_000,
+        }
+        for spec in SPECS
+    }
+    source = PublicSource([TILE.name], index=PreparedIndex(files=files), fetch=lambda urls: [])
+    assert source.layers(TILE, SPECS) is None

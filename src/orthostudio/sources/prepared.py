@@ -53,6 +53,7 @@ __all__ = [
     "MANIFEST_URL",
     "PREPARED_BASE",
     "PreparedIndex",
+    "PublicSource",
     "http_get",
     "http_get_many",
     "layer_path",
@@ -72,6 +73,9 @@ MANIFEST_URL = f"{PREPARED_BASE}/manifest.json"
 INDEX_TTL_S = 24 * 3600.0
 """How long the copy on disk is trusted before its ETag is offered again."""
 
+EMPTY_LAYER_BYTES = 200
+"""A layer file smaller than this holds no element at all: not an answer, whoever publishes it
+(1 559 of their 7 132 tiles hold no road, measured 2026-09-19 and unchanged on 2026-09-23)."""
 MAX_LAYER_BYTES = 120_000_000
 """What one layer may weigh, compressed: the heaviest of the set is Tokyo at 81 MB."""
 
@@ -106,6 +110,11 @@ class PreparedIndex:
         """The sha256 the manifest gives for one layer, or an empty string."""
         entry = self.files.get(layer_path(tile, layer)) or {}
         return str(entry.get("sha256", ""))
+
+    def size_of(self, tile: TileRef, layer: str) -> int:
+        """What the manifest says the file weighs, or 0 when it does not list it."""
+        entry = self.files.get(layer_path(tile, layer)) or {}
+        return int(entry.get("size", 0) or 0)
 
     def stamp(self, tile: TileRef, layers: Iterable[LayerSpec | str]) -> str:
         """What the data of this tile is, in twelve characters, for the key of the OSM node.
@@ -420,3 +429,60 @@ def snapshots_for(
         return tile_snapshots(tile, specs, index, http_get_many, progress)
 
     return prepared
+
+
+class PublicSource:
+    """The library another project publishes, used only where we have verified it ourselves.
+
+    They bake the same five layers per tile and serve them free of charge, which is worth having
+    for the parts of the world we will not bake. But their coverage cannot be told from their
+    manifest: measured 2026-09-19 and again unchanged on 2026-09-23, 1 559 of the 7 132 tiles they
+    list hold no road at all, and a tile that straddles a border is cut at that border -- Geneva
+    holds 10 110 road ways where a live query returns 24 307 -- with a valid file and a matching
+    checksum to show for it.
+
+    Hence the whitelist, which travels with our own manifest: the tiles we have compared, against
+    a live count or against our own bake. **An empty whitelist makes this source inert**, so a
+    build that cannot reach our library never reads theirs either: no verification, no use
+    (``osm-prepared.md`` 3).
+    """
+
+    def __init__(
+        self,
+        allowed: Iterable[str] = (),
+        *,
+        name: str = "xpconnect",
+        index: PreparedIndex | None = None,
+        cache_dir: Path | None = None,
+        fetch: Callable[[Sequence[str]], Sequence[tuple[int, bytes]]] | None = None,
+    ) -> None:
+        self.allowed = frozenset(allowed)
+        self.name = name
+        self.index = index
+        self.cache_dir = cache_dir
+        self.fetch = fetch if fetch is not None else http_get_many
+        self._looked = False
+
+    def _read_index(self) -> PreparedIndex | None:
+        if self.index is not None or self._looked:
+            return self.index
+        self._looked = True
+        if self.cache_dir is not None:
+            self.index = shared_index(self.cache_dir)
+        return self.index
+
+    def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
+        if tile.name not in self.allowed:
+            return None  # not verified: not used, whatever their manifest claims
+        index = self._read_index()
+        if index is None or not index.covers(tile, specs):
+            return None
+        for spec in specs:
+            if index.size_of(tile, spec.name) < EMPTY_LAYER_BYTES and spec.name != "coastline":
+                log.info(
+                    "prepared: %s of %s is empty; the next source takes over",
+                    spec.name,
+                    tile.name,
+                )
+                return None
+        return tile_snapshots(tile, specs, index, self.fetch)
