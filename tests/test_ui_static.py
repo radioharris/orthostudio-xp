@@ -4644,6 +4644,23 @@ def test_what_went_wrong_with_a_way_is_said_under_it() -> None:
     assert {"LSGG", "LFMN"} <= {a["icao"] for a in airports}  # the placeholder, "LSGG LFMN"
 
 
+def test_the_map_goes_to_the_airport_chosen() -> None:
+    """A code says nothing about where its airport is: a user chose one and the map stayed where
+    it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from
+    the list and typing the code in full both bring the map over it, keeping the zoom the user
+    set but never leaving it so far out that the airport and its squares are not drawn."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    body = re.search(r"\n    goTo\(lat, lon\) \{.*?\n    \},\n", map_js, re.S)
+    assert body is not None, "map.js offers goTo"
+    go = body.group(0)
+    assert "if (!map || !Number.isFinite(lat) || !Number.isFinite(lon)) return;" in go
+    # a floor, never a setting: someone close over one airfield stays that close over the next
+    assert "map.setView([lat, lon], Math.max(map.getZoom(), AIRPORTS_MIN_ZOOM));" in go
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    for name in ("pickAirport", "addTilesFromIcao"):
+        assert "planMap?.goTo(" in _function_body(js, name), name
+
+
 def test_the_squares_a_route_crosses_and_its_length() -> None:
     """``tilesAlong`` samples every leg well under the one degree a square measures, so a square
     the line only clips is still counted; ``routeLength`` measures on the sphere."""

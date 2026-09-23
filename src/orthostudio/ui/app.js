@@ -2925,6 +2925,7 @@ function pickAirport(a) {
   icaoResults = [];
   icaoActive = -1;
   renderIcaoList();
+  planMap?.goTo(a.lat, a.lon);
 }
 
 function onIcaoInput() {
@@ -2989,6 +2990,7 @@ async function addTilesFromIcao() {
     }
   }
   showWayError(null);
+  planMap?.goTo(airport.lat, airport.lon); // a code typed in full is a choice too
   const r = Math.max(1, Number($("radius-input").value) || 15);
   const names = tilesAround(airport.lat, airport.lon, r);
   keepInPlace($("icao-add"), () => sayTilesInBuild(addTiles(names)));

@@ -2579,6 +2579,18 @@ export function createPlanMap(ctx) {
     mapLatitude: () => (map ? map.getCenter().lat : null),
     /** The map centre `{lat, lon}`, or null before the map exists. */
     mapCenter: () => (map ? { lat: map.getCenter().lat, lon: map.getCenter().lng } : null),
+    /**
+     * Bring the map over a point the user named, the airport of step 1's code. A code says
+     * nothing about where its airport is, and the map stayed where it was, so the squares just
+     * chosen were somewhere off the screen (a user, 2026-09-24).
+     *
+     * The zoom is kept, so someone looking closely at one airfield stays that close over the
+     * next, but never so far out that neither the airport nor the squares around it are drawn.
+     */
+    goTo(lat, lon) {
+      if (!map || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      map.setView([lat, lon], Math.max(map.getZoom(), AIRPORTS_MIN_ZOOM));
+    },
     /** The colours the squares given share: `{mixed, photo}` (the Plan's colour control). */
     tilesPhoto,
     /** Set the colours of the squares given; `null` gives them back to Settings. */

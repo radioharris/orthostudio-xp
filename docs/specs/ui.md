@@ -228,7 +228,9 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
   - ICAO code with completion from `GET /api/airports?q=` (debounced 200 ms, 10 results,
     custom listbox for keyboard use) and a radius in km (default 15) → every 1° cell
     intersecting the bounding box of the circle (`dlat = r / 111.2`,
-    `dlon = r / (111.2 cos lat)`);
+    `dlon = r / (111.2 cos lat)`). Choosing one from the list, and adding by a code typed in
+    full, both bring the map over the airport (`goTo`): the zoom the user set is kept, floored
+    at `AIRPORTS_MIN_ZOOM` so that the airport and the squares around it are drawn;
   - a free text of tile names `+43+005 +43+006` (regex `[+-]\d\d[+-]\d\d\d`, separators
     space, comma, newline);
   - latitude / longitude → tile `floor(lat)`, `floor(lon)` formatted `%+03d%+04d`.
