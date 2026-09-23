@@ -159,3 +159,32 @@ def test_import_ortho4xp_rejects_missing_dir(tmp_path: Path) -> None:
     with Library(tmp_path / "lib.sqlite") as lib, pytest.raises(OsxpError) as exc:
         lib.import_ortho4xp(tmp_path / "nope")
     assert exc.value.code == "SYS_WORKING_DIR_INVALID"
+
+
+def test_an_ortho_pack_is_known_by_what_it_holds_not_by_its_name(tmp_path: Path) -> None:
+    """A user's ``/media/Data/X-Plane_Orthos/EUR_EOX_ZL14`` was refused as "not an Ortho4XP
+    installation" because the import knew a pack only by the name Ortho4XP gives it. He was right
+    about the remedy: an ``Earth nav data`` with DSFs in it and the textures beside it is what a
+    pack is (2026-09-23)."""
+    from orthostudio.install.library import holds_ortho4xp_tiles, looks_like_an_ortho_pack
+
+    def pack(path: Path, *, ours: bool = False, dsf: bool = True) -> Path:
+        (path / "Earth nav data" / "+40+000").mkdir(parents=True)
+        if dsf:
+            (path / "Earth nav data" / "+40+000" / "+46+006.dsf").write_bytes(b"x")
+        (path / "textures").mkdir()
+        (path / "terrain").mkdir()
+        if ours:
+            (path / "orthostudio.toml").write_text("", encoding="utf-8")
+        return path
+
+    his = pack(tmp_path / "X-Plane_Orthos" / "EUR_EOX_ZL14")
+    assert looks_like_an_ortho_pack(his)
+    assert holds_ortho4xp_tiles(his), "the folder he named"
+    assert holds_ortho4xp_tiles(his.parent), "and the one holding it"
+
+    assert not looks_like_an_ortho_pack(pack(tmp_path / "zOrthoStudio_x", ours=True)), "ours"
+    assert not looks_like_an_ortho_pack(pack(tmp_path / "empty", dsf=False)), "no tile in it"
+    plain = tmp_path / "Documents"
+    (plain / "textures").mkdir(parents=True)
+    assert not looks_like_an_ortho_pack(plain)
