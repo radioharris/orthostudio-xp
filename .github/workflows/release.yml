@@ -50,12 +50,15 @@ jobs:
       # is public. Without them the installer reaches no library and downloads every tile live,
       # exactly as every version before 0.1.15 (docs/specs/osm-prepared.md).
       - name: Carry the prepared library
-        if: ${{ secrets.OSXP_LIBRARY_URL != '' }}
         shell: bash
         env:
           URL: ${{ secrets.OSXP_LIBRARY_URL }}
           TOKEN: ${{ secrets.OSXP_LIBRARY_TOKEN }}
         run: |
+          # `secrets` cannot be read in a step's `if`, which made the whole workflow invalid and
+          # a tag build nothing at all; the test belongs here, where the value is in the
+          # environment (2026-09-23)
+          if [ -z "${URL:-}" ]; then echo "no library configured; the build carries none"; exit 0; fi
           python -c "import json,os,pathlib; pathlib.Path('src/orthostudio/library.json').write_text(json.dumps({'url': os.environ['URL'], 'token': os.environ['TOKEN']}))"
       - run: >-
           uv run --no-sync python tools/package/build.py --check

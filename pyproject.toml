@@ -56,6 +56,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orthostudio"]
+# Written when the installers are built, from the repository's secrets, and ignored by git since
+# the repository is public. Hatchling honours .gitignore, so without this line the file is
+# silently dropped from the wheel and every release ships with no library (2026-09-23).
+artifacts = ["src/orthostudio/library.json"]
 
 [tool.ruff]
 line-length = 100

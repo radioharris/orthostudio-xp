@@ -95,11 +95,19 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "photo_contrast": TileParameter(float, 0.0),
     "photo_saturation": TileParameter(float, 0.0),
     "photo_zones": TileParameter(list, []),
+    "osm_folder": TileParameter(str, ""),
+    "osm_library": TileParameter(str, ""),
+    "osm_library_token": TileParameter(str, ""),
+    "osm_prepared_public": TileParameter(bool, True),
 }
 """Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
 Ortho4XP: the decals on the sea (2026-09-17) and the colours of the photo (2026-09-18). They are
 not part of the 44, so ``tile_cfg_text`` does not write them; ``--set`` and the page's overrides
-accept them beside the 44."""
+accept them beside the 44. Where a tile's map data may come from joined them on 2026-09-23: the
+settings existed, the page showed them, and nothing carried them to a build, so the folder source
+was never built and the public library could not be switched off. The key travels this way and no
+other: ``tile_cfg_text`` writes the 44 alone, so it never reaches a scenery pack's
+``tile_settings.cfg``."""
 
 _LITERAL_TYPES = (bool, list)
 _ZONE_APPEND = "zone_list.append("

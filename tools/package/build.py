@@ -522,6 +522,17 @@ def check_same_sources(package: Path) -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
     packed = {path for path in packed if path.parts[0] != "bin"}
+    # The address and key of the prepared library are written from the repository's secrets when
+    # the installers are built, and git never tracks them since the repository is public. The
+    # packed package must hold the file the build wrote, so it is expected rather than extra, and
+    # a release that was given the secrets and shipped without it is a release with no library
+    # (2026-09-23).
+    carried = Path("library.json")
+    if carried in packed:
+        packed.discard(carried)
+        text = (package / carried).read_text(encoding="utf-8")
+        if '"url"' not in text or '"token"' not in text:
+            raise SystemExit(f"{carried} is packed but holds neither an address nor a key")
     stale = sorted(
         str(p)
         for p in wanted

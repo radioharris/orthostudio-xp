@@ -135,6 +135,12 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
     """The tile variables and overlay settings of ``settings`` under their Ortho4XP names."""
     e, a, x = settings.essential, settings.advanced, settings.expert
     out: dict[str, Any] = {
+        # where a tile's map data may come from, before the public servers are asked
+        # (``osm-prepared.md``); empty means there is none of that kind
+        "osm_folder": str(x.osm_folder or ""),
+        "osm_library": str(x.osm_library or ""),
+        "osm_library_token": str(x.osm_library_token or ""),
+        "osm_prepared_public": bool(x.osm_prepared_public),
         "cover_airports_with_highres": AIRPORT_MODES[e.airports.mode],
         "cover_zl": int(e.airports.zoom_level),
         "cover_extent": float(e.airports.extent_km),
