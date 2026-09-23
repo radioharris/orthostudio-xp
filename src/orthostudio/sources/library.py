@@ -237,6 +237,9 @@ class LibrarySource:
         ttl_s: float = INDEX_TTL_S,
     ) -> None:
         self.base = base_url.rstrip("/")
+        """Where the library is. It is never written to a log: ``serve.log`` is the file the page
+        asks a user to send with a report, the address of this one deliberately stays out of
+        print, and every line below names the source rather than the server (2026-09-23)."""
         self.token = token
         self.name = name
         self.fetch: FetchFn = fetch if fetch is not None else _http_get_many
@@ -279,19 +282,19 @@ class LibrarySource:
         try:
             ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
         except Exception as exc:  # a library must never stop a build
-            log.info("OSM_LIBRARY_UNREACHABLE: %s could not be asked (%s)", self.base, exc)
+            log.info("OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, exc)
             self._retry_at = time.monotonic() + RETRY_PAUSE_S
             return self._kept()
         if status in (401, 403):
             # the door, not a fault: the token is wrong or absent, and it will be at the next
             # tile as well
-            log.info("OSM_LIBRARY_KEY_REFUSED: %s refused the key (HTTP %s)", self.base, status)
+            log.info("OSM_LIBRARY_KEY_REFUSED: the %s refused the key (HTTP %s)", self.name, status)
             self._closed = True
             return None
         if status != 200:
             # a restart, a 502, a connection cut: the same question in two minutes may well be
             # answered, and until then the copy on disk is better than nothing (review F7)
-            log.info("OSM_LIBRARY_UNREACHABLE: %s answered HTTP %s", self.base, status)
+            log.info("OSM_LIBRARY_UNREACHABLE: the %s answered HTTP %s", self.name, status)
             self._retry_at = time.monotonic() + RETRY_PAUSE_S
             return self._kept()
         index = parse_manifest(body)
