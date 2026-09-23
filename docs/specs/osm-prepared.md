@@ -108,6 +108,14 @@ covered. What it does carry, per file, is the digest and the size, and per bake:
 | `extracted` | when the data was cut from the planet, as the extract's own header records it, not when we downloaded it |
 | `road_level` | which layers it answers for. Compared with the build's before anything is downloaded, so a library baked for other layers costs one manifest and not one tile per tile |
 
+A library baked at road level 1 answers builds at road level 0 and 1, which is the default and
+what almost every build uses, and is skipped entirely above that: level 2 adds tertiary roads,
+which the extract was filtered out of and the bake never saw. Such a build downloads every layer
+live, as every version before this one. Serving the four layers that do not depend on the road
+level from the library and asking the servers for the fifth alone would be sound, since both
+sources cover the whole square, but it is not what the all-or-nothing rule says today and it is
+not worth breaking that rule without measuring first.
+
 The coverage is *not* whatever the extract's bounding box covers. Geofabrik clips to a country
 outline, so a square on the border of the download holds one side of it and nothing of the other,
 which is the Geneva failure produced by our own tool. The bake reads the `.poly` beside the `.pbf`
