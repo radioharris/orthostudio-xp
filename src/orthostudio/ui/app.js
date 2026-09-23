@@ -643,10 +643,10 @@ function mockTileStatus(tile, jobStatus) {
   return tile.nodes.some((n) => n.status !== "pending") ? "running" : "pending";
 }
 
-/** A mock node's weight in progress, as the engine's `progress.weight_of`: nothing for a hit, or
- * a node skipped or cancelled before it started. */
+/** A mock node's weight in progress, as the engine's `progress.weight_of`: nothing for a hit,
+ * which is work there was none of. Work planned that will not happen still counts. */
 function mockWeight(n) {
-  if (n.status === "hit" || ((n.status === "skipped" || n.status === "cancelled") && !n.started)) return 0;
+  if (n.status === "hit") return 0;
   return Math.max(0, n.weight_s);
 }
 
@@ -1399,6 +1399,8 @@ export async function mockSubscribe(jobId, handlers) {
 
 /** Node statuses that end a node: the engine counts such a node whole in its stage's fraction. */
 const NODE_ENDED = new Set(["done", "hit", "failed", "skipped", "cancelled"]);
+/** Ended *and* done (the engine's `progress.FINISHED`): what the bar counts as built. */
+const NODE_FINISHED = new Set(["done", "hit"]);
 /** Job statuses of a build still to come or under way: Stop, Remaining and the ticking clock. */
 const JOB_ACTIVE = new Set(["queued", "pending", "running"]);
 /** The log keeps its last lines only. */
@@ -1483,11 +1485,11 @@ function emptyStep() {
   return { status: "pending", fraction: 0, message: "", wall_s: 0, nodes: {} };
 }
 
-/** A node's share of its step's work: 1 once it ended, its fraction while it runs, else 0 (the
- * engine's `progress._fraction`). */
+/** A node's share of its step's work: 1 once it is done, else how far it got (the engine's
+ * `progress._fraction`). One that failed, was skipped or was cancelled ended without finishing. */
 function nodeFraction(n) {
-  if (NODE_ENDED.has(n.status)) return 1;
-  return n.status === "running" ? clamp01(n.fraction) : 0;
+  if (NODE_FINISHED.has(n.status)) return 1;
+  return NODE_ENDED.has(n.status) || n.status === "running" ? clamp01(n.fraction) : 0;
 }
 
 /**
@@ -1785,7 +1787,7 @@ export function jobProgress(job) {
       if (!n && step.status === "skipped") continue;
       const w = Math.max(1, n);
       weights += w;
-      sum += w * (NODE_ENDED.has(step.status) ? 1 : clamp01(step.fraction));
+      sum += w * (NODE_FINISHED.has(step.status) ? 1 : clamp01(step.fraction));
     }
   }
   return weights ? sum / weights : 0;

@@ -254,8 +254,11 @@ def test_replay_progress_elapsed_and_phase(
     job, stats, end = replayed
     values = [st["progress"] for _t, st in stats]
     assert values == sorted(values) and values[0] >= 0.0
-    # 1 once every node ended (the last textures node failed at 538.0 s), not before
-    assert values[-1] == 1.0 and all(st["progress"] < 1.0 for t, st in stats if t < 537.9)
+    # It read 1 as soon as every node had ended, however it ended. This journal's last textures
+    # node *failed*, so the bar stops just short of full: what the build got through, not "all
+    # done" (found in review, 2026-09-23).
+    assert 0.98 < values[-1] < 1.0
+    assert all(st["progress"] <= values[-1] for _t, st in stats)
     # elapsed spans both phases (the journal's ts count from the job's creation, a hair earlier)
     assert all(abs(st["elapsed_s"] - t) < 0.01 for t, st in stats)
     assert all(st["eta_low_s"] is not None for t, st in stats if t < end)
@@ -270,7 +273,10 @@ def test_replay_progress_elapsed_and_phase(
     assert first["hits"] == 2  # the two OSM rows whose data was there
     job._finish("failed", None, None)
     last = job.state()
-    assert last["stats"]["progress"] == 1.0 and last["stats"]["eta_low_s"] == 0.0
+    # the job is finished as *failed*: the bar stops where the work stopped, and the status is
+    # what says nothing more will happen (found in review, 2026-09-23)
+    assert 0.98 < last["stats"]["progress"] < 1.0
+    assert last["stats"]["eta_low_s"] == 0.0
     assert last["eta"] is None
     for tile in last["tiles"]:
         data = tile["stages"]["data"]
@@ -637,13 +643,17 @@ def test_rows_and_events_carry_the_weight_a_page_needs(tmp_path: Path) -> None:
     assert by_event[("started", "+43+005/vectors")]["weight_s"] > 0
     assert by_event[("done", "+43+005/vectors")]["weight_s"] == 0.0  # a hit
     assert by_event[("progress", "+43+005/coastline")]["weight_s"] > 0
-    assert by_event[("failed", "+43+005/masks")]["weight_s"] == 0.0  # skipped before it started
+    # a node skipped before it started used to carry no weight, so it left the sum and the bar
+    # read "all of what is left is done". Work planned that will not happen still counts.
+    assert by_event[("failed", "+43+005/masks")]["weight_s"] > 0.0
     tile = job.state()["tiles"][0]
     for stage in tile["stages"].values():
         if not stage["nodes"]:
             continue
+        # 1 only for what finished; what failed, was skipped or was cancelled counts how far
+        # it got, as the engine's ``progress._fraction`` does
         parts = [
-            (n["weight_s"], 1.0 if n["status"] not in ("pending", "running") else n["fraction"])
+            (n["weight_s"], 1.0 if n["status"] in ("done", "hit") else n["fraction"])
             for n in stage["nodes"]
             if n["status"] != "pending"
         ]
@@ -1231,7 +1241,10 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
     stats = [e["stats"] for e in events if e["event"] == "stats"]
     assert {s["phase"] for s in stats} == {"build"}
     assert [s["progress"] for s in stats] == sorted(s["progress"] for s in stats)
-    assert stats[-1]["progress"] == 1.0 and stats[-1]["eta_low_s"] == 0.0
+    # Nothing was built: no network, so every node failed or was skipped. The bar used to read
+    # 1.0 because every node had *ended*, which is a different question from how much is built
+    # (found in review, 2026-09-23). "failed" above is what says it is over.
+    assert stats[-1]["progress"] == 0.0 and stats[-1]["eta_low_s"] == 0.0
     state = job.state()
     for tile in state["tiles"]:
         rows = [n for stage in tile["stages"].values() for n in stage["nodes"]]
@@ -1368,3 +1381,53 @@ def test_the_top_of_the_range_ends_where_the_estimate_ends() -> None:
     low_s, high_s = published
     assert high_s <= ETA_MAX_S, f"the page is shown {high_s / 3600:.1f} h"
     assert 0.0 <= low_s <= high_s
+
+
+def test_a_build_that_was_stopped_does_not_read_as_finished() -> None:
+    """One number answered two questions: how much of the scenery is built, which is what the
+    bar is read for, and whether anything more will happen, which is what the job's status says.
+    A node that failed, was skipped or was cancelled counted as finished, and one skipped before
+    it started left the sum altogether, so stopping a build twenty seconds in put the bar at
+    99 % beside the word "cancelled" -- the very shape of the complaint this release exists for
+    (found in review, 2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import estimate
+
+    def progress(kinds: list[tuple[str, float, float, float | None]]) -> float:
+        rows = []
+        for i, (status, fraction, weight, started) in enumerate(kinds):
+            n = _NodeState(node=f"+43+005/n{i}", role="textures", stage="imagery")
+            n.status, n.fraction, n.weight_s, n.started_at = status, fraction, weight, started
+            rows.append(n)
+        return estimate(rows, now=100.0, phase="build", declared=True).progress
+
+    stopped_at_once = progress(
+        [
+            ("done", 1.0, 2.5, 0.0),
+            ("cancelled", 0.0, 6.3, 1.0),
+            ("cancelled", 0.0, 41.0, None),
+            ("skipped", 0.0, 1.8, None),
+        ]
+    )
+    assert stopped_at_once < 0.15, f"a build stopped at once reads {stopped_at_once:.0%}"
+
+    half_way = progress(
+        [
+            ("done", 1.0, 2.5, 0.0),
+            ("done", 1.0, 6.3, 0.0),
+            ("cancelled", 0.466, 41.0, 1.0),
+            ("skipped", 0.0, 1.8, None),
+        ]
+    )
+    assert 0.35 < half_way < 0.75, f"cancelled with the imagery half done reads {half_way:.0%}"
+
+    assert (
+        progress(
+            [("failed", 0.0, 2.5, 0.0), ("skipped", 0.0, 6.3, None), ("skipped", 0.0, 41.0, None)]
+        )
+        == 0.0
+    )
+
+    # what really finished still reads as finished, and so does a tile entirely from the store
+    assert progress([("done", 1.0, 2.5, 0.0), ("done", 1.0, 41.0, 0.0)]) == 1.0
+    assert progress([("hit", 1.0, 0.0, None), ("hit", 1.0, 0.0, None)]) == 1.0

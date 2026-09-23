@@ -1753,7 +1753,10 @@ def test_a_mock_build_streams_what_the_engine_would() -> None:
     assert [s["progress"] for s in stats] == sorted(s["progress"] for s in stats)
     assert {s["phase"] for s in stats} == {"build"}
     assert stats[0]["eta_low_s"] is None and any((s["eta_low_s"] or 0) > 0 for s in stats)
-    assert stats[-1]["progress"] == 1
+    # this mock build ends *failed*: the bar stops where the work stopped. A build that really
+    # finishes is set to 1 by the engine itself (``Job._stats_now``), and the page's fallback
+    # has the same rule (found in review, 2026-09-23).
+    assert 0.98 < stats[-1]["progress"] < 1
     assert [s["elapsed_s"] for s in stats] == sorted(s["elapsed_s"] for s in stats)
     for e in entries:
         assert e["event"] in JOURNAL_EVENTS
@@ -1774,7 +1777,8 @@ def test_a_mock_build_streams_what_the_engine_would() -> None:
     assert got["reads"] > 0
     weights = [e["weight_s"] for e in entries if e["event"] in ("started", "progress", "done")]
     assert all(isinstance(w, int | float) and w >= 0 for w in weights) and max(weights) > 0
-    assert got["status"] == "failed" and got["progress"] == 1 and got["log"] > 3
+    # ends failed, so the bar stops where the work stopped (see the stats assertion above)
+    assert got["status"] == "failed" and 0.98 < got["progress"] < 1 and got["log"] > 3
     assert got["errors"] == [["TEX_MISSING", "+44+005", "imagery"]]
     stages = {
         t["tile"]: {s: v["status"] for s, v in t["stages"].items()} for t in got["state"]["tiles"]

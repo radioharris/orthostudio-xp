@@ -242,6 +242,12 @@ ETA_SLEW_MIN_S = 2.0
 BAND_SLEW = 0.01
 """The width of the range (``band``) changes by at most this much per second."""
 ENDED = frozenset({"done", "hit", "failed", "skipped", "cancelled"})
+FINISHED = frozenset({"done", "hit"})
+"""Ended **and** done. A node that failed, was skipped or was cancelled ended without finishing,
+and the two questions are not the same one: how much of the scenery is built, which is what the
+bar is read for, and whether anything more will happen, which is what the job's status says. One
+number answered both, so a build stopped twenty seconds in read 99 % (found in review,
+2026-09-23). A job that really finishes is set to 1 by ``Job._stats_now``, not by this."""
 
 
 class NodeLike(Protocol):
@@ -458,16 +464,19 @@ def _group(n: NodeLike) -> str:
 
 
 def weight_of(n: NodeLike) -> float:
-    """The node's weight in progress: zero when it does not run (a hit, a skip, a cancel
-    before it started)."""
-    if n.status == "hit" or (n.status in ("skipped", "cancelled") and n.started_at is None):
+    """The node's weight in progress: zero for a hit, which is work there was none of.
+
+    Work that was planned and will not happen still counts, or it leaves the sum and the bar
+    reads "all of what is left is done" (2026-09-23).
+    """
+    if n.status == "hit":
         return 0.0
     return max(0.0, n.weight_s)
 
 
 def weighted_progress(nodes: Sequence[NodeLike]) -> float:
-    """Weighted share of the work ended (1 for an ended node, its fraction while it runs); by
-    count when nothing weighs (every node a hit)."""
+    """Weighted share of the work **done** (1 for a node that finished, else how far it got);
+    by count when nothing weighs (every node a hit)."""
     total = sum(weight_of(n) for n in nodes)
     if total <= 0:
         return sum(_fraction(n) for n in nodes) / len(nodes) if nodes else 0.0
@@ -475,10 +484,10 @@ def weighted_progress(nodes: Sequence[NodeLike]) -> float:
 
 
 def _fraction(n: NodeLike) -> float:
-    if n.status in ENDED:
+    if n.status in FINISHED:
         return 1.0
-    if n.status == "running":
-        return min(1.0, max(0.0, n.fraction))
+    if n.status in ENDED or n.status == "running":
+        return min(1.0, max(0.0, n.fraction))  # how far it got, and no further
     return 0.0
 
 
