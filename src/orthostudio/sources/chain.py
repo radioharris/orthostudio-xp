@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-import orjson
 import zstandard
 
 from orthostudio.model import TileRef
@@ -133,6 +132,15 @@ class FolderSource:
                 raw = path.read_bytes()
                 if path.suffix == ".zst":
                     snap = OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(raw))
+                    if snap.layer != spec.name or snap.tile.name != tile.name:
+                        # a file mis-filed by hand: its path says one square, the document says
+                        # another, and another square's geometry would be recorded as this one
+                        log.warning("%s: %s holds %s of %s", self.name, path.name,
+                                    snap.layer, snap.tile.name)  # fmt: skip
+                        return None
+                    if snap.is_empty and spec.name != "coastline":
+                        log.info("%s: %s of %s holds nothing", self.name, spec.name, tile.name)
+                        return None
                     if tuple(snap.selectors) != tuple(spec.selectors):
                         # the same layer name, a different question (``library.py``)
                         log.info("%s: %s of %s was prepared for other selectors", self.name,
@@ -140,7 +148,7 @@ class FolderSource:
                         return None
                     return snap
                 return snapshot_from_xml(raw, tile, spec, mirror=self.name)
-            except (OSError, ValueError, KeyError, orjson.JSONDecodeError, zstandard.ZstdError):
+            except Exception:  # unreadable is unreadable: XML raises SyntaxError, zstd its own
                 log.warning("%s: %s unreadable in %s", tile.name, spec.name, self.name)
                 return None
         return None

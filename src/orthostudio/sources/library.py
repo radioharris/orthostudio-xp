@@ -291,6 +291,12 @@ class LibrarySource:
         if snap.layer != spec.name or snap.tile.name != tile.name:
             log.warning("%s: %s of %s holds another tile or layer", self.name, spec.name, tile.name)
             return None
+        if snap.is_empty and spec.name != "coastline":
+            # a file large enough to pass the manifest's size check can still hold nothing:
+            # our own empty snapshots weigh 233 to 281 bytes (2026-09-23)
+            log.info("%s: %s of %s holds nothing; the next source takes over", self.name,
+                     spec.name, tile.name)  # fmt: skip
+            return None
         if tuple(snap.selectors) != tuple(spec.selectors):
             # the same layer name, a different question: small_roads baked at road level 2 holds
             # tertiary roads and no more, and a build asking for level 5 wants the tracks too.

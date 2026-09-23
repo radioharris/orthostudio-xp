@@ -432,6 +432,18 @@ class OsmSnapshot:
     digest: str
 
     @property
+    def is_empty(self) -> bool:
+        """Whether this layer holds nothing at all.
+
+        Not the same as a small file: an empty snapshot of ours still carries its metadata, 233
+        to 281 bytes of it, so the size threshold that catches an empty bzip2 XML document misses
+        this entirely (2026-09-23). Emptiness is the truth for a coastline inland; it never is for
+        roads or water, and a build that took such a layer would lay scenery without them and say
+        nothing.
+        """
+        return not (self.nodes or self.ways or self.relations)
+
+    @property
     def counts(self) -> dict[str, int]:
         """``{"nodes": .., "ways": .., "relations": ..}``."""
         return {
