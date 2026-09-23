@@ -61,3 +61,21 @@ def test_the_engine_sets_it_up_before_serving() -> None:
     source = Path("src/orthostudio/api/serve.py").read_text(encoding="utf-8")
     assert "from orthostudio.logs import setup_logging" in source
     assert "setup_logging(log_level)" in source
+
+
+def test_the_linux_log_sits_where_everything_else_of_ours_does() -> None:
+    """A user looked for it in ``~/.orthostudio``, where the settings and the tiles already
+    live, found nothing, and said so: ``~/.local/state/OrthoStudio XP/log`` is the platform's
+    answer and nobody's (2026-09-23). macOS and Windows each have one place people know, and
+    those are left as they are."""
+    from unittest import mock
+
+    from orthostudio import desktop
+    from orthostudio.home import osxp_home
+
+    with mock.patch.object(desktop.sys, "platform", "linux"):
+        assert desktop.log_path() == osxp_home() / "log" / "serve.log"
+    for other in ("darwin", "win32"):
+        with mock.patch.object(desktop.sys, "platform", other):
+            assert desktop.log_path().name == "serve.log"
+            assert osxp_home() not in desktop.log_path().parents

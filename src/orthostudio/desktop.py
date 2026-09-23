@@ -4,7 +4,7 @@ The launchers of the installers run ``python -m orthostudio.desktop`` (``docs/sp
 Started from the Finder, the Start menu or a desktop menu, the engine has no terminal to write to
 (``pythonw`` on Windows gives it none at all), so its output goes to ``serve.log`` in the
 platform's log folder: ``~/Library/Logs/OrthoStudio XP`` on macOS,
-``%LOCALAPPDATA%\\OrthoStudio XP\\Logs`` on Windows, ``~/.local/state/OrthoStudio XP/log`` on
+``%LOCALAPPDATA%\\OrthoStudio XP\\Logs`` on Windows, ``~/.orthostudio/log`` on
 Linux. Opening the app while OrthoStudio XP runs opens the running one's page, at once when it is
 this same installation (:func:`open_running`). The app stops by itself a while after its last page
 closed, unless a build runs (``--quit-when-closed``, :mod:`orthostudio.api.presence`): nothing else
@@ -31,6 +31,7 @@ from pathlib import Path
 from platformdirs import user_log_dir
 
 from orthostudio import __version__
+from orthostudio.home import osxp_home
 
 __all__ = [
     "APP_NAME",
@@ -129,7 +130,16 @@ poll();
 
 
 def log_path() -> Path:
-    """``serve.log`` in the platform's log folder for OrthoStudio XP (not created)."""
+    """``serve.log`` where the user of this platform would look for it (not created).
+
+    macOS and Windows each have one place people know, ``~/Library/Logs`` and
+    ``%LOCALAPPDATA%``, and the platform's own answer is the right one there. Linux's is
+    ``~/.local/state/OrthoStudio XP/log``, which nobody finds: a user looked in
+    ``~/.orthostudio``, where everything else of ours already lives, found nothing, and said so
+    (2026-09-23). On Linux the log is therefore beside the rest, under ``$OSXP_HOME``.
+    """
+    if sys.platform.startswith("linux"):
+        return osxp_home() / "log" / LOG_NAME
     return Path(user_log_dir(APP_NAME, appauthor=False)) / LOG_NAME
 
 

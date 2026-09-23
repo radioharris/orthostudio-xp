@@ -143,7 +143,7 @@ window needs there is built for the distribution's own Python, and OrthoStudio X
 so nothing a user installs would reach it. The `window` line of *Checks*, at the foot of the page,
 says so, and the page says it once at the top. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
-`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. It
+`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
 holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each
 one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
 `orthostudio-xp build --tile +50+008 --provider BI --zl 16` builds from the command line and writes
