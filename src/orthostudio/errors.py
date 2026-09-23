@@ -692,6 +692,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Enable Developer Mode on Windows or copy the pack into Custom Scenery.",
     ),
     _spec(
+        "XP_PACK_ONLY_COPY",
+        _B,
+        _S,
+        "The only folder of tile {tile} is inside X-Plane's own Custom Scenery ({path}), so "
+        "taking it out of X-Plane would delete it.",
+        "Move that folder somewhere else, then add the tile to X-Plane again from the Library. "
+        "If you meant to remove the tile and its files, use Delete, which asks first.",
+    ),
+    _spec(
         "XP_PACK_CONFLICT",
         _I,
         _C,

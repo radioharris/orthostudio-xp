@@ -297,3 +297,64 @@ def test_a_tile_built_without_overlay_takes_its_old_one_out(tmp_path: Path, xpla
     assert _names(cs) == ["*GLOBAL_AIRPORTS*", p1.name, p2.name, "z_autoortho"]
     with Library(lib) as rows:
         assert rows.list(kind="overlay") == []
+
+
+def _standing_pack(at: Path) -> Path:
+    """A finished pack of ours: a DSF, its textures and its manifest."""
+    (at / "Earth nav data" / "+40+000").mkdir(parents=True)
+    (at / "Earth nav data" / "+40+000" / "+43+005.dsf").write_bytes(b"XPLNEDSF" * 100)
+    (at / "textures").mkdir()
+    for i in range(3):
+        (at / "textures" / f"2344{i}_33760_BI16.dds").write_bytes(b"DDS " * 1000)
+    (at / "terrain").mkdir()
+    (at / "orthostudio.toml").write_text(
+        'format = "osxp-pack-1"\n\n[tile]\nname = "+43+005"\nprovider = "BI"\nzl = 16\n',
+        encoding="utf-8",
+    )
+    return at
+
+
+def test_taking_out_of_xplane_never_deletes_a_tiles_only_folder(tmp_path: Path) -> None:
+    """A real folder inside Custom Scenery used to be removed, because ``install --copy`` puts a
+    copy there and the tile's own folder is elsewhere. A pack built straight into Custom Scenery
+    is a real folder too, and it is the only one the user has: it was deleted, silently, with no
+    question asked, under a button whose own words promise that its files stay on the computer
+    (found in review, 2026-09-23)."""
+    from orthostudio.install import Library
+
+    custom_scenery = tmp_path / "Custom Scenery"
+    pack = _standing_pack(custom_scenery / "zOrthoStudio_+43+005")
+    library = tmp_path / "library.sqlite"
+    with Library(library) as lib:
+        lib.register(TileRef(43, 5), kind="ortho", path=pack, provider="BI", zl=16, built_by="osxp")
+
+    with pytest.raises(OsxpError) as exc:
+        uninstall_receipt("zOrthoStudio_+43+005", custom_scenery, library_path=library)
+    assert exc.value.code == "XP_PACK_ONLY_COPY"
+    assert "+43+005" in exc.value.message
+    assert pack.is_dir() and len(list((pack / "textures").iterdir())) == 3
+
+    # a library that cannot be read is the same answer: we can refuse, we cannot give a folder back
+    with pytest.raises(OsxpError) as exc:
+        uninstall_receipt("zOrthoStudio_+43+005", custom_scenery, library_path=tmp_path / "none.db")
+    assert exc.value.code == "XP_PACK_ONLY_COPY"
+    assert pack.is_dir()
+
+
+def test_a_copy_in_custom_scenery_goes_and_says_so(tmp_path: Path) -> None:
+    """``install --copy`` leaves a second copy in Custom Scenery; taking the tile out removes
+    that copy, leaves the tile's own folder alone, and the receipt says what happened."""
+    from orthostudio.install import Library
+
+    custom_scenery = tmp_path / "Custom Scenery"
+    custom_scenery.mkdir(parents=True)
+    home = _standing_pack(tmp_path / "tiles" / "zOrthoStudio_+43+005")
+    copy = _standing_pack(custom_scenery / "zOrthoStudio_+43+005")
+    library = tmp_path / "library.sqlite"
+    with Library(library) as lib:
+        lib.register(TileRef(43, 5), kind="ortho", path=home, provider="BI", zl=16, built_by="osxp")
+
+    receipt = uninstall_receipt("zOrthoStudio_+43+005", custom_scenery, library_path=library)
+    assert receipt["removed"] and receipt["pack_deleted"], "it says the copy went"
+    assert not copy.exists()
+    assert home.is_dir() and len(list((home / "textures").iterdir())) == 3

@@ -1824,6 +1824,10 @@ const CODES = {
     OSM_RUNWAY_REJECTED: ["Une piste OSM a été rejetée (géométrie invalide).", "Aucune action ; corrigez OSM si l'aéroport compte."],
     DSF_GLOBAL_SCENERY_MISSING: ["Le décor d'X-Plane 12 de {tile} n'est pas installé.", "Installez cette partie du monde avec l'installeur d'X-Plane (ajouter ou retirer des scènes), puis réessayez. S'il est installé, vérifiez le dossier X-Plane dans Réglages."],
     XP_RUNNING: ["X-Plane est en cours d'exécution : l'installation est refusée.", "Quittez X-Plane puis installez depuis la Bibliothèque."],
+    XP_PACK_ONLY_COPY: [
+      "Le seul dossier de la tuile {tile} se trouve dans le Custom Scenery de X-Plane : la retirer de X-Plane l'effacerait.",
+      "Déplacez ce dossier ailleurs, puis rajoutez la tuile à X-Plane depuis la Bibliothèque. Si vous vouliez supprimer la tuile et ses fichiers, utilisez Supprimer, qui demande confirmation.",
+    ],
     XP_DIR_NOT_FOUND: (c) => {
       const remedy = "Choisissez le dossier où X-Plane 12 est installé : il contient « Resources » et « Custom Scenery ».";
       if (c.why === "missing") return ["Le dossier {path} est introuvable.", remedy];
@@ -1875,6 +1879,10 @@ const CODES = {
     OSM_RUNWAY_REJECTED: ["An OSM runway was rejected (invalid geometry).", "No action; fix OSM if the airport matters."],
     DSF_GLOBAL_SCENERY_MISSING: ["X-Plane 12's own scenery for {tile} is not installed.", "Install that part of the world with X-Plane's installer (Add or Remove Scenery), then try again. If it is installed, check the X-Plane folder in Settings."],
     XP_RUNNING: ["X-Plane is running: installation is refused.", "Quit X-Plane, then install from the Library."],
+    XP_PACK_ONLY_COPY: [
+      "The only folder of tile {tile} is inside X-Plane's own Custom Scenery: taking it out of X-Plane would delete it.",
+      "Move that folder somewhere else, then add the tile to X-Plane again from the Library. If you meant to remove the tile and its files, use Delete, which asks first.",
+    ],
     XP_DIR_NOT_FOUND: (c) => {
       const remedy = "Choose the folder X-Plane 12 is installed in: it holds “Resources” and “Custom Scenery”.";
       if (c.why === "missing") return ["The folder {path} was not found.", remedy];

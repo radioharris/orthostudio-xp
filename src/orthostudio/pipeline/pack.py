@@ -742,7 +742,11 @@ def _unpark_overlay(pack_dir: Path, tile: TileRef) -> None:
 
 
 def uninstall_receipt(
-    name: str, custom_scenery: Path, *, delete_pack: bool = False
+    name: str,
+    custom_scenery: Path,
+    *,
+    delete_pack: bool = False,
+    library_path: Path | None = None,
 ) -> dict[str, Any]:
     """Take a tile pack (``zOrthoStudio_<tile>``, or an imported one) out of X-Plane, its overlay
     with it.
@@ -765,10 +769,42 @@ def uninstall_receipt(
     Raises ``XP_RUNNING`` and ``XP_PACK_CONFLICT`` like :func:`install_pack`.
     """
     with _INSTALL_LOCK:
-        return _uninstall(name, Path(custom_scenery), delete_pack=delete_pack)
+        return _uninstall(
+            name, Path(custom_scenery), delete_pack=delete_pack, library_path=library_path
+        )
 
 
-def _uninstall(name: str, custom_scenery: Path, *, delete_pack: bool = False) -> dict[str, Any]:
+def _pack_lives_elsewhere(tile: TileRef | None, target: Path, library_path: Path | None) -> bool:
+    """Whether this tile's pack also sits somewhere other than ``target``.
+
+    A real folder inside Custom Scenery is removed when the tile is taken out of X-Plane, because
+    ``install --copy`` puts a copy there and the tile's own folder is elsewhere. A pack built
+    straight into Custom Scenery is a real folder too, and it is the only one the user has:
+    removing it destroyed his tile, silently, with no question asked, under a button whose own
+    words promise that its files stay on the computer (found in review, 2026-09-23).
+
+    When no other home can be seen -- because there is none, or because the library cannot be
+    read -- the answer is no, and the tile is not touched. We can always refuse; we can never
+    give a folder back.
+    """
+    if tile is None:
+        return False
+    here = Path(os.path.realpath(target))
+    with contextlib.suppress(Exception), Library(library_path or default_library_path()) as lib:
+        for row in lib.list(tile=tile):
+            other = Path(os.path.realpath(row.path))
+            if other != here and (other / MANIFEST_NAME).is_file():
+                return True
+    return False
+
+
+def _uninstall(
+    name: str,
+    custom_scenery: Path,
+    *,
+    delete_pack: bool = False,
+    library_path: Path | None = None,
+) -> dict[str, Any]:
     """:func:`uninstall_receipt`, the install lock held."""
     target = custom_scenery / name
     linked = is_link(target)
@@ -776,9 +812,15 @@ def _uninstall(name: str, custom_scenery: Path, *, delete_pack: bool = False) ->
     if not linked and (target / MANIFEST_NAME).is_file():
         pack_dir = target
     tile = pack_tile(name)
+    a_copy = pack_dir is target and _pack_lives_elsewhere(tile, target, library_path)
+    if pack_dir is target and not a_copy:
+        raise OsxpError(
+            "XP_PACK_ONLY_COPY",
+            context={"tile": "" if tile is None else tile.name, "path": str(target)},
+        )
     parked: Path | None = None
     overlay_removed: str | None = None
-    removed = uninstall_pack(name, custom_scenery, update_ini=False, remove_copy=pack_dir is target)
+    removed = uninstall_pack(name, custom_scenery, update_ini=False, remove_copy=a_copy)
     ours = pack_dir is not None and (pack_dir / MANIFEST_NAME).is_file()
     if linked and tile is not None and pack_dir is not None and ours:
         overlay_dir = pack_dir.parent / OVERLAY_PACK
@@ -800,7 +842,7 @@ def _uninstall(name: str, custom_scenery: Path, *, delete_pack: bool = False) ->
             changed = packs.remove(overlay_removed) or changed
         if changed:
             packs.save(ini, backup=True)
-    deleted = False
+    deleted = a_copy  # the copy in Custom Scenery went; the tile's own folder is elsewhere
     if delete_pack and linked and pack_dir is not None and (pack_dir / MANIFEST_NAME).is_file():
         shutil.rmtree(pack_dir)
         deleted = True
