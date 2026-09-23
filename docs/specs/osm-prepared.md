@@ -157,6 +157,12 @@ prepared tiles into one that queues behind the public servers for an hour:
 The settings are checked once, before a build starts; the set-aside is said once, when it happens,
 not once per tile.
 
+The doctor asks the question before a build does: `map_library` says how many tiles the library
+this build carries holds and when they were cut, or that the build carries none at all. A release
+is built with the address and the key written in from the repository's secrets, and if that step
+is skipped or the key is rotated, everything still works and every tile is downloaded live, which
+is precisely the kind of silence this whole chain exists to end.
+
 ## 6. Settings
 
 | Setting | Default | What it does |

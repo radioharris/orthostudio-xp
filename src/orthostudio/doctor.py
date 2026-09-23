@@ -330,6 +330,56 @@ def _map_data(offline: bool) -> Check:
     return Check("map_data", "ok", f"{len(answered)} map data servers answered", details)
 
 
+def _prepared_library(offline: bool) -> Check:
+    """Whether this build carries a prepared map library, and whether it answers.
+
+    A release is built with the library's address and key written in from the repository's
+    secrets. If that step is skipped, or the key is rotated, the app works exactly as before and
+    downloads every tile from the public servers: slower, quota-bound, and with nothing at all to
+    say that a whole layer of the design is missing (2026-09-23).
+    """
+    from orthostudio.sources.library import LibrarySource, shipped_library
+
+    url, token = shipped_library()
+    if not url:
+        return Check(
+            "map_library",
+            "skip",
+            "this build carries no prepared map library (a build from source never does)",
+            {"carried": False},
+        )
+    if offline:
+        return Check("map_library", "skip", "network probe skipped", {"carried": True})
+    t0 = time.perf_counter()
+    try:
+        index = LibrarySource(url, token)._load_index()
+    except Exception as exc:  # the probe must never crash the doctor
+        return Check("map_library", "fail", f"the probe failed: {type(exc).__name__}: {exc}", {})
+    took = round(time.perf_counter() - t0, 2)
+    if index is None:
+        return Check(
+            "map_library",
+            "warn",
+            "the map library did not answer, or refused this build's key; tiles will be "
+            "downloaded from the public servers",
+            {"carried": True, "seconds": took},
+        )
+    details = {
+        "carried": True,
+        "seconds": took,
+        "bake": index.bake,
+        "extracted": index.extracted,
+        "road_level": index.road_level,
+        "tiles": len(index.tiles),
+    }
+    return Check(
+        "map_library",
+        "ok",
+        f"{len(index.tiles)} tiles ready, cut {index.extracted[:10]}",
+        details,
+    )
+
+
 def _bing(offline: bool) -> Check:
     if offline:
         return Check("bing", "skip", "network probe skipped (pass --online to run it)", {})
@@ -502,6 +552,7 @@ def run_doctor(
         _window,
         lambda: _bing(offline),
         lambda: _map_data(offline),
+        lambda: _prepared_library(offline),
         lambda: _store(store_root),
         lambda: _chunks(chunks_root),
     ):

@@ -44,6 +44,7 @@ def test_doctor_json_offline(tmp_path: Path) -> None:
         "window",
         "bing",
         "map_data",
+        "map_library",
         "store",
         "chunks",
     ]

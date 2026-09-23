@@ -41,3 +41,35 @@ def test_the_doctor_says_which_map_data_servers_answer() -> None:
     none = answers({"de": ("open", 504), "z": ("open", 504), "lz4": ("open", 504),
                     "fr": ("open", 403), "mailru": ("open", 504)})  # fmt: skip
     assert none.status == "fail" and "no map data server answered" in none.summary
+
+
+# -- the library a release carries --------------------------------------------------------------
+
+
+def test_the_doctor_says_when_a_build_carries_no_map_library(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A release is built with the library's address and key written in from the repository's
+    secrets. If that step is skipped, the app works exactly as before and downloads every tile
+    from the public servers, with nothing at all to say a whole layer of the design is gone."""
+    from orthostudio import doctor
+    from orthostudio.sources import library as lib
+
+    monkeypatch.setattr(lib, "shipped_library", lambda: ("", ""))
+    check = doctor._prepared_library(False)
+    assert check.name == "map_library" and check.status == "skip"
+    assert "no prepared map library" in check.summary
+    assert check.details["carried"] is False
+
+    monkeypatch.setattr(lib, "shipped_library", lambda: ("https://carried", "a-key"))
+    offline = doctor._prepared_library(True)
+    assert offline.status == "skip" and offline.details["carried"] is True
+
+
+def test_a_library_that_refuses_the_key_is_a_warning_not_a_failure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """It is not a reason to stop: every tile is downloaded live, as every version before."""
+    from orthostudio import doctor
+    from orthostudio.sources import library as lib
+
+    monkeypatch.setattr(lib, "shipped_library", lambda: ("https://carried", "the-old-key"))
+    monkeypatch.setattr(lib.LibrarySource, "_load_index", lambda self: None)
+    check = doctor._prepared_library(False)
+    assert check.status == "warn" and "public servers" in check.summary
