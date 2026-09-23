@@ -2632,6 +2632,25 @@ function clearTiles() {
 
 /** A click on the map: the chips and the map show one selection. A tile in a build, under way or
  * waiting, is not chosen: a toast says why. */
+/** The flight plan's own controls, wired only when it is offered. */
+function wireFlightPlan() {
+  $("plan-route").hidden = !FLIGHT_PLAN;
+  if (!FLIGHT_PLAN) return;
+  $("route-draw").addEventListener("click", drawRoute);
+  $("route-input").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      drawRoute();
+    }
+  });
+  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || routeEndsZl()));
+  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
+  $("route-simbrief").addEventListener("click", routeFromSimbrief);
+  $("route-clear").addEventListener("click", clearRoute);
+  // the radius applies to both ends of the route: the counts on the buttons follow it
+  $("radius-input").addEventListener("input", renderRoute);
+}
+
 function toggleTile(name) {
   if (state.tiles.includes(name)) removeTile(name);
   else if (tilesInBuilds(activeJobs()).has(name)) toast(t("plan.tile_in_build", { tile: name }));
@@ -3477,6 +3496,18 @@ async function planRequest() {
 /** The most tiles one build takes (orthostudio.api.models.MAX_TILES); a test keeps the two equal.
  * Beyond it the Plan says so in plain words and asks nothing: the engine's answer was a list
  * error that a user took for a limit of the program (64 then, 2026-09-22). */
+/**
+ * Whether the flight plan is offered. It waits for 0.1.15.
+ *
+ * Choosing squares along a route is a whole feature of its own -- a field, two buttons, two
+ * detail levels, SimBrief, the line on the map -- and it arrived in the same release as three
+ * user faults that people are waiting on. A release carrying both is one nobody can check: most
+ * of what the reviews found before 0.1.14 was cut landed in this feature, and none of it in the
+ * faults. So it is closed here rather than taken out: its code, its tests and its words stay,
+ * the page does not offer it, and turning it back on is this one line (2026-09-23).
+ */
+const FLIGHT_PLAN = false;
+
 const MAX_BUILD_TILES = 500;
 
 /** How long the Plan waits after a change before working out the cost: a few clicks on the map
@@ -5544,19 +5575,7 @@ async function boot() {
     renderIcaoList();
   });
   $("icao-add").addEventListener("click", addTilesFromIcao);
-  $("route-draw").addEventListener("click", drawRoute);
-  $("route-input").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      drawRoute();
-    }
-  });
-  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || routeEndsZl()));
-  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
-  $("route-simbrief").addEventListener("click", routeFromSimbrief);
-  $("route-clear").addEventListener("click", clearRoute);
-  // the radius applies to both ends of the route: the counts on the buttons follow it
-  $("radius-input").addEventListener("input", renderRoute);
+  wireFlightPlan();
   $("sources-open").addEventListener("click", openSources);
   $("sources-close").addEventListener("click", () => $("sources-dialog").close());
   $("source-try").addEventListener("click", trySource);
@@ -5663,7 +5682,7 @@ async function boot() {
   });
   renderTiles();
   renderPlanPanel();
-  restoreRoute();
+  if (FLIGHT_PLAN) restoreRoute();
   startPresence();
   // The screen shows at once and fills in as the engine answers. It used to wait for every
   // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu

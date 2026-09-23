@@ -4799,3 +4799,38 @@ def test_a_selection_full_of_squares_says_so_in_both_languages() -> None:
     for lang in ("fr", "en"):
         words = tables[lang]["plan.tiles_capped"]
         assert "{max}" in words and "{n}" in words, lang
+
+
+def test_the_flight_plan_is_not_offered_in_this_release() -> None:
+    """Choosing squares along a route is a feature of its own, and it arrived in the same
+    release as three faults users are waiting on. It waits for 0.1.15: its code, its tests and
+    its words stay, the page does not offer it, and one line turns it back on (2026-09-23)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "const FLIGHT_PLAN = false;" in app_js, "the switch is off for this release"
+
+    wiring = _function_body(app_js, "wireFlightPlan")
+    assert '$("plan-route").hidden = !FLIGHT_PLAN;' in wiring
+    assert "if (!FLIGHT_PLAN) return;" in wiring
+    # every listener of the route lives behind that guard, and nowhere else
+    for control in (
+        "route-draw",
+        "route-input",
+        "route-ends",
+        "route-all",
+        "route-simbrief",
+        "route-clear",
+    ):
+        assert f'$("{control}")' in wiring, control
+        assert app_js.count(f'$("{control}").addEventListener') == wiring.count(
+            f'$("{control}").addEventListener'
+        ), control
+    assert "if (FLIGHT_PLAN) restoreRoute();" in app_js, "no route comes back from the last visit"
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert '<div id="plan-route">' in html
+    # the error line under the airport field is shared, so it stays outside the box
+    assert html.index('id="plan-route"') < html.index('id="route-input"')
+    assert html.index('id="way-error"') > html.index("</div>", html.index('id="route-input"'))
+
+    notes = (UI / ".." / ".." / ".." / "docs" / "releases" / "0.1.14.md").resolve()
+    assert "SimBrief" not in notes.read_text(encoding="utf-8"), "and the notes do not promise it"
