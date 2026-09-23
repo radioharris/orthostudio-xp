@@ -189,10 +189,15 @@ asked yet go first in the next round)."""
 RETRYABLE_CODES = frozenset({"NET_TIMEOUT", "NET_CONNECTION_FAILED", "NET_RATE_LIMITED"})
 """Failures that get the second pass: no answer at all, or a 429 beyond the fetcher's budget."""
 
-RETRYABLE_STATUSES = frozenset({502, 503, 504})
-"""``NET_SERVER_ERROR`` statuses that get the second pass too: a gateway or its upstream failed,
-or the server said it is unavailable for now. A 500 is the server's own answer for that URL,
-already asked ``max_attempts`` times: it is final for the run."""
+RETRYABLE_STATUSES = frozenset({403, 408, 425, 502, 503, 504})
+"""Statuses that get the second pass too: a gateway or its upstream failed (502, 504), the server
+said it is unavailable for now (503), it gave up waiting for the request (408) or asked for it
+later (425), and **403**, which is how a server that blocks a caller it finds too eager usually
+says so. A user's own EOX source served two textures, then answered four thousand chunks in eight
+seconds carrying no bytes, and nothing was asked again because a 4xx was final (2026-09-24). A
+403 that is a plain refusal costs the bounded rounds of one pass and then says the same thing,
+with how many rounds it took. A 500 is the server's own answer for that URL, already asked
+``max_attempts`` times, and a 401 or a 451 no waiting changes: those stay final."""
 
 _ANSWERS = (ChunkStatus.OK, ChunkStatus.MISSING, ChunkStatus.PLACEHOLDER)
 _FAILURE_DETAILS = 8
@@ -202,7 +207,9 @@ _FAILURE_DETAILS = 8
 
 def _retryable(code: str, status: int) -> bool:
     """The failure says "try later" (``RETRYABLE_CODES``, ``RETRYABLE_STATUSES``)."""
-    return code in RETRYABLE_CODES or (code == "NET_SERVER_ERROR" and status in RETRYABLE_STATUSES)
+    return code in RETRYABLE_CODES or (
+        code in ("NET_SERVER_ERROR", "NET_UNEXPECTED_STATUS") and status in RETRYABLE_STATUSES
+    )
 
 
 # --- public data types -------------------------------------------------------------------------

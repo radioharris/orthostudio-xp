@@ -21,7 +21,7 @@ import os
 import signal
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -1070,16 +1070,20 @@ def _tile_textures(ctx: RunContext) -> None:
         if not report.ok:
             missing = report.missing
             codes = sorted({str((o.error or {}).get("code", "?")) for o in missing})
+            answered = _what_the_source_answered(missing)
             raise OsxpError(
                 "TEX_MISSING",
                 context={
                     "count": len(missing),
                     "tile": tile.name,
                     "codes": codes,
+                    "answered": answered,
                     "textures": [o.name for o in missing][:20],
                 },
                 message=f"{len(missing)} of {len(group)} {code}{zl} texture(s) of tile "
-                f"{tile.name} could not be built ({', '.join(codes)}); nothing is committed.",
+                f"{tile.name} could not be built ({', '.join(codes)})"
+                + (f"; the source answered {', '.join(answered)}" if answered else "")
+                + "; nothing is committed.",
                 remedy=_missing_textures_remedy(codes, env.logs),
             )
         outcomes.extend(
@@ -2506,6 +2510,25 @@ def _verify_effects(
     if not installed:
         _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
+
+
+def _what_the_source_answered(missing: Sequence[Any]) -> list[str]:
+    """What came back for the chunks of the textures that could not be built, commonest first.
+
+    The tile's failure named ``IMG_TILE_MISSING`` and the textures, and nothing said what the
+    server had answered: a user whose source served two textures and then refused four thousand
+    chunks in eight seconds read that, a traceback, and had to find the textures report on his
+    disk to learn the rest (2026-09-24). The reason and the status are what tells a caller being
+    blocked from an address that is wrong.
+    """
+    seen: Counter[str] = Counter()
+    for outcome in missing:
+        context = (outcome.error or {}).get("context") or {}
+        for failure in context.get("failures") or []:
+            reason = str(failure.get("code") or "?")
+            status = failure.get("status")
+            seen[f"{reason} {status}" if status else reason] += 1
+    return [f"{name} x{n}" if n > 1 else name for name, n in seen.most_common(4)]
 
 
 def _remember_the_tile(

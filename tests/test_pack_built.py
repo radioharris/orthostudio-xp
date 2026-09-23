@@ -223,5 +223,30 @@ def test_a_tile_built_without_installing_is_in_the_library(tmp_path: Path) -> No
     assert "if not installed:\n        _remember_the_tile(" in body
 
 
+def test_a_failed_tile_says_what_the_source_answered() -> None:
+    """A user's own EOX source served two textures, then answered four thousand chunks in eight
+    seconds carrying no bytes. The build said "18 of 20 texture(s) could not be built
+    (IMG_TILE_MISSING)" and printed a traceback, and the reason was only in the textures report
+    on his disk (2026-09-24). The tile's failure now names what came back, commonest first.
+    """
+    from orthostudio.pipeline.build import _what_the_source_answered
+
+    def outcome(*failures: tuple[str, int]) -> object:
+        rows = [{"code": code, "status": status} for code, status in failures]
+        return type("O", (), {"error": {"context": {"failures": rows}}})()
+
+    answered = _what_the_source_answered(
+        [
+            outcome(("NET_UNEXPECTED_STATUS", 403), ("NET_UNEXPECTED_STATUS", 403)),
+            outcome(("NET_UNEXPECTED_STATUS", 403), ("NET_TIMEOUT", 0)),
+        ]
+    )
+    assert answered == ["NET_UNEXPECTED_STATUS 403 x3", "NET_TIMEOUT"]
+    # at most four kinds, and a texture whose error carries nothing costs no answer
+    assert _what_the_source_answered([type("O", (), {"error": None})()]) == []
+    many = [outcome(*((f"C{i}", 500 + i),)) for i in range(6)]
+    assert len(_what_the_source_answered(many)) == 4
+
+
 def _spec_for(tile: TileRef, tmp_path: Path) -> BuildSpec:
     return BuildSpec(tile=tile, provider="BI", zl=16, out_dir=tmp_path / "tiles", config={})

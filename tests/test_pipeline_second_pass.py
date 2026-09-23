@@ -456,7 +456,10 @@ def test_nothing_answered_in_the_run_means_no_second_pass_request(
         ("NET_SERVER_ERROR", 503, True),
         ("NET_SERVER_ERROR", 504, True),
         ("NET_SERVER_ERROR", 500, False),
-        ("NET_UNEXPECTED_STATUS", 403, False),
+        ("NET_UNEXPECTED_STATUS", 403, True),  # a server blocking a caller it finds too eager
+        ("NET_UNEXPECTED_STATUS", 408, True),
+        ("NET_UNEXPECTED_STATUS", 401, False),  # no waiting turns a refusal into an answer
+        ("NET_UNEXPECTED_STATUS", 451, False),
         ("IMG_BAD_CONTENT_TYPE", 200, False),
         ("IMG_TILE_CORRUPTED", 200, False),
         ("SYS_CANCELLED", 0, False),

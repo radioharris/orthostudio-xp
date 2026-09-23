@@ -360,9 +360,14 @@ by `tests/test_pipeline_second_pass.py`:
 
 - A chunk whose request ended with a failure that says "try later" is asked again before its
   texture is declared incomplete: `NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED`
-  (429 beyond the pushback budget) and `NET_SERVER_ERROR` with status 502, 503 or 504. Not a
-  500 (the server's own answer for that URL, already asked `max_attempts` times), another 4xx,
-  or a body that is not an image. A 404 and a placeholder are answers, never errors: they go to
+  (429 beyond the pushback budget), and status 502, 503, 504, 408, 425 or **403**, whatever the
+  code carrying it. 403 was final until 0.1.14, and it is how a server that blocks a caller it
+  finds too eager usually says so: a user's own EOX source served two textures, then answered
+  4 000 chunks in eight seconds with no bytes, and not one was asked again (2026-09-24). A 403
+  that is a plain refusal now costs the bounded rounds of one pass and says the same thing, with
+  how many rounds it took. Not a 500 (the server's own answer for that URL, already asked
+  `max_attempts` times), not a 401 or a 451 (no waiting changes them), not a body that is not an
+  image. A 404 and a placeholder are answers, never errors: they go to
   the parent fallback (5.3), which is not applied to a transient failure.
 - Rounds after pauses of 5, 15 and 45 s, once every chunk of the tile has its first-pass
   answer and the parent rounds are over. Each round starts with a probe of two tiles the
