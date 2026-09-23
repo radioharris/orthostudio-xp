@@ -1334,11 +1334,13 @@ def test_a_step_that_goes_quiet_speaks_for_its_neighbours_less() -> None:
 
 
 def test_the_top_of_the_range_ends_where_the_estimate_ends() -> None:
-    """The estimate itself stops at a day, and the band widens it by up to three: a build the
-    estimate put at 22 hours came out as 66 at the top of the range (found in review,
-    2026-09-23)."""
+    """The estimate itself stops at a day and the band widens the top by up to 1.7, so an
+    estimate of 14 hours was published past the day. The first attempt at this capped
+    ``Estimate.high_s``, which nothing reads: the range the page is shown is made by
+    ``EtaSmoother.update`` from ``eta_s`` and the band, and that is where it has to hold
+    (found in review, 2026-09-23)."""
     from orthostudio.api.jobs import _NodeState
-    from orthostudio.api.progress import ETA_MAX_S, estimate
+    from orthostudio.api.progress import ETA_MAX_S, EtaSmoother, estimate
 
     rows = []
     for i in range(400):
@@ -1359,3 +1361,10 @@ def test_the_top_of_the_range_ends_where_the_estimate_ends() -> None:
     assert est.eta_s is not None and est.eta_s > 20 * 3600.0, "close to the day it allows"
     assert est.high_s is not None and est.high_s <= ETA_MAX_S
     assert est.low_s is not None and est.low_s >= 0.0
+
+    # what the page is actually given: jobs.py publishes this pair as eta_low_s / eta_high_s
+    published = EtaSmoother().update(100.0, est.eta_s, est.band)
+    assert published is not None
+    low_s, high_s = published
+    assert high_s <= ETA_MAX_S, f"the page is shown {high_s / 3600:.1f} h"
+    assert 0.0 <= low_s <= high_s

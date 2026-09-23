@@ -1832,10 +1832,6 @@ const CODES = {
     },
     XP_GLOBAL_SCENERY_NOT_FOUND: ["Le décor d'X-Plane 12 (Global Scenery) manque dans son dossier.", "Installez-le avec l'installeur d'X-Plane, ou choisissez un autre dossier X-Plane 12 dans Réglages."],
     XP_SCENERY_PACKS_UNWRITABLE: ["scenery_packs.ini n'est pas modifiable.", "Vérifiez les droits sur Custom Scenery."],
-    ZONE_TOO_SMALL: [
-      "Une zone est plus fine que la grille sur laquelle agit un niveau de détail : son niveau ne change rien.",
-      "Dessinez-la sur environ un kilomètre, ou laissez-la : ses couleurs s'appliquent exactement à la forme dessinée. Seul le niveau de détail suit la grille du sol, qui est la façon dont le terrain de X-Plane est découpé.",
-    ],
     SYS_DISK_FULL: ["Espace disque libre insuffisant.", "Libérez de l'espace ou changez le dossier de travail."],
     SYS_CANCELLED: ["Construction arrêtée à la demande.", "Relancez : les artefacts présents ne seront pas refaits."],
     SYS_UPSTREAM_FAILED: ["Étape sautée : une étape dont elle dépend a échoué.", "Corrigez l'échec d'origine puis relancez ; le travail déjà fait est conservé."],

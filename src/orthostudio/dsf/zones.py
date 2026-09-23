@@ -24,13 +24,7 @@ from orthostudio.model import TileRef
 
 log = logging.getLogger("orthostudio.dsf.zones")
 
-__all__ = [
-    "AirportCover",
-    "TextureMap",
-    "airport_covers",
-    "texture_map",
-    "zones_raising_nothing",
-]
+__all__ = ["AirportCover", "TextureMap", "airport_covers", "texture_map"]
 
 IMAGE_SIDE = 4096
 _MAX_ZONES = 254  # "L" image: the base zone is 1, zones 2..255
@@ -190,31 +184,6 @@ def cell_pixels(tile: TileRef, mesh_zl: int) -> tuple[np.ndarray, np.ndarray, ra
     return rows, cols, xs, ys
 
 
-def zones_raising_nothing(
-    tile: TileRef,
-    zone_list: Sequence[Sequence[object]],
-    mesh_zl: int,
-    *,
-    default_zl: int = 16,
-    default_website: str = "",
-) -> list[int]:
-    """Indices into ``zone_list`` of the zones no mesh cell takes, by the build's own arithmetic.
-
-    A zone's level is read at the centre of each mesh cell, about 850 m at ``mesh_zl`` 19, so a
-    zone finer than that raises nothing while the page draws it and the estimate charges for the
-    textures it covers: a user set a 300 m band to a sharper level, built, and saw no change
-    (2026-09-23). A zone another zone covers takes nothing either, and is named here too.
-
-    Its colours are another matter and follow the ring itself, so a zone named here is not
-    useless: it is its level that does nothing.
-    """
-    zone_im, values = _zone_image(tile, zone_list, default_zl, default_website)
-    rows, cols, _xs, _ys = cell_pixels(tile, mesh_zl)
-    taken = set(np.unique(zone_im[np.ix_(rows, cols)]).tolist())
-    count = len(list(zone_list))
-    return [count + 1 - value for value in range(2, len(values)) if value not in taken]
-
-
 def _airport_array(
     tile: TileRef, params: DsfParams, airports: Sequence[AirportCover]
 ) -> np.ndarray:
@@ -266,8 +235,10 @@ def _say_the_zones_that_raise_nothing(
         position = len(zones) + 1 - value
         zl, _provider = values[value]
         log.warning(
-            "%s: the zone %d of the list (level %d) is finer than a mesh cell, about %d m here, "
-            "so it raises nothing; draw it larger or leave it, but it changes nothing as it is",
+            "%s: the zone %d of the list (level %d) takes no mesh cell, so its level changes "
+            "nothing: either it is finer than a cell, about %d m here, or a zone above it in "
+            "the list covers the cells it would have taken. Its colours follow its shape either "
+            "way",
             tile.name,
             position + 1,
             zl,

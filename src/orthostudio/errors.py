@@ -960,15 +960,6 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "saved or built until it is valid.",
     ),
     _spec(
-        "ZONE_TOO_SMALL",
-        _I,
-        _C,
-        "A zone is finer than the grid a detail level works on, so its level changes nothing.",
-        "Draw it about a kilometre across, or leave it as it is: its colours still apply to "
-        "exactly the shape you drew. Only the detail level follows the ground grid, which is "
-        "how X-Plane's terrain is cut.",
-    ),
-    _spec(
         "ZONE_TOO_MANY",
         _B,
         _S,

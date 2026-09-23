@@ -120,6 +120,8 @@ _DEFAULT_ENCODE_S = 0.4
 _PLAN_BATCH = 32
 
 POOL_CLOSE_S = 20.0
+WORKER_END_S = 2.0
+"""How long an encoder is given to honour the signal to end before it is killed."""
 """How long the encoders are given to close at the end of the step before they are taken down.
 
 Closing a pool joins its processes, and one that does not come back holds that line for ever: the
@@ -1140,12 +1142,15 @@ class _Pipeline:
     # -- pool --------------------------------------------------------------------------------
 
     def _start_pool(self) -> None:
+        # the bound is set whether the encoders are processes or threads: with ``--workers 0``
+        # every texture was handed over at once again, and the rope timed the queue rather than
+        # the encoding, which is the whole point of it (found in review, 2026-09-23)
+        self.encode_slots = asyncio.Semaphore(max(1, self.workers) + 2)
         if self.workers == 0:
             return
         self.pool = ProcessPoolExecutor(
             max_workers=self.workers, mp_context=get_context("spawn"), initializer=_worker_init
         )
-        self.encode_slots = asyncio.Semaphore(self.workers + 2)
 
     async def _close_pool(self) -> None:
         """Close the encoders, and take down whatever will not close.
@@ -1170,11 +1175,15 @@ class _Pipeline:
         self._take_workers_down()
 
     def _take_workers_down(self) -> None:
-        """End any encoder still running. Nothing here waits, and nothing kills a second time.
+        """End any encoder still running, politely first and then not.
 
-        ``terminate`` is a polite signal a Python worker always honours; a ``kill`` after it
-        would race the pool's own reaper for the same process id, and the loser signals a number
-        the operating system may have given to somebody else (found in review, 2026-09-23).
+        A worker blocked in a write to a drive that has stopped answering does not die of
+        ``terminate``, and the thread still inside ``pool.shutdown`` then holds the interpreter's
+        own 300 s join at the end of the run: the user's progress line freezes with nothing
+        happening and his Python is still in the task manager, which is the very fault this is
+        here to stop (found in review, 2026-09-23). ``kill`` goes through the same guard on the
+        process's own return code as ``terminate`` does, so it adds no race that the signal
+        before it did not already have.
         """
         alive = [p for p in self.workers_seen if p.exitcode is None and p.is_alive()]
         self.workers_seen = []
@@ -1188,6 +1197,15 @@ class _Pipeline:
         for proc in alive:
             with contextlib.suppress(Exception):
                 proc.terminate()
+        deadline = time.monotonic() + WORKER_END_S
+        for proc in alive:
+            with contextlib.suppress(Exception):
+                proc.join(max(0.0, deadline - time.monotonic()))
+        for proc in alive:
+            if proc.exitcode is None and proc.is_alive():
+                log.warning("an encoder ignored the signal to end; it is being killed")
+                with contextlib.suppress(Exception):
+                    proc.kill()
 
     # -- fetch -------------------------------------------------------------------------------
 
@@ -1812,18 +1830,38 @@ class _Pipeline:
             await self._hand_over(st, job, dest)
 
     async def _hand_over(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
+        """Give one texture to a worker and wait for its answer.
+
+        ``_schedule`` looked at the stop before this texture queued for a slot, and the wait is
+        where a stop arrives: handed to a pool that has just been shut, the texture came back as
+        an internal error and the report told the user to file a bug for having pressed Stop
+        (found in review, 2026-09-23).
+        """
+        if self.cancelled:
+            self._finish(st, "cancelled")
+            return
         st.submitted_at = time.perf_counter()
         if not self.t_first_submit:
             self.t_first_submit = st.submitted_at
         self.encoding += 1
-        if self.pool is None:
-            awaitable: Any = asyncio.to_thread(_worker_run, job)
-        else:
-            fut: Future[WorkerResult] = self.pool.submit(_worker_run, job)
-            awaitable = asyncio.wrap_future(fut)
-            procs = getattr(self.pool, "_processes", None)
-            if procs:
-                self.workers_seen = list(procs.values())
+        try:
+            if self.pool is None:
+                awaitable: Any = asyncio.to_thread(_worker_run, job)
+            else:
+                fut: Future[WorkerResult] = self.pool.submit(_worker_run, job)
+                awaitable = asyncio.wrap_future(fut)
+                procs = getattr(self.pool, "_processes", None)
+                if procs:
+                    self.workers_seen = list(procs.values())
+        except RuntimeError:  # "cannot schedule new futures after shutdown": the stop, again
+            self.encoding -= 1
+            if self.cancelled:
+                self._finish(st, "cancelled")
+                return
+            raise
+        except BaseException:
+            self.encoding -= 1  # it never reached a worker, so nothing will count it down
+            raise
         await self._after_worker(st, awaitable, dest)
 
     async def _publish_hit(self, st: _TexState, src: Path, digest: str, dest: Path) -> None:

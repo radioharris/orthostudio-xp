@@ -14,6 +14,8 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 from typing import Any
 
+import pytest
+
 from orthostudio.pipeline import textures
 
 
@@ -21,6 +23,16 @@ def sleeps_for_ever(_x: int) -> None:
     """An encoder that never answers. At module level so ``spawn`` can import it."""
     import time as _time
 
+    _time.sleep(600)
+
+
+def deaf_to_the_signal(_x: int) -> None:
+    """An encoder that will not take the polite signal: a worker blocked in a write to a drive
+    that has stopped answering behaves like this."""
+    import signal
+    import time as _time
+
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     _time.sleep(600)
 
 
@@ -151,3 +163,101 @@ def test_no_more_textures_are_handed_over_than_the_pool_can_hold() -> None:
     asyncio.run(go())
     assert len(handed) == 60
     assert max(handed) <= 6, f"{max(handed)} textures were in the pool's hands at once"
+
+
+def test_an_encoder_that_ignores_the_signal_is_killed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """``terminate`` is a signal a worker may ignore. One that does held the thread inside
+    ``pool.shutdown``, and the interpreter then waits 300 s for that thread at the end of the
+    run: the progress line freezes with nothing happening and the user's Python is still in his
+    task manager, which is the fault this is here to stop (found in review, 2026-09-23)."""
+    monkeypatch.setattr(textures, "POOL_CLOSE_S", 1.0)
+    pool = ProcessPoolExecutor(max_workers=1, mp_context=get_context("spawn"))
+    workers: list[Any] = []
+    try:
+        pool.submit(deaf_to_the_signal, 1)
+        deadline = time.monotonic() + 30.0
+        while not pool._processes and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(1.5)  # it has installed its handler and is inside its sleep
+        workers = list(pool._processes.values())
+        assert workers
+
+        t0 = time.perf_counter()
+        asyncio.run(textures._Pipeline._close_pool(_JustThePool(pool)))
+        took = time.perf_counter() - t0
+        for proc in workers:
+            proc.join(10.0)
+    finally:
+        for proc in workers:
+            if proc.is_alive():
+                proc.kill()
+
+    assert took < 20.0, f"the step waited {took:.0f} s for an encoder that will not end"
+    assert not [p for p in workers if p.is_alive()], (
+        "an encoder deaf to the signal must still be gone when the build stops"
+    )
+
+
+class _OneTexture:
+    """The little of a texture's state that ``_hand_over`` touches."""
+
+    submitted_at = 0.0
+
+
+class _ShutPool:
+    """A pool the stop has already closed, as ``_cancel_now`` leaves it."""
+
+    _processes: dict[str, Any] | None = None
+
+    def submit(self, *_args: Any, **_kw: Any) -> Any:
+        raise RuntimeError("cannot schedule new futures after shutdown")
+
+
+class _Handing:
+    """What ``_hand_over`` reads and writes of the run."""
+
+    _hand_over = textures._Pipeline._hand_over
+
+    def __init__(self, pool: Any, *, cancelled: bool) -> None:
+        self.pool = pool
+        self.cancelled = cancelled
+        self.encoding = 0
+        self.t_first_submit = 0.0
+        self.workers_seen: list[Any] = []
+        self.said: list[str] = []
+
+    def _finish(self, _st: Any, status: str, *, error: Any = None) -> None:
+        self.said.append(status)
+
+    async def _after_worker(self, *_args: Any, **_kw: Any) -> None:
+        raise AssertionError("a stopped build hands nothing to a worker")
+
+
+def test_a_stop_while_a_texture_waits_for_a_worker_is_a_stop_and_not_a_fault() -> None:
+    """The step looks at the stop before a texture queues for a worker, and the wait for one is
+    exactly where a stop lands. Handed to a pool the stop had just shut, the texture came back as
+    an internal error: the report the user is asked to send was filled with them, and each one
+    told him to file a bug for having pressed Stop (found in review, 2026-09-23)."""
+    run = _Handing(_ShutPool(), cancelled=True)
+    asyncio.run(run._hand_over(_OneTexture(), None, None))
+    assert run.said == ["cancelled"]
+    assert run.encoding == 0, "a texture that never reached a worker is not counted as encoding"
+
+    # and if the stop lands between the guard and the hand-over, the answer is the same
+    late = _Handing(_ShutPool(), cancelled=False)
+    late.cancelled = False
+
+    class _Late(_ShutPool):
+        def submit(self, *_args: Any, **_kw: Any) -> Any:
+            late.cancelled = True  # the stop, arriving as the texture is handed over
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+    late.pool = _Late()
+    asyncio.run(late._hand_over(_OneTexture(), None, None))
+    assert late.said == ["cancelled"] and late.encoding == 0
+
+    # a RuntimeError that is not a stop is still a fault, and is not swallowed
+    broken = _Handing(_ShutPool(), cancelled=False)
+    with pytest.raises(RuntimeError):
+        asyncio.run(broken._hand_over(_OneTexture(), None, None))
+    assert broken.said == [] and broken.encoding == 0

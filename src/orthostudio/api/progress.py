@@ -324,9 +324,13 @@ class EtaSmoother:
         end = max(end, now)
         self.end, self.band, self.at = end, width, now
         left = end - now
+        # the top of the range ends where the estimate itself ends: the band widens it by up to
+        # 1.7, so an estimate of 15 hours was published as more than a day, and the whole reason
+        # there is a cap at all is that a user read a number nobody can read (found in review,
+        # 2026-09-23; the first attempt at this capped a field the page never reads)
         return (
-            left * (1.0 - BAND_LOW_SHARE * width),
-            left * (1.0 + (2.0 - BAND_LOW_SHARE) * width),
+            max(0.0, left * (1.0 - BAND_LOW_SHARE * width)),
+            min(ETA_MAX_S, left * (1.0 + (2.0 - BAND_LOW_SHARE) * width)),
         )
 
 
@@ -762,8 +766,9 @@ def estimate(
     band = BAND_MAX - (BAND_MAX - BAND_MIN) * confidence
     if not math.isfinite(eta) or eta > ETA_MAX_S:
         return Estimate(progress, None, None, None)
-    low = max(0.0, eta * (1.0 - BAND_LOW_SHARE * band))
-    # the same end as the estimate itself: the band widens it by up to three, and a day's build
-    # came out as three days at the top of the range (found in review, 2026-09-23)
+    # the band widens the top by up to 1.675 (``BAND_MAX`` 0.45), so an estimate of 14.3 hours
+    # reaches the day this stops at. ``EtaSmoother.update`` makes the range the page is shown and
+    # holds the same end; these two are the unsmoothed pair, kept in step with it.
+    low = eta * (1.0 - BAND_LOW_SHARE * band)
     high = min(ETA_MAX_S, eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band))
     return Estimate(progress, eta, low, high, band)
