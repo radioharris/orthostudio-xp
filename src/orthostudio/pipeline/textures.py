@@ -70,7 +70,7 @@ from orthostudio.pipeline.rule import (
     dds_node,
     take_build_info,
 )
-from orthostudio.textures.assemble import image_body_complete
+from orthostudio.textures.assemble import GRID, image_body_complete
 from orthostudio.textures.encode import available_encoders, find_nvcompress
 from orthostudio.textures.imprint import (
     MASK_THRESHOLD,
@@ -534,6 +534,12 @@ def _error_dict(exc: OsxpError, **extra: Any) -> dict[str, Any]:
     }
     d.update(extra)
     return d
+
+
+def _unlink_quietly(path: Path) -> None:
+    """Remove a file that must not be published; a path already gone is fine."""
+    with contextlib.suppress(OSError):
+        path.unlink()
 
 
 def _coded(exc: BaseException, *, path: Path | None = None) -> OsxpError:
@@ -1967,6 +1973,17 @@ class _Pipeline:
             self.counts["chunks_from_fallback"] += result.info.from_fallback
             self.counts["chunks_unfilled"] += result.info.unfilled
             self.encode_seconds.append(result.seconds)
+            if result.info.unfilled >= GRID * GRID:
+                # nothing at all came back, so what the encoder wrote is one flat grey square
+                # painted from its own emptiness. It was called built, the DSF shipped it, and
+                # the user flew grey ground with nothing said (found in review, 2026-09-23). A
+                # square outside what a source covers, or a level finer than it holds, lands
+                # here for every texture of the tile.
+                await asyncio.to_thread(_unlink_quietly, dest)
+                st.outcome.dds_path = None
+                st.outcome.digest = None
+                self._finish(st, "incomplete", error=self._nothing_came_back(st))
+                return
             if result.info.unfilled:
                 unfilled_exc = OsxpError(
                     "IMG_TILE_MISSING",
@@ -1980,6 +1997,27 @@ class _Pipeline:
             if result.info.corrupted:
                 await self._mark_corrupted(st, result.info.corrupted)
         self._finish(st, result.status)
+
+    def _nothing_came_back(self, st: _TexState) -> dict[str, Any]:
+        """The texture for which the source answered with nothing at all."""
+        name = texture_name(st.texture)
+        exc = OsxpError(
+            "IMG_TILE_MISSING",
+            context={
+                "chunk": f"all {GRID * GRID} chunk(s)",
+                "texture": name,
+                "provider": self.provider.code,
+            },
+            message=(
+                f"{self.provider.code} has no imagery at all for texture {name}: every one of "
+                f"its {GRID * GRID} pieces was refused."
+            ),
+            remedy=(
+                "That square is outside what this source covers, or the detail level is finer "
+                "than it holds. Choose another source in the Plan, or a lower level."
+            ),
+        )
+        return _error_dict(exc, texture=name)
 
     async def _mark_corrupted(self, st: _TexState, indices: tuple[int, ...]) -> None:
         """Bodies that passed the structural check but did not decode: ``ERROR`` on disk so
