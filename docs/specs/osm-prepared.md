@@ -206,6 +206,10 @@ Published with `tools/bake/publish.py`, which is three steps and one rule each:
 Never bake into the served tree: the bake rewrites its manifest after every block, and a client
 that reads a half-written one sets the library aside for its whole job.
 
+A library replaced in place keeps whatever the last one left, and what the manifest does not name
+is never served but still takes room and still hides what the server holds: `publish.py --prune`
+lists it and, with `--yes`, removes it. That is a separate step because it ends the rollback.
+
 Everything else proves a tile in the folder it was baked into, and between that folder and a user
 there is an upload that can stop half way, a key that can be revoked, a server that can serve a
 stale copy. So `tools/bake/verify_library.py` reads the published library with the same client and
