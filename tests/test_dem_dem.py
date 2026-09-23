@@ -531,3 +531,54 @@ def test_a_folder_of_ones_own_alone_refuses_the_squares_it_does_not_hold(tmp_pat
         Dem.build(TileRef(47, 10), opts, custom_dem=str(own))
     assert raised.value.code == "DEM_TILE_UNAVAILABLE"
     assert str(own) in str(raised.value.context.get("reason", ""))
+
+
+def test_a_relief_file_of_ones_own_is_weighed_so_a_better_one_is_read(tmp_path: Path) -> None:
+    """*My own elevation file* puts the file where the relief itself goes, not among the
+    overlays, and nothing weighed it: only its path reached the key. A user who corrected his
+    file, built again and installed flew the relief he had replaced, with nothing to tell him
+    (found in review, 2026-09-23). Nobody on a named source is rebuilt for this."""
+    from orthostudio.model import TileRef
+    from orthostudio.pipeline.build import BuildSpec, _stamp_own_file
+
+    tile = TileRef(49, -122)
+    spec = BuildSpec(tile=tile, provider="BI", zl=16, out_dir=tmp_path / "out", config={})
+
+    def stamp(custom_dem: str) -> str:
+        return str(_stamp_own_file({"custom_dem": custom_dem}, spec).get("own_stamp", ""))
+
+    own = tmp_path / "N49W122.hgt"
+    own.write_bytes(b"\x00" * 2000)
+    before = stamp(str(own))
+    assert before, "his own file is weighed"
+    own.write_bytes(b"\x01" * 4000)  # the same path, a better file
+    assert stamp(str(own)) != before, "so the tile is built again"
+
+    folder = tmp_path / "lidar"
+    folder.mkdir()
+    (folder / "N49W122.hgt").write_bytes(b"\x00" * 100)
+    was = stamp(f"COP30;{folder}")
+    assert stamp("COP30") == "", "a named source alone keeps the key it has always had"
+    assert stamp("COP30;HRDEM") == "2:HRDEM", "and so does a source named as an overlay"
+    assert was.startswith("2:N49W122.hgt:100:"), "a folder of one's own is weighed as before"
+
+
+def test_the_relief_of_ones_own_says_what_to_do_about_it(tmp_path: Path) -> None:
+    """The remedy spoke of the X-Plane installer and ended by telling the user to give his own
+    elevation file, which is what he had just done. The relief is the first thing a tile needs,
+    so the build stopped at 0 % with that advice (a Linux user, found in review 2026-09-23)."""
+    from orthostudio.dem.dem import _relief_remedy
+
+    folder = tmp_path / "my relief"
+    folder.mkdir()
+    said = _relief_remedy(str(folder), "N49W122")
+    assert said is not None
+    assert "N49W122" in said and ".hgt" in said and "choose another relief" in said
+
+    lone = tmp_path / "mine.hgt"
+    lone.write_bytes(b"\x00")
+    said = _relief_remedy(str(lone), "N49W122")
+    assert said is not None and "N49W122" in said
+
+    assert _relief_remedy("COP30", "N49W122") is None, "a named source keeps the general words"
+    assert _relief_remedy("XP12", "N49W122") is None

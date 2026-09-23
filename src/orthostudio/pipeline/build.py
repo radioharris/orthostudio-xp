@@ -1621,6 +1621,15 @@ and never reached the scenery, so a tile of the store built then must be built a
 without overlays keeps the key it has always had, and nothing else is rebuilt."""
 
 
+def _weighed_and_dated(path: Path) -> str | None:
+    """``name:size:when-last-written`` of a file, or ``None`` when it cannot be read."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+
+
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     """``params`` with the mark of what the overlays of a composite bring to this square.
 
@@ -1631,21 +1640,28 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     version of itself leaves its path as it was, and the tile would come back from the store
     unchanged. An overlay that is a source rather than a folder (Canada's lidar over Copernicus)
     is named as it is: what it holds for a square is the service's business, not ours.
+
+    The same goes for the **base**, and it did not: *My own elevation file* in Settings puts the
+    file there rather than among the overlays, and nothing weighed it. The path is all that
+    reached the key, so a user who corrected his file, rebuilt and installed flew the relief he
+    had replaced, with nothing to tell him (found in review, 2026-09-23). A base that names a
+    source is still left out, so nobody using one is rebuilt for this.
     """
     marks = []
-    for part in [p for p in str(params.get("custom_dem") or "").split(";")[1:] if p]:
-        folder = Path(part)
-        if not folder.is_dir():
-            marks.append(part)  # a source (Canada's lidar) or a file, named as it is
+    for index, part in enumerate(p for p in str(params.get("custom_dem") or "").split(";") if p):
+        path = Path(part)
+        if path.is_dir():
+            own = cell_file_in_folder(path, spec.tile.lat, spec.tile.lon)
+            mark = None if own is None else _weighed_and_dated(own)
+        elif path.is_file():
+            mark = _weighed_and_dated(path)
+        elif index == 0:
+            continue  # a source named as the base (COP30, the X-Plane relief): not ours to weigh
+        else:
+            marks.append(part)  # a source named as an overlay (Canada's lidar), named as it is
             continue
-        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon)
-        if own is None:
-            continue  # the folder holds nothing for this square, so it changes no key
-        try:
-            stat = own.stat()
-        except OSError:
-            continue
-        marks.append(f"{own.name}:{stat.st_size}:{stat.st_mtime_ns}")
+        if mark is not None:
+            marks.append(mark)
     if marks:
         params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
     return params

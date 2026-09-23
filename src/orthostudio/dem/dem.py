@@ -33,6 +33,7 @@ from orthostudio.dem.raster import (
 )
 from orthostudio.dem.sources import (
     MANUAL_SOURCES,
+    OWN_SUFFIXES,
     SOURCES,
     CellState,
     EnsureOptions,
@@ -99,6 +100,31 @@ def resolve_source(custom_dem: str, tile: TileRef, elevation_dir: Path) -> list[
         else:
             raise ValueError(f"empty overlay in custom_dem {custom_dem!r}")
     return resolved
+
+
+def _relief_remedy(source: str, cell: str) -> str | None:
+    """What to do about a missing elevation, when the relief is a folder or a file of one's own.
+
+    The registry's remedy speaks of the X-Plane relief and ends by telling the user to give his
+    own elevation file, which is what he just did: a Linux user pointed at his own folder, the
+    build stopped at 0 %, and the advice sent him to the X-Plane installer (found in review,
+    2026-09-23). The relief is the first thing a tile needs, so every stage after it is skipped
+    and the bar never moves.
+    """
+    path = Path(source)
+    if not (path.is_dir() or path.is_file() or source.startswith(("/", "~", "."))):
+        return None  # a named source: the registry's words are right
+    kinds = ", ".join(OWN_SUFFIXES)
+    if path.is_dir():
+        return (
+            f"The folder is read for a file named after the square, {cell}, with one of these "
+            f"endings: {kinds}. Rename or add that file, or choose another relief above, which "
+            "answers for every square the folder has nothing for."
+        )
+    return (
+        f"Check the file is readable and is one of {kinds}, and that it covers {cell}. "
+        "Otherwise choose another relief above."
+    )
 
 
 @dataclass(slots=True)
@@ -248,13 +274,15 @@ class Dem:
             if own is None:
                 if optional:
                     return None
+                cell = hem_latlon(tile.lat, tile.lon)
                 raise OsxpError(
                     "DEM_TILE_UNAVAILABLE",
                     context={
-                        "cell": hem_latlon(tile.lat, tile.lon),
+                        "cell": cell,
                         "source": source,
                         "reason": f"no file for this square in {path}",
                     },
+                    remedy=_relief_remedy(source, cell),
                 )
             path = own
         if optional and not path.is_file():
