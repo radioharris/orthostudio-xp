@@ -92,6 +92,15 @@ class FetchStats:
     retries: int
     hedges: int
     throttled: bool
+    """Our own window was lowered recently, or a group is paused: the fetcher is holding back.
+
+    This is mostly **us**: the window is lowered on a latency spike, which happens all the time
+    while a healthy download hunts for its right size. It is a developer's figure and says
+    nothing about the server."""
+    pushed_back: bool = False
+    """A server answered 429 and we are waiting out the delay it asked for. This one is the
+    server, and it is the only one worth telling a user about (found on a user's own screen,
+    2026-09-24: "the source is asking us to slow down" beside 1 269 requests a second)."""
 
 
 # --- constants (spec R2-R4, R6) ---------------------------------------------------------------
@@ -422,6 +431,7 @@ class Fetcher:
             retries=self._retries,
             hedges=self._hedges,
             throttled=any(g.throttled(now) for g in self._groups.values()),
+            pushed_back=any(now < g.paused_until for g in self._groups.values()),
         )
 
     # -- the run ---------------------------------------------------------------------------------

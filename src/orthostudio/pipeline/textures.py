@@ -369,6 +369,10 @@ class ProgressSnapshot:
     """Rounds the second pass may run; 0 when nothing waits for it."""
     second_pass_wait_s: float = 0.0
     """Seconds left in the pause before the next round."""
+    pushed_back: bool = False
+    """A source answered 429 and the step is waiting out the delay it asked for. Not
+    ``throttled``, which is mostly our own window being lowered and is on throughout a healthy
+    download (a user's own screen, 2026-09-24)."""
 
 
 @dataclass(slots=True)
@@ -2175,6 +2179,7 @@ class _Pipeline:
             retries=int(self.net_totals["retries"] + (s.retries if s is not None else 0)),
             net_errors=int(self.net_totals["errors"] + (s.errors if s is not None else 0)),
             throttled=bool(s.throttled) if s is not None else False,
+            pushed_back=bool(s.pushed_back) if s is not None else False,
             textures_total=self.counts["textures"],
             built=self.counts["built"],
             hits=self.counts["hits"],

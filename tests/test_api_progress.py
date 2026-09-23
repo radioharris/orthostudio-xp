@@ -1456,3 +1456,33 @@ def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path)
     at[0] = 10.0
     job.on_event(Progress(node, 0.25, "+46+006: 1 of 4 back: airports"))
     assert len(lines()) == 2, "and a line that says something new is written"
+
+
+def test_only_a_source_that_really_pushed_back_is_reported_as_slowing_us_down() -> None:
+    """The page said "the source is asking us to slow down" beside 1 269 requests a second and
+    18.4 MB/s, because it read ``throttled`` -- which is mostly our **own** window being lowered
+    on a latency spike, something a healthy download does throughout. A user saw it on his first
+    build (2026-09-24). ``pushed_back`` is a server answering 429 and us waiting out the delay it
+    asked for, which is the only one worth telling him about."""
+    import inspect
+    from dataclasses import replace
+
+    from orthostudio.pipeline.build import textures_progress_message
+    from orthostudio.pipeline.textures import ProgressSnapshot
+
+    empty = {
+        name: (False if p.annotation is bool else 0)
+        for name, p in inspect.signature(ProgressSnapshot).parameters.items()
+        if p.default is inspect.Parameter.empty
+    }
+    busy = replace(
+        ProgressSnapshot(**empty),
+        tiles_total=55296,
+        tiles_done=48594,
+        textures_total=234,
+        built=203,
+        req_per_s=1269.0,
+    )
+    said = "the source is asking us to slow down"
+    assert said not in textures_progress_message("BI16", replace(busy, throttled=True), 18.4)
+    assert said in textures_progress_message("BI16", replace(busy, pushed_back=True), 0.4)

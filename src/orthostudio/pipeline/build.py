@@ -908,10 +908,12 @@ def textures_progress_message(
             f"{level}: textures {s.built + s.hits}/{s.textures_total}, "
             "nothing to download (the image pieces are in the cache)"
         )
-    if s.throttled:
-        # the CLI bar has said this since the beginning and the page did not: a source asking us
-        # to slow down looks exactly like a build that has stopped, for hours (found in review,
-        # 2026-09-23)
+    if s.pushed_back:
+        # A source asking us to slow down looks exactly like a build that has stopped, for hours,
+        # and the page said nothing of it. Said from ``throttled`` it was a lie: that flag is
+        # mostly our own window being lowered, which a healthy download does constantly, so it
+        # appeared beside 1 269 requests a second (a user's own screen, 2026-09-24). ``pushed_back``
+        # is a server answering 429 and us waiting out the delay it asked for.
         message += ", the source is asking us to slow down"
     if s.second_pass_chunks and not s.second_pass_round:
         message += f", {s.second_pass_chunks} image piece(s) to ask for again"
