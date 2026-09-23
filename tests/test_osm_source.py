@@ -344,8 +344,9 @@ def test_429_fails_over_and_opens_the_whole_cluster() -> None:
         "overpass.openstreetmap.fr",
         "maps.mail.ru",
     ]
+    # a 429 is not a machine failing, it is the per-address quota: its own code, in plain words
     assert [a.error for a in c.attempts] == [
-        "OSM_MIRROR_REJECTED",
+        "OSM_MIRROR_RATE_LIMITED",
         "OSM_MIRROR_REJECTED",
         None,
     ]
@@ -438,6 +439,30 @@ def test_the_last_resort_mirror_can_be_refused() -> None:
         asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert "maps.mail.ru" not in {h for h, _ in t.sent}
+
+
+def test_a_quota_refusal_is_said_in_plain_words() -> None:
+    """A user built almost a whole state, then read "instantly fails" with no idea why: the public
+    servers count requests per internet address, and a region is hundreds of them (2026-09-23).
+    The refusal has its own code, and when every server refuses for that reason the tile says so
+    rather than "could not be obtained from any mirror"."""
+    answer = HttpReply(429, b"", {"retry-after": "600"}, 0.01)
+    hosts = (
+        "overpass-api.de",
+        "z.overpass-api.de",
+        "lz4.overpass-api.de",
+        "overpass.openstreetmap.fr",
+        "maps.mail.ru",
+    )
+    t = ScriptedTransport({host: [answer] for host in hosts})
+    c = client(t)
+    with pytest.raises(OsxpError) as err:
+        asyncio.run(c.fetch_layer(TILE, "coastline"))
+    assert err.value.code == "OSM_LAYER_UNAVAILABLE"
+    assert "not taking more requests from your address" in err.value.message
+    assert "10 min" in err.value.context["attempts"]  # retry-after, in minutes
+    assert "fewer tiles at a time" in err.value.remedy
+    assert [a.error for a in c.attempts][:1] == ["OSM_MIRROR_RATE_LIMITED"]
 
 
 def test_the_failure_says_what_each_mirror_answered() -> None:

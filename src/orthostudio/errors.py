@@ -121,6 +121,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "it persists.",
     ),
     _spec(
+        "OSM_MIRROR_RATE_LIMITED",
+        _I,
+        _C,
+        "Map data server {mirror} is not taking more requests from you for now ({delay}).",
+        "These servers count requests per internet address, and a whole region is hundreds of "
+        "them: wait a few minutes and build again, or build fewer tiles at a time. Another "
+        "server is tried meanwhile.",
+    ),
+    _spec(
         "OSM_RESPONSE_TRUNCATED",
         _I,
         _C,

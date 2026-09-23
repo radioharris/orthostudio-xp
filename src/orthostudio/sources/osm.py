@@ -1115,6 +1115,22 @@ class OverpassClient:
             if not self._worth_another_round(reasons):
                 break
         detail = "; ".join(reasons)
+        quota = [r for r in reasons if "RATE_LIMITED" in r]
+        if quota and len(quota) >= len([r for r in reasons if ": OSM_" in r]) - 1:
+            # every server that answered refused for the same reason: say that one thing
+            raise OsxpError(
+                "OSM_LAYER_UNAVAILABLE",
+                context={"layer": spec.name, "tile": tile.name, "attempts": detail},
+                message=(
+                    f"The map data servers are not taking more requests from your address, so "
+                    f"{spec.name} for tile {tile.name} could not be downloaded ({detail})."
+                ),
+                remedy=(
+                    "These servers count requests per internet address, and a whole region is "
+                    "hundreds of them. Wait a few minutes and build again, or build fewer tiles "
+                    "at a time; the tiles already finished are kept."
+                ),
+            )
         raise OsxpError(
             "OSM_LAYER_UNAVAILABLE",
             context={"layer": spec.name, "tile": tile.name, "attempts": detail},
@@ -1320,7 +1336,13 @@ class OverpassClient:
         if reply.status == 429:
             delay = _retry_after(reply.headers)
             self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay)
-            return "OSM_MIRROR_REJECTED", "HTTP 429"
+            # not a failure of the machine: the public servers count requests per address, and a
+            # whole region is hundreds of them. Said in those words, since "HTTP 429" told a user
+            # nothing while he wondered why his builds had turned random (2026-09-23).
+            waited = (
+                f"try again in about {delay / 60:.0f} min" if delay else "usually a few minutes"
+            )
+            return "OSM_MIRROR_RATE_LIMITED", f"too many requests from your address, {waited}"
         if reply.status != 200:
             self._open(mirror.code, reason=f"HTTP {reply.status}")
             return "OSM_MIRROR_REJECTED", f"HTTP {reply.status}"
