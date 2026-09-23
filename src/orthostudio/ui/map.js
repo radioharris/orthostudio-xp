@@ -1311,6 +1311,10 @@ export function createPlanMap(ctx) {
     layers.draft = L.layerGroup().addTo(m);
     el.classList.toggle("is-mock", Boolean(ctx.mock));
     el.setAttribute("aria-label", t("map.label"));
+    renderWhichShape();
+    document.addEventListener("keydown", onSnapKeys);
+    document.addEventListener("keyup", onSnapKeys);
+    window.addEventListener("blur", forgetSnapKeys);
     m.on("moveend", () => {
       renderGrid();
       renderTextureGrid();  // the view moved: the squares to aim at moved with it
@@ -2024,16 +2028,52 @@ export function createPlanMap(ctx) {
    * Drawn for the view only, and only while the squares are big enough to aim at: finer than
    * that it would be a grey wash and thousands of lines.
    */
+  /** Which shape each of a zone's two halves wants; it names two keys, so it is filled here. */
+  function renderWhichShape() {
+    const box = $("draw-which");
+    if (box) box.textContent = t("draw.which", { mod: keyMod, shift: keyShift() });
+  }
+
+  let gridTooFine = false;
+  let snapKeysHeld = false;
+
+  /**
+   * The grid is shown while a zone is being drawn **and** while the keys that snap to it are
+   * held, even with nothing started yet.
+   *
+   * The first point is the one that starts the shape, so at that moment there is no zone in
+   * progress: drawn only for a zone under way, the grid appeared after the first click, which
+   * is exactly too late. A user asked for it on the keys, so that he can see where to put that
+   * first point (2026-09-24).
+   */
+  function onSnapKeys(ev) {
+    const held = Boolean((ev.ctrlKey || ev.metaKey) && ev.shiftKey);
+    if (held === snapKeysHeld) return;
+    snapKeysHeld = held;
+    renderTextureGrid();
+  }
+
+  function forgetSnapKeys() {
+    if (!snapKeysHeld) return;
+    snapKeysHeld = false; // the window lost focus with the keys down: they are not held any more
+    renderTextureGrid();
+  }
+
   function renderTextureGrid() {
     if (!map || !layers.textureGrid) return;
     layers.textureGrid.clearLayers();
-    if (!zs.draft) return;
+    gridTooFine = false;
+    if (!zs.draft && !snapKeysHeld) return;
     const zl = zs.nextZl;
     const view = map.getBounds();
     const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture
     const west = map.latLngToContainerPoint([view.getNorth(), view.getWest()]);
     const east = map.latLngToContainerPoint([view.getNorth(), view.getWest() + side]);
-    if (east.x - west.x < TEXTURE_GRID_MIN_PX) return; // too fine to aim at: nothing is drawn
+    if (east.x - west.x < TEXTURE_GRID_MIN_PX) {
+      gridTooFine = true; // and the banner says so, rather than showing nothing at all
+      return;
+    }
+    gridTooFine = false;
     const [u0, v0] = textureCoords(view.getWest(), view.getNorth(), zl);
     const [u1, v1] = textureCoords(view.getEast(), view.getSouth(), zl);
     const line = { pane: "osxpTextureGrid", className: "osxp-texture-grid", interactive: false, weight: 1 };
@@ -2095,6 +2135,7 @@ export function createPlanMap(ctx) {
     if (!map || map.getZoom() < ZONE_MIN_ZOOM) text = t("draw.zoom_in");
     else if (d.kind === "rect") text = d.vertices.length ? t("draw.rect_second") : t("draw.rect_first");
     else text = `${t("draw.shape_hint")} ${t("draw.points", { n: d.vertices.length })}`;
+    if (gridTooFine) text += ` ${t("draw.grid_too_fine")}`;
     $("map-banner-text").textContent = text;
     $("draw-finish").hidden = d.kind !== "shape";
     $("draw-finish").disabled = d.vertices.length < 3;

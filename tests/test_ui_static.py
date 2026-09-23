@@ -4898,7 +4898,10 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     start = map_js.index("function renderTextureGrid(")
     body = map_js[start : map_js.index("\n  function ", start + 1)]
-    assert "if (!zs.draft) return;" in body, "only while a zone is being drawn"
+    # while a zone is under way, and while the keys that snap to the grid are held: the first
+    # point is the one that starts the shape, so at that moment there is no zone in progress and
+    # the grid appeared only after the click that needed it (a user, 2026-09-24)
+    assert "if (!zs.draft && !snapKeysHeld) return;" in body
     assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
     assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
     assert "map.getBounds()" in body, "the view only, or it is thousands of lines"
@@ -4906,6 +4909,11 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
     # redrawn when the view moves, and when the draft changes
     assert "renderTextureGrid();  // the view moved" in map_js
     assert map_js.index("renderTextureGrid();\n    layers.draft.clearLayers();") > 0
+
+    keys = map_js[map_js.index("function onSnapKeys(") :]
+    assert "(ev.ctrlKey || ev.metaKey) && ev.shiftKey" in keys[:400]
+    for listener in ('"keydown", onSnapKeys', '"keyup", onSnapKeys', '"blur", forgetSnapKeys'):
+        assert listener in map_js, listener
 
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".osxp-texture-grid" in css
