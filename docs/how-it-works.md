@@ -52,8 +52,11 @@ the library another project publishes. Each one is taken whole or not at all, an
 against what it promised: a file that does not weigh what its index says, or whose content does not
 hash to what the index announced, is refused and the tile goes to the next place. Nothing is ever a
 dependency: every one of them can be missing, wrong or down, and the build simply asks the servers
-as it always did. Pressing a tile's *download again* asks them regardless, since a prepared library
-is weeks behind by design, which is the whole reason for pressing it. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
+as it always did.
+
+A prepared library is weeks behind by design, so there has to be a way to ask for today's map:
+today that way is `--osm-refresh <anything>` on the command line, which skips all three and goes
+to the servers. A button for it is not there yet. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
 each goes on with its relief at once, and with the rest as soon as its own data is in. A server
 that does not answer is left aside for the rest of the build, instead of being waited for by every
 tile; a build you start again asks all of them once more, and says which one answered what when a
