@@ -265,9 +265,7 @@ def texture_map(
     ``ICAO``; ``existing_textures`` only when it is ``Existing``.
     """
     lat, lon, mesh_zl = tile.lat, tile.lon, params.mesh_zl
-    zone_im, values = _zone_image(
-        tile, params.zone_list, params.default_zl, params.default_website
-    )
+    zone_im, values = _zone_image(tile, params.zone_list, params.default_zl, params.default_website)
     upgrade = params.cover_airports_with_highres in ("True", "ICAO")
     apt_arr = _airport_array(tile, params, airports) if upgrade else None
     rows, cols, xs, ys = cell_pixels(tile, mesh_zl)

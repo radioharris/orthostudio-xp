@@ -529,7 +529,5 @@ def render_text(report: DoctorReport) -> str:
     lines = [f"OrthoStudio XP {__version__} doctor"]
     for c in report.checks:
         lines.append(f"  [{_MARK[c.status]}] {c.name:<12} {c.summary}")
-    lines.append(
-        "everything a build needs is here" if report.ok else "some checks failed"
-    )
+    lines.append("everything a build needs is here" if report.ok else "some checks failed")
     return "\n".join(lines)

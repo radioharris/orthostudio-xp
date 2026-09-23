@@ -1411,9 +1411,7 @@ class OverpassClient:
 
         def report() -> None:
             if progress is not None:
-                message = osm_progress_message(
-                    tile, asked, back, wire[0], time.monotonic() - t0
-                )
+                message = osm_progress_message(tile, asked, back, wire[0], time.monotonic() - t0)
                 progress(len(back) / len(asked) if asked else 1.0, message)
 
         async def one(spec: LayerSpec) -> OsmSnapshot:
