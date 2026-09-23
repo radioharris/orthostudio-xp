@@ -19,6 +19,7 @@ Two rules carry the whole thing:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.sources.library import LibrarySource, shipped_library, unpack
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
@@ -36,6 +38,7 @@ __all__ = [
     "ChainResult",
     "FolderSource",
     "PreparedSource",
+    "settings_trouble",
     "sources_from_settings",
 ]
 
@@ -160,10 +163,18 @@ class Chain:
     """The prepared sources of a build, asked in order until one holds the whole tile."""
 
     def __init__(
-        self, sources: Sequence[PreparedSource], *, give_up_after: int = GIVE_UP_AFTER
+        self,
+        sources: Sequence[PreparedSource],
+        *,
+        give_up_after: int = GIVE_UP_AFTER,
+        say: Callable[[str], None] | None = None,
     ) -> None:
         self.sources = list(sources)
         self.give_up_after = give_up_after
+        self.say = say
+        """Where a thing the user should know goes. A source set aside is the difference between
+        a build that reads prepared tiles and one that queues behind the public servers for an
+        hour, and it used to happen in the log alone (review M4)."""
         self.failures: dict[str, int] = {}
         self._lock = threading.Lock()
         """A batch runs two network slots and they share this chain: without it, two failures of
@@ -182,9 +193,17 @@ class Chain:
                 got = source.layers(tile, specs)
             except Exception as exc:  # a library must never stop a build
                 with self._lock:
-                    self.failures[source.name] = self.failures.get(source.name, 0) + 1
+                    spent = self.failures.get(source.name, 0) + 1
+                    self.failures[source.name] = spent
                 notes.append(f"{source.name}: {type(exc).__name__}: {exc}")
                 log.warning("%s: %s failed (%s)", tile.name, source.name, exc)
+                if spent == self.give_up_after:
+                    self._tell(
+                        OsxpError(
+                            "OSM_PREPARED_SET_ASIDE",
+                            context={"source": source.name, "reason": str(exc)},
+                        )
+                    )
                 continue
             if got is None:
                 notes.append(f"{source.name}: not held")
@@ -197,6 +216,47 @@ class Chain:
             name = f"{source.name} ({stamp})" if stamp else source.name
             return ChainResult(got, name, tuple(notes))
         return ChainResult(None, "", tuple(notes))
+
+    def _tell(self, trouble: OsxpError) -> None:
+        log.warning("%s: %s", trouble.code, trouble.message)
+        if self.say is not None:
+            with contextlib.suppress(Exception):  # telling must never stop a build
+                self.say(f"{trouble.message} {trouble.remedy}")
+
+
+def settings_trouble(settings: Mapping[str, object]) -> list[OsxpError]:
+    """What is wrong with the prepared settings, before a build starts.
+
+    A folder that does not exist, an address without a key, a key without an address: each one
+    makes the setting do nothing at all, and each one used to look exactly like a tile outside
+    the library's coverage (review M4). Returned rather than raised: none of them is a reason
+    to refuse to build.
+    """
+    out: list[OsxpError] = []
+    folder = str(settings.get("osm_folder", "") or "").strip()
+    if folder and not Path(folder).expanduser().is_dir():
+        out.append(OsxpError("OSM_PREPARED_FOLDER_MISSING", context={"path": folder}))
+    url = str(settings.get("osm_library", "") or "").strip()
+    token = str(settings.get("osm_library_token", "") or "").strip()
+    if url and not token and not shipped_library()[1]:
+        out.append(
+            OsxpError(
+                "OSM_LIBRARY_KEY_REFUSED",
+                context={"url": url, "status": "no key given"},
+                message=f"The prepared map library at {url} was given no key, and answers nothing.",
+                remedy="Fill in the key beside the address in Settings, or clear both: without a "
+                "key the address does nothing and every tile is downloaded from the public "
+                "servers.",
+            )
+        )
+    if token and not url and not shipped_library()[0]:
+        out.append(
+            OsxpError(
+                "OSM_LIBRARY_UNREACHABLE",
+                context={"url": "(none)", "reason": "a key was given, but no address"},
+            )
+        )
+    return out
 
 
 def sources_from_settings(

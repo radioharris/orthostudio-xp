@@ -152,6 +152,47 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "at a time. The tiles already finished are kept.",
     ),
     _spec(
+        "OSM_LIBRARY_KEY_REFUSED",
+        _I,
+        _C,
+        "The prepared map library at {url} refused the key (HTTP {status}).",
+        "This version's key is no longer accepted: the map data is downloaded from the public "
+        "servers instead, which is slower but gives the same scenery. Updating OrthoStudio XP "
+        "brings a current key.",
+    ),
+    _spec(
+        "OSM_LIBRARY_UNREACHABLE",
+        _I,
+        _C,
+        "The prepared map library at {url} did not answer ({reason}).",
+        "The map data is downloaded from the public servers instead, which is slower but gives "
+        "the same scenery. Nothing to do.",
+    ),
+    _spec(
+        "OSM_LIBRARY_INCOMPLETE",
+        _D,
+        _C,
+        "The prepared map library lists {layer} of tile {tile} and did not serve it ({reason}).",
+        "The library is left alone for the rest of this build and the map data comes from the "
+        "public servers. If it keeps happening, the library is being rebuilt: build again later.",
+    ),
+    _spec(
+        "OSM_PREPARED_SET_ASIDE",
+        _I,
+        _C,
+        "{source} failed twice ({reason}); the rest of this build reads its map data live.",
+        "Nothing to do: the scenery is the same, the download is slower. A folder or an address "
+        "in Settings that names nothing is the usual cause.",
+    ),
+    _spec(
+        "OSM_PREPARED_FOLDER_MISSING",
+        _I,
+        _C,
+        "The map data folder {path} does not exist, so nothing is read from it.",
+        "Point the setting at the folder that holds the prepared layers, or clear it: an empty "
+        "setting sends every tile to the public servers, which is what happens now anyway.",
+    ),
+    _spec(
         "OSM_CACHE_UNREADABLE",
         _D,
         _C,

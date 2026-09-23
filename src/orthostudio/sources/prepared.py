@@ -34,6 +34,7 @@ from xml.etree import ElementTree as ET
 import blake3
 
 from orthostudio.dem.sources import round_latlon
+from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.sources.osm import (
     LAYERS,
@@ -103,13 +104,18 @@ against them; XML cannot be, so these layers are not read from an XML source at 
 """
 
 
-class PreparedError(RuntimeError):
-    """The service announced a tile and then did not serve it.
+class PreparedError(OsxpError):
+    """The service announced a tile and then did not serve it (``OSM_LIBRARY_INCOMPLETE``).
 
     Not the same as not holding it: a tile absent from the manifest costs nothing, while one
     announced and refused costs a request per layer for every tile of the batch. Raised so the
     chain counts it and sets the source aside (``chain.Chain``).
     """
+
+    def __init__(self, reason: str, *, tile: str = "", layer: str = "") -> None:
+        super().__init__(
+            "OSM_LIBRARY_INCOMPLETE", context={"tile": tile, "layer": layer, "reason": reason}
+        )
 
 
 def layer_path(tile: TileRef, layer: str) -> str:
@@ -354,11 +360,15 @@ def tile_snapshots(
     """
     if not index.covers(tile, specs):
         return None
+    by_path = {layer_path(tile, spec.name): spec.name for spec in specs}
 
-    def refuse(reason: str) -> None:
+    def spec_of(path: str) -> str:
+        return by_path.get(path, "")
+
+    def refuse(reason: str, layer: str = "") -> None:
         log.info("prepared: %s; Overpass takes over", reason)
         if strict:
-            raise PreparedError(reason)
+            raise PreparedError(reason, tile=tile.name, layer=layer)
 
     paths = [layer_path(tile, spec.name) for spec in specs]
     started = time.monotonic()
@@ -372,7 +382,7 @@ def tile_snapshots(
         return None
     for path, (status, body) in zip(paths, answers, strict=True):
         if status != 200 or not body or len(body) > MAX_LAYER_BYTES:
-            refuse(f"{path} answered {status}")
+            refuse(f"{path} answered {status}", spec_of(path))
             return None
     wire = sum(len(body) for _status, body in answers)
     elapsed = time.monotonic() - started
@@ -382,14 +392,14 @@ def tile_snapshots(
     ):
         expected = index.digest_of(tile, spec.name)
         if expected and hashlib.sha256(body).hexdigest() != expected:
-            refuse(f"{path} is not what the manifest promised")
+            refuse(f"{path} is not what the manifest promised", spec.name)
             return None
         try:
             out[spec.name] = snapshot_from_xml(
                 body, tile, spec, mirror=PREPARED_BASE, osm_base_default=index.version
             )
         except Exception as exc:
-            refuse(f"{path} could not be read ({exc})")
+            refuse(f"{path} could not be read ({exc})", spec.name)
             return None
         if progress is not None:
             # The very line Overpass writes, rate included (``ui.md`` 2.2: every step that

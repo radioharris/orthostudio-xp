@@ -382,10 +382,15 @@ def _prepared_chain(spec: BuildSpec, workdir: Path) -> Any:
     Read from the first spec's settings, which the batch shares: where a tile's map data may come
     from is not a per-tile choice (``osm-prepared.md`` 6).
     """
-    from orthostudio.sources.chain import Chain, sources_from_settings
+    from orthostudio.sources.chain import Chain, settings_trouble, sources_from_settings
 
+    config = spec.tile_config()
     try:
-        sources = sources_from_settings(spec.tile_config(), cache_dir=workdir / "prepared")
+        for trouble in settings_trouble(config):
+            # a folder that is not there, an address without a key: the setting then does
+            # nothing, and looked exactly like a tile outside the library (review M4)
+            log.warning("%s: %s %s", trouble.code, trouble.message, trouble.remedy)
+        sources = sources_from_settings(config, cache_dir=workdir / "prepared")
     except Exception:  # a setting nobody can read is not a reason to fail a build
         log.warning("prepared sources could not be read from the settings; Overpass alone")
         return None
@@ -1294,6 +1299,9 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
 
     def run(ctx: NodeContext) -> ArtifactRef:
         params = ctx.params
+        if env.prepared is not None and env.prepared.say is None:
+            # a source set aside costs every later tile a live download: the page says so once
+            env.prepared.say = lambda message: ctx.progress(1.0, message)
         job = OsmJob(
             fetch=outer.fetch if outer is not None else None,
             timeout_s=outer.timeout_s if outer is not None else 300.0,

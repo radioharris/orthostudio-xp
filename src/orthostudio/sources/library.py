@@ -32,13 +32,14 @@ from pathlib import Path
 import orjson
 import zstandard
 
+from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
 
-class LibraryError(RuntimeError):
-    """The library announced a tile and then did not serve it.
+class LibraryError(OsxpError):
+    """The library announced a tile and then did not serve it (``OSM_LIBRARY_INCOMPLETE``).
 
     Not the same as not holding it: a tile absent from the manifest costs nothing and the chain
     moves on quietly, while a tile announced and refused costs four requests, for every tile of
@@ -46,6 +47,11 @@ class LibraryError(RuntimeError):
     the case is an upload still in progress, a file deleted under the manifest, or a key revoked
     mid-build.
     """
+
+    def __init__(self, reason: str, *, tile: str = "", layer: str = "") -> None:
+        super().__init__(
+            "OSM_LIBRARY_INCOMPLETE", context={"tile": tile, "layer": layer, "reason": reason}
+        )
 
 
 __all__ = [
@@ -269,19 +275,19 @@ class LibrarySource:
         try:
             ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
         except Exception as exc:  # a library must never stop a build
-            log.info("%s: the manifest could not be asked for (%s)", self.name, exc)
+            log.info("OSM_LIBRARY_UNREACHABLE: %s could not be asked (%s)", self.base, exc)
             self._retry_at = time.monotonic() + RETRY_PAUSE_S
             return self._kept()
         if status in (401, 403):
             # the door, not a fault: the token is wrong or absent, and it will be at the next
             # tile as well
-            log.info("%s: the key was refused (HTTP %s)", self.name, status)
+            log.info("OSM_LIBRARY_KEY_REFUSED: %s refused the key (HTTP %s)", self.base, status)
             self._closed = True
             return None
         if status != 200:
             # a restart, a 502, a connection cut: the same question in two minutes may well be
             # answered, and until then the copy on disk is better than nothing (review F7)
-            log.info("%s: manifest answered HTTP %s", self.name, status)
+            log.info("OSM_LIBRARY_UNREACHABLE: %s answered HTTP %s", self.base, status)
             self._retry_at = time.monotonic() + RETRY_PAUSE_S
             return self._kept()
         index = parse_manifest(body)
@@ -396,27 +402,29 @@ class LibrarySource:
     ) -> OsmSnapshot | None:
         status, body = answer
         if status != 200 or not body:
-            raise LibraryError(
-                f"{spec.name} of {tile.name} is in the manifest but answered HTTP {status}"
-            )
+            raise LibraryError(f"answered HTTP {status}", tile=tile.name, layer=spec.name)
         announced_bytes = int(entry.get("bytes", 0) or 0)
         if len(body) > MAX_LAYER_BYTES or (announced_bytes and len(body) != announced_bytes):
             # the manifest gives every file its size, so anything else is not that file, and a
             # reader that unpacks first and asks afterwards is a reader that can be handed
             # anything at all (review F4)
             raise LibraryError(
-                f"{spec.name} of {tile.name} weighs {len(body)} bytes, not {announced_bytes}"
+                f"it weighs {len(body)} bytes, not the {announced_bytes} announced",
+                tile=tile.name,
+                layer=spec.name,
             )
         try:
             snap = OsmSnapshot.from_json(unpack(body))
         except (ValueError, KeyError, zstandard.ZstdError, orjson.JSONDecodeError) as exc:
-            raise LibraryError(f"{spec.name} of {tile.name} is unreadable ({exc})") from exc
+            raise LibraryError(
+                f"it is unreadable ({exc})", tile=tile.name, layer=spec.name
+            ) from exc
         announced = str(entry.get("digest", ""))
         if announced and snap.digest != announced:
             # not the file the manifest lists: a copy kept too long, or a library rebaked under
             # our feet. Either way what we hold about this library is wrong, so it is set aside
             # and its manifest read again at the next build, rather than every tile paying for it.
-            raise LibraryError(f"{spec.name} of {tile.name} is not the file announced")
+            raise LibraryError("it is not the file announced", tile=tile.name, layer=spec.name)
         if snap.layer != spec.name or snap.tile.name != tile.name:
             log.warning("%s: %s of %s holds another tile or layer", self.name, spec.name, tile.name)
             return None

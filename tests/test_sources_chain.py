@@ -303,3 +303,45 @@ def test_a_source_that_answers_nothing_never_stops_the_build() -> None:
     ):
         got = Chain([bad, _Fake("overpass", whole)]).layers(TILE, SPECS)
         assert got and got.source == "overpass"
+
+
+# -- what the user is told (review M4) ----------------------------------------------------------
+
+
+def test_a_setting_that_names_nothing_is_said_before_the_build(tmp_path: Path) -> None:
+    """A folder that is not there, an address without a key: the setting then does nothing at
+    all, and looked exactly like a tile the library does not cover."""
+    from orthostudio.sources.chain import settings_trouble
+
+    assert settings_trouble({}) == []
+    assert settings_trouble({"osm_folder": str(tmp_path)}) == []  # a folder that exists
+
+    codes = [t.code for t in settings_trouble({"osm_folder": str(tmp_path / "nowhere")})]
+    assert codes == ["OSM_PREPARED_FOLDER_MISSING"]
+
+    (trouble,) = settings_trouble({"osm_library": "https://example.invalid/data"})
+    assert trouble.code == "OSM_LIBRARY_KEY_REFUSED"
+    assert "no key" in trouble.message and "Settings" in trouble.remedy
+
+    (trouble,) = settings_trouble({"osm_library_token": "a-key"})
+    assert trouble.code == "OSM_LIBRARY_UNREACHABLE"
+
+
+def test_a_source_set_aside_says_so_once() -> None:
+    """The difference between a build that reads prepared tiles and one that queues behind the
+    public servers for an hour: it used to happen in the log alone."""
+    from orthostudio.sources.chain import Chain
+
+    class Broken:
+        name = "library"
+
+        def layers(self, tile, specs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("the door is shut")
+
+    said: list[str] = []
+    chain = Chain([Broken()], say=said.append)
+    for _ in range(5):
+        chain.layers(TileRef(43, 5), list(layers_for(1)))
+    assert len(said) == 1, "said once, not once per tile"
+    assert "library" in said[0] and "map data live" in said[0]
+    assert "Nothing to do" in said[0], "the remedy travels with the message"
