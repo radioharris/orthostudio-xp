@@ -112,10 +112,22 @@ outside is enough, and the longest hop measured over our layers is 0.097 degrees
 0.036; Basel none at all). It costs about half again as long to read a square and changes nothing
 else: Basel gives the same 49 091 ways with the margin as without.
 
-Measured again afterwards, with the margin: **+40-117 (Nevada), +47+007 (Basel) and +51+000
-(London) are identical in all four layers**. Basel had five elements differing that morning and
-none by the afternoon, which is the same lag showing from the other side: the servers' copy of
-the past had caught up with the edits of 22 September.
+Measured again afterwards, with the margin, six tiles are **identical in all four layers**, which
+is to say the same content digest, bit for bit what a live query returns:
+
+| Tile | Place |
+|---|---|
+| +40-117 | Nevada, where the crossing way was found |
+| +47+007 | Basel, three borders, a lake in pieces |
+| +45+009 | Milan and the Italian lakes |
+| +51+000 | London, coast and dense city |
+| +59+017 | Stockholm, archipelago |
+| +47-123 | Seattle, Puget Sound |
+
+Basel had five elements differing in the morning and none in the afternoon, Milan sixty-two and
+then none: the same lag showing from the other side, the servers' copy of the past catching up
+with the edits of 22 September. Three further tiles (New York, New Orleans, Svalbard) were not
+reached, the address having spent its quota on the verification itself.
 
 ## What is left, and why it waits
 
