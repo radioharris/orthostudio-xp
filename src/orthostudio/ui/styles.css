@@ -584,6 +584,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .more[open] > summary { margin-bottom: var(--title-gap); }
 .more > summary + * { margin-top: 0; } /* the summary's own space, not more */
 .draw-actions { margin-top: var(--block-gap); }
+.draw-actions + .help { margin-top: var(--help-gap); }
 .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .shortcut-list { margin: 0; padding-left: 18px; font-size: var(--fs-2); color: var(--fg-2); }
 .shortcut-list li { padding: 1px 0; }
