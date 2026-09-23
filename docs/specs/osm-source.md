@@ -72,7 +72,7 @@ check is three small `aeroway` queries, one in
 Europe, one in America, one in Oceania: a mirror that answers `0 elements` to any of them is a
 regional extract.
 
-`Mirror(code, interpreter, status_url, cluster, last_resort, note)` is frozen. A caller may
+`Mirror(code, interpreter, cluster, status_url, last_resort, note)` is frozen -- that order, since a caller who follows it positionally and puts the status URL where the cluster goes gives every mirror a cluster of its own, and the per-address quota, the minimum interval and the cluster breaker all quietly stop working. A caller may
 pass its own tuple of mirrors to `OverpassClient`; the default is `MIRRORS`.
 
 **Politeness** (`net-download.md` 5.5): `max_in_flight = 2` per cluster (not per code, so the
@@ -126,7 +126,7 @@ A reply is **usable** when the status is 200, the body parses as JSON, and the d
 | Situation | Code emitted | Mirror effect | Next |
 |---|---|---|---|
 | connect error, read timeout, no body | `OSM_MIRROR_UNREACHABLE` | breaker open `cooldown_s` (600 s) | next mirror |
-| HTTP 429 | `OSM_MIRROR_REJECTED` | breaker open on the **whole cluster** for `max(cooldown_s, Retry-After)` | next mirror |
+| HTTP 429 | `OSM_MIRROR_RATE_LIMITED` | breaker open on the **whole cluster** for `max(cooldown_s, Retry-After)` | next mirror |
 | HTTP 5xx (504 above all) | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s` | next mirror |
 | other non-200 | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s` | next mirror |
 | 200, body not JSON / cut | `OSM_RESPONSE_TRUNCATED` | one failure recorded, no breaker | next mirror |

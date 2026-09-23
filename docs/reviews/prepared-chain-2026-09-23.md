@@ -56,3 +56,19 @@ Status column: **done** (fixed and tested the same day), **open** (still to do).
 | P3 | `SnapshotStore` writes a `.meta.json` beside every layer, doubling the published file count for nothing. | done |
 | P4 | No bake identity, so a client cannot say which bake it read and a whitelist cannot be tied to one. No rollback: publishing is an in-place rsync. | open |
 | P5 | Nothing verifies the **published** library, only a local tile against Overpass. | open |
+
+## The bake itself, found by the tools review (the data, not the code around it)
+
+Everything here means the baked files do **not** hold what a live query returns. All open until the
+tools are fixed and the bake redone.
+
+| | Finding | Status |
+|---|---|---|
+| T1 | A square the extract covers only partly is published as if whole. Geofabrik clips to a country **polygon**, so every border square holds one side only -- Geneva, Strasbourg, the Pyrenees -- and the manifest lists them like any other. This is the failure we refuse from xpconnect, produced by our own tool. Fix: read the `.poly` beside the `.pbf` and publish only squares wholly inside it. | open |
+| T2 | **Node tags are dropped.** Only `airports` has a node selector, so every other layer emits a way's nodes bare. Overpass returns them with their tags, so a baked digest can never equal a live one, and for `airports` (whose `tags_of_interest` is "all") real data is lost. This, not two days of editing, is why every comparison said "digest different" while the identifiers matched. | open |
+| T3 | `--strategy=smart` completes `type=multipolygon` relations only. An aerodrome is `type=site`, so half its taxiways are dropped exactly as the lake was. Needs `-S types=any`, at both cutting levels. | open |
+| T4 | A way that **crosses** the square without a node inside it is missing; Overpass returns it. Long coastline segments, causeways, railway tangents. Needs a buffered cut and a segment test instead of a vertex test. | open |
+| T5 | Relations whose members inside the square are nodes are dropped; a relation's node members are never emitted; member relations are never followed. | open |
+| T6 | The verification method cannot catch T2-T5: it compares identifier sets only, and excuses any difference whose element was edited after the cut. The sound method is Overpass **attic data** -- `[date:"&lt;the extract's date&gt;"]` -- after which any difference at all is a bake bug and the digests must match exactly. | open |
+| T7 | The manifest can announce what the files do not hold: the filter's road level is not compared with the bake's, `extracted` is the file's mtime rather than the OSM data date, a resumed run rewrites every tile's origin, the manifest is written non-atomically, the `.meta.json` sidecars are not listed, and `verified_elsewhere` is never written. | open |
+| T8 | Silent drops: a way whose nodes are missing from the file is discarded with no counter, and a selector the parser does not fully understand yields a layer baked empty without a word. | open |
