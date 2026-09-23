@@ -533,6 +533,12 @@ def check_same_sources(package: Path) -> None:
         text = (package / carried).read_text(encoding="utf-8")
         if '"url"' not in text or '"token"' not in text:
             raise SystemExit(f"{carried} is packed but holds neither an address nor a key")
+    elif (source / carried).is_file():
+        # the secrets were given and the file written, and the packaging dropped it on the way:
+        # the installers would work exactly as before and reach no library at all
+        raise SystemExit(
+            f"{source / carried} was written for this build and is not in the packed package"
+        )
     stale = sorted(
         str(p)
         for p in wanted
