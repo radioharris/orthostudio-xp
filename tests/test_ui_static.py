@@ -4917,3 +4917,21 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
 
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".osxp-texture-grid" in css
+
+
+def test_the_snap_shortcut_is_not_taken_for_a_sweep() -> None:
+    """Shift with the mouse held sweeps squares; Ctrl (or Cmd) with Shift puts a point on the
+    texture grid. The press handler looked only at Shift, so the first point of a shape was
+    swallowed whenever the pointer moved four pixels while the two keys were held, and squares
+    were swept instead. Only the first: from the second point on a zone is under way and the
+    sweep steps aside for it (a user, 2026-09-24)."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index('el.addEventListener("mousedown"')
+    press = map_js[start : map_js.index("});", start)]
+    assert "if (ev.ctrlKey || ev.metaKey) return;" in press
+    assert press.index("ev.ctrlKey") < press.index("sweepPress("), "before the sweep is started"
+
+    # and the end of a sweep no longer wipes a draft it never drew
+    end = map_js[map_js.index("function sweepEnd(") :]
+    end = end[: end.index("\n  }")]
+    assert end.index("if (!started) return;") < end.index("layers.draft.clearLayers();")

@@ -1177,8 +1177,8 @@ export function createPlanMap(ctx) {
     const { started, capped, removing } = sweep;
     sweep = null;
     map?.dragging.enable();
+    if (!started) return; // nothing was drawn, and the draft layer is not ours to clear
     layers.draft.clearLayers();
-    if (!started) return;
     skipClick = true; // the click that follows the drag would toggle the square under the pointer
     const n = ctx.sweep.end();
     if (!n) return;
@@ -1335,6 +1335,12 @@ export function createPlanMap(ctx) {
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {
       if (!ev.shiftKey || ev.button !== 0) return;
+      // Ctrl (or Cmd) with Shift is the shortcut that puts a point on the texture grid, not a
+      // sweep. Taken for one, the first point of a shape was lost whenever the pointer moved
+      // four pixels while the two keys were held, which is most of the time, and squares were
+      // swept instead. Only the first: from the second point on there is a zone under way, and
+      // ``sweepPress`` steps aside for it (a user, 2026-09-24).
+      if (ev.ctrlKey || ev.metaKey) return;
       ev.preventDefault(); // no text selection on Shift+click
       sweepPress(ev, m.mouseEventToLatLng(ev));
     });
