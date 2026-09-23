@@ -934,3 +934,40 @@ def test_a_429_shuts_the_cluster_for_what_it_asked_and_no_longer() -> None:
         state = c._board._states[code]
         left = state.open_until - time.monotonic()
         assert left <= 61.0, f"{code} is shut for {left:.0f} s over a quota refusal"
+
+
+def test_a_failure_never_brings_a_reopen_forward() -> None:
+    """The doctor probes every mirror without asking the breaker, so running it because builds
+    had started failing replaced the hour a server had asked for with the ten minutes of an
+    ordinary failure, and the next build asked that server again at once (found in review,
+    2026-09-23)."""
+    from orthostudio.sources.osm import Mirror, MirrorBoard
+
+    def board() -> MirrorBoard:
+        b = MirrorBoard()
+        b.register(
+            [Mirror(code="A", interpreter="https://example.invalid/api", cluster="A")], 600.0
+        )
+        return b
+
+    asked = board()
+    asked.open("A", reason="429 Too Many Requests", seconds=3600.0, quota=True)
+    hour = asked._states["A"].open_until
+    asked.open("A", reason="the doctor could not reach it")  # a health probe, not a refusal
+    assert asked._states["A"].open_until >= hour
+    assert asked._states["A"].rate_limited, "and it is still known to be a refusal"
+
+    # a machine that is down still backs off as it did
+    down = board()
+    waits = []
+    for _ in range(3):
+        down.open("A", reason="down")
+        waits.append(round(down._states["A"].open_until - time.monotonic()))
+        down._states["A"].open_until = 0.0  # as time passing would leave it
+    assert waits == [600, 1200, 2400]
+
+    # and a success clears everything, whatever was asked for
+    done = board()
+    done.open("A", reason="429", seconds=3600.0, quota=True)
+    done.close("A", cooldown_s=600.0)
+    assert done._states["A"].open_until == 0.0 and not done._states["A"].rate_limited

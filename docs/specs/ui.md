@@ -703,7 +703,7 @@ codes `i18n.js` knows.
 and *Import* were two buttons for one thing, and the field left empty imported nothing without a
 word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
 /api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
-your tiles", since 0.1.14 a folder of `zOrtho4XP_` tiles on another disk will do: a page cannot learn
+your tiles", since 0.1.14 a folder of ortho tiles on another disk will do, whatever it is called: a page cannot learn
 the full path of a folder picked in the browser), starting at the folder imported last, else at
 the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then imports it: `POST
 /api/library/import-ortho4xp {folder}`. The line under the button counts the tiles, not the

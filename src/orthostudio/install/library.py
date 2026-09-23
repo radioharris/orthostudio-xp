@@ -15,6 +15,7 @@ from __future__ import annotations
 import builtins
 import json
 import logging
+import os
 import re
 import sqlite3
 import time
@@ -311,6 +312,11 @@ OSXP_PACK_FILE = "orthostudio.toml"
 """What tells one of our own packs from someone else's, whatever either is called."""
 
 
+ORTHO_TEXTURE_RE = re.compile(r"^\d+_\d+_[A-Za-z0-9@]+\d\d\.dds$")
+"""One orthophoto's file name: the two tile numbers, the source and the detail level, which is
+how Ortho4XP names them (``22224_10544_BI16.dds``) and how OrthoStudio XP does."""
+
+
 def looks_like_an_ortho_pack(folder: Path) -> bool:
     """Whether this folder is a scenery pack of photo tiles, whatever it is called.
 
@@ -322,15 +328,25 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
     Our own packs are left alone: they carry an ``orthostudio.toml`` and the library already
     knows them.
 
-    ``textures`` is required, and not ``terrain`` alone: a mesh or an airport is a scenery pack
-    with DSFs and terrain files too, and taking one of those for a pack of photo tiles would put
-    somebody else's scenery in the library (found in review, 2026-09-23).
+    What says "photo tiles" is the **name of the textures**: an orthophoto is
+    ``<til_y>_<til_x>_<provider><zl>.dds``, as Ortho4XP writes it and as we do. A DSF and a
+    ``textures`` folder say only "scenery pack": a mesh, an airport and a forest library all have
+    both. Run over a real Custom Scenery, the rule that asked only for those took a commercial
+    forest pack for 37 632 photo tiles, each a lat/lon its owner never built, with no way to undo
+    them but deleting the library by hand (found in review, 2026-09-23).
     """
     if (folder / OSXP_PACK_FILE).is_file():
         return False
-    if not (folder / "textures").is_dir():
+    textures = folder / "textures"
+    if not textures.is_dir():
         return False
-    return next((folder / "Earth nav data").glob("*/*.dsf"), None) is not None
+    if next((folder / "Earth nav data").glob("*/*.dsf"), None) is None:
+        return False
+    try:
+        with os.scandir(textures) as entries:
+            return any(ORTHO_TEXTURE_RE.match(entry.name) for entry in entries)
+    except OSError:
+        return False
 
 
 def holds_ortho4xp_tiles(folder: Path) -> bool:

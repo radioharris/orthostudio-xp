@@ -802,6 +802,17 @@ class _MirrorState:
         return "open" if now < self.open_until else "half-open"
 
 
+def _later(open_until: float, wait: float) -> float:
+    """The later of a reopen already set and one ``wait`` from now.
+
+    A failure may put a reopen off; it may never bring one forward. The doctor probes every
+    mirror without asking the breaker, so running it because builds were failing replaced the
+    hour a server had asked for with the ten minutes of an ordinary failure (found in review,
+    2026-09-23).
+    """
+    return max(open_until, time.monotonic() + wait)
+
+
 class MirrorBoard:
     """The breaker state of every mirror, shared by the clients given the same board.
 
@@ -846,8 +857,11 @@ class MirrorBoard:
             st.failures += 1
             st.last_error = reason
             # a server that named a delay is left alone until it has passed, whatever a round of
-            # this layer or of another would like
-            st.rate_limited = quota
+            # this layer or of another would like. A failure that is not a refusal never clears
+            # it: the doctor probes every mirror without asking the breaker, so running it
+            # because builds were failing turned an hour the server asked for into an immediate
+            # retry (found in review, 2026-09-23)
+            st.rate_limited = st.rate_limited or quota
             if quota:
                 # What was refused is our address, not this machine, so the wait is what the
                 # server asked for and the doubling meant for a machine that is down does not
@@ -858,9 +872,9 @@ class MirrorBoard:
                 # 2026-09-23). A delay longer than an hour is still capped, since no build waits
                 # that long for one layer.
                 wait = QUOTA_COOLDOWN_S if seconds is None else max(seconds, 1.0)
-                st.open_until = time.monotonic() + min(wait, MAX_COOLDOWN_S)
+                st.open_until = _later(st.open_until, min(wait, MAX_COOLDOWN_S))
             else:
-                st.open_until = time.monotonic() + st.cooldown_s
+                st.open_until = _later(st.open_until, st.cooldown_s)
                 st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
 
     def close(self, code: str, cooldown_s: float) -> None:
