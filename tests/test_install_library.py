@@ -237,3 +237,26 @@ def test_a_pack_of_photo_tiles_is_known_by_the_names_of_its_textures(tmp_path: P
     ours = _scenery_pack(tmp_path, "zOrthoStudio_+46+006", ["23440_33760_BI16.dds"])
     (ours / "orthostudio.toml").write_text("format = 'osxp-pack-1'\n", encoding="utf-8")
     assert not looks_like_an_ortho_pack(ours)
+
+
+def test_a_folder_that_cannot_be_read_does_not_crash_the_import(tmp_path: Path) -> None:
+    """A folder the app may not read, or a drive that stopped answering, raised out of the walk:
+    the endpoint answered 500 with a body that was not even JSON, and the page said only "the
+    engine does not answer". That is the mounted-drive case this feature exists for (found in
+    review, 2026-09-23)."""
+
+    from orthostudio.install.library import holds_ortho4xp_tiles
+
+    root = tmp_path / "X-Plane_Orthos"
+    good = root / "zOrtho4XP_+46+006"
+    (good / "Earth nav data" / "+40+000").mkdir(parents=True)
+    (good / "Earth nav data" / "+40+000" / "+46+006.dsf").write_bytes(b"x")
+    (good / "textures").mkdir()
+    (good / "textures" / "23440_33760_BI16.dds").write_bytes(b"DDS ")
+    shut = root / "not for you"
+    shut.mkdir()
+    shut.chmod(0o000)
+    try:
+        assert holds_ortho4xp_tiles(root), "the folders it can read are still found"
+    finally:
+        shut.chmod(0o755)

@@ -637,7 +637,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "A vertex pool of tile {tile} exceeds 65535 entries.",
-        "Send serve.log with a report of what you were building (Settings says where the log is).",
+        "Send serve.log with a report of what you were building; the README says where it is on "
+        "each system.",
     ),
     _spec(
         "DSF_MESH_OUTSIDE_TILE",
@@ -926,7 +927,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Internal error: {type}: {detail}",
-        "Send serve.log with a report of what you were building (Settings says where the log is).",
+        "Send serve.log with a report of what you were building; the README says where it is on "
+        "each system.",
     ),
     _spec(
         "SYS_CANCELLED",

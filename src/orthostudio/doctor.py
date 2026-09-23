@@ -268,11 +268,15 @@ def _triangle() -> Check:
             return Check(
                 "triangle4xp", "ok", f"Triangle4XP at {candidate}", {"path": str(candidate)}
             )
+    # a fail and not a warning: without it no tile can be built at all, every build dies at the
+    # mesh with SYS_TOOL_MISSING, and the doctor is the first thing a user runs when something
+    # is wrong -- it said everything was fine (found in review, 2026-09-23). The installers ship
+    # it, so this reaches a build from source, or an installation that lost a file.
     return Check(
         "triangle4xp",
-        "warn",
-        "Triangle4XP not found: the mesh needs it (build native/triangle4xp, or set "
-        "$OSXP_TRIANGLE4XP)",
+        "fail",
+        "Triangle4XP not found: no tile can be built without it (build native/triangle4xp, or "
+        "set $OSXP_TRIANGLE4XP)",
         {"tried": [str(c) for c in tried]},
     )
 
@@ -526,6 +530,6 @@ def render_text(report: DoctorReport) -> str:
     for c in report.checks:
         lines.append(f"  [{_MARK[c.status]}] {c.name:<12} {c.summary}")
     lines.append(
-        "everything needed for osxp textures is present" if report.ok else "some checks failed"
+        "everything a build needs is here" if report.ok else "some checks failed"
     )
     return "\n".join(lines)

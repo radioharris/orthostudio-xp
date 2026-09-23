@@ -385,7 +385,15 @@ def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
     for root in roots:
         if not root.is_dir():
             continue
-        for child in sorted(root.iterdir()):
+        try:
+            children = sorted(root.iterdir())
+        except OSError:
+            # a folder we may not read, or a drive that stopped answering: skipped, as its
+            # neighbours already are. It crashed the import with a bare 500 and the page said
+            # only "the engine does not answer", which is the very case this feature is for
+            # (found in review, 2026-09-23)
+            continue
+        for child in children:
             if child.is_dir() and (
                 child.name.startswith(IMPORTED_PACK_PREFIX) or looks_like_an_ortho_pack(child)
             ):

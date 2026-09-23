@@ -858,6 +858,28 @@ TEXTURES_RATE_WINDOW_S = 4.0
 """Seconds of progress reports the download rate in MB/s is measured over."""
 
 
+def _missing_textures_remedy(codes: Sequence[str], logs: object) -> str:
+    """What to do about textures that were not built, which depends on why.
+
+    It said "run osxp build again" whatever had happened, so a user whose disk was full looped,
+    downloading hundreds of megabytes each time (found in review, 2026-09-23).
+    """
+    if "SYS_DISK_FULL" in codes:
+        return (
+            "Free some space, or choose a working folder on another disk in Settings, then "
+            f"build again: nothing already downloaded is lost. Details: {logs}."
+        )
+    if "SYS_WRITE_FAILED" in codes:
+        return (
+            "Check that the working folder can be written to, then build again: nothing already "
+            f"downloaded is lost. Details: {logs}."
+        )
+    return (
+        "Run osxp build again: only the missing tiles are downloaded and only the missing "
+        f"textures encoded. Details: {logs}."
+    )
+
+
 def textures_progress_message(
     level: str, s: ProgressSnapshot, mb_per_s: float | None = None
 ) -> str:
@@ -1055,8 +1077,7 @@ def _tile_textures(ctx: RunContext) -> None:
                 },
                 message=f"{len(missing)} of {len(group)} {code}{zl} texture(s) of tile "
                 f"{tile.name} could not be built ({', '.join(codes)}); nothing is committed.",
-                remedy="Run osxp build again: only the missing tiles are downloaded and only the "
-                f"missing textures encoded. Details: {env.logs}.",
+                remedy=_missing_textures_remedy(codes, env.logs),
             )
         outcomes.extend(
             {
