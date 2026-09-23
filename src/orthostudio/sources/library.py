@@ -170,6 +170,9 @@ class LibraryIndex:
 
     extracted: str
     road_level: int
+    bake: str = ""
+    """Twelve characters naming this bake, from what it holds. What a build says it read, so a
+    scenery can be traced to the data it was made from (review P4)."""
     files: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     """``{"<tile>/<layer>": {"path": ..., "digest": ..., "bytes": ...}}``."""
     verified_elsewhere: tuple[str, ...] = ()
@@ -210,6 +213,7 @@ def parse_manifest(body: bytes) -> LibraryIndex | None:
     return LibraryIndex(
         extracted=str(doc.get("extracted", "")),
         road_level=int(doc.get("road_level", 1) or 1),
+        bake=str(doc.get("bake", "") or ""),
         files=files,
         verified_elsewhere=tuple(str(t) for t in (doc.get("verified_elsewhere") or ())),
         verified_elsewhere_version=str(doc.get("verified_elsewhere_version", "") or ""),
@@ -302,7 +306,7 @@ class LibrarySource:
 
     def _adopt(self, index: LibraryIndex) -> None:
         self.index = index
-        self.stamp = index.extracted[:10]
+        self.stamp = f"{index.extracted[:10]} #{index.bake}" if index.bake else index.extracted[:10]
         self._read_at = time.monotonic()
 
     def _kept(self) -> LibraryIndex | None:
