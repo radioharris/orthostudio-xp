@@ -104,20 +104,28 @@ def adjust_photo_inside(
     xs = [float(ring[i]) for i in range(0, len(ring) - 1, 2)]
     ys = [float(ring[i]) for i in range(1, len(ring), 2)]
     pad = max(feather_px, 1) * 2
-    x0 = max(0, int(min(xs)) - pad)
-    y0 = max(0, int(min(ys)) - pad)
-    x1 = min(width, int(max(xs)) + pad + 1)
-    y1 = min(height, int(max(ys)) + pad + 1)
+    # The soft edge is drawn on a stencil that reaches ``pad`` **past** the texture, and only
+    # then cut to the texture. Cut first, the part of the edge belonging to the texture next door
+    # was lost and the blur held the near side at full strength: a zone whose edge ran within a
+    # feather's width of a join showed the whole step in one pixel, at exactly the join the soft
+    # edge exists to hide (found in review, 2026-09-23). ``pad`` bounds the stencil, so a zone far
+    # larger than the texture costs no more than one a little larger than it.
+    fx0 = max(-pad, int(min(xs)) - pad)
+    fy0 = max(-pad, int(min(ys)) - pad)
+    fx1 = min(width + pad, int(max(xs)) + pad + 1)
+    fy1 = min(height + pad, int(max(ys)) + pad + 1)
+    x0, y0 = max(0, fx0), max(0, fy0)
+    x1, y1 = min(width, fx1), min(height, fy1)
     if x1 <= x0 or y1 <= y0:  # the zone does not reach this texture
         return rgb
 
-    stencil = Image.new("L", (x1 - x0, y1 - y0), 0)
+    stencil = Image.new("L", (fx1 - fx0, fy1 - fy0), 0)
     ImageDraw.Draw(stencil).polygon(
-        [(x - x0, y - y0) for x, y in zip(xs, ys, strict=True)], fill=255
+        [(x - fx0, y - fy0) for x, y in zip(xs, ys, strict=True)], fill=255
     )
     if feather_px > 0:
         stencil = stencil.filter(ImageFilter.GaussianBlur(feather_px / 2))
-    mask = np.asarray(stencil, dtype=np.uint8)
+    mask = np.asarray(stencil, dtype=np.uint8)[y0 - fy0 : y1 - fy0, x0 - fx0 : x1 - fx0]
     if not mask.any():
         return rgb
 

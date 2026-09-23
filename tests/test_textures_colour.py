@@ -256,3 +256,72 @@ def test_a_zone_over_a_whole_texture_stays_inside_what_the_rule_declares() -> No
         tracemalloc.stop()
     declared = texture_dds.ram_mb  # what the scheduler is told, and counts on
     assert peak_mb < declared, f"{peak_mb:.0f} MB held above the image, {declared} MB declared"
+
+
+def test_a_zones_soft_edge_does_not_show_the_join_between_two_textures() -> None:
+    """The soft edge exists so that the line where a zone stops does not show. Drawn on a
+    stencil cut to the texture, the part of the edge belonging to the texture next door was lost
+    and the blur held the near side at full strength, so a zone whose edge ran within a
+    feather's width of a join showed the whole step in a single pixel -- at exactly the join it
+    was there to hide (found in review, 2026-09-23)."""
+    from orthostudio.textures.colour import adjust_photo_inside
+
+    side, feather = 512, 24
+    flat = np.full((side, side, 3), 120, dtype=np.uint8)
+
+    def band(x_from: float, x_to: float) -> list[float]:
+        top, bottom = -50.0, side + 50.0
+        return [x_from, top, x_to, top, x_to, bottom, x_from, bottom]
+
+    for offset in (-8, 0, 8):
+        # the same zone seen from the texture on the left and from the one on the right
+        left = adjust_photo_inside(
+            flat, band(-200.0, side + offset), brightness=0.5, feather_px=feather
+        )
+        right = adjust_photo_inside(
+            flat, band(-200.0 - side, float(offset)), brightness=0.5, feather_px=feather
+        )
+        jump = int(right[side // 2, 0, 0]) - int(left[side // 2, side - 1, 0])
+        assert abs(jump) <= 4, f"the join shows: {jump} levels between the two textures"
+
+    # and far from the join the edge is untouched: fully outside and fully inside
+    wide = adjust_photo_inside(flat, band(-200.0, 200.0), brightness=0.5, feather_px=feather)
+    assert int(wide[side // 2, side - 1, 0]) == 120, "outside the zone, nothing changes"
+    assert int(wide[side // 2, 0, 0]) == 180, "well inside it, the full change"
+
+
+def test_the_sea_blur_stays_inside_what_the_rule_declares() -> None:
+    """Mixed in one go, the sea blur held five full-size float arrays at once: 750 MB above the
+    image on a 4096 texture, against a declaration the scheduler counts on to decide how many
+    textures it builds at once. A machine with little memory swapped and lost the build (found
+    in review, 2026-09-23)."""
+    import tracemalloc
+
+    from orthostudio.pipeline.rule import TEXTURE_RAM_MB
+    from orthostudio.textures.imprint import imprint
+
+    rng = np.random.default_rng(3)
+    rgb = rng.integers(0, 256, (4096, 4096, 3), dtype=np.uint8)
+    alpha = rng.integers(0, 256, (4096, 4096), dtype=np.uint8)
+
+    tracemalloc.start()
+    try:
+        before = tracemalloc.get_traced_memory()[0]
+        blurred = imprint(rgb, alpha, sea_texture_blur=10.0, zl=16)
+        peak_mb = (tracemalloc.get_traced_memory()[1] - before) / 2**20
+    finally:
+        tracemalloc.stop()
+    assert peak_mb < TEXTURE_RAM_MB, f"{peak_mb:.0f} MB held, {TEXTURE_RAM_MB} MB declared"
+
+    # and band by band gives the very same pixels as mixing the whole image at once
+    from PIL import Image, ImageFilter
+
+    from orthostudio.textures.imprint import sea_blur_radius
+
+    whole = np.asarray(
+        Image.fromarray(rgb).filter(ImageFilter.GaussianBlur(sea_blur_radius(10.0, 16)))
+    )
+    water = ((255 - alpha.astype(np.float32)) / 255.0)[:, :, None]
+    mixed = rgb.astype(np.float32) * (1.0 - water) + whole.astype(np.float32) * water
+    assert np.array_equal(blurred[:, :, :3], np.rint(mixed).astype(np.uint8))
+    assert np.array_equal(blurred[:, :, 3], alpha)

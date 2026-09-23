@@ -105,6 +105,7 @@ from orthostudio.pipeline.pack import (
     pack_env,
     pack_is_intact,
 )
+from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TexturesReport,
@@ -1872,7 +1873,7 @@ def declare(
             tex_params,
             {"dsf": dsf, "masks": masks},
             kind="net",
-            ram_mb=max(500, 250 * env.workers),
+            ram_mb=max(500, TEXTURE_RAM_MB * env.workers),
             run=_env_run(env),
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())

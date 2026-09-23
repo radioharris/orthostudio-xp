@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from orthostudio.errors import OsxpError
+from orthostudio.errors import OsxpError, disk_trouble
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import Executor, InputRef, Source, Store, digest_bytes
 from orthostudio.imagery.chunks import (
@@ -552,6 +552,11 @@ def _coded(exc: BaseException, *, path: Path | None = None) -> OsxpError:
                 remedy="Retry the missing ones; if it happens again, quit OrthoStudio XP and open "
                 "it again.",
             )
+        # a full disk and a read-only drive say so for themselves, here as everywhere else
+        known = disk_trouble(exc)
+        if known is not None:
+            known.__cause__ = exc
+            return known
         return OsxpError("SYS_WRITE_FAILED", context={"path": where, "reason": str(exc)})
     return OsxpError("SYS_INTERNAL_ERROR", context={"type": type(exc).__name__, "detail": str(exc)})
 

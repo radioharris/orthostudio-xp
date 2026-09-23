@@ -39,6 +39,7 @@ __all__ = [
     "Severity",
     "by_domain",
     "codes",
+    "disk_trouble",
     "render_json",
     "spec_for",
     "wrap",
@@ -577,8 +578,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "DDS encoding of {texture} failed with {encoder} ({reason}).",
-        "The next encoder is tried by itself; if every one fails, run osxp doctor, which says "
-        "which encoders this machine has.",
+        "This texture is not built. Run osxp doctor, which says which encoders this machine "
+        "has, and install one it names.",
     ),
     _spec(
         "TEX_ENCODER_UNAVAILABLE",
@@ -1138,7 +1139,7 @@ class OsxpError(Exception):
 _DISK_FULL_ERRNOS = frozenset({errno.ENOSPC, errno.EDQUOT})
 
 
-def _a_full_disk_or_a_locked_one(exc: BaseException) -> OsxpError | None:
+def disk_trouble(exc: BaseException) -> OsxpError | None:
     """The two failures of the machine the user can act on, said in his own terms.
 
     Everything that was not ours became ``SYS_INTERNAL_ERROR``, whose remedy is "report the
@@ -1185,7 +1186,7 @@ def wrap(exc: BaseException) -> OsxpError:
     """Return ``exc`` if it is an ``OsxpError``, else wrap it as ``SYS_INTERNAL_ERROR``."""
     if isinstance(exc, OsxpError):
         return exc
-    known = _a_full_disk_or_a_locked_one(exc)
+    known = disk_trouble(exc)
     if known is not None:
         known.__cause__ = exc
         return known
