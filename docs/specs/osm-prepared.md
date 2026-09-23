@@ -222,6 +222,14 @@ Published with `tools/bake/publish.py`, which is three steps and one rule each:
 Never bake into the served tree: the bake rewrites its manifest after every block, and a client
 that reads a half-written one sets the library aside for its whole job.
 
+**What this order does not fix.** A tile the new bake changed is overwritten while the old manifest
+is still being served, so for as long as the upload takes, roughly half an hour for ten gigabytes,
+a build that reads that tile finds a file whose digest is not the one announced. It refuses it,
+sets the library aside for that job and downloads live, which is the safe end of the wrong: nobody
+gets bad data, some builds get slow ones. Making it airtight means publishing each bake in its own
+directory and swapping the pointer, which is worth doing the day the library is updated often
+enough for anyone to notice.
+
 A library replaced in place keeps whatever the last one left, and what the manifest does not name
 is never served but still takes room and still hides what the server holds: `publish.py --prune`
 lists it and, with `--yes`, removes it. That is a separate step because it ends the rollback.
