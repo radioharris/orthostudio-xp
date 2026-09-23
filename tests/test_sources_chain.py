@@ -227,3 +227,38 @@ def test_a_whitelisted_tile_with_an_empty_road_layer_is_still_refused() -> None:
     }
     source = PublicSource([TILE.name], index=PreparedIndex(files=files), fetch=lambda urls: [])
     assert source.layers(TILE, SPECS) is None
+
+
+# -- inside a build ---------------------------------------------------------------------------
+
+
+def test_the_build_asks_the_prepared_sources_before_overpass(tmp_path: Path) -> None:
+    """The whole point: a tile whose layers are already prepared is not downloaded at all."""
+    from orthostudio.pipeline.native import OsmJob
+
+    whole = {s.name: _snapshot(s.name) for s in SPECS}
+    said: list[str] = []
+    job = OsmJob(
+        chain=Chain([_Fake("library", whole)]),
+        progress=lambda fraction, message: said.append(message),
+    )
+    assert job.run(TILE, SPECS) == whole
+    assert said and "from library" in said[0]  # the page says where it came from
+
+
+def test_asking_for_fresh_data_goes_straight_to_the_live_servers() -> None:
+    """A prepared library is weeks behind by design, which is the whole reason for pressing
+    Refresh (``osm-prepared.md`` 1)."""
+    from orthostudio.pipeline.native import OsmJob
+
+    library = _Fake("library", {s.name: _snapshot(s.name) for s in SPECS})
+    job = OsmJob(chain=Chain([library]), refresh=True, fetch=lambda tile, specs: {"live": True})
+    assert job.run(TILE, SPECS) == {"live": True}
+    assert library.asked == 0
+
+
+def test_a_build_without_prepared_sources_behaves_as_before() -> None:
+    from orthostudio.pipeline.native import OsmJob
+
+    job = OsmJob(fetch=lambda tile, specs: {"live": True})
+    assert job.run(TILE, SPECS) == {"live": True}

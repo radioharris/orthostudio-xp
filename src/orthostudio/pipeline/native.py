@@ -23,6 +23,7 @@ from orthostudio.graph import Rule, RuleParams, RunContext, rule
 from orthostudio.mesh.rule import triangle_binary as mesh_triangle_binary
 from orthostudio.mesh.weights import write_coastline_nodes
 from orthostudio.model import ArtifactRef, TileRef
+from orthostudio.sources.chain import Chain
 from orthostudio.sources.osm import (
     LayerSpec,
     OsmSnapshot,
@@ -156,15 +157,25 @@ class OsmParams(RuleParams):
 
 @dataclass(slots=True)
 class OsmJob:
-    """How the OSM rule reaches the network (injected, so tests never do)."""
+    """How the OSM rule reaches its data (injected, so tests never do).
+
+    The prepared sources are asked first, in the order ``osm-prepared.md`` gives them, and
+    Overpass answers what none of them holds. A tile asked for with ``refresh`` skips them: a
+    prepared library is weeks behind by design, which is the whole point of asking again.
+    """
 
     fetch: Callable[[TileRef, Sequence[LayerSpec]], dict[str, OsmSnapshot]] | None = None
     timeout_s: float = 300.0
     cancel: threading.Event | None = None
     progress: Callable[[float, str], None] | None = None
+    chain: Chain | None = None
+    """The prepared sources of this build, tried before the live servers."""
+    refresh: bool = False
+    """The user asked for fresh data: straight to Overpass."""
 
     def run(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot]:
-        """Download the layers, refusing to start (and stopping) when cancelled.
+        """Read the layers from the first source that holds them, refusing to start (and
+        stopping) when cancelled.
 
         Review 4, finding C3: the job carried ``cancel`` and ``timeout_s`` and passed neither
         to the client, so a cancelled node still downloaded a whole tile.
@@ -173,6 +184,9 @@ class OsmJob:
             raise OsxpError("SYS_CANCELLED", context={"stage": "osm", "tile": tile.name})
         if self.fetch is not None:
             return self.fetch(tile, specs)
+        prepared = self._prepared(tile, specs)
+        if prepared is not None:
+            return prepared
         # The process's board: a mirror one tile found dead is not waited for by the next.
         client = OverpassClient(board=shared_board())
         return client.fetch_tile_sync(
@@ -182,6 +196,23 @@ class OsmJob:
             timeout_s=self.timeout_s,
             progress=self.progress,
         )
+
+
+    def _prepared(
+        self, tile: TileRef, specs: Sequence[LayerSpec]
+    ) -> dict[str, OsmSnapshot] | None:
+        """The layers from a prepared source, and the line the page shows when one answers."""
+        if self.chain is None or self.refresh:
+            return None
+        got = self.chain.layers(tile, specs)
+        for note in got.notes:
+            log.info("%s: %s", tile.name, note)
+        if not got.snapshots:
+            return None
+        if self.progress is not None:
+            self.progress(1.0, f"{tile.name}: {len(got.snapshots)} OSM layers from {got.source}")
+        log.info("%s: OSM layers read from %s", tile.name, got.source)
+        return got.snapshots
 
 
 _OSM_JOB: ContextVar[OsmJob | None] = ContextVar("osxp_osm_job", default=None)

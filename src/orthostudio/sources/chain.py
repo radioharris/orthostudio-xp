@@ -20,7 +20,7 @@ Two rules carry the whole thing:
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -32,7 +32,13 @@ from orthostudio.model import TileRef
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
 from orthostudio.sources.prepared import snapshot_from_xml
 
-__all__ = ["Chain", "ChainResult", "FolderSource", "PreparedSource"]
+__all__ = [
+    "Chain",
+    "ChainResult",
+    "FolderSource",
+    "PreparedSource",
+    "sources_from_settings",
+]
 
 log = logging.getLogger("orthostudio.sources.chain")
 
@@ -174,10 +180,38 @@ class Chain:
         return ChainResult(None, "", tuple(notes))
 
 
-def sources_from_settings(settings: Mapping[str, object]) -> list[PreparedSource]:
-    """The sources a build uses, read from the advanced settings (``osm-prepared.md`` 6)."""
+def sources_from_settings(
+    settings: Mapping[str, object], *, cache_dir: Path | None = None
+) -> list[PreparedSource]:
+    """The sources a build asks, in order, read from the settings (``osm-prepared.md`` 6).
+
+    The whitelist of the public library is taken from our own manifest, and lazily: our library
+    is asked first, so its manifest is read by the time the public one is reached. No manifest,
+    no whitelist, and that source stays inert.
+    """
+    from orthostudio.sources.library import LibrarySource
+    from orthostudio.sources.prepared import PublicSource
+
     out: list[PreparedSource] = []
     folder = str(settings.get("osm_folder", "") or "").strip()
     if folder:
         out.append(FolderSource(folder))
+    url = str(settings.get("osm_library", "") or "").strip()
+    library: LibrarySource | None = None
+    if url:
+        token = str(settings.get("osm_library_token", "") or "")
+        library = LibrarySource(url, token, cache_dir=cache_dir)
+        out.append(library)
+    if settings.get("osm_prepared_public", True):
+        out.append(PublicSource(whitelist_of(library), cache_dir=cache_dir))
     return out
+
+
+def whitelist_of(library: object) -> Callable[[], frozenset[str]]:
+    """The tiles of the public library our own manifest says we verified, read when asked."""
+
+    def tiles() -> frozenset[str]:
+        index = getattr(library, "index", None)
+        return frozenset(getattr(index, "verified_elsewhere", ()) or ())
+
+    return tiles

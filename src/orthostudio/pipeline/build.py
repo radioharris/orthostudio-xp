@@ -376,6 +376,22 @@ _BATCH_FIELDS = (
 """Spec fields resolved once per batch: they must agree across the specs (else ValueError)."""
 
 
+def _prepared_chain(spec: BuildSpec, workdir: Path) -> Any:
+    """The prepared sources of a batch, or ``None`` when the settings name none.
+
+    Read from the first spec's settings, which the batch shares: where a tile's map data may come
+    from is not a per-tile choice (``osm-prepared.md`` 6).
+    """
+    from orthostudio.sources.chain import Chain, sources_from_settings
+
+    try:
+        sources = sources_from_settings(spec.tile_config(), cache_dir=workdir / "prepared")
+    except Exception:  # a setting nobody can read is not a reason to fail a build
+        log.warning("prepared sources could not be read from the settings; Overpass alone")
+        return None
+    return Chain(sources) if sources else None
+
+
 @dataclass(slots=True)
 class BuildEnv:
     """Resolved locations and lazily created tools shared by the nodes of a batch."""
@@ -391,6 +407,8 @@ class BuildEnv:
     library_path: Path | None
     max_in_flight: int | None = None
     hedge_after_s: float = 1.0
+    prepared: Any = None
+    """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
 
     @classmethod
     def create(cls, specs: Sequence[BuildSpec], *, store: Store | None = None) -> BuildEnv:
@@ -430,6 +448,7 @@ class BuildEnv:
             library_path=first.library_path,
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
+            prepared=_prepared_chain(first, workdir),
         )
 
     @property
@@ -1274,11 +1293,16 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     outer = current_osm_job()
 
     def run(ctx: NodeContext) -> ArtifactRef:
+        params = ctx.params
         job = OsmJob(
             fetch=outer.fetch if outer is not None else None,
             timeout_s=outer.timeout_s if outer is not None else 300.0,
             cancel=cast(Any, ctx.cancel_event),
             progress=ctx.progress,
+            chain=env.prepared,
+            # what the user asked to be downloaded again is downloaded again: a prepared library
+            # is weeks behind, which is the whole reason for pressing it (``osm-prepared.md`` 1)
+            refresh=bool(getattr(params, "refresh", "")),
         )
         with osm_job(job):
             return run_p0_rule(ctx)

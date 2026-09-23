@@ -245,6 +245,39 @@ class Expert(BaseModel):
 
     model_config = _FROZEN
 
+    osm_folder: str = _field(
+        "",
+        "expert",
+        None,
+        "",
+        hint="A folder of map data prepared in advance, yours or downloaded: a build reads it "
+        "instead of queueing behind the public servers. Files as OrthoStudio XP writes them, or "
+        "as Ortho4XP caches them. Empty means there is none.",
+    )
+    osm_library: str = _field(
+        "",
+        "expert",
+        None,
+        "",
+        hint="The prepared library a build reads before asking the public servers. Empty "
+        "switches it off and every tile is downloaded live, as before.",
+    )
+    osm_library_token: str = _field(
+        "",
+        "expert",
+        None,
+        "",
+        hint="The key that library opens with; it travels with every request.",
+    )
+    osm_prepared_public: bool = _field(
+        True,
+        "expert",
+        None,
+        "",
+        hint="Whether a tile may also come from the library another project publishes, where "
+        "OrthoStudio XP has verified that it holds the whole tile. Off means the public servers "
+        "answer instead.",
+    )
     mesh_zl: Literal[16, 17, 18, 19, 20] = _field(19, "expert", "mesh_zl", "ZL")
     mask_zl: Literal[14, 15, 16] = _field(14, "expert", "mask_zl", "ZL")
     apt_curv_tol: float = _field(0.5, "expert", "apt_curv_tol", "", gt=0)

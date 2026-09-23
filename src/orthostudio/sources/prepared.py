@@ -449,19 +449,25 @@ class PublicSource:
 
     def __init__(
         self,
-        allowed: Iterable[str] = (),
+        allowed: Iterable[str] | Callable[[], Iterable[str]] = (),
         *,
         name: str = "xpconnect",
         index: PreparedIndex | None = None,
         cache_dir: Path | None = None,
         fetch: Callable[[Sequence[str]], Sequence[tuple[int, bytes]]] | None = None,
     ) -> None:
-        self.allowed = frozenset(allowed)
+        self._allowed = allowed
         self.name = name
         self.index = index
         self.cache_dir = cache_dir
         self.fetch = fetch if fetch is not None else http_get_many
         self._looked = False
+
+    def allowed(self) -> frozenset[str]:
+        """The whitelist, read when it is needed: our own manifest carries it, and our library is
+        asked before this one."""
+        source = self._allowed
+        return frozenset(source() if callable(source) else source)
 
     def _read_index(self) -> PreparedIndex | None:
         if self.index is not None or self._looked:
@@ -472,7 +478,7 @@ class PublicSource:
         return self.index
 
     def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
-        if tile.name not in self.allowed:
+        if tile.name not in self.allowed():
             return None  # not verified: not used, whatever their manifest claims
         index = self._read_index()
         if index is None or not index.covers(tile, specs):
