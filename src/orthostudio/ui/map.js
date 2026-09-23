@@ -44,6 +44,8 @@ import {
   samePolygon,
   routeLength,
   snapToTextureCorner,
+  textureCoords,
+  textureCorner,
   textureSquare,
   tileName,
   tileTextureCount,
@@ -1290,6 +1292,7 @@ export function createPlanMap(ctx) {
     const labels = m.createPane("osxpLabels");
     labels.style.zIndex = "360";
     labels.style.pointerEvents = "none";
+    m.createPane("osxpTextureGrid").style.zIndex = "440"; // under the shape being drawn
     m.createPane("osxpDraft").style.zIndex = "450";
     const airportsPane = m.createPane("osxpAirports");
     airportsPane.style.zIndex = "365"; // over the labels, under the zones
@@ -1304,11 +1307,13 @@ export function createPlanMap(ctx) {
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
     layers.zones = L.layerGroup().addTo(m);
+    layers.textureGrid = L.layerGroup().addTo(m);
     layers.draft = L.layerGroup().addTo(m);
     el.classList.toggle("is-mock", Boolean(ctx.mock));
     el.setAttribute("aria-label", t("map.label"));
     m.on("moveend", () => {
       renderGrid();
+      renderTextureGrid();  // the view moved: the squares to aim at moved with it
       renderBanner();
       renderToolOptions(true);
       refreshAirports();
@@ -1984,6 +1989,7 @@ export function createPlanMap(ctx) {
   function renderDraft() {
     renderBanner();
     if (!map) return;
+    renderTextureGrid();
     layers.draft.clearLayers();
     band = null;
     map.getContainer().classList.toggle("is-drawing", Boolean(zs.draft));
@@ -2000,6 +2006,44 @@ export function createPlanMap(ctx) {
     layers.draft.addLayer(band);
     for (const p of pts) {
       layers.draft.addLayer(L.circleMarker(p, { pane: "osxpDraft", className: `osxp-draft-vertex ${cls}`, interactive: false, radius: 4 }));
+    }
+  }
+
+  const TEXTURE_GRID_MIN_PX = 28;
+  /** Below this, one texture on screen is too small to aim a point at. */
+
+  /**
+   * The texture grid, while a zone is being drawn.
+   *
+   * A zone takes every texture its outline touches, whole: an outline through the middle of one
+   * pays for all of it. At ZL18 a texture is about 1.7 km a side in mid-latitudes, so a square
+   * zone drawn by hand costs four to eleven textures more than the same zone on the grid, at
+   * about 11 MB and 256 pieces each (measured 2026-09-24). Ctrl+Shift+click puts a point on
+   * this grid; seeing it is what makes that worth doing.
+   *
+   * Drawn for the view only, and only while the squares are big enough to aim at: finer than
+   * that it would be a grey wash and thousands of lines.
+   */
+  function renderTextureGrid() {
+    if (!map || !layers.textureGrid) return;
+    layers.textureGrid.clearLayers();
+    if (!zs.draft) return;
+    const zl = zs.nextZl;
+    const view = map.getBounds();
+    const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture
+    const west = map.latLngToContainerPoint([view.getNorth(), view.getWest()]);
+    const east = map.latLngToContainerPoint([view.getNorth(), view.getWest() + side]);
+    if (east.x - west.x < TEXTURE_GRID_MIN_PX) return; // too fine to aim at: nothing is drawn
+    const [u0, v0] = textureCoords(view.getWest(), view.getNorth(), zl);
+    const [u1, v1] = textureCoords(view.getEast(), view.getSouth(), zl);
+    const line = { pane: "osxpTextureGrid", className: "osxp-texture-grid", interactive: false, weight: 1 };
+    for (let u = Math.floor(u0); u <= Math.ceil(u1); u += 1) {
+      const [lon] = textureCorner(u, Math.floor(v0), zl);
+      layers.textureGrid.addLayer(L.polyline([[view.getSouth(), lon], [view.getNorth(), lon]], line));
+    }
+    for (let v = Math.floor(v0); v <= Math.ceil(v1); v += 1) {
+      const [, lat] = textureCorner(Math.floor(u0), v, zl);
+      layers.textureGrid.addLayer(L.polyline([[lat, view.getWest()], [lat, view.getEast()]], line));
     }
   }
 

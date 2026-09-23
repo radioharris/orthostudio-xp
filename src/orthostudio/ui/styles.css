@@ -646,6 +646,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Vector layers: Leaflet sets presentation attributes, these rules win over them. */
 /* Faint on purpose: the grid only helps aim; installed and selected tiles carry the colour. */
 .plan-map .osxp-grid-line { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+/* The texture grid, drawn only while a zone is being drawn: a zone takes every texture its
+   outline touches, whole, so these are the lines worth putting an outline on. Dashed and faint,
+   because the photo underneath is what the user is aiming at. */
+.plan-map .osxp-texture-grid { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 4; stroke-opacity: 0.55; }
 .plan-map.is-mock .osxp-grid-line { stroke: var(--fg-3); }
 /* Marks are outlines, never fills: a translucent colour over the ground lies about the photo
    underneath, and the map now shows the very colours a build will encode (a user, 2026-09-18). */

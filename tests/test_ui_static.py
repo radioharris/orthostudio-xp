@@ -4887,3 +4887,25 @@ def test_a_point_put_on_the_texture_grid_says_so_and_how_far() -> None:
             assert field in words, (lang, field)
         # and it says what to do instead, since the two ways differ only by the modifier
         assert words.count("{mod}") == 2, lang
+
+
+def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
+    """A zone takes every texture its outline touches, whole: a square zone drawn by hand costs
+    four to eleven textures more than the same zone on the grid, at about 11 MB and 256 pieces
+    each (measured 2026-09-24). Ctrl+Shift+click puts a point on that grid, and seeing it is
+    what makes the shortcut worth using: a user asked what two ways of placing a point were
+    for."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index("function renderTextureGrid(")
+    body = map_js[start : map_js.index("\n  function ", start + 1)]
+    assert "if (!zs.draft) return;" in body, "only while a zone is being drawn"
+    assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
+    assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
+    assert "map.getBounds()" in body, "the view only, or it is thousands of lines"
+
+    # redrawn when the view moves, and when the draft changes
+    assert "renderTextureGrid();  // the view moved" in map_js
+    assert map_js.index("renderTextureGrid();\n    layers.draft.clearLayers();") > 0
+
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".osxp-texture-grid" in css
