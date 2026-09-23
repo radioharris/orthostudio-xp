@@ -7,6 +7,7 @@ mesh-grid cell at its zoom level. Spec: ``docs/specs/dsf-terrain-assignment.md``
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import cos, pi
@@ -20,6 +21,8 @@ from orthostudio.dsf.params import DsfParams
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.grid import EARTH_RADIUS, TextureId, texture_at, tile_to_wgs84
 from orthostudio.model import TileRef
+
+log = logging.getLogger("orthostudio.dsf.zones")
 
 __all__ = ["AirportCover", "TextureMap", "airport_covers", "texture_map"]
 
@@ -182,6 +185,42 @@ def _airport_array(
     return arr
 
 
+def _say_the_zones_that_raise_nothing(
+    tile: TileRef, params: DsfParams, values: Sequence[tuple[int, str]], claimed: set[int]
+) -> None:
+    """Name the zones that no mesh cell took, so they are not silently paid for.
+
+    A zone's level is read at the centre of each mesh cell, which is Ortho4XP's rule and about
+    850 m at ``mesh_zl`` 19. A zone thinner than that holds no centre and raises nothing, while
+    the page draws the shape the user drew and the estimate charges for the textures it covers: a
+    user set a 300 m band to a sharper level, built, and saw no change and no word (2026-09-23).
+
+    The rule is kept, because it is the one the whole terrain assignment is a port of. What was
+    missing was saying so.
+    """
+    zones = list(params.zone_list)
+    for value in range(2, len(values)):  # 0 unused, 1 is the tile itself, then the zones
+        if value in claimed:
+            continue
+        # ``_zone_image`` paints them reversed, so that the first of the list ends on top
+        position = len(zones) + 1 - value
+        zl, _provider = values[value]
+        log.warning(
+            "%s: the zone %d of the list (level %d) is finer than a mesh cell, about %d m here, "
+            "so it raises nothing; draw it larger or leave it, but it changes nothing as it is",
+            tile.name,
+            position + 1,
+            zl,
+            _mesh_cell_metres(tile, params.mesh_zl),
+        )
+
+
+def _mesh_cell_metres(tile: TileRef, mesh_zl: int) -> int:
+    """The side of one mesh cell here, in metres: 16 tiles of ``mesh_zl`` at this latitude."""
+    around = 2 * pi * EARTH_RADIUS * cos(pi * (tile.lat + 0.5) / 180.0)
+    return round(16 * around / 2**mesh_zl)
+
+
 def texture_map(
     tile: TileRef,
     params: DsfParams,
@@ -208,6 +247,7 @@ def texture_map(
     zl_arr = np.zeros((ny, nx), dtype=np.int16)
     prov_arr = np.zeros((ny, nx), dtype=np.int16)
     providers: dict[str, int] = {}
+    claimed: set[int] = set()
     for col, til_x in enumerate(xs):
         for row, til_y in enumerate(ys):
             latp, lonp = tile_to_wgs84(til_x + 8, til_y + 8, mesh_zl)
@@ -215,7 +255,9 @@ def texture_map(
             latp = max(min(latp, lat + 1), lat)
             x = round((lonp - lon) * 4095)
             y = round((lat + 1 - latp) * 4095)
-            zl, provider = values[int(zone_im[y, x])]
+            chosen = int(zone_im[y, x])
+            claimed.add(chosen)
+            zl, provider = values[chosen]
             if apt_arr is not None and apt_arr[y, x]:
                 zl = max(zl, params.cover_zl)
             factor = 2 ** (mesh_zl - zl)
@@ -223,6 +265,7 @@ def texture_map(
             tex_y[row, col] = 16 * (int(til_y / factor) // 16)
             zl_arr[row, col] = zl
             prov_arr[row, col] = providers.setdefault(provider, len(providers))
+    _say_the_zones_that_raise_nothing(tile, params, values, claimed)
     if params.cover_airports_with_highres == "Existing":
         for t in existing_textures:  # ``:231-257``: claims cells unless a higher zl is there
             if t.zl > mesh_zl:
