@@ -862,3 +862,25 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
         return len(transport.sent)
 
     assert asked(None) == asked(600.0) > 0
+
+
+def test_a_round_that_asks_nobody_is_not_repeated() -> None:
+    """Every server refused for the quota, so every one is set aside with a cooldown the round
+    pause will not outlast. Asking again costs forty seconds and learns nothing, once per layer
+    and per tile of the batch (2026-09-23, the address having spent its quota)."""
+    import time as _time
+
+    quota = HttpReply(429, b"", {"retry-after": "600"}, 0.01)
+    transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
+    c = client(transport, round_pause_s=20.0, rounds=3)
+
+    async def go() -> float:
+        started = _time.monotonic()
+        with pytest.raises(OsxpError) as caught:
+            await c.fetch_layer(TileRef(43, 5), "coastline")
+        assert "every server is still set aside" in str(caught.value.context.get("attempts", ""))
+        return _time.monotonic() - started
+
+    took = run(go())
+    assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
+    assert len(transport.sent) <= len(MIRRORS), "nobody is asked twice while the quota holds"

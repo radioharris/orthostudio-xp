@@ -1186,9 +1186,16 @@ class OverpassClient:
                 await asyncio.sleep(pause)
                 self._board.reopen(m.code for m in self.mirrors)
                 reasons.append(f"round {round_no + 1}")
-            snap = await self._one_round(tile, spec, query, reasons, on_reply)
+            snap, asked = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
                 return snap
+            if round_no and not asked:
+                # the breakers were just given back and there was still nobody to ask: every
+                # server is in a cooldown this round's pause will not outlast. Waiting another
+                # forty seconds to be told the same thing costs every tile of the batch
+                # (2026-09-23, the address having spent its quota)
+                reasons.append("every server is still set aside")
+                break
             if not self._worth_another_round(reasons):
                 break
             if deadline is not None and time.monotonic() >= deadline:
@@ -1239,8 +1246,12 @@ class OverpassClient:
         query: str,
         reasons: list[str],
         on_reply: Callable[[HttpReply], None] | None,
-    ) -> OsmSnapshot | None:
-        """One pass over the registry: the snapshot, or ``None`` when every mirror refused."""
+    ) -> tuple[OsmSnapshot | None, int]:
+        """One pass over the registry: the snapshot and how many mirrors were actually asked.
+
+        The count matters: a round that asked nobody at all, because every mirror is still set
+        aside, has nothing to say and the next round will have nothing either.
+        """
         tried: set[str] = set()
         attempt = 0
         failed_cluster: str | None = None
@@ -1279,7 +1290,7 @@ class OverpassClient:
                 )
                 return snapshot_from_overpass(
                     tile, spec, reply.body, mirror=mirror.code, query=query
-                )
+                ), attempt
             code, reason = outcome
             failed_cluster = mirror.cluster if _cluster_pushed_back(reply) else None
             reasons.append(f"{mirror.code}: {code} ({reason})")
@@ -1294,7 +1305,7 @@ class OverpassClient:
                     code,
                 )
             )
-        return None
+        return None, attempt
 
     async def fetch_tile(
         self,
