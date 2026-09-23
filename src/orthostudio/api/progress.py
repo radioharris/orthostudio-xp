@@ -191,6 +191,10 @@ RATE_TAU_S = 10.0
 """Time constant of a running node's recent rate (an exponential average of its progress
 between reports): long enough to smooth half-second reports, short enough to forget the slow
 start of the fetcher and to follow a line that slows."""
+SILENCE_FLOOR = 0.125
+"""How far the silence of a node may slow its rate down, and no further. Without a floor the
+time left grew by a factor of 330 over the minute before :data:`SILENT_S`, so a build a minute
+from its end could announce eighteen hours (2026-09-23)."""
 SILENT_S = 60.0
 """A node silent for this long is not extrapolated any more, and the estimate falls back to what
 the weights say. The rate decays with the silence, and the time left is what is missing divided
@@ -261,6 +265,10 @@ class NodeLike(Protocol):
     fraction0_at: float | None
     fraction_at: float | None
     """When the node reported its current ``fraction``."""
+    moved_at: float | None
+    """When it last reported a ``fraction`` **above** the one before: the silence that matters.
+    A step reporting twice a second without advancing is silent in every sense but the literal
+    one (2026-09-22)."""
     rate: float | None
     """Its recent rate, fraction per second, since it started moving (:func:`observe_progress`)."""
 
@@ -477,9 +485,17 @@ def observe_progress(n: NodeLike, fraction: float, now: float) -> None:
     has not started its measurable part). Then ``rate`` is the node's average rate since it
     started moving at the first report, and an exponential average of the rate between
     reports afterwards (:data:`RATE_TAU_S`).
+
+    **A report that carries no progress is not progress.** The imagery step reports twice a
+    second whether anything moved or not, so a step that had stopped advancing was averaging
+    zero into its rate four times a second: the rate fell by a thousandth of itself a minute,
+    the time left is what is missing divided by it, and a user watched the page announce
+    1 308 980 335 hours (2026-09-22). Only a report that gained something feeds the average, and
+    the silence a node keeps is measured from the last time it gained, not from its last word.
     """
     f = min(1.0, max(0.0, fraction))
     prev_f, prev_at = n.fraction, n.fraction_at
+    moved = f > prev_f
     if (
         n.fraction0 is None
         or n.fraction0_at is None
@@ -489,10 +505,12 @@ def observe_progress(n: NodeLike, fraction: float, now: float) -> None:
     elif n.rate is None:
         span = now - n.fraction0_at
         n.rate = (f - n.fraction0) / span if span > 0 else None
-    elif prev_at is not None and now > prev_at:
+    elif moved and prev_at is not None and now > prev_at:
         weight = 1.0 - math.exp(-(now - prev_at) / RATE_TAU_S)
-        n.rate = weight * max(0.0, f - prev_f) / (now - prev_at) + (1.0 - weight) * n.rate
+        n.rate = weight * (f - prev_f) / (now - prev_at) + (1.0 - weight) * n.rate
     n.fraction, n.fraction_at = f, now
+    if moved or n.moved_at is None:
+        n.moved_at = now
 
 
 def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
@@ -503,11 +521,15 @@ def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
     span = now - n.fraction0_at
     if gained < EXTRAPOLATE_FROM or span < EXTRAPOLATE_MIN_S:
         return None
-    last = n.fraction_at if n.fraction_at is not None else now
+    last = n.moved_at if n.moved_at is not None else (n.fraction_at or now)
     silence = max(0.0, now - last)
     if silence >= SILENT_S:  # nothing to extrapolate from: the weights answer instead
         return None
-    rate = n.rate * math.exp(-max(0.0, silence - REPORT_GRACE_S) / RATE_TAU_S)
+    # the silence slows the rate down, but only so far: what is missing divided by a rate that
+    # keeps falling is how a page comes to announce a number nobody can read, and past
+    # ``SILENT_S`` the weights answer instead of this (2026-09-23)
+    slower = max(SILENCE_FLOOR, math.exp(-max(0.0, silence - REPORT_GRACE_S) / RATE_TAU_S))
+    rate = n.rate * slower
     if rate <= 0.0:
         return None
     left = (1.0 - n.fraction) / rate - silence

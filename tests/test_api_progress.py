@@ -1247,30 +1247,38 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
 
 def test_a_step_that_stops_reporting_does_not_announce_a_billion_hours() -> None:
     """A user read "Remaining 1 308 980 335 h 33 min" on a build whose imagery step had stopped
-    moving (2026-09-23). The time left is what is missing divided by the recent rate, and that
-    rate decays with the silence: the longer nothing happened, the longer the announcement.
+    moving (2026-09-23). His journal shows why: the step reported twice a second the whole time,
+    always the same 196 textures of 696, so nothing was silent in the literal sense while the
+    recent rate was averaged with zero four times a second. The time left is what is missing
+    divided by that rate.
 
-    A node silent for ``SILENT_S`` is not extrapolated any more, the weights answer in its place,
-    and an estimate above ``ETA_MAX_S`` is no estimate at all: the page is told nothing rather
-    than a number nobody can act on.
+    This drives the real path, report by report, rather than describing a row by hand: the guard
+    written before it watched for a node that stops sending, which this step never does.
     """
-    from orthostudio.api.progress import ETA_MAX_S, SILENT_S, _extrapolation
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import ETA_MAX_S, SILENT_S, _extrapolation, observe_progress
 
-    class Stalled:
-        status = "running"
-        fraction0 = 0.0
-        fraction0_at = 0.0
-        fraction = 0.28  # 196 textures of 696, as the user had
-        rate = 0.01
-        fraction_at = 0.0
-        weight_s = 100.0
-        started_at = 0.0
+    def moving_row(name: str) -> Any:
+        row = _NodeState(node=name, role="textures", stage="imagery")
+        row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+        for i in range(40):  # it moves: nothing to 28 %, as his did
+            observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+        return row
 
-    node = cast(Any, Stalled())
-    moving = _extrapolation(node, 5.0)
-    assert moving is not None and moving[0] < ETA_MAX_S
-    assert _extrapolation(node, SILENT_S) is None
-    assert _extrapolation(node, 6 * 3600.0) is None  # never a billion hours again
+    row = moving_row("+36-118/BI17/textures")
+    last_move = 1.0 + 0.5 * 39
+    healthy = _extrapolation(row, last_move)
+    assert healthy is not None and 0 < healthy[0] < 3600.0
 
-    node.rate = 0.0  # a line that gives nothing: no division by it either
-    assert _extrapolation(node, 1.0) is None
+    t = last_move
+    for _ in range(600):  # then five minutes of the same figure, twice a second
+        t += 0.5
+        observe_progress(row, 0.28, t)
+    assert row.fraction == pytest.approx(0.28)
+    assert row.fraction_at == pytest.approx(t)  # it never stopped talking
+    assert _extrapolation(row, t) is None, "a step that gains nothing is silent, whatever it says"
+
+    # briefly quiet, the estimate may grow, but it may not run away
+    quiet = _extrapolation(moving_row("n"), last_move + SILENT_S - 1.0)
+    assert quiet is not None and quiet[0] < 9 * healthy[0]
+    assert quiet[0] < ETA_MAX_S  # never a billion hours again

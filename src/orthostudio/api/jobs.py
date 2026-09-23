@@ -160,6 +160,7 @@ class _NodeState:
     of its extrapolation."""
     fraction0_at: float | None = None
     fraction_at: float | None = None
+    moved_at: float | None = None
     rate: float | None = None
     """Recent rate of its fraction per second (``progress.observe_progress``)."""
 
@@ -519,7 +520,7 @@ class Job:
                 st.key = event.key
                 st.started_at = now
                 st.fraction, st.ended_at = 0.0, None
-                st.fraction0 = st.fraction0_at = st.fraction_at = st.rate = None
+                st.fraction0 = st.fraction0_at = st.fraction_at = st.moved_at = st.rate = None
             st.kind = event.kind
             self._append(
                 "started", **base, key=event.key, kind=event.kind, weight_s=_weight_json(st)
@@ -624,7 +625,7 @@ class Job:
             if st.status in ("failed", "skipped", "cancelled"):  # a second pass runs it again
                 st.status, st.error, st.cause = "pending", None, None
                 st.fraction, st.wall_s, st.started_at, st.ended_at = 0.0, 0.0, None, None
-                st.fraction0 = st.fraction0_at = st.fraction_at = st.rate = None
+                st.fraction0 = st.fraction0_at = st.fraction_at = st.moved_at = st.rate = None
             if st.status == "pending":
                 self._weigh(st)
         for ts in self._tiles.values():
