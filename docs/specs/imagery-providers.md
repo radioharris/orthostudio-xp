@@ -106,7 +106,7 @@ when taken), the address checked first (http or https, and `{x}` `{y}` `{zoom}` 
 Tests never read the machine's own file: `tests/conftest.py` points it elsewhere unless a test sets
 `$OSXP_HOME`.
 
-### Initial content (decided by the user; 12 providers, and EOX since 0.1.12)
+### Initial content (decided by the user; 12 providers, and EOX since 0.1.14)
 
 | Code | Ortho4XP file | Template (OrthoStudio XP) | max_zl | in flight | Placeholder | Extent |
 |---|---|---|---|---|---|---|
