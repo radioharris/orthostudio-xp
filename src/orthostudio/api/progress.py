@@ -521,7 +521,9 @@ def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
     span = now - n.fraction0_at
     if gained < EXTRAPOLATE_FROM or span < EXTRAPOLATE_MIN_S:
         return None
-    last = n.moved_at if n.moved_at is not None else (n.fraction_at or now)
+    last = n.moved_at
+    if last is None:
+        last = n.fraction_at if n.fraction_at is not None else now
     silence = max(0.0, now - last)
     if silence >= SILENT_S:  # nothing to extrapolate from: the weights answer instead
         return None
@@ -535,7 +537,11 @@ def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
     left = (1.0 - n.fraction) / rate - silence
     by_gain = (gained - EXTRAPOLATE_FROM) / (TRUST_AT - EXTRAPOLATE_FROM)
     by_time = (span - EXTRAPOLATE_MIN_S) / (TRUST_AFTER_S - EXTRAPOLATE_MIN_S)
-    return max(0.0, left), min(1.0, max(0.0, min(by_gain, by_time)))
+    trust = min(1.0, max(0.0, min(by_gain, by_time)))
+    # a node that has gone quiet speaks for itself less and lets the weights speak more. Its
+    # rate was damped by the silence while its say was not, so the longer it said nothing the
+    # more the whole estimate rested on it (found in review, 2026-09-23).
+    return max(0.0, left), trust * slower
 
 
 def _queue_trust(n: NodeLike, now: float, trust: float) -> float:
@@ -756,6 +762,8 @@ def estimate(
     band = BAND_MAX - (BAND_MAX - BAND_MIN) * confidence
     if not math.isfinite(eta) or eta > ETA_MAX_S:
         return Estimate(progress, None, None, None)
-    low = eta * (1.0 - BAND_LOW_SHARE * band)
-    high = eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band)
+    low = max(0.0, eta * (1.0 - BAND_LOW_SHARE * band))
+    # the same end as the estimate itself: the band widens it by up to three, and a day's build
+    # came out as three days at the top of the range (found in review, 2026-09-23)
+    high = min(ETA_MAX_S, eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band))
     return Estimate(progress, eta, low, high, band)

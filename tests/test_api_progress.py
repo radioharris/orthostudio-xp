@@ -1282,3 +1282,80 @@ def test_a_step_that_stops_reporting_does_not_announce_a_billion_hours() -> None
     quiet = _extrapolation(moving_row("n"), last_move + SILENT_S - 1.0)
     assert quiet is not None and quiet[0] < 9 * healthy[0]
     assert quiet[0] < ETA_MAX_S  # never a billion hours again
+
+
+def test_a_figure_repeated_is_not_a_measurement() -> None:
+    """The time left is what is missing divided by the recent rate, so anything that feeds that
+    rate a zero while the step is only repeating itself makes the answer grow without end. This
+    is the guard itself: it fails if the gain is taken out of what feeds the average, which is
+    the fault a user met as "1 308 980 335 h" (2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import SILENT_S, _extrapolation, observe_progress
+
+    row = _NodeState(node="+36-118/BI17/textures", role="textures", stage="imagery")
+    row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+    for i in range(40):
+        observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+    measured = row.rate
+    assert measured is not None and measured > 0
+
+    t = 1.0 + 0.5 * 39
+    for _ in range(int(SILENT_S / 0.5) - 4):  # it keeps talking, and says the same thing
+        t += 0.5
+        observe_progress(row, 0.28, t)
+    assert row.rate == pytest.approx(measured), "the rate is measured on what was gained"
+
+    still = _extrapolation(row, t)
+    assert still is not None, "not yet silent: it is still answering"
+    left, _trust = still
+    assert 0 < left < 3600.0
+
+
+def test_a_step_that_goes_quiet_speaks_for_its_neighbours_less() -> None:
+    """One running node's extrapolation stands in for the ones queued behind it. Its rate was
+    damped by its silence while its say was not, so the longer it said nothing the more of the
+    whole estimate rested on it (found in review, 2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import REPORT_GRACE_S, _extrapolation, observe_progress
+
+    def moving() -> Any:
+        row = _NodeState(node="+36-118/BI17/textures", role="textures", stage="imagery")
+        row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+        for i in range(40):
+            observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+        return row
+
+    last_move = 1.0 + 0.5 * 39
+    answering = _extrapolation(moving(), last_move + REPORT_GRACE_S)
+    quiet = _extrapolation(moving(), last_move + 40.0)
+    assert answering is not None and quiet is not None
+    assert quiet[1] < answering[1] / 2, "its say falls as its silence grows"
+    assert quiet[1] > 0.0, "and it does not vanish: it is still the only thing measured here"
+
+
+def test_the_top_of_the_range_ends_where_the_estimate_ends() -> None:
+    """The estimate itself stops at a day, and the band widens it by up to three: a build the
+    estimate put at 22 hours came out as 66 at the top of the range (found in review,
+    2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import ETA_MAX_S, estimate
+
+    rows = []
+    for i in range(400):
+        row = _NodeState(node=f"+36-118/BI17/n{i}", role="textures", stage="imagery")
+        row.status, row.weight_s = "pending", 200.0
+        rows.append(row)
+    done = _NodeState(node="+36-118/BI17/first", role="textures", stage="imagery")
+    done.status, done.weight_s, done.wall_s, done.ended_at, done.fraction = (
+        "done",
+        10.0,
+        10.0,
+        0.0,
+        1.0,
+    )
+    rows.append(done)
+
+    est = estimate(rows, now=100.0, phase="build", declared=True)
+    assert est.eta_s is not None and est.eta_s > 20 * 3600.0, "close to the day it allows"
+    assert est.high_s is not None and est.high_s <= ETA_MAX_S
+    assert est.low_s is not None and est.low_s >= 0.0
