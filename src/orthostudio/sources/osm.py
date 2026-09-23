@@ -1160,11 +1160,17 @@ class OverpassClient:
         *,
         road_level: int = 1,
         on_reply: Callable[[HttpReply], None] | None = None,
+        deadline: float | None = None,
     ) -> OsmSnapshot:
         """One layer of one tile, from the first mirror that answers (spec section 4).
 
         ``on_reply`` sees every answer (the tile counts the bytes received). Raises
         ``OsxpError("OSM_LAYER_UNAVAILABLE")`` when every attempt failed.
+
+        ``deadline`` is when the caller stops waiting (``time.monotonic``). Without it, a layer
+        would begin its third round, sleep forty seconds and ask three machines while the tile
+        had five seconds left, and the build then said "timed out" instead of naming the servers
+        that refused (2026-09-23).
         """
         spec = self._resolve(layer, road_level)
         query = overpass_query(spec.selectors, tile, self.query_timeout_s, self.at)
@@ -1173,13 +1179,20 @@ class OverpassClient:
             if round_no:
                 # every mirror refused, and at least one of them because it was busy: wait, give
                 # them all their breaker back, and ask the whole list again
-                await asyncio.sleep(self.round_pause_s * round_no)
+                pause = self.round_pause_s * round_no
+                if deadline is not None and time.monotonic() + pause >= deadline:
+                    reasons.append("no time left for another round")
+                    break
+                await asyncio.sleep(pause)
                 self._board.reopen(m.code for m in self.mirrors)
                 reasons.append(f"round {round_no + 1}")
             snap = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
                 return snap
             if not self._worth_another_round(reasons):
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                reasons.append("no time left")
                 break
         detail = "; ".join(reasons)
         quota = [r for r in reasons if "RATE_LIMITED" in r]
@@ -1325,16 +1338,16 @@ class OverpassClient:
                 progress(received[0] / total if total else 1.0, message)
 
         async def one(spec: LayerSpec) -> OsmSnapshot:
-            snap = await self.fetch_layer(tile, spec, on_reply=count)
+            snap = await self.fetch_layer(tile, spec, on_reply=count, deadline=deadline)
             received[0] += 1
             report()
             return snap
 
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         gather = asyncio.gather(*(one(s) for s in specs))
         if cancel is None and timeout_s is None and progress is None:
             return {s.layer: s for s in await gather}
         task = asyncio.ensure_future(gather)
-        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         reported = time.monotonic()
         while True:
             done, _ = await asyncio.wait([task], timeout=_CANCEL_POLL_S)
