@@ -208,3 +208,51 @@ def test_two_zones_that_overlap_are_resolved_as_the_page_paints_them() -> None:
                                texture_at(46.63, 6.55, 16, "BI"))  # fmt: skip
     assert len(shapes) == 2
     assert shapes[-1][1] == 0.1, "the first of the list is applied last, so it wins"
+
+
+def test_a_tile_already_built_with_a_zone_is_built_again_with_the_right_colours() -> None:
+    """The colours of a zone are applied differently since 2026-09-23: to the shape that was
+    drawn rather than to whole texture files, replacing the tile's colours rather than adding to
+    them. None of that reaches a user who already built the tile unless the key says so, because
+    the imagery step is then a hit and nothing below it is ever consulted (found in review)."""
+    from orthostudio.graph.keys import artifact_key
+    from orthostudio.pipeline.build import TileTexturesParams
+
+    def key_of(zones: list[object]) -> str:
+        params = TileTexturesParams(
+            tile="+46+006", encoder="ispc", encoder_version="1.0", photo_zones=zones
+        )
+        return artifact_key("tile.textures", 1, params.canonical(), {})
+
+    ring = [[46.4, 6.4, 46.4, 6.6, 46.6, 6.6, 46.6, 6.4], 0.2, 0.0, 0.0]
+    with_zone = TileTexturesParams(
+        tile="+46+006", encoder="ispc", encoder_version="1.0", photo_zones=[ring]
+    ).canonical()
+    assert with_zone["photo_zones_rule"] == 2, "the way the colours are applied rides in the key"
+
+    without = TileTexturesParams(tile="+46+006", encoder="ispc", encoder_version="1.0").canonical()
+    assert "photo_zones_rule" not in without, "a tile with no zone keeps the key it has"
+    assert "photo_zones" not in without
+    assert key_of([ring]) != key_of([])
+
+
+def test_a_zone_over_a_whole_texture_stays_inside_what_the_rule_declares() -> None:
+    """``texture.dds`` declares 250 MB and the pipeline runs one per worker, so a zone covering
+    a whole 4096² texture must not hold three times that: it did, and a machine with little
+    memory lost the build over it (found in review, 2026-09-23)."""
+    import tracemalloc
+
+    from orthostudio.pipeline.rule import texture_dds
+    from orthostudio.textures.colour import adjust_photo_inside
+
+    rgb = np.random.default_rng(7).integers(0, 256, (4096, 4096, 3), dtype=np.uint8)
+    ring = [0.0, 0.0, 4095.0, 0.0, 4095.0, 4095.0, 0.0, 4095.0]
+    tracemalloc.start()
+    try:
+        before = tracemalloc.get_traced_memory()[0]
+        adjust_photo_inside(rgb, ring, brightness=0.2, contrast=-0.1, saturation=0.3)
+        peak_mb = (tracemalloc.get_traced_memory()[1] - before) / 2**20
+    finally:
+        tracemalloc.stop()
+    declared = texture_dds.ram_mb  # what the scheduler is told, and counts on
+    assert peak_mb < declared, f"{peak_mb:.0f} MB held above the image, {declared} MB declared"

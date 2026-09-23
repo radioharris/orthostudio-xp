@@ -1206,32 +1206,13 @@ def zone_list_raising_nothing(
 
     The colours of a zone follow its ring itself and have no such limit, so a zone named here is
     not useless: it is its level that does nothing.
-    """
-    from orthostudio.imagery.grid import texture_at, tile_to_wgs84
 
-    first = texture_at(tile.lat + 1, tile.lon, mesh_zl, "")
-    last = texture_at(tile.lat, tile.lon + 1, mesh_zl, "")
-    centres = [
-        tile_to_wgs84(til_x + 8, til_y + 8, mesh_zl)
-        for til_x in range(first.til_x, last.til_x + 1, 16)
-        for til_y in range(first.til_y, last.til_y + 1, 16)
-    ]
-    points = shapely.points([(lon, lat) for lat, lon in centres])
-    idle: list[int] = []
-    for index, entry in enumerate(zone_list):
-        try:
-            coords, _zl, _provider = entry
-            ring = [(float(x), float(y)) for x, y in zip(coords[1::2], coords[::2], strict=True)]
-        except (TypeError, ValueError):
-            continue  # an entry nobody can read is another error's business
-        if len(ring) < MIN_VERTICES:
-            continue
-        shape: BaseGeometry = Polygon(ring)
-        if not shape.is_valid:
-            shape = make_valid(shape)
-        if not shapely.intersects(shape, points).any():
-            idle.append(index)
-    return idle
+    The answer is the build's own, down to the rounding: a second reading of the same rings, in
+    exact geometry, disagreed with the build in both directions (found in review, 2026-09-23).
+    """
+    from orthostudio.dsf.zones import zones_raising_nothing
+
+    return zones_raising_nothing(tile, list(zone_list), mesh_zl)
 
 
 def zone_list_textures(zone_list: Iterable[Sequence[Any]], tile: TileRef) -> set[TextureId]:

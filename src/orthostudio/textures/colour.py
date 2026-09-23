@@ -117,16 +117,26 @@ def adjust_photo_inside(
     )
     if feather_px > 0:
         stencil = stencil.filter(ImageFilter.GaussianBlur(feather_px / 2))
-    weight = np.asarray(stencil, dtype=np.float32)[..., None] / 255.0
-    if not weight.any():
+    mask = np.asarray(stencil, dtype=np.uint8)
+    if not mask.any():
         return rgb
 
     out = rgb.copy()
     window = out[y0:y1, x0:x1]
     base = window if same else source[y0:y1, x0:x1]
-    changed = adjust_photo(base, brightness=brightness, contrast=contrast, saturation=saturation)
-    blended = window.astype(np.float32) * (1.0 - weight) + changed.astype(np.float32) * weight
-    np.rint(blended, out=blended)
-    np.clip(blended, 0.0, 255.0, out=blended)
-    out[y0:y1, x0:x1] = blended.astype(np.uint8)
+    # a band at a time, as :func:`adjust_photo` does: a zone covering a whole 4096² texture held
+    # 770 MB in one go where the rule declares 250, and several textures encode at once, so a
+    # machine with little memory lost the build (found in review, 2026-09-23)
+    for start in range(0, window.shape[0], _ROWS):
+        stop = start + _ROWS
+        weight = mask[start:stop, :, None].astype(np.float32) / 255.0
+        changed = adjust_photo(
+            base[start:stop], brightness=brightness, contrast=contrast, saturation=saturation
+        )
+        band = window[start:stop].astype(np.float32)
+        band *= 1.0 - weight
+        band += changed.astype(np.float32) * weight
+        np.rint(band, out=band)
+        np.clip(band, 0.0, 255.0, out=band)
+        window[start:stop] = band.astype(np.uint8)
     return out

@@ -26,7 +26,7 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, S
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import blake3
 from pydantic import Field
@@ -675,10 +675,21 @@ class TileTexturesParams(RuleParams):
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
 
+    PHOTO_ZONES_RULE: ClassVar[int] = 2
+    """Which way the zone colours are applied. 1 coloured the whole texture file whose centre
+    fell in a zone; 2 colours the shape that was drawn, replaces the tile's colours rather than
+    adding to them, and lets the first zone of the list win where two overlap (2026-09-23).
+
+    It rides in the key so that a tile already built with zones is built again with the colours
+    it should have had: without it the step is a hit and the fix reaches nobody (found in review,
+    2026-09-23). A tile with no zone of its own keeps the key it has and is not rebuilt."""
+
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if not self.photo_zones:
             doc.pop("photo_zones", None)  # no zone of its own: the key of every tile built before
+        else:
+            doc["photo_zones_rule"] = self.PHOTO_ZONES_RULE
         return doc
 
     def ter_params(self) -> TerParams:

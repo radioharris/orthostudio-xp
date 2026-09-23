@@ -105,3 +105,48 @@ def test_the_warning_has_words_and_a_remedy_in_both_languages() -> None:
     assert "changes nothing" in said.message and "colours still apply" in said.remedy
     i18n = (_Path(__file__).resolve().parents[1] / "src/orthostudio/ui/i18n.js").read_text("utf-8")
     assert "ZONE_TOO_SMALL:" in i18n and "niveau ne change rien" in i18n
+
+
+def _idle_by_the_build(zone_list: list[tuple[list[float], int, str]], caplog) -> set[int]:  # type: ignore[no-untyped-def]
+    """Which zones the build itself took no cell for, read from what it says, 0-based."""
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="orthostudio.dsf.zones"):
+        texture_map(TILE, _params(zone_list))
+    found = set()
+    for record in caplog.records:
+        message = record.getMessage()
+        if "raises nothing" in message:
+            found.add(int(message.split("the zone ")[1].split(" of the list")[0]) - 1)
+    return found
+
+
+def test_the_plan_answers_what_the_build_will_do(caplog) -> None:  # type: ignore[no-untyped-def]
+    """The page used to read the rings a second time, in exact geometry, where the build reads
+    them through a 4096² image at the centre of each cell. The two disagreed both ways: a zone
+    another zone covers takes no cell and the page called it fine, and a zone the image rounds
+    onto a centre it geometrically misses was called idle (found in review, 2026-09-23)."""
+    from orthostudio.zones import zone_list_raising_nothing
+
+    wide = _band(46.4, 6.4, 0.2, 0.2)
+    thin = _between_two_cell_centres()
+    covered = _band(46.45, 6.45, 0.05, 0.05)  # wholly inside ``wide``, which is drawn over it
+    edge = _band(46.0, 6.0, 0.004, 0.004)  # a corner of the tile, where the centre is clamped
+    cases: list[list[tuple[list[float], int, str]]] = [
+        [(thin, 18, "BI")],
+        [(wide, 18, "BI")],
+        [(wide, 18, "BI"), (covered, 17, "BI")],
+        [(covered, 17, "BI"), (wide, 18, "BI")],
+        [(edge, 19, "BI")],
+        [(wide, 18, "BI"), (thin, 17, "BI"), (covered, 16, "BI")],
+    ]
+    for zone_list in cases:
+        build = _idle_by_the_build(zone_list, caplog)
+        plan = set(zone_list_raising_nothing([list(z) for z in zone_list], TILE, 19))
+        assert plan == build, f"{zone_list!r}: the page says {plan}, the build says {build}"
+
+
+def test_a_zone_another_zone_covers_is_named_too(caplog) -> None:  # type: ignore[no-untyped-def]
+    """Its level changes nothing, because the zone above it wins every cell they share."""
+    wide = _band(46.4, 6.4, 0.2, 0.2)
+    covered = _band(46.45, 6.45, 0.05, 0.05)
+    assert _idle_by_the_build([(wide, 18, "BI"), (covered, 17, "BI")], caplog) == {1}
