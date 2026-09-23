@@ -320,3 +320,25 @@ def test_real_scenery_packs_ini_is_read_only_and_reordered_on_a_copy(tmp_path: P
 
     assert hashlib.sha256(REAL_INI.read_bytes()).hexdigest() == before
     assert REAL_INI.stat().st_mtime_ns == mtime
+
+
+def test_taking_a_tile_out_leaves_the_users_own_copy_alone() -> None:
+    """Every line ending in the pack's name used to go, wherever it pointed. A simmer who keeps
+    a copy of a tile on another disk has two lines, and taking the tile out of X-Plane took his
+    archive out with it, silently, with nothing said (found in review, 2026-09-23)."""
+    packs = SceneryPacks.from_bytes(
+        b"I\n1000 Version\nSCENERY\n\n"
+        b"SCENERY_PACK Custom Scenery/zOrthoStudio_+43+005/\n"
+        b"SCENERY_PACK /Volumes/OrthoArchive/zOrthoStudio_+43+005/\n"
+        b"SCENERY_PACK C:\\Scenery\\zOrthoStudio_+43+005\\\n"
+        b"SCENERY_PACK Custom Scenery/Airport A/\n"
+    )
+    assert packs.remove("zOrthoStudio_+43+005") is True
+    left = [line for line in packs.to_bytes().decode().splitlines() if "SCENERY_PACK" in line]
+    assert left == [
+        "SCENERY_PACK /Volumes/OrthoArchive/zOrthoStudio_+43+005/",
+        "SCENERY_PACK C:\\Scenery\\zOrthoStudio_+43+005\\",
+        "SCENERY_PACK Custom Scenery/Airport A/",
+    ]
+    # and a tile that is only his archive is not ours to take out at all
+    assert packs.remove("zOrthoStudio_+43+005") is False

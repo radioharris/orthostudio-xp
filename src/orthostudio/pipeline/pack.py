@@ -1164,7 +1164,10 @@ def delete_receipt(
     row = next((r for r in rows if r.kind == "ortho" and r.path == pack_dir), None)
     manifest = _manifest_to_delete(pack_dir, tile, row)
     cs = Path(custom_scenery) if custom_scenery is not None else None
-    if cs is not None and install_packs.xplane_running():
+    # not "if we know where X-Plane is": X-Plane reading these files is what matters, and the
+    # folder is unknown for exactly the users whose X-Plane was not found, who were the only
+    # ones whose tiles could be deleted from under it (found in review, 2026-09-23)
+    if install_packs.xplane_running():
         raise OsxpError(
             "XP_RUNNING",
             message="X-Plane is running and may be reading this tile's files, so nothing was "
