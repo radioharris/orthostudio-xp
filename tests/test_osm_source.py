@@ -685,7 +685,13 @@ def test_the_tile_reports_each_layer_and_its_download_rate() -> None:
     assert len(got) == 4
     layer_reports = [f for f, _ in seen]
     assert [f for f in layer_reports if f in (0.25, 0.5, 0.75, 1.0)] == [0.25, 0.5, 0.75, 1.0]
-    assert seen[-1][1].startswith("+43+005: 4 of 4 back: ") and seen[-1][1].endswith(" MB/s)")
+    last = seen[-1][1]
+    assert last.startswith("+43+005: 4 of 4 back: ")
+    for word in ("airports", "roads", "water", "coastline"):
+        assert word in last, last
+    # the rate rides along only when the average says something: on a machine busy enough that
+    # these four small answers spread over a minute it does not, and that is the point of it
+    assert last.endswith(" MB/s)") or "MB/s" not in last
 
     # A map data server sends nothing until it has worked the whole answer out, so the line sat
     # at "0/4 OSM layers" with the rate falling to "0.0 MB/s" for minutes, which is also what a

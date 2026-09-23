@@ -356,6 +356,7 @@ class Job:
         self._done = threading.Event()
         self._file: Any = None
         self._last_log: dict[str, float] = {}
+        self._last_said: dict[str, str] = {}
         self._last_file_log: dict[str, float] = {}
         self._stats: dict[str, Any] | None = None
         self._clock: Callable[[], float] = clock if clock is not None else time.perf_counter
@@ -537,8 +538,13 @@ class Job:
             # every stage leaves a line, not the images alone: a build that stopped while
             # downloading its OpenStreetMap data showed a bar and wrote nothing (2026-09-22)
             last_log = self._last_log.get(st.node, now - LOG_PERIOD_S)
-            if event.message and now - last_log >= LOG_PERIOD_S:
+            # and not the same line twice: a step that reports every second so the page knows it
+            # is alive wrote that same second a line into the log, for minutes (a user watching
+            # his first build, 2026-09-23)
+            said_before = self._last_said.get(st.node)
+            if event.message and event.message != said_before and now - last_log >= LOG_PERIOD_S:
                 self._last_log[st.node] = now
+                self._last_said[st.node] = event.message
                 self._append("log", **base, message=event.message)
                 last_file = self._last_file_log.get(st.node, now - FILE_LOG_PERIOD_S)
                 if now - last_file >= FILE_LOG_PERIOD_S:

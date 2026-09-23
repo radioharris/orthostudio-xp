@@ -956,6 +956,9 @@ LAYER_WORDS = {
 _RATE_FLOOR_MB_S = 0.05
 """Below this the average since the tile started says nothing, so it is left out."""
 
+_WAIT_STEP_S = 15
+"""How coarsely the wait is told: a line that changes every second is a line nobody reads."""
+
 
 def osm_progress_message(
     tile: TileRef,
@@ -978,7 +981,11 @@ def osm_progress_message(
     """
     if not received:
         waiting = ", ".join(LAYER_WORDS.get(name, name) for name in asked)
-        return f"{tile.name}: waiting for the map data server ({waiting})"
+        text = f"{tile.name}: waiting for the map data server ({waiting})"
+        # how long, in steps of a quarter minute: the wait is reported every second so the page
+        # knows the step is alive, and a line that changes every second is a line nobody reads
+        waited = int(elapsed_s // _WAIT_STEP_S) * _WAIT_STEP_S
+        return f"{text}, {waited} s" if waited else text
     got = ", ".join(LAYER_WORDS.get(name, name) for name in received)
     text = f"{tile.name}: {len(received)} of {len(asked)} back: {got}"
     rate = wire_bytes / 1e6 / elapsed_s if wire_bytes > 0 and elapsed_s > 0 else 0.0

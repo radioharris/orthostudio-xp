@@ -1431,3 +1431,28 @@ def test_a_build_that_was_stopped_does_not_read_as_finished() -> None:
     # what really finished still reads as finished, and so does a tile entirely from the store
     assert progress([("done", 1.0, 2.5, 0.0), ("done", 1.0, 41.0, 0.0)]) == 1.0
     assert progress([("hit", 1.0, 0.0, None), ("hit", 1.0, 0.0, None)]) == 1.0
+
+
+def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path) -> None:
+    """A step that reports every second, so the page knows it is alive, wrote that same second
+    a line into the log: one a second for minutes, all identical, while the map data server
+    worked out its answer. A user watching his first build asked what it meant (2026-09-23)."""
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+46+006")], lambda: at[0], tmp_path)
+    node = "+46+006/osm"
+    job.on_event(Started(node, "net", "k" * 64))
+    waiting = "+46+006: waiting for the map data server (airports, roads, water, coastline)"
+    for second in range(1, 7):
+        at[0] = float(second)
+        job.on_event(Progress(node, 0.0, waiting))
+
+    def lines() -> list[dict[str, Any]]:
+        return [e for e in job.events() if e["event"] == "log" and e.get("node") == node]
+
+    assert len(lines()) == 1, f"{len(lines())} identical lines written"
+
+    at[0] = 10.0
+    job.on_event(Progress(node, 0.25, "+46+006: 1 of 4 back: airports"))
+    assert len(lines()) == 2, "and a line that says something new is written"
