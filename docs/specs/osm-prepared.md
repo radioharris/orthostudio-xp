@@ -1,0 +1,133 @@
+# Prepared OSM layers: the sources a tile is asked of, in order
+
+Status: written before the code (0.1.15). Companion of `osm-source.md`, which stays the
+description of Overpass itself. Origin: the night of 2026-09-22, when two of the three public
+Overpass machines a build asks became unusable at once and every build on every continent stopped
+on its Data step; and the days after it, when a user who had built almost a whole state read that
+downloads had "turned random".
+
+The data behind that step is public and downloadable in bulk: one country extract holds what
+thousands of live queries would ask for, and the same four questions are asked of it for every
+tile anyone builds. A tile's layers can therefore be **prepared once and read as files**, in 60 ms
+instead of 8 to 30 s, with no quota and no bad evenings. What follows is how a build chooses
+between the prepared libraries and the live servers, and — the harder half — how it refuses a
+library that would quietly give it less than the truth.
+
+## 1. The chain
+
+After the tile's own cache has missed, the layers are asked of these, in this order, until one
+answers:
+
+| | Source | Present when | Typical |
+|---|---|---|---|
+| 1 | the user's own folder | `advanced.osm_folder` names one | instant |
+| 2 | our baked library | its address and token are set (they ship with the app) | ~60 ms |
+| 3 | xpconnect (OrthoForge) | switched on **and** the tile is on our whitelist | ~300 ms |
+| 4 | Overpass | always, last | 8-30 s |
+
+The order follows what is known, not what is fast: ours is the only online library whose coverage
+we established ourselves; xpconnect covers what we will not bake, at their expense; Overpass alone
+is live and complete.
+
+**Fresh data skips the libraries.** A tile asked for with `refresh` (`OsmParams.refresh`, what a
+user presses after correcting their region in OSM) goes straight to Overpass: a prepared library
+is weeks behind by design, and that is its only real defect.
+
+## 2. What a source is
+
+One method, three outcomes, nothing else:
+
+```python
+class PreparedSource(Protocol):
+    name: str
+    def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None: ...
+```
+
+* **the layers** — every one of `specs`, taken as they are, the chain stops;
+* **`None`** — this source does not hold the tile, the chain moves on without a word;
+* **an exception** — the source is broken; the chain moves on and records the reason for the
+  report and the log.
+
+**All or nothing, per tile.** A source that holds three of the four layers gives nothing. Mixing
+sources inside one tile is how an incoherent tile is made: a coastline truncated at a national
+border under roads that are complete, and nothing to show for it. The libraries bake all layers
+of a tile together, so the rule costs nothing real.
+
+## 3. Refusing a library that gives less than the truth
+
+This is the part that decides whether the chain is trustworthy, and it is not symmetric: a library
+that is *absent* is harmless, a library that is *short* is not. Measured on xpconnect,
+2026-09-19 and again 2026-09-23, both times unchanged:
+
+* 7 132 tiles listed, **1 559 of them (22 %) with both road layers empty**;
+* the Geneva tile (`+46+006`) holds 10 110 road ways where a live query returns 24 307: the bake
+  is made per country extract and the Swiss half of that tile is simply not in it;
+* nothing in the file says so. It downloads, its sha256 matches, the XML is valid, and it holds a
+  third of the roads. A build would lay scenery with no roads and no water and report success.
+
+Three defences, in order of cost:
+
+1. **An empty layer is not an answer.** A layer file under 200 bytes holds no element at all. When
+   the manifest carries sizes, as xpconnect's does, the tile is refused before anything is
+   downloaded.
+2. **A library is used only where it has been verified.** For xpconnect this means a whitelist:
+   the tiles we have compared, tile by tile, against a live count (`[out:csv(::count)]`, 13 bytes
+   of answer, 13 s of their computation) or against our own bake of the same square. The
+   whitelist travels **with our manifest**, so a build that cannot reach our library has no
+   whitelist and skips xpconnect entirely. No verification, no use.
+3. **Every file is checked at the door**: its digest against the manifest, then the document is
+   read. Either failing makes the tile move to the next source, with the reason recorded.
+
+The whitelist is void when the publisher rebakes: xpconnect's manifest carries a `version`
+(`2026-08-08`, unchanged since we first looked). A different version means the whitelist must be
+built again, and until it is, that library is skipped.
+
+**Our own library needs no whitelist**, since its manifest is written by the same tool that cut
+the tiles: a tile is in it when its layers were written, and the coverage is whatever the extract
+covered. What it does carry, per file, is the digest and the size.
+
+## 4. A library must not slow a build down
+
+A prepared source exists to save seconds; one that hangs would cost them. Therefore, per request:
+5 s to connect, 30 s to read, one attempt, then the next source. And per build: **two failures of
+the same library and it is set aside for the rest of the run**, in the manner of the Overpass
+breaker but simpler, since a library holds no quota and needs no cooldown.
+
+A source's own timeouts never touch the Overpass politeness rules, which stay as `osm-source.md`
+describes them.
+
+## 5. What the user sees, and what the tile remembers
+
+The Data step names where the layers came from: *from your folder*, *prepared, 8 August*,
+*downloaded*. The snapshot already carries a `mirror` field, and it holds that name
+(`folder`, `library`, `xpconnect`, `overpass:<mirror>`), so a tile built months ago still says
+what it was made from, and the Works page and the job's journal say it while it happens.
+
+When every source fails, the error is the one `osm-source.md` describes, and it names what each
+tried source answered.
+
+## 6. Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `advanced.osm_folder` | empty | a folder of prepared layers, in our format or Ortho4XP's (bzip2 OSM 0.6 XML, which is also xpconnect's) |
+| `advanced.osm_library` | our address | the baked library to read; empty switches it off |
+| `advanced.osm_library_token` | ships with the app | sent with every request, manifest included |
+| `advanced.osm_prepared_public` | on | whether xpconnect may be used where whitelisted |
+
+A user pointing `osm_folder` at what they already downloaded is the request that started this
+(a user, 2026-09-23); it is first in the chain because it is local, free, and theirs.
+
+## 7. How this is tested
+
+* one test per source, against a library fixture our own tools bake from a small extract;
+* a chain test: first source empty, second broken, third answers, fourth never asked;
+* a **poisoned library**: wrong digest, truncated file, empty road layers, a tile listed but
+  absent. Every one must fall through and be recorded, never consumed;
+* the equality that matters: for a sample of tiles, the snapshot a library gives and the snapshot
+  Overpass gives must have the same `digest`, which is what proved the bake right on 2026-09-23
+  (identical to 0.1 %, every difference an edit made after the extract's date) and what proved
+  xpconnect short at Geneva.
+
+Nothing here reaches the network in the tests: the sources take their transport injected, as
+`OverpassClient` already does.
