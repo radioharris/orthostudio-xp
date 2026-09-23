@@ -885,6 +885,11 @@ def textures_progress_message(
             f"{level}: textures {s.built + s.hits}/{s.textures_total}, "
             "nothing to download (the image pieces are in the cache)"
         )
+    if s.throttled:
+        # the CLI bar has said this since the beginning and the page did not: a source asking us
+        # to slow down looks exactly like a build that has stopped, for hours (found in review,
+        # 2026-09-23)
+        message += ", the source is asking us to slow down"
     if s.second_pass_chunks and not s.second_pass_round:
         message += f", {s.second_pass_chunks} image piece(s) to ask for again"
     elif s.second_pass_chunks:

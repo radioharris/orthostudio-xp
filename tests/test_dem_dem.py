@@ -310,7 +310,12 @@ def test_an_unreadable_custom_file_is_refused(tmp_path: Path) -> None:
 
 
 def test_an_unreadable_overlay_is_refused_too(tmp_path: Path) -> None:
-    """A zero overlay would win everywhere inside its window: the tile flat under it."""
+    """A zero overlay would win everywhere inside its window: the tile flat under it.
+
+    A single file named as an overlay is still refused, and a *folder* of one's own is not:
+    there the file simply does not count for that square and the relief chosen is kept whole
+    (``test_a_file_of_ones_own_that_cannot_be_read_gives_way_to_the_relief_chosen``).
+    """
     base = tmp_path / "base.hgt"
     base.write_bytes(np.full((1201, 1201), 10, np.int16).astype(">i2").tobytes())
     over = tmp_path / "over.hgt"
@@ -582,3 +587,40 @@ def test_the_relief_of_ones_own_says_what_to_do_about_it(tmp_path: Path) -> None
 
     assert _relief_remedy("COP30", "N49W122") is None, "a named source keeps the general words"
     assert _relief_remedy("XP12", "N49W122") is None
+
+
+def test_a_file_of_ones_own_that_cannot_be_read_gives_way_to_the_relief_chosen(
+    tmp_path: Path,
+) -> None:
+    """Settings says of a folder of one's own: "Where your folder has nothing, the relief chosen
+    above is used, so a partial set is no trouble at all". A file that cannot be read -- half
+    downloaded, or a GeoTIFF in a projection we do not read, which is how most national lidar
+    ships -- is nothing for that square, and it killed the tile at nought per cent instead. A
+    partial set is exactly what a user collects (a Linux user; found in review, 2026-09-23)."""
+    from orthostudio.dem.dem import Dem
+    from orthostudio.dem.sources import EnsureOptions
+    from orthostudio.errors import OsxpError
+    from orthostudio.model import TileRef
+
+    tile = TileRef(43, 5)
+    opts = EnsureOptions(elevation_dir=tmp_path / "elevation")
+    base = tmp_path / "N43E005.hgt"
+    base.write_bytes(np.full((1201, 1201), 100, dtype=">i2").tobytes())
+    folder = tmp_path / "his lidar"
+    folder.mkdir()
+    (folder / "N43E005.hgt").write_bytes(b"\x00" * 37)  # half downloaded
+
+    said: list[OsxpError] = []
+    dem = Dem.build(tile, opts, custom_dem=f"{base};{folder}", on_event=said.append)
+    # a single file named as an overlay is a different matter and is still refused:
+    # ``test_an_unreadable_overlay_is_refused_too``
+    assert dem is not None, "the tile is built on the relief he chose"
+    assert int(dem.alt_dem.min()) == 100 and int(dem.alt_dem.max()) == 100
+    assert "DEM_FILE_UNREADABLE" in {e.code for e in said}, "and the file is named"
+
+    # but when his folder *is* the relief, giving way would mean a flat tile: still refused,
+    # with words about his folder rather than about the X-Plane installer
+    with pytest.raises(OsxpError) as exc:
+        Dem.build(tile, opts, custom_dem=str(folder), on_event=said.append)
+    assert exc.value.code == "DEM_TILE_UNAVAILABLE"
+    assert ".hgt" in exc.value.remedy and "N43E005" in exc.value.remedy
