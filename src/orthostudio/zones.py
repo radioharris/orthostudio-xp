@@ -1192,6 +1192,48 @@ def zone_textures(zone: Zone, tile: TileRef) -> int:
     return len(found)
 
 
+def zone_list_raising_nothing(
+    zone_list: Iterable[Sequence[Any]], tile: TileRef, mesh_zl: int
+) -> list[int]:
+    """Which entries of a tile's ``zone_list`` no mesh cell will take, by their index.
+
+    A zone's **level** is read at the centre of each mesh cell (``dsf/zones.py``, a port of
+    Ortho4XP's ``zone_list_to_ortho_dico``), and a cell is about 850 m at ``mesh_zl`` 19. A zone
+    finer than that holds no centre and raises nothing, while the map draws the shape that was
+    drawn and the estimate charges for the textures it covers: a user set a 300 m band to a
+    sharper level, built, and saw no change (2026-09-23). Told before the build, it costs him
+    nothing; told after, it costs him the build.
+
+    The colours of a zone follow its ring itself and have no such limit, so a zone named here is
+    not useless: it is its level that does nothing.
+    """
+    from orthostudio.imagery.grid import texture_at, tile_to_wgs84
+
+    first = texture_at(tile.lat + 1, tile.lon, mesh_zl, "")
+    last = texture_at(tile.lat, tile.lon + 1, mesh_zl, "")
+    centres = [
+        tile_to_wgs84(til_x + 8, til_y + 8, mesh_zl)
+        for til_x in range(first.til_x, last.til_x + 1, 16)
+        for til_y in range(first.til_y, last.til_y + 1, 16)
+    ]
+    points = shapely.points([(lon, lat) for lat, lon in centres])
+    idle: list[int] = []
+    for index, entry in enumerate(zone_list):
+        try:
+            coords, _zl, _provider = entry
+            ring = [(float(x), float(y)) for x, y in zip(coords[1::2], coords[::2], strict=True)]
+        except (TypeError, ValueError):
+            continue  # an entry nobody can read is another error's business
+        if len(ring) < MIN_VERTICES:
+            continue
+        shape: BaseGeometry = Polygon(ring)
+        if not shape.is_valid:
+            shape = make_valid(shape)
+        if not shapely.intersects(shape, points).any():
+            idle.append(index)
+    return idle
+
+
 def zone_list_textures(zone_list: Iterable[Sequence[Any]], tile: TileRef) -> set[TextureId]:
     """The textures a ``zone_list`` adds to ``tile``: for each entry, the textures at its zoom
     level whose square overlaps the entry clipped to the tile (an upper bound of what the DSF

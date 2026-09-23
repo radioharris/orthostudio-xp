@@ -356,6 +356,27 @@ def make_specs(
     return specs
 
 
+def _a_zone_raises_nothing(specs: Sequence[BuildSpec]) -> bool:
+    """Whether any zone of the plan is finer than the grid its detail level works on.
+
+    A zone's level is read at the centre of each mesh cell, about 850 m at ``mesh_zl`` 19, which
+    is Ortho4XP's rule and stays. A zone thinner than that raises nothing, and the map draws it
+    and the estimate charges for it all the same (``map-zones.md``).
+    """
+    from orthostudio.zones import zone_list_raising_nothing
+
+    for spec in specs:
+        config = spec.tile_config()
+        zone_list = config.get("zone_list") or ()
+        if not zone_list:
+            continue
+        mesh_zl = int(config.get("mesh_zl") or 19)
+        with contextlib.suppress(Exception):  # an estimate never fails for a warning
+            if zone_list_raising_nothing(zone_list, spec.tile, mesh_zl):
+                return True
+    return False
+
+
 def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:
     """The two-line answer of spec section 4 around ``Estimate.to_dict()``."""
     doc = est.to_dict()
@@ -368,6 +389,9 @@ def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:
     warnings: list[str] = []
     if not est.disk_ok:
         warnings.append("SYS_DISK_FULL")
+    if _a_zone_raises_nothing(specs):
+        # told before the build it costs nothing; told after, it costs the build (2026-09-23)
+        warnings.append("ZONE_TOO_SMALL")
     return {
         "network": {
             "requests": requests,

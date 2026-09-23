@@ -9,6 +9,7 @@ held no cell centre (2026-09-23). The rule stays; the silence does not.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from orthostudio.dsf.params import DsfParams
 from orthostudio.dsf.zones import texture_map
@@ -70,3 +71,37 @@ def test_the_one_that_is_too_small_is_named_among_several(caplog) -> None:  # ty
     said = [r.getMessage() for r in caplog.records if "raises nothing" in r.getMessage()]
     assert len(said) == 1 and "level 17" in said[0]
     assert "zone 2 of the list" in said[0], said[0]
+
+
+def test_the_plan_says_it_before_the_build(tmp_path: Path) -> None:
+    """Told before the build it costs nothing; told after, it costs the build. The warning rides
+    with the estimate, beside the one about a full disk."""
+    from orthostudio.api.specs import _a_zone_raises_nothing
+    from orthostudio.pipeline.build import BuildSpec
+
+    def spec(zone_list: list[tuple[list[float], int, str]]) -> BuildSpec:
+        return BuildSpec(
+            tile=TILE,
+            provider="BI",
+            zl=16,
+            out_dir=tmp_path,
+            config={"zone_list": zone_list, "mesh_zl": 19},
+        )
+
+    thin = _between_two_cell_centres()
+    wide = _band(46.4, 6.4, 0.2, 0.2)
+    assert _a_zone_raises_nothing([spec([(thin, 18, "BI")])])
+    assert not _a_zone_raises_nothing([spec([(wide, 18, "BI")])])
+    assert not _a_zone_raises_nothing([spec([])])
+    assert _a_zone_raises_nothing([spec([(wide, 18, "BI")]), spec([(thin, 17, "BI")])])
+
+
+def test_the_warning_has_words_and_a_remedy_in_both_languages() -> None:
+    from pathlib import Path as _Path
+
+    from orthostudio.errors import OsxpError
+
+    said = OsxpError("ZONE_TOO_SMALL")
+    assert "changes nothing" in said.message and "colours still apply" in said.remedy
+    i18n = (_Path(__file__).resolve().parents[1] / "src/orthostudio/ui/i18n.js").read_text("utf-8")
+    assert "ZONE_TOO_SMALL:" in i18n and "niveau ne change rien" in i18n
