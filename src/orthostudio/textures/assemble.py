@@ -86,7 +86,14 @@ def _open_image(data: bytes) -> Image.Image:
         im = Image.open(io.BytesIO(data))
         im.load()
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
-        raise OsxpError("IMG_TILE_CORRUPTED", context={"reason": str(exc)}) from exc
+        # the decoder is given bytes and nothing else: the source and the chunk belong to the
+        # caller, so it says what it knows rather than naming them and leaving them empty
+        raise OsxpError(
+            "IMG_TILE_CORRUPTED",
+            context={"reason": str(exc)},
+            message=f"A piece of imagery did not decode ({exc}).",
+            remedy="It is fetched again; if it keeps happening the source is sending bad data.",
+        ) from exc
     return im
 
 
@@ -102,6 +109,11 @@ def decode_tile(data: bytes) -> np.ndarray:
         raise OsxpError(
             "IMG_TILE_CORRUPTED",
             context={"reason": f"chunk is {im.size[0]}x{im.size[1]}, expected {CHUNK}x{CHUNK}"},
+            message=(
+                f"A piece of imagery is {im.size[0]}x{im.size[1]} where {CHUNK}x{CHUNK} was "
+                "expected."
+            ),
+            remedy="It is fetched again; if it keeps happening the source is sending bad data.",
         )
     if im.mode != "RGB":
         im = im.convert("RGB")

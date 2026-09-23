@@ -445,7 +445,9 @@ def _walk_border(topo: CoastTopology, params: CoastParams, tile: TileRef) -> lis
             count += 1
             next_coord = encode_to_next(next_coord, new_way, remove_coords)
             if count == params.max_border_walk:
-                raise OsxpError("OSM_COAST_ORIENTATION", context={"steps": count})
+                raise OsxpError(
+                    "OSM_COAST_ORIENTATION", context={"tile": tile.name, "steps": count}
+                )
         if new_way:
             bdpolys.append(np.concatenate(new_way))
         for coord in remove_coords:

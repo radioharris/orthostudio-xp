@@ -308,3 +308,61 @@ def test_any_text_context_yields_valid_json(context: dict[str, object]) -> None:
     err = OsxpError("SYS_INTERNAL_ERROR", context=context)
     payload = json.loads(err.to_json())
     assert payload["context"] == err.context
+
+
+def test_every_error_supplies_what_its_words_need() -> None:
+    """A card once read "OSM coastline of tile {tile} has a way with water on the wrong side":
+    the program showing a user its own template, because the raise site did not pass the tile
+    (found in review, 2026-09-23).
+
+    The formatter leaves a gap visible on purpose, so this reads the source instead and says
+    which site forgot what. A site that writes its own ``message`` and ``remedy`` is its own
+    business, and one that builds its context elsewhere cannot be read from here; everything
+    that names a code and spells its context out is checked.
+    """
+    import ast
+    import string
+    from pathlib import Path
+
+    formatter = string.Formatter()
+
+    def named(template: str) -> set[str]:
+        return {field for _, field, _, _ in formatter.parse(template or "") if field}
+
+    src = Path(__file__).resolve().parents[1] / "src"
+    forgotten: list[str] = []
+    for path in sorted(src.rglob("*.py")):
+        tree = ast.parse(path.read_text("utf-8"), str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            called = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            first = node.args[0]
+            if called != "OsxpError" or not isinstance(first, ast.Constant):
+                continue
+            spec = REGISTRY.get(str(first.value))
+            if spec is None:
+                continue
+            words = {k.arg: k.value for k in node.keywords}
+            if "message" in words and "remedy" in words:
+                continue
+            context = words.get("context")
+            if context is not None and not isinstance(context, ast.Dict):
+                continue  # built somewhere else: not readable from here
+            given = set()
+            if isinstance(context, ast.Dict):
+                if any(not isinstance(k, ast.Constant) for k in context.keys):
+                    continue
+                given = {str(k.value) for k in context.keys}  # type: ignore[union-attr]
+            wanted: set[str] = set()
+            if "message" not in words:
+                wanted |= named(spec.message)
+            if "remedy" not in words:
+                wanted |= named(spec.remedy)
+            if missing := sorted(wanted - given):
+                where = path.relative_to(src.parent)
+                forgotten.append(f"{where}:{first.lineno} {spec.code} needs {missing}")
+
+    assert not forgotten, "these raise sites would show a user a placeholder:\n" + "\n".join(
+        forgotten
+    )

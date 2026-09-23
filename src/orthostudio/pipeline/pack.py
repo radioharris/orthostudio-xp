@@ -353,7 +353,11 @@ def write_pack(
     if not dsf_src.is_file():
         raise OsxpError(
             "MESH_INPUT_MISSING",
-            context={"path": str(dsf_src), "reason": "DSF artefact has no DSF file"},
+            context={
+                "tile": tile.name,
+                "path": str(dsf_src),
+                "reason": "DSF artefact has no DSF file",
+            },
         )
     dsf_dest = pack_dir / tile.dsf_relpath
     dsf_dest.parent.mkdir(parents=True, exist_ok=True)

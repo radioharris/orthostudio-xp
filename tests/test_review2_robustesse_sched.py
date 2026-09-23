@@ -21,7 +21,7 @@ import pytest
 from orthostudio.graph import Rule, RuleParams, Store
 from orthostudio.graph.store import _pid_alive
 from orthostudio.model import ArtifactRef
-from orthostudio.sched import Event, Failed, Node, NodeContext, Scheduler, Started
+from orthostudio.sched import Done, Event, Failed, Node, NodeContext, Scheduler, Started
 
 # -- fake rules (module level) ---------------------------------------------------------------------
 
@@ -146,19 +146,22 @@ def test_wrong_key_twin_fails_with_a_cause(store: Store) -> None:
     events: list[Event] = []
     asyncio.run(sched.run(["t1", "t2"], on_event=events.append))
     failed = {e.node_id: e for e in events if isinstance(e, Failed)}
-    assert set(failed) == {"t1", "t2"}
-    # The two share a key, so one runs and meets the fault and the other waits on it and is
-    # failed with it as the cause. Which of the two runs is the scheduler's business and changes
-    # with the load, and so does whether the second was admitted before the first had finished:
-    # if it was not, there was nothing in flight to wait on and it meets the same fault on its
-    # own. Naming t1 as the one that runs made this fail twice in loaded runs (2026-09-23).
     met = [n for n, e in failed.items() if e.error.context.get("type") == "KeyMismatch"]
     assert met, {n: e.error.to_dict() for n, e in failed.items()}
+    for name in met:
+        assert failed[name].cause is None, failed[name].error.to_dict()
+
+    # The twin shares its key, so it ends one of two ways, and which one is a matter of timing:
+    # it waits on the node in flight and is failed with it as the cause, or it finds the artefact
+    # already in the store and is a hit. Both are right here, because ``run_wrong_key`` commits
+    # the artefact correctly and then reports a key that is not the one it committed: the files
+    # really are there. Asking for both to fail made this fail nine times in sixty under load
+    # (measured 2026-09-23).
     for name, event in failed.items():
-        if name in met:
-            assert event.cause is None, event.error.to_dict()
-        else:
+        if name not in met:
             assert event.cause in met, event.error.to_dict()
+    ended = set(failed) | {e.node_id for e in events if isinstance(e, Done)}
+    assert ended == {"t1", "t2"}, "neither of them is left in the air"
 
 
 # -- checks that pass (what the review confirmed) -----------------------------------------------

@@ -294,7 +294,14 @@ def merge_overlapping_polygons(
         labels, n_components = _overlap_components(ranked)
     except (ValueError, shapely.errors.ShapelyError) as exc:  # pragma: no cover - defensive
         if on_event is not None:
-            on_event(OsxpError("OSM_WATER_MERGE_FAILED", context={"reason": str(exc)}))
+            on_event(
+                OsxpError(
+                    "OSM_WATER_MERGE_FAILED",
+                    context={"reason": str(exc)},
+                    message=f"Water bodies could not be merged ({exc}); they are kept separate.",
+                    remedy="Nothing to do; the lakes and rivers are built one by one.",
+                )
+            )
         return [p for p in ranked]
     # A component takes the rank of its last member: every new member of a group deletes the
     # group's entries and appends the merged parts at the end of ``dico_pol`` (:679-691).
