@@ -4867,3 +4867,23 @@ def test_the_map_is_told_when_its_box_changes() -> None:
     # and it is set up where the map is made, on that map's element
     assert map_js.index("function createMap") < map_js.index(watched)
     assert map_js.index(watched) < map_js.index("function refreshAirports")
+
+
+def test_a_point_put_on_the_texture_grid_says_so_and_how_far() -> None:
+    """Ctrl+Shift+click puts a point on the texture grid rather than under the pointer, and a
+    texture is about seven kilometres a side at ZL16: a user clicked in the middle of his
+    village and watched two points appear at the far corners of the map, with nothing saying
+    why (2026-09-24). The shortcut list had always said it; the moment it happens had not."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index("function draftPoint(")
+    body = map_js[start : map_js.index("\n  function ", start + 1)]
+    assert "snapToTextureCorner" in body and 't("draw.snapped"' in body
+    assert "routeLength(" in body, "it says how far the point moved"
+
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        words = tables[lang]["draw.snapped"]
+        for field in ("{mod}", "{shift}", "{km}"):
+            assert field in words, (lang, field)
+        # and it says what to do instead, since the two ways differ only by the modifier
+        assert words.count("{mod}") == 2, lang

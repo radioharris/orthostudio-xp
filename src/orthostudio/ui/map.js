@@ -12,7 +12,7 @@
 // shape being drawn live here.
 
 import { adjustImageData, photoValues } from "./colour.js";
-import { fmtGround, fmtMB, t } from "./i18n.js";
+import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
 import { sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -42,6 +42,7 @@ import {
   polygonIsSimple,
   round9,
   samePolygon,
+  routeLength,
   snapToTextureCorner,
   textureSquare,
   tileName,
@@ -932,7 +933,23 @@ export function createPlanMap(ctx) {
       flashBanner();
       return;
     }
-    const point = snapped ? snapToTextureCorner(wrapLon(lon), clampLat(lat), zs.nextZl) : [round9(wrapLon(lon)), round9(clampLat(lat))];
+    const here = [round9(wrapLon(lon)), round9(clampLat(lat))];
+    const point = snapped ? snapToTextureCorner(wrapLon(lon), clampLat(lat), zs.nextZl) : here;
+    // A texture is about seven kilometres a side at ZL16, so a point put on its grid can land
+    // kilometres from the click, and nothing said so: a user clicked in the middle of his
+    // village and watched two points appear at the far corners of the map (2026-09-24). The
+    // shortcut list has always said it; the moment it happens did not.
+    if (snapped) {
+      const km = routeLength([
+        { lat: here[1], lon: here[0] },
+        { lat: point[1], lon: point[0] },
+      ]);
+      if (km >= 0.05) {
+        ctx.toast(
+          t("draw.snapped", { mod: keyMod, shift: keyShift(), km: fmtNum(km, 1) }),
+        );
+      }
+    }
     const last = d.vertices[d.vertices.length - 1];
     if (last && last[0] === point[0] && last[1] === point[1]) return;
     if (d.vertices.length >= MAX_VERTICES) {
