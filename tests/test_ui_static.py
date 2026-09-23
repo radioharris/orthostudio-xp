@@ -8,6 +8,7 @@ geometry (``geo.js``) are run under ``node`` (skipped when ``node`` is missing).
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -4734,3 +4735,46 @@ console.log(JSON.stringify({ a: press(["ends", "along"]), b: press(["along", "en
     assert got["a"]["ends"] == 16 and got["a"]["along"] == 14
     assert got["b"]["ends"] == 16, "the ends keep step 1's level whichever button came first"
     assert got["b"]["along"] == 14
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_route_over_the_pacific_is_drawn_where_the_map_can_go() -> None:
+    """The line's longitude runs on past 180, which is how a leg goes the short way; drawn there,
+    Tokyo sat at -220, outside the bounds the map pans to, so its ring could not be reached and
+    the view could not be fitted to it (found in review, 2026-09-23). The line is cut at the
+    meridian and continues on the other side, the way a chart draws it."""
+    ksfo_rjtt = [{"lat": 37.6, "lon": -122.4}, {"lat": 35.8, "lon": 140.4}]
+    answer = _node_json("map.js", f"m.routePieces({json.dumps(ksfo_rjtt)})")
+    assert len(answer["pieces"]) == 2, "it is cut where it crosses the meridian"
+    assert [round(p[1]) for p in answer["at"]] == [-122, 140]
+    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
+    for piece in answer["pieces"]:
+        assert all(-180 <= lon <= 180 for _lat, lon in piece)
+    # it leaves by one edge of the meridian and comes back by the other, at the same latitude
+    leaves, comes_back = answer["pieces"][0][-1], answer["pieces"][1][0]
+    assert {leaves[1], comes_back[1]} == {-180, 180}
+    assert leaves[0] == comes_back[0]
+
+    # and the unrolled line still goes the short way, which is what the buttons count
+    line = _node_json("map.js", f"m.routeLine({json.dumps(ksfo_rjtt)})")
+    assert [round(p[1]) for p in line] == [-122, -220]
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_route_that_goes_round_the_world_keeps_every_leg_the_short_way() -> None:
+    """One correction of a turn is not enough once the longitude has run on: from Geneva east to
+    Tokyo the accumulated longitude reaches 499, and the next leg was then taken the long way."""
+    round_world = [
+        {"lat": 46, "lon": 6},
+        {"lat": 40, "lon": 116},
+        {"lat": 21, "lon": -158},
+        {"lat": 37, "lon": -122},
+        {"lat": 51, "lon": 0},
+        {"lat": 35, "lon": 139},
+        {"lat": 46, "lon": 6},
+    ]
+    line = _node_json("map.js", f"m.routeLine({json.dumps(round_world)})")
+    steps = [round(b[1] - a[1]) for a, b in itertools.pairwise(line)]
+    assert all(abs(step) <= 180 for step in steps), steps
+    answer = _node_json("map.js", f"m.routePieces({json.dumps(round_world)})")
+    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])

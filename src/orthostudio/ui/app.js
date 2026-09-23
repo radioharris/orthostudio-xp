@@ -3001,7 +3001,13 @@ function renderRouteLevels(maxZl, lat) {
     const group = id === "route-ends-zl" ? routeEndTiles() : routeAlongTiles();
     const chosen = group.filter((name) => state.tiles.includes(name));
     sel.hidden = !chosen.length;
-    if (!chosen.length) continue;
+    if (!chosen.length) {
+      // emptied while it is hidden: it kept the level of an earlier selection, and the button
+      // beside it reads its value first, so it offered that one again (found in review,
+      // 2026-09-23)
+      clear(sel);
+      continue;
+    }
     const levels = [...new Set(chosen.map(tileZl))];
     const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl);
     clear(sel);

@@ -213,6 +213,71 @@ export function readZonesDocument(doc) {
  * onZonesChanged()}. api() rejects with an error carrying the HTTP `status` when the engine
  * answered, without one when it could not be reached.
  */
+/**
+ * The route's points with their longitudes unrolled, so that a leg crossing the antimeridian is
+ * drawn the short way. Tokyo to Honolulu is 62 degrees eastward over the Pacific, which is what
+ * ``tilesAlong`` counts and what the two buttons offer; drawn from the raw longitudes it went
+ * the other way, over Asia and the Atlantic, and the map moved to the Gulf of Guinea to show it
+ * (2026-09-23). Leaflet draws a longitude past 180 where it belongs.
+ *
+ * A leg is brought within half a turn however far the longitudes have run on, so a route that
+ * goes round the world more than once keeps going the short way at every leg.
+ */
+export function routeLine(points) {
+  let lon = points[0].lon;
+  return points.map((p, i) => {
+    if (i) {
+      let step = p.lon - lon;
+      while (step > 180) step -= 360;
+      while (step < -180) step += 360;
+      lon += step;
+    }
+    return [p.lat, lon];
+  });
+}
+
+/**
+ * The route as pieces that all lie inside the world, and where each of its points is drawn.
+ *
+ * The unrolled line runs past 180, which is how it goes the short way; drawn there, San Francisco
+ * to Tokyo puts Tokyo at longitude -220, outside the bounds the map will pan to, so its ring
+ * could not be reached and the view could not be fitted to it (found in review, 2026-09-23). The
+ * line is cut where it crosses the meridian and continues on the other side, the way a chart
+ * draws it, and every point is drawn where the map can go.
+ */
+export function routePieces(points) {
+  const line = routeLine(points);
+  const pieces = [];
+  const at = [];
+  let piece = [];
+  let shift = -360 * Math.round(line[0][1] / 360);
+  at.push([line[0][0], line[0][1] + shift]);
+  piece.push(at[0]);
+  for (let i = 1; i < line.length; i += 1) {
+    const [lat, lon] = line[i];
+    const [prevLat] = line[i - 1];
+    let a = line[i - 1][1] + shift;
+    let latA = prevLat;
+    let b = lon + shift;
+    while (b > 180 || b < -180) {
+      const edge = b > 180 ? 180 : -180;
+      const part = (edge - a) / (b - a);
+      const latAt = latA + (lat - latA) * part;
+      piece.push([latAt, edge]);
+      pieces.push(piece);
+      piece = [[latAt, -edge]];
+      shift += b > 180 ? -360 : 360;
+      a = -edge;
+      latA = latAt;
+      b = lon + shift;
+    }
+    at.push([lat, b]);
+    piece.push(at[i]);
+  }
+  pieces.push(piece);
+  return { pieces, at };
+}
+
 export function createPlanMap(ctx) {
   const { h, clear } = ctx;
   const L = globalThis.L;
@@ -1311,37 +1376,19 @@ export function createPlanMap(ctx) {
    * at the points between. It is an aid to choosing squares, so it is drawn over the grid and
    * takes no pointer event; nothing of it is built or saved with the tiles.
    */
-  /**
-   * The route's points with their longitudes unrolled, so that a leg crossing the antimeridian is
-   * drawn the short way. Tokyo to Honolulu is 62 degrees eastward over the Pacific, which is what
-   * ``tilesAlong`` counts and what the two buttons offer; drawn from the raw longitudes it went
-   * the other way, over Asia and the Atlantic, and the map moved to the Gulf of Guinea to show it
-   * (2026-09-23). Leaflet draws a longitude past 180 where it belongs.
-   */
-  function routeLine(points) {
-    let lon = points[0].lon;
-    return points.map((p, i) => {
-      if (i) {
-        let step = p.lon - lon;
-        if (step > 180) step -= 360;
-        if (step < -180) step += 360;
-        lon += step;
-      }
-      return [p.lat, lon];
-    });
-  }
-
   function drawRoute() {
     if (!map || !layers.route) return;
     layers.route.clearLayers();
     const points = (ctx.route?.() || {}).points || [];
     if (points.length < 2) return;
-    const line = routeLine(points);
-    L.polyline(line, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
-    L.polyline(line, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
+    const { pieces, at } = routePieces(points);
+    for (const piece of pieces) {
+      L.polyline(piece, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
+      L.polyline(piece, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
+    }
     points.forEach((p, i) => {
       const end = i === 0 || i === points.length - 1;
-      L.circleMarker(line[i], {
+      L.circleMarker(at[i], {
         pane: "osxpRoute",
         radius: end ? 5 : 3,
         weight: 2,
@@ -2451,7 +2498,7 @@ export function createPlanMap(ctx) {
       if (!fit || !map || points.length < 2) return;
       // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map
       // (measured 2026-09-19), while the zoom it computes is right.
-      const bounds = L.latLngBounds(routeLine(points));
+      const bounds = L.latLngBounds(routePieces(points).at);
       const zoom = Math.min(9, map.getBoundsZoom(bounds, false, L.point(60, 60)));
       map.setView(bounds.getCenter(), zoom);
     },
