@@ -21,7 +21,7 @@ from orthostudio.imagery.chunks import ChunkContainer
 from orthostudio.imagery.grid import TextureId
 from orthostudio.pipeline.parents import read_parents_blob
 from orthostudio.textures.assemble import assemble_texture_detailed, parent_fallback
-from orthostudio.textures.colour import adjust_photo, photo_unchanged
+from orthostudio.textures.colour import adjust_photo, adjust_photo_inside, photo_unchanged
 from orthostudio.textures.encode import EncoderUnavailableError, encode_dds
 from orthostudio.textures.imprint import imprint, load_mask, mask_crop
 
@@ -61,12 +61,25 @@ class TextureDdsParams(RuleParams):
     """Colours of the photo (``textures/colour.py``, a user asked 2026-09-18). Zero changes
     nothing, and :meth:`canonical` then leaves the three out of the key, so every texture built
     before they existed stays a hit."""
+    photo_shapes: tuple[tuple[tuple[float, ...], float, float, float], ...] = ()
+    """Colours of the zones that reach into this texture, each as ``(ring, brightness, contrast,
+    saturation)`` where ``ring`` is ``x0, y0, x1, y1, ...`` in the texture's own pixels.
+
+    A zone used to colour whole texture files, the one holding its centre: a zone smaller than a
+    texture (6.4 km at ZL16) then changed nothing at all, and said nothing either (a user,
+    2026-09-23). The colours are a calculation on the pixels, so they follow the shape drawn, with
+    a soft edge so the join does not show."""
+    photo_feather_px: int = 24
+    """Width of that soft edge, about 40 m at ZL16 in mid-latitudes."""
 
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if photo_unchanged(self.photo_brightness, self.photo_contrast, self.photo_saturation):
             for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
                 doc.pop(name, None)
+        if not self.photo_shapes:  # every texture built before zones had a shape stays a hit
+            doc.pop("photo_shapes", None)
+            doc.pop("photo_feather_px", None)
         return doc
 
 
@@ -123,6 +136,15 @@ def texture_dds(ctx: RunContext) -> None:
         contrast=params.photo_contrast,
         saturation=params.photo_saturation,
     )
+    for ring, brightness, contrast, saturation in params.photo_shapes:
+        rgb = adjust_photo_inside(
+            rgb,
+            ring,
+            brightness=brightness,
+            contrast=contrast,
+            saturation=saturation,
+            feather_px=params.photo_feather_px,
+        )
     t1 = time.perf_counter()
     mask_input = ctx.inputs["mask"]
     image: np.ndarray

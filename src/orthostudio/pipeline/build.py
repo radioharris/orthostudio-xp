@@ -55,7 +55,7 @@ from orthostudio.graph import (
     key_for,
     rule,
 )
-from orthostudio.imagery.grid import TextureId, tile_to_wgs84
+from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import detect_xplane, global_scenery_dir
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
@@ -157,7 +157,7 @@ __all__ = [
     "build_tiles",
     "declare",
     "parse_overlay_setting",
-    "photo_zone_colours",
+    "photo_zone_shapes",
     "resolve_global_scenery",
     "run_osm_phase",
     "source_ref",
@@ -884,39 +884,42 @@ def textures_progress_message(
     return message
 
 
-def photo_zone_colours(
-    photo_zones: Sequence[Any], textures: Iterable[TextureId]
-) -> dict[TextureId, tuple[float, float, float]]:
-    """The colours of the textures whose centre falls in a zone naming its own.
+TEXTURE_PX = 4096
+"""Side of a texture in pixels: the ring of a zone is given to the rule in these."""
+
+
+def photo_zone_shapes(
+    photo_zones: Sequence[Any], texture: TextureId
+) -> tuple[tuple[tuple[float, ...], float, float, float], ...]:
+    """The zones that reach into ``texture``, their rings in that texture's own pixels.
 
     ``photo_zones`` is what ``zones.photo_zone_entries`` produced (``[[lat0, lon0, ...],
-    brightness, contrast, saturation]``, in document order). A texture belongs to the **first**
-    zone holding its centre, as the zoom level of a texture is the one of the zone at its centre
-    (``dsf/zones.py``): a texture straddling two zones cannot have two colours, since it is one
-    file (a user asked for colours per zone, 2026-09-18). Textures absent from the result take
-    the tile's own colours.
+    brightness, contrast, saturation]``). The colours are applied to the pixels inside the ring
+    (``textures/colour.py``), so a zone of any size does what it looks like it does: colouring
+    whole texture files by the zone at their centre left a zone smaller than a texture (6.4 km at
+    ZL16) with no effect at all, and no word about it (a user, 2026-09-23).
     """
     if not photo_zones:
-        return {}
-    from shapely.geometry import Point, Polygon
+        return ()
+    from orthostudio.imagery.grid import TEXTURE_TILES, wgs84_to_tile
 
-    shapes = []
+    out: list[tuple[tuple[float, ...], float, float, float]] = []
+    scale = TEXTURE_PX / TEXTURE_TILES
     for entry in photo_zones:
         ring, brightness, contrast, saturation = entry
-        coords = [(float(ring[i + 1]), float(ring[i])) for i in range(0, len(ring) - 1, 2)]
-        if len(coords) >= 3:
-            shapes.append(
-                (Polygon(coords), (float(brightness), float(contrast), float(saturation)))
-            )
-    out: dict[TextureId, tuple[float, float, float]] = {}
-    for texture in textures:
-        lat, lon = tile_to_wgs84(texture.til_x + 8, texture.til_y + 8, texture.zl)
-        centre = Point(lon, lat)
-        for shape, colours in shapes:
-            if shape.contains(centre):
-                out[texture] = colours
-                break
-    return out
+        points: list[float] = []
+        inside = False
+        for i in range(0, len(ring) - 1, 2):
+            lat, lon = float(ring[i]), float(ring[i + 1])
+            x, y = wgs84_to_tile(lat, lon, texture.zl)
+            px = (x - texture.til_x) * scale
+            py = (y - texture.til_y) * scale
+            points.extend((px, py))
+            near = -scale <= px <= TEXTURE_PX + scale and -scale <= py <= TEXTURE_PX + scale
+            inside = inside or near
+        if inside and len(points) >= 6:
+            out.append((tuple(points), float(brightness), float(contrast), float(saturation)))
+    return tuple(out)
 
 
 def _tile_textures(ctx: RunContext) -> None:
@@ -934,7 +937,11 @@ def _tile_textures(ctx: RunContext) -> None:
         lookup = index if len(index) else None
     (ctx.out / "textures").mkdir(exist_ok=True)
     (ctx.out / "terrain").mkdir(exist_ok=True)
-    photo_by_texture = photo_zone_colours(params.photo_zones, [j.texture for j in jobs])
+    shapes_by_texture = {
+        job.texture: shapes
+        for job in jobs
+        if (shapes := photo_zone_shapes(params.photo_zones, job.texture))
+    }
     groups: dict[tuple[str, int], list[PipelineTextureJob]] = {}
     for job in jobs:
         groups.setdefault((job.texture.provider, job.texture.zl), []).append(job)
@@ -987,7 +994,7 @@ def _tile_textures(ctx: RunContext) -> None:
             photo_brightness=params.photo_brightness,
             photo_contrast=params.photo_contrast,
             photo_saturation=params.photo_saturation,
-            photo_by_texture=photo_by_texture,
+            photo_shapes_by_texture=shapes_by_texture,
             workers=env.workers,
             encoder=params.encoder,
             mip_mode=params.mip_mode,

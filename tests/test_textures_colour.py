@@ -69,26 +69,35 @@ def test_a_neutral_look_keeps_the_key_of_every_texture_built_before() -> None:
     assert {k: v for k, v in softer.items() if not k.startswith("photo_")} == neutral
 
 
-def test_a_zone_gives_its_own_colours_to_the_textures_it_holds() -> None:
-    """Colours per zone (a user asked, 2026-09-18): the zone at the texture's **centre** wins.
+def test_a_zone_colours_the_pixels_it_covers_whatever_its_size() -> None:
+    """A zone used to colour whole texture files, the one holding its centre. A zone smaller than
+    a texture (6.4 km at ZL16) then held no centre, changed nothing, and said nothing either (a
+    user, 2026-09-23). The colours follow the ring now, with a soft edge."""
+    import numpy as np
 
-    A texture is one file, so it cannot carry two looks; the zoom level of a texture is already
-    decided by the zone at its centre (``dsf/zones.py``), and the colours follow the same rule.
-    """
     from orthostudio.imagery.grid import texture_at
-    from orthostudio.pipeline.build import photo_zone_colours
+    from orthostudio.pipeline.build import photo_zone_shapes
+    from orthostudio.textures.colour import adjust_photo_inside
 
-    north_west = [46.5, 6.0, 46.5, 6.5, 47.0, 6.5, 47.0, 6.0, 46.5, 6.0]
-    zones = [[north_west, -0.06, -0.03, -0.3]]
-    inside = texture_at(46.8, 6.2, 16, "BI")
-    outside = texture_at(46.2, 6.8, 16, "BI")
-    colours = photo_zone_colours(zones, [inside, outside])
-    assert colours[inside] == (-0.06, -0.03, -0.3)
-    assert outside not in colours  # the tile's own colours apply there
-    assert photo_zone_colours([], [inside]) == {}  # no zone, nothing to say
-    # the first zone holding the centre wins, as in the zone_list
-    second = [[north_west, 0.0, 0.0, -0.15]]
-    assert photo_zone_colours(zones + second, [inside])[inside] == (-0.06, -0.03, -0.3)
+    # a zone of about 4 km inside one texture: the case that did nothing at all
+    ring = [46.62, 6.52, 46.62, 6.58, 46.65, 6.58, 46.65, 6.52, 46.62, 6.52]
+    texture = texture_at(46.63, 6.55, 16, "BI")
+    (shape,) = photo_zone_shapes([[ring, 0.06, 0.0, 0.0]], texture)
+    assert shape[1:] == (0.06, 0.0, 0.0)
+    assert len(shape[0]) == len(ring)  # the ring, in the texture's own pixels
+
+    # a texture the zone does not reach keeps nothing of it
+    assert photo_zone_shapes([[ring, 0.06, 0.0, 0.0]], texture_at(40.0, 0.0, 16, "BI")) == ()
+    assert photo_zone_shapes([], texture) == ()
+
+    # and the pixels inside are the ones that change
+    flat = np.full((256, 256, 3), 100, dtype=np.uint8)
+    square = [64, 64, 192, 64, 192, 192, 64, 192, 64, 64]
+    out = adjust_photo_inside(flat, square, brightness=0.5, feather_px=8)
+    assert out[128, 128][0] == 150  # inside
+    assert out[10, 10][0] == 100  # outside, untouched
+    assert 100 < out[64, 128][0] < 150  # the soft edge, so the join does not show
+    assert adjust_photo_inside(flat, square, brightness=0.0).tobytes() == flat.tobytes()
 
 
 def test_the_zones_of_a_tile_carry_their_look_to_the_build() -> None:

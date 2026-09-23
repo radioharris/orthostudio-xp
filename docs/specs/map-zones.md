@@ -51,10 +51,12 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 - `photo`: `{look, brightness, contrast, saturation}`, the colours of the photos inside the zone.
   `look` `null` inherits the tile's, `custom` uses the three numbers, the named looks are
   `config.overrides.PHOTO_LOOKS` (a user asked for colours per zone and per tile, 2026-09-18). `zones.photo_zone_entries` clips
-  the zones that name one into the tile's `photo_zones` setting, and the textures stage gives
-  each texture the colours of the **first** zone holding its centre
-  (`pipeline.build.photo_zone_colours`): a texture is one file, so it cannot carry two looks, and
-  the rule is the one the zoom level already follows. A tile with no such zone keeps the artefact
+  the zones that name one into the tile's `photo_zones` setting, and the textures stage applies
+  those colours **to the pixels inside the ring** (`pipeline.build.photo_zone_shapes` puts the
+  ring in the texture's own pixels, `textures.colour.adjust_photo_inside` paints it, with a soft
+  edge of `photo_feather_px` = 24 px, about 40 m at ZL16). Until 2026-09-23 a texture took the
+  colours of the zone holding its **centre**: a zone smaller than a texture (6.4 km at ZL16) held
+  no centre, changed nothing at all, and said nothing either (a user). A tile with no such zone keeps the artefact
   key it had (`TileTexturesParams.canonical`).
 
 The document also holds **what each tile carries of its own**, which is where a pilot sets it:

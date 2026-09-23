@@ -539,8 +539,8 @@ export function photoKey(photo) {
  * ``zones`` is the document's list and ``tiles`` its squares (``{name: {photo}}``). The squares
  * come first; the zones follow, from the last of the document to the first, since a zone wins
  * inside its polygon and, where two overlap, the one higher in the list wins -- the rule a build
- * follows, a texture taking the colours of the first zone holding its centre
- * (``build.photo_zone_colours``). Painting the squares last hid the colours of every zone drawn
+ * follows, which paints a zone's colours on the ground it covers
+ * (``build.photo_zone_shapes``). Painting the squares last hid the colours of every zone drawn
  * inside one (a user, 2026-09-18). Each region is ``{ring: [[lon, lat], ...], photo, square?}``.
  */
 export function colouredRegions(zones, tiles) {

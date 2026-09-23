@@ -835,8 +835,9 @@ carries its own colours is repainted on the map itself: a `L.GridLayer` on the `
 region's polygon, so only what carries its own colours changes and the rest stays the imagery
 underneath. The squares are painted first and the zones after, from the last of the document to
 the first, since what is painted last is what a build would apply: a zone wins inside its polygon,
-and where two overlap the one higher in the list wins (`build.photo_zone_colours` gives a texture
-the colours of the first zone holding its centre). Painting the squares last hid the colours of
+and where two overlap the one higher in the list wins, which is what a build does too
+(`build.photo_zone_shapes` gives each texture the rings that reach it, in its own pixels, and they
+are painted in order). Painting the squares last hid the colours of
 every zone drawn inside one (a user, 2026-09-18). The layer exists only while something carries its own colours, and follows every change of
 the choices, of the zones and of the squares. In the mock mode it paints its own ground image, so
 it can be seen and measured with no network.

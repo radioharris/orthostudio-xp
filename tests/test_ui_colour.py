@@ -91,8 +91,8 @@ def test_the_map_paints_a_zone_over_the_square_it_is_drawn_in() -> None:
 
     A user saw a zone keep the colours of its square (2026-09-18): the squares were painted
     after the zones, covering them. The order must end with what a build applies -- the zone
-    inside its polygon, and, where two overlap, the one higher in the list, since a texture takes
-    the colours of the first zone holding its centre (``build.photo_zone_colours``).
+    inside its polygon, and, where two overlap, the one higher in the list, since a build paints a
+    zone's colours on the ground it covers (``build.photo_zone_shapes``).
     """
     if NODE is None:
         pytest.skip("node is not installed")
