@@ -376,8 +376,10 @@ class LibrarySource:
             if entry is None:
                 return None  # all or nothing: the library does not hold this tile
             size = int(entry.get("bytes", 0) or 0)
-            if size < EMPTY_BYTES and spec.name != "coastline":
-                log.info("%s: %s of %s is empty", self.name, spec.name, tile.name)
+            if size < EMPTY_BYTES:
+                # under this a file holds nothing at all, not even the wrapper of an empty
+                # layer, which is a truncated upload rather than an empty square
+                log.info("%s: %s of %s is a truncated file", self.name, spec.name, tile.name)
                 return None
             if size > MAX_LAYER_BYTES:
                 log.warning("%s: %s of %s is announced at %s bytes", self.name, spec.name,
@@ -432,10 +434,14 @@ class LibrarySource:
         if snap.layer != spec.name or snap.tile.name != tile.name:
             log.warning("%s: %s of %s holds another tile or layer", self.name, spec.name, tile.name)
             return None
-        if snap.is_empty and spec.name != "coastline":
-            # a file large enough to pass the manifest's size check can still hold nothing:
-            # our own empty snapshots weigh 233 to 281 bytes (2026-09-23)
-            log.info("%s: %s of %s holds nothing; the next source takes over", self.name,
+        if snap.is_empty and not announced and spec.name != "coastline":
+            # Emptiness is refused from whoever cannot prove it. A digest that matches does
+            # prove it: this is the file the bake wrote, and a square of Atlantic off the Sahara
+            # really has no road, no airport and no lake, only a coastline. Refusing those sent
+            # every empty square of a continent to the public servers to be told the same thing
+            # (2026-09-23). What emptiness must never mean is a bake cut short, and that is the
+            # coverage polygon's business, not this line's.
+            log.info("%s: %s of %s holds nothing and says so on nobody's word", self.name,
                      spec.name, tile.name)  # fmt: skip
             return None
         if tuple(snap.selectors) != tuple(spec.selectors):

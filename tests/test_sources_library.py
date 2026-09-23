@@ -378,3 +378,84 @@ def test_a_small_file_that_unpacks_to_a_huge_one_is_refused() -> None:
     with pytest.raises(ValueError, match="more than"):
         unpack(blob, limit=1_000_000)
     assert unpack(blob) == b"x" * 50_000_000  # under the real cap it is read as usual
+
+
+# -- emptiness that is the truth ----------------------------------------------------------------
+
+
+def _empty(layer: str) -> OsmSnapshot:
+    snap = _snapshot(layer)
+    return OsmSnapshot(
+        tile=snap.tile,
+        layer=layer,
+        selectors=snap.selectors,
+        query="",
+        mirror=snap.mirror,
+        fetched_at=snap.fetched_at,
+        generator=snap.generator,
+        osm_base="",
+        nodes=(),
+        ways=(),
+        relations=(),
+        digest="e" * 64,
+    )
+
+
+def _library_with_empty(
+    root: Path, layer: str, *, announce_digest: bool = True
+) -> dict[str, bytes]:
+    """A library where one layer really holds nothing, as a square of ocean does."""
+    store = SnapshotStore(root)
+    files: dict[str, dict[str, object]] = {}
+    served: dict[str, bytes] = {}
+    for spec in SPECS:
+        snap = _empty(spec.name) if spec.name == layer else _snapshot(spec.name)
+        path = store.save(snap)
+        rel = str(path.relative_to(root))
+        files[rel] = {
+            "tile": TILE.name,
+            "layer": spec.name,
+            "digest": snap.digest if announce_digest else "",
+            "bytes": path.stat().st_size,
+        }
+        served[rel] = path.read_bytes()
+    served["manifest.json"] = json.dumps(
+        {
+            "format": "osxp-baked-1",
+            "source": "france-osxp.osm.pbf",
+            "extracted": "2026-09-21T00:00:00Z",
+            "road_level": 1,
+            "layers": [s.name for s in SPECS],
+            "tiles": [TILE.name],
+            "files": files,
+        }
+    ).encode()
+    return served
+
+
+def test_an_empty_layer_the_digest_proves_is_taken(tmp_path: Path) -> None:
+    """A square of Atlantic off the Sahara has no road, no airport and no lake, only a
+    coastline. Refusing those sent every empty square of a continent to the public servers to be
+    told the same thing (2026-09-23)."""
+    src = _source(_library_with_empty(tmp_path / "lib", "big_roads"))
+    got = src.layers(TILE, SPECS)
+    assert got is not None and got["big_roads"].is_empty
+
+
+def test_an_empty_layer_nobody_vouches_for_is_still_refused(tmp_path: Path) -> None:
+    """Without a digest in the manifest, emptiness is a claim and not a proof."""
+    src = _source(_library_with_empty(tmp_path / "lib", "big_roads", announce_digest=False))
+    assert src.layers(TILE, SPECS) is None
+
+
+def test_a_truncated_file_is_refused_before_it_is_downloaded(tmp_path: Path) -> None:
+    """Below the size of an empty layer's own wrapper there is no document at all."""
+    served = dict(_library(tmp_path / "lib"))
+    manifest = json.loads(served["manifest.json"])
+    for meta in manifest["files"].values():
+        if meta["layer"] == "big_roads":
+            meta["bytes"] = 40
+    served["manifest.json"] = json.dumps(manifest).encode()
+    src = _source(served)
+    assert src.layers(TILE, SPECS) is None
+    assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]

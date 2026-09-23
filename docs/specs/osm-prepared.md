@@ -67,9 +67,15 @@ that is *absent* is harmless, a library that is *short* is not. Measured on xpco
 
 Three defences, in order of cost:
 
-1. **An empty layer is not an answer.** A layer file under 200 bytes holds no element at all. When
-   the manifest carries sizes, as xpconnect's does, the tile is refused before anything is
-   downloaded.
+1. **An empty layer is not an answer from whoever cannot prove it.** A layer file under 200 bytes
+   holds no element at all, not even the wrapper of an empty layer, and the tile is refused
+   before anything is downloaded when the manifest carries sizes, as xpconnect's does. Above
+   that, an empty layer is refused from an XML source, which can prove nothing about itself, and
+   taken from a library whose manifest announces the file's digest and whose file matches it: a
+   square of Atlantic off the Sahara really has no road, no airport and no lake, only a
+   coastline, and refusing those sent every empty square of a continent to the public servers to
+   be told the same thing. What emptiness must never mean is a bake cut short, and that is the
+   coverage polygon's business.
 2. **A library is used only where it has been verified.** For xpconnect this means a whitelist:
    the tiles we have compared, tile by tile, against a live count (`[out:csv(::count)]`, 13 bytes
    of answer, 13 s of their computation) or against our own bake of the same square. The
