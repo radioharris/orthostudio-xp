@@ -548,9 +548,10 @@ class Store:
                 return False
             if not force and self.refcount(key) > 0:
                 raise ArtifactInUseError(f"{key[:16]} is pinned or used by another artefact")
+            doomed = _move_aside(info.path)
             with self._tx():
                 self._db.execute("DELETE FROM artifacts WHERE key = ?", (key,))
-        _remove_path(info.path)
+        _remove_path(doomed)
         return True
 
     def gc(self, *, quota_bytes: int | None = None, min_age_s: float = 0.0) -> GcReport:
@@ -584,10 +585,11 @@ class Store:
                 if quota_bytes is not None and total <= quota_bytes:
                     break
                 key, rule, size = str(row["key"]), str(row["rule"]), int(row["size"])
+                doomed = _move_aside(self.artifact_path(rule, key))
                 with self._tx():
                     cur = self._db.execute("DELETE FROM artifacts WHERE key = ?", (key,))
                 if cur.rowcount:
-                    _remove_path(self.artifact_path(rule, key))
+                    _remove_path(doomed)
                     deleted.append(key)
                     freed += size
                     total -= size
@@ -804,6 +806,29 @@ def _human(n: int) -> str:
 
 def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts))
+
+
+def _move_aside(p: Path) -> Path:
+    """Rename an artefact out of the way before it is removed, and say where it went.
+
+    Removing the files takes many system calls, and anything can stop it: a second Ctrl-C, the
+    app quitting while Free space runs, one ``.dds`` held open by X-Plane or an antivirus. The
+    row went first, so what was left behind was a **half-emptied artefact at the name a finished
+    one has**, and the next build of that tile adopted it: it threw away what it had just built
+    correctly, indexed the remains, and said it had succeeded. A pack short of its textures is
+    grey ground in X-Plane, and the key is a hit for ever, so building it again never mends it
+    (found in review, 2026-09-23).
+
+    Renamed first, an interruption leaves a ``*.tmp-*`` directory, which :meth:`sweep_tmp`
+    already knows how to clear, and never a partial artefact. The other order is harmless: a row
+    whose files are gone is dropped by :meth:`has` the next time it is looked up.
+    """
+    aside = p.with_name(f"{p.name}{TMP_MARKER}{os.getpid()}-{secrets.token_hex(4)}")
+    try:
+        os.rename(p, aside)
+    except OSError:
+        return p  # not there, or the file system will not have it: remove it where it lies
+    return aside
 
 
 def _remove_path(p: Path) -> None:

@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -330,3 +331,46 @@ def test_concurrent_processes_building_the_same_key_agree(tmp_path: Path) -> Non
         info = s.info(key)
         assert info is not None and info.uses == 4 and info.digest in digests
         assert s.fsck(verify=True).clean
+
+
+def test_a_deletion_stopped_half_way_leaves_no_half_artefact(store: Store, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Removing an artefact's files takes many system calls and anything can stop them: a second
+    Ctrl-C, the app quitting while Free space runs, one ``.dds`` held open by X-Plane or by an
+    antivirus. The row went first, so what was left behind was a half-emptied artefact at the
+    name a finished one has, and the next build of that tile adopted it: it threw away what it
+    had just built correctly, indexed the remains, and reported success. A pack short of its
+    textures is grey ground in X-Plane, and the key is a hit for ever (found in review,
+    2026-09-23).
+    """
+    from orthostudio.graph import store as store_module
+
+    files = ("manifest.json", "0.dds", "1.dds", "2.dds")
+    key, recipe = _key(9, rule="tile.textures")
+
+    def build() -> tuple[Any, bool]:
+        with store.begin("tile.textures", key, "dir") as b:
+            for name in files:
+                (b.out / name).write_bytes(name.encode() * 100)
+            return b.commit(version=1, recipe=recipe, inputs=[])
+
+    whole, _ = build()
+    final = store.artifact_path("tile.textures", key)
+
+    def stops_half_way(path: Any, *args: Any, **kw: Any) -> None:
+        for child in sorted(Path(path).iterdir())[:2]:
+            child.unlink()
+        raise PermissionError(13, "held by another program", str(path))
+
+    monkeypatch.setattr(store_module.shutil, "rmtree", stops_half_way)
+    with pytest.raises(PermissionError):
+        store.delete(key, force=True)
+
+    assert not final.exists(), "nothing half-emptied is left at the artefact's own name"
+    monkeypatch.undo()
+
+    again, adopted = build()
+    assert not adopted, "the build keeps what it built rather than adopting remains"
+    assert again.digest == whole.digest
+    assert sorted(p.name for p in store.path(key).iterdir()) == sorted(files)
+    assert store.sweep_tmp(hard_max_age_s=0.0), "and the remains are swept like any tmp directory"
+    assert store.fsck().clean
