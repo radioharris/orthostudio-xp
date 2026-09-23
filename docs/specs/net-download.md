@@ -117,8 +117,11 @@ and counters. Default `host_group=""` is a group like any other.
   piece of land in 400 ms: a texture of both has a p90 far above its median with no congestion,
   and the window halved round after round down to 8 (39 halvings on such a mix in
   `test_group_latency_signal_is_a_rising_tail_not_a_mix_of_sea_and_land`; now none, one halving
-  from sea to land, and a server whose tail doubles is still seen). A timeout multiplies by 0.75. Other 5xx and connection errors are retried but do not
-  move the window (a single 500 is not a congestion signal). After a decrease no further
+  from sea to land, and a server whose tail doubles is still seen). A timeout multiplies by 0.75, and since 0.1.14 a **refused or dropped connection** halves like
+  a 503: a server that defends itself by closing the door says no as plainly as one answering
+  429, and until then only the two statuses lowered the window, so such a server was knocked on
+  by the whole window until the attempts ran out (a user's EOX source, 2026-09-24). Other 5xx are
+  retried but do not move the window (a single 500 is not a congestion signal). After a decrease no further
   decrease is taken until `window` new completions have been observed (100 for the latency
   signal, so that the recent ring holds only post-decrease samples): one burst of 429, or one
   stalled connection whose 32 streams complete late together, halves once, not once per
@@ -136,6 +139,22 @@ and counters. Default `host_group=""` is a group like any other.
   request sees at most one pushback and none is lost.
 - The benchmark never saw a 429/503 from Bing in 315 000 requests (s. 2); this branch is
   verified against the local test server, not against Bing.
+
+### R2b. Requests a second per host group
+
+`Fetcher(req_per_s=)` (`None`: no ceiling) starts at most one request every `1 / req_per_s`
+seconds per `host_group`, on top of R2's window: the group holds `next_start`, dispatch admits
+nothing before it, and the loop sleeps until then. It comes from the provider's
+`server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`) and for the
+probe (`estimate.probe`, which asked for every chunk of a texture at once).
+
+**Why a second limit.** R2 counts connections; a server may count requests. Apache with
+mod_evasive, which many small services run, serves a few images and then blocks the caller for
+seconds, and every request sent while blocked pushes the end of the block further away. On a fast
+line a window of 16 is hundreds of requests a second, so `max_in_flight` alone cannot slow a
+caller down to what such a server accepts. A user who wrote `server_req_per_s = 3` in his own
+source to spare one watched the build ask for hundreds a second and fail (2026-09-24): the field
+set the estimate alone.
 
 ### R3. Hedging stragglers
 
@@ -237,7 +256,8 @@ latency signal.
 | 500 then 200 | `status == 200`, `attempts == 2`, `retries == 1` in the stats |
 | 429 with `Retry-After: 1` | `status == 200`, second transfer >= 1 s after the first, `throttled` seen true, window halved for the group; with `max_attempts = 1` the request still succeeds (the 429 cost no attempt) and `attempts == 2`; with `max_pushbacks = 0` it ends `NET_RATE_LIMITED` after one transfer; a route that always answers 429 ends `NET_RATE_LIMITED` after `1 + max_pushbacks` transfers |
 | straggler 5 s, `hedge_after_s = 0.3` | `status == 200` in < 2 s, `hedged`, `hedges == 1` in the stats |
-| dropped connection | `status == 200`, `attempts == 2` |
+| dropped connection | `status == 200`, `attempts == 2`, and the window halved for the group (R2) |
+| `req_per_s = 10`, 6 requests | the run lasts at least `(6 - 1) / 10` s and no two requests reach the server closer than `1 / 20` s (R2b) |
 | AIMD up | start 4, max 16, 400 fast requests: window of the group reaches 16 |
 | AIMD down | after 300 fast completions, 200 slow ones (0.5 s): window of the group is halved at least once |
 | cancellation | 200 requests to a slow route, `cancel.set()` after 0.3 s: `fetch_many` returns within 1 s, undelivered requests carry `SYS_CANCELLED` |

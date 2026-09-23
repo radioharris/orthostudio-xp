@@ -4,7 +4,10 @@ Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
 
 - one ``AsyncSession`` for the life of the ``Fetcher`` (connections kept alive);
 - per ``host_group`` AIMD window: +1 per round of successes up to ``max_in_flight``, halved on
-  429/503 or on a latency spike, x0.75 on a timeout, paused on 429 (``Retry-After`` obeyed);
+  429/503, on a refused connection or on a latency spike, x0.75 on a timeout, paused on 429
+  (``Retry-After`` obeyed);
+- an optional ``req_per_s`` ceiling per host group, on top of the window: one request started
+  every ``1 / req_per_s`` seconds, for a server that counts requests rather than connections;
 - hedging: a transfer without an answer after ``hedge_after_s`` is doubled, the first good
   answer wins, the loser is cancelled;
 - bounded attempts with a short exponential back-off for transport errors and 5xx; a 429
@@ -190,6 +193,7 @@ class _Group:
         "min_window",
         "name",
         "next_pause_s",
+        "next_start",
         "paused_until",
         "ready",
         "seq",
@@ -204,6 +208,7 @@ class _Group:
         self.max_window = maximum
         self.min_window = min(MIN_IN_FLIGHT, start)
         self.in_flight = 0
+        self.next_start = 0.0
         self.hedges_in_flight = 0
         self.paused_until = 0.0
         self.last_pause_at = -1e9
@@ -236,11 +241,15 @@ class _Group:
                 and self._latency_spike()
             ):
                 self._decrease(0.5, now)
-        elif kind == "pushback" or (kind == "server" and outcome.status == 503):
+        elif kind in ("pushback", "connect") or (kind == "server" and outcome.status == 503):
+            # A server that defends itself by refusing the connection says no as plainly as one
+            # answering 429, and said nothing to us before 0.1.14: the window stayed wide and we
+            # kept knocking until the attempts ran out (a user, 2026-09-24). ``_decrease`` halves
+            # once per round of completions, so a stray reset on a healthy line costs one round.
             self._decrease(0.5, now)
         elif kind == "timeout":
             self._decrease(TIMEOUT_DECREASE, now)
-        # other 5xx and connection errors: retried, window untouched
+        # other 5xx: the URL's own answer, retried, window untouched
 
     def pause(self, retry_after: float | None, now: float) -> float:
         """Pause dispatch after a 429; returns the instant the pause ends."""
@@ -322,6 +331,7 @@ class Fetcher:
         hedge_after_s: float = 3.0,
         timeout_s: float = 20.0,
         max_attempts: int = 4,
+        req_per_s: float | None = None,
         http2: bool = True,
         max_pushbacks: int = MAX_PUSHBACKS,
         pushback_budget_s: float = PUSHBACK_BUDGET_S,
@@ -330,6 +340,8 @@ class Fetcher:
             raise ValueError("in-flight limits must be >= 1")
         if max_attempts < 1:
             raise ValueError("max_attempts must be >= 1")
+        if req_per_s is not None and req_per_s <= 0:
+            raise ValueError("req_per_s must be > 0")
         if hedge_after_s <= 0 or timeout_s <= 0:
             raise ValueError("hedge_after_s and timeout_s must be > 0")
         if max_pushbacks < 0 or pushback_budget_s < 0:
@@ -339,6 +351,8 @@ class Fetcher:
         self.hedge_after_s = hedge_after_s
         self.timeout_s = timeout_s
         self.max_attempts = max_attempts
+        self.req_per_s = req_per_s
+        self._spacing = 0.0 if req_per_s is None else 1.0 / req_per_s
         self.max_pushbacks = max_pushbacks
         self.pushback_budget_s = pushback_budget_s
         self.http2 = http2
@@ -567,10 +581,12 @@ class Fetcher:
             elif (
                 group.ready
                 and now >= group.paused_until
+                and now >= group.next_start
                 and group.in_flight < self._admission(group)
             ):
                 pending = group.ready.popleft()
                 group.in_flight += 1
+                group.next_start = now + self._spacing  # the server's own rate, 0 when it has none
                 task = asyncio.create_task(
                     self._work(pending, group, session, results, on_result, callback_error)
                 )
@@ -583,6 +599,9 @@ class Fetcher:
             if not self._cancelled:
                 if group.ready and now < group.paused_until:
                     timeout = group.paused_until - now
+                if group.ready and now < group.next_start:
+                    wait = group.next_start - now
+                    timeout = wait if timeout is None else min(timeout, wait)
                 if group.delayed:
                     due = group.delayed[0][0] - now
                     timeout = due if timeout is None else min(timeout, due)

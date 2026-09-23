@@ -255,7 +255,15 @@ def probe_network(
         for i, (x, y) in enumerate(tiles)
     ]
     t0 = time.perf_counter()
-    results = fetch_all(reqs, max_in_flight=len(reqs), start_in_flight=len(reqs), hedge_after_s=2.0)
+    # the probe obeys the rate too: it asked for every chunk at once, which on a server that
+    # counts requests is the burst that gets the probe blocked before a build has begun
+    results = fetch_all(
+        reqs,
+        max_in_flight=len(reqs),
+        start_in_flight=len(reqs),
+        hedge_after_s=2.0,
+        req_per_s=provider.server_req_per_s,
+    )
     seconds = time.perf_counter() - t0
     errors = sum(1 for r in results if r.error is not None or r.status != 200)
     size = sum(len(r.body) for r in results if r.error is None and r.status == 200)

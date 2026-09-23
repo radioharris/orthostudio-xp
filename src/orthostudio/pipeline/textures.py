@@ -290,6 +290,8 @@ class TexturesSpec:
     hedge_after_s: float = 1.0
     timeout_s: float = 20.0
     max_attempts: int = 4
+    req_per_s: float | None = None
+    """``None``: the provider's own ``server_req_per_s``, the requests a second it takes."""
     second_pass_pauses_s: tuple[float, ...] = SECOND_PASS_PAUSES_S
     second_pass_max_s: float = SECOND_PASS_MAX_S
     parent_levels: int = 5
@@ -1255,6 +1257,7 @@ class _Pipeline:
             hedge_after_s=self.spec.hedge_after_s,
             timeout_s=self.spec.timeout_s,
             max_attempts=self.spec.max_attempts,
+            req_per_s=self.spec.req_per_s or self.provider.server_req_per_s,
         )
         async with fetcher:
             if requests:

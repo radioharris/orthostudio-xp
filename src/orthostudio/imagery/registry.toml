@@ -6,7 +6,11 @@
 # max_in_flight: the most requests in flight each server took on 2026-09-15, rising until it
 # refused, slowed down or gave no more (docs/benchmarks/network.md, section 7); 128 at most for the
 # services of a state, which many people share. server_req_per_s: the requests per second a server
-# gave there when it, not the line, was the limit; the estimates never count faster downloads.
+# gave there when it, not the line, was the limit. It is a ceiling, not only a figure for the
+# estimates: no more than that many requests a second are started, whatever the window allows.
+# The numbers below were measured as the servers' own ceilings, so the cap binds only where the
+# server was already the limit; a source of one's own may name a far lower rate for a small
+# server that blocks a caller it finds too eager (a user's EOX source, 2026-09-24).
 
 schema = 1
 

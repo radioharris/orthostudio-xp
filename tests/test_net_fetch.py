@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import itertools
 import math
 import socket
 import threading
@@ -264,6 +265,37 @@ def test_hedge_beats_a_straggler(server: LocalServer) -> None:
     assert len(server.hits("/slow/1")) == 2
 
 
+def test_a_refused_connection_lowers_the_window(server: LocalServer) -> None:
+    """A server that defends itself by refusing the connection says no as plainly as one
+    answering 429 or 503. Until 0.1.14 only those two lowered the window, so a server that
+    blocks a caller it finds too eager was knocked on by the whole window until the attempts
+    ran out; a user watching his imagery fail said so (2026-09-24)."""
+    fetcher = Fetcher(max_in_flight=16, start_in_flight=16)
+    (r,) = run(fetch(fetcher, [FetchRequest("k", server.url("drop/9"), host_group="p")]))
+    assert r.status == 200 and r.attempts == 2
+    assert fetcher.windows()["p"] == 8
+
+
+def test_a_rate_ceiling_spaces_the_requests(server: LocalServer) -> None:
+    """``req_per_s`` starts one request every ``1 / req_per_s`` seconds per host group, whatever
+    the window allows. A server that counts requests rather than connections (Apache with
+    mod_evasive, which many small services run) blocks a caller for seconds after a burst, and
+    a window of 16 on a fast line is a burst however few connections it holds."""
+    rate, n = 10.0, 6
+    fetcher = Fetcher(max_in_flight=16, start_in_flight=16, req_per_s=rate)
+    paths = [f"ok/{900 + i}" for i in range(n)]  # a range of its own: the hits are per path
+    reqs = [FetchRequest(i, server.url(path), host_group="p") for i, path in enumerate(paths)]
+    t0 = time.monotonic()
+    results = run(fetch(fetcher, reqs))
+    elapsed = time.monotonic() - t0
+    assert all(r.status == 200 for r in results)
+    # a gate can only make a run longer, so the floor is the safe assertion
+    assert elapsed >= (n - 1) / rate * 0.9, elapsed
+    starts = sorted(t for path in paths for t in server.hits(f"/{path}"))
+    gaps = [b - a for a, b in itertools.pairwise(starts)]
+    assert min(gaps) >= 0.5 / rate, gaps
+
+
 def test_dropped_connection_is_retried(server: LocalServer) -> None:
     fetcher = Fetcher()
     (r,) = run(fetch(fetcher, [FetchRequest("k", server.url("drop/1"))]))
@@ -436,8 +468,11 @@ def test_constructor_validation() -> None:
         Fetcher(max_attempts=0)
     with pytest.raises(ValueError):
         Fetcher(hedge_after_s=0)
+    with pytest.raises(ValueError):
+        Fetcher(req_per_s=0)
     f = Fetcher(max_in_flight=8, start_in_flight=64)
     assert f.start_in_flight == 8
+    assert Fetcher().req_per_s is None  # no ceiling unless the provider names one
 
 
 # --- pure helpers -------------------------------------------------------------------------------

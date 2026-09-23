@@ -550,6 +550,26 @@ def test_downloads_start_at_the_ceiling_of_the_provider(
     assert report.ok and started and all(pair == (16, 16) for pair in started)
 
 
+def test_the_build_obeys_the_rate_the_provider_names(
+    server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``server_req_per_s`` set the estimate alone until 0.1.14: a user who wrote 3 in his own
+    source to spare a small server watched the build ask for hundreds a second and get blocked
+    (2026-09-24). It is now the ceiling the fetcher starts requests at."""
+    seen: list[float | None] = []
+    real = textures_mod.Fetcher
+
+    class Recording(real):  # type: ignore[misc, valid-type]
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)  # type: ignore[arg-type]
+            seen.append(self.req_per_s)
+
+    monkeypatch.setattr(textures_mod, "Fetcher", Recording)
+    slow = server.provider().model_copy(update={"server_req_per_s": 500.0})
+    report = build_textures(make_spec(server, tmp_path, mask_dir, provider=slow))
+    assert report.ok and seen and all(rate == 500.0 for rate in seen)
+
+
 def test_fetcher_cancelled_before_workers_start_returns(server: TileServer) -> None:
     """Regression: a cancel arriving right after dispatch used to leave the fetcher hanging."""
     import asyncio

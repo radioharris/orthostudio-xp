@@ -138,7 +138,12 @@ the Netherlands 32 (slower at 64), Luxembourg 16 (slower at 32, with timeouts). 
 state were not tried past 128. The fetcher's AIMD (R2 of `net-download.md`) still lowers the window
 of a server that slows down. `server_req_per_s` is the rate a server gave there when it, not the
 line, was the limit: Esri Clarity 522, Spain 584, USGS 280, the Netherlands 181, Luxembourg 130,
-Japan 103 (none for Bing and Esri `Arc`, which kept up with the line). The time left of a build
+Japan 103, EOX 224 (none for Bing and Esri `Arc`, which kept up with the line). Since 0.1.14 it is
+also the **ceiling the fetcher starts requests at** (`net-download.md` R8, `Fetcher(req_per_s=)`),
+for the build and for the probe: a server that counts requests rather than connections blocks a
+caller it finds too eager, and `max_in_flight` alone does not slow one down on a fast line. The
+shipped numbers are those servers' own ceilings, so the cap binds only where the server already
+was the limit; a source of a user's own may name a much lower rate. The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
 user's builds downloaded, and Japan five times faster than its measured rate (2026-09-15). `headers` is empty for
