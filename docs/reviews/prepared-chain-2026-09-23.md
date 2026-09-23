@@ -43,9 +43,9 @@ Status column: **done** (fixed and tested the same day), **open** (still to do).
 | M1 | Five remedies promised a "land polygons" coastline fallback **that does not exist anywhere in the code**. | done |
 | M2 | No `OSM_` code offered a *Try again* button: the card said "build again" with nothing to click. | done |
 | M3 | The provenance line (`4 OSM layers from library (2026-08-08)`) is throttled away and then dropped with the row: **the page never says where a tile's data came from, or how old it is**. | open |
-| M4 | A wrong folder, a wrong address, a revoked key and a library set aside mid-build are all **silent**, and indistinguishable from a tile outside coverage. | open |
+| M4 | A wrong folder, a wrong address, a revoked key and a library set aside mid-build are all **silent**, and indistinguishable from a tile outside coverage. | done |
 | M5 | The only way to ask for fresh data is a command-line flag no pilot will ever type. | open |
-| M6 | `errors.md` has no entry for any state of the prepared chain; the registry is where messages live, and nobody added rows. | open |
+| M6 | `errors.md` has no entry for any state of the prepared chain; the registry is where messages live, and nobody added rows. | done |
 
 ## Publishing
 
@@ -54,8 +54,8 @@ Status column: **done** (fixed and tested the same day), **open** (still to do).
 | P1 | Files must go up **before** the manifest, and the manifest must arrive by rename. A plain `rsync -a --delete` does the opposite, since `manifest.json` sorts before `osm/`. | done |
 | P2 | Never bake into the served tree: the manifest is rewritten after every block, and a client reading a half-written one disables the library for its whole job. | done |
 | P3 | `SnapshotStore` writes a `.meta.json` beside every layer, doubling the published file count for nothing. | done |
-| P4 | No bake identity, so a client cannot say which bake it read and a whitelist cannot be tied to one. No rollback: publishing is an in-place rsync. | open |
-| P5 | Nothing verifies the **published** library, only a local tile against Overpass. | open |
+| P4 | No bake identity, so a client cannot say which bake it read and a whitelist cannot be tied to one. No rollback: publishing is an in-place rsync. | done |
+| P5 | Nothing verifies the **published** library, only a local tile against Overpass. | done |
 
 ## The bake itself, found by the tools review (the data, not the code around it)
 
@@ -116,3 +116,18 @@ Measured again afterwards, with the margin: **+40-117 (Nevada), +47+007 (Basel) 
 (London) are identical in all four layers**. Basel had five elements differing that morning and
 none by the afternoon, which is the same lag showing from the other side: the servers' copy of
 the past had caught up with the edits of 22 September.
+
+## What is left, and why it waits
+
+M3 (the page never says where a tile's map data came from, or how old it is) and M5 (the only way
+to ask for fresh data is a command-line flag) are the two findings still open, and both are
+choices about the interface rather than about the chain: where a provenance line belongs on the
+Works page, and what a button that means "download this tile again" should say and sit next to.
+The facts they need are already recorded and durable, in the snapshot's `mirror` and `fetched_at`
+and in the library's `bake`; what is missing is the decision about showing them.
+
+T4's fix carries one known limit: the margin is one hop's length, 0.1 degrees, measured over our
+layers (worst seen 0.097 in Nevada, 0.036 in Alaska, none at all in Basel). A way crossing a square
+in a single hop longer than that, which would have to be a coarsely drawn coastline near a pole,
+would still be missed. Raising the margin costs about half again as long per square for each extra
+0.1 degrees, so it is a number to raise if a measurement ever asks for it, not before.

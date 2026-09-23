@@ -80,18 +80,55 @@ Three defences, in order of cost:
 
 The whitelist is void when the publisher rebakes: xpconnect's manifest carries a `version`
 (`2026-08-08`, unchanged since we first looked). A different version means the whitelist must be
-built again, and until it is, that library is skipped.
+built again, and until it is, that library is skipped. Our manifest therefore carries not only
+`verified_elsewhere` but `verified_elsewhere_version`, the version we compared against; the two
+travel together and the source compares them itself.
+
+**A layer whose question depends on the road level is never read from an XML source.** Their files
+are OSM 0.6 XML and carry no selectors: nothing in one says whether `small_roads` was baked for
+tertiary roads or for tracks as well, and taking it at a road level it was not baked for gives a
+scenery quietly missing every forest track. Our own format carries its selectors and is checked
+against them, so only the XML sources (a folder in Ortho4XP's layout, xpconnect) are held to this.
 
 **Our own library needs no whitelist**, since its manifest is written by the same tool that cut
 the tiles: a tile is in it when its layers were written, and the coverage is whatever the extract
-covered. What it does carry, per file, is the digest and the size.
+covered. What it does carry, per file, is the digest and the size, and per bake:
+
+| Field | What it is for |
+|---|---|
+| `bake` | twelve characters taken from what the library holds. Two bakes of the same extract are the same bake, one file changing makes another. A build says which one it read, a verification is recorded against it, and a rollback names it |
+| `extracted` | when the data was cut from the planet, as the extract's own header records it, not when we downloaded it |
+| `road_level` | which layers it answers for. Compared with the build's before anything is downloaded, so a library baked for other layers costs one manifest and not one tile per tile |
+
+The coverage is *not* whatever the extract's bounding box covers. Geofabrik clips to a country
+outline, so a square on the border of the download holds one side of it and nothing of the other,
+which is the Geneva failure produced by our own tool. The bake reads the `.poly` beside the `.pbf`
+and publishes only squares wholly inside it; Europe loses 96 squares of 1 723 that way.
+
+Three sizes are refused before they can hurt: a file the manifest announces above 120 MB, a body
+that does not weigh what the manifest says, and a frame that unpacks to more than 800 MB. A
+kilobyte and a half of zstd unpacks to fifty megabytes, and `max_output_size` does not stop it: a
+frame that declares its own size is unpacked to that size whatever the limit says.
 
 ## 4. A library must not slow a build down
 
 A prepared source exists to save seconds; one that hangs would cost them. Therefore, per request:
 5 s to connect, 30 s to read, one attempt, then the next source. And per build: **two failures of
 the same library and it is set aside for the rest of the run**, in the manner of the Overpass
-breaker but simpler, since a library holds no quota and needs no cooldown.
+breaker but simpler, since a library holds no quota and needs no cooldown. A source that refuses a
+tile it announced must say so by raising, or the chain can never count it: xpconnect used to
+return `None` for everything, so a service that had stopped answering cost every tile of a batch
+two minutes of waiting, twice, in silence.
+
+Not answering is not the same as refusing the key. A 401 or a 403 closes the library for the run,
+because the same key will be refused at the next tile; anything else, a 502, a cut connection, a
+restart of the server, is waited out for two minutes and asked again. One hiccup used to close the
+library for the whole job, so a build begun at the wrong second read no prepared tile at all.
+
+While a library cannot be reached, the copy of its manifest kept on disk stands in for it. It was
+written at every build and read back at none. A copy is only ever a list of what to ask for, and
+every file it names is still checked against the digest it names, so an old copy costs a refusal,
+never a wrong tile.
 
 A source's own timeouts never touch the Overpass politeness rules, which stay as `osm-source.md`
 describes them.
@@ -105,6 +142,20 @@ what it was made from, and the Works page and the job's journal say it while it 
 
 When every source fails, the error is the one `osm-source.md` describes, and it names what each
 tried source answered.
+
+Three things used to happen in the log alone, each of them turning a build that would have read
+prepared tiles into one that queues behind the public servers for an hour:
+
+| Code | When |
+|---|---|
+| `OSM_PREPARED_FOLDER_MISSING` | the folder named in Settings is not there, so the setting does nothing |
+| `OSM_LIBRARY_KEY_REFUSED` | the key was refused, or none was given beside an address |
+| `OSM_LIBRARY_UNREACHABLE` | the manifest could not be read at all, or a key was given without an address |
+| `OSM_LIBRARY_INCOMPLETE` | a tile the manifest lists and the library then refused, or served as a file that is not the one announced |
+| `OSM_PREPARED_SET_ASIDE` | a source failed twice and is not asked again for this build |
+
+The settings are checked once, before a build starts; the set-aside is said once, when it happens,
+not once per tile.
 
 ## 6. Settings
 
@@ -131,3 +182,27 @@ A user pointing `osm_folder` at what they already downloaded is the request that
 
 Nothing here reaches the network in the tests: the sources take their transport injected, as
 `OverpassClient` already does.
+
+## 8. Publishing a library, and checking the one that is published
+
+Published with `tools/bake/publish.py`, which is three steps and one rule each:
+
+1. **the files first, and alone.** A client reads the manifest and then asks for what it names; a
+   manifest that arrives first announces files that are not there yet, and every tile of every
+   build in progress pays four refused requests for it. `rsync -a --delete` does exactly the wrong
+   thing, since `manifest.json` sorts before `osm/`.
+2. **the manifest it replaces is kept** under the name of its bake. The files are never removed,
+   so putting an old manifest back serves the old library again: that is the rollback
+   (`publish.py --rollback <bake>`).
+3. **the manifest last, and by rename**, so a client reads the old one or the new one and never
+   half of either.
+
+Never bake into the served tree: the bake rewrites its manifest after every block, and a client
+that reads a half-written one sets the library aside for its whole job.
+
+Everything else proves a tile in the folder it was baked into, and between that folder and a user
+there is an upload that can stop half way, a key that can be revoked, a server that can serve a
+stale copy. So `tools/bake/verify_library.py` reads the published library with the same client and
+the same key a build uses, takes a sample of tiles and says how many come back whole, and with
+`--compare` weighs one of them against the live servers as the map stood when the extract was cut.
+The key is read from a file and never printed, logged or put in a URL.

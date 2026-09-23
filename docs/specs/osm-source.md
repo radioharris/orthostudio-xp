@@ -99,6 +99,15 @@ tile needs (four at the Ortho4XP default `road_level = 1`).
 The bounding box of a tile is `(lat, lon, lat + 1, lon + 1)` — south, west, north, east — as
 in `O4_OSM_Utils.py:557-561`.
 
+**Asking about the past.** `overpass_query(..., at=...)` and `OverpassClient(at=...)` put
+`[date:"..."]` in front of the query, which is what Overpass calls attic data: the map as it stood
+at that moment. No build uses it. It is how a baked tile is proved, by asking for the very state
+its extract was cut from, so that the two answers describe the same world and any difference at
+all is a fault of the bake and not of two days of the world being edited. Note that the servers'
+copy of the past lags their copy of the present by some hours: on 2026-09-23 a tile that differed
+in five elements at eleven in the morning was identical by three in the afternoon, the difference
+being edits made the previous afternoon that the attic database had not yet taken in.
+
 OrthoStudio XP query (`overpass_query`):
 
 ```
@@ -161,7 +170,15 @@ into an hour of builds failing in four seconds each, with quitting the app as th
 that answers 504, 429 or nothing is busy, not broken, and answers the same query a minute later;
 one pass and then a failed build threw away everything the tile had downloaded, which is how
 every build failed on the evening of 2026-09-22. A round is only repeated when something that
-refused may pass: `.fr`'s 403 will be the same in a minute, a 504 will not.
+refused may pass: `.fr`'s 403 will be the same in a minute, a 504 will not. A mirror set aside for
+reaching its quota keeps its cooldown across those rounds: clearing it would only spend the next
+round being refused again.
+
+**The rounds know when the caller stops waiting.** `fetch_tile` bounds the whole tile
+(`timeout_s`), and `fetch_layer` is given that deadline: a round whose pause would run past it is
+not begun. Without it a layer started its third round, slept forty seconds and asked three
+machines while the tile had five seconds left, and the build then said "timed out" instead of
+naming the servers that refused and why.
 
 **Attempts.** `max_attempts = 5` *across mirrors* within a round, one per entry of the registry,
 so the last resorts are still reached when the three ordinary entries are down (2026-09-22: they were, for
