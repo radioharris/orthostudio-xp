@@ -167,3 +167,17 @@ The library it was run against is the first, defective one, which announces 23 8
 The bake's own two cuttings, blocks and then squares, were weighed against the same tiles cut on
 their own, which are the ones proved identical to the live servers: +30-017 (on a block edge, and
 holding nothing but a coastline), +33-017 and +39-032 come out the same either way.
+
+## The loop closed, 2026-09-23 16:47
+
+Europe baked with the corrected tools: 1 627 tiles, 6 508 files, 3.62 GB, 1 h 39, no way dropped
+for want of its nodes, no square left empty. Paris, London and Berlin taken out of that bake are
+identical to the same tiles cut on their own, which are identical to the live servers.
+
+Published to the server in 6 minutes, files first and the manifest last by rename, the manifest it
+replaced kept beside it. Read back afterwards with the client and the key a build uses: 20 tiles of
+20 came back whole, 0.40 s each.
+
+And the last link: **the Paris tile downloaded from the published server is identical, in all four
+layers, to what the live servers return for the moment the extract was cut**. Server, client,
+content, end to end.
