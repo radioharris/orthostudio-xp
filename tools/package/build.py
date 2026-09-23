@@ -250,7 +250,7 @@ def linux_launcher() -> str:
     return (
         "#!/bin/sh\n"
         "# OrthoStudio XP (tools/package/build.py): the engine and its page, from the Python\n"
-        "# of this folder. Its output goes to ~/.local/state/OrthoStudio XP/log/serve.log.\n"
+        "# of this folder. Its output goes to ~/.orthostudio/log/serve.log.\n"
         'HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"\n'
         f'exec "$HERE/python/bin/python3" -m {ENTRY_MODULE} "$@"\n'
     )

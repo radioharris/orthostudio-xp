@@ -182,7 +182,7 @@ built for your distribution's own Python, and OrthoStudio XP carries its own, so
 would change nothing. In a browser it stops by itself five minutes after the last page is closed,
 with no build running or waiting. What it does, stage by stage, goes to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
-`~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
+`~/.orthostudio/log` (Linux, beside the rest of what it keeps). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
 
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at

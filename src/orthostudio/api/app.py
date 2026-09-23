@@ -1477,9 +1477,10 @@ def create_app(
 
     @app.post("/api/library/import-ortho4xp")
     async def import_ortho4xp(req: ImportRequest) -> Any:
-        folder = check_ortho4xp_folder(req.folder)
-
         def run() -> dict[str, Any]:
+            # in the thread, not on the loop: it walks the folder, and a user's tiles live on
+            # another disk that may be asleep or on the network (found in review, 2026-09-23)
+            folder = check_ortho4xp_folder(req.folder)
             with Library(default_library_path()) as lib:
                 rows = lib.import_ortho4xp(folder)
             # where it looked as well as what it found: finding nothing then says where not

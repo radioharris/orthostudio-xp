@@ -290,7 +290,12 @@ def build_layers(request: object) -> LayerBuild:
     timing.airports_s += time.perf_counter() - started
 
     # -- roads (include_roads, :223-355) ---------------------------------------------------
-    say(0.25, f"roads and railways at level {road_level}")
+    # at level 0 nothing here is built, and saying "at level 0" said the opposite (found in
+    # review, 2026-09-23)
+    say(
+        0.25,
+        f"roads and railways at level {road_level}" if road_level else "no roads at this setting",
+    )
     check()
     started = time.perf_counter()
     roads: list[VectorLayer] = []

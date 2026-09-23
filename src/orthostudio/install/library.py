@@ -321,10 +321,14 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
 
     Our own packs are left alone: they carry an ``orthostudio.toml`` and the library already
     knows them.
+
+    ``textures`` is required, and not ``terrain`` alone: a mesh or an airport is a scenery pack
+    with DSFs and terrain files too, and taking one of those for a pack of photo tiles would put
+    somebody else's scenery in the library (found in review, 2026-09-23).
     """
     if (folder / OSXP_PACK_FILE).is_file():
         return False
-    if not (folder / "textures").is_dir() and not (folder / "terrain").is_dir():
+    if not (folder / "textures").is_dir():
         return False
     return next((folder / "Earth nav data").glob("*/*.dsf"), None) is not None
 

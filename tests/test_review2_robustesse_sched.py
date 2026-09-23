@@ -148,7 +148,14 @@ def test_wrong_key_twin_fails_with_a_cause(store: Store) -> None:
     failed = {e.node_id: e for e in events if isinstance(e, Failed)}
     assert set(failed) == {"t1", "t2"}
     assert failed["t1"].error.context.get("type") == "KeyMismatch"
-    assert failed["t2"].cause == "t1", failed["t2"].error.to_dict()
+    # t2 shares t1's key, so it waits on it and is failed with it as the cause. On a machine
+    # busy enough that t1 has already finished when t2 is admitted there is nothing in flight to
+    # wait on, and t2 then meets the same fault on its own: both are the answer, and asking only
+    # for the first made this fail once in a loaded run (2026-09-23).
+    if failed["t2"].cause is None:
+        assert failed["t2"].error.context.get("type") == "KeyMismatch", failed["t2"].error.to_dict()
+    else:
+        assert failed["t2"].cause == "t1", failed["t2"].error.to_dict()
 
 
 # -- checks that pass (what the review confirmed) -----------------------------------------------
