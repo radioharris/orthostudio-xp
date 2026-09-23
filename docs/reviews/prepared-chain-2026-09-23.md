@@ -143,3 +143,27 @@ layers (worst seen 0.097 in Nevada, 0.036 in Alaska, none at all in Basel). A wa
 in a single hop longer than that, which would have to be a coarsely drawn coastline near a pole,
 would still be missed. Raising the margin costs about half again as long per square for each extra
 0.1 degrees, so it is a number to raise if a measurement ever asks for it, not before.
+
+## The whole chain, against the real server
+
+Run on 2026-09-23 against the published library, with the client and the key a build uses, not a
+fixture:
+
+| What was asked | What happened |
+|---|---|
+| no key | nothing at all, and the manifest not read |
+| a wrong key | nothing, and the library closed for the run: asked once, never again |
+| a tile the library holds | four layers in 0.23 s |
+| a tile announced and not served (the upload that stopped half way) | refused by name: `OSM_LIBRARY_INCOMPLETE`, the tile, the layer and the status |
+| the same, three times | counted, and the library set aside after two with the line the user sees |
+| a tile outside the coverage (Sydney) | `library: not held`, `xpconnect: not held`, and on to the live servers |
+| settings naming nothing | `OSM_PREPARED_FOLDER_MISSING`, `OSM_LIBRARY_UNREACHABLE` |
+| the engine's own entry point, `OsmJob` | the tile in 0.80 s, the snapshot carrying `baked:north-america-osxp.osm.pbf` and the date it was cut, and the page line `4 OSM layers from library (2026-09-23)` |
+| the same with `refresh` | straight to the live servers, as a user correcting their region expects |
+
+The library it was run against is the first, defective one, which announces 23 828 files and holds
+11 268: that is what made the fourth and fifth rows testable rather than hypothetical.
+
+The bake's own two cuttings, blocks and then squares, were weighed against the same tiles cut on
+their own, which are the ones proved identical to the live servers: +30-017 (on a block edge, and
+holding nothing but a coastline), +33-017 and +39-032 come out the same either way.
