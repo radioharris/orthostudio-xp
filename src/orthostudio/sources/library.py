@@ -61,15 +61,48 @@ INDEX_TTL_S = 6 * 3600.0
 """How long the manifest kept on disk stands before it is asked for again."""
 
 
-FetchFn = Callable[[str, Mapping[str, str]], tuple[int, bytes]]
-"""``(url, headers) -> (status, body)``: injected, so the tests reach nothing."""
+FetchFn = Callable[[Sequence[str], Mapping[str, str]], list[tuple[int, bytes]]]
+"""``(urls, headers) -> [(status, body), ...]``: injected, so the tests reach nothing.
+
+A tile's layers are asked for together, in one call: one round trip instead of four, and the
+whole tile is on disk while a live query would still be planning its first answer.
+"""
 
 
-def _http_get(url: str, headers: Mapping[str, str]) -> tuple[int, bytes]:
-    from orthostudio.sources.prepared import http_get
+def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
+    """Plain requests, one connection, nothing adaptive.
 
-    status, body, _ = http_get(url, headers, timeout_s=LIBRARY_TIMEOUT_S)
-    return status, body
+    Not the imagery fetcher: that one fills a window of several requests before it starts, and a
+    single file left it waiting until its timeout -- 123 s for a file curl downloads in 0.6
+    (2026-09-23). It is built for thousands of small chunks; a library asks for four files.
+    """
+    import asyncio
+
+    from curl_cffi.requests import AsyncSession
+
+    from orthostudio.net.certs import ca_bundle
+
+    async def run() -> list[tuple[int, bytes]]:
+        # HTTP/1.1, pinned. Left to negotiate, a session stalled on the larger files until its
+        # timeout; pinned to HTTP/2 it stalled at exactly one mebibyte received out of four,
+        # which is a flow-control window that never reopened. A library asks for four files at a
+        # time, so multiplexing buys nothing and a protocol without windows is what fits
+        # (2026-09-23, the same files in 0.35 s).
+        async with AsyncSession(verify=ca_bundle(), http_version="v1") as session:
+
+            async def one(url: str) -> tuple[int, bytes]:
+                try:
+                    answer = await session.get(
+                        url, headers=dict(headers), timeout=(5.0, LIBRARY_TIMEOUT_S)
+                    )
+                except Exception as exc:  # unreachable, refused, cut: the chain moves on
+                    log.info("library: %s could not be read (%s)", url.rsplit("/", 1)[-1], exc)
+                    return 0, b""
+                return int(answer.status_code), bytes(answer.content)
+
+            return list(await asyncio.gather(*(one(url) for url in urls)))
+
+    return asyncio.run(run())
 
 
 # -- the manifest -----------------------------------------------------------------------------
@@ -141,7 +174,7 @@ class LibrarySource:
         self.base = base_url.rstrip("/")
         self.token = token
         self.name = name
-        self.fetch: FetchFn = fetch if fetch is not None else _http_get
+        self.fetch: FetchFn = fetch if fetch is not None else _http_get_many
         self.cache_dir = cache_dir
         self.ttl_s = ttl_s
         self.index: LibraryIndex | None = None
@@ -162,7 +195,7 @@ class LibrarySource:
             return self.index
         if self._missing:
             return None
-        status, body = self.fetch(f"{self.base}/{MANIFEST_NAME}", self._headers())
+        ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
         if status != 200:
             # 401 or 403 is the door, not a fault: the token is wrong or absent
             log.info("%s: manifest answered HTTP %s", self.name, status)
@@ -204,19 +237,26 @@ class LibrarySource:
                 return None
             wanted.append((spec, entry))
 
+        urls = [f"{self.base}/{entry['path']}" for _spec, entry in wanted]
+        answers = self.fetch(urls, self._headers())
+        if len(answers) != len(wanted):
+            return None
         out: dict[str, OsmSnapshot] = {}
-        for spec, entry in wanted:
-            snap = self._one(tile, spec, entry)
+        for (spec, entry), answer in zip(wanted, answers, strict=True):
+            snap = self._one(tile, spec, entry, answer)
             if snap is None:
                 return None
             out[spec.name] = snap
         return out
 
     def _one(
-        self, tile: TileRef, spec: LayerSpec, entry: Mapping[str, object]
+        self,
+        tile: TileRef,
+        spec: LayerSpec,
+        entry: Mapping[str, object],
+        answer: tuple[int, bytes],
     ) -> OsmSnapshot | None:
-        url = f"{self.base}/{entry['path']}"
-        status, body = self.fetch(url, self._headers())
+        status, body = answer
         if status != 200 or not body:
             log.info("%s: %s of %s answered HTTP %s", self.name, spec.name, tile.name, status)
             return None

@@ -7,7 +7,7 @@ by our own tools in a temporary folder, manifest included.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import zstandard
@@ -78,13 +78,17 @@ class _Server:
         self.token = token
         self.asked: list[str] = []
 
-    def __call__(self, url: str, headers: Mapping[str, str]) -> tuple[int, bytes]:
-        path = url.split("/data/", 1)[1]
-        self.asked.append(path)
-        if headers.get("Authorization") != f"Bearer {self.token}":
-            return 403, b"forbidden"
-        body = self.served.get(path)
-        return (200, body) if body is not None else (404, b"")
+    def __call__(self, urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
+        out: list[tuple[int, bytes]] = []
+        for url in urls:
+            path = url.split("/data/", 1)[1]
+            self.asked.append(path)
+            if headers.get("Authorization") != f"Bearer {self.token}":
+                out.append((403, b"forbidden"))
+                continue
+            body = self.served.get(path)
+            out.append((200, body) if body is not None else (404, b""))
+        return out
 
 
 def _source(served: Mapping[str, bytes], token: str = TOKEN, **kw: object) -> LibrarySource:

@@ -672,7 +672,12 @@ class CurlTransport:
         if self._session is None:
             from curl_cffi.requests import AsyncSession
 
-            self._session = AsyncSession(verify=ca_bundle())
+            # HTTP/1.1, pinned. Left to negotiate, a session of this shape stalled until its
+            # timeout, and pinned to HTTP/2 it stopped at exactly one mebibyte received out of
+            # four -- a flow-control window that never reopened. An Overpass answer runs to tens
+            # of megabytes and two are in flight at a time, so multiplexing buys nothing here
+            # (2026-09-23).
+            self._session = AsyncSession(verify=ca_bundle(), http_version="v1")
         return self._session
 
     async def request(
