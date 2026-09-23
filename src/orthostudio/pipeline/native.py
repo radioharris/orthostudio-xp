@@ -233,7 +233,7 @@ def osxp_osm(ctx: RunContext) -> None:
     specs = layers_for(params.road_level)
     job = _job()
     if job.progress is not None:
-        job.progress(0.0, osm_progress_message(tile, 0, len(specs), 0, 0.0))
+        job.progress(0.0, osm_progress_message(tile, [s.name for s in specs], [], 0, 0.0))
     snaps = job.run(tile, specs)
     store = SnapshotStore(ctx.out)
     for snap in snaps.values():

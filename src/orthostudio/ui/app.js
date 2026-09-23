@@ -3965,7 +3965,8 @@ const clockFormats = new Map();
 
 /** The download rate in the engine message of a step that downloads, in MB/s: Imagery's
  * "… (1392 req/s, 21.6 MB/s)" (build.py textures_progress_message), the OSM layers of Data
- * "+46+006: 2/4 OSM layers (1.4 MB/s)" (sources/osm.py osm_progress_message); null without. */
+ * "+46+006: 2 of 4 back: airports, roads (1.4 MB/s)" (sources/osm.py osm_progress_message);
+ * null without, which is what a tile still waiting for the server has. */
 export function downloadRate(message) {
   const m = /\b(\d+(?:\.\d+)?) MB\/s\)/.exec(String(message || ""));
   return m ? Number(m[1]) : null;

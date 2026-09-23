@@ -685,9 +685,21 @@ def test_the_tile_reports_each_layer_and_its_download_rate() -> None:
     assert len(got) == 4
     layer_reports = [f for f, _ in seen]
     assert [f for f in layer_reports if f in (0.25, 0.5, 0.75, 1.0)] == [0.25, 0.5, 0.75, 1.0]
-    assert seen[-1][1].startswith("+43+005: 4/4 OSM layers (") and seen[-1][1].endswith(" MB/s)")
-    assert osm_progress_message(TILE, 0, 4, 0, 3.0) == "+43+005: 0/4 OSM layers"
-    assert osm_progress_message(TILE, 2, 4, 4_200_000, 3.0) == "+43+005: 2/4 OSM layers (1.4 MB/s)"
+    assert seen[-1][1].startswith("+43+005: 4 of 4 back: ") and seen[-1][1].endswith(" MB/s)")
+
+    # A map data server sends nothing until it has worked the whole answer out, so the line sat
+    # at "0/4 OSM layers" with the rate falling to "0.0 MB/s" for minutes, which is also what a
+    # build that has stopped looks like. A user watching it said it told him nothing (2026-09-23).
+    four = ["airports", "big_roads", "water", "coastline"]
+    waiting = osm_progress_message(TILE, four, [], 0, 3.0)
+    assert waiting == "+43+005: waiting for the map data server (airports, roads, water, coastline)"
+    assert "MB/s" not in osm_progress_message(TILE, four, [], 12_000, 140.0), (
+        "an average over a long wait is not a rate"
+    )
+    assert (
+        osm_progress_message(TILE, four, ["airports", "big_roads"], 4_200_000, 3.0)
+        == "+43+005: 2 of 4 back: airports, roads (1.4 MB/s)"
+    )
 
 
 def test_the_minimum_interval_between_two_requests_is_respected() -> None:

@@ -944,18 +944,46 @@ def shared_board() -> MirrorBoard:
     return _SHARED_BOARD
 
 
-def osm_progress_message(
-    tile: TileRef, done: int, total: int, wire_bytes: int, elapsed_s: float
-) -> str:
-    """The progress line of a tile's download, ``+46+006: 2/4 OSM layers (1.4 MB/s)``.
+LAYER_WORDS = {
+    "airports": "airports",
+    "big_roads": "roads",
+    "small_roads": "small roads",
+    "water": "water",
+    "coastline": "coastline",
+}
+"""What each layer is called for somebody who flies rather than maps."""
 
-    The layers received so far, and the download rate since the tile started in the brackets
-    where the Works page reads the rate of any step (``ui.md`` 2.2). No rate before the first
-    answer: nothing was received yet.
+_RATE_FLOOR_MB_S = 0.05
+"""Below this the average since the tile started says nothing, so it is left out."""
+
+
+def osm_progress_message(
+    tile: TileRef,
+    asked: Sequence[str],
+    received: Sequence[str],
+    wire_bytes: int,
+    elapsed_s: float,
+) -> str:
+    """The progress line of a tile's map data.
+
+    A map data server sends nothing until it has worked the whole answer out: it queues the
+    question, computes, then delivers in one burst. So the line sat at ``0/4 OSM layers`` with
+    the average rate falling towards ``0.0 MB/s`` for minutes, which is also exactly what a
+    build that has stopped looks like. A user watching it said it told him nothing, and he was
+    right (2026-09-23).
+
+    It now says what is being waited for, names the layers in words a pilot knows, and gives a
+    rate only when something is really coming down: an average over a long wait is not a rate.
+    The rate keeps its brackets, where the Works page reads it (``ui.md`` 2.2).
     """
-    text = f"{tile.name}: {done}/{total} OSM layers"
-    if wire_bytes > 0 and elapsed_s > 0:
-        text += f" ({wire_bytes / 1e6 / elapsed_s:.1f} MB/s)"
+    if not received:
+        waiting = ", ".join(LAYER_WORDS.get(name, name) for name in asked)
+        return f"{tile.name}: waiting for the map data server ({waiting})"
+    got = ", ".join(LAYER_WORDS.get(name, name) for name in received)
+    text = f"{tile.name}: {len(received)} of {len(asked)} back: {got}"
+    rate = wire_bytes / 1e6 / elapsed_s if wire_bytes > 0 and elapsed_s > 0 else 0.0
+    if rate >= _RATE_FLOOR_MB_S:
+        text += f" ({rate:.1f} MB/s)"
     return text
 
 
@@ -1367,22 +1395,23 @@ class OverpassClient:
         if cancel is not None and cancel.is_set():
             raise OsxpError("SYS_CANCELLED", context={"stage": "osm", "tile": tile.name})
         t0 = time.monotonic()
-        received = [0, 0]  # layers, bytes
+        asked = [s.name for s in specs]
+        back: list[str] = []
+        wire = [0]
 
         def count(reply: HttpReply) -> None:
-            received[1] += reply.wire_bytes or len(reply.body)
+            wire[0] += reply.wire_bytes or len(reply.body)
 
         def report() -> None:
             if progress is not None:
-                total = len(specs)
                 message = osm_progress_message(
-                    tile, received[0], total, received[1], time.monotonic() - t0
+                    tile, asked, back, wire[0], time.monotonic() - t0
                 )
-                progress(received[0] / total if total else 1.0, message)
+                progress(len(back) / len(asked) if asked else 1.0, message)
 
         async def one(spec: LayerSpec) -> OsmSnapshot:
             snap = await self.fetch_layer(tile, spec, on_reply=count, deadline=deadline)
-            received[0] += 1
+            back.append(spec.name)
             report()
             return snap
 

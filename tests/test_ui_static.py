@@ -1866,7 +1866,13 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     job = {"status": "running", "install": True, "tiles": []}
     imagery = {"status": "running", "fraction": 0.42, "message": with_rate, "nodes": {}}
     tile = {"tile": "+46+006", "steps": {"imagery": imagery}}
-    osm_line = osm_progress_message(TileRef(46, 6), 2, 4, 4_200_000, 3.0)
+    osm_line = osm_progress_message(
+        TileRef(46, 6),
+        ["airports", "big_roads", "water", "coastline"],
+        ["airports"],
+        4_200_000,
+        3.0,
+    )
     relief_line = build_mod.dem_download_message(TileRef(46, 6), 2, 9_300_000, 3.0)
     data = {"status": "running", "fraction": 0.3, "message": osm_line, "nodes": {}}
     tile["steps"]["data"] = data
