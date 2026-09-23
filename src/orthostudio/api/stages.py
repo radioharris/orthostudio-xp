@@ -45,7 +45,10 @@ ROLE_STAGE: dict[str, Stage] = {
 }
 
 _SUFFIX = re.compile(r"#\d+$")
-_RETRY_PREFIXES = ("IMG_", "NET_")
+# OSM_ too: what fails there is a server having a bad day, and pressing the button asks
+# every source and every server afresh (a user read "could not be obtained" with nothing
+# to click, 2026-09-23)
+_RETRY_PREFIXES = ("IMG_", "NET_", "OSM_")
 _RETRY_CODES = frozenset({"TEX_MISSING"})
 # The X-Plane 12 folder is chosen in Settings: its absence, or its scenery's, sends there too.
 _SETTINGS_PREFIXES = ("CFG_", "XP_DIR_", "XP_GLOBAL_SCENERY_", "DSF_GLOBAL_SCENERY_")

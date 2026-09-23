@@ -813,3 +813,74 @@ def test_local_server_unhealthy_mirror_is_put_aside(local_overpass) -> None:  # 
             return await c.fetch_layer(TILE, "coastline")
 
     assert asyncio.run(go()).mirror == "second"
+
+
+# -- the rounds know when the caller stops waiting ---------------------------------------------
+
+
+def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
+    """A third round sleeps forty seconds and asks three machines. Begun with five seconds left,
+    it wastes them and the build then says "timed out" instead of naming the servers that
+    refused (review of 2026-09-23, section 2)."""
+    import time as _time
+
+    busy = HttpReply(504, b"", {}, 0.01)
+    transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
+    c = client(transport, round_pause_s=20.0, rounds=3)
+
+    async def go() -> float:
+        started = _time.monotonic()
+        with pytest.raises(OsxpError) as caught:
+            await c.fetch_layer(TileRef(43, 5), "coastline", deadline=_time.monotonic() + 0.2)
+        assert caught.value.code == "OSM_LAYER_UNAVAILABLE"
+        assert "no time left" in str(caught.value.context.get("attempts", ""))
+        return _time.monotonic() - started
+
+    took = run(go())
+    assert took < 5.0, f"it waited {took:.1f} s for rounds the caller would never see"
+
+
+def test_with_time_to_spare_the_rounds_still_run() -> None:
+    """The deadline shortens nothing when there is room: the point is not to ask less."""
+    busy = HttpReply(504, b"", {}, 0.01)
+
+    def asked(deadline_in: float | None) -> int:
+        transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
+        c = client(transport, rounds=2)  # round_pause_s is 0 in the test client
+
+        async def go() -> None:
+            import time as _time
+
+            with pytest.raises(OsxpError):
+                await c.fetch_layer(
+                    TileRef(43, 5),
+                    "coastline",
+                    deadline=None if deadline_in is None else _time.monotonic() + deadline_in,
+                )
+
+        run(go())
+        return len(transport.sent)
+
+    assert asked(None) == asked(600.0) > 0
+
+
+def test_a_round_that_asks_nobody_is_not_repeated() -> None:
+    """Every server refused for the quota, so every one is set aside with a cooldown the round
+    pause will not outlast. Asking again costs forty seconds and learns nothing, once per layer
+    and per tile of the batch (2026-09-23, the address having spent its quota)."""
+    import time as _time
+
+    quota = HttpReply(429, b"", {"retry-after": "600"}, 0.01)
+    transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
+    c = client(transport, round_pause_s=20.0, rounds=3)
+
+    async def go() -> float:
+        started = _time.monotonic()
+        with pytest.raises(OsxpError) as caught:
+            await c.fetch_layer(TileRef(43, 5), "coastline")
+        assert "every server is still set aside" in str(caught.value.context.get("attempts", ""))
+        return _time.monotonic() - started
+
+    took = run(go())
+    assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
+    assert len(transport.sent) <= len(MIRRORS), "nobody is asked twice while the quota holds"

@@ -296,13 +296,23 @@ def _bbox(tile: TileRef, *, spaces: bool = False) -> str:
 
 
 def overpass_query(
-    selectors: Sequence[str], tile: TileRef, timeout_s: int = DEFAULT_QUERY_TIMEOUT_S
+    selectors: Sequence[str],
+    tile: TileRef,
+    timeout_s: int = DEFAULT_QUERY_TIMEOUT_S,
+    at: str = "",
 ) -> str:
     """The OrthoStudio XP query for one layer: JSON, children recursed, ``qt`` order (spec
-    section 3)."""
+    section 3).
+
+    ``at`` asks the servers for the map as it stood at that moment (``[date:"..."]``, what
+    Overpass calls attic data). Nothing in a build uses it: it is how a baked tile is proved,
+    by asking for the very state its extract was cut from, so that any difference at all is a
+    fault of ours and not two days of the world being edited (2026-09-23).
+    """
     box = _bbox(tile)
     union = "".join(f"{sel}{box};" for sel in selectors)
-    return f"[out:json][timeout:{timeout_s}];({union});(._;>>;);out body qt;"
+    when = f'[date:"{at}"]' if at else ""
+    return f"[out:json][timeout:{timeout_s}]{when};({union});(._;>>;);out body qt;"
 
 
 # -- elements and snapshot -----------------------------------------------------------------
@@ -430,6 +440,18 @@ class OsmSnapshot:
     ways: tuple[OsmWay, ...]
     relations: tuple[OsmRelation, ...]
     digest: str
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether this layer holds nothing at all.
+
+        Not the same as a small file: an empty snapshot of ours still carries its metadata, 233
+        to 281 bytes of it, so the size threshold that catches an empty bzip2 XML document misses
+        this entirely (2026-09-23). Emptiness is the truth for a coastline inland; it never is for
+        roads or water, and a build that took such a layer would lay scenery without them and say
+        nothing.
+        """
+        return not (self.nodes or self.ways or self.relations)
 
     @property
     def counts(self) -> dict[str, int]:
@@ -574,17 +596,23 @@ class SnapshotStore:
         """Sidecar with the metadata only (digest, counts, mirror, date): cheap to read."""
         return self.path_for(tile, layer).with_suffix("").with_suffix(".meta.json")
 
-    def save(self, snapshot: OsmSnapshot) -> Path:
-        """Write the snapshot and its sidecar atomically; raises ``OSM_CACHE_WRITE_FAILED``."""
+    def save(self, snapshot: OsmSnapshot, *, sidecar: bool = True) -> Path:
+        """Write the snapshot and its sidecar atomically; raises ``OSM_CACHE_WRITE_FAILED``.
+
+        ``sidecar=False`` writes the snapshot alone. A cache wants the sidecar, which reads the
+        digest without unpacking; a library to be published wants only what its manifest names,
+        and a file the manifest does not name is a file nobody can check (2026-09-23).
+        """
         path = self.path_for(snapshot.tile, snapshot.layer)
         blob = zstandard.ZstdCompressor(level=self.level).compress(snapshot.to_json())
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(path, blob)
-            _atomic_write(
-                self.meta_path_for(snapshot.tile, snapshot.layer),
-                orjson.dumps(snapshot.meta(), option=orjson.OPT_INDENT_2),
-            )
+            if sidecar:
+                _atomic_write(
+                    self.meta_path_for(snapshot.tile, snapshot.layer),
+                    orjson.dumps(snapshot.meta(), option=orjson.OPT_INDENT_2),
+                )
         except OSError as exc:
             raise OsxpError(
                 "OSM_CACHE_WRITE_FAILED", context={"path": path, "reason": str(exc)}
@@ -672,7 +700,12 @@ class CurlTransport:
         if self._session is None:
             from curl_cffi.requests import AsyncSession
 
-            self._session = AsyncSession(verify=ca_bundle())
+            # HTTP/1.1, pinned. Left to negotiate, a session of this shape stalled until its
+            # timeout, and pinned to HTTP/2 it stopped at exactly one mebibyte received out of
+            # four -- a flow-control window that never reopened. An Overpass answer runs to tens
+            # of megabytes and two are in flight at a time, so multiplexing buys nothing here
+            # (2026-09-23).
+            self._session = AsyncSession(verify=ca_bundle(), http_version="v1")
         return self._session
 
     async def request(
@@ -746,11 +779,15 @@ class _MirrorState:
     mirror: Mirror
     open_until: float = 0.0
     cooldown_s: float = COOLDOWN_S
+    given_cooldown_s: float = COOLDOWN_S
+    """What the client asked for, restored by a reset rather than the module's own constant."""
     failures: int = 0
     successes: int = 0
     requests: int = 0
     last_error: str | None = None
     last_request_at: float = -1e9
+    rate_limited: bool = False
+    """The server named a delay (``Retry-After``): a round does not reopen it."""
 
     def state(self, now: float) -> Literal["closed", "half-open", "open"]:
         if self.open_until <= 0.0:
@@ -778,7 +815,9 @@ class MirrorBoard:
         with self._lock:
             for m in mirrors:
                 if m.code not in self._states:
-                    self._states[m.code] = _MirrorState(m, cooldown_s=cooldown_s)
+                    self._states[m.code] = _MirrorState(
+                        m, cooldown_s=cooldown_s, given_cooldown_s=cooldown_s
+                    )
 
     def state(self, code: str, now: float) -> Literal["closed", "half-open", "open"]:
         with self._lock:
@@ -797,9 +836,18 @@ class MirrorBoard:
             st = self._states[code]
             st.failures += 1
             st.last_error = reason
-            cooldown = st.cooldown_s if seconds is None else max(st.cooldown_s, seconds)
-            st.open_until = time.monotonic() + cooldown
-            st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
+            # a server that named a delay is left alone until it has passed, whatever a round of
+            # this layer or of another would like
+            st.rate_limited = seconds is not None
+            if seconds is not None:
+                # the server named a delay: that is the answer, not a floor to argue with. Taking
+                # max(cooldown, Retry-After) shut three machines for ten minutes over a five
+                # second quota refusal, and armed twenty for the next (2026-09-23).
+                st.open_until = time.monotonic() + min(max(seconds, 1.0), MAX_COOLDOWN_S)
+            else:
+                st.open_until = time.monotonic() + st.cooldown_s
+                # a quota refusal says nothing about the machine, so it does not double either
+                st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
 
     def close(self, code: str, cooldown_s: float) -> None:
         with self._lock:
@@ -809,6 +857,7 @@ class MirrorBoard:
             st.cooldown_s = cooldown_s
             st.successes += 1
             st.last_error = None
+            st.rate_limited = False
 
     def failure(self, code: str) -> None:
         with self._lock:
@@ -827,6 +876,21 @@ class MirrorBoard:
                     out[code] = st.last_error
             return out
 
+    def reopen(self, codes: Iterable[str]) -> None:
+        """Give these mirrors another chance, except one that asked to be left alone.
+
+        What a round of :meth:`OverpassClient.fetch_layer` needs, and what ``reset`` was wrongly
+        used for: a global reset discards the ``Retry-After`` a server asked for (the way to turn
+        a rate limit into a ban), forgets the doubling, and reaches across the other layers of the
+        same tile, which re-try a machine already known dead (2026-09-23).
+        """
+        with self._lock:
+            for code in codes:
+                st = self._states.get(code)
+                if st is None or st.rate_limited:
+                    continue
+                st.open_until = 0.0
+
     def reset(self) -> None:
         """Give every mirror another chance, cooldowns back to their start.
 
@@ -839,8 +903,9 @@ class MirrorBoard:
             for st in self._states.values():
                 st.open_until = 0.0
                 st.failures = 0
-                st.cooldown_s = COOLDOWN_S
+                st.cooldown_s = st.given_cooldown_s
                 st.last_error = None
+                st.rate_limited = False
 
 
 _SHARED_BOARD = MirrorBoard()
@@ -895,6 +960,7 @@ class OverpassClient:
         allow_last_resort: bool = True,
         user_agent: str = USER_AGENT,
         board: MirrorBoard | None = None,
+        at: str = "",
     ) -> None:
         if not mirrors:
             raise ValueError("at least one mirror is needed")
@@ -904,6 +970,7 @@ class OverpassClient:
         self.transport: Transport = transport if transport is not None else CurlTransport()
         self._owns_transport = transport is None
         self.query_timeout_s = query_timeout_s
+        self.at = at  # only the bake's proof sets this; a build always asks for today
         self.connect_timeout_s = connect_timeout_s
         self.health_timeout_s = health_timeout_s
         self.cooldown_s = cooldown_s
@@ -1093,26 +1160,46 @@ class OverpassClient:
         *,
         road_level: int = 1,
         on_reply: Callable[[HttpReply], None] | None = None,
+        deadline: float | None = None,
     ) -> OsmSnapshot:
         """One layer of one tile, from the first mirror that answers (spec section 4).
 
         ``on_reply`` sees every answer (the tile counts the bytes received). Raises
         ``OsxpError("OSM_LAYER_UNAVAILABLE")`` when every attempt failed.
+
+        ``deadline`` is when the caller stops waiting (``time.monotonic``). Without it, a layer
+        would begin its third round, sleep forty seconds and ask three machines while the tile
+        had five seconds left, and the build then said "timed out" instead of naming the servers
+        that refused (2026-09-23).
         """
         spec = self._resolve(layer, road_level)
-        query = overpass_query(spec.selectors, tile, self.query_timeout_s)
+        query = overpass_query(spec.selectors, tile, self.query_timeout_s, self.at)
         reasons: list[str] = []
         for round_no in range(self.rounds):
             if round_no:
                 # every mirror refused, and at least one of them because it was busy: wait, give
                 # them all their breaker back, and ask the whole list again
-                await asyncio.sleep(self.round_pause_s * round_no)
-                self._board.reset()
+                pause = self.round_pause_s * round_no
+                if deadline is not None and time.monotonic() + pause >= deadline:
+                    reasons.append("no time left for another round")
+                    break
+                await asyncio.sleep(pause)
+                self._board.reopen(m.code for m in self.mirrors)
                 reasons.append(f"round {round_no + 1}")
-            snap = await self._one_round(tile, spec, query, reasons, on_reply)
+            snap, asked = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
                 return snap
+            if round_no and not asked:
+                # the breakers were just given back and there was still nobody to ask: every
+                # server is in a cooldown this round's pause will not outlast. Waiting another
+                # forty seconds to be told the same thing costs every tile of the batch
+                # (2026-09-23, the address having spent its quota)
+                reasons.append("every server is still set aside")
+                break
             if not self._worth_another_round(reasons):
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                reasons.append("no time left")
                 break
         detail = "; ".join(reasons)
         quota = [r for r in reasons if "RATE_LIMITED" in r]
@@ -1147,9 +1234,9 @@ class OverpassClient:
         ``.fr``'s 403 ("white-listed usages") is the same in a minute; a 504, a 429 and a silence
         are not.
         """
+        passing = ("OSM_MIRROR_UNREACHABLE", "OSM_MIRROR_RATE_LIMITED", "OSM_RESPONSE")
         return any(
-            "UNREACHABLE" in why or "HTTP 5" in why or "HTTP 429" in why or "RESPONSE" in why
-            for why in reasons
+            any(code in why for code in passing) or "REJECTED (HTTP 5" in why for why in reasons
         )
 
     async def _one_round(
@@ -1159,8 +1246,12 @@ class OverpassClient:
         query: str,
         reasons: list[str],
         on_reply: Callable[[HttpReply], None] | None,
-    ) -> OsmSnapshot | None:
-        """One pass over the registry: the snapshot, or ``None`` when every mirror refused."""
+    ) -> tuple[OsmSnapshot | None, int]:
+        """One pass over the registry: the snapshot and how many mirrors were actually asked.
+
+        The count matters: a round that asked nobody at all, because every mirror is still set
+        aside, has nothing to say and the next round will have nothing either.
+        """
         tried: set[str] = set()
         attempt = 0
         failed_cluster: str | None = None
@@ -1199,7 +1290,7 @@ class OverpassClient:
                 )
                 return snapshot_from_overpass(
                     tile, spec, reply.body, mirror=mirror.code, query=query
-                )
+                ), attempt
             code, reason = outcome
             failed_cluster = mirror.cluster if _cluster_pushed_back(reply) else None
             reasons.append(f"{mirror.code}: {code} ({reason})")
@@ -1214,7 +1305,7 @@ class OverpassClient:
                     code,
                 )
             )
-        return None
+        return None, attempt
 
     async def fetch_tile(
         self,
@@ -1258,16 +1349,16 @@ class OverpassClient:
                 progress(received[0] / total if total else 1.0, message)
 
         async def one(spec: LayerSpec) -> OsmSnapshot:
-            snap = await self.fetch_layer(tile, spec, on_reply=count)
+            snap = await self.fetch_layer(tile, spec, on_reply=count, deadline=deadline)
             received[0] += 1
             report()
             return snap
 
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         gather = asyncio.gather(*(one(s) for s in specs))
         if cancel is None and timeout_s is None and progress is None:
             return {s.layer: s for s in await gather}
         task = asyncio.ensure_future(gather)
-        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         reported = time.monotonic()
         while True:
             done, _ = await asyncio.wait([task], timeout=_CANCEL_POLL_S)
@@ -1339,9 +1430,12 @@ class OverpassClient:
             # not a failure of the machine: the public servers count requests per address, and a
             # whole region is hundreds of them. Said in those words, since "HTTP 429" told a user
             # nothing while he wondered why his builds had turned random (2026-09-23).
-            waited = (
-                f"try again in about {delay / 60:.0f} min" if delay else "usually a few minutes"
-            )
+            if not delay:
+                waited = "usually a few minutes"
+            elif delay < 90:
+                waited = f"try again in about {delay:.0f} s"
+            else:
+                waited = f"try again in about {delay / 60:.0f} min"
             return "OSM_MIRROR_RATE_LIMITED", f"too many requests from your address, {waited}"
         if reply.status != 200:
             self._open(mirror.code, reason=f"HTTP {reply.status}")

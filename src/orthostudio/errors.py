@@ -109,8 +109,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _I,
         _C,
         "Overpass mirror {mirror} did not answer ({reason}).",
-        "Another mirror is tried automatically. Offline: continue with the land-polygons "
-        "coastline.",
+        "Another server is tried at once, and the whole list again after a pause.",
     ),
     _spec(
         "OSM_MIRROR_REJECTED",
@@ -148,9 +147,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "OSM layer {layer} for tile {tile} could not be obtained from any mirror.",
-        "Check the connection and build again: a new build asks every map data server once "
-        "more. For the coastline only, OrthoStudio XP can continue with the land polygons "
-        "instead.",
+        "Build again: a new build asks every source and every server afresh. If it keeps "
+        "failing, the public servers are having a bad day; wait a while, or build fewer tiles "
+        "at a time. The tiles already finished are kept.",
     ),
     _spec(
         "OSM_CACHE_UNREADABLE",
@@ -171,22 +170,21 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "OSM coastline stops inside tile {tile} at {points}.",
-        "Fix the coastline in OSM or JOSM at the given positions, or build with the "
-        "land-polygons coastline.",
+        "Fix the coastline in OpenStreetMap at the given positions, then build this tile again.",
     ),
     _spec(
         "OSM_COAST_ORIENTATION",
         _B,
         _S,
         "OSM coastline of tile {tile} has a way with water on the wrong side.",
-        "Reverse the faulty coastline way in OSM/JOSM or use the land-polygons coastline.",
+        "Reverse the faulty coastline way in OpenStreetMap, then build this tile again.",
     ),
     _spec(
         "OSM_COAST_TRIPLE_JUNCTION",
         _B,
         _S,
         "OSM coastline of tile {tile} has a triple junction near lat={lat} lon={lon}.",
-        "Fix the junction in OSM/JOSM or use the land-polygons coastline.",
+        "Fix the junction in OpenStreetMap, then build this tile again.",
     ),
     _spec(
         "OSM_WAY_NOT_CLOSED",
