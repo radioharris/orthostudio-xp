@@ -908,18 +908,29 @@ def photo_zone_shapes(
     for entry in photo_zones:
         ring, brightness, contrast, saturation = entry
         points: list[float] = []
-        inside = False
         for i in range(0, len(ring) - 1, 2):
             lat, lon = float(ring[i]), float(ring[i + 1])
             x, y = wgs84_to_tile(lat, lon, texture.zl)
-            px = (x - texture.til_x) * scale
-            py = (y - texture.til_y) * scale
-            points.extend((px, py))
-            near = -scale <= px <= TEXTURE_PX + scale and -scale <= py <= TEXTURE_PX + scale
-            inside = inside or near
-        if inside and len(points) >= 6:
+            points.extend(((x - texture.til_x) * scale, (y - texture.til_y) * scale))
+        if len(points) < 6:
+            continue
+        # the ring's box against the texture's, not its corners against it: a texture in the
+        # middle of a large zone has no corner of the ring anywhere near it, and asking whether
+        # one is there gave a zone bigger than a texture its four corners coloured and nothing
+        # else -- a checkerboard inside what the user drew as one area (2026-09-23)
+        px, py = points[0::2], points[1::2]
+        reaches = (
+            min(px) <= TEXTURE_PX + scale
+            and max(px) >= -scale
+            and min(py) <= TEXTURE_PX + scale
+            and max(py) >= -scale
+        )
+        if reaches:
             out.append((tuple(points), float(brightness), float(contrast), float(saturation)))
-    return tuple(out)
+    # in the order they are applied, which is the page's reversed: it paints the last first so
+    # that the first ends on top (decision M4, ``map-zones.md``), and applying them in document
+    # order made the last one win instead
+    return tuple(reversed(out))
 
 
 def _tile_textures(ctx: RunContext) -> None:

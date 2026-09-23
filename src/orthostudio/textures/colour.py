@@ -75,6 +75,7 @@ def adjust_photo_inside(
     contrast: float = 0.0,
     saturation: float = 0.0,
     feather_px: int = 24,
+    source: NDArray[np.uint8] | None = None,
 ) -> NDArray[np.uint8]:
     """``rgb`` with the three adjustments applied **inside** ``ring`` only, with a soft edge.
 
@@ -87,8 +88,15 @@ def adjust_photo_inside(
     The edge is blurred over ``feather_px`` (about 40 m at ZL16 in mid-latitudes) so the join does
     not show, and only the rectangle the ring covers is touched, so a small zone costs little on a
     4096² texture.
+
+    ``source`` is the image the zone's colours are read from, the photograph as it was delivered,
+    where ``rgb`` already carries the square's own. A zone **replaces** what the square asked for,
+    it does not add to it: that is what the page paints and what ``map-zones.md`` says, and adding
+    them meant a zone set to "as delivered" inside a softened square changed nothing at all, which
+    is the very complaint the zones were made for (2026-09-23).
     """
-    if photo_unchanged(brightness, contrast, saturation) or len(ring) < 6:
+    same = source is None or source is rgb
+    if (same and photo_unchanged(brightness, contrast, saturation)) or len(ring) < 6:
         return rgb
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -115,7 +123,8 @@ def adjust_photo_inside(
 
     out = rgb.copy()
     window = out[y0:y1, x0:x1]
-    changed = adjust_photo(window, brightness=brightness, contrast=contrast, saturation=saturation)
+    base = window if same else source[y0:y1, x0:x1]
+    changed = adjust_photo(base, brightness=brightness, contrast=contrast, saturation=saturation)
     blended = window.astype(np.float32) * (1.0 - weight) + changed.astype(np.float32) * weight
     np.rint(blended, out=blended)
     np.clip(blended, 0.0, 255.0, out=blended)

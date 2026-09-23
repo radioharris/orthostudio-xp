@@ -149,3 +149,62 @@ def test_the_three_levels_are_settings_then_tile_then_zone() -> None:
     with_zone = with_photo_zones(got, [own], TileRef(46, 6))
     assert with_zone["photo_zones"][0][1:] == [0.0, 0.0, 0.0]  # as delivered, inside the zone
     assert with_zone["photo_saturation"] == PHOTO_LOOKS["softer"][2]  # the tile's, everywhere else
+
+
+def test_a_zone_bigger_than_a_texture_reaches_the_ones_it_covers() -> None:
+    """Asking whether a corner of the ring lands in the texture answers no for a texture in the
+    middle of a large zone, so a zone drawn over a city coloured its four corners and left a
+    checkerboard of untouched squares inside it (2026-09-23). The question is whether the two
+    boxes overlap."""
+    from orthostudio.imagery.grid import texture_at
+    from orthostudio.pipeline.build import photo_zone_shapes
+
+    # a zone of about 30 km, far larger than a texture (6.4 km at ZL16)
+    ring = [46.4, 6.2, 46.4, 6.8, 46.7, 6.8, 46.7, 6.2, 46.4, 6.2]
+    zones = [[ring, 0.0, 0.0, -0.15]]
+    reached = 0
+    covered = 0
+    for lat in (46.42, 46.48, 46.55, 46.62, 46.68):
+        for lon in (6.22, 6.35, 6.5, 6.65, 6.78):
+            covered += 1
+            if photo_zone_shapes(zones, texture_at(lat, lon, 16, "BI")):
+                reached += 1
+    assert reached == covered, "every texture the zone covers takes its colours"
+    assert photo_zone_shapes(zones, texture_at(40.0, 0.0, 16, "BI")) == ()
+
+
+def test_a_zone_replaces_the_squares_colours_and_does_not_add_to_them() -> None:
+    """A square softened, a zone inside it set back to what was delivered: the zone must show the
+    photograph as it came. Applying the zone's three numbers on top of the square's left the
+    softening in place, so the zone did nothing at all, which is the complaint zones were made
+    for (2026-09-23)."""
+    import numpy as np
+
+    from orthostudio.textures.colour import adjust_photo, adjust_photo_inside
+
+    delivered = np.full((256, 256, 3), 160, dtype=np.uint8)
+    square = adjust_photo(delivered, saturation=-0.4, brightness=-0.06)
+    assert square[128, 128][0] != 160
+
+    ring = [64, 64, 192, 64, 192, 192, 64, 192, 64, 64]
+    as_delivered = adjust_photo_inside(square, ring, feather_px=0, source=delivered)
+    assert as_delivered[128, 128][0] == 160, "inside the zone, the photograph as delivered"
+    assert as_delivered[10, 10][0] == square[10, 10][0], "outside it, the square's own"
+
+    # and a zone that does ask for something gets its own, not its own over the square's
+    own = adjust_photo_inside(square, ring, brightness=0.25, feather_px=0, source=delivered)
+    assert own[128, 128][0] == adjust_photo(delivered, brightness=0.25)[128, 128][0]
+
+
+def test_two_zones_that_overlap_are_resolved_as_the_page_paints_them() -> None:
+    """The page paints the last first so the first ends on top (decision M4). The build applied
+    them in document order, so the last won and the two disagreed wherever they overlapped."""
+    from orthostudio.imagery.grid import texture_at
+    from orthostudio.pipeline.build import photo_zone_shapes
+
+    first = [46.62, 6.52, 46.62, 6.58, 46.65, 6.58, 46.65, 6.52, 46.62, 6.52]
+    second = [46.63, 6.53, 46.63, 6.59, 46.66, 6.59, 46.66, 6.53, 46.63, 6.53]
+    shapes = photo_zone_shapes([[first, 0.1, 0.0, 0.0], [second, -0.1, 0.0, 0.0]],
+                               texture_at(46.63, 6.55, 16, "BI"))  # fmt: skip
+    assert len(shapes) == 2
+    assert shapes[-1][1] == 0.1, "the first of the list is applied last, so it wins"

@@ -130,13 +130,16 @@ def texture_dds(ctx: RunContext) -> None:
         )
     assembled = assemble_texture_detailed(container, fallback)
     # The photo's colours, before the mask: X-Plane's water keeps its own (2026-09-18).
+    delivered = assembled.rgb
     rgb = adjust_photo(
-        assembled.rgb,
+        delivered,
         brightness=params.photo_brightness,
         contrast=params.photo_contrast,
         saturation=params.photo_saturation,
     )
     for ring, brightness, contrast, saturation in params.photo_shapes:
+        # from the photograph as delivered, not from what the square already did to it: a zone
+        # replaces the square's colours where it covers, which is what the page paints
         rgb = adjust_photo_inside(
             rgb,
             ring,
@@ -144,6 +147,7 @@ def texture_dds(ctx: RunContext) -> None:
             contrast=contrast,
             saturation=saturation,
             feather_px=params.photo_feather_px,
+            source=delivered,
         )
     t1 = time.perf_counter()
     mask_input = ctx.inputs["mask"]
