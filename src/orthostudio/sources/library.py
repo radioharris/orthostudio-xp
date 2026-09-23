@@ -20,7 +20,9 @@ source, which is what ``chain.py`` is for.
 from __future__ import annotations
 
 import functools
+import io
 import logging
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -31,7 +33,7 @@ import orjson
 import zstandard
 
 from orthostudio.model import TileRef
-from orthostudio.sources.osm import LayerSpec, OsmSnapshot
+from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
 
@@ -48,6 +50,7 @@ class LibraryError(RuntimeError):
 
 __all__ = [
     "LIBRARY_TIMEOUT_S",
+    "MAX_SNAPSHOT_BYTES",
     "LibraryError",
     "LibraryIndex",
     "LibrarySource",
@@ -72,6 +75,40 @@ LIBRARY_TIMEOUT_S = 30.0
 so a slow answer is a failure and the chain moves on (``osm-prepared.md`` 4)."""
 INDEX_TTL_S = 6 * 3600.0
 """How long the manifest kept on disk stands before it is asked for again."""
+RETRY_PAUSE_S = 120.0
+"""After a manifest that answered badly -- a 502, a cut connection -- how long before it is asked
+again. One hiccup used to close the library for the whole job, all forty tiles of it, so a build
+that started during a restart of the server never read a single prepared tile (review F7)."""
+MAX_LAYER_BYTES = 120_000_000
+"""What one compressed layer may weigh. The heaviest of a continent is a few megabytes; the cap
+is there so that nothing downloads a file of any size because a manifest said to."""
+MAX_SNAPSHOT_BYTES = 800_000_000
+"""What one layer may weigh unpacked. zstd unpacks fast enough that a small file can ask for all
+the memory of the machine, so the reader is told where to stop: 1.5 kB of ours unpacks to 50 MB,
+and the same trick scales as far as one cares to take it (measured 2026-09-23)."""
+
+
+def unpack(body: bytes, limit: int = MAX_SNAPSHOT_BYTES) -> bytes:
+    """A zstd frame unpacked, and never more than ``limit`` bytes of it.
+
+    ``decompress(..., max_output_size=)`` does not do this: a frame that declares its own size is
+    unpacked to that size whatever the limit says, which is exactly the case of a file made to be
+    too big. So the declared size is read first, and a frame that declares none is read through a
+    stream that stops on its own.
+    """
+    try:
+        declared = zstandard.frame_content_size(body)
+    except zstandard.ZstdError as exc:
+        raise ValueError(f"not a zstd frame ({exc})") from exc
+    if declared > limit:
+        raise ValueError(f"unpacks to {declared} bytes, more than the {limit} allowed")
+    if declared >= 0:
+        return bytes(zstandard.ZstdDecompressor().decompress(body))
+    with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(body)) as reader:
+        out = reader.read(limit + 1)
+    if len(out) > limit:
+        raise ValueError(f"unpacks to more than the {limit} bytes allowed")
+    return bytes(out)
 
 
 FetchFn = Callable[[Sequence[str], Mapping[str, str]], list[tuple[int, bytes]]]
@@ -132,6 +169,10 @@ class LibraryIndex:
     verified_elsewhere: tuple[str, ...] = ()
     """Tiles of another publisher's library we have compared and found complete: the whitelist
     that decides whether that library may be used at all (``osm-prepared.md`` 3)."""
+    verified_elsewhere_version: str = ""
+    """Which of their bakes those tiles were compared against. They rebake; a tile we checked in
+    August is not the file they serve in October, and a whitelist that outlives the bake it was
+    made for verifies nothing (review S3)."""
 
     def entry(self, tile: TileRef, layer: str) -> Mapping[str, object] | None:
         return self.files.get(f"{tile.name}/{layer}")
@@ -165,6 +206,7 @@ def parse_manifest(body: bytes) -> LibraryIndex | None:
         road_level=int(doc.get("road_level", 1) or 1),
         files=files,
         verified_elsewhere=tuple(str(t) for t in (doc.get("verified_elsewhere") or ())),
+        verified_elsewhere_version=str(doc.get("verified_elsewhere_version", "") or ""),
     )
 
 
@@ -195,8 +237,15 @@ class LibrarySource:
         """When the data was cut, as the manifest gives it: what the page shows beside the
         source, since a prepared library is weeks behind and nothing else would say so."""
         self._read_at = 0.0
-        self._missing = False
-        """The manifest could not be read: the library is skipped without being asked again."""
+        self._lock = threading.Lock()
+        """The two network slots of a batch share one source: without this they both download the
+        manifest, and both count the same failure twice (review F5)."""
+        self._closed = False
+        """The door answered 401 or 403: the key is wrong and asking again will not change it."""
+        self._retry_at = 0.0
+        """A failure that may pass: nothing is asked of the library before this moment."""
+        self._refused: set[str] = set()
+        """Layers this library was not baked for: said once, not once per tile."""
 
     # -- the manifest, read once and kept ----------------------------------------------------
 
@@ -207,26 +256,71 @@ class LibrarySource:
         return headers
 
     def _load_index(self) -> LibraryIndex | None:
+        with self._lock:  # one manifest for the whole batch, whichever slot asks first
+            return self._load_index_locked()
+
+    def _load_index_locked(self) -> LibraryIndex | None:
         if self.index is not None and time.monotonic() - self._read_at < self.ttl_s:
             return self.index
-        if self._missing:
+        if self._closed:
             return None
-        ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
+        if time.monotonic() < self._retry_at:
+            return self._kept()  # asked too recently: the copy on disk, or nothing
+        try:
+            ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
+        except Exception as exc:  # a library must never stop a build
+            log.info("%s: the manifest could not be asked for (%s)", self.name, exc)
+            self._retry_at = time.monotonic() + RETRY_PAUSE_S
+            return self._kept()
+        if status in (401, 403):
+            # the door, not a fault: the token is wrong or absent, and it will be at the next
+            # tile as well
+            log.info("%s: the key was refused (HTTP %s)", self.name, status)
+            self._closed = True
+            return None
         if status != 200:
-            # 401 or 403 is the door, not a fault: the token is wrong or absent
+            # a restart, a 502, a connection cut: the same question in two minutes may well be
+            # answered, and until then the copy on disk is better than nothing (review F7)
             log.info("%s: manifest answered HTTP %s", self.name, status)
-            self._missing = True
-            return None
+            self._retry_at = time.monotonic() + RETRY_PAUSE_S
+            return self._kept()
         index = parse_manifest(body)
         if index is None:
             log.warning("%s: manifest is not a %s document", self.name, FORMAT)
-            self._missing = True
+            self._closed = True  # whatever is at that address, it is not a library of ours
             return None
+        self._adopt(index)
+        if self.cache_dir is not None:
+            self._keep(body)
+        return index
+
+    def _adopt(self, index: LibraryIndex) -> None:
         self.index = index
         self.stamp = index.extracted[:10]
         self._read_at = time.monotonic()
-        if self.cache_dir is not None:
-            self._keep(body)
+
+    def _kept(self) -> LibraryIndex | None:
+        """The manifest kept on disk, when the library cannot be reached.
+
+        It was written at every build and read back at none, so a library briefly unreachable
+        sent every tile of the job to the live servers although its contents were on disk
+        (review F6). A copy is only ever a list of what to ask for: every file it names is still
+        checked against the digest it names, so an old copy costs a refusal, never a wrong tile.
+        """
+        if self.index is not None:
+            return self.index
+        if self.cache_dir is None:
+            return None
+        try:
+            body = (self.cache_dir / f"{self.name}-manifest.json").read_bytes()
+        except OSError:
+            return None
+        index = parse_manifest(body)
+        if index is None:
+            return None
+        log.info("%s: unreachable, going by the manifest kept on disk (%s)", self.name,
+                 index.extracted[:10])  # fmt: skip
+        self._adopt(index)
         return index
 
     def _keep(self, body: bytes) -> None:
@@ -239,9 +333,32 @@ class LibrarySource:
 
     # -- the layers ---------------------------------------------------------------------------
 
+    def _answers(self, specs: Sequence[LayerSpec], index: LibraryIndex) -> bool:
+        """Whether the library was baked for the very layers this build is asking for.
+
+        The manifest says at which road level it was baked, and that settles it for every tile at
+        once. It used to be found out by downloading the whole tile and reading the selectors
+        inside it, once per tile, to refuse it every time (review F2).
+        """
+        baked = {spec.name: tuple(spec.selectors) for spec in layers_for(index.road_level)}
+        wrong = [s.name for s in specs if baked.get(s.name) != tuple(s.selectors)]
+        if not wrong:
+            return True
+        if not self._refused.issuperset(wrong):
+            self._refused.update(wrong)
+            log.info(
+                "%s: baked at road level %s, which does not answer for %s; the live servers do",
+                self.name,
+                index.road_level,
+                ", ".join(sorted(wrong)),
+            )
+        return False
+
     def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
         index = self._load_index()
         if index is None:
+            return None
+        if not self._answers(specs, index):
             return None
         wanted: list[tuple[LayerSpec, Mapping[str, object]]] = []
         for spec in specs:
@@ -251,6 +368,10 @@ class LibrarySource:
             size = int(entry.get("bytes", 0) or 0)
             if size < EMPTY_BYTES and spec.name != "coastline":
                 log.info("%s: %s of %s is empty", self.name, spec.name, tile.name)
+                return None
+            if size > MAX_LAYER_BYTES:
+                log.warning("%s: %s of %s is announced at %s bytes", self.name, spec.name,
+                            tile.name, size)  # fmt: skip
                 return None
             wanted.append((spec, entry))
 
@@ -278,8 +399,16 @@ class LibrarySource:
             raise LibraryError(
                 f"{spec.name} of {tile.name} is in the manifest but answered HTTP {status}"
             )
+        announced_bytes = int(entry.get("bytes", 0) or 0)
+        if len(body) > MAX_LAYER_BYTES or (announced_bytes and len(body) != announced_bytes):
+            # the manifest gives every file its size, so anything else is not that file, and a
+            # reader that unpacks first and asks afterwards is a reader that can be handed
+            # anything at all (review F4)
+            raise LibraryError(
+                f"{spec.name} of {tile.name} weighs {len(body)} bytes, not {announced_bytes}"
+            )
         try:
-            snap = OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(body))
+            snap = OsmSnapshot.from_json(unpack(body))
         except (ValueError, KeyError, zstandard.ZstdError, orjson.JSONDecodeError) as exc:
             raise LibraryError(f"{spec.name} of {tile.name} is unreadable ({exc})") from exc
         announced = str(entry.get("digest", ""))

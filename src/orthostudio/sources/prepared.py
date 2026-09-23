@@ -52,6 +52,7 @@ log = logging.getLogger("orthostudio.sources.prepared")
 __all__ = [
     "MANIFEST_URL",
     "PREPARED_BASE",
+    "PreparedError",
     "PreparedIndex",
     "PublicSource",
     "http_get",
@@ -86,6 +87,29 @@ ETag). A service that hangs must cost a few seconds at the start of a run, not a
 RETRY_AFTER_S = 600.0
 """After a manifest that could not be read at all, the next builds of the run go straight to
 Overpass for ten minutes instead of waiting for it again."""
+
+LAYER_TIMEOUT_S = 30.0
+"""What one layer file may take. It was 120 s with a second attempt, so a service that had stopped
+answering cost nearly four minutes **per tile**, silently, for all forty tiles of a batch: slower
+than the servers it exists to spare (``osm-prepared.md`` 4, review F1)."""
+
+ROAD_LEVEL_LAYERS = frozenset({"small_roads"})
+"""Layers whose question depends on the build's road level.
+
+An OSM XML file says nothing about the question it answers: ``small_roads`` baked for tertiary
+roads and ``small_roads`` baked for tracks as well are the same file name, the same format, and
+one of them is missing every forest track. Our own format carries its selectors and is checked
+against them; XML cannot be, so these layers are not read from an XML source at all (review S2).
+"""
+
+
+class PreparedError(RuntimeError):
+    """The service announced a tile and then did not serve it.
+
+    Not the same as not holding it: a tile absent from the manifest costs nothing, while one
+    announced and refused costs a request per layer for every tile of the batch. Raised so the
+    chain counts it and sets the source aside (``chain.Chain``).
+    """
 
 
 def layer_path(tile: TileRef, layer: str) -> str:
@@ -312,6 +336,8 @@ def tile_snapshots(
     index: PreparedIndex,
     fetch: Callable[[Sequence[str]], Sequence[tuple[int, bytes]]],
     progress: Callable[[float, str], None] | None = None,
+    *,
+    strict: bool = False,
 ) -> dict[str, OsmSnapshot] | None:
     """Every layer of ``tile`` read from the prepared files, or ``None`` to fall back.
 
@@ -321,21 +347,32 @@ def tile_snapshots(
     ``None`` on anything at all: a layer missing from the manifest, a service that does not
     answer, a file too large to be one of theirs, a digest that does not match what the manifest
     promised, XML that cannot be read. Overpass then does what it has always done.
+
+    ``strict`` tells the two apart: a tile the manifest does not list still answers ``None``, but
+    a tile it lists and the service then refuses raises :class:`PreparedError`, so the chain can
+    stop asking a service that has stopped answering.
     """
     if not index.covers(tile, specs):
         return None
+
+    def refuse(reason: str) -> None:
+        log.info("prepared: %s; Overpass takes over", reason)
+        if strict:
+            raise PreparedError(reason)
+
     paths = [layer_path(tile, spec.name) for spec in specs]
     started = time.monotonic()
     try:
         answers = list(fetch([f"{PREPARED_BASE}/{path}" for path in paths]))
     except Exception as exc:  # never a reason to fail a build
-        log.info("prepared: %s could not be read (%s); Overpass takes over", tile.name, exc)
+        refuse(f"{tile.name} could not be read ({exc})")
         return None
     if len(answers) != len(specs):
+        refuse(f"{tile.name} answered {len(answers)} files for {len(specs)} layers")
         return None
     for path, (status, body) in zip(paths, answers, strict=True):
         if status != 200 or not body or len(body) > MAX_LAYER_BYTES:
-            log.info("prepared: %s answered %s; Overpass takes over", path, status)
+            refuse(f"{path} answered {status}")
             return None
     wire = sum(len(body) for _status, body in answers)
     elapsed = time.monotonic() - started
@@ -345,14 +382,14 @@ def tile_snapshots(
     ):
         expected = index.digest_of(tile, spec.name)
         if expected and hashlib.sha256(body).hexdigest() != expected:
-            log.warning("prepared: %s is not what the manifest promised; Overpass takes over", path)
+            refuse(f"{path} is not what the manifest promised")
             return None
         try:
             out[spec.name] = snapshot_from_xml(
                 body, tile, spec, mirror=PREPARED_BASE, osm_base_default=index.version
             )
         except Exception as exc:
-            log.info("prepared: %s could not be read (%s); Overpass takes over", path, exc)
+            refuse(f"{path} could not be read ({exc})")
             return None
         if progress is not None:
             # The very line Overpass writes, rate included (``ui.md`` 2.2: every step that
@@ -388,13 +425,17 @@ def http_get(
 
 
 def http_get_many(urls: Sequence[str]) -> list[tuple[int, bytes]]:
-    """The layers of one tile, together, in request order: one session, one handshake."""
+    """The layers of one tile, together, in request order: one session, one handshake.
+
+    One attempt and thirty seconds: this service is an optimisation, and the fall-back is a live
+    query that takes eight. Waiting two minutes twice for it would be slower than not having it.
+    """
     from orthostudio.net.fetch import FetchRequest, fetch_all
 
     results = fetch_all(
         [FetchRequest(key=url, url=url, host_group="prepared") for url in urls],
-        timeout_s=120.0,
-        max_attempts=2,
+        timeout_s=LAYER_TIMEOUT_S,
+        max_attempts=1,
         max_in_flight=max(1, len(urls)),
         start_in_flight=max(1, len(urls)),
     )
@@ -426,7 +467,7 @@ def snapshots_for(
     """The callable an ``OsmJob`` takes: the prepared layers of a tile, or ``None``."""
 
     def prepared(tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
-        return tile_snapshots(tile, specs, index, http_get_many, progress)
+        return tile_snapshots(tile, specs, index, http_get_many, progress)  # never strict here
 
     return prepared
 
@@ -455,19 +496,27 @@ class PublicSource:
         index: PreparedIndex | None = None,
         cache_dir: Path | None = None,
         fetch: Callable[[Sequence[str]], Sequence[tuple[int, bytes]]] | None = None,
+        version: str | Callable[[], str] = "",
     ) -> None:
         self._allowed = allowed
+        self._version = version
         self.name = name
         self.index = index
         self.cache_dir = cache_dir
         self.fetch = fetch if fetch is not None else http_get_many
         self._looked = False
+        self._said_version = False
 
     def allowed(self) -> frozenset[str]:
         """The whitelist, read when it is needed: our own manifest carries it, and our library is
         asked before this one."""
         source = self._allowed
         return frozenset(source() if callable(source) else source)
+
+    def verified_version(self) -> str:
+        """Which of their bakes we compared the whitelist against, empty when we did not say."""
+        source = self._version
+        return str(source() if callable(source) else source)
 
     def _read_index(self) -> PreparedIndex | None:
         if self.index is not None or self._looked:
@@ -480,8 +529,29 @@ class PublicSource:
     def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
         if tile.name not in self.allowed():
             return None  # not verified: not used, whatever their manifest claims
+        asked = [s.name for s in specs if s.name in ROAD_LEVEL_LAYERS]
+        if asked:
+            # their files are OSM XML and carry no selectors: nothing in one says whether it was
+            # baked for tertiary roads or for tracks as well (review S2)
+            log.info(
+                "prepared: %s cannot be read from an XML library; the next source takes over",
+                ", ".join(asked),
+            )
+            return None
         index = self._read_index()
         if index is None or not index.covers(tile, specs):
+            return None
+        wanted = self.verified_version()
+        if wanted and index.version != wanted:
+            # they rebaked: the tiles we compared are not the files they now serve, and a
+            # whitelist that outlives the bake it was made for is no verification at all
+            if not self._said_version:
+                self._said_version = True
+                log.info(
+                    "prepared: verified against bake %s, they now serve %s; not used",
+                    wanted,
+                    index.version or "an unnamed bake",
+                )
             return None
         for spec in specs:
             if index.size_of(tile, spec.name) < EMPTY_LAYER_BYTES and spec.name != "coastline":
@@ -491,4 +561,4 @@ class PublicSource:
                     tile.name,
                 )
                 return None
-        return tile_snapshots(tile, specs, index, self.fetch)
+        return tile_snapshots(tile, specs, index, self.fetch, strict=True)

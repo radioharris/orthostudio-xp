@@ -278,3 +278,103 @@ def test_layers_baked_for_another_road_level_are_refused(tmp_path: Path) -> None
     assert got is None or all(
         got[name].selectors == next(s.selectors for s in rich if s.name == name) for name in got
     )
+
+
+# -- a library that is briefly unreachable (review F6, F7) --------------------------------------
+
+
+class _Flaky:
+    """Answers what it is told to, in order, so a hiccup can be followed by an answer."""
+
+    def __init__(self, served: Mapping[str, bytes], statuses: Sequence[int]) -> None:
+        self.served = dict(served)
+        self.statuses = list(statuses)
+        self.asked: list[str] = []
+
+    def __call__(self, urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
+        out: list[tuple[int, bytes]] = []
+        for url in urls:
+            path = url.split("/data/", 1)[1]
+            self.asked.append(path)
+            status = self.statuses.pop(0) if self.statuses else 200
+            body = self.served.get(path)
+            out.append((200, body) if status == 200 and body is not None else (status, b""))
+        return out
+
+
+def test_one_bad_gateway_does_not_close_the_library_for_the_whole_job(tmp_path: Path) -> None:
+    """A restart of the server, a connection cut: it used to latch the library shut for the rest
+    of the job, so a build started at the wrong second read no prepared tile at all (F7)."""
+    served = _library(tmp_path / "lib")
+    flaky = _Flaky(served, [502])
+    src = LibrarySource("https://example.invalid/data", TOKEN, fetch=flaky)  # type: ignore[arg-type]
+    src._retry_at = 0.0
+
+    assert src.layers(TILE, SPECS) is None  # the hiccup
+    src._retry_at = 0.0  # time passes
+    assert src.layers(TILE, SPECS) is not None, "the library must be asked again"
+
+
+def test_a_refused_key_is_not_asked_again(tmp_path: Path) -> None:
+    served = _library(tmp_path / "lib")
+    flaky = _Flaky(served, [403, 200])
+    src = LibrarySource("https://example.invalid/data", TOKEN, fetch=flaky)  # type: ignore[arg-type]
+    assert src.layers(TILE, SPECS) is None
+    src._retry_at = 0.0
+    assert src.layers(TILE, SPECS) is None
+    assert flaky.asked == ["manifest.json"], "a wrong key does not become right by asking again"
+
+
+def test_an_unreachable_library_goes_by_the_copy_it_kept(tmp_path: Path) -> None:
+    """The manifest was written at every build and read back at none, so a library down for a
+    minute sent every tile of the job to the live servers (F6)."""
+    served = _library(tmp_path / "lib")
+    cache = tmp_path / "cache"
+    first = _source(served, cache_dir=cache)
+    assert first.layers(TILE, SPECS) is not None
+    assert (cache / "library-manifest.json").is_file()
+
+    down = LibrarySource(
+        "https://example.invalid/data",
+        TOKEN,
+        fetch=_Flaky(served, [0]),  # type: ignore[arg-type]
+        cache_dir=cache,
+    )
+    assert down.index is None
+    assert down.layers(TILE, SPECS) is not None, "the tile is on their server, the list on ours"
+
+
+# -- what a library may not make us do (review F2, F4) ------------------------------------------
+
+
+def test_a_library_baked_for_other_layers_costs_no_download(tmp_path: Path) -> None:
+    """It used to download the whole tile, read the selectors inside and refuse it, once per
+    tile. The manifest says the road level, and that settles it for the whole build (F2)."""
+    from orthostudio.sources.osm import layers_for
+
+    src = _source(_library(tmp_path / "lib"))  # baked at road level 1
+    rich = [s for s in layers_for(5) if s.name in {"big_roads", "small_roads"}]
+    assert src.layers(TILE, rich) is None
+    assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]
+
+
+def test_a_file_that_does_not_weigh_what_the_manifest_says_is_refused(tmp_path: Path) -> None:
+    served = dict(_library(tmp_path / "lib"))
+    key = next(k for k in served if k.endswith("_water.osm.json.zst"))
+    served[key] = served[key] + b"\x00" * 40  # the same file, forty bytes heavier
+    src = _source(served)
+    with pytest.raises(LibraryError, match="weighs"):
+        src.layers(TILE, SPECS)
+
+
+def test_a_small_file_that_unpacks_to_a_huge_one_is_refused() -> None:
+    """1.5 kB of zstd unpacks to 50 MB, and the same trick scales as far as one cares to take
+    it. ``max_output_size`` does not stop it: a frame that declares its size is unpacked to that
+    size whatever the limit says (measured 2026-09-23)."""
+    from orthostudio.sources.library import unpack
+
+    blob = zstandard.ZstdCompressor(level=10).compress(b"x" * 50_000_000)
+    assert len(blob) < 2000
+    with pytest.raises(ValueError, match="more than"):
+        unpack(blob, limit=1_000_000)
+    assert unpack(blob) == b"x" * 50_000_000  # under the real cap it is read as usual

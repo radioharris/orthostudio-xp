@@ -277,3 +277,74 @@ def test_a_manifest_read_again_replaces_the_one_on_disk(tmp_path: Path) -> None:
     assert fresh.covers(TileRef(47, 7), SPECS)
     kept = load_index(tmp_path, answering(status=500)[0], ttl_s=0.0)
     assert kept is not None and kept.etag == '"v2"'  # the new ETag was kept beside it
+
+
+# -- the public library as a source in the chain (review F1, S2, S3) ---------------------------
+
+
+def public(files: Mapping[str, bytes], theirs: str = "2026-09-01", checked: str = ""):
+    """A ``PublicSource`` over files served in memory, with the whole tile whitelisted.
+
+    ``theirs`` is the version their manifest carries; ``checked`` the one our whitelist was made
+    against.
+    """
+    from orthostudio.sources.prepared import PublicSource
+
+    return PublicSource(
+        [TILE.name],
+        index=index_of(files, theirs),
+        fetch=fetcher(served(files)),
+        version=checked,
+    )
+
+
+def test_a_tile_announced_and_then_refused_sets_the_source_aside() -> None:
+    """The case of a service that stops answering mid-run: it used to cost every tile of the
+    batch two minutes of waiting, twice, and the chain could never learn (review F1)."""
+    from orthostudio.sources.chain import Chain
+    from orthostudio.sources.prepared import PreparedError, PublicSource
+
+    files = baked()
+    source = PublicSource(
+        [TILE.name],
+        index=index_of(files),
+        fetch=fetcher({path: (503, b"") for path in files}),
+    )
+    with pytest.raises(PreparedError):
+        source.layers(TILE, SPECS)
+
+    chain = Chain([source])
+    for _ in range(4):
+        assert not chain.layers(TILE, SPECS)
+    assert chain.failures["xpconnect"] >= 2, "a service that lies must be set aside"
+
+
+def test_a_tile_they_do_not_list_is_not_a_failure() -> None:
+    """Not holding a tile is not breaking: it must not count against the source."""
+    from orthostudio.sources.chain import Chain
+
+    chain = Chain([public(baked())])
+    assert not chain.layers(TileRef(1, 1), SPECS)
+    assert chain.failures.get("xpconnect", 0) == 0
+
+
+def test_a_layer_whose_question_depends_on_the_road_level_is_never_read_from_xml() -> None:
+    """Their files carry no selectors, so nothing in one says whether it holds tracks. A build
+    at road level 5 would silently lose every forest track (review S2)."""
+    specs = [s for s in layers_for(5) if s.name == "small_roads"]
+    files = baked(specs=specs)
+    assert public(files).layers(TILE, specs) is None
+
+
+def test_a_whitelist_made_for_another_bake_of_theirs_is_not_used() -> None:
+    """They rebake: the tiles we compared in September are not the files they serve in
+    October, and a whitelist that outlives its bake verifies nothing (review S3)."""
+    files = baked()
+    stale = public(files, theirs="2026-10-01", checked="2026-09-01")
+    assert stale.layers(TILE, SPECS) is None
+
+    current = public(files, theirs="2026-10-01", checked="2026-10-01")
+    assert current.layers(TILE, SPECS) is not None
+
+    unsaid = public(files, theirs="2026-10-01")  # we did not say: the whitelist alone decides
+    assert unsaid.layers(TILE, SPECS) is not None

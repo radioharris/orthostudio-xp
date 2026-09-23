@@ -20,15 +20,14 @@ Two rules carry the whole thing:
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-import zstandard
-
 from orthostudio.model import TileRef
-from orthostudio.sources.library import LibrarySource, shipped_library
+from orthostudio.sources.library import LibrarySource, shipped_library, unpack
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES, PublicSource, snapshot_from_xml
 
@@ -131,7 +130,7 @@ class FolderSource:
             try:
                 raw = path.read_bytes()
                 if path.suffix == ".zst":
-                    snap = OsmSnapshot.from_json(zstandard.ZstdDecompressor().decompress(raw))
+                    snap = OsmSnapshot.from_json(unpack(raw))
                     if snap.layer != spec.name or snap.tile.name != tile.name:
                         # a file mis-filed by hand: its path says one square, the document says
                         # another, and another square's geometry would be recorded as this one
@@ -166,17 +165,24 @@ class Chain:
         self.sources = list(sources)
         self.give_up_after = give_up_after
         self.failures: dict[str, int] = {}
+        self._lock = threading.Lock()
+        """A batch runs two network slots and they share this chain: without it, two failures of
+        one source can be counted as one and a source set aside in one slot is still asked in the
+        other (review F5)."""
 
     def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> ChainResult:
         """The layers of ``tile`` from the first source holding them all, or an empty result."""
         notes: list[str] = []
         for source in self.sources:
-            if self.failures.get(source.name, 0) >= self.give_up_after:
+            with self._lock:
+                spent = self.failures.get(source.name, 0)
+            if spent >= self.give_up_after:
                 continue  # set aside for the rest of this build
             try:
                 got = source.layers(tile, specs)
             except Exception as exc:  # a library must never stop a build
-                self.failures[source.name] = self.failures.get(source.name, 0) + 1
+                with self._lock:
+                    self.failures[source.name] = self.failures.get(source.name, 0) + 1
                 notes.append(f"{source.name}: {type(exc).__name__}: {exc}")
                 log.warning("%s: %s failed (%s)", tile.name, source.name, exc)
                 continue
@@ -216,7 +222,11 @@ def sources_from_settings(
         library = LibrarySource(url, token, cache_dir=cache_dir)
         out.append(library)
     if settings.get("osm_prepared_public", True):
-        out.append(PublicSource(whitelist_of(library), cache_dir=cache_dir))
+        out.append(
+            PublicSource(
+                whitelist_of(library), version=verified_version_of(library), cache_dir=cache_dir
+            )
+        )
     return out
 
 
@@ -228,3 +238,13 @@ def whitelist_of(library: object) -> Callable[[], frozenset[str]]:
         return frozenset(getattr(index, "verified_elsewhere", ()) or ())
 
     return tiles
+
+
+def verified_version_of(library: object) -> Callable[[], str]:
+    """Which of their bakes the whitelist was made against, read when asked."""
+
+    def version() -> str:
+        index = getattr(library, "index", None)
+        return str(getattr(index, "verified_elsewhere_version", "") or "")
+
+    return version
