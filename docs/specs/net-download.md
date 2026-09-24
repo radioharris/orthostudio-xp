@@ -359,6 +359,16 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
   healthy machine. 3 attempts across machines, then `OSM_UNAVAILABLE`: another cluster's machine
   is asked at once, another machine of the cluster that just failed after 5 s. Never the 2^n
   back-off of Ortho4XP (up to 5 min 40 per query).
+- **Patience for a spent quota** (0.1.15): these servers count queries per internet address and
+  free a slot on their own clock, in minutes. Three rounds twenty seconds apart gave one minute,
+  and a user watched all five mirrors answer 429/403/504 and the build give up while the quota
+  needed longer (2026-09-24). The rounds are now five, 60 s apart and growing (60, 120, 180, 240:
+  ten minutes), and the tile's own deadline, which bounds them, went from 5 to 15 minutes; raising
+  one without the other changes nothing, which is how the minute came about. The rounds still stop
+  early when nothing that refused could pass, or when every server is still set aside. And the
+  `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot
+  available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and the health probe opens the
+  breaker until then rather than for a guessed minute.
 - Each layer goes to the least busy cluster: two healthy clusters take four layers of a tile at
   once, two each. The breakers are the process's (`MirrorBoard`): a machine one tile found dead
   is not asked by the next tile, nor by the next build, until its cooldown ends

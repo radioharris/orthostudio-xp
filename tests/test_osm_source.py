@@ -442,6 +442,41 @@ def test_the_last_resort_mirror_can_be_refused() -> None:
     assert "maps.mail.ru" not in {h for h, _ in t.sent}
 
 
+def test_the_status_page_says_when_a_slot_frees() -> None:
+    """These servers count queries per address and their status page says exactly when the next
+    slot frees. We guessed sixty seconds instead of reading it, and a user whose address had
+    spent its quota watched five mirrors refuse and the build give up (2026-09-24)."""
+    from orthostudio.sources.osm import slot_wait_s
+
+    free = "Connected as: 2999320354\nRate limit: 4\n4 slots available now.\n"
+    assert slot_wait_s(free) == 0.0
+    one = "Rate limit: 2\nSlot available after: 2026-09-24T21:36:12Z, in 140 seconds.\n"
+    assert slot_wait_s(one) == 140.0
+    two = (
+        "Slot available after: 2026-09-24T21:40:00Z, in 240 seconds.\n"
+        "Slot available after: 2026-09-24T21:34:12Z, in 12 seconds.\n"
+    )
+    assert slot_wait_s(two) == 12.0  # the soonest, not the last read
+    assert slot_wait_s("Slot available after: X, in -3 seconds.") == 0.0  # never negative
+    assert slot_wait_s("Connected as: 1\nCurrent time: now\n") is None  # says neither
+    assert slot_wait_s("") is None
+
+
+def test_the_rounds_wait_long_enough_to_outlast_a_quota() -> None:
+    """A spent Overpass quota frees on the server's clock, in minutes. Three rounds twenty
+    seconds apart gave one minute of patience and the build gave up (a user, 2026-09-24).
+
+    The two numbers go together: the rounds are bounded by the tile's own deadline, and raising
+    one without the other changes nothing, which is how the first minute came about.
+    """
+    from orthostudio.pipeline.native import OsmJob
+    from orthostudio.sources.osm import ROUND_PAUSE_S, ROUNDS
+
+    waited = sum(ROUND_PAUSE_S * n for n in range(1, ROUNDS))
+    assert waited >= 480, "a quota needs minutes, not one"
+    assert waited < OsmJob().timeout_s, "the deadline would cut the rounds short"
+
+
 def test_a_quota_refusal_is_said_in_plain_words() -> None:
     """A user built almost a whole state, then read "instantly fails" with no idea why: the public
     servers count requests per internet address, and a region is hundreds of them (2026-09-23).

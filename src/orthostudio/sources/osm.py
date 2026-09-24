@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import datetime as dt
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -95,15 +96,23 @@ MAX_ATTEMPTS = 5
 """Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
 are still reached when the three ordinary ones are down (2026-09-22: two of them were)."""
 ATTEMPT_DELAY_S = 5.0
-ROUNDS = 3
+ROUNDS = 5
 """Times the whole registry is asked for one layer, when what refused it may pass.
 
 An Overpass machine that answers 504, 429 or nothing is busy, not broken: it answers the same
 query a minute later. One round over the mirrors and then a failed build wastes everything the
 tile had already downloaded, and on a bad evening every build failed that way (2026-09-22).
+
+Three rounds twenty seconds apart is one minute of patience, and a user whose address had spent
+its quota watched all five mirrors refuse and the build give up while the quota needed minutes
+(2026-09-24). These servers count queries per address and free a slot on their own clock; the
+only thing to do is wait for it. What bounds the waiting is not this count but the tile's own
+deadline (``pipeline.native.OsmJob.timeout_s``), and the rounds stop early of their own accord
+when nothing that refused could pass, or when every server is still set aside.
 """
-ROUND_PAUSE_S = 20.0
-"""Waited before the second round, twice that before the third: a busy server needs a moment."""
+ROUND_PAUSE_S = 60.0
+"""Waited before the second round, twice that before the third, and so on: 60, 120, 180 and 240
+seconds, ten minutes of patience in all, inside the tile's deadline."""
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
 PROGRESS_PERIOD_S = 1.0
@@ -1205,7 +1214,12 @@ class OverpassClient:
             if reply.status == 200:
                 self._close(mirror.code)
         elif reply.status == 429:
-            self._open_cluster(mirror.cluster, reason="health: HTTP 429", quota=True)
+            self._open_cluster(
+                mirror.cluster,
+                reason="health: HTTP 429",
+                seconds=slot_wait_s(reply.body.decode("utf-8", "replace")),
+                quota=True,
+            )
         else:
             self._open(mirror.code, reason=reply.error or f"health: HTTP {reply.status}")
         now = time.monotonic()
@@ -1531,6 +1545,35 @@ def _cluster_pushed_back(reply: HttpReply) -> bool:
     if reply.error is not None:
         return False
     return reply.status == 429 or reply.status >= 500 or reply.status == 200
+
+
+_SLOT_NOW = re.compile(r"(\d+)\s+slots?\s+available\s+now", re.I)
+_SLOT_AFTER = re.compile(r"Slot available after:[^,]*,\s*in\s+(-?\d+)\s+seconds?", re.I)
+
+
+def slot_wait_s(body: str) -> float | None:
+    """Seconds until this address may query again, read from an Overpass ``/api/status`` body.
+
+    These servers count queries per internet address and their status page says exactly when the
+    next slot frees::
+
+        Rate limit: 4
+        4 slots available now.
+
+    or, when they are all taken::
+
+        Slot available after: 2026-09-24T21:36:12Z, in 140 seconds.
+
+    We guessed sixty seconds instead of reading it, and a user whose address had spent its quota
+    watched five mirrors refuse and the build give up after a minute (2026-09-24). ``None`` when
+    the body says neither, so the caller keeps its own guess.
+    """
+    if not body:
+        return None
+    if _SLOT_NOW.search(body):
+        return 0.0
+    waits = [int(found) for found in _SLOT_AFTER.findall(body)]
+    return float(max(0, min(waits))) if waits else None
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
