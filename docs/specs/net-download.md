@@ -142,9 +142,20 @@ and counters. Default `host_group=""` is a group like any other.
 
 ### R2b. Requests a second per host group
 
-`Fetcher(req_per_s=)` (`None`: no ceiling) starts at most one request every `1 / req_per_s`
-seconds per `host_group`, on top of R2's window: the group holds `next_start`, dispatch admits
-nothing before it, and the loop sleeps until then. It comes from the provider's
+`Fetcher(req_per_s=)` (`None`: no ceiling) is a **ceiling the group approaches, not a speed it
+holds**. The group starts at `RATE_START` (a quarter) of it, climbs `ceiling / RATE_STEPS` per
+`RATE_ROUND` answers, falls with the window in `_decrease` on the same signals and by the same
+factor, and never goes below `RATE_FLOOR` (a tenth) nor above the ceiling. At most one request is
+started every `1 / rate` seconds per `host_group`, on top of R2's window: the group holds
+`next_start`, dispatch admits nothing before it, and the loop sleeps until then. The two do not
+compound: what a group achieves is `min(window / latency, rate)`, so whichever binds, binds, and
+a push-back that halves both halves the result once.
+
+**Why a ceiling and not a speed.** Every rate in the registry was measured once, from one machine,
+on one day. EOX's 224 was real here and eleven times what a user's address could get before the
+server stopped answering (2026-09-24). A figure like that is worth keeping as a limit nobody
+should pass, and worthless as an instruction. Climbing to it converges on what this line and this
+route allow. It comes from the provider's
 `server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`) and for the
 probe (`estimate.probe`, which asked for every chunk of a texture at once).
 

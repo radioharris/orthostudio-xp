@@ -281,8 +281,9 @@ def test_a_rate_ceiling_spaces_the_requests(server: LocalServer) -> None:
     the window allows. A server that counts requests rather than connections (Apache with
     mod_evasive, which many small services run) blocks a caller for seconds after a burst, and
     a window of 16 on a fast line is a burst however few connections it holds."""
-    rate, n = 10.0, 6
-    fetcher = Fetcher(max_in_flight=16, start_in_flight=16, req_per_s=rate)
+    ceiling, n = 10.0, 6
+    rate = ceiling * fetch_mod.RATE_START  # what a group starts at, and climbs from
+    fetcher = Fetcher(max_in_flight=16, start_in_flight=16, req_per_s=ceiling)
     paths = [f"ok/{900 + i}" for i in range(n)]  # a range of its own: the hits are per path
     reqs = [FetchRequest(i, server.url(path), host_group="p") for i, path in enumerate(paths)]
     t0 = time.monotonic()
@@ -294,6 +295,50 @@ def test_a_rate_ceiling_spaces_the_requests(server: LocalServer) -> None:
     starts = sorted(t for path in paths for t in server.hits(f"/{path}"))
     gaps = [b - a for a, b in itertools.pairwise(starts)]
     assert min(gaps) >= 0.5 / rate, gaps
+
+
+def test_the_rate_climbs_while_a_server_answers_and_never_passes_its_ceiling() -> None:
+    """``server_req_per_s`` is a ceiling to approach, not a speed to hold.
+
+    Every rate in the registry was measured once from one machine, and EOX's 224 turned out to be
+    eleven times what a user's address could get before the server stopped answering (2026-09-24).
+    So a group starts at a quarter and climbs a step per round of answers, which converges on what
+    this line and this route actually allow instead of on what ours did.
+    """
+    group = fetch_mod._Group("p", 8, 8, 100.0)
+    assert group.rate == 25.0  # a quarter of the ceiling
+    ok = fetch_mod._Outcome("ok", 200, latency=0.05)
+    for _ in range(fetch_mod.RATE_ROUND):
+        group.record(ok, 0.0)
+    assert group.rate == 25.0 + 100.0 / fetch_mod.RATE_STEPS
+    for _ in range(fetch_mod.RATE_ROUND * fetch_mod.RATE_STEPS * 2):
+        group.record(ok, 0.0)
+    assert group.rate == 100.0  # and it stops there
+
+
+def test_the_rate_falls_with_the_window_and_not_below_its_floor() -> None:
+    """A server pushing back says the same thing whether it counts connections or requests, so
+    the rate falls on the same signal and by the same factor. The floor keeps a build moving."""
+    group = fetch_mod._Group("p", 64, 64, 100.0)
+    group.completions_since_decrease = 1 << 30
+    group.record(fetch_mod._Outcome("pushback", 429), 0.0)
+    assert group.rate == 12.5 and group.window == 32  # both halved
+    for _ in range(20):
+        group.completions_since_decrease = 1 << 30
+        group.record(fetch_mod._Outcome("pushback", 429), 0.0)
+    assert group.rate == 100.0 * fetch_mod.RATE_FLOOR  # never below a tenth of the ceiling
+
+
+def test_a_group_without_a_ceiling_is_not_paced_at_all() -> None:
+    """Bing and Esri declare no rate: nothing must change for them."""
+    group = fetch_mod._Group("p", 64, 64)
+    assert group.rate is None
+    for _ in range(fetch_mod.RATE_ROUND * 3):
+        group.record(fetch_mod._Outcome("ok", 200, latency=0.05), 0.0)
+    assert group.rate is None
+    group.completions_since_decrease = 1 << 30
+    group.record(fetch_mod._Outcome("pushback", 429), 0.0)
+    assert group.rate is None and group.window == 32
 
 
 def test_dropped_connection_is_retried(server: LocalServer) -> None:

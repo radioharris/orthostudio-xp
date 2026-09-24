@@ -6,8 +6,11 @@ Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
 - per ``host_group`` AIMD window: +1 per round of successes up to ``max_in_flight``, halved on
   429/503, on a refused connection or on a latency spike, x0.75 on a timeout, paused on 429
   (``Retry-After`` obeyed);
-- an optional ``req_per_s`` ceiling per host group, on top of the window: one request started
-  every ``1 / req_per_s`` seconds, for a server that counts requests rather than connections;
+- an optional ``req_per_s`` **ceiling** per host group, on top of the window, for a server that
+  counts requests rather than connections: the group starts at a quarter of it, climbs a step per
+  round of answers, falls with the window on the same signals and by the same factor, and never
+  exceeds it. A figure measured once from one address is not a ceiling a server tolerates from
+  everyone, so it is a limit to approach, not a speed to hold;
 - hedging: a transfer without an answer after ``hedge_after_s`` is doubled, the first good
   answer wins, the loser is cancelled;
 - bounded attempts with a short exponential back-off for transport errors and 5xx; a 429
@@ -127,6 +130,14 @@ BACKOFF_MAX_S = 4.0
 BACKOFF_JITTER = 0.25
 STATS_PERIOD_S = 0.25
 RATE_WINDOW_S = 5.0
+RATE_START = 0.25
+"""Of ``req_per_s`` a group starts at, and climbs from."""
+RATE_FLOOR = 0.10
+"""Of ``req_per_s`` it will not fall below, however often it is pushed back."""
+RATE_STEPS = 12
+"""Rounds of successes from the floor to the ceiling."""
+RATE_ROUND = 50
+"""Answers that make one round, for the rate."""
 THROTTLED_MEMORY_S = 10.0
 CONNECT_TIMEOUT_MAX_S = 10.0
 MAX_REDIRECTS = 5
@@ -195,20 +206,30 @@ class _Group:
         "next_pause_s",
         "next_start",
         "paused_until",
+        "rate",
+        "rate_ceiling",
+        "rate_floor",
         "ready",
         "seq",
         "successes_since_change",
+        "successes_since_rate",
         "wake",
         "window",
     )
 
-    def __init__(self, name: str, start: int, maximum: int) -> None:
+    def __init__(
+        self, name: str, start: int, maximum: int, rate_ceiling: float | None = None
+    ) -> None:
         self.name = name
         self.window = start
         self.max_window = maximum
         self.min_window = min(MIN_IN_FLIGHT, start)
         self.in_flight = 0
         self.next_start = 0.0
+        self.rate_ceiling = rate_ceiling
+        self.rate_floor = None if rate_ceiling is None else rate_ceiling * RATE_FLOOR
+        self.rate = None if rate_ceiling is None else rate_ceiling * RATE_START
+        self.successes_since_rate = 0
         self.hedges_in_flight = 0
         self.paused_until = 0.0
         self.last_pause_at = -1e9
@@ -230,6 +251,7 @@ class _Group:
         if kind == "ok":
             self.latencies.append(outcome.latency)
             self.successes_since_change += 1
+            self._rate_up()
             if self.successes_since_change >= self.window and self.window < self.max_window:
                 self.window += 1
                 self.successes_since_change = 0
@@ -287,10 +309,25 @@ class _Group:
         answers.sort()
         return p90 > LATENCY_RATIO * answers[int(0.9 * (len(answers) - 1))]
 
+    def _rate_up(self) -> None:
+        """One more answer towards the next step of the rate, if a rate is set at all."""
+        if self.rate is None or self.rate_ceiling is None:
+            return
+        self.successes_since_rate += 1
+        if self.successes_since_rate < RATE_ROUND or self.rate >= self.rate_ceiling:
+            return
+        self.successes_since_rate = 0
+        self.rate = min(self.rate_ceiling, self.rate + self.rate_ceiling / RATE_STEPS)
+
     def _decrease(self, factor: float, now: float) -> None:
         if self.completions_since_decrease < self.window:
             return  # one decrease per round
         self.window = max(self.min_window, int(self.window * factor))
+        if self.rate is not None and self.rate_floor is not None:
+            # the rate falls with the window, on the same signal and by the same factor: a server
+            # that counts requests and one that counts connections both said the same thing
+            self.rate = max(self.rate_floor, self.rate * factor)
+            self.successes_since_rate = 0
         self.successes_since_change = 0
         self.completions_since_decrease = 0
         self.last_decrease_at = now
@@ -352,7 +389,6 @@ class Fetcher:
         self.timeout_s = timeout_s
         self.max_attempts = max_attempts
         self.req_per_s = req_per_s
-        self._spacing = 0.0 if req_per_s is None else 1.0 / req_per_s
         self.max_pushbacks = max_pushbacks
         self.pushback_budget_s = pushback_budget_s
         self.http2 = http2
@@ -420,7 +456,9 @@ class Fetcher:
     def _group(self, name: str) -> _Group:
         group = self._groups.get(name)
         if group is None:
-            group = self._groups[name] = _Group(name, self.start_in_flight, self.max_in_flight)
+            group = self._groups[name] = _Group(
+                name, self.start_in_flight, self.max_in_flight, self.req_per_s
+            )
         return group
 
     # -- introspection ---------------------------------------------------------------------------
@@ -428,6 +466,10 @@ class Fetcher:
     def windows(self) -> dict[str, int]:
         """Current AIMD window per host group (for tests and the UI)."""
         return {name: g.window for name, g in self._groups.items()}
+
+    def rates(self) -> dict[str, float]:
+        """Current requests a second per host group, for the groups that have a ceiling."""
+        return {name: g.rate for name, g in self._groups.items() if g.rate is not None}
 
     def stats(self) -> FetchStats:
         """Snapshot of the current (or last) ``fetch_many`` run."""
@@ -586,7 +628,9 @@ class Fetcher:
             ):
                 pending = group.ready.popleft()
                 group.in_flight += 1
-                group.next_start = now + self._spacing  # the server's own rate, 0 when it has none
+                # the group's own rate, which climbs while the server answers and falls with
+                # the window when it does not; no ceiling declared, no spacing at all
+                group.next_start = now + (1.0 / group.rate if group.rate else 0.0)
                 task = asyncio.create_task(
                     self._work(pending, group, session, results, on_result, callback_error)
                 )
