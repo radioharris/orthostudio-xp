@@ -1362,6 +1362,11 @@ class OverpassClient:
             if on_reply is not None:
                 on_reply(reply)
             outcome = self._classify(mirror, reply)
+            if reply.status == 429:
+                # the cluster is now set aside for a guess; its status page says when a slot
+                # actually frees, and one small request buys the whole build that number, since
+                # the board is shared by every tile in flight (found attacking this, 2026-09-24)
+                await self._ask_when_free(mirror)
             if outcome is None:
                 self._close(mirror.code)
                 self.attempts.append(
@@ -1498,6 +1503,34 @@ class OverpassClient:
             if spec.name == layer:
                 return spec
         return LAYERS[layer]
+
+    async def _ask_when_free(self, mirror: Mirror) -> float | None:
+        """Ask a mirror's status page when this address may query again, and hold the cluster
+        until then. ``None`` when it has no status page, does not answer, or says neither.
+
+        Overpass counts queries per internet address and frees a slot on its own clock. We set a
+        guessed minute instead of reading the number it publishes, so a build gave up while the
+        quota needed longer (a user, 2026-09-24). One request, at the moment we are about to wait
+        anyway, and every tile of the build learns it through the shared board.
+        """
+        if not mirror.status_url:
+            return None
+        reply = await self.transport.request(
+            "GET",
+            mirror.status_url,
+            headers=self.headers,
+            connect_timeout_s=self.connect_timeout_s,
+            read_timeout_s=self.health_timeout_s,
+        )
+        if reply.error is not None or reply.status != 200:
+            return None
+        wait = slot_wait_s(reply.body.decode("utf-8", "replace"))
+        if wait is None:
+            return None
+        self._open_cluster(
+            mirror.cluster, reason=f"a slot in {wait:.0f} s", seconds=wait, quota=True
+        )
+        return wait
 
     def _classify(self, mirror: Mirror, reply: HttpReply) -> tuple[str, str] | None:
         """``None`` when the answer is usable, else ``(error code, reason)`` (spec 4)."""

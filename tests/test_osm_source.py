@@ -339,12 +339,16 @@ def test_429_fails_over_and_opens_the_whole_cluster() -> None:
     snap = asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert snap.mirror == "mailru"
     assert [c.health_snapshot()[code].state for code in ("de", "z", "lz4")] == ["open"] * 3
-    # the other two German names are not asked; the last resorts are, in the registry's order
+    # the other two German names are not asked; the last resorts are, in the registry's order.
+    # The 429 is followed by one GET of that machine's status page, which is where these servers
+    # publish when a slot frees (2026-09-24).
     assert [h for h, _ in t.sent] == [
+        "overpass-api.de",
         "overpass-api.de",
         "overpass.openstreetmap.fr",
         "maps.mail.ru",
     ]
+    assert [what for _, what in t.sent].count("GET") == 1
     # a 429 is not a machine failing, it is the per-address quota: its own code, in plain words
     assert [a.error for a in c.attempts] == [
         "OSM_MIRROR_RATE_LIMITED",
@@ -460,6 +464,33 @@ def test_the_status_page_says_when_a_slot_frees() -> None:
     assert slot_wait_s("Slot available after: X, in -3 seconds.") == 0.0  # never negative
     assert slot_wait_s("Connected as: 1\nCurrent time: now\n") is None  # says neither
     assert slot_wait_s("") is None
+
+
+def test_a_429_asks_the_status_page_when_a_slot_frees() -> None:
+    """The number these servers publish beats the minute we guessed, and the board is shared by
+    every tile in flight, so one small request buys the whole build that number.
+
+    It was read only by Checks when this was written, which is nowhere a build passes: the value
+    never reached the thing it was for (found attacking the change, 2026-09-24).
+    """
+    status = HttpReply(
+        200, b"Rate limit: 2\nSlot available after: X, in 140 seconds.\n", {}, 0.01
+    )
+    quota = HttpReply(429, b"", {}, 0.01)
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [quota, status],
+            "z.overpass-api.de": [ok()],
+            "lz4.overpass-api.de": [ok()],
+            "overpass.openstreetmap.fr": [ok()],
+            "maps.mail.ru": [ok()],
+        }
+    )
+    c = client(t)
+    asyncio.run(c.fetch_layer(TILE, "coastline"))
+    assert [what for _, what in t.sent].count("GET") == 1, "the status page is asked once"
+    aside = c.health_snapshot()
+    assert aside["de"].state == "open"  # and the cluster is held for what it said
 
 
 def test_the_rounds_wait_long_enough_to_outlast_a_quota() -> None:
@@ -937,7 +968,8 @@ def test_a_round_that_asks_nobody_is_not_repeated() -> None:
 
     took = run(go())
     assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
-    assert len(transport.sent) <= len(MIRRORS), "nobody is asked twice while the quota holds"
+    queried = [host for host, what in transport.sent if what != "GET"]  # the status pages aside
+    assert len(queried) <= len(MIRRORS), "nobody is asked twice while the quota holds"
 
 
 def test_a_quota_refusal_never_doubles_whether_or_not_a_delay_is_named() -> None:
