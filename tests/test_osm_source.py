@@ -300,7 +300,6 @@ def client(transport: ScriptedTransport, **kw: object) -> OverpassClient:
         "attempt_delay_s": 0.0,
         "min_interval_s": 0.0,
         "cooldown_s": 60.0,
-        "round_pause_s": 0.0,
     }
     params.update(kw)
     return OverpassClient(MIRRORS, transport, **params)  # type: ignore[arg-type]
@@ -487,23 +486,38 @@ def test_a_429_asks_the_status_page_when_a_slot_frees() -> None:
     c = client(t)
     asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert [what for _, what in t.sent].count("GET") == 1, "the status page is asked once"
-    aside = c.health_snapshot()
-    assert aside["de"].state == "open"  # and the cluster is held for what it said
+    # and the cluster is held for the 140 s it named, not for the minute we would have guessed.
+    # Asserting only that the breaker is open passed with a version that read the page and set
+    # nothing, since the 429 had already opened it (found in review, 2026-09-24).
+    held = c._board.soonest(["de"]) - time.monotonic()
+    assert 100.0 < held <= 140.0, f"held for {held:.0f} s, not the 140 the page named"
 
 
-def test_the_rounds_wait_long_enough_to_outlast_a_quota() -> None:
-    """A spent Overpass quota frees on the server's clock, in minutes. Three rounds twenty
-    seconds apart gave one minute of patience and the build gave up (a user, 2026-09-24).
+def test_the_rounds_wait_for_what_the_servers_said() -> None:
+    """One clock decides when to ask again: the breakers, which carry what each server said.
 
-    The two numbers go together: the rounds are bounded by the tile's own deadline, and raising
-    one without the other changes nothing, which is how the first minute came about.
+    A schedule of our own woke the round before the servers were ready, found nobody left to ask
+    and ended the layer after a minute, which is the very thing the patience had been raised to
+    fix. The test that guarded it only did arithmetic on two constants and stayed green
+    throughout (found in review, 2026-09-24), so this one drives the client and measures.
     """
-    from orthostudio.pipeline.native import OsmJob
-    from orthostudio.sources.osm import ROUND_PAUSE_S, ROUNDS
+    quota = HttpReply(429, b"", {"retry-after": "2"}, 0.0)
+    hosts = {m.interpreter.split("/")[2] for m in MIRRORS} | {
+        m.status_url.split("/")[2] for m in MIRRORS if m.status_url
+    }
+    t = ScriptedTransport({host: [quota] for host in hosts})
+    c = client(t, rounds=3)
 
-    waited = sum(ROUND_PAUSE_S * n for n in range(1, ROUNDS))
-    assert waited >= 480, "a quota needs minutes, not one"
-    assert waited < OsmJob().timeout_s, "the deadline would cut the rounds short"
+    started = time.monotonic()
+    with pytest.raises(OsxpError):
+        run(c.fetch_layer(TILE, "coastline", deadline=started + 60.0))
+    took = time.monotonic() - started
+
+    # a 429 sets the whole cluster aside, so a round asks one machine per cluster
+    clusters = len({m.cluster for m in MIRRORS})
+    asked = [host for host, what in t.sent if what != "GET"]
+    assert len(asked) >= 3 * clusters, f"a round gave up without asking anyone: {asked}"
+    assert took >= 2.0 * 2, f"it did not wait the two seconds each server named ({took:.1f} s)"
 
 
 def test_a_quota_refusal_is_said_in_plain_words() -> None:
@@ -607,10 +621,12 @@ def test_a_new_build_gives_every_mirror_another_chance() -> None:
 
 
 def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
+    # the rounds wait for the breakers and spend the caller's deadline doing it, so a test that
+    # wants to see them all needs a budget and cooldowns it can outlast (0.1.15)
     t = ScriptedTransport({})
-    c = client(t)
+    c = client(t, cooldown_s=0.02)
     with pytest.raises(OsxpError) as err:
-        asyncio.run(c.fetch_layer(TILE, "coastline"))
+        asyncio.run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 30.0))
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert err.value.context["layer"] == "coastline"
     assert err.value.context["tile"] == "+43+005"
@@ -631,8 +647,11 @@ def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
             "maps.mail.ru": [HttpReply(504, b"", {}, 0.01)],
         }
     )
-    c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "de"
+    c = client(t, cooldown_s=0.02)
+    assert (
+        asyncio.run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 30.0)).mirror
+        == "de"
+    )
     assert len(t.sent) == len(MIRRORS) + 1  # a whole round refused, then the first of the next
 
 
@@ -640,7 +659,7 @@ def test_a_refusal_of_principle_is_not_asked_twice() -> None:
     """Only what may pass is worth another round: ``.fr``'s 403 will be the same in a minute."""
     mirrors = (Mirror(code="fr", interpreter="https://fr.example/api/interpreter", cluster="fr"),)
     t = ScriptedTransport({"fr.example": [HttpReply(403, b"white-listed usages only", {}, 0.01)]})
-    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0, round_pause_s=0.0)
+    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0)
     with pytest.raises(OsxpError):
         asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert len(t.sent) == 1
@@ -909,7 +928,7 @@ def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
 
     busy = HttpReply(504, b"", {}, 0.01)
     transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-    c = client(transport, round_pause_s=20.0, rounds=3)
+    c = client(transport, rounds=3)
 
     async def go() -> float:
         started = _time.monotonic()
@@ -929,7 +948,7 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
 
     def asked(deadline_in: float | None) -> int:
         transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-        c = client(transport, rounds=2)  # round_pause_s is 0 in the test client
+        c = client(transport, rounds=2, cooldown_s=0.02)
 
         async def go() -> None:
             import time as _time
@@ -944,28 +963,34 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
         run(go())
         return len(transport.sent)
 
-    assert asked(None) == asked(600.0) > 0
+    assert asked(60.0) == asked(600.0) > 0
+    # and no deadline at all is no budget to wait against: one round, then the answer
+    assert asked(None) < asked(600.0)
 
 
-def test_a_round_that_asks_nobody_is_not_repeated() -> None:
-    """Every server refused for the quota, so every one is set aside with a cooldown the round
-    pause will not outlast. Asking again costs forty seconds and learns nothing, once per layer
-    and per tile of the batch (2026-09-23, the address having spent its quota)."""
+def test_a_wait_longer_than_the_budget_is_not_taken() -> None:
+    """A server that names ten minutes when the tile has five has said no, not "later".
+
+    Until 0.1.15 this was a schedule of our own: the round slept twenty seconds, gave every
+    breaker back and asked again, which learnt nothing and cost forty seconds a layer. Now the
+    breakers are the one clock and the caller's deadline is the budget for them, so a wait that
+    does not fit ends the layer at once, with the reason said.
+    """
     import time as _time
 
     quota = HttpReply(429, b"", {"retry-after": "600"}, 0.01)
     transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
-    c = client(transport, round_pause_s=20.0, rounds=3)
+    c = client(transport, rounds=3)
 
     async def go() -> float:
         started = _time.monotonic()
         with pytest.raises(OsxpError) as caught:
-            await c.fetch_layer(TileRef(43, 5), "coastline")
-        assert "every server is still set aside" in str(caught.value.context.get("attempts", ""))
+            await c.fetch_layer(TileRef(43, 5), "coastline", deadline=started + 30.0)
+        assert "no time left for another round" in str(caught.value.context.get("attempts", ""))
         return _time.monotonic() - started
 
     took = run(go())
-    assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
+    assert took < 25.0, f"it waited {took:.0f} s for a slot it had no time for"
     queried = [host for host, what in transport.sent if what != "GET"]  # the status pages aside
     assert len(queried) <= len(MIRRORS), "nobody is asked twice while the quota holds"
 

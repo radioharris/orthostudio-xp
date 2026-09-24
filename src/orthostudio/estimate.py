@@ -255,15 +255,11 @@ def probe_network(
         for i, (x, y) in enumerate(tiles)
     ]
     t0 = time.perf_counter()
-    # the probe obeys the rate too: it asked for every chunk at once, which on a server that
-    # counts requests is the burst that gets the probe blocked before a build has begun
-    results = fetch_all(
-        reqs,
-        max_in_flight=len(reqs),
-        start_in_flight=len(reqs),
-        hedge_after_s=2.0,
-        req_per_s=provider.server_req_per_s,
-    )
+    # No rate here on purpose: a probe measures the line, and pacing it measures our own
+    # pacing. Passing the provider's ceiling made every group start at a quarter of it and the
+    # probe report a quarter of the truth, so an online estimate came out three to four times
+    # too long (found in review, 2026-09-24). Twenty requests is what the window already bounds.
+    results = fetch_all(reqs, max_in_flight=len(reqs), start_in_flight=len(reqs), hedge_after_s=2.0)
     seconds = time.perf_counter() - t0
     errors = sum(1 for r in results if r.error is not None or r.status != 200)
     size = sum(len(r.body) for r in results if r.error is None and r.status == 200)

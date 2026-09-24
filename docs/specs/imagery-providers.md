@@ -136,14 +136,20 @@ most each provider allows): Bing 128 (the line's limit), Esri `Arc` 128 (it was 
 guess: 4.5 times faster), Esri Clarity `Arc@` 192 (two 502 at 256), USGS 128, Spain 128, Japan 64,
 the Netherlands 32 (slower at 64), Luxembourg 16 (slower at 32, with timeouts). The services of a
 state were not tried past 128. The fetcher's AIMD (R2 of `net-download.md`) still lowers the window
-of a server that slows down. `server_req_per_s` is the rate a server gave there when it, not the
-line, was the limit: Esri Clarity 522, Spain 584, USGS 280, the Netherlands 181, Luxembourg 130,
-Japan 103 (none for Bing and Esri `Arc`, which kept up with the line). **EOX is 90, and not a measurement of ours**: we read 224 from here on 2026-09-22 with no error, and a user's builds kept failing on it from an address where the server stops answering around 90 (2026-09-24), which is the figure it now carries. A throughput one machine obtained is not a ceiling a server tolerates from everyone, so since 0.1.15 the fetcher **approaches** whatever is declared rather than holding it: a quarter to begin with, climbing while the server answers, falling when it does not (`net-download.md` R2b). The others have not been checked against a second address. Since 0.1.14 it is
-also the **ceiling the fetcher starts requests at** (`net-download.md` R8, `Fetcher(req_per_s=)`),
-for the build and for the probe: a server that counts requests rather than connections blocks a
-caller it finds too eager, and `max_in_flight` alone does not slow one down on a fast line. The
-shipped numbers are those servers' own ceilings, so the cap binds only where the server already
-was the limit; a source of a user's own may name a much lower rate. The time left of a build
+of a server that slows down. `server_req_per_s` is a **ceiling the fetcher climbs to**, never a speed it holds
+(`net-download.md` R2b): a group starts at a quarter of it, climbs while the server answers, falls
+with the window when it does not, and the probe is not paced at all, because a probe measures the
+line. The figures are what each server gave when it, not the line, was the limit: Esri Clarity 522,
+Spain 584, USGS 280, the Netherlands 181, Luxembourg 130, Japan 103; none for Bing and Esri `Arc`,
+which kept up with the line, and those two are not paced.
+
+**EOX's 90 is not a measurement of ours.** We read 224 from here on 2026-09-22, sustained and
+without an error, and a user's builds kept failing on it from an address where the server stops
+answering around 90 (2026-09-24). A throughput one machine obtained is not a ceiling a server
+tolerates from everyone, which is the whole reason these are approached and not held. None of the
+others has been checked against a second address.
+
+The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
 user's builds downloaded, and Japan five times faster than its measured rate (2026-09-15). `headers` is empty for

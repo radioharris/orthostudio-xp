@@ -47,7 +47,6 @@ __all__ = [
     "MIRRORS",
     "PROGRESS_PERIOD_S",
     "ROUNDS",
-    "ROUND_PAUSE_S",
     "SNAPSHOT_FORMAT",
     "USER_AGENT",
     "Attempt",
@@ -110,9 +109,6 @@ only thing to do is wait for it. What bounds the waiting is not this count but t
 deadline (``pipeline.native.OsmJob.timeout_s``), and the rounds stop early of their own accord
 when nothing that refused could pass, or when every server is still set aside.
 """
-ROUND_PAUSE_S = 60.0
-"""Waited before the second round, twice that before the third, and so on: 60, 120, 180 and 240
-seconds, ten minutes of patience in all, inside the tile's deadline."""
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
 PROGRESS_PERIOD_S = 1.0
@@ -913,6 +909,16 @@ class MirrorBoard:
                     out[code] = st.last_error
             return out
 
+    def soonest(self, codes: Iterable[str]) -> float:
+        """The earliest instant one of ``codes`` may be asked again, 0 when any is open now.
+
+        The one clock of the rounds: each breaker carries what its server said, and this is the
+        first moment any of them is ready. Asking earlier finds nobody and ends the layer.
+        """
+        with self._lock:
+            times = [self._states[c].open_until for c in codes if c in self._states]
+        return min(times) if times else 0.0
+
     def reopen(self, codes: Iterable[str]) -> None:
         """Give these mirrors another chance, except one that asked to be left alone.
 
@@ -1026,7 +1032,6 @@ class OverpassClient:
         max_attempts: int = MAX_ATTEMPTS,
         attempt_delay_s: float = ATTEMPT_DELAY_S,
         rounds: int = ROUNDS,
-        round_pause_s: float = ROUND_PAUSE_S,
         max_in_flight: int = MAX_IN_FLIGHT,
         min_interval_s: float = MIN_INTERVAL_S,
         allow_last_resort: bool = True,
@@ -1049,7 +1054,6 @@ class OverpassClient:
         self.max_attempts = max_attempts
         self.attempt_delay_s = attempt_delay_s
         self.rounds = max(1, rounds)
-        self.round_pause_s = round_pause_s
         self.max_in_flight = max_in_flight
         self.min_interval_s = min_interval_s
         self.allow_last_resort = allow_last_resort
@@ -1258,14 +1262,24 @@ class OverpassClient:
         reasons: list[str] = []
         for round_no in range(self.rounds):
             if round_no:
-                # every mirror refused, and at least one of them because it was busy: wait, give
-                # them all their breaker back, and ask the whole list again
-                pause = self.round_pause_s * round_no
-                if deadline is not None and time.monotonic() + pause >= deadline:
+                # Every mirror refused. One clock decides when to ask again: the breakers, which
+                # carry what each server said (a 429's Retry-After, the slot its status page
+                # names, or the cooldown of a machine that is down). Waiting a schedule of our
+                # own instead woke the round before the servers were ready, found nobody to ask
+                # and gave up in a minute (found in review, 2026-09-24).
+                if deadline is None:
+                    # The wait is what the servers named, and the caller's deadline is the budget
+                    # for it. No deadline, no budget: one round and the answer, rather than a
+                    # sleep of whatever length a server happened to ask for.
+                    reasons.append("no deadline to wait against")
+                    break
+                now = time.monotonic()
+                free = self._board.soonest(m.code for m in self.mirrors)
+                pause = max(self.attempt_delay_s, free - now)
+                if now + pause >= deadline:
                     reasons.append("no time left for another round")
                     break
                 await asyncio.sleep(pause)
-                self._board.reopen(m.code for m in self.mirrors)
                 reasons.append(f"round {round_no + 1}")
             snap, asked = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
@@ -1527,9 +1541,9 @@ class OverpassClient:
         wait = slot_wait_s(reply.body.decode("utf-8", "replace"))
         if wait is None:
             return None
-        self._open_cluster(
-            mirror.cluster, reason=f"a slot in {wait:.0f} s", seconds=wait, quota=True
-        )
+        # the same reason the 429 already set: a user reads what his mirrors answered, and
+        # "a slot in 0 s" beside a failed build told him nothing (found in review, 2026-09-24)
+        self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=wait, quota=True)
         return wait
 
     def _classify(self, mirror: Mirror, reply: HttpReply) -> tuple[str, str] | None:
@@ -1603,7 +1617,8 @@ def slot_wait_s(body: str) -> float | None:
     """
     if not body:
         return None
-    if _SLOT_NOW.search(body):
+    now_free = _SLOT_NOW.search(body)
+    if now_free and int(now_free.group(1)) > 0:
         return 0.0
     waits = [int(found) for found in _SLOT_AFTER.findall(body)]
     return float(max(0, min(waits))) if waits else None

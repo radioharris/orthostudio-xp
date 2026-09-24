@@ -218,13 +218,7 @@ class _Group:
     )
 
     def __init__(
-        self,
-        name: str,
-        start: int,
-        maximum: int,
-        rate_ceiling: float | None = None,
-        *,
-        from_start: bool = False,
+        self, name: str, start: int, maximum: int, rate_ceiling: float | None = None
     ) -> None:
         self.name = name
         self.window = start
@@ -234,9 +228,7 @@ class _Group:
         self.next_start = 0.0
         self.rate_ceiling = rate_ceiling
         self.rate_floor = None if rate_ceiling is None else rate_ceiling * RATE_FLOOR
-        self.rate = (
-            None if rate_ceiling is None else rate_ceiling * (1.0 if from_start else RATE_START)
-        )
+        self.rate = None if rate_ceiling is None else rate_ceiling * RATE_START
         self.successes_since_rate = 0
         self.hedges_in_flight = 0
         self.paused_until = 0.0
@@ -377,7 +369,6 @@ class Fetcher:
         timeout_s: float = 20.0,
         max_attempts: int = 4,
         req_per_s: float | None = None,
-        rate_from_start: bool = False,
         http2: bool = True,
         max_pushbacks: int = MAX_PUSHBACKS,
         pushback_budget_s: float = PUSHBACK_BUDGET_S,
@@ -398,13 +389,6 @@ class Fetcher:
         self.timeout_s = timeout_s
         self.max_attempts = max_attempts
         self.req_per_s = req_per_s
-        self.rate_from_start = rate_from_start
-        """Whether the ceiling is held from the first request rather than approached.
-
-        Our registry's rates are measurements we are unsure of, so a group climbs to them. A rate
-        a user wrote in their own ``sources.toml`` is an instruction, not a guess: quartering it
-        would make a ZL16 tile of a source set to 3 requests a second take seventeen hours instead
-        of four (found attacking this change, 2026-09-24)."""
         self.max_pushbacks = max_pushbacks
         self.pushback_budget_s = pushback_budget_s
         self.http2 = http2
@@ -473,11 +457,7 @@ class Fetcher:
         group = self._groups.get(name)
         if group is None:
             group = self._groups[name] = _Group(
-                name,
-                self.start_in_flight,
-                self.max_in_flight,
-                self.req_per_s,
-                from_start=self.rate_from_start,
+                name, self.start_in_flight, self.max_in_flight, self.req_per_s
             )
         return group
 
@@ -486,10 +466,6 @@ class Fetcher:
     def windows(self) -> dict[str, int]:
         """Current AIMD window per host group (for tests and the UI)."""
         return {name: g.window for name, g in self._groups.items()}
-
-    def rates(self) -> dict[str, float]:
-        """Current requests a second per host group, for the groups that have a ceiling."""
-        return {name: g.rate for name, g in self._groups.items() if g.rate is not None}
 
     def stats(self) -> FetchStats:
         """Snapshot of the current (or last) ``fetch_many`` run."""

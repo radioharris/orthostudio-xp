@@ -151,11 +151,7 @@ started every `1 / rate` seconds per `host_group`, on top of R2's window: the gr
 compound: what a group achieves is `min(window / latency, rate)`, so whichever binds, binds, and
 a push-back that halves both halves the result once.
 
-**Why a ceiling and not a speed.** Every rate in the registry was measured once, from one machine,
-on one day. EOX's 224 was real here and eleven times what a user's address could get before the
-server stopped answering (2026-09-24). A figure like that is worth keeping as a limit nobody
-should pass, and worthless as an instruction. Climbing to it converges on what this line and this
-route allow. It comes from the provider's
+**Why a ceiling and not a speed.** Every rate in the registry was measured once, from one machine, on one day. EOX's 224 was real here and eleven times what a user's address could get before the server stopped answering (2026-09-24). A figure like that is worth keeping as a limit nobody should pass, and worthless as an instruction. Climbing to it converges on what this line and this route allow, and costs 1.1 % of a full tile: measured, not guessed, which is why there is no exception for a rate a user declared themselves. It comes from the provider's
 `server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`) and for the
 probe (`estimate.probe`, which asked for every chunk of a texture at once).
 
@@ -359,16 +355,18 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
   healthy machine. 3 attempts across machines, then `OSM_UNAVAILABLE`: another cluster's machine
   is asked at once, another machine of the cluster that just failed after 5 s. Never the 2^n
   back-off of Ortho4XP (up to 5 min 40 per query).
+- **One clock for when to ask again** (0.1.15): the breakers, and nothing else. Each carries what
+  its server said (a 429's `Retry-After`, the slot its `/api/status` page names, the cooldown of a
+  machine that is down), `MirrorBoard.soonest` gives the first moment any of them is ready, and a
+  round waits exactly that, floored at `attempt_delay_s`. The caller's `deadline` is the budget: a
+  wait that does not fit ends the layer at once, saying so, and a caller with no deadline gets one
+  round. A schedule of our own beside the breakers is what made the two fight, the round waking
+  before the servers were ready, finding nobody to ask, and giving up in a minute -- the very bug
+  the patience had been raised to fix (found in review, 2026-09-24).
 - **Patience for a spent quota** (0.1.15): these servers count queries per internet address and
   free a slot on their own clock, in minutes. Three rounds twenty seconds apart gave one minute,
   and a user watched all five mirrors answer 429/403/504 and the build give up while the quota
-  needed longer (2026-09-24). The rounds are now five, 60 s apart and growing (60, 120, 180, 240:
-  ten minutes), and the tile's own deadline, which bounds them, went from 5 to 15 minutes; raising
-  one without the other changes nothing, which is how the minute came about. The rounds still stop
-  early when nothing that refused could pass, or when every server is still set aside. And the
-  `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot
-  available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and the health probe opens the
-  breaker until then rather than for a guessed minute.
+  needed longer (2026-09-24). The rounds are now five and wait for the breakers as above, inside a tile deadline that went from 5 to 15 minutes; raising the rounds under a five-minute deadline would have changed nothing, which is how the minute came about. The rounds still stop early when nothing that refused could pass. And the `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and a 429 **during a layer** asks that machine's page, one GET at the moment we are about to wait anyway, and holds the cluster until the slot it names. It was read only by Checks when first written, which is nowhere a build goes.
 - Each layer goes to the least busy cluster: two healthy clusters take four layers of a tile at
   once, two each. The breakers are the process's (`MirrorBoard`): a machine one tile found dead
   is not asked by the next tile, nor by the next build, until its cooldown ends

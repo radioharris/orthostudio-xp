@@ -95,8 +95,8 @@ EOX is the exception, and the reason it is worth pinning these at all. We measur
 on 2026-09-22 with no error; a user's builds kept failing on it, from an address where the server
 stops answering around 90 (2026-09-24). A throughput one machine obtained is not a ceiling a
 server tolerates from everyone, so EOX carries his 90 and not our 224, and the fetcher approaches
-whatever is declared instead of holding it. The others have not been checked against a second
-address.
+whatever is declared instead of holding it, at a cost of 1.1 % on a full tile. The others have not
+been checked against a second address.
 """
 
 
