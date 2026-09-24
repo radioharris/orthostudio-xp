@@ -977,7 +977,7 @@ def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
     """
     from orthostudio.sources.osm import BUSY_COOLDOWN_S, BUSY_STATUSES, COOLDOWN_S
 
-    assert BUSY_STATUSES == {502, 503, 504}
+    assert {502, 503, 504} == BUSY_STATUSES
     assert BUSY_COOLDOWN_S < COOLDOWN_S / 10, "busy is not down"
 
     busy = HttpReply(504, b"", {}, 0.01)
