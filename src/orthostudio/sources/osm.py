@@ -84,6 +84,16 @@ CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
 COOLDOWN_S = 600.0
 QUOTA_COOLDOWN_S = 60.0
+BUSY_STATUSES = frozenset({502, 503, 504})
+"""Answers that mean the machine is busy or its upstream is, not that it is broken."""
+BUSY_COOLDOWN_S = 20.0
+"""Set aside for a machine that answered 504, 503 or a remark: busy, not broken.
+
+It used to take the cooldown built for a machine that is down, 600 seconds and doubling,
+and nothing showed because the rounds gave every breaker back before asking again. With
+the breakers as the one clock, that mis-tuning became a layer that gave up after one round
+where it used to ask fifteen times (measured against v0.1.14, 2026-09-25). Twenty seconds
+is what the old round pause was, now carried by the breaker that knows why it is set."""
 """How long a server that refused our address is left alone when it names no delay itself.
 
 Most of them name none. Long enough that a build stops asking, short enough that the next tile
@@ -855,7 +865,13 @@ class MirrorBoard:
             )
 
     def open(
-        self, code: str, *, reason: str, seconds: float | None = None, quota: bool = False
+        self,
+        code: str,
+        *,
+        reason: str,
+        seconds: float | None = None,
+        quota: bool = False,
+        busy: bool = False,
     ) -> None:
         with self._lock:
             st = self._states[code]
@@ -878,6 +894,15 @@ class MirrorBoard:
                 # that long for one layer.
                 wait = QUOTA_COOLDOWN_S if seconds is None else max(seconds, 1.0)
                 st.open_until = _later(st.open_until, min(wait, MAX_COOLDOWN_S))
+            elif busy:
+                # Busy is not broken: a 504 means the machine or its upstream could not finish
+                # this query, and the same query a moment later is answered. It took the cooldown
+                # built for a machine that is down, six hundred seconds and doubling, and nothing
+                # showed while the rounds gave every breaker back before asking again. With the
+                # breakers as the one clock, that mis-tuning cost a layer two thirds of its
+                # attempts (measured against v0.1.14, 2026-09-25). No doubling either: a server
+                # busy twice is busy, not failing.
+                st.open_until = _later(st.open_until, seconds if seconds else BUSY_COOLDOWN_S)
             else:
                 st.open_until = _later(st.open_until, st.cooldown_s)
                 st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
@@ -1029,6 +1054,7 @@ class OverpassClient:
         connect_timeout_s: float = CONNECT_TIMEOUT_S,
         health_timeout_s: float = HEALTH_TIMEOUT_S,
         cooldown_s: float = COOLDOWN_S,
+        busy_cooldown_s: float = BUSY_COOLDOWN_S,
         max_attempts: int = MAX_ATTEMPTS,
         attempt_delay_s: float = ATTEMPT_DELAY_S,
         rounds: int = ROUNDS,
@@ -1051,6 +1077,7 @@ class OverpassClient:
         self.connect_timeout_s = connect_timeout_s
         self.health_timeout_s = health_timeout_s
         self.cooldown_s = cooldown_s
+        self.busy_cooldown_s = busy_cooldown_s
         self.max_attempts = max_attempts
         self.attempt_delay_s = attempt_delay_s
         self.rounds = max(1, rounds)
@@ -1095,9 +1122,15 @@ class OverpassClient:
         return {m.code: self._board.health(m.code, now) for m in self.mirrors}
 
     def _open(
-        self, code: str, *, reason: str, seconds: float | None = None, quota: bool = False
+        self,
+        code: str,
+        *,
+        reason: str,
+        seconds: float | None = None,
+        quota: bool = False,
+        busy: bool = False,
     ) -> None:
-        self._board.open(code, reason=reason, seconds=seconds, quota=quota)
+        self._board.open(code, reason=reason, seconds=seconds, quota=quota, busy=busy)
 
     def _open_cluster(
         self, cluster: str, *, reason: str, seconds: float | None = None, quota: bool = False
@@ -1565,7 +1598,13 @@ class OverpassClient:
                 waited = f"try again in about {delay / 60:.0f} min"
             return "OSM_MIRROR_RATE_LIMITED", f"too many requests from your address, {waited}"
         if reply.status != 200:
-            self._open(mirror.code, reason=f"HTTP {reply.status}")
+            busy = reply.status in BUSY_STATUSES
+            self._open(
+                mirror.code,
+                reason=f"HTTP {reply.status}",
+                seconds=self.busy_cooldown_s if busy else None,
+                busy=busy,
+            )
             return "OSM_MIRROR_REJECTED", f"HTTP {reply.status}"
         try:
             doc = orjson.loads(reply.body)

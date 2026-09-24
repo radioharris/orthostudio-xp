@@ -647,7 +647,7 @@ def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
             "maps.mail.ru": [HttpReply(504, b"", {}, 0.01)],
         }
     )
-    c = client(t, cooldown_s=0.02)
+    c = client(t, cooldown_s=0.02, busy_cooldown_s=0.02)
     assert (
         asyncio.run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 30.0)).mirror
         == "de"
@@ -689,7 +689,7 @@ def test_the_breaker_half_opens_after_the_cooldown() -> None:
             "z.overpass-api.de": [ok()],
         }
     )
-    c = client(t, cooldown_s=0.05)
+    c = client(t, cooldown_s=0.05, busy_cooldown_s=0.05)  # a 504 is busy, not down
     asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert c.health_snapshot()["de"].state == "open"
     asyncio.run(asyncio.sleep(0.06))
@@ -966,6 +966,29 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
     assert asked(60.0) == asked(600.0) > 0
     # and no deadline at all is no budget to wait against: one round, then the answer
     assert asked(None) < asked(600.0)
+
+
+def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
+    """A 504 means the machine or its upstream could not finish this query, not that it is down.
+
+    It took the cooldown built for a machine that is down, 600 s and doubling, and nothing showed
+    while the rounds gave every breaker back before asking again. With the breakers as the one
+    clock that mis-tuning cost a layer two thirds of its attempts (measured, 2026-09-25).
+    """
+    from orthostudio.sources.osm import BUSY_COOLDOWN_S, BUSY_STATUSES, COOLDOWN_S
+
+    assert BUSY_STATUSES == {502, 503, 504}
+    assert BUSY_COOLDOWN_S < COOLDOWN_S / 10, "busy is not down"
+
+    busy = HttpReply(504, b"", {}, 0.01)
+    t = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
+    c = client(t)
+    with pytest.raises(OsxpError):
+        run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 0.1))
+    held = c._board.soonest(["de"]) - time.monotonic()
+    assert 0 < held <= BUSY_COOLDOWN_S, (
+        f"held for {held:.0f} s, not the {BUSY_COOLDOWN_S:.0f} of a busy machine"
+    )
 
 
 def test_a_wait_longer_than_the_budget_is_not_taken() -> None:
