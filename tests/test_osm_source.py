@@ -473,9 +473,7 @@ def test_a_429_asks_the_status_page_when_a_slot_frees() -> None:
     It was read only by Checks when this was written, which is nowhere a build passes: the value
     never reached the thing it was for (found attacking the change, 2026-09-24).
     """
-    status = HttpReply(
-        200, b"Rate limit: 2\nSlot available after: X, in 140 seconds.\n", {}, 0.01
-    )
+    status = HttpReply(200, b"Rate limit: 2\nSlot available after: X, in 140 seconds.\n", {}, 0.01)
     quota = HttpReply(429, b"", {}, 0.01)
     t = ScriptedTransport(
         {

@@ -235,9 +235,7 @@ class _Group:
         self.rate_ceiling = rate_ceiling
         self.rate_floor = None if rate_ceiling is None else rate_ceiling * RATE_FLOOR
         self.rate = (
-            None
-            if rate_ceiling is None
-            else rate_ceiling * (1.0 if from_start else RATE_START)
+            None if rate_ceiling is None else rate_ceiling * (1.0 if from_start else RATE_START)
         )
         self.successes_since_rate = 0
         self.hedges_in_flight = 0
