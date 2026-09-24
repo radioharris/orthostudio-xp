@@ -56,10 +56,18 @@ terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 # decodes like the JPEGs. Free for non-commercial use (CC BY-NC-SA 4.0), its credit shown.
 url_template = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{zoom}/{y}/{x}.jpg"
 max_zl = 14
-max_in_flight = 32  # 8, 16, 32, 64 gave 76, 138, 224, 240 req/s, no error (2026-09-22)
-server_req_per_s = 224
+# 8, 16, 32 and 64 in flight gave 76, 138, 224 and 240 req/s from here with no error
+# (2026-09-22), and those are what this line held until a user's builds kept failing on EOX
+# (2026-09-24): from his address the server stops answering around 90 req/s, and he gets his
+# imagery whole at 4 in flight and 20 requests a second. A measured throughput is not a ceiling
+# a server tolerates from everyone, and since 0.1.14 this rate is one we hold to rather than one
+# we merely do not exceed. So it is now his, with a little room for a slow line: a ZL14 tile is
+# 5 120 pieces, which is four minutes, on a source made for flying high.
+max_in_flight = 8
+server_req_per_s = 20
 attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
-name = "EOX Sentinel-2 cloudless"
+name = "EOX Sentinel-2 cloudless 2024"  # they publish a new mosaic every year, and the
+# address names the one we ask for: the list must say which, or a pilot cannot tell (user, 2026-09-24)
 terms_url = "https://cloudless.eox.at/documentation/license"
 licence = "CC BY-NC-SA 4.0, non-commercial use only"
 

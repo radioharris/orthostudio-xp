@@ -138,7 +138,7 @@ the Netherlands 32 (slower at 64), Luxembourg 16 (slower at 32, with timeouts). 
 state were not tried past 128. The fetcher's AIMD (R2 of `net-download.md`) still lowers the window
 of a server that slows down. `server_req_per_s` is the rate a server gave there when it, not the
 line, was the limit: Esri Clarity 522, Spain 584, USGS 280, the Netherlands 181, Luxembourg 130,
-Japan 103, EOX 224 (none for Bing and Esri `Arc`, which kept up with the line). Since 0.1.14 it is
+Japan 103 (none for Bing and Esri `Arc`, which kept up with the line). **EOX is 20, and not a measurement of ours**: we read 224 from here on 2026-09-22 with no error, and a user's builds kept failing on it from an address where the server stops answering around 90 and came back whole at 20 (2026-09-24). A throughput one machine obtained is not a ceiling a server tolerates from everyone, which matters more now the figure is a rate the fetcher holds to. The others have not been checked against a second address. Since 0.1.14 it is
 also the **ceiling the fetcher starts requests at** (`net-download.md` R8, `Fetcher(req_per_s=)`),
 for the build and for the probe: a server that counts requests rather than connections blocks a
 caller it finds too eager, and `max_in_flight` alone does not slow one down on a fast line. The

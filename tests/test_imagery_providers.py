@@ -63,7 +63,7 @@ MEASURED_IN_FLIGHT = {
     "BI": 128,
     "Arc": 128,
     "Arc@": 192,
-    "EOX": 32,  # measured 2026-09-22, when it was added
+    "EOX": 8,  # not what we measured: what a user's builds need, see the rates below
     "Lux": 16,
     "NL": 32,
     "PDOK": 32,
@@ -78,7 +78,7 @@ MEASURED_IN_FLIGHT = {
 
 MEASURED_SERVER_RATES = {
     "Arc@": 522,
-    "EOX": 224,
+    "EOX": 20,
     "Lux": 130,
     "NL": 181,
     "PDOK": 181,
@@ -89,7 +89,15 @@ MEASURED_SERVER_RATES = {
     "JP": 103,
     "USGS": 280,
 }
-"""Requests per second of the servers that, not the line, were the limit (2026-09-15)."""
+"""Requests per second of the servers that, not the line, were the limit (2026-09-15).
+
+EOX is the exception, and the reason it is worth pinning these at all. We measured 224 from here
+on 2026-09-22 with no error; a user's builds kept failing on it, from an address where the server
+stops answering around 90, and came back whole at 20 (2026-09-24). A throughput one machine
+obtained is not a ceiling a server tolerates from everyone, and since 0.1.14 this figure is a rate
+the fetcher holds to rather than one it merely does not exceed. The others have not been checked
+against a second address.
+"""
 
 
 def test_each_server_takes_the_requests_in_flight_it_was_measured_at(
