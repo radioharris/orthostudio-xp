@@ -25,11 +25,21 @@ from orthostudio.desktop import (
     open_while_starting,
     opening_page,
 )
+from orthostudio.home import osxp_home
 
 
 def test_the_log_is_in_the_platform_log_folder() -> None:
+    """On Linux the log sits beside everything else of ours, under ``$OSXP_HOME``, because the
+    platform's own answer is one nobody finds (a user, 2026-09-23); macOS and Windows each have
+    a place people know, named after the app. The test asked for the app's name everywhere and
+    so failed on Linux from that day, unseen until the format check stopped running first
+    (CI, 2026-09-24)."""
     path = log_path()
-    assert path.name == LOG_NAME and APP_NAME in path.parts
+    assert path.name == LOG_NAME
+    if sys.platform.startswith("linux"):
+        assert path.parent == osxp_home() / "log"
+    else:
+        assert APP_NAME in path.parts
 
 
 def test_the_output_goes_to_the_log_and_the_streams_come_back(tmp_path: Path) -> None:
