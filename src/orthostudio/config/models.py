@@ -259,15 +259,16 @@ class Expert(BaseModel):
         "expert",
         None,
         "",
-        hint="The prepared library a build reads before asking the public servers. Empty "
-        "switches it off and every tile is downloaded live, as before.",
+        hint="The address of another prepared library, read before the public servers are "
+        "asked. Empty means the one this version carries (a build from source carries none).",
     )
     osm_library_token: str = _field(
         "",
         "expert",
         None,
         "",
-        hint="The key that library opens with; it travels with every request.",
+        hint="The key of the library named above; it travels with every request. Empty means "
+        "the key this version carries.",
     )
     mesh_zl: Literal[16, 17, 18, 19, 20] = _field(19, "expert", "mesh_zl", "ZL")
     mask_zl: Literal[14, 15, 16] = _field(14, "expert", "mask_zl", "ZL")

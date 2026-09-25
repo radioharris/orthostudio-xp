@@ -187,8 +187,14 @@ is precisely the kind of silence this whole chain exists to end.
 | Setting | Default | What it does |
 |---|---|---|
 | `expert.osm_folder` | empty | a folder of prepared layers, in our format or Ortho4XP's (bzip2 OSM 0.6 XML) |
-| `expert.osm_library` | our address | the baked library to read; empty switches it off |
-| `expert.osm_library_token` | ships with the app | sent with every request, manifest included |
+| `expert.osm_library` | empty | another baked library to read; empty means the one this version carries |
+| `expert.osm_library_token` | empty | the key of that library, sent with every request, manifest included; empty means the key this version carries |
+
+Neither the address nor the key this version carries is ever shown: an empty field stands for
+them, so the address stays out of the page as it stays out of the README and the log. The hints
+said until 2026-09-25 that an empty address switched the library off, which is the opposite of
+what a build does. There is no switch to turn the library off, and none is needed: a library that
+fails is set aside by itself (section 4), and fresh data skips it (section 1).
 
 A user pointing `osm_folder` at what they already downloaded is the request that started this
 (a user, 2026-09-23); it is first in the chain because it is local, free, and theirs.

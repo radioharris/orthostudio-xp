@@ -473,8 +473,8 @@
     },
     "osm_library": {
      "default": "",
-     "description": "The prepared library a build reads before asking the public servers. Empty switches it off and every tile is downloaded live, as before.",
-     "hint": "The prepared library a build reads before asking the public servers. Empty switches it off and every tile is downloaded live, as before.",
+     "description": "The address of another prepared library, read before the public servers are asked. Empty means the one this version carries (a build from source carries none).",
+     "hint": "The address of another prepared library, read before the public servers are asked. Empty means the one this version carries (a build from source carries none).",
      "level": "expert",
      "ortho4xp": null,
      "title": "Osm Library",
@@ -483,8 +483,8 @@
     },
     "osm_library_token": {
      "default": "",
-     "description": "The key that library opens with; it travels with every request.",
-     "hint": "The key that library opens with; it travels with every request.",
+     "description": "The key of the library named above; it travels with every request. Empty means the key this version carries.",
+     "hint": "The key of the library named above; it travels with every request. Empty means the key this version carries.",
      "level": "expert",
      "ortho4xp": null,
      "title": "Osm Library Token",
