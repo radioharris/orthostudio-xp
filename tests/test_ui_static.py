@@ -5071,6 +5071,43 @@ def test_the_engines_errors_are_said_in_french_and_never_with_a_hole() -> None:
     assert said[2] is None, "English keeps the engine's words"
 
 
+def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
+    """A user wanted to see where the recommended value of a setting lies before moving it, above
+    all among the expert ones: every number now starts its explanation, in bold, with what it may
+    take and what it is unless changed (2026-09-25). Only the bounds the schema holds, which the
+    engine checks; a number it does not bound says its default alone. Measured in the page: 23
+    fields, in both languages."""
+    said = _node_json(
+        "settings.js",
+        """(() => {
+          const cases = [
+            [{ minimum: 0, maximum: 30, default: 10 }, "°"],
+            [{ minimum: 0, default: 200 }, "km²"],
+            [{ exclusiveMinimum: 0, default: 2 }, ""],
+            [{ default: 19 }, "ZL"],
+            [{ minimum: 14, maximum: 20, default: 18 }, "ZL"],
+            [{}, ""],
+          ];
+          return cases.map(([prop, unit]) => m.rangeText(prop, unit));
+        })()""",
+    )
+    assert said == [
+        "From 0 to 30°, 10° by default.",
+        "0 km² or more, 200 km² by default.",
+        "More than 0, 2 by default.",
+        "ZL19 by default.",
+        "From ZL14 to ZL20, ZL18 by default.",
+        "",
+    ]
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    assert 'const range = control.type === "number" ? rangeText(prop, unit) : "";' in code
+    assert 'h("strong", { class: "hint-range" }, range)' in code, "first, and in bold"
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in ("between", "at_least", "above", "default"):
+            assert f"settings.x.range_{key}" in tables[lang], (lang, key)
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from

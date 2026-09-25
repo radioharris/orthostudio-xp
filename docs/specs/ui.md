@@ -730,6 +730,13 @@ bar's count is `library_count`, which counts tiles, not rows.
 
 In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody understands them";
 what each setting really does, and the wording of every question: `settings-plain-language.md`).
+
+**A number says its range first.** Every number of the generated fields starts its explanation,
+in bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*,
+*0 km² or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value
+lies before moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds
+the schema holds, which are what the engine checks; a number it does not bound says its default
+alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages.
 `settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
 `app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
 answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a

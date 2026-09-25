@@ -504,6 +504,23 @@ const OPTION_TEXT = {
 };
 
 /** Units shown in plain words where the schema's are a code (``M``) or an English word. */
+/** The values a number may take and the one it has unless changed, said first and in bold: a
+ * user wanted to see where the recommended value lies before moving it, above all among the
+ * expert ones (2026-09-25). Only the bounds the schema holds, since they are what the engine
+ * checks: a number it does not bound says its default alone. */
+export function rangeText(prop, unit = "") {
+  const known = (n) => typeof n === "number" && Number.isFinite(n);
+  const num = (n) => (unit === "ZL" ? `ZL${n}` : fmtNum(n, 3));
+  const u = !unit || unit === "ZL" ? "" : unit === "°" ? unit : ` ${unit}`;
+  let range = "";
+  if (known(prop.minimum) && known(prop.maximum)) range = t("settings.x.range_between", { min: num(prop.minimum), max: num(prop.maximum) + u });
+  else if (known(prop.minimum)) range = t("settings.x.range_at_least", { min: num(prop.minimum) + u });
+  else if (known(prop.exclusiveMinimum)) range = t("settings.x.range_above", { min: num(prop.exclusiveMinimum) + u });
+  const byDefault = known(prop.default) ? t("settings.x.range_default", { value: num(prop.default) + u }) : "";
+  const said = [range, byDefault].filter(Boolean).join(", ");
+  return said ? `${said.charAt(0).toUpperCase()}${said.slice(1)}.` : "";
+}
+
 const UNIT_TEXT = {
   "advanced.limit_tris": () => t("settings.x.unit_million"),
   "advanced.water_smoothing": () => t("settings.x.unit_passes"),
@@ -1110,7 +1127,8 @@ function expertField(view, path, prop) {
   else field.append(control);
   // what the folder holds, filled in place when the engine answers (app.js loadSettingsPatches)
   const found = path === PATCHES_DIR ? h("span", { class: "hint-found" }, patchesFoundText(view.patches)) : null;
-  field.append(h("div", { class: "hint" }, fieldHint(path), found));
+  const range = control.type === "number" ? rangeText(prop, unit) : "";
+  field.append(h("div", { class: "hint" }, range ? h("strong", { class: "hint-range" }, range) : null, range ? " " : null, fieldHint(path), found));
   return field;
 }
 

@@ -34,7 +34,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   bin on its row, or all of them at once with the trash above it; the tiles they built stay.
 - **Settings in plain words.** Questions about what you want to see in X-Plane (detail, airports,
   coast, water, relief, roads and forests), the recommended answer marked, three presets, and every
-  Ortho4XP setting still there under "For experts" with a plain label.
+  Ortho4XP setting still there under "For experts" with a plain label; every number says first
+  what it may take and what it is by default.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
   built with: the imagery, the detail, the relief really read (a lidar asked for where it never
   flew says so), its zones and its patches; the Plan says it too, over a tile and under the
