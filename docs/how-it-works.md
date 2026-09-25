@@ -271,8 +271,10 @@ says "No imagery received", rather than going blank without a word.
 
 And a source of one country has nothing at all elsewhere. Asked over France, the Netherlands and
 Luxembourg both answer a blank image rather than an error, so the map would simply turn white or
-black. It now says "Netherlands · PDOK does not cover this view." A build over squares a source
-does not reach is refused outright, with the squares named.
+black. It now says "Netherlands · PDOK does not cover this view." The question it answers is the
+one a build answers: does this source have imagery for the square in the middle of your screen?
+So the message is the same whatever your zoom. A build over squares a source does not reach is
+refused outright, with the squares named.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from

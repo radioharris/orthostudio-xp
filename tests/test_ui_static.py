@@ -4752,42 +4752,36 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
 def test_a_source_that_does_not_cover_the_view_says_so() -> None:
     """A source of one country answers a plain white (PDOK) or black (Luxembourg) image outside
     its own, with a 200: nothing fails, so the map went blank without a word (a user, 2026-09-25).
-    The engine refuses a build there (CFG_PROVIDER_OUT_OF_COVERAGE); the map says it first.
 
-    One rectangle rule, shared with the lists and with the engine's `Provider.covers`: a 1-degree
-    tile and the map's view are both boxes. A view that straddles the border is covered, since
-    part of it has imagery.
+    The question asked is the engine's own, `Provider.covers` on the square in the middle of the
+    screen. Weighing the whole visible rectangle made the word come and go with the zoom, since a
+    wide view over Paris still touches the Netherlands: PDOK said nothing until ZL8, over Lyon
+    nothing until ZL6, and a small pan near the threshold turned it on and off. The middle of the
+    screen answers the same at every zoom, which is what the user asked for.
     """
-    nl = {"extent_bounds": [3.06, 50.72, 7.26, 53.76]}  # the registry's own, Netherlands
-    world = {"extent_bounds": None}
+    nl = '{"extent_bounds": [3.06, 50.72, 7.26, 53.76]}'  # the registry's own, Netherlands
     said = _node_json(
         "sources.js",
-        f"""[
-          m.sourceMeets({nl!s}, [4.5, 51.5, 5.0, 52.0]),
-          m.sourceMeets({nl!s}, [4.5, 45.5, 5.0, 46.0]),
-          m.sourceMeets({nl!s}, [4.5, 50.0, 5.0, 51.0]),
-          m.sourceMeets({world!s}, [4.5, 45.5, 5.0, 46.0]),
-          m.sourceCovers({nl!s}, "+52+004"),
-          m.sourceCovers({nl!s}, "+45+004"),
-        ]""".replace("None", "null").replace("'", '"'),
+        f'["+48+002", "+45+004", "+43+001", "+52+004", "+50+006"]'
+        f".map((name) => m.sourceCovers({nl}, name))",
     )
-    assert said[0] is True, "over the Netherlands"
-    assert said[1] is False, "over France, where it answers a blank image"
-    assert said[2] is True, "straddling the border, part of the view has imagery"
-    assert said[3] is True, "a source of the whole world covers everything"
-    assert said[4] is True and said[5] is False, "a tile reads the same rule"
+    assert said == [False, False, False, True, True], "Paris, Lyon, Toulouse no; Amsterdam yes"
+    # and the last one straddles the border, where a build would have imagery for part of it
+    assert _node_json("sources.js", 'm.sourceCovers({"extent_bounds": null}, "+45+004")') is True
 
-    # the map says it, and a blank tile arriving does not wipe the word away
+    # the map asks it about the middle of the screen, so the answer cannot change with the zoom
     code = (UI / "map.js").read_text(encoding="utf-8")
-    standing = code[code.index("function standingNotice()") : code.index("function viewChanged()")]
+    standing = code[code.index("function standingNotice()") : code.index("let happened")]
+    assert "const c = map.getCenter();" in standing
+    assert "sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))" in standing
+    assert "getBounds" not in standing, "not the visible rectangle: that is what came and went"
     assert "ctx.mock || (zs.street.wanted && !zs.street.failed)" in standing, (
         "not a source's imagery"
     )
-    assert 'sourceMeets(p, box) ? "" : t("map.base_outside"' in standing
+
+    # what just happened wins over what is standing, and a blank tile is not news
     shown = code[code.index("function showNotice()") : code.index("function setNotice(")]
-    assert "const text = happened || standingNotice();" in shown, (
-        "what happened wins, else what stands"
-    )
+    assert "const text = happened || standingNotice();" in shown
     layer = code[
         code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
     ]

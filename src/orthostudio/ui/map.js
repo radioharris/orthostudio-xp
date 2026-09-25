@@ -14,7 +14,7 @@
 import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
-import { sourceGroups, sourceGroupTitle, sourceLabel, sourceMeets } from "./sources.js";
+import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
   MAX_NAME,
   MAX_VERTICES,
@@ -1693,20 +1693,27 @@ export function createPlanMap(ctx) {
    * blank without a word (a user, 2026-09-25). The engine refuses a build there outright
    * (CFG_PROVIDER_OUT_OF_COVERAGE); the map says it before he asks for one.
    *
-   * The rectangle is the source's own, read with the rule the lists and the engine share. The
-   * street map and the mock are not a source's imagery, and a source without a rectangle covers
-   * the world: both give nothing to say. */
-  /** What the map last said just happened, as opposed to what is standing (`showNotice`). */
-  let happened = "";
-
+   * The question is the one the engine answers for a build: does this source cover the square in
+   * the middle of the screen (`sourceCovers`, its own `Provider.covers`)? Weighing the whole
+   * visible rectangle instead made the word come and go with the zoom, since a wide view over
+   * Paris still touches the Netherlands: PDOK said nothing until ZL8, over Lyon nothing until
+   * ZL6, and a small pan near the threshold turned it on and off (a user, 2026-09-25). The
+   * middle of the screen is what he is looking at, and it answers the same at every zoom.
+   *
+   * The street map and the mock are not a source's imagery, and a source without a rectangle
+   * covers the world: both give nothing to say. */
   function standingNotice() {
     if (!map || ctx.mock || (zs.street.wanted && !zs.street.failed)) return "";
     const p = providerByCode(ctx.planProvider() || "");
     if (!p) return "";
-    const b = map.getBounds();
-    const box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-    return sourceMeets(p, box) ? "" : t("map.base_outside", { provider: sourceLabel(p) });
+    const c = map.getCenter();
+    return sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))
+      ? ""
+      : t("map.base_outside", { provider: sourceLabel(p) });
   }
+
+  /** What the map last said just happened, as opposed to what is standing (`showNotice`). */
+  let happened = "";
 
   /** The view moved, or what is under it changed: the legend says what this view is worth, and
    * the map forgets what happened to the view before. One pair, so the two cannot drift apart. */

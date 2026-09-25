@@ -960,10 +960,15 @@ it ever serves and the map says where it stops sooner.
 **A source that does not reach here says so** (`map.base_outside`, "Netherlands · PDOK does not
 cover this view."). A source of one country answers a plain white (PDOK) or black (Luxembourg)
 image outside its own, with a 200: nothing fails, the tiles arrive, and the map used to go blank
-without a word (a user, 2026-09-25). `standingNotice` reads the source's own rectangle through
-`sourceMeets`, the one rule the lists and the engine's `Provider.covers` share, so a view that
-straddles a border is covered. The engine refuses a build there outright
+without a word (a user, 2026-09-25). The engine refuses a build there outright
 (`CFG_PROVIDER_OUT_OF_COVERAGE`); the map says it before he asks for one.
+
+`standingNotice` asks the engine's own question, `sourceCovers` (its `Provider.covers`) on **the
+square in the middle of the screen**. Weighing the whole visible rectangle instead made the word
+come and go with the zoom, because a wide view over Paris still touches the Netherlands: PDOK said
+nothing until ZL8, over Lyon nothing until ZL6, and a small pan near that threshold turned it on
+and off (the same user, same day). The middle of the screen is what he is looking at, and it
+answers the same from ZL4 to ZL20.
 
 The map's word has two sources and one line (`showNotice`): what just happened (`setNotice`: tiles
 that do not come, the street map's renderer, an engine older than the page) if there is any, else
