@@ -286,49 +286,59 @@ def test_a_pack_records_the_colours_it_was_built_with(tmp_path: Path) -> None:
     assert "photo_brightness" in PackParams(**common, photo_saturation=-0.3).canonical()
 
 
-def test_the_pack_names_the_decal_chosen(tmp_path: Path) -> None:
-    """The DSF step writes the terrain files with Ortho4XP's decal and the pack names the one
-    chosen: another choice rewrites the terrain files alone, the DSF and the textures stay the
-    links they are (what setdecal does to a tile already built; its author asked, 2026-09-25)."""
+def test_the_pack_writes_the_decals(tmp_path: Path) -> None:
+    """The DSF step writes the terrain files without decals and the pack writes them: turning
+    them on or off, or choosing another, rewrites the terrain files alone while the DSF and the
+    textures stay the links they are (what setdecal does to a built tile; its author asked for the
+    choice, 2026-09-25). Land always, the sea with ``decal_on_sea``, inland water never."""
     from orthostudio.imagery.grid import TextureId
     from orthostudio.textures.ter import TerKind, TerParams, ter_center, ter_filename, ter_text
 
     tex = TextureId(til_x=8416, til_y=5984, zl=14, provider="BI")
     lat, lon = ter_center(tex)
-    on = TerParams(use_decal_on_terrain=True)
     dsf_dir, tex_dir, out = tmp_path / "dsf", tmp_path / "tex", tmp_path / "out"
     (dsf_dir / "terrain").mkdir(parents=True)
     (tex_dir / "textures").mkdir(parents=True)
     (dsf_dir / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
     (tex_dir / "textures" / "5984_8416_BI14.dds").write_bytes(b"DDS " + b"\1" * 64)
-    for kind in (TerKind.LAND, TerKind.WATER_OVERLAY):
-        text = ter_text(tex, kind, lat_med=lat, lon_med=lon, params=on)
+    kinds = (TerKind.LAND, TerKind.WATER_OVERLAY, TerKind.SEA_OVERLAY)
+    for kind in kinds:
+        text = ter_text(tex, kind, lat_med=lat, lon_med=lon, params=TerParams())
         (dsf_dir / "terrain" / ter_filename(tex, kind)).write_text(text, newline="\n")
-    land = ter_filename(tex, TerKind.LAND)
-    water = ter_filename(tex, TerKind.WATER_OVERLAY)
-
-    def write(decal: str) -> int:
-        files = write_pack(
-            out, T, dsf_dir=dsf_dir, textures_dir=tex_dir, overlay_file=None, decal=decal
-        )
-        return files.changed
-
     pack = out / pack_dir_name(T)
-    write("")
-    for name in (land, water):  # Ortho4XP's decal: the DSF step's files as they are
+
+    def write(decal: str = "", on_sea: bool = False) -> int:
+        return write_pack(
+            out, T, dsf_dir=dsf_dir, textures_dir=tex_dir, overlay_file=None,
+            decal=decal, decal_on_sea=on_sea,
+        ).changed  # fmt: skip
+
+    def decals() -> dict[TerKind, str]:
+        out_ = {}
+        for kind in kinds:
+            text = (pack / "terrain" / ter_filename(tex, kind)).read_text()
+            out_[kind] = next((ln for ln in text.splitlines() if ln.startswith("DECAL_LIB")), "")
+        return out_
+
+    grass = "DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl"
+    write()
+    for kind in kinds:  # no decal: the DSF step's files as they are
+        name = ter_filename(tex, kind)
         assert (pack / "terrain" / name).read_bytes() == (dsf_dir / "terrain" / name).read_bytes()
     assert write("grass_and_stony_dirt_1.dcl") == 1  # the land's file, nothing else
-    text = (pack / "terrain" / land).read_text()
-    assert "DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in text
-    assert "maquify" not in text
-    assert (pack / "terrain" / water).read_bytes() == (dsf_dir / "terrain" / water).read_bytes()
+    assert decals() == {TerKind.LAND: grass, TerKind.WATER_OVERLAY: "", TerKind.SEA_OVERLAY: ""}
+    assert write("grass_and_stony_dirt_1.dcl", on_sea=True) == 1  # the sea's
+    assert decals()[TerKind.SEA_OVERLAY] == grass and decals()[TerKind.WATER_OVERLAY] == ""
+    assert write("maquify_2_green_key.dcl", on_sea=True) == 2
     assert os.path.samefile(pack / T.dsf_relpath, dsf_dir / f"{T.name}.dsf")
     assert os.path.samefile(
         pack / "textures" / "5984_8416_BI14.dds", tex_dir / "textures" / "5984_8416_BI14.dds"
     )
-    assert write("grass_and_stony_dirt_1.dcl") == 0
-    assert write("") == 1  # back to Ortho4XP's
-    assert (pack / "terrain" / land).read_bytes() == (dsf_dir / "terrain" / land).read_bytes()
+    assert write("maquify_2_green_key.dcl", on_sea=True) == 0
+    assert write() == 2  # off: both lines go, and the files are the DSF step's again
+    for kind in kinds:
+        name = ter_filename(tex, kind)
+        assert (pack / "terrain" / name).read_bytes() == (dsf_dir / "terrain" / name).read_bytes()
 
 
 def test_a_pack_holding_another_assembly_is_not_intact(

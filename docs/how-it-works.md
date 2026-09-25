@@ -277,11 +277,12 @@ on the ground and mixed with the photo according to its colours, unseen from hig
 decal* chooses which one among those X-Plane 12 ships: Ortho4XP's `maquify_2_green_key.dcl` by
 default (shrubs on what is green, stony dirt elsewhere), `grass_and_stony_dirt_1.dcl` for rough
 grass instead of shrubs, or any other of the list the setdecal tool offers, less five names X-Plane
-12 no longer has. Every terrain file of a tile names its decal, which is all setdecal changes; here
-the tiles already built take the new one at their next build, which writes their terrain files
-again and nothing else: no download, no texture encoded again, about a second a tile. The decal
-goes on land only unless *Fine ground detail on the sea too* is on; lakes and rivers never have
-one.
+12 no longer has. Every terrain file of a tile names its decal, or none, and that line is all
+setdecal changes; OrthoStudio XP writes it the same way. Turning the grain on or off, on the sea
+too, or choosing another decal reaches the tiles already built at their next build, which writes
+their terrain files again and nothing else: no download, no texture encoded again, about a second
+a tile. The decal goes on land only unless *Fine ground detail on the sea too* is on; lakes and
+rivers never have one.
 
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken

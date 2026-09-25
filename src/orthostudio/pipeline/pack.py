@@ -52,7 +52,7 @@ from orthostudio.install.scenery_packs import (
     pack_kind,
 )
 from orthostudio.model import OVERLAY_PACK, PACK_PREFIX, TileRef, pack_dir_name
-from orthostudio.textures.ter import with_decal
+from orthostudio.textures.ter import takes_decal, ter_kind, with_decal
 
 __all__ = [
     "LEFT_OVERLAY",
@@ -142,17 +142,19 @@ class PackParams(RuleParams):
     """Colours of the square, written into the manifest so that the page can say when the tile in
     X-Plane no longer matches its setting (2026-09-18)."""
     decal: str = ""
-    """The decal the terrain files name (``expert.decal``) when it is not Ortho4XP's, which the DSF
-    step writes; empty = that one. Given only to a tile that has decals at all, so that choosing
-    another rebuilds no pack without them."""
+    """The decal the pack writes in the terrain files (``expert.decal``), empty when decals are off;
+    ``decal_on_sea`` puts it on the sea too. The DSF step writes none, so turning them on or off,
+    or choosing another, assembles the pack alone (2026-09-26)."""
+    decal_on_sea: bool = False
 
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if not (self.photo_brightness or self.photo_contrast or self.photo_saturation):
             for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
                 doc.pop(name, None)  # a plain pack keeps the key it had
-        if not self.decal:
-            doc.pop("decal", None)  # Ortho4XP's decal: the key of every pack built before
+        for name in ("decal", "decal_on_sea"):
+            if not doc.get(name):
+                doc.pop(name, None)  # no decal: the key of every pack built without them
         return doc
 
 
@@ -344,6 +346,7 @@ def write_pack(
     link: bool = True,
     tile_cfg: str | None = None,
     decal: str = "",
+    decal_on_sea: bool = False,
 ) -> PackFiles:
     """Assemble ``<out_root>/zOrthoStudio_<tile>/`` from the DSF and textures artefacts.
 
@@ -352,8 +355,8 @@ def write_pack(
     Files the new DSF no longer references are removed from ``textures/`` and ``terrain/``;
     an existing DSF with different bytes becomes ``.dsf.bak`` (DDS are replaced without a
     backup). ``tile_cfg`` (the text of the 44 tile variables) is written as
-    ``tile_settings.cfg``. ``decal``, when given, is named in the terrain files in place of
-    Ortho4XP's (``with_decal``).
+    ``tile_settings.cfg``. ``decal``, when given, is written in the terrain files of the land,
+    and of the sea with ``decal_on_sea`` (``with_decal``); the DSF artefact's have none.
     """
     out_root = Path(out_root)
     pack_dir = out_root / pack_dir_name(tile)
@@ -383,9 +386,8 @@ def write_pack(
         for src in sorted(terrain_src.glob("*.ter")):
             wanted_ter.add(src.name)
             dest = terrain_dest / src.name
-            text = src.read_bytes()
-            if decal:
-                text = with_decal(text.decode("ascii"), decal).encode("ascii")
+            wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
+            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
             if not dest.is_file() or dest.read_bytes() != text:
                 atomic_write_bytes(dest, text)
                 changed += 1
@@ -482,7 +484,8 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
 
     Another build of the tile writes its own there, and counting files did not see it: coming back
     to a state built before finds its receipt in the store, so colours taken back to earlier ones
-    kept the photos of the later (0.1.17, found 2026-09-26).
+    kept the photos of the later (0.1.17, found 2026-09-26), and decals turned off after grass kept
+    the grass.
     """
     pack_dir = Path(pack_dir)
     files = manifest.files
@@ -584,6 +587,7 @@ def assemble_pack(
     photo: dict[str, float] | None = None,
     built: dict[str, Any] | None = None,
     decal: str = "",
+    decal_on_sea: bool = False,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact)."""
@@ -597,6 +601,7 @@ def assemble_pack(
         link=link,
         tile_cfg=tile_cfg or None,
         decal=decal,
+        decal_on_sea=decal_on_sea,
     )
     artefacts: dict[str, ArtefactEntry] = {}
     for label, inp in (("dsf", dsf), ("textures", textures), ("overlay", overlay)):
@@ -626,6 +631,9 @@ def assemble_pack(
                 Path("..", OVERLAY_PACK, tile.dsf_relpath).as_posix() if files.overlay else ""
             ),
             "cfg": TILE_SETTINGS_NAME if files.cfg is not None else "",
+            # which decal the terrain files name: without it, two packs apart by their decal
+            # alone had the same manifest, and ``pack_is_intact`` could not tell them apart
+            **({"decal": decal, "decal_on_sea": decal_on_sea} if decal else {}),
         },
     )
     atomic_write_text(files.pack_dir / MANIFEST_NAME, manifest.to_toml())
@@ -1538,6 +1546,7 @@ def _tile_pack(ctx: RunContext) -> None:
         },
         built=env.built,
         decal=params.decal,
+        decal_on_sea=params.decal_on_sea,
     )
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 

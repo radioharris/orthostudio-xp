@@ -1085,7 +1085,8 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 - **Does.** Adds `DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl` to the land and masked-sea
   `.ter` files, not to inland water (Ortho4XP `O4_DSF_Utils.py:342-344`; OrthoStudio XP
   `textures/ter.py:144-146`). The hint names `maquify_1` and says "all but water". Which decal is
-  `expert.decal` (4.17c).
+  `expert.decal` (4.17c). The pack writes the line, not the DSF step (2026-09-26): turning it on
+  or off assembles a built tile's pack again and nothing else.
 - **In X-Plane.** Expected: fine grain on the ground seen from very low; whether X-Plane 12 still
   ships that decal is Q5.
 - **Recommendation. Folded.**
@@ -1100,7 +1101,7 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 
 - **Does.** Puts the decal on the masked sea too, as Ortho4XP does. Off, the decal goes on land
   alone: a user found the grain wrong on the sea and asked for the land alone (2026-09-17).
-  Inland water never has it, in either case.
+  Inland water never has it, in either case. The pack writes it, like the switch above.
 - **Recommendation. Folded**, next to the decal setting it completes.
 - **Expert label.** EN *Fine ground detail on the sea too* · FR *Grain du sol aussi sur la mer*.
 
@@ -1118,9 +1119,10 @@ No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/d
   vegetation on what is vaguely green and stony dirt elsewhere, in a 25 m pattern;
   `grass_and_stony_dirt_1`, setdecal's default, rough grass on greenish areas and stony dirt
   elsewhere, in 9 m.
-- **Cost of a change.** The pack names it (`PackParams.decal`, `with_decal`): the DSF and the
-  textures are hits and the pack alone is assembled again, measured at a second on +43+005 at ZL14
-  (39 terrain files, 17 with a decal). Ortho4XP's decal keeps the key of every pack built before.
+- **Cost of a change.** The pack writes the decal (`PackParams.decal`, `with_decal`) and the
+  DSF step none, so this choice, and the two switches above, leave the DSF and the textures hits
+  and assemble the pack alone: a second on +43+005 at ZL14 (39 terrain files, 17 of land). A tile
+  built without decals keeps every key; one built with them before 0.1.18 is built again once.
 - **Recommendation. Folded (list)**, under the two decal switches.
 - **Expert label.** EN *Ground decal* · FR *Decal du sol*; the default reads
   *maquify_2_green_key.dcl (Ortho4XP)*.

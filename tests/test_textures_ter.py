@@ -13,8 +13,10 @@ from orthostudio.textures.ter import (
     border_mask_filename,
     load_center_size,
     sea_kind,
+    takes_decal,
     ter_center,
     ter_filename,
+    ter_kind,
     ter_text,
     texture_dds_name,
     with_decal,
@@ -150,15 +152,32 @@ def test_five_decimals_and_int_truncation() -> None:
     assert lon == -180.0 + 8 * 360 / 2**14
 
 
-def test_with_decal_names_the_one_chosen_where_ortho4xps_is() -> None:
-    """The DSF step writes Ortho4XP's decal and the pack names the one chosen in Settings: the
-    land's line changes and nothing else, water has no line to change (2026-09-26)."""
-    on = TerParams(use_decal_on_terrain=True)
+def test_the_pack_writes_the_decal_where_ter_text_would() -> None:
+    """The pack adds the decal line to terrain files written without it, as setdecal rewrites a
+    built tile (its author asked for the choice, 2026-09-25): for every kind, with and without the
+    sea, the result is the very file ``ter_text`` writes with decals on."""
     lat, lon = CENTER
+    for kind in TerKind:
+        assert ter_kind(ter_filename(T, kind)) is kind
+        plain = ter_text(T, kind, lat_med=lat, lon_med=lon, params=DEFAULTS)
+        assert "DECAL_LIB" not in plain and with_decal(plain, "") == plain
+        for on_sea in (False, True):
+            on = TerParams(use_decal_on_terrain=True, decal_on_sea=on_sea)
+            decal = "maquify_2_green_key.dcl" if takes_decal(kind, on_sea=on_sea) else ""
+            written = ter_text(T, kind, lat_med=lat, lon_med=lon, params=on)
+            assert with_decal(plain, decal) == written, (kind, on_sea)
+            assert with_decal(written, "") == plain  # off again: the line goes
+    assert not takes_decal(TerKind.WATER_OVERLAY, on_sea=True)  # inland water never has one
+
+
+def test_with_decal_replaces_the_line_and_keeps_every_byte_else() -> None:
+    lat, lon = CENTER
+    on = TerParams(use_decal_on_terrain=True)
     land = ter_text(T, TerKind.LAND, lat_med=lat, lon_med=lon, params=on)
-    water = ter_text(T, TerKind.WATER_OVERLAY, lat_med=lat, lon_med=lon, params=on)
-    assert "DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\n" in land
     grass = with_decal(land, "grass_and_stony_dirt_1.dcl")
     assert grass == land.replace("maquify_2_green_key.dcl", "grass_and_stony_dirt_1.dcl")
-    assert with_decal(land, "maquify_2_green_key.dcl") == land
-    assert "DECAL_LIB" not in water and with_decal(water, "grass_and_stony_dirt_1.dcl") == water
+    assert with_decal(grass, "grass_and_stony_dirt_1.dcl") == grass
+    crlf = land.replace("\n", "\r\n")  # a file edited on Windows keeps its line ends
+    assert with_decal(crlf, "") == ter_text(
+        T, TerKind.LAND, lat_med=lat, lon_med=lon, params=DEFAULTS
+    ).replace("\n", "\r\n")
