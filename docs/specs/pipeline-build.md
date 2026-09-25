@@ -206,6 +206,11 @@ dsf_size = 32442870
 textures = 17
 terrain = 39
 overlay = "../yOrthoStudio_Overlays/Earth nav data/+40+000/+43+005.dsf"
+
+[photo]                          # the colours the textures were encoded with, unless plain
+brightness = -0.06
+contrast = -0.03
+saturation = -0.3
 ```
 
 Deterministic (no timestamps): the manifest is the pack artefact, and its digest keys the
@@ -213,6 +218,18 @@ install receipt. `osxp why <pack dir>` reads it and explains every artefact (`St
 The upstream keys (`dem`, `vectors`, `coastline`, `mesh`, `masks`, `xp12`) come from the store's
 provenance edges of the DSF artefact (`Store.why`), not from the graph: the manifest can be rebuilt
 from the store alone.
+
+`[photo]` holds the square's colours as the textures were encoded with them:
+`PackParams.photo_brightness`, `photo_contrast` and `photo_saturation`, which `declare` copies
+from the textures' own params. A value of zero is left out of the table, and the table with it when
+all three are; the three params are likewise left out of the key while all are zero, so a pack
+built with the plain colours keeps the key it had. The zones of the tile may carry other colours:
+this is the square's answer. The Library reads it first to say when the tile on the disk no longer
+has the colours its square asks for (`api.md` 2.3, `ui.md` 2.4), and asks the store for the params
+of the `textures` artefact when the manifest is silent. The table exists since 2026-09-18, but
+`declare` left the colours out of the pack's params until 2026-09-26: no pack built before 0.1.18
+holds one, and a tile built with other colours than the plain ones has its pack assembled and
+installed again once, its DSF and textures hitting.
 
 ## 4. Batches (`build_tiles`)
 

@@ -489,12 +489,14 @@ def _pack_built(pack_dirs: list[Path]) -> dict[Path, dict[str, Any] | None]:
 def _pack_photos(pack_dirs: list[Path]) -> dict[Path, dict[str, float] | None]:
     """The colours each of these packs was built with; ``None`` when nothing can say.
 
-    The manifest holds them since 2026-09-18. Before that it did not, and a pack built bright
-    then looked plain to the page, which said nothing while X-Plane showed a bright tile (a user,
-    same day): the textures artefact the manifest names is asked instead, since its recorded
-    params are what the build encoded. The store is opened once, and only if an older pack needs
-    it. A build with the plain colours records none of the three, and a pack whose artefact has
-    left the store cannot be asked: both answer ``None``, and the page says nothing.
+    The manifest holds them since 0.1.18 (it had the table from 2026-09-18, but ``declare`` left
+    the colours out of the pack's params until 2026-09-26). Before that it did not, and a pack
+    built bright then looked plain to the page, which said nothing while X-Plane showed a bright
+    tile (a user, 2026-09-18): the textures artefact the manifest names is asked instead, since
+    its recorded params are what the build encoded. The store is opened once, and only if an
+    older pack needs it. A build with the plain colours records none of the three, and a pack
+    whose artefact has left the store cannot be asked: both answer ``None``, and the page says
+    nothing.
     """
     photos: dict[Path, dict[str, float] | None] = {}
     older: dict[Path, str] = {}
