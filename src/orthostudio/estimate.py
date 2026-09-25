@@ -18,7 +18,7 @@ from typing import Any
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus, ChunkStore
 from orthostudio.imagery.grid import TextureId, texture_tiles, textures_covering
-from orthostudio.imagery.providers import Provider, tile_url
+from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.net import FetchRequest, fetch_all
 from orthostudio.pipeline.build import (
     DEFAULT_PER_TEXTURE_S,
@@ -324,7 +324,9 @@ def estimate(
     entries = {e.node_id: e for e in scheduler.plan([g.target.id for g in graphs])}
     per_texture_entry = scheduler.costs.entry(PER_TEXTURE_COST)
     per_texture = per_texture_entry.ewma if per_texture_entry else DEFAULT_PER_TEXTURE_S
-    chunks = ChunkStore(env.chunks_root)
+    chunks = ChunkStore(
+        env.chunks_root, folders={code: cache_name(p) for code, p in env.registry.items()}
+    )  # where a build would look, a source of the user's under its address too
 
     tiles: list[TileEstimate] = []
     first_probe_texture: tuple[Provider, TextureId] | None = None

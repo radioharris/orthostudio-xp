@@ -99,7 +99,9 @@ since its server has no image there. *My sources…* adds a source OrthoStudio X
 from the address of one of its tiles, tried on one tile first: you add it yourself, and its terms
 of use apply to you. It is kept in `sources.toml` in OrthoStudio XP's folder, where you may also
 give it `server_req_per_s = 3`: small servers often serve a few images and then block a caller
-that asks too fast, and that line is the most requests a second OrthoStudio XP will start.
+that asks too fast, and that line is the most requests a second OrthoStudio XP will start. What a
+source of yours downloads is kept under its address as well as its name, so if you change its
+address, or remove it and add another under the same name, the new address is the one asked.
 
 **Settings.** The Settings screen asks what you want to see in X-Plane rather than naming technical
 parameters: how much detail, sharper airports or not, how the coast fades into the sea, which water,

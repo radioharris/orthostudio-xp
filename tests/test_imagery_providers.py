@@ -11,6 +11,7 @@ from orthostudio.imagery.providers import (
     PLACEHOLDERS,
     PlaceholderRule,
     Provider,
+    cache_name,
     is_placeholder,
     load_registry,
     tile_url,
@@ -350,3 +351,46 @@ def test_the_sources_a_user_adds_are_read_saved_and_never_replace_a_shipped_one(
     assert new_source_code("Google satellite!", {}) == "Googlesatellite"
     assert new_source_code("Mine", {"Mine": 1, "Mine_2": 1}) == "Mine_3"
     assert new_source_code("PDOK20", {}) == "PDOK20_2" and new_source_code("  ", {}) == "Source"
+
+
+def test_a_shipped_source_keeps_its_folder_and_a_users_is_named_by_its_address(
+    tmp_path: Path,
+) -> None:
+    """Where a source's downloads live. Every shipped source keeps its code, so nothing a user
+    already downloaded moves and nothing is fetched again. A source of the user's is named after
+    what was typed, so its folder carries its address too: the same name with another address is
+    another folder, and the same address stays the one folder it was.
+    """
+    from orthostudio.api.map_api import MapProxy
+    from orthostudio.imagery.chunks import ChunkStore
+    from orthostudio.imagery.grid import TextureId
+
+    shipped = load_registry()
+    for code, p in shipped.items():
+        if p.custom:
+            continue
+        assert cache_name(p) == code, code
+        t = TextureId(16, 32, 16, code)
+        store = ChunkStore(tmp_path, folders={code: cache_name(p)})
+        assert store.path(t) == tmp_path / code / "16" / "32_16.chunks", code
+
+    def mine(url: str, code: str = "Mine") -> Provider:
+        return Provider(code=code, url_template=url, max_zl=19, custom=True)
+
+    a, b = (
+        mine("https://a.example/{zoom}/{x}/{y}.jpg"),
+        mine("https://b.example/{zoom}/{x}/{y}.jpg"),
+    )
+    assert cache_name(a) != cache_name(b), "the same name with another address is another folder"
+    assert cache_name(a) == cache_name(mine(a.url_template)), "the same address, the same folder"
+    assert cache_name(a).startswith("Mine@") and cache_name(a) not in shipped
+    t = TextureId(16, 32, 16, "Mine")
+    assert ChunkStore(tmp_path, folders={"Mine": cache_name(a)}).path(t) == (
+        tmp_path / cache_name(a) / "16" / "32_16.chunks"
+    )
+
+    # the map's own cache follows the same rule
+    tiles = MapProxy(lambda: tmp_path, registry={"Mine": b}, fetch=lambda *a, **k: None)
+    assert tiles.cache_path(b, 5, 1, 2) == tmp_path / cache_name(b) / "5" / "1" / "2"
+    bi = shipped["BI"]
+    assert tiles.cache_path(bi, 5, 1, 2) == tmp_path / "BI" / "5" / "1" / "2"

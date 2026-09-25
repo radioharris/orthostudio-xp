@@ -309,6 +309,11 @@ def test_manager_forgets_one_finished_job_only(home: Path) -> None:
 
     assert _manager(home, FakeBuild()).get(first.id) is None, "a restart does not bring it back"
 
+    # the live builds end before the manager's own state is played with, and nothing outlives
+    # the test: a build left running logged into the closed output of the next one
+    assert mgr.cancel(queued.id) and mgr.cancel(running.id)
+    assert running.wait(10.0) and queued.wait(10.0) and mgr.active() is None
+
     # The two guards beyond "finished" are for the moment the worker has marked a job finished but
     # the manager has not let go of it yet: `_finish` runs, then `save_state` writes, and only then
     # is the lock taken to clear the active slot and start the next one. Forgetting the job in that
@@ -320,6 +325,7 @@ def test_manager_forgets_one_finished_job_only(home: Path) -> None:
     assert mgr.forget(second.id) is False, "finished, but still in the queue"
     mgr._queue.remove(second)
     assert mgr.forget(second.id) is True, "let go of, and now it can leave"
+    mgr.close()
 
 
 # -- over HTTP ----------------------------------------------------------------------------------

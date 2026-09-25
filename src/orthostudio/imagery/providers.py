@@ -31,6 +31,7 @@ __all__ = [
     "USER_SOURCES_FILE",
     "PlaceholderRule",
     "Provider",
+    "cache_name",
     "is_placeholder",
     "load_registry",
     "new_source_code",
@@ -154,6 +155,21 @@ def _substitute(template: str, x: int, y: int, zl: int, *, switch: int) -> str:
         servers = [s.strip() for s in tmp.split(",")]
         url = url_0 + servers[switch % len(servers)] + url_2
     return url
+
+
+def cache_name(p: Provider) -> str:
+    """The folder a source's downloads are kept under, in the imagery cache and the map's.
+
+    A shipped source keeps its code, so nothing already downloaded moves. A source of the user's
+    adds a fingerprint of its address: its code comes from the name typed, so after removing it
+    and adding another of the same name with another address, or after changing the address in
+    ``sources.toml``, builds and the map went on reading the first address's images without
+    asking the new one once (reproduced 2026-09-25). Its codes are letters and digits only
+    (:func:`new_source_code`), so no folder of one can be a shipped code.
+    """
+    if not p.custom:
+        return p.code
+    return f"{p.code}@{blake3.blake3(p.url_template.encode()).hexdigest()[:8]}"
 
 
 def tile_url(p: Provider, x: int, y: int, zl: int, *, switch: int | None = None) -> str:

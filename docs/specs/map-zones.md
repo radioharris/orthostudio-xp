@@ -193,7 +193,8 @@ clipped polygon. It stays an upper bound, and says so.
 
 - `provider` must be a registry code (else `404`, `CFG_PROVIDER_UNKNOWN`); `z` from 1 to
   `min(19, max_zl)`; `x`, `y` in `[0, 2^z)` (else `422`, `CFG_VALUE_INVALID`).
-- Served from `<data folder>/mapcache/<provider>/<z>/<x>/<y>` when present (`$OSXP_HOME` unless
+- Served from `<data folder>/mapcache/<folder>/<z>/<x>/<y>` when present, the folder being the
+  source's `cache_name` (its code, and for a source of the user's its address as well) (`$OSXP_HOME` unless
   Settings chose another data folder); otherwise fetched once through `orthostudio.net.fetch` with
   `orthostudio.imagery.providers.tile_url`, written atomically, and served. While the data folder
   is missing (its disk unplugged), tiles are fetched and served without the cache, which is neither

@@ -638,3 +638,37 @@ def test_a_texture_the_source_has_nothing_for_is_not_shipped_as_grey(
     assert "no imagery at all" in said
     remedies = " ".join(str(e.get("remedy", "")) for e in report.errors)
     assert "outside what this source covers" in remedies and "lower level" in remedies
+
+
+def test_a_source_of_the_users_under_the_same_name_with_another_address_is_asked_again(
+    tmp_path: Path, mask_dir: Path
+) -> None:
+    """A source of the user's is named after what they typed, and its downloads were kept under
+    that name: remove it, add another of the same name with another address (or change the address
+    in `sources.toml`), and the build reused the first address's images without asking the new one
+    once. The address now names the folder of a source of the user's; a shipped source keeps its
+    code, so nothing it already downloaded moves.
+    """
+    first, second = TileServer(), TileServer()
+    try:
+
+        def mine(srv: TileServer) -> Provider:
+            return srv.provider().model_copy(update={"code": "Mine", "custom": True})
+
+        jobs = [TextureJob(T_LAND._replace(provider="Mine"), (TerKind.LAND,))]
+        spec = make_spec(first, tmp_path, mask_dir, provider=mine(first), jobs=jobs)
+        assert build_textures(spec).ok
+        assert first.state.total_hits() == 256
+
+        again = make_spec(second, tmp_path, mask_dir, provider=mine(second), jobs=jobs)
+        report = build_textures(again)
+        assert report.ok
+        assert second.state.total_hits() == 256, "the new address must be asked, not the old kept"
+        assert report.counts["tiles_cached"] == 0
+
+        # and the same address twice is the same folder: nothing asked the second time
+        second.reset_hits()
+        assert build_textures(again).ok and second.state.total_hits() == 0
+    finally:
+        first.close()
+        second.close()

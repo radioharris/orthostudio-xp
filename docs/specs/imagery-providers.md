@@ -106,6 +106,17 @@ when taken), the address checked first (http or https, and `{x}` `{y}` `{zoom}` 
 Tests never read the machine's own file: `tests/conftest.py` points it elsewhere unless a test sets
 `$OSXP_HOME`.
 
+**Where its downloads are kept** (`cache_name`). A source's images live in the imagery cache and
+the map's under a folder named after it. A shipped source's folder is its code, so nothing a user
+already downloaded moves. A source of the user's is named after what was typed, so its folder adds
+a fingerprint of its address, `Mine@1a2b3c4d` (the first 8 hex of the address's blake3): remove it
+and add another of the same name with another address, or change the address in `sources.toml`,
+and builds and the map used to go on reading the first address's images without asking the new
+one once (reproduced through `build_textures`, 2026-09-25). Its codes are letters and digits only,
+so no such folder is a shipped code. The images of an address no longer used stay until *Free
+space* or `osxp clean --images` empties the cache. The chunk store (`ChunkStore(folders=...)`), the
+parent cache, the estimate and the map route all read the folder from this one function.
+
 ### Initial content (decided by the user; 12 providers, and EOX since 0.1.14)
 
 | Code | Ortho4XP file | Template (OrthoStudio XP) | max_zl | in flight | Placeholder | Extent |

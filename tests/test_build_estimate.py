@@ -3,6 +3,7 @@ requests from the chunk store, costs, disk, text rendering. No network, no Ortho
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,7 @@ from orthostudio.estimate import (
 from orthostudio.graph import Store
 from orthostudio.imagery.chunks import ChunkContainer, ChunkEntry, ChunkStatus, ChunkStore
 from orthostudio.imagery.grid import textures_covering
-from orthostudio.imagery.providers import load_registry
+from orthostudio.imagery.providers import Provider, cache_name, load_registry
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import BuildEnv, BuildSpec
 
@@ -90,6 +91,30 @@ def test_requests_count_only_what_the_chunk_store_lacks(tmp_path: Path, env: Bui
     est = estimate([_spec(tmp_path)], env=env)
     (t,) = est.tiles
     assert t.requests == 256 * (len(textures) - 2) + 10
+
+
+def test_the_estimate_looks_where_a_build_would_for_a_source_of_the_users(
+    tmp_path: Path, env: BuildEnv
+) -> None:
+    """A source of the user's is kept under its address as well as its name. The estimate reads
+    the folder a build would, so images of an address it no longer has are not counted as there,
+    and the ones of its present address are."""
+    mine = Provider(
+        code="Mine", url_template="https://mine.example/{zoom}/{x}/{y}.jpg", max_zl=19, custom=True
+    )
+    env = dataclasses.replace(env, registry={**env.registry, "Mine": mine})
+    spec = dataclasses.replace(_spec(tmp_path), provider="Mine")
+    textures = textures_covering(44, 5, 43, 6, 14, "Mine")
+    complete = ChunkContainer(
+        ChunkEntry(ChunkStatus.OK, b"jpeg", "image/jpeg", 0) for _ in range(256)
+    )
+    ChunkStore(tmp_path / "chunks", fsync=False).write(textures[0], complete)  # its name alone
+    (t,) = estimate([spec], env=env).tiles
+    assert t.requests == 256 * len(textures), "an address it no longer has is not counted"
+    here = ChunkStore(tmp_path / "chunks", fsync=False, folders={"Mine": cache_name(mine)})
+    here.write(textures[0], complete)
+    (t,) = estimate([spec], env=env).tiles
+    assert t.requests == 256 * (len(textures) - 1)
 
 
 def test_probe_result_and_network_time(tmp_path: Path, env: BuildEnv) -> None:

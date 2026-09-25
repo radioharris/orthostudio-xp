@@ -53,7 +53,7 @@ from orthostudio.imagery.chunks import (
     now_unix,
 )
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles
-from orthostudio.imagery.providers import Provider, is_placeholder, tile_url
+from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, tile_url
 from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats
 from orthostudio.pipeline.home import default_chunks_root, default_store_root
 from orthostudio.pipeline.parents import (
@@ -867,8 +867,11 @@ class _Pipeline:
         self.mask_zl = spec.mask_zl
         self.ter_params = dataclasses.replace(spec.ter_params, mask_zl=spec.mask_zl)
         self.out_dir = Path(spec.out_dir)
-        self.chunk_store = ChunkStore(spec.chunks_root, fsync=spec.fsync)
-        self.parent_cache = ParentCache(spec.chunks_root, spec.provider.code, fsync=False)
+        folder = cache_name(spec.provider)  # a source of the user's: its address names it too
+        self.chunk_store = ChunkStore(
+            spec.chunks_root, fsync=spec.fsync, folders={spec.provider.code: folder}
+        )
+        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False)
         self.store = Store(spec.store_root, fsync=spec.fsync)
         self.workers = default_workers() if spec.workers is None else max(0, spec.workers)
         self.jobs = merge_jobs(spec.jobs)

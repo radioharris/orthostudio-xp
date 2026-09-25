@@ -41,7 +41,7 @@ untouched tiles would have read back as 404.
 containers, in a store of its own:
 
 ```
-<chunks_root>/<provider>/_parents/<zl>/<til_y>_<til_x>.chunks
+<chunks_root>/<folder>/_parents/<zl>/<til_y>_<til_x>.chunks
 ```
 
 with `OK` + body for a parent that was downloaded, `MISSING` for a tombstone (404 or
@@ -106,7 +106,9 @@ texture.
 
 ## 5. Store layout and write protocol (`ChunkStore`)
 
-`<root>/<provider>/<zl>/<til_y>_<til_x>.chunks`, e.g. `BI/14/6016_8448.chunks`. `write`
+`<root>/<folder>/<zl>/<til_y>_<til_x>.chunks`, e.g. `BI/14/6016_8448.chunks`. The folder of a
+provider is its code unless `ChunkStore(folders=...)` names another: a source of the user's is kept
+under its address as well (`imagery-providers.md` 4.1, `cache_name`). `write`
 serialises to `<name>.tmp-<pid>-<rand8>` in the same directory, fsyncs (unless
 `ChunkStore(root, fsync=False)`), then `os.replace` onto the final name (`orthostudio.fsutil.
 atomic_write_bytes`, shared by every writer of the project): a reader sees the
