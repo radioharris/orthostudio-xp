@@ -236,8 +236,29 @@ def test_pool_overflow_is_a_coded_error() -> None:
     with pytest.raises(OsxpError) as exc:
         build_dsf(TILE, mesh, None, _params(), None, _quad_capacity=70000)
     assert exc.value.code == "DSF_POOL_OVERFLOW"
+    # where the full pool lies, for serve.log: the level-3 square of +43+005 holding the fan
+    assert exc.value.context["at"] == "43.000000, 5.000000"
     # with Ortho4XP's capacity the pool splits instead
     assert cast(int, build_dsf(TILE, mesh, None, _params(), None).stats["pools_written"]) > 1
+
+
+def test_points_piled_on_one_position_do_not_crash_the_writer() -> None:
+    """+34-118, 2026-09-25: the mesh piled 872 323 points within a millimetre, more than a pool's
+    capacity on one quantised position. The quadtree split that bucket past level 24, where the
+    shift is 2 * (24 - 25): "OverflowError: Python integer -2 out of bounds for uint64", an
+    internal error in the user's face. A bucket that is one position stays whole, and its points,
+    which the DSF cannot tell apart anyway, share its entries."""
+    n = 200
+    rng = np.random.default_rng(1)
+    piled = np.array([5.3, 43.7]) + rng.random((n, 2)) * 1e-9  # one position: 2**-24 deg is 6e-8
+    corners = np.array([[5.0, 43.0], [6.0, 43.0], [6.0, 44.0], [5.0, 44.0]])
+    xy = np.vstack([corners, piled])
+    coords = np.column_stack([xy, np.zeros(len(xy)), np.zeros((len(xy), 2))])
+    fan = np.column_stack([np.arange(4, 4 + n - 1), np.arange(5, 4 + n), np.zeros(n - 1, int)])
+    tris = np.vstack([[[0, 1, 2], [0, 2, 3]], fan]).astype(np.int32)
+    mesh = _MeshData(coords[:, :3], coords[:, 3:5], tris, np.zeros(len(tris), np.uint8))
+    out = build_dsf(TILE, mesh, None, _params(), None, _quad_capacity=50)
+    assert out.data  # written, where it used to raise before a byte was
 
 
 def test_mesh_outside_the_tile_is_a_coded_error() -> None:

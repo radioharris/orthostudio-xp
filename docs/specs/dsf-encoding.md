@@ -90,6 +90,13 @@ where Ortho4XP fails in `struct.pack`), `SYS_INTERNAL_ERROR` for a barycentre ou
   `(k0+"1", k1+"0")`, `(k0+"1", k1+"1")` are appended to the dict, its nodes redistributed,
   the bucket deleted (`:59-70`), and the insertion retried one level down (possibly splitting
   again).
+- A bucket of level 24 is one quantised position, which no split can divide, and is never split
+  (**fix**, 2026-09-25). Ortho4XP splits it all the same and fails on the children it cannot
+  key; OrthoStudio XP raised `OverflowError: Python integer -2 out of bounds for uint64`, the
+  shift of level 25, when a mesh piled more than a pool's capacity on one spot (+34-118, 872 323
+  points within a millimetre). The points of such a bucket share its entries, since the DSF
+  cannot tell them apart. A pool holding more than 65 535 entries is `DSF_POOL_OVERFLOW`, whose
+  context gives the corner of the fullest pool (`at`, latitude and longitude) for `serve.log`.
 - `clean()` deletes empty buckets (`:88-91`).
 - The **pool order** is the dict order after cleaning (`:513-518`): the initial 64 keys minus the
   split ones, then the children in split order. Since Python dicts keep insertion order and a split

@@ -86,7 +86,12 @@ def _split_times(
         stack.append((init_level, prefix, int(start), int(stop)))
     while stack:
         level, prefix, start, stop = stack.pop()
-        if stop - start <= capacity:
+        if stop - start <= capacity or level >= QUANT_BITS:
+            # At QUANT_BITS a bucket is one quantised position, which no split can divide: its
+            # children would all hold the same nodes, and their shift, 2 * (24 - 25), is the
+            # "Python integer -2 out of bounds for uint64" a mesh with 872 323 points on one spot
+            # raised (+34-118, 2026-09-25). Such a bucket stays whole, and a pool that cannot
+            # hold it is DSF_POOL_OVERFLOW, which says where.
             continue
         time = int(np.partition(order[start:stop], capacity)[capacity])
         events.append((time, level, prefix))
