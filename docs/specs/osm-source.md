@@ -96,6 +96,21 @@ Selectors copied verbatim from `O4_Vector_Map.py`; only the output format change
 `small_roads` exists only at `road_level >= 2`; `layers_for(road_level)` returns the layers a
 tile needs (four at the Ortho4XP default `road_level = 1`).
 
+**A layer held for more roads answers a build that wants fewer** (`narrowed`, 0.1.15). The road
+levels differ in one place only, `small_roads`, and only by `way["highway"=…]` selectors added one
+at a time, so a snapshot baked at level 5 holds every road level 3 asks for and two kinds more.
+Handing it over whole would flatten the mesh under tracks and service roads the user's settings say
+nothing about, so the extra is dropped on reading: a way is kept when its tags match one of the
+wanted selectors, a node when a kept way names it or when no way names it at all, and the digest is
+taken again. The result is what that level would have been given, proved against real bakes of
+`+47+013` from the Austrian extract (same 393 698 nodes, same 34 813 ways, same digest as a level 3
+baked from the same data, 2026-09-25). `selector_tag` reads only the `way["k"="v"]` shape, and a
+layer carrying any other selector is refused rather than guessed at.
+
+Without this a library baked at one level served only that level and the two below `small_roads`
+(0, 1 and its own), so a user who chose *+ streets* in Settings fell back to the live servers
+although the bake held every road he wanted.
+
 The bounding box of a tile is `(lat, lon, lat + 1, lon + 1)` — south, west, north, east — as
 in `O4_OSM_Utils.py:557-561`.
 

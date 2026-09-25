@@ -22,7 +22,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -65,6 +65,7 @@ __all__ = [
     "SnapshotStore",
     "Transport",
     "layers_for",
+    "narrowed",
     "osm_progress_message",
     "overpass_query",
     "parse_overpass_json",
@@ -555,6 +556,65 @@ class OsmSnapshot:
 
 def _utc_now() -> str:
     return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+_WAY_TAG_SELECTOR = re.compile(r'^way\["([a-z_:]+)"="([A-Za-z0-9_:-]+)"\]$')
+
+
+def selector_tag(selector: str) -> tuple[str, str] | None:
+    """The key and value a ``way["highway"="track"]`` selector asks for, or ``None``.
+
+    Only this shape is understood, and it is the only one the layers differ by: the road levels
+    add ``way["highway"=...]`` one at a time (:data:`_SMALL_ROAD_SELECTORS`). Anything else is
+    answered ``None``, and a caller that cannot read every selector of a layer must not narrow it.
+    """
+    found = _WAY_TAG_SELECTOR.match(selector.strip())
+    return (found.group(1), found.group(2)) if found else None
+
+
+def narrowed(snap: OsmSnapshot, spec: LayerSpec) -> OsmSnapshot | None:
+    """``snap``, baked for more than ``spec`` asks, cut down to exactly ``spec``; ``None`` when
+    that cannot be done for certain.
+
+    A library baked at road level 5 holds every road a level below it wants and more: the same
+    file answers "+ streets" and "+ tracks", the second having tracks and service roads the first
+    did not ask for. Handing it over whole would flatten the mesh under roads the user's settings
+    say nothing about, so the extra is dropped here instead, and a single bake serves every level
+    (a user asked why 2, 3 and 4 were refused, 2026-09-25).
+
+    Exact by construction: a way is kept when its tags match one of ``spec``'s selectors, a node
+    when a kept way names it or when it is not named by any way at all, and the digest is taken
+    again over what is left.
+    """
+    wanted, held = tuple(spec.selectors), tuple(snap.selectors)
+    if wanted == held:
+        return snap
+    if not set(wanted) <= set(held):
+        return None  # the bake does not hold what this layer asks for
+    rules = [selector_tag(one) for one in held]
+    if any(rule is None for rule in rules):
+        return None  # a selector we cannot read: never guess what a layer holds
+    keep = {selector_tag(one) for one in wanted}
+    ways = tuple(w for w in snap.ways if (_way_tag(w) in keep))
+    named = {i for w in ways for i in w.nodes}
+    every = {i for w in snap.ways for i in w.nodes}
+    nodes = tuple(n for n in snap.nodes if n.id in named or n.id not in every)
+    return replace(
+        snap,
+        selectors=wanted,
+        query=overpass_query(wanted, snap.tile),
+        nodes=nodes,
+        ways=ways,
+        digest=blake3.blake3(_canonical(nodes, ways, snap.relations)).hexdigest(),
+    )
+
+
+def _way_tag(way: OsmWay) -> tuple[str, str] | None:
+    """The one ``(key, value)`` of a way that a road selector could have matched."""
+    for key, value in (way.tags or {}).items():
+        if key == "highway":
+            return (key, str(value))
+    return None
 
 
 def snapshot_from_overpass(

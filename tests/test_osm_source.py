@@ -11,6 +11,7 @@ import json
 import threading
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -443,6 +444,62 @@ def test_the_last_resort_mirror_can_be_refused() -> None:
         asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert "maps.mail.ru" not in {h for h, _ in t.sent}
+
+
+def test_a_bake_of_more_roads_answers_a_build_that_wants_fewer() -> None:
+    """A library baked at road level 5 holds every road a level below it wants, and more.
+
+    Handing it over whole would flatten the mesh under tracks and service roads the user's
+    settings say nothing about, so the extra is dropped on reading instead, and one bake serves
+    every level (a user asked why 2, 3 and 4 were refused, 2026-09-25).
+
+    Proved against real bakes of +47+013 from the Austrian extract: the level 5 narrowed to
+    level 3 came out with the same 393 698 nodes, the same 34 813 ways and the same digest as a
+    level 3 baked from the same data. This test says the same thing in miniature.
+    """
+    import orjson
+
+    from orthostudio.sources.osm import layers_for, narrowed, snapshot_from_overpass
+
+    five = {s.name: s for s in layers_for(5)}["small_roads"]
+    three = {s.name: s for s in layers_for(3)}["small_roads"]
+
+    def body(kinds: dict[int, str]) -> bytes:
+        elements: list[dict[str, object]] = []
+        for i, (way_id, highway) in enumerate(sorted(kinds.items())):
+            a, b = 100 + 2 * i, 101 + 2 * i
+            elements += [
+                {"type": "node", "id": a, "lat": 47.0 + i / 1000, "lon": 13.0},
+                {"type": "node", "id": b, "lat": 47.0 + i / 1000, "lon": 13.001},
+                {"type": "way", "id": way_id, "nodes": [a, b], "tags": {"highway": highway}},
+            ]
+        return orjson.dumps({"elements": elements})
+
+    every = {1: "tertiary", 2: "residential", 3: "unclassified", 4: "service", 5: "track"}
+    wanted = {k: v for k, v in every.items() if v in ("tertiary", "residential", "unclassified")}
+
+    baked = snapshot_from_overpass(TILE, five, body(every))
+    real = snapshot_from_overpass(TILE, three, body(wanted))
+    cut = narrowed(baked, three)
+
+    assert cut is not None
+    assert cut.counts == real.counts == {"nodes": 6, "ways": 3, "relations": 0}
+    assert cut.digest == real.digest, "narrowing must give what that level would have been given"
+    assert {w.id for w in cut.ways} == {1, 2, 3}  # the service road and the track are gone
+    assert {n.id for n in cut.nodes} == {100, 101, 102, 103, 104, 105}  # and their nodes with them
+    assert cut.selectors == tuple(three.selectors)
+
+    # the other way round is refused: a level 3 bake cannot answer a level 5 build
+    assert narrowed(real, five) is None
+    # and a bake holding a selector we cannot read is refused, never guessed at: the wanted set
+    # is a subset of it, so only the unreadable one can stop us
+    odd = replace(five, selectors=(*five.selectors, 'relation["natural"="water"]'))
+    assert (
+        narrowed(
+            replace(baked, selectors=odd.selectors), replace(three, selectors=odd.selectors[-1:])
+        )
+        is None
+    )
 
 
 def test_the_status_page_says_when_a_slot_frees() -> None:
