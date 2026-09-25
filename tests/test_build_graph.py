@@ -431,6 +431,45 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     assert not pack_is_intact(pack_dir, manifest)
 
 
+def test_the_pack_records_the_colours_its_textures_are_encoded_with(
+    tmp_path: Path, env: BuildEnv
+) -> None:
+    """The Library reads a tile's colours in its manifest first (``api.md`` 2.3), and ``declare``
+    left them out of the pack's params: no pack recorded any from 2026-09-18 on, and the page
+    could only ask the store, which has no answer once the data folder changed (found
+    2026-09-26). Through ``declare`` and the rule itself; a plain tile keeps its pack's key."""
+    much_softer = {"photo_brightness": -0.06, "photo_contrast": -0.03, "photo_saturation": -0.3}
+    (g,) = _declare([_spec(tmp_path, config=much_softer)], _sched(env), env)
+    for node in (g.textures, g.pack):
+        assert {name: getattr(node.params, name) for name in much_softer} == much_softer
+    (plain,) = _declare([_spec(tmp_path)], _sched(env), env)
+    assert not set(much_softer) & set(plain.pack.params.canonical())  # left out while zero
+
+    # the rule itself, with the params declare gave it, over a DSF artefact of its own
+    params = g.pack.params
+    assert isinstance(params, PackParams)
+    penv = _PackEnv(env.store, Path(params.out_dir), None, None)
+
+    def pack_run(ctx):
+        with pack_env(penv):
+            return run_p0_rule(ctx)
+
+    def fill_dsf(out: Path) -> None:
+        (out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF")
+        (out / "terrain").mkdir()
+
+    dsf = _artefact_dir(env.store, "tile.dsf", "33" * 32, fill_dsf)
+    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    sched = _sched(env)
+    sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
+    refs = asyncio.run(sched.run([g.pack.id]))
+    assert not sched.failed, sched.failed
+    recorded = {"brightness": -0.06, "contrast": -0.03, "saturation": -0.3}
+    assert PackManifest.from_toml(refs[g.pack.id].path.read_text()).photo == recorded
+    written = Path(params.out_dir) / pack_dir_name(T) / "orthostudio.toml"
+    assert PackManifest.from_toml(written.read_text()).photo == recorded
+
+
 def test_source_ref_is_content_addressed(tmp_path: Path) -> None:
     p = tmp_path / "a.dsf"
     p.write_bytes(b"XPLNEDSF" * 3)

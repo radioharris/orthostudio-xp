@@ -2020,6 +2020,11 @@ def declare(
                 zl=spec.zl,
                 out_dir=out_dir,
                 link=spec.link,
+                # the colours the textures are encoded with, which the manifest records for the
+                # Library: none reached it before 2026-09-26, so no pack recorded any
+                photo_brightness=tex_params.photo_brightness,
+                photo_contrast=tex_params.photo_contrast,
+                photo_saturation=tex_params.photo_saturation,
                 tile_cfg=tile_cfg_text(cfg),
                 decal=decal,
                 decal_on_sea=decal_on_sea,
