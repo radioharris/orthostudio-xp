@@ -431,7 +431,7 @@ export const EXPERT_GROUPS = [
   { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
   // Where the map data of a tile comes from, before the public servers are asked (osm-prepared.md).
-  { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token", "expert.osm_prepared_public"] },
+  { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token"] },
   // Nothing to do with the tiles: what the app itself does, which is why it has a group of its own.
   { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.check_updates"] },
 ];
@@ -468,7 +468,6 @@ const FIELD_TEXT = {
   "expert.osm_folder": [() => t("settings.x.osm_folder"), () => t("settings.x.osm_folder_hint")],
   "expert.osm_library": [() => t("settings.x.osm_library"), () => t("settings.x.osm_library_hint")],
   "expert.osm_library_token": [() => t("settings.x.osm_token"), () => t("settings.x.osm_token_hint")],
-  "expert.osm_prepared_public": [() => t("settings.x.osm_public"), () => t("settings.x.osm_public_hint")],
   "expert.road_banking_limit": [() => t("settings.x.banking"), () => t("settings.x.banking_hint")],
   "expert.lane_width": [() => t("settings.x.lane_width"), () => t("settings.x.lane_width_hint")],
   "expert.max_levelled_segs": [() => t("settings.x.max_segs"), () => t("settings.x.max_segs_hint")],

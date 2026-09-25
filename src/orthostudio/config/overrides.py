@@ -140,7 +140,6 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
         "osm_folder": str(x.osm_folder or ""),
         "osm_library": str(x.osm_library or ""),
         "osm_library_token": str(x.osm_library_token or ""),
-        "osm_prepared_public": bool(x.osm_prepared_public),
         "cover_airports_with_highres": AIRPORT_MODES[e.airports.mode],
         "cover_zl": int(e.airports.zoom_level),
         "cover_extent": float(e.airports.extent_km),

@@ -108,7 +108,6 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `osm_folder` | str | - | empty | - | A folder of prepared map data, ours or Ortho4XP's shape: read before any server (`osm-prepared.md` 1). |
 | `osm_library` | str | - | empty | - | The baked library read before the public servers; empty switches it off. |
 | `osm_library_token` | str | - | empty | - | The key that library opens with, sent with every request, manifest included. |
-| `osm_prepared_public` | bool | - | true | - | Whether another project's library may answer, and only for the tiles our manifest says we verified. |
 | `mesh_zl` | int E `16..20` | ZL | 19 | `mesh_zl` | The mesh will be preprocessed to accept later any combination of imageries up to and including a zoomlevel equal to mesh_zl. [...] |
 | `mask_zl` | int E `14..16` | ZL | 14 | `mask_zl` | The zoomlevel at which the (sea) water masks are built. [...] |
 | `apt_curv_tol` | float `> 0` | - | 0.5 | `apt_curv_tol` | If smaller, it supersedes curvature_tol over airports neighbourhoods. |

@@ -98,7 +98,6 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "osm_folder": TileParameter(str, ""),
     "osm_library": TileParameter(str, ""),
     "osm_library_token": TileParameter(str, ""),
-    "osm_prepared_public": TileParameter(bool, True),
 }
 """Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
 Ortho4XP: the decals on the sea (2026-09-17) and the colours of the photo (2026-09-18). They are

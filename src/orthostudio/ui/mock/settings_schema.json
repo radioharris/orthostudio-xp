@@ -491,16 +491,6 @@
      "type": "string",
      "unit": ""
     },
-    "osm_prepared_public": {
-     "default": true,
-     "description": "Whether a tile may also come from the library another project publishes, where OrthoStudio XP has verified that it holds the whole tile. Off means the public servers answer instead.",
-     "hint": "Whether a tile may also come from the library another project publishes, where OrthoStudio XP has verified that it holds the whole tile. Off means the public servers answer instead.",
-     "level": "expert",
-     "ortho4xp": null,
-     "title": "Osm Prepared Public",
-     "type": "boolean",
-     "unit": ""
-    },
     "mesh_zl": {
      "default": 19,
      "description": "The mesh will be preprocessed to accept later any combination of imageries up to and including a zoomlevel equal to mesh_zl. Lower value could save a few tens of thousands triangles, but put a limitation on the maximum allowed imagery zoomlevel.",

@@ -175,13 +175,6 @@ class LibraryIndex:
     scenery can be traced to the data it was made from (review P4)."""
     files: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     """``{"<tile>/<layer>": {"path": ..., "digest": ..., "bytes": ...}}``."""
-    verified_elsewhere: tuple[str, ...] = ()
-    """Tiles of another publisher's library we have compared and found complete: the whitelist
-    that decides whether that library may be used at all (``osm-prepared.md`` 3)."""
-    verified_elsewhere_version: str = ""
-    """Which of their bakes those tiles were compared against. They rebake; a tile we checked in
-    August is not the file they serve in October, and a whitelist that outlives the bake it was
-    made for verifies nothing (review S3)."""
 
     def entry(self, tile: TileRef, layer: str) -> Mapping[str, object] | None:
         return self.files.get(f"{tile.name}/{layer}")
@@ -215,8 +208,6 @@ def parse_manifest(body: bytes) -> LibraryIndex | None:
         road_level=int(doc.get("road_level", 1) or 1),
         bake=str(doc.get("bake", "") or ""),
         files=files,
-        verified_elsewhere=tuple(str(t) for t in (doc.get("verified_elsewhere") or ())),
-        verified_elsewhere_version=str(doc.get("verified_elsewhere_version", "") or ""),
     )
 
 

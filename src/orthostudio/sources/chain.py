@@ -5,8 +5,8 @@ every continent because the one thing a tile cannot do without was asked of thre
 and two of them became unusable at once. The data is public and downloadable in bulk, so the same
 four questions can be answered from files, in milliseconds, with no quota.
 
-This module holds the chain and its refusals; the readers live in ``prepared.py`` and the live
-client in ``osm.py``.
+This module holds the chain, its refusals and the folder source; the library is read by
+``library.py``, Ortho4XP's XML by ``prepared.py``, and the live servers by ``osm.py``.
 
 Two rules carry the whole thing:
 
@@ -37,12 +37,7 @@ from orthostudio.sources.library import (
     unpack,
 )
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot, narrowed
-from orthostudio.sources.prepared import (
-    EMPTY_LAYER_BYTES,
-    ROAD_LEVEL_LAYERS,
-    PublicSource,
-    snapshot_from_xml,
-)
+from orthostudio.sources.prepared import EMPTY_LAYER_BYTES, ROAD_LEVEL_LAYERS, snapshot_from_xml
 
 __all__ = [
     "Chain",
@@ -114,9 +109,9 @@ def _candidates(root: Path, tile: TileRef, layer: str) -> list[Path]:
 class FolderSource:
     """A folder of prepared layers on disk, in our format or in Ortho4XP's.
 
-    A user asked for what Ortho4XP's OSM folder gives him: a place to drop files he already has,
-    so that a build reads them instead of queueing behind a public server (2026-09-23). Both
-    shapes are read, since the library he downloads publishes Ortho4XP's.
+    A user asked for what Ortho4XP's OSM folder gives them: a place to drop files they already
+    have, so that a build reads them instead of queueing behind a public server (2026-09-23).
+    Both shapes are read: ours, for a copy of the library, and Ortho4XP's.
     """
 
     def __init__(self, root: Path | str, *, name: str = "folder") -> None:
@@ -320,12 +315,7 @@ def settings_trouble(settings: Mapping[str, object]) -> list[OsxpError]:
 def sources_from_settings(
     settings: Mapping[str, object], *, cache_dir: Path | None = None
 ) -> list[PreparedSource]:
-    """The sources a build asks, in order, read from the settings (``osm-prepared.md`` 6).
-
-    The whitelist of the public library is taken from our own manifest, and lazily: our library
-    is asked first, so its manifest is read by the time the public one is reached. No manifest,
-    no whitelist, and that source stays inert.
-    """
+    """The sources a build asks, in order, read from the settings (``osm-prepared.md`` 6)."""
     out: list[PreparedSource] = []
     folder = str(settings.get("osm_folder", "") or "").strip()
     if folder:
@@ -334,35 +324,7 @@ def sources_from_settings(
     # from source carries nothing, so it downloads every tile live as every version did before
     shipped_url, shipped_token = shipped_library()
     url = str(settings.get("osm_library", "") or "").strip() or shipped_url
-    library: LibrarySource | None = None
     if url:
         token = str(settings.get("osm_library_token", "") or "") or shipped_token
-        library = LibrarySource(url, token, cache_dir=cache_dir)
-        out.append(library)
-    if settings.get("osm_prepared_public", True):
-        out.append(
-            PublicSource(
-                whitelist_of(library), version=verified_version_of(library), cache_dir=cache_dir
-            )
-        )
+        out.append(LibrarySource(url, token, cache_dir=cache_dir))
     return out
-
-
-def whitelist_of(library: object) -> Callable[[], frozenset[str]]:
-    """The tiles of the public library our own manifest says we verified, read when asked."""
-
-    def tiles() -> frozenset[str]:
-        index = getattr(library, "index", None)
-        return frozenset(getattr(index, "verified_elsewhere", ()) or ())
-
-    return tiles
-
-
-def verified_version_of(library: object) -> Callable[[], str]:
-    """Which of their bakes the whitelist was made against, read when asked."""
-
-    def version() -> str:
-        index = getattr(library, "index", None)
-        return str(getattr(index, "verified_elsewhere_version", "") or "")
-
-    return version

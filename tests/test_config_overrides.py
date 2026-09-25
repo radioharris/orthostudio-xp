@@ -139,21 +139,16 @@ def test_the_photo_look_and_the_decals_on_the_sea_reach_the_build() -> None:
 
 
 def test_where_map_data_comes_from_reaches_a_build() -> None:
-    """The four settings existed, the page showed them, and nothing carried them to a build: the
-    folder source was never built and the public library could not be switched off (2026-09-23).
-    """
+    """The settings existed, the page showed them, and nothing carried them to a build: the folder
+    source was never built (2026-09-23)."""
     from orthostudio.config import Settings
     from orthostudio.config.overrides import to_build_overrides
     from orthostudio.sources.chain import FolderSource, sources_from_settings
 
     plain = to_build_overrides(Settings())
-    assert plain["osm_folder"] == "" and plain["osm_prepared_public"] is True
+    assert plain["osm_folder"] == "" and "osm_prepared_public" not in plain
 
-    mine = to_build_overrides(
-        Settings.model_validate(
-            {"expert": {"osm_folder": "/tmp/osm", "osm_prepared_public": False}}
-        )
-    )
+    mine = to_build_overrides(Settings.model_validate({"expert": {"osm_folder": "/tmp/osm"}}))
     sources = sources_from_settings(mine)
     assert [type(s).__name__ for s in sources] == ["FolderSource"]
     assert isinstance(sources[0], FolderSource) and str(sources[0].root) == "/tmp/osm"

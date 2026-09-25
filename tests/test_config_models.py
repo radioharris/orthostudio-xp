@@ -24,7 +24,7 @@ def test_levels_and_field_counts() -> None:
     # region is P5; overlays, data_dir and simbrief_user are OrthoStudio XP's own
     assert len(Essential.model_fields) == 11
     assert len(Advanced.model_fields) == 14
-    assert len(Expert.model_fields) == 29
+    assert len(Expert.model_fields) == 28
 
 
 def test_defaults_are_the_ortho4xp_defaults() -> None:

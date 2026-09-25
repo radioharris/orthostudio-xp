@@ -71,8 +71,8 @@ def test_a_folder_in_our_own_format_is_read(tmp_path: Path) -> None:
 
 
 def test_a_folder_in_ortho4xps_format_is_read(tmp_path: Path) -> None:
-    """A user asked for what Ortho4XP's OSM folder gives him, and the library he downloads
-    publishes that same shape (2026-09-23)."""
+    """A user asked for what Ortho4XP's OSM folder gives them: the files they already have
+    (2026-09-23)."""
     root = tmp_path / "their-folder"
     for spec in SPECS:
         path = root / TILE.folder / TILE.name / f"{TILE.name}_{spec.name}.osm.bz2"
@@ -178,57 +178,6 @@ def test_nothing_prepared_leaves_the_tile_to_overpass() -> None:
     assert not got and got.source == "" and got.snapshots is None
 
 
-# -- the library someone else publishes -------------------------------------------------------
-
-
-def test_the_public_library_is_inert_without_a_whitelist() -> None:
-    """No verification, no use. A build that cannot reach our own library has no whitelist, and
-    then it must not read theirs either: 22 % of the tiles they list hold no road at all, and
-    nothing in a file says it is short (2026-09-19, unchanged 2026-09-23)."""
-    from orthostudio.sources.prepared import PublicSource
-
-    asked: list[object] = []
-    source = PublicSource(fetch=lambda urls: asked.append(urls) or [])  # type: ignore[arg-type]
-    assert source.layers(TILE, SPECS) is None
-    assert asked == []  # not even their manifest is read
-
-
-def test_the_public_library_serves_only_the_tiles_we_verified() -> None:
-    from orthostudio.sources.prepared import PreparedIndex, PublicSource, layer_path
-
-    files = {layer_path(TILE, spec.name): {"sha256": "", "size": 5_000} for spec in SPECS}
-    index = PreparedIndex(version="2026-08-08", files=files)
-    calls: list[int] = []
-
-    def fetch(urls):  # type: ignore[no-untyped-def]
-        calls.append(len(urls))
-        return [(200, bz2.compress(XML)) for _ in urls]
-
-    allowed = PublicSource([TILE.name], index=index, fetch=fetch)
-    got = allowed.layers(TILE, SPECS)
-    assert got is not None and sorted(got) == sorted(s.name for s in SPECS)
-
-    elsewhere = PublicSource(["+00+000"], index=index, fetch=fetch)
-    assert elsewhere.layers(TILE, SPECS) is None
-    assert calls == [len(SPECS)]  # the second one asked nothing
-
-
-def test_a_whitelisted_tile_with_an_empty_road_layer_is_still_refused() -> None:
-    """The whitelist says the tile was complete when we looked; the manifest says this file is
-    empty now. The smaller claim wins."""
-    from orthostudio.sources.prepared import PreparedIndex, PublicSource, layer_path
-
-    files = {
-        layer_path(TILE, spec.name): {
-            "sha256": "",
-            "size": 120 if spec.name == "big_roads" else 5_000,
-        }
-        for spec in SPECS
-    }
-    source = PublicSource([TILE.name], index=PreparedIndex(files=files), fetch=lambda urls: [])
-    assert source.layers(TILE, SPECS) is None
-
-
 # -- inside a build ---------------------------------------------------------------------------
 
 
@@ -269,21 +218,16 @@ def test_a_build_without_prepared_sources_behaves_as_before() -> None:
 
 def test_every_step_of_the_chain_falls_through_to_the_next(tmp_path: Path) -> None:
     """The scenario a production day serves: a folder that holds nothing, a library that breaks,
-    a public library nobody verified, and the live servers behind them all."""
+    and the live servers behind them both."""
     whole = {s.name: _snapshot(s.name) for s in SPECS}
     folder = FolderSource(tmp_path / "empty")  # nothing in it
     broken = _Fake("library", RuntimeError("no answer"))
-    public = _Fake("xpconnect", None)  # inert: no whitelist
     live = _Fake("overpass", whole)
 
-    chain = Chain([folder, broken, public, live])
+    chain = Chain([folder, broken, live])
     got = chain.layers(TILE, SPECS)
     assert got and got.source == "overpass"
-    assert got.notes == (
-        "folder: not held",
-        "library: RuntimeError: no answer",
-        "xpconnect: not held",
-    )
+    assert got.notes == ("folder: not held", "library: RuntimeError: no answer")
 
     # and the broken one is asked once more, then set aside for the rest of the build
     for _ in range(3):

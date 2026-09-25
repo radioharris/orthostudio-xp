@@ -1,6 +1,6 @@
 # Prepared OSM layers: the sources a tile is asked of, in order
 
-Status: written before the code (0.1.15). Companion of `osm-source.md`, which stays the
+Status: written before the code, for 0.1.15, and shipped in 0.1.16. Companion of `osm-source.md`, which stays the
 description of Overpass itself. Origin: the night of 2026-09-22, when two of the three public
 Overpass machines a build asks became unusable at once and every build on every continent stopped
 on its Data step; and the days after it, when a user who had built almost a whole state read that
@@ -10,7 +10,7 @@ The data behind that step is public and downloadable in bulk: one country extrac
 thousands of live queries would ask for, and the same four questions are asked of it for every
 tile anyone builds. A tile's layers can therefore be **prepared once and read as files**, in 60 ms
 instead of 8 to 30 s, with no quota and no bad evenings. What follows is how a build chooses
-between the prepared libraries and the live servers, and — the harder half — how it refuses a
+between the prepared libraries and the live servers, and (the harder half) how it refuses a
 library that would quietly give it less than the truth.
 
 ## 1. The chain
@@ -20,14 +20,18 @@ answers:
 
 | | Source | Present when | Typical |
 |---|---|---|---|
-| 1 | the user's own folder | `advanced.osm_folder` names one | instant |
+| 1 | the user's own folder | `expert.osm_folder` names one | instant |
 | 2 | our baked library | its address and token are set (they ship with the app) | ~60 ms |
-| 3 | xpconnect (OrthoForge) | switched on **and** the tile is on our whitelist | ~300 ms |
-| 4 | Overpass | always, last | 8-30 s |
+| 3 | Overpass | always, last | 8-30 s |
 
-The order follows what is known, not what is fast: ours is the only online library whose coverage
-we established ourselves; xpconnect covers what we will not bake, at their expense; Overpass alone
-is live and complete.
+The order follows what is known, not what is fast: the folder is the user's own; ours is the only
+online library whose coverage we established ourselves; Overpass alone is live and complete.
+
+A third source stood between the library and Overpass until 0.1.16: the library another project
+publishes in Ortho4XP's format (OrthoForge, served by xpconnect), read only for the tiles we had
+compared against a live count, from a whitelist carried in our manifest. It was dropped once the
+whole planet was baked here at road level 5 (2026-09-25): it covered nothing ours does not, and
+its files cannot say which road level they answer, so it could never serve a build above level 1.
 
 **Fresh data skips the libraries.** A tile asked for with `refresh` (`OsmParams.refresh`, what a
 user presses after correcting their region in OSM) goes straight to Overpass: a prepared library
@@ -46,9 +50,9 @@ class PreparedSource(Protocol):
     ) -> dict[str, OsmSnapshot] | None: ...
 ```
 
-* **the layers** — every one of `specs`, taken as they are, the chain stops;
-* **`None`** — this source does not hold the tile, the chain moves on without a word;
-* **an exception** — the source is broken; the chain moves on and records the reason for the
+* **the layers**: every one of `specs`, taken as they are, the chain stops;
+* **`None`**: this source does not hold the tile, the chain moves on without a word;
+* **an exception**: the source is broken; the chain moves on and records the reason for the
   report and the log.
 
 **All or nothing, per tile.** A source that holds three of the four layers gives nothing. Mixing
@@ -59,8 +63,8 @@ of a tile together, so the rule costs nothing real.
 ## 3. Refusing a library that gives less than the truth
 
 This is the part that decides whether the chain is trustworthy, and it is not symmetric: a library
-that is *absent* is harmless, a library that is *short* is not. Measured on xpconnect,
-2026-09-19 and again 2026-09-23, both times unchanged:
+that is *absent* is harmless, a library that is *short* is not. Measured on xpconnect, the public
+library read until 0.1.16, on 2026-09-19 and again 2026-09-23, both times unchanged:
 
 * 7 132 tiles listed, **1 559 of them (22 %) with both road layers empty**;
 * the Geneva tile (`+46+006`) holds 10 110 road ways where a live query returns 24 307: the bake
@@ -68,11 +72,11 @@ that is *absent* is harmless, a library that is *short* is not. Measured on xpco
 * nothing in the file says so. It downloads, its sha256 matches, the XML is valid, and it holds a
   third of the roads. A build would lay scenery with no roads and no water and report success.
 
-Three defences, in order of cost:
+Two defences, in order of cost:
 
 1. **An empty layer is not an answer from whoever cannot prove it.** A layer file under 200 bytes
    holds no element at all, not even the wrapper of an empty layer, and the tile is refused
-   before anything is downloaded when the manifest carries sizes, as xpconnect's does. Above
+   before anything is downloaded when the manifest carries sizes, as ours does. Above
    that, an empty layer is refused from an XML source, which can prove nothing about itself, and
    taken from a library whose manifest announces the file's digest and whose file matches it: a
    square of Atlantic off the Sahara really has no road, no airport and no lake, only a
@@ -81,32 +85,21 @@ Three defences, in order of cost:
    coverage polygon's business. A folder is read the same way when a `manifest.json` sits beside
    the files, which is what a copied library is; an Ortho4XP folder has none and keeps the strict
    rule.
-2. **A library is used only where it has been verified.** For xpconnect this means a whitelist:
-   the tiles we have compared, tile by tile, against a live count (`[out:csv(::count)]`, 13 bytes
-   of answer, 13 s of their computation) or against our own bake of the same square. The
-   whitelist travels **with our manifest**, so a build that cannot reach our library has no
-   whitelist and skips xpconnect entirely. No verification, no use.
-3. **Every file is checked at the door**: its digest against the manifest, then the document is
+2. **Every file is checked at the door**: its digest against the manifest, then the document is
    read. Either failing makes the tile move to the next source, with the reason recorded.
 
-The whitelist is void when the publisher rebakes: xpconnect's manifest carries a `version`
-(`2026-08-08`, unchanged since we first looked). A different version means the whitelist must be
-built again, and until it is, that library is skipped. Our manifest therefore carries not only
-`verified_elsewhere` but `verified_elsewhere_version`, the version we compared against; the two
-travel together and the source compares them itself.
-
-**A layer whose question depends on the road level is never read from an XML source.** Their files
+**A layer whose question depends on the road level is never read from an XML source.** Such files
 are OSM 0.6 XML and carry no selectors: nothing in one says whether `small_roads` was baked for
 tertiary roads or for tracks as well, and taking it at a road level it was not baked for gives a
 scenery quietly missing every forest track. Our own format carries its selectors and is checked
-against them, so only the XML sources (a folder in Ortho4XP's layout, xpconnect) are held to this.
+against them, so only the XML source, a folder in Ortho4XP's layout, is held to this.
 A folder in Ortho4XP's shape therefore answers builds at road level 0 and 1, which never ask for
 `small_roads`, and leaves the others to the next source; its small roads are refused before they
-are read. Until 2026-09-25 only the public library applied the rule, and a folder's small roads
+are read. Until 2026-09-25 only xpconnect's reader applied the rule, and a folder's small roads
 were taken at any level under the build's own selectors.
 
-**Our own library needs no whitelist**, since its manifest is written by the same tool that cut
-the tiles: a tile is in it when its layers were written, and the coverage is whatever the extract
+**Our own library is taken for what its manifest lists**, since the manifest is written by the
+same tool that cut the tiles: a tile is in it when its layers were written, and the coverage is whatever the extract
 covered. What it does carry, per file, is the digest and the size, and per bake:
 
 | Field | What it is for |
@@ -161,9 +154,9 @@ describes them.
 
 ## 5. What the user sees, and what the tile remembers
 
-The Data step names where the layers came from: *from your folder*, *prepared, 8 August*,
+The Data step names where the layers came from: *from your folder*, *prepared, 13 September*,
 *downloaded*. The snapshot already carries a `mirror` field, and it holds that name
-(`folder`, `library`, `xpconnect`, `overpass:<mirror>`), so a tile built months ago still says
+(`folder`, `library`, `overpass:<mirror>`), so a tile built months ago still says
 what it was made from, and the Works page and the job's journal say it while it happens.
 
 When every source fails, the error is the one `osm-source.md` describes, and it names what each
@@ -193,10 +186,9 @@ is precisely the kind of silence this whole chain exists to end.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `advanced.osm_folder` | empty | a folder of prepared layers, in our format or Ortho4XP's (bzip2 OSM 0.6 XML, which is also xpconnect's) |
-| `advanced.osm_library` | our address | the baked library to read; empty switches it off |
-| `advanced.osm_library_token` | ships with the app | sent with every request, manifest included |
-| `advanced.osm_prepared_public` | on | whether xpconnect may be used where whitelisted |
+| `expert.osm_folder` | empty | a folder of prepared layers, in our format or Ortho4XP's (bzip2 OSM 0.6 XML) |
+| `expert.osm_library` | our address | the baked library to read; empty switches it off |
+| `expert.osm_library_token` | ships with the app | sent with every request, manifest included |
 
 A user pointing `osm_folder` at what they already downloaded is the request that started this
 (a user, 2026-09-23); it is first in the chain because it is local, free, and theirs.

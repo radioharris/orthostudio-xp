@@ -46,18 +46,17 @@ answers are files; elsewhere the public Overpass servers are asked, which is abo
 when they answer (measured 2026-09-14), with the layers received and the download rate shown in the
 step.
 
-Three places are looked in before those servers, in order: a folder of your own, if you named one
-in Settings; the prepared library this version carries; and, where we have checked it ourselves,
-the library another project publishes. Each one is taken whole or not at all, and each is checked
-against what it promised: a file that does not weigh what its index says, or whose content does not
-hash to what the index announced, is refused and the tile goes to the next place. Nothing is ever a
-dependency: every one of them can be missing, wrong or down, and the build simply asks the servers
-as it always did. The library is baked once, at road level 5, and answers every level: each tile is
-cut down to the roads your level asks for. A folder in Ortho4XP's shape answers builds at road
-level 0 and 1 only, since its small roads do not say which road level fetched them.
+Two places are looked in before those servers, in order: a folder of your own, if you named one in
+Settings, and the prepared library this version carries. Each one is taken whole or not at all, and
+each is checked against what it promised: a file that does not weigh what its index says, or whose
+content does not hash to what the index announced, is refused and the tile goes to the next place.
+Nothing is ever a dependency: every one of them can be missing, wrong or down, and the build simply
+asks the servers as it always did. The library is baked once, at road level 5, and answers every
+level: each tile is cut down to the roads your level asks for. A folder in Ortho4XP's shape answers
+builds at road level 0 and 1 only, since its small roads do not say which road level fetched them.
 
 A prepared library is weeks behind by design, so there has to be a way to ask for today's map:
-today that way is `--osm-refresh <anything>` on the command line, which skips all three and goes
+today that way is `--osm-refresh <anything>` on the command line, which skips both and goes
 to the servers. A button for it is not there yet. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
 each goes on with its relief at once, and with the rest as soon as its own data is in. A server
 that does not answer is left aside for the rest of the build, instead of being waited for by every
@@ -143,8 +142,8 @@ X-Plane's installer keeps, then in the
 usual folders (`~/X-Plane 12` or `/Applications/X-Plane 12` on a Mac; `C:\X-Plane 12`, or
 `X-Plane 12` on the desktop or in your user folder, on Windows). With more than one X-Plane 12 on
 the computer it takes the first, names the others in Settings, and the Library says which one its
-*In X-Plane* column speaks of: a user installed a tile into an X-Plane 12 he had forgotten, and
-found nothing in the Custom Scenery of the one he flies. When it finds none, for example in
+*In X-Plane* column speaks of: a user installed a tile into an X-Plane 12 they had forgotten,
+and found nothing in the Custom Scenery of the one they fly. When it finds none, for example in
 a virtual machine whose X-Plane is installed on the host, step 3 of the Plan says so before any
 estimate, and its button opens the Settings question *Where is X-Plane 12 installed?*, where
 *Choose the X-Plane folder…* opens the Finder's (or the File Explorer's) folder window: nothing is estimated
@@ -185,7 +184,7 @@ takes space in its **data folder**: `~/.orthostudio` too, unless Settings name a
 *Where should the tiles and the downloaded imagery go?*, on an external disk for instance.
 The status bar names that folder at its right end, and the button beside it shows it in the
 Finder, the Windows File Explorer or the Linux file manager: `.orthostudio` starts with a dot,
-which hides it in the Finder, and a user looked for his tiles there in vain (2026-09-22).
+which hides it in the Finder, and a user looked for their tiles there in vain (2026-09-22).
 
 ```
 ~/.orthostudio/
@@ -252,7 +251,7 @@ the one a build would change is found at a glance among the chosen squares.
 source delivers it, tones it down a little, a lot, or by your own numbers (brightness, contrast and
 colour, under *For experts*). It is applied when the textures are encoded, which is the last step
 that reads the downloaded images: changing your mind builds the tile again **without downloading
-anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing his
+anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing their
 screenshots by hand (2026-09-18).
 
 **Colours square by square, and zone by zone.** Settings answers for everything you build; step 1
