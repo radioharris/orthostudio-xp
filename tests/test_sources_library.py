@@ -557,6 +557,28 @@ def test_a_library_baked_at_road_level_5_answers_every_level_below_it(tmp_path: 
             assert got["small_roads"].nodes == _roads(level).nodes, level
 
 
+def test_the_library_is_told_the_road_level_it_is_asked_at(tmp_path: Path) -> None:
+    """From 2 to 5 the library sends the same file of small roads, cut down on the user's
+    computer, so its log could only tell 0, 1 or "2 to 5" (2026-09-25). The level now travels
+    with a tile's requests; the manifest, the same for every level, goes without it."""
+    from orthostudio.sources.library import ROAD_LEVEL_HEADER
+
+    served = _planet(tmp_path / "lib")
+    for level in range(6):
+        server = _Server(served)
+        seen: list[dict[str, str]] = []
+
+        def fetch(urls, headers, server=server, seen=seen):  # type: ignore[no-untyped-def]
+            seen.extend({"url": url, **headers} for url in urls)
+            return server(urls, headers)
+
+        src = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch)
+        assert src.layers(TILE, layers_for(level)) is not None, level
+        tiles = [h for h in seen if not h["url"].endswith("/manifest.json")]
+        assert tiles and all(h[ROAD_LEVEL_HEADER] == str(level) for h in tiles), level
+        assert all(ROAD_LEVEL_HEADER not in h for h in seen if h not in tiles), level
+
+
 def test_a_library_baked_below_the_level_asked_is_still_refused(tmp_path: Path) -> None:
     """Narrowing only takes away: a library at road level 2 cannot invent the tracks of level 5."""
     served = _planet(tmp_path / "lib")

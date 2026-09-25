@@ -269,5 +269,8 @@ asked again without the condition.
 Every request of a build also names the program and its version (`OrthoStudio-XP/0.1.17 (+...)`,
 the user agent the app sends everywhere), which is what the server's log shows: which version asks
 what. It is no lock, since anyone may send the same words, but a program that does not bother
-stands out (2026-09-25). The server's log never holds the key: the web server writes
+stands out (2026-09-25). A tile's requests also say the road level they are asked at
+(`X-OSXP-Road-Level: 3`): from 2 to 5 the files are the same, cut down on the user's side, so
+without it the log could only tell 0, 1 or "2 to 5". The manifest, the same for every level, goes
+without it. The server's log never holds the key: the web server writes
 `Authorization` as `REDACTED`.

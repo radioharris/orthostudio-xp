@@ -148,6 +148,23 @@ def _validator(answer: Answer) -> str:
     return str(answer[2]) if len(answer) > 2 else ""
 
 
+ROAD_LEVEL_HEADER = "X-OSXP-Road-Level"
+"""The road level a tile is asked at, told to the library with its requests.
+
+From 2 to 5 the library sends the same file of small roads, cut down on the user's computer
+(:func:`~orthostudio.sources.osm.narrowed`), so its log could only tell 0, 1 or "2 to 5"; the
+owner of the library asked to know which (2026-09-25)."""
+
+
+def _road_level(specs: Sequence[LayerSpec]) -> int | None:
+    """The road level whose layers these are, or ``None`` for a set no level asks for."""
+    asked = {spec.name: tuple(spec.selectors) for spec in specs}
+    for level in range(6):
+        if {spec.name: tuple(spec.selectors) for spec in layers_for(level)} == asked:
+            return level
+    return None
+
+
 class _Connections:
     """One HTTP session for the life of the engine, on an event loop of its own.
 
@@ -339,13 +356,15 @@ class LibrarySource:
 
     # -- the manifest, read once and kept ----------------------------------------------------
 
-    def _headers(self) -> dict[str, str]:
+    def _headers(self, road_level: int | None = None) -> dict[str, str]:
         # the program and its version, as the server's log shows them: no lock, since anyone may
         # send the same words, but which version asks what, and a program that does not bother
         # stands out (2026-09-25)
         headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if road_level is not None:
+            headers[ROAD_LEVEL_HEADER] = str(road_level)
         return headers
 
     def _load_index(self) -> LibraryIndex | None:
@@ -546,7 +565,7 @@ class LibrarySource:
             wanted.append((spec, entry))
 
         urls = [f"{self.base}/{entry['path']}" for _spec, entry in wanted]
-        answers = self.fetch(urls, self._headers())
+        answers = self.fetch(urls, self._headers(_road_level(specs)))
         if len(answers) != len(wanted):
             return None
         out: dict[str, OsmSnapshot] = {}
