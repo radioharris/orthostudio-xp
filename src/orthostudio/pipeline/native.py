@@ -208,7 +208,7 @@ class OsmJob:
     def _prepared(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None:
         """The layers from a prepared source, and the line the page shows when one answers.
 
-        ``None`` sends the tile to the public servers, as every tile went until 0.1.16. The
+        ``None`` sends the tile to the public servers, as every tile went until 0.1.17. The
         chain already catches whatever a source does wrong (a server down, silent or refusing
         the key, a file missing or damaged); this catches the chain itself, so that no fault in
         a library, nor in our code reading it, can cost a tile its map data (2026-09-25).

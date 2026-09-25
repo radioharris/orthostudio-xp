@@ -1,6 +1,6 @@
 # Prepared OSM layers: the sources a tile is asked of, in order
 
-Status: written before the code; ships in 0.1.16. Companion of `osm-source.md`, which stays the
+Status: written before the code; ships in 0.1.17. Companion of `osm-source.md`, which stays the
 description of Overpass itself. Origin: the night of 2026-09-22, when two of the three public
 Overpass machines a build asks became unusable at once and every build on every continent stopped
 on its Data step; and the days after it, when a user who had built almost a whole state read that

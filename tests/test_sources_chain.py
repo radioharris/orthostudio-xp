@@ -198,7 +198,7 @@ def test_the_build_asks_the_prepared_sources_before_overpass(tmp_path: Path) -> 
 
 
 def _live(monkeypatch) -> list[str]:  # type: ignore[no-untyped-def]
-    """Overpass, faked where a build reaches it: what answered every tile until 0.1.16.
+    """Overpass, faked where a build reaches it: what answered every tile until 0.1.17.
 
     Not ``OsmJob(fetch=...)``: an injected fetch answers before the chain is asked at all, so
     the tests written that way proved nothing about the chain (found in review, 2026-09-25).

@@ -1,4 +1,4 @@
-# Review of the prepared chain before 0.1.16, 2026-09-25
+# Review of the prepared chain before 0.1.17, 2026-09-25
 
 The first review (`prepared-chain-2026-09-23.md`) closed thirty findings of thirty-two. Since
 then three things changed under the branch: main moved on to 0.1.15 and was merged in, the planet
