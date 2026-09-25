@@ -15,6 +15,7 @@ fault of the user's.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -61,10 +62,38 @@ def version_tuple(text: object) -> tuple[int, ...] | None:
     return tuple(int(p) for p in parts)
 
 
+_PRE_RELEASE = re.compile(r"(\d+(?:\.\d+)*)[-.]?(?:a|b|rc)\.?\d+")
+"""A running version with a pre-release suffix, ``0.1.17rc1`` (the tag ``v0.1.17-rc.1``)."""
+
+
+def _running(text: object) -> tuple[tuple[int, ...], bool] | None:
+    """The version this build calls itself, and whether it is a pre-release.
+
+    A build of a pre-release comes just before its final. Read the way a published version is
+    read, it was no version at all, and such a build was never told of anything again, its own
+    final included (2026-09-25).
+    """
+    plain = version_tuple(text)
+    if plain is not None:
+        return plain, False
+    match = (
+        _PRE_RELEASE.fullmatch(text.strip().removeprefix("v")) if isinstance(text, str) else None
+    )
+    numbers = version_tuple(match.group(1)) if match else None
+    return None if numbers is None else (numbers, True)
+
+
 def is_newer(latest: object, current: object) -> bool:
-    """Whether ``latest`` is a later version than ``current``; False when either is unreadable."""
-    a, b = version_tuple(latest), version_tuple(current)
-    return a is not None and b is not None and a > b
+    """Whether ``latest`` is a later version than ``current``; False when either is unreadable.
+
+    ``latest`` must be a plain version, since a pre-release is never offered; ``current`` may be
+    one, and then its final is newer than it.
+    """
+    a, running = version_tuple(latest), _running(current)
+    if a is None or running is None:
+        return False
+    b, pre_release = running
+    return a > b or (pre_release and a == b)
 
 
 def release_page(version: str) -> str:

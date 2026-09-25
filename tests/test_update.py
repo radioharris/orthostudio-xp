@@ -28,6 +28,19 @@ def test_versions_are_read_as_numbers_not_as_text() -> None:
         assert not update.is_newer(odd, "0.1.9")
 
 
+def test_a_pre_release_build_is_offered_its_final_and_what_follows() -> None:
+    """The tag v0.1.17-rc.1 builds an app that calls itself 0.1.17rc1. Read as a published
+    version is read, that was no version at all, and the app was never told of anything again,
+    its own final included (2026-09-25)."""
+    assert update.is_newer("0.1.17", "0.1.17rc1")
+    assert update.is_newer("0.1.17", "0.1.17-rc.1")
+    assert update.is_newer("0.1.18", "0.1.17rc1")
+    assert not update.is_newer("0.1.16", "0.1.17rc1")
+    # a pre-release is still never offered, to a pre-release or to anyone
+    assert not update.is_newer("0.1.17rc2", "0.1.17rc1")
+    assert not update.is_newer("0.1.17", "0.1.17-nightly")
+
+
 def test_the_link_is_built_here_and_never_taken_from_the_answer() -> None:
     """The page links only to this repository's own releases, whatever an answer might say."""
     assert update.release_page("0.1.10") == (
