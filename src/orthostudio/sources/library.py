@@ -19,15 +19,20 @@ source, which is what ``chain.py`` is for.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
+import contextlib
 import functools
+import hashlib
 import io
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 import orjson
 import zstandard
@@ -127,63 +132,117 @@ def unpack(body: bytes, limit: int = MAX_SNAPSHOT_BYTES) -> bytes:
     return bytes(out)
 
 
-FetchFn = Callable[[Sequence[str], Mapping[str, str]], list[tuple[int, bytes]]]
-"""``(urls, headers) -> [(status, body), ...]``: injected, so the tests reach nothing.
+Answer = tuple[int, bytes] | tuple[int, bytes, str]
+"""``(status, body, validator)``: the validator is the ``ETag`` the server sent, empty when it
+sent none. A fake in the tests may leave it out and answer ``(status, body)``."""
+
+FetchFn = Callable[[Sequence[str], Mapping[str, str]], list[Answer]]
+"""``(urls, headers) -> [(status, body, validator), ...]``: injected, so the tests reach nothing.
 
 A tile's layers are asked for together, in one call: one round trip instead of four, and the
 whole tile is on disk while a live query would still be planning its first answer.
 """
 
 
-def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
-    """Plain requests, one connection, nothing adaptive.
+def _validator(answer: Answer) -> str:
+    return str(answer[2]) if len(answer) > 2 else ""
+
+
+class _Connections:
+    """One HTTP session for the life of the engine, on an event loop of its own.
+
+    A session per call opened new connections for every tile: a TCP and a TLS handshake, then a
+    transfer that starts slowly and speeds up one round trip at a time. From California, where a
+    round trip to the server takes some 150 ms, that was most of a tile's few seconds
+    (2026-09-25). Kept open, a connection serves the next tile and the next build.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._session: Any = None
+
+    def run(self, work: Callable[[Any], Awaitable[list[Answer]]]) -> list[Answer]:
+        """``work(session)``, run on the kept loop, from whichever thread asks."""
+        with self._lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                self._session = None
+                threading.Thread(
+                    target=self._loop.run_forever, name="osxp-library-http", daemon=True
+                ).start()
+            loop = self._loop
+        return asyncio.run_coroutine_threadsafe(self._with_session(work), loop).result()
+
+    async def _with_session(self, work: Callable[[Any], Awaitable[list[Answer]]]) -> list[Answer]:
+        if self._session is None:  # made on its loop: nothing awaits between test and assignment
+            from curl_cffi.requests import AsyncSession
+
+            from orthostudio.net.certs import ca_bundle
+
+            # HTTP/1.1, pinned. Left to negotiate, a session stalled on the larger files until
+            # its timeout; pinned to HTTP/2 it stalled at exactly one mebibyte received out of
+            # four, which is a flow-control window that never reopened. A library asks for a
+            # tile's files at a time, so multiplexing buys nothing and a protocol without windows
+            # is what fits (2026-09-23, the same files in 0.35 s).
+            self._session = AsyncSession(verify=ca_bundle(), http_version="v1", max_clients=16)
+        return await work(self._session)
+
+    def close(self) -> None:
+        """The session and its loop, closed: at exit, and in the tests."""
+        with self._lock:
+            loop, session = self._loop, self._session
+            self._loop, self._session = None, None
+        if loop is None or loop.is_closed():
+            return
+        if session is not None:
+            with contextlib.suppress(Exception):  # best effort: the process is going anyway
+                asyncio.run_coroutine_threadsafe(session.close(), loop).result(timeout=5)
+        loop.call_soon_threadsafe(loop.stop)
+
+
+_CONNECTIONS = _Connections()
+atexit.register(_CONNECTIONS.close)
+
+
+def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[Answer]:
+    """Plain requests, on connections kept from one call to the next, nothing adaptive.
 
     Not the imagery fetcher: that one fills a window of several requests before it starts, and a
     single file left it waiting until its timeout -- 123 s for a file curl downloads in 0.6
     (2026-09-23). It is built for thousands of small chunks; a library asks for four files.
     """
-    import asyncio
 
-    from curl_cffi.requests import AsyncSession
+    async def run(session: Any) -> list[Answer]:
+        async def one(url: str) -> Answer:
+            # Streamed, because that is where curl_cffi puts the read limit on silence (no
+            # byte for LIBRARY_TIMEOUT_S) instead of on the whole transfer: a 61 MB file of
+            # the planet library arrives however slow the line, as long as it arrives
+            name = url.rsplit("/", 1)[-1]
+            try:
+                async with session.stream(
+                    "GET",
+                    url,
+                    headers=dict(headers),
+                    timeout=(CONNECT_TIMEOUT_S, LIBRARY_TIMEOUT_S),
+                ) as answer:
+                    pieces: list[bytes] = []
+                    size = 0
+                    async for piece in answer.aiter_content():
+                        size += len(piece)
+                        if size > MAX_LAYER_BYTES:  # longer than any file of ours: not read
+                            log.info("library: %s is longer than any file of ours", name)
+                            return 0, b"", ""
+                        pieces.append(piece)
+                    etag = str(answer.headers.get("etag") or "")
+                    return int(answer.status_code), b"".join(pieces), etag
+            except Exception as exc:  # unreachable, refused, cut, silent: the chain moves on
+                log.info("library: %s could not be read (%s)", name, exc)
+                return 0, b"", ""
 
-    from orthostudio.net.certs import ca_bundle
+        return list(await asyncio.gather(*(one(url) for url in urls)))
 
-    async def run() -> list[tuple[int, bytes]]:
-        # HTTP/1.1, pinned. Left to negotiate, a session stalled on the larger files until its
-        # timeout; pinned to HTTP/2 it stalled at exactly one mebibyte received out of four,
-        # which is a flow-control window that never reopened. A library asks for four files at a
-        # time, so multiplexing buys nothing and a protocol without windows is what fits
-        # (2026-09-23, the same files in 0.35 s).
-        async with AsyncSession(verify=ca_bundle(), http_version="v1") as session:
-
-            async def one(url: str) -> tuple[int, bytes]:
-                # Streamed, because that is where curl_cffi puts the read limit on silence (no
-                # byte for LIBRARY_TIMEOUT_S) instead of on the whole transfer: a 61 MB file of
-                # the planet library arrives however slow the line, as long as it arrives
-                name = url.rsplit("/", 1)[-1]
-                try:
-                    async with session.stream(
-                        "GET",
-                        url,
-                        headers=dict(headers),
-                        timeout=(CONNECT_TIMEOUT_S, LIBRARY_TIMEOUT_S),
-                    ) as answer:
-                        pieces: list[bytes] = []
-                        size = 0
-                        async for piece in answer.aiter_content():
-                            size += len(piece)
-                            if size > MAX_LAYER_BYTES:  # longer than any file of ours: not read
-                                log.info("library: %s is longer than any file of ours", name)
-                                return 0, b""
-                            pieces.append(piece)
-                        return int(answer.status_code), b"".join(pieces)
-                except Exception as exc:  # unreachable, refused, cut, silent: the chain moves on
-                    log.info("library: %s could not be read (%s)", name, exc)
-                    return 0, b""
-
-            return list(await asyncio.gather(*(one(url) for url in urls)))
-
-    return asyncio.run(run())
+    return _CONNECTIONS.run(run)
 
 
 # -- the manifest -----------------------------------------------------------------------------
@@ -300,11 +359,25 @@ class LibrarySource:
             return None
         if time.monotonic() < self._retry_at:
             return self._kept()  # asked too recently: the copy on disk, or nothing
-        try:
-            ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
-        except Exception as exc:  # a library must never stop a build
-            log.info("OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, exc)
+        headers = self._headers()
+        kept_validator = self._kept_validator()
+        if kept_validator:
+            # Asked whether it changed, rather than for all of it: 3.6 MB at every build, which
+            # took one to six seconds from America (2026-09-25), become "not modified" and
+            # nothing. The copy on disk is the one the validator was given with.
+            headers["If-None-Match"] = kept_validator
+        answer = self._ask_manifest(headers)
+        if answer is not None and answer[0] == 304:
+            index = self._read_kept()
+            if index is not None:
+                log.info("%s: manifest unchanged since it was kept (%s)", self.name,
+                         index.extracted[:10])  # fmt: skip
+                self._adopt(index)
+                return index
+            answer = self._ask_manifest(self._headers())  # the copy has gone: all of it, then
+        if answer is None:
             return self._unanswered()
+        status, body, validator = answer
         if status in (401, 403):
             # the door, not a fault: the token is wrong or absent, and it will be at the next
             # tile as well
@@ -323,8 +396,17 @@ class LibrarySource:
             return None
         self._adopt(index)
         if self.cache_dir is not None:
-            self._keep(body)
+            self._keep(body, validator)
         return index
+
+    def _ask_manifest(self, headers: Mapping[str, str]) -> tuple[int, bytes, str] | None:
+        """The manifest's answer, or ``None`` when the library could not be asked at all."""
+        try:
+            (answer,) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], headers)
+        except Exception as exc:  # a library must never stop a build
+            log.info("OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, exc)
+            return None
+        return int(answer[0]), bytes(answer[1]), _validator(answer)
 
     def _unanswered(self) -> LibraryIndex | None:
         """A manifest that could not be read: asked again in two minutes, once.
@@ -358,13 +440,7 @@ class LibrarySource:
         """
         if self.index is not None:
             return self.index
-        if self.cache_dir is None:
-            return None
-        try:
-            body = (self.cache_dir / f"{self.name}-manifest.json").read_bytes()
-        except OSError:
-            return None
-        index = parse_manifest(body)
+        index = self._read_kept()
         if index is None:
             return None
         log.info("%s: unreachable, going by the manifest kept on disk (%s)", self.name,
@@ -372,11 +448,47 @@ class LibrarySource:
         self._adopt(index)
         return index
 
-    def _keep(self, body: bytes) -> None:
+    def _read_kept(self) -> LibraryIndex | None:
+        """The manifest kept on disk, or ``None`` when there is none or it is not one."""
+        if self.cache_dir is None:
+            return None
+        try:
+            body = (self.cache_dir / f"{self.name}-manifest.json").read_bytes()
+        except OSError:
+            return None
+        return parse_manifest(body)
+
+    def _library_mark(self) -> str:
+        """Which library a kept validator was given by. A user's own library and the one this
+        version carries keep their manifest under the same name, and one's validator must
+        never be taken for the other's."""
+        return hashlib.sha256(self.base.encode()).hexdigest()[:16]
+
+    def _kept_validator(self) -> str:
+        """The ``ETag`` the kept manifest came with, when it came from this very library."""
+        if self.cache_dir is None:
+            return ""
+        try:
+            doc = orjson.loads((self.cache_dir / f"{self.name}-manifest.etag").read_bytes())
+        except (OSError, orjson.JSONDecodeError):
+            return ""
+        if not isinstance(doc, dict) or doc.get("library") != self._library_mark():
+            return ""
+        return str(doc.get("etag") or "")
+
+    def _keep(self, body: bytes, validator: str = "") -> None:
+        """The manifest on disk, whole or not at all, then the validator it came with."""
         assert self.cache_dir is not None
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            (self.cache_dir / f"{self.name}-manifest.json").write_bytes(body)
+            path = self.cache_dir / f"{self.name}-manifest.json"
+            tag = self.cache_dir / f"{self.name}-manifest.etag"
+            tag.unlink(missing_ok=True)  # never a validator beside a copy it was not given with
+            partial = path.with_name(path.name + ".part")
+            partial.write_bytes(body)
+            partial.replace(path)
+            if validator:
+                tag.write_bytes(orjson.dumps({"library": self._library_mark(), "etag": validator}))
         except OSError:  # a library that cannot be kept is still usable
             pass
 
@@ -450,9 +562,9 @@ class LibrarySource:
         tile: TileRef,
         spec: LayerSpec,
         entry: Mapping[str, object],
-        answer: tuple[int, bytes],
+        answer: Answer,
     ) -> OsmSnapshot | None:
-        status, body = answer
+        status, body = answer[0], answer[1]
         if status != 200 or not body:
             raise LibraryError(f"answered HTTP {status}", tile=tile.name, layer=spec.name)
         announced_bytes = int(entry.get("bytes", 0) or 0)
