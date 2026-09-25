@@ -244,9 +244,11 @@ Published with `tools/bake/publish.py`, which is three steps and one rule each:
    manifest that arrives first announces files that are not there yet, and every tile of every
    build in progress pays four refused requests for it. `rsync -a --delete` does exactly the wrong
    thing, since `manifest.json` sorts before `osm/`.
-2. **the manifest it replaces is kept** under the name of its bake. The files are never removed,
-   so putting an old manifest back serves the old library again: that is the rollback
-   (`publish.py --rollback <bake>`).
+2. **the manifest it replaces is kept** under the name of its bake, and `publish.py --rollback
+   <bake>` puts it back. That serves the old library again only for the files the new bake left
+   as they were: a rebake writes its files at the same paths, so every file it changed is
+   refused against the old manifest, and after a new extract that is nearly all of them. A real
+   rollback needs the old files kept, which publishing beside the served folder gives (below).
 3. **the manifest last, and by rename**, so a client reads the old one or the new one and never
    half of either.
 
@@ -260,6 +262,18 @@ sets the library aside for that job and downloads live, which is the safe end of
 gets bad data, some builds get slow ones. Making it airtight means publishing each bake in its own
 directory and swapping the pointer, which is worth doing the day the library is updated often
 enough for anyone to notice.
+
+**How the planet library was put in place (2026-09-25).** By hand, the airtight way:
+`publish.py` sent it to `osxp-data-next`, beside the served `osxp-data`, files first and manifest
+last (97 860 files, 44.9 GB, 1 h 19); every file was then checked on the server against the
+manifest (none missing, none of another size, none extra); then the served folder's contents were
+moved to `osxp-data-old` and the new ones into it. The web server mounts `osxp-data` itself, so
+the change was seen at once, with no restart and nothing else on the machine touched, and moving
+the two back is the rollback. Read afterwards through the client and the key a build uses: the
+manifest in 1.8 s, twelve tiles at random whole at road levels 1, 3 and 5, and the heaviest two
+whole at level 5 (Paris, 47 MB in 6.3 s; Tokyo, 74 MB in 10.9 s); without the key, or with a
+wrong one, nothing but a 403. Folding that into `publish.py` is the change to make before the
+next bake.
 
 A library replaced in place keeps whatever the last one left, and what the manifest does not name
 is never served but still takes room and still hides what the server holds: `publish.py --prune`
