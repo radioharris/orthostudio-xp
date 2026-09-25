@@ -944,6 +944,10 @@ same one, so the warning cannot land on a different zoom from the one the imager
 at. The street map and the mock are not the source's imagery: no ceiling is given, and nothing is
 called enlarged.
 
+The source is chosen in step 1, not on the map, so the line is drawn again in `setBaseLayer` as
+well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
+on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

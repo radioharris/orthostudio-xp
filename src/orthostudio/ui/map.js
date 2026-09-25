@@ -1678,6 +1678,10 @@ export function createPlanMap(ctx) {
     else if (zs.street.wanted && !zs.street.failed) base = streetLayer();
     else if (code) base = providerLayer(code);
     if (base) base.addTo(map);
+    // What is under the map changed, so what the view is worth changed with it: a source chosen
+    // in step 1 has its own ceiling, and the street map has none (a user switched to EOX at ZL18
+    // and the line went on promising 40 cm, 2026-09-25).
+    renderLegend();
   }
 
   /** The street map, drawn by MapLibre GL inside the Leaflet map.

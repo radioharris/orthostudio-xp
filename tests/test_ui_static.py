@@ -4735,6 +4735,13 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()
         assert any(line.strip().startswith("renderLegend();") for line in called), event
+
+    # The source is chosen in step 1, not on the map, and the street map replaces it altogether:
+    # both go through setBaseLayer, so the line is drawn again there. A user switched to EOX at
+    # ZL18 and the line went on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
+    swap = code[code.index("function setBaseLayer(") :]
+    swap = swap[: swap.index("\n  }\n")].splitlines()
+    assert any(line.strip().startswith("renderLegend();") for line in swap), "setBaseLayer"
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
