@@ -86,11 +86,11 @@ wait too: the end of the build decides what X-Plane shows of it. Tiles are delet
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and
 *Quit* cancels the waiting builds with the one running.
 
-**Tidying the list.** A build that has finished carries a small bin at the end of its row: it
-leaves the list, with its progress and its log, and the tiles it built stay where they are. If it
-was the build on screen, the next one in the list takes its place. The trash above the list does
-the same for every finished build at once. A build still running or waiting has no bin: stop it
-first.
+**Tidying the list.** A build that has finished carries a small cross on the top right corner of
+its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
+are. If it was the build on screen, the next one in the list takes its place. The trash above the
+list does the same for every finished build at once. A build still running or waiting has no
+cross: stop it first.
 
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
 EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
