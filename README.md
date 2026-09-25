@@ -268,7 +268,9 @@ the Plan): you add it yourself, and its terms apply to you as well.
 ## Relationship to Ortho4XP and licences
 
 OrthoStudio XP is Copyright (C) 2026 radioharris, licensed under the GNU GPL v3 or later (`LICENSE`,
-`NOTICE`).
+`NOTICE`). `NOTICE` adds three terms that section 7 of the GPL v3 allows: the author's credit is
+kept, a modified version carries a name of its own, and the licence gives no right to the name
+OrthoStudio XP.
 
 OrthoStudio XP ports the X-Plane domain rules of Ortho4XP (coastlines, airports, masks, DSF
 encoding, provider definitions) into a new architecture. It is therefore a derivative work and is
