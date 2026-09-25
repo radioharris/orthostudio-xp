@@ -45,7 +45,9 @@ about a second, because the same questions have already been answered for that s
 answers are files; at road level 5 a dense tile's small roads weigh tens of megabytes, and it
 takes up to ten seconds or so, two or three of them downloading (Switzerland, 2026-09-25).
 Elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile when they answer
-(measured 2026-09-14), with the layers received and the download rate shown in the step. The step
+(measured 2026-09-14), with the layers received and the download rate shown in the step. The
+library's table of contents comes whole the first time only: after that a build just asks whether
+it changed, and the connections to the library stay open from one tile to the next. The step
 then prepares the relief and traces the roads, water and airports for the mesh, which is most of
 its time: on those Swiss tiles at road level 5, 17 to 36 s of relief and 46 to 75 s of tracing.
 

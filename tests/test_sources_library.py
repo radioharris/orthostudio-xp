@@ -557,6 +557,28 @@ def test_a_library_baked_at_road_level_5_answers_every_level_below_it(tmp_path: 
             assert got["small_roads"].nodes == _roads(level).nodes, level
 
 
+def test_the_library_is_told_the_road_level_it_is_asked_at(tmp_path: Path) -> None:
+    """From 2 to 5 the library sends the same file of small roads, cut down on the user's
+    computer, so its log could only tell 0, 1 or "2 to 5" (2026-09-25). The level now travels
+    with a tile's requests; the manifest, the same for every level, goes without it."""
+    from orthostudio.sources.library import ROAD_LEVEL_HEADER
+
+    served = _planet(tmp_path / "lib")
+    for level in range(6):
+        server = _Server(served)
+        seen: list[dict[str, str]] = []
+
+        def fetch(urls, headers, server=server, seen=seen):  # type: ignore[no-untyped-def]
+            seen.extend({"url": url, **headers} for url in urls)
+            return server(urls, headers)
+
+        src = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch)
+        assert src.layers(TILE, layers_for(level)) is not None, level
+        tiles = [h for h in seen if not h["url"].endswith("/manifest.json")]
+        assert tiles and all(h[ROAD_LEVEL_HEADER] == str(level) for h in tiles), level
+        assert all(ROAD_LEVEL_HEADER not in h for h in seen if h not in tiles), level
+
+
 def test_a_library_baked_below_the_level_asked_is_still_refused(tmp_path: Path) -> None:
     """Narrowing only takes away: a library at road level 2 cannot invent the tracks of level 5."""
     served = _planet(tmp_path / "lib")
@@ -614,7 +636,7 @@ def test_a_slow_file_arrives_and_a_silent_one_does_not(monkeypatch) -> None:  # 
     finally:
         httpd.shutdown()
         httpd.server_close()
-    assert slow == (200, body), "a file still arriving is waited for"
+    assert slow[:2] == (200, body), "a file still arriving is waited for"
     assert silent[0] == 0 and silent[1] == b"", "a silent one is given up"
     # curl measures the speed once a second, so silence is noticed a second or two after the
     # limit, and long before the nine seconds the server would have taken to hang up
@@ -639,3 +661,142 @@ def test_a_library_down_all_build_long_is_asked_twice(monkeypatch) -> None:  # t
         assert src.layers(TILE, SPECS) is None
         clock[0] += 1200.0
     assert len(asked) == 2
+
+
+# -- the manifest asked by its validator, the connections kept -------------------------------------
+
+
+def _validating(served: Mapping[str, bytes], etag: str, asked: list[dict[str, str]]):  # type: ignore[no-untyped-def]
+    """A server that gives the manifest an ``ETag`` and answers 304 to a request that has it."""
+    server = _Server(served)
+
+    def fetch(urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes, str]]:
+        asked.append({"url": urls[0], **headers})
+        if urls[0].endswith("/manifest.json"):
+            if headers.get("If-None-Match") == etag:
+                return [(304, b"", etag)]
+            status, body = server(urls, headers)[0]
+            return [(status, body, etag)]
+        return [(status, body, "") for status, body in server(urls, headers)]
+
+    return fetch
+
+
+def test_an_unchanged_manifest_is_not_downloaded_again(tmp_path: Path) -> None:
+    """3.6 MB at every build, one to six seconds from America (2026-09-25): the manifest is now
+    asked whether it changed, with the ETag it came with, and read from disk when it did not."""
+    served, cache = _library(tmp_path / "lib"), tmp_path / "cache"
+    asked: list[dict[str, str]] = []
+    fetch = _validating(served, '"v1-gzip"', asked)
+    first = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch, cache_dir=cache)
+    assert first.layers(TILE, SPECS) is not None
+    assert "If-None-Match" not in asked[0]
+
+    asked.clear()
+    second = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch, cache_dir=cache)
+    got = second.layers(TILE, SPECS)
+    assert got is not None and sorted(got) == sorted(s.name for s in SPECS)
+    assert asked[0]["If-None-Match"] == '"v1-gzip"'
+    assert second.index is not None and second.index.extracted == "2026-09-21T00:00:00Z"
+
+
+def test_a_changed_manifest_comes_whole_with_its_new_validator(tmp_path: Path) -> None:
+    served, cache = _library(tmp_path / "lib"), tmp_path / "cache"
+    asked: list[dict[str, str]] = []
+    LibrarySource(
+        "https://example.invalid/data", TOKEN, fetch=_validating(served, '"v1"', asked),
+        cache_dir=cache,
+    ).layers(TILE, SPECS)  # fmt: skip
+    asked.clear()
+    rebaked = LibrarySource(
+        "https://example.invalid/data", TOKEN, fetch=_validating(served, '"v2"', asked),
+        cache_dir=cache,
+    )  # fmt: skip
+    assert rebaked.layers(TILE, SPECS) is not None
+    assert asked[0]["If-None-Match"] == '"v1"'  # asked, and the answer was the whole thing
+    asked.clear()
+    LibrarySource(
+        "https://example.invalid/data", TOKEN, fetch=_validating(served, '"v2"', asked),
+        cache_dir=cache,
+    ).layers(TILE, SPECS)  # fmt: skip
+    assert asked[0]["If-None-Match"] == '"v2"'
+
+
+def test_a_validator_never_goes_to_another_library(tmp_path: Path) -> None:
+    """A user's own library and the one this version carries keep their manifest under the same
+    name: one's validator must never be taken for the other's."""
+    served, cache = _library(tmp_path / "lib"), tmp_path / "cache"
+    asked: list[dict[str, str]] = []
+    LibrarySource(
+        "https://example.invalid/data", TOKEN, fetch=_validating(served, '"v1"', asked),
+        cache_dir=cache,
+    ).layers(TILE, SPECS)  # fmt: skip
+    asked.clear()
+    other = LibrarySource(
+        "https://elsewhere.invalid/data", TOKEN, fetch=_validating(served, '"v1"', asked),
+        cache_dir=cache,
+    )  # fmt: skip
+    assert other.layers(TILE, SPECS) is not None
+    assert "If-None-Match" not in asked[0]
+
+
+def test_not_modified_with_no_copy_left_asks_for_all_of_it(tmp_path: Path) -> None:
+    served, cache = _library(tmp_path / "lib"), tmp_path / "cache"
+    asked: list[dict[str, str]] = []
+    fetch = _validating(served, '"v1"', asked)
+    LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch, cache_dir=cache).layers(
+        TILE, SPECS
+    )
+    (cache / "library-manifest.json").unlink()  # freed with the rest of the cache, say
+    asked.clear()
+    again = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch, cache_dir=cache)
+    assert again.layers(TILE, SPECS) is not None
+    manifests = [a for a in asked if a["url"].endswith("/manifest.json")]
+    assert "If-None-Match" not in manifests[-1]
+    assert (cache / "library-manifest.json").is_file()
+
+
+def test_the_connections_are_kept_and_the_validator_travels() -> None:
+    """Through curl itself, against a local server: the second request comes on the connection
+    the first opened (the same port on the server's side), and a 304 comes back as one."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from orthostudio.sources import library as lib
+
+    body = b"manifest " * 100
+    ports: list[int] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # connections kept open, as Caddy keeps them
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            ports.append(self.client_address[1])
+            if self.headers.get("If-None-Match") == '"abc"':
+                self.send_response(304)
+                self.send_header("ETag", '"abc"')
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("ETag", '"abc"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/manifest.json"
+    try:
+        (first,) = lib._http_get_many([url], {})
+        (second,) = lib._http_get_many([url], {"If-None-Match": '"abc"'})
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert first == (200, body, '"abc"')
+    assert second[0] == 304 and second[1] == b""
+    assert len(ports) == 2 and ports[0] == ports[1], "the second request reused the connection"

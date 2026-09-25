@@ -148,6 +148,12 @@ tile it announced must say so by raising, or the chain can never count it: xpcon
 return `None` for everything, so a service that had stopped answering cost every tile of a batch
 two minutes of waiting, twice, in silence.
 
+The connections are kept. One HTTP session serves the engine for its whole life, on an event
+loop of its own, where a session per tile opened new connections for every tile: a TCP and a TLS
+handshake, then a transfer that starts slowly and speeds up one round trip at a time. From
+California a round trip to the server takes some 150 ms, and that was most of a tile's few
+seconds (2026-09-25). HTTP/1.1 stays pinned, for the stall HTTP/2 showed on the larger files.
+
 Not answering is not the same as refusing the key. A 401 or a 403 closes the library for the run,
 because the same key will be refused at the next tile; anything else, a 502, a cut connection, a
 restart of the server, is waited out for two minutes and asked again. One hiccup used to close the
@@ -251,11 +257,20 @@ repository (2026-09-25).
 **The manifest travels compressed.** The site compresses what it sends (`encode zstd gzip` in its
 block of the web server's configuration, 2026-09-25): the manifest, 28.4 MB of JSON, arrives as
 3.4 MB, and the client, which asks for it, unpacks it without a word. The layer files are zstd
-already and pass as they are, at exactly the size the manifest announces. A build downloads the
-manifest once, at its first tile that needs map data.
+already and pass as they are, at exactly the size the manifest announces. A build asks for the
+manifest once, at its first tile that needs map data, and asks whether it changed rather than for
+all of it: the `ETag` it came with is kept beside the copy on disk, sent as `If-None-Match`, and
+an unchanged manifest answers 304 with nothing, then is read from disk. Before, every build
+downloaded it whole, 3.6 MB that took one to six seconds from America (2026-09-25). The validator
+is kept with a mark of the library that gave it, since a user's own library and the one this
+version carries keep their manifest under the same name; a 304 whose copy has gone since is
+asked again without the condition.
 
 Every request of a build also names the program and its version (`OrthoStudio-XP/0.1.17 (+...)`,
 the user agent the app sends everywhere), which is what the server's log shows: which version asks
 what. It is no lock, since anyone may send the same words, but a program that does not bother
-stands out (2026-09-25). The server's log never holds the key: the web server writes
+stands out (2026-09-25). A tile's requests also say the road level they are asked at
+(`X-OSXP-Road-Level: 3`): from 2 to 5 the files are the same, cut down on the user's side, so
+without it the log could only tell 0, 1 or "2 to 5". The manifest, the same for every level, goes
+without it. The server's log never holds the key: the web server writes
 `Authorization` as `REDACTED`.
