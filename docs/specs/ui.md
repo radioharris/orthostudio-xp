@@ -916,6 +916,26 @@ and goes back to the imagery. The colours of a square or a zone are not repainte
 would tint roads and houses and say nothing about a build. Off by default, remembered in
 `localStorage` (`osxp.mapStreet`), with OpenFreeMap's attribution in the map's corner.
 
+**What the view is worth** (a Linux user, 2026-09-24). The legend's first line reads *This view:
+Standard, about 2 m per pixel · ZL16*. The map's zoom **is** the web-mercator level, so the
+level the map sits at is the level a build would use for what is on screen; the ask was to
+"get an impression of just how a given provider's imagery will look at the desired ortho ZL".
+`viewLabel` says the level's name where a build offers one (`DETAIL_NAMES`) and, below those, the
+ground size alone, since a name there would only repeat the number. It shares `metersPerPixel` and
+`detailLabel` with the level list under it, so the two can never disagree, and the latitude it is
+given is the view's own, a pixel covering less ground the further north it is. The legend is
+redrawn on `zoomend` and on `moveend`: a pan changes the latitude as surely as a zoom changes the
+level.
+
+Past the source's own ceiling the map keeps zooming and Leaflet enlarges the last tiles it
+downloaded (`maxNativeZoom`): the pixels grow, the detail does not, and a user zoomed to ZL18 on
+EOX, which stops at ZL14 (2026-09-25). The line must not then promise a sharpness no build can
+deliver, so it reads *This view: ZL18, enlarged. EOX goes no further than ZL14, about 7 m per
+pixel*. `nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the
+same one, so the warning cannot land on a different zoom from the one the imagery stops improving
+at. The street map and the mock are not the source's imagery: no ceiling is given, and nothing is
+called enlarged.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

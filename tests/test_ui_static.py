@@ -4644,6 +4644,61 @@ def test_what_went_wrong_with_a_way_is_said_under_it() -> None:
     assert {"LSGG", "LFMN"} <= {a["icao"] for a in airports}  # the placeholder, "LSGG LFMN"
 
 
+def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
+    """The map's zoom is the web-mercator level, so what a pilot sees while panning is what that
+    level would put on the ground. They asked for it in those words: it "helps to get an impression
+    of just how a given provider's imagery will look at the desired ortho ZL" (2026-09-24).
+
+    Below the levels a build offers the name would only repeat the number, so the ground size
+    alone is said.
+    """
+    said = _node_json(
+        "map.js",
+        "[[18, 46], [16, 46], [12, 46], [8, 46]].map(([z, lat]) => m.viewLabel(z, lat))",
+    )
+    assert said[0] == "Very sharp, about 40 cm per pixel \u00b7 ZL18"
+    assert said[1] == "Standard, about 2 m per pixel \u00b7 ZL16"
+    assert said[2] == "Very coarse, about 27 m per pixel \u00b7 ZL12"
+    assert said[3] == "about 425 m per pixel \u00b7 ZL8", "no name below the levels a build offers"
+
+    # past the provider's own ceiling the map enlarges what it already has, so the line stops
+    # promising a sharpness no build can deliver and says what the provider really gives
+    # (a user zoomed to ZL18 on EOX, which stops at ZL14, 2026-09-25)
+    over = _node_json(
+        "map.js",
+        '[[18, 46, 14, "EOX"], [14, 46, 14, "EOX"], [18, 46, null, ""]]'
+        ".map(([z, lat, cap, name]) => m.viewLabel(z, lat, cap, name))",
+    )
+    assert over[0] == "ZL18, enlarged. EOX goes no further than ZL14, about 7 m per pixel"
+    assert over[1] == "Low, about 7 m per pixel \u00b7 ZL14", "at the ceiling nothing is enlarged"
+    assert over[2] == "Very sharp, about 40 cm per pixel \u00b7 ZL18", "no ceiling, nothing to warn"
+
+    # and the ceiling the line measures against is the one the base layer stops downloading at,
+    # read from the same expression, so the warning cannot land on a different zoom
+    caps = _node_json(
+        "map.js",
+        "[{ max_zl: 14 }, { max_zl: 22 }, { max_zl: 19 }, {}, null].map((p) => m.nativeCeiling(p))",
+    )
+    assert caps == [14, 19, 19, 19, 19], "a provider claiming more than the engine serves is capped"
+    code_ = (UI / "map.js").read_text(encoding="utf-8")
+    assert "maxNativeZoom: nativeCeiling(p)," in code_, "the layer reads it"
+    assert "const ceiling = shown ? nativeCeiling(shown) : null;" in code_, "the legend reads it"
+    assert "viewLabel(...viewNow())" in code_
+
+    # and the legend puts it on the map, redrawn when the zoom or the latitude moves under it
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
+    assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
+    assert "clear(box).append(view, list)" in legend
+    for event in ("moveend", "zoomend"):
+        handler = code[code.index(f'm.on("{event}"') :]
+        called = handler[: handler.index("});")].splitlines()
+        assert any(line.strip().startswith("renderLegend();") for line in called), event
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from

@@ -249,6 +249,17 @@ blue one just inside it, and a thin line between them sets both off from the pho
 the world, where a square is too small for both, it stays green: the map then shows which tiles
 you have.
 
+**How sharp is what you see.** The first line of the legend says what the map in front of you is
+worth on the ground: *This view: Standard, about 2 m per pixel · ZL16*. It is the same scale a
+build works in, so you can zoom the map until the photo looks the way you want your scenery to
+look, read the level it names, and ask for that one. Below the levels a build offers it gives the
+ground size alone.
+
+Every source stops somewhere: EOX at ZL14, Bing at ZL19. The map still lets you zoom past that,
+which is handy for clicking precisely, but it is then enlarging the last photo it downloaded, not
+fetching a sharper one. The line says so, and names the best that source really has, so you never
+ask for a level your source cannot give.
+
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
 OpenFreeMap, a free service that renders OpenStreetMap without a key; OrthoStudio XP serves it

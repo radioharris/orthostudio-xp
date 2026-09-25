@@ -516,6 +516,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .map-legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .map-legend li { display: flex; align-items: center; gap: 6px; }
+.map-legend .legend-view { margin: 0 0 6px; color: var(--fg-2); }
 .map-legend .legend-title { margin: 6px 0 2px; font-weight: 600; color: var(--fg-2); }
 .legend-swatch { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .legend-installed { border: 2px solid var(--ok); }

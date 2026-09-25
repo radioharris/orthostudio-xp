@@ -23,7 +23,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   the list shows those of the squares you chose), check the size and the time before building,
   then build and install in one click. The map shows the aerial imagery or, in one click, the
   OpenStreetMap street map, with the airports and their ICAO codes as you zoom in, to find what
-  you fly over before you choose a square.
+  you fly over before you choose a square. The legend says what the view you are on is worth on
+  the ground, in the levels a build works in, so you can zoom until the photo looks the way you
+  want your scenery to look and ask for the level it names.
 - **Works, as it happens.** A progress bar for every step of every tile, the time elapsed and
   a range for the time left over the whole build (starting from your connection's speed on your
   last builds), errors that say what happened and what to do, and a button to fetch again only

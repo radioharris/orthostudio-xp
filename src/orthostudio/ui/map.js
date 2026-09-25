@@ -72,6 +72,9 @@ const HINT_KEY = "osxp.mapHintDone";
  * BORDERS_MAX_ZOOM they would visibly miss the borders on the imagery, so they are hidden. */
 const BORDERS_URL = "static/vendor/borders/borders.json";
 export const BORDERS_MAX_ZOOM = 10;
+
+/** Deepest zoom the engine serves imagery for, whatever a provider claims (``map_api.py``). */
+const MAX_NATIVE_ZOOM = 19;
 const BORDERS_KEY = "osxp.mapBorders";
 
 /** Airports on the map (`GET /api/airports/in`), from the index the app ships: no request leaves
@@ -131,6 +134,42 @@ export function detailName(zl) {
 /** "Very sharp, about 40 cm per pixel · ZL18": the name first, the zoom level as secondary text. */
 export function detailLabel(zl, lat) {
   return t("detail.option", { name: detailName(zl), size: fmtGround(metersPerPixel(zl, lat)), zl });
+}
+
+/** What the view on screen is worth in a build's terms, for the legend.
+ *
+ * The map's zoom **is** the web-mercator level, so what a pilot sees while panning is what that
+ * level would put on the ground. They asked for it in those words: it "helps to get an impression
+ * of just how a given provider's imagery will look at the desired ortho ZL" (a user, 2026-09-24).
+ * Below the levels a build offers, the name would only repeat the number, so the ground size
+ * alone is said.
+ *
+ * Past ``ceiling``, the deepest level the provider has, the map stops downloading and enlarges
+ * the last tiles it got (``maxNativeZoom``): the pixels grow, the detail does not. The line must
+ * not then promise a sharpness no build can deliver, so it says what the provider really gives.
+ * A view that is not the provider's imagery (the street map, the mock) passes no ceiling.
+ */
+/** Deepest level the base layer downloads for a provider: past it Leaflet enlarges what it has.
+ *
+ * One expression, read by the layer (``maxNativeZoom``) and by the legend, so the line can never
+ * say "enlarged" on a different zoom from the one the imagery stops improving at. A provider the
+ * page does not know, or one without a level, is trusted to the map's own deepest. */
+export function nativeCeiling(p) {
+  return Number.isInteger(p?.max_zl) ? Math.min(MAX_NATIVE_ZOOM, p.max_zl) : MAX_NATIVE_ZOOM;
+}
+
+export function viewLabel(zoom, lat, ceiling = null, provider = "") {
+  if (Number.isInteger(ceiling) && zoom > ceiling) {
+    return t("map.view_over", {
+      zl: zoom,
+      provider,
+      best: ceiling,
+      size: fmtGround(metersPerPixel(ceiling, lat)),
+    });
+  }
+  return DETAIL_NAMES[zoom]
+    ? detailLabel(zoom, lat)
+    : t("map.view_coarse", { size: fmtGround(metersPerPixel(zoom, lat)), zl: zoom });
 }
 
 function isMac() {
@@ -1321,6 +1360,7 @@ export function createPlanMap(ctx) {
       renderBanner();
       renderToolOptions(true);
       refreshAirports();
+      renderLegend(); // a pan north or south changes what a pixel covers, so the view line moves too
     });
     m.on("zoomend", () => {
       renderBorders();
@@ -1724,7 +1764,7 @@ export function createPlanMap(ctx) {
     const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}`, {
       attribution: escapeHtml(p?.attribution || p?.name || code),
       maxZoom: 20,
-      maxNativeZoom: Math.min(19, Number.isInteger(p?.max_zl) ? p.max_zl : 19),
+      maxNativeZoom: nativeCeiling(p),
       noWrap: true,
       // Leaflet 1.9's _isValidTile ignores noWrap on a wrapping CRS: without bounds, a view at
       // the edge of the world requests x = -1 or 2^z, which the engine rightly refuses (422).
@@ -2162,6 +2202,21 @@ export function createPlanMap(ctx) {
   }
 
   /** Installed tiles, selected tiles, and the detail levels in use (section 7.0.5). */
+  /** The view's zoom, its latitude, and the ceiling to measure it against.
+   *
+   * The ceiling is ``nativeCeiling``, the very one the base layer stops downloading at. The
+   * street map and the mock are not the provider's imagery: no ceiling, nothing to enlarge. */
+  function viewNow() {
+    const shown = ctx.mock || (zs.street.wanted && !zs.street.failed) ? null : providerByCode(ctx.planProvider() || "");
+    const ceiling = shown ? nativeCeiling(shown) : null;
+    return [
+      map ? map.getZoom() : GRID_MIN_ZOOM,
+      map ? map.getCenter().lat : 45,
+      ceiling,
+      shown ? shown.name || shown.code : "",
+    ];
+  }
+
   function renderLegend() {
     const box = $("map-legend");
     if (!box) return;
@@ -2169,6 +2224,7 @@ export function createPlanMap(ctx) {
     const hadFocus = document.activeElement !== null && box.querySelector(".legend-toggle input") === document.activeElement;
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
     const items = [row("legend-installed", t("map.legend_installed")), row("legend-selected", t("map.legend_selected"))];
+    const view = h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) }));
     if ((ctx.route?.() || {}).points?.length >= 2) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
     }
@@ -2179,7 +2235,7 @@ export function createPlanMap(ctx) {
     if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
-    clear(box).append(list);
+    clear(box).append(view, list);
     if (hadFocus) box.querySelector(".legend-toggle input")?.focus();
     if (!levels.length) return;
     box.append(
