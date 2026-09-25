@@ -128,22 +128,36 @@ class _Engine:
 
 
 @pytest.mark.parametrize(
-    ("version", "root", "opens"),
-    [("same", "same", True), ("0.0.1", "same", False), ("same", "/elsewhere/orthostudio", False)],
+    ("version", "root", "code", "opens"),
+    [
+        ("same", "same", "same", True),
+        ("0.0.1", "same", "same", False),
+        ("same", "/elsewhere/orthostudio", "same", False),
+        ("same", "same", "started-before", False),
+    ],
 )
-def test_a_second_launch_opens_this_apps_page_at_once(version: str, root: str, opens: bool) -> None:
+def test_a_second_launch_opens_this_apps_page_at_once(
+    version: str, root: str, code: str, opens: bool
+) -> None:
     """A user on Windows closed the browser, opened the app again and saw nothing come
     (2026-09-17): the page of this installation, at this version, opens before the engine's long
-    imports. Another version or installation is left to the usual start, which asks it to stop."""
+    imports. Another version or installation, or this one started before its files changed (a
+    checkout's app opened again after a change, 2026-09-25), is left to the usual start, which asks
+    it to stop."""
     import orthostudio
     import orthostudio.desktop
+    from orthostudio.codemark import code_mark
 
     here = str(Path(orthostudio.desktop.__file__).resolve().parent)
     engine = _Engine(
         {
             "version": orthostudio.__version__ if version == "same" else version,
             "api_level": 14,
-            "engine": {"root": here if root == "same" else root, "pid": 1},
+            "engine": {
+                "root": here if root == "same" else root,
+                "pid": 1,
+                "code": code_mark() if code == "same" else code,
+            },
         }
     )
     opened: list[str] = []

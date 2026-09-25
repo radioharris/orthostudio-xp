@@ -59,6 +59,7 @@ from orthostudio.api.specs import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import clean, disk_bytes
+from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import Action, OsxpError, Severity
@@ -672,6 +673,10 @@ def create_app(
         if job_id is not None and (pack_dir / MANIFEST_NAME).is_file():
             raise TileInBuildError([tile.name], [job_id])
 
+    # which installation serves, and the code it started with: a second launch of the same one,
+    # its files unchanged, shows its page; another installation, or this one started before its
+    # files changed, is asked to make way (serve.take_over, desktop.engine_here)
+    this_engine = {"root": str(package_root()), "pid": os.getpid(), "code": code_mark()}
     state: dict[str, Any] = {
         "jobs": manager,
         "env_factory": env_factory,
@@ -846,9 +851,7 @@ def create_app(
             "active_job": None if active is None else active.id,
             "platform": platform_name(),
             "can_quit": shutdown is not None,
-            # which installation serves: a second launch of the same one shows its page, another
-            # (the app and a checkout) takes its place (serve.take_over)
-            "engine": {"root": str(package_root()), "pid": os.getpid()},
+            "engine": this_engine,
         }
 
     @app.get("/api/sizes")
@@ -873,7 +876,7 @@ def create_app(
             "api_level": API_LEVEL,
             "can_quit": shutdown is not None,
             "active_job": None if active is None else active.id,
-            "engine": {"root": str(package_root()), "pid": os.getpid()},
+            "engine": this_engine,
         }
 
     @app.post("/api/presence")

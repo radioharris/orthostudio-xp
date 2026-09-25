@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.api import presence
+from orthostudio.codemark import code_mark
 from orthostudio.errors import OsxpError
 from orthostudio.home import make_patches_dir
 from orthostudio.logs import setup_logging
@@ -121,14 +122,17 @@ def running_root(status: dict) -> Path | None:
 def take_over(port: int, status: dict, *, timeout_s: float = 15.0) -> bool:
     """Whether the OrthoStudio XP running on ``port`` stopped when asked, leaving the port free.
 
-    It is asked to quit, without stopping a build, when it is older than this one, or when it runs
+    It is asked to quit, without stopping a build, when it is older than this one, when it runs
     another installation (another package folder, or one that does not say: the app and a
-    checkout). An older engine serves this version's page next to its own routes, and the page can
-    only ask to restart it; another installation made a user who ran a checkout's
-    ``osxp serve --open`` get the app's page and code, told only that it was already running
-    (2026-09-14). The same installation as recent as this one stays: opening the app twice shows
-    the running one. It stays too, and ``False`` is returned, when a build runs in it, when it is
-    older than ``POST /api/quit``, or when the port is not free in ``timeout_s``.
+    checkout), or when it started before the files of this one changed (another mark,
+    :mod:`orthostudio.codemark`). An older engine serves this version's page next to its own
+    routes, and the page can only ask to restart it; another installation made a user who ran a
+    checkout's ``osxp serve --open`` get the app's page and code, told only that it was already
+    running (2026-09-14); a checkout opened again after a change showed the engine started before
+    it, and a pilot tested a fix that was not running (2026-09-25). The same installation, as
+    recent and with the same files, stays: opening the app twice shows the running one. It stays
+    too, and ``False`` is returned, when a build runs in it, when it is older than
+    ``POST /api/quit``, or when the port is not free in ``timeout_s``.
     """
     import httpx
 
@@ -140,9 +144,16 @@ def take_over(port: int, status: dict, *, timeout_s: float = 15.0) -> bool:
         level = 1
     root = running_root(status)
     other = root is None or root.resolve() != package_root()
-    if level >= API_LEVEL and not other:
+    engine = status.get("engine")
+    changed = not isinstance(engine, dict) or engine.get("code") != code_mark()
+    if level >= API_LEVEL and not other and not changed:
         return False
-    which = "An older OrthoStudio XP" if level < API_LEVEL else "Another OrthoStudio XP"
+    if level < API_LEVEL:
+        which = "An older OrthoStudio XP"
+    elif other:
+        which = "Another OrthoStudio XP"
+    else:
+        which = "An OrthoStudio XP started before its code changed"
     where = f" ({root})" if other and root is not None else ""
     if level < QUIT_API_LEVEL:
         print(f"{which} is running{where}: quit it, then open OrthoStudio XP again.")
