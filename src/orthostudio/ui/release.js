@@ -2,7 +2,8 @@
 
 /**
  * Whether the flight plan is offered: the route field, its two buttons, their detail levels,
- * SimBrief and the line on the map. It waits for 0.1.16, with the prepared map data.
+ * SimBrief and the line on the map. It waits for a version after 0.1.16: the prepared map data it
+ * needed ships in 0.1.16, and the two go out apart, each checkable on its own (2026-09-25).
  *
  * Choosing squares along a route is a whole feature of its own, and it arrived in the same
  * release as three faults users are waiting on: a release carrying both is one nobody can

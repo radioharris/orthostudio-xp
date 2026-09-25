@@ -1,6 +1,6 @@
 # Prepared OSM layers: the sources a tile is asked of, in order
 
-Status: written before the code, for 0.1.15, and shipped in 0.1.16. Companion of `osm-source.md`, which stays the
+Status: written before the code; ships in 0.1.16. Companion of `osm-source.md`, which stays the
 description of Overpass itself. Origin: the night of 2026-09-22, when two of the three public
 Overpass machines a build asks became unusable at once and every build on every continent stopped
 on its Data step; and the days after it, when a user who had built almost a whole state read that
@@ -27,11 +27,12 @@ answers:
 The order follows what is known, not what is fast: the folder is the user's own; ours is the only
 online library whose coverage we established ourselves; Overpass alone is live and complete.
 
-A third source stood between the library and Overpass until 0.1.16: the library another project
-publishes in Ortho4XP's format (OrthoForge, served by xpconnect), read only for the tiles we had
-compared against a live count, from a whitelist carried in our manifest. It was dropped once the
-whole planet was baked here at road level 5 (2026-09-25): it covered nothing ours does not, and
-its files cannot say which road level they answer, so it could never serve a build above level 1.
+A third source stood between the library and Overpass while the chain was written, never in a
+release: the library another project publishes in Ortho4XP's format (OrthoForge, served by
+xpconnect), read only for the tiles we had compared against a live count, from a whitelist carried
+in our manifest. It was dropped once the whole planet was baked here at road level 5 (2026-09-25):
+it covered nothing ours does not, and its files cannot say which road level they answer, so it could
+never serve a build above level 1.
 
 **Fresh data skips the libraries.** A tile asked for with `refresh` (`OsmParams.refresh`, what a
 user presses after correcting their region in OSM) goes straight to Overpass: a prepared library
@@ -64,7 +65,7 @@ of a tile together, so the rule costs nothing real.
 
 This is the part that decides whether the chain is trustworthy, and it is not symmetric: a library
 that is *absent* is harmless, a library that is *short* is not. Measured on xpconnect, the public
-library read until 0.1.16, on 2026-09-19 and again 2026-09-23, both times unchanged:
+library the chain first read, on 2026-09-19 and again 2026-09-23, both times unchanged:
 
 * 7 132 tiles listed, **1 559 of them (22 %) with both road layers empty**;
 * the Geneva tile (`+46+006`) holds 10 110 road ways where a live query returns 24 307: the bake

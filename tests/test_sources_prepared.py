@@ -1,8 +1,8 @@
 """The reader of OpenStreetMap layers in the shape Ortho4XP caches them (``sources/prepared.py``).
 
 OSM 0.6 XML, bzip2 or plain, one file a layer: what a folder of the user's own may hold. The
-public library published in the same format (xpconnect) was read here as well until 0.1.16, and
-its tests went with it (2026-09-25). The folder itself is tested in ``test_sources_chain.py``.
+public library published in the same format (xpconnect) was read here as well while the chain was
+written, and its tests went with it (2026-09-25). The folder is tested in ``test_sources_chain.py``.
 """
 
 from __future__ import annotations

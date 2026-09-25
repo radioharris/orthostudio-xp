@@ -10,8 +10,9 @@ caller's layer, and the road-level layers are never read from it at all
 say, and is read by ``library.py``.
 
 The public library another project publishes in this same format (OrthoForge, served by
-xpconnect) was read here too, for the tiles we had verified, until 0.1.16: once the whole planet
-was baked here, it covered nothing ours does not (2026-09-25).
+xpconnect) was read here too while the chain was written, for the tiles we had verified; once the
+whole planet was baked here, it covered nothing ours does not, and no release ever read it
+(2026-09-25).
 """
 
 from __future__ import annotations

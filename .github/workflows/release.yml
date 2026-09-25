@@ -48,7 +48,7 @@ jobs:
       - run: uv sync --frozen --no-dev
       # The address and the key of the prepared library, which the repository does not hold: it
       # is public. Without them the installer reaches no library and downloads every tile live,
-      # exactly as every version before 0.1.15 (docs/specs/osm-prepared.md).
+      # exactly as every version before 0.1.16 (docs/specs/osm-prepared.md).
       - name: Carry the prepared library
         shell: bash
         env:
