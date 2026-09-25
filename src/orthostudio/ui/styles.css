@@ -522,7 +522,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Every label starts at the same place: a line without a checkbox keeps the checkbox's room, and
    every mark is as wide as the others (they started at three places, a user saw, 2026-09-25). */
 .map-legend li:not(.legend-toggle)::before { content: ""; width: 13px; flex: none; }
-.map-legend .legend-view { margin: 0 0 6px; color: var(--fg-2); }
+.map-legend .legend-head { display: flex; align-items: flex-start; gap: var(--label-gap); margin-bottom: var(--title-gap); }
+.map-legend .legend-view { flex: 1; margin: 0; color: var(--fg-2); }
 .map-legend .legend-title { margin: 6px 0 2px; font-weight: 600; color: var(--fg-2); }
 .legend-swatch { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .legend-installed { border: 2px solid var(--ok); }
@@ -541,20 +542,20 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-legend .legend-toggle { pointer-events: auto; }
 /* Folded away to see the map under it (a user, 2026-09-25): a chevron in the corner folds it, one
    button brings it back, and the choice is remembered. */
-.map-legend:not(.is-folded) { padding-right: 24px; }
-.map-legend .legend-fold, .map-legend .legend-unfold { pointer-events: auto; cursor: pointer; font: inherit; color: var(--fg-2); }
+.map-legend .legend-fold, .map-legend .legend-unfold { pointer-events: auto; }
+/* One line high and as wide, at the end of the view line: its centre is the line's. */
 .map-legend .legend-fold {
-  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em); padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; font: inherit; color: var(--fg-2);
   background: transparent; border: 1px solid transparent; border-radius: var(--radius);
 }
 .map-legend .legend-fold::before {
   content: ""; width: 6px; height: 6px; margin-top: -3px;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
 }
-.map-legend .legend-fold:hover, .map-legend .legend-unfold:hover { color: var(--fg); border-color: var(--line); }
-.map-legend.is-folded { padding: 0; }
-.map-legend .legend-unfold { background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: 3px 8px; }
+.map-legend .legend-fold:hover { color: var(--fg); border-color: var(--line); }
+/* Folded, only the button is left, an ordinary small button like the others set on the map. */
+.map-legend.is-folded { padding: 0; background: none; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .map-legend .legend-toggle input { margin: 0; width: 13px; height: 13px; flex: none; }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }

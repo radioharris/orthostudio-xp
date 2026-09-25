@@ -2312,7 +2312,7 @@ export function createPlanMap(ctx) {
     box.classList.toggle("is-folded", !zs.legendOpen);
     if (!zs.legendOpen) {
       // Folded away to see the map under it: one button brings it back.
-      clear(box).append(h("button", { type: "button", class: "legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
+      clear(box).append(h("button", { type: "button", class: "btn btn-small legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
       refocus();
       return;
     }
@@ -2321,7 +2321,9 @@ export function createPlanMap(ctx) {
     if (builtTiles().length) items.push(builtToggle());
     items.push(row("legend-selected", t("map.legend_selected")));
     const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
-    const view = h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) }));
+    // The chevron on the view line itself, the height of one line: it sat two pixels above it,
+    // placed by hand in the corner (measured, 2026-09-25).
+    const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) })), fold);
     if ((ctx.route?.() || {}).points?.length >= 2) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
     }
@@ -2332,7 +2334,7 @@ export function createPlanMap(ctx) {
     if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
-    clear(box).append(fold, view, list);
+    clear(box).append(view, list);
     refocus();
     if (!levels.length) return;
     box.append(

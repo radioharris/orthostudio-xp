@@ -3421,6 +3421,13 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'content: "";' in spacer and "width: 13px;" in spacer
     assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
     assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
+    # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
+    head = rules[".map-legend .legend-head"]
+    assert "gap: var(--label-gap);" in head and "margin-bottom: var(--title-gap);" in head
+    fold = rules[".map-legend .legend-fold"]
+    assert "width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em);" in fold, "one line high"
+    assert "position: absolute" not in fold
+    assert "background: none; border: 0;" in rules[".map-legend.is-folded"], "only the button left"
 
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     legend = map_js[
@@ -3428,7 +3435,10 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     ]
     assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
     folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const row = ")]
-    assert 'class: "legend-unfold"' in folded and "onclick: () => setLegendOpen(true)" in folded
+    assert 'class: "btn btn-small legend-unfold"' in folded, (
+        "an ordinary small button, as on the map"
+    )
+    assert "onclick: () => setLegendOpen(true)" in folded
     assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
     assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
     opening = map_js[map_js.index("  function setLegendOpen(open) {") :]
@@ -4846,7 +4856,8 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     code = (UI / "map.js").read_text(encoding="utf-8")
     legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
     assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
-    assert "clear(box).append(fold, view, list)" in legend, "the view line first, under the fold"
+    assert "clear(box).append(view, list)" in legend, "the view line first"
+    assert 'h("div", { class: "legend-head" }, h("p", { class: "legend-view" }' in legend
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()

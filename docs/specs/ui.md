@@ -1016,9 +1016,12 @@ unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map an
 **The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
 a line without a checkbox now keeps the checkbox's room (`li:not(.legend-toggle)::before`, 13 px)
 and every mark is 14 px wide (the airport's 10 px ring gets 2 px each side), and they all start at
-71. A chevron in its corner folds it away to see the map under it, one *Legend* button brings it
-back, and the choice is remembered (`osxp.mapLegend`, open unless folded; `aria-expanded` on
-both). A redraw, which happens on every zoom, gives the focus back to the control that had it
+71. A chevron at the end of its first line folds it away to see the map under it, one *Legend*
+button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
+`aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
+is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
+ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
+are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
 (`data-keep`): it went to the first checkbox, whichever had it.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
