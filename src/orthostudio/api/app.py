@@ -128,7 +128,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 22
+API_LEVEL = 23
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -150,7 +150,9 @@ colours in the zones document, 19 = ``POST /api/library/{name}/forget`` and ``GE
 20 = ``GET /api/sizes`` (the sizes of the store and of the downloaded images, no longer in the
 status), 21 = the setting ``essential.simbrief_user`` (an older engine refuses a settings document
 that holds it), ``GET /api/simbrief`` and ``tiles_zl`` in a plan or a job (the detail level of some
-squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the list). A page
+squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the list), 23 =
+``GET /api/flightplan/simbrief`` (the plan's line and its squares, computed here) in place of
+``GET /api/simbrief``. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -751,9 +753,24 @@ def create_app(
     def xplane_dir(explicit: str | None = None) -> Path | None:
         return resolve_xplane(explicit, settings().essential.xplane_dir)
 
-    # The Plan's flight plan: the name is read on each request, so a change in Settings counts at
-    # once, and nothing is asked of simbrief.com until the button is pressed.
-    app.include_router(simbrief_router(lambda: settings().essential.simbrief_user))
+    def global_scenery() -> Path | None:
+        """X-Plane 12's own scenery, which a flight plan asks square by square; ``None`` when no
+        X-Plane folder is known, and then no square is left out for want of it."""
+        xp = xplane_dir()
+        if xp is None:
+            return None
+        from orthostudio.install.xplane import global_scenery_dir
+        from orthostudio.overlays.source import resolve_global_scenery_dir
+
+        return resolve_global_scenery_dir(global_scenery_dir(xp))
+
+    # The Plan's flight plan: the name and the X-Plane folder are read on each request, so a change
+    # in Settings counts at once, and nothing is asked of simbrief.com until the button is pressed.
+    app.include_router(
+        simbrief_router(
+            lambda: settings().essential.simbrief_user, global_scenery_of=global_scenery
+        )
+    )
 
     def airport_index() -> Any:
         if state["airports"] is None and not state["airports_tried"]:

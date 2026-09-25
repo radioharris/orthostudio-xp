@@ -262,76 +262,11 @@ export function readZonesDocument(doc) {
 /**
  * ctx: {mock, api(method, path, body, {headers, keepalive}), toast, errorMessage, errorDetail, h,
  * clear, tiles(), toggleTile(name), providers(), planProvider(), planZl(), tileZl(name),
- * routeEnds(),
+ * route() (the flight plan as the engine gave it, or null), routeEnds(),
  * library(),
  * onZonesChanged()}. api() rejects with an error carrying the HTTP `status` when the engine
  * answered, without one when it could not be reached.
  */
-/**
- * The route's points with their longitudes unrolled, so that a leg crossing the antimeridian is
- * drawn the short way. Tokyo to Honolulu is 62 degrees eastward over the Pacific, which is what
- * ``tilesAlong`` counts and what the two buttons offer; drawn from the raw longitudes it went
- * the other way, over Asia and the Atlantic, and the map moved to the Gulf of Guinea to show it
- * (2026-09-23). Leaflet draws a longitude past 180 where it belongs.
- *
- * A leg is brought within half a turn however far the longitudes have run on, so a route that
- * goes round the world more than once keeps going the short way at every leg.
- */
-export function routeLine(points) {
-  let lon = points[0].lon;
-  return points.map((p, i) => {
-    if (i) {
-      let step = p.lon - lon;
-      while (step > 180) step -= 360;
-      while (step < -180) step += 360;
-      lon += step;
-    }
-    return [p.lat, lon];
-  });
-}
-
-/**
- * The route as pieces that all lie inside the world, and where each of its points is drawn.
- *
- * The unrolled line runs past 180, which is how it goes the short way; drawn there, San Francisco
- * to Tokyo puts Tokyo at longitude -220, outside the bounds the map will pan to, so its ring
- * could not be reached and the view could not be fitted to it (found in review, 2026-09-23). The
- * line is cut where it crosses the meridian and continues on the other side, the way a chart
- * draws it, and every point is drawn where the map can go.
- */
-export function routePieces(points) {
-  const line = routeLine(points);
-  const pieces = [];
-  const at = [];
-  let piece = [];
-  let shift = -360 * Math.round(line[0][1] / 360);
-  at.push([line[0][0], line[0][1] + shift]);
-  piece.push(at[0]);
-  for (let i = 1; i < line.length; i += 1) {
-    const [lat, lon] = line[i];
-    const [prevLat] = line[i - 1];
-    let a = line[i - 1][1] + shift;
-    let latA = prevLat;
-    let b = lon + shift;
-    while (b > 180 || b < -180) {
-      const edge = b > 180 ? 180 : -180;
-      const part = (edge - a) / (b - a);
-      const latAt = latA + (lat - latA) * part;
-      piece.push([latAt, edge]);
-      pieces.push(piece);
-      piece = [[latAt, -edge]];
-      shift += b > 180 ? -360 : 360;
-      a = -edge;
-      latA = latAt;
-      b = lon + shift;
-    }
-    at.push([lat, b]);
-    piece.push(at[i]);
-  }
-  pieces.push(piece);
-  return { pieces, at };
-}
-
 export function createPlanMap(ctx) {
   const { h, clear } = ctx;
   const L = globalThis.L;
@@ -1470,25 +1405,26 @@ export function createPlanMap(ctx) {
       });
   }
 
-  /** The markers: a small circle and the code, in the airports pane. */
   /**
-   * The flight plan of step 1: one line through its airports, a ring at each end and a smaller one
-   * at the points between. It is an aid to choosing squares, so it is drawn over the grid and
-   * takes no pointer event; nothing of it is built or saved with the tiles.
+   * The flight plan of step 1: the engine's line through its points, a ring at each end and a
+   * smaller one at the points between. It is an aid to choosing squares, so it is drawn over the
+   * grid and takes no pointer event; nothing of it is built or saved with the tiles.
    */
   function drawRoute() {
     if (!map || !layers.route) return;
     layers.route.clearLayers();
-    const points = (ctx.route?.() || {}).points || [];
-    if (points.length < 2) return;
-    const { pieces, at } = routePieces(points);
-    for (const piece of pieces) {
+    const plan = ctx.route?.();
+    if (!plan?.path?.length) return;
+    // the engine's own line: great circles, cut at the meridian, the one the squares were counted
+    // on (orthostudio.flightplan), so what is drawn is what is chosen
+    const points = plan.points || [];
+    for (const piece of plan.path) {
       L.polyline(piece, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
       L.polyline(piece, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
     }
     points.forEach((p, i) => {
       const end = i === 0 || i === points.length - 1;
-      L.circleMarker(at[i], {
+      L.circleMarker([p.lat, p.lon], {
         pane: "osxpRoute",
         radius: end ? 5 : 3,
         weight: 2,
@@ -1501,6 +1437,7 @@ export function createPlanMap(ctx) {
     });
   }
 
+  /** The markers: a small circle and the code, in the airports pane. */
   function drawAirports() {
     if (!map || !layers.airports) return;
     layers.airports.clearLayers();
@@ -2324,7 +2261,7 @@ export function createPlanMap(ctx) {
     // The chevron on the view line itself, the height of one line: it sat two pixels above it,
     // placed by hand in the corner (measured, 2026-09-25).
     const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) })), fold);
-    if ((ctx.route?.() || {}).points?.length >= 2) {
+    if (ctx.route?.()?.path?.length) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
     }
     const states = new Set(buildingNow().values());
@@ -2804,16 +2741,21 @@ export function createPlanMap(ctx) {
      */
     routeChanged(fit = false) {
       drawRoute();
-      // the grid paints a route's two ends differently, so it has to be drawn again: clearing a
-      // route left them painted until the map next moved (found in review, 2026-09-23)
+      // the grid paints a route's two ends differently, and the legend has a row for them: both
+      // are drawn again, or clearing a route left them until the map next moved (review of
+      // 2026-09-23)
       renderGrid();
-      const points = (ctx.route?.() || {}).points || [];
-      if (!fit || !map || points.length < 2) return;
-      // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map
-      // (measured 2026-09-19), while the zoom it computes is right.
-      const bounds = L.latLngBounds(routePieces(points).at);
-      const zoom = Math.min(9, map.getBoundsZoom(bounds, false, L.point(60, 60)));
-      map.setView(bounds.getCenter(), zoom);
+      renderLegend();
+      const plan = ctx.route?.();
+      if (!fit || !map || !plan?.bounds) return;
+      // The engine's bounds keep a Pacific crossing in one frame (east may pass 180), which the
+      // points' own longitudes cannot: fitted on them, San Francisco to Tokyo was framed round the
+      // other side of the world (review of 2026-09-23). setView rather than fitBounds: the latter
+      // moved the centre and kept the zoom on this map (measured 2026-09-19).
+      const { south, north, west, east } = plan.bounds;
+      const zoom = Math.min(9, map.getBoundsZoom(L.latLngBounds([south, west], [north, east]), false, L.point(60, 60)));
+      const lon = ((((west + east) / 2 + 180) % 360) + 360) % 360 - 180;
+      map.setView([(south + north) / 2, lon], zoom);
     },
     /** The selection changed (chips, text, airport or a click on the map). */
     tilesChanged() {

@@ -24,8 +24,8 @@ import {
   tOpt,
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
-import { FLIGHT_PLAN } from "./release.js";
-import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, routeLength, tileName, tilesAlong, validateZonesDocument, zoneTextureKeys } from "./geo.js";
+import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
+import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
@@ -180,17 +180,15 @@ const state = {
   schema: null,
   settingsDraft: null,
   tiles: [],
-  /** The squares that carry a detail level of their own (`{tile: zl}`), set by the flight
-   * plan's two groups; the others take the level of step 1's list. */
-  tileZl: {},
-  /** The level of step 1's list, kept while the list reads "Several levels". */
+  /** The chosen squares the pilot chose by hand (a click, a sweep, a name, an airport, a zone),
+   * as opposed to those the flight plan chose: they take step 1's level (flightplan.js). */
+  byHand: new Set(),
+  /** The level of step 1's list: the level of the squares chosen by hand. */
   planZl: null,
-  // what the pilot last chose in step 1's list, which is not always what the chosen squares
-  // share: the flight plan's two ends take this one (2026-09-23)
-  zlChosen: null,
   airport: null,
-  /** The flight plan drawn on the map: `{points: [{icao, name, lat, lon}]}` or null. */
-  route: null,
+  /** The flight plan of step 1 (flightplan.js): the engine's answer, its two levels and the
+   * squares the pilot took out of it; `cut` and `lastKept` say where a build's cap stopped it. */
+  flightPlan: null,
   plan: null,
   /** Step 3's error: `{message}` (the page's own sentence) or `{err}` (an engine answer). */
   planError: null,
@@ -1044,20 +1042,12 @@ export async function mockApi(method, path, body, options = {}) {
     const available = Boolean(latest) && latest !== current;
     return { current, latest, url: available ? `#release-${latest}` : null, available };
   }
-  if (p === "/api/simbrief") {
-    // A plan like SimBrief's, so the route and its buttons can be tried without an account.
+  if (p === "/api/flightplan/simbrief") {
+    // A plan as the engine answers it (mock/flightplan.json, computed by orthostudio.flightplan on
+    // a real X-Plane, two squares of open sea left out), so the flight plan can be tried without
+    // a SimBrief account; fail=simbrief answers as for a name SimBrief does not know.
     if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
-    return {
-      from: "LSGG",
-      to: "LEPA",
-      points: [
-        { ident: "LSGG", name: "Geneva", lat: 46.2384, lon: 6.1094 },
-        { ident: "SOSAL", name: "", lat: 45.5, lon: 5.4 },
-        { ident: "BEBIX", name: "", lat: 44.2, lon: 4.6 },
-        { ident: "MTG", name: "Montelimar", lat: 43.1, lon: 4.2 },
-        { ident: "LEPA", name: "Palma de Mallorca", lat: 39.5517, lon: 2.7388 },
-      ],
-    };
+    return mockFile("flightplan");
   }
   if (p === "/api/status") {
     // fail=slow-status: the status took long on users' Windows, and the page waited for it with
@@ -2150,7 +2140,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 22;
+const PAGE_API_LEVEL = 23;
 
 async function loadStatus() {
   try {
@@ -2574,10 +2564,10 @@ function sweepTo(names) {
   }
   const same = wanted.length === state.tiles.length && wanted.every((n, i) => n === state.tiles[i]);
   if (!same) {
+    const before = state.tiles;
     state.tiles = wanted;
-    renderTiles();
-    renderZlOptions();
-    planChanged();
+    handChanged(before, wanted);
+    selectionChanged();
   }
   return capped;
 }
@@ -2602,15 +2592,40 @@ function addTiles(names) {
   const skipped = [];
   let capped = 0;
   for (const n of names) {
-    if (state.tiles.includes(n) || skipped.includes(n)) continue;
+    if (skipped.includes(n)) continue;
+    // chosen again by hand, a square of the flight plan becomes the pilot's too: it keeps the
+    // finer of the two levels, and deleting the plan leaves it chosen
+    if (state.tiles.includes(n)) {
+      state.byHand.add(n);
+      continue;
+    }
     if (building.has(n)) skipped.push(n);
     else if (state.tiles.length >= MAX_BUILD_TILES) capped += 1;
-    else state.tiles.push(n);
+    else {
+      state.tiles.push(n);
+      state.byHand.add(n);
+    }
   }
+  selectionChanged();
+  return { skipped, capped };
+}
+
+/** The selection changed: its chips, the levels, the flight plan's counts and the estimate. */
+function selectionChanged() {
   renderTiles();
   renderZlOptions();
   planChanged();
-  return { skipped, capped };
+}
+
+/** What the pilot's own hand changed: the squares it added are the pilot's, and those it took out
+ * leave the flight plan too, which would otherwise bring them back at the next visit. */
+function handChanged(before, after) {
+  const was = new Set(before);
+  const now = new Set(after);
+  for (const name of after) if (!was.has(name)) state.byHand.add(name);
+  const gone = before.filter((name) => !now.has(name));
+  for (const name of gone) state.byHand.delete(name);
+  if (gone.length && state.flightPlan) setFlightPlanState(excluding(state.flightPlan, gone));
 }
 
 /** What `addTiles` left out, said under the estimate: squares already building, and the ones a
@@ -2626,10 +2641,10 @@ function sayTilesInBuild(left) {
 }
 
 function removeTile(name) {
+  const before = state.tiles;
   state.tiles = state.tiles.filter((x) => x !== name);
-  renderTiles();
-  renderZlOptions();
-  planChanged();
+  handChanged(before, state.tiles);
+  selectionChanged();
 }
 
 /** Step 1's trash (user request, 2026-09-14): the whole selection at once, without asking, unlike
@@ -2639,34 +2654,15 @@ function clearTiles() {
   const n = state.tiles.length;
   if (!n) return;
   state.tiles = [];
-  renderTiles();
-  renderZlOptions();
-  planChanged();
+  state.byHand.clear();
+  forgetFlightPlan(); // nothing left of it to build: its line goes with its squares
+  selectionChanged();
   $("tiles-panel").focus({ preventScroll: true }); // the trash is hidden now
   toast(t("plan.tiles_cleared", { n }));
 }
 
 /** A click on the map: the chips and the map show one selection. A tile in a build, under way or
  * waiting, is not chosen: a toast says why. */
-/** The flight plan's own controls, wired only when it is offered. */
-function wireFlightPlan() {
-  $("plan-route").hidden = !FLIGHT_PLAN;
-  if (!FLIGHT_PLAN) return;
-  $("route-draw").addEventListener("click", drawRoute);
-  $("route-input").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      drawRoute();
-    }
-  });
-  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || routeEndsZl()));
-  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
-  $("route-simbrief").addEventListener("click", routeFromSimbrief);
-  $("route-clear").addEventListener("click", clearRoute);
-  // the radius applies to both ends of the route: the counts on the buttons follow it
-  $("radius-input").addEventListener("input", renderRoute);
-}
-
 function toggleTile(name) {
   if (state.tiles.includes(name)) removeTile(name);
   else if (tilesInBuilds(activeJobs()).has(name)) toast(t("plan.tile_in_build", { tile: name }));
@@ -2675,7 +2671,6 @@ function toggleTile(name) {
 
 function renderTiles() {
   const box = clear($("tile-chips"));
-  normalizeLevels();
   // A chip says its level only while the squares differ: one flight plan, two levels (2026-09-22).
   const mixed = chosenLevels().length > 1;
   for (const name of state.tiles) {
@@ -3012,86 +3007,6 @@ async function addTilesFromIcao() {
 
 // ------------------------------------------------------------------ Plan: the flight plan
 
-const ROUTE_KEY = "osxp.route";
-
-/** The airports of a typed route: "LSGG LFMN", spaces, commas or arrows between them. */
-export function routeCodes(text) {
-  return String(text || "")
-    .toUpperCase()
-    .split(/[^A-Z0-9]+/)
-    .filter((code) => code.length >= 3 && code.length <= 4);
-}
-
-/** The squares around both ends of the route, at the radius the page shows. */
-function routeEndTiles() {
-  const points = state.route?.points || [];
-  if (points.length < 2) return [];
-  const r = Math.max(1, Number($("radius-input").value) || 15);
-  const first = points[0];
-  const last = points[points.length - 1];
-  return [...new Set([...tilesAround(first.lat, first.lon, r), ...tilesAround(last.lat, last.lon, r)])];
-}
-
-/** Every square the route crosses, the ends included. */
-function routeAllTiles() {
-  const points = state.route?.points || [];
-  if (points.length < 2) return [];
-  return [...new Set([...tilesAlong(points), ...routeEndTiles()])];
-}
-
-/** The squares along the route, without those of the departure and the arrival: the two groups
- * are chosen apart, so that each takes the level the pilot gives it (a user, 2026-09-22). */
-function routeAlongTiles() {
-  const ends = new Set(routeEndTiles());
-  return routeAllTiles().filter((name) => !ends.has(name));
-}
-
-/** The level of each group, shown once its squares are chosen: the one they carry now, and the one
- * a change here gives them. */
-function renderRouteLevels(maxZl, lat) {
-  for (const id of ["route-ends-zl", "route-all-zl"]) {
-    const sel = $(id);
-    if (!sel) continue;
-    const group = id === "route-ends-zl" ? routeEndTiles() : routeAlongTiles();
-    const chosen = group.filter((name) => state.tiles.includes(name));
-    sel.hidden = !chosen.length;
-    if (!chosen.length) {
-      // emptied while it is hidden: it kept the level of an earlier selection, and the button
-      // beside it reads its value first, so it offered that one again (found in review,
-      // 2026-09-23)
-      clear(sel);
-      continue;
-    }
-    const levels = [...new Set(chosen.map(tileZl))];
-    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl);
-    clear(sel);
-    sel.append(...zlOptions(maxZl, lat, { short: true }));
-    sel.value = String(levels.length === 1 ? levels[0] : fallback);
-    const label = id === "route-ends-zl" ? t("plan.route_ends_zl") : t("plan.route_all_zl");
-    sel.setAttribute("aria-label", label);
-  }
-}
-
-function renderRoute() {
-  const found = $("route-found");
-  const points = state.route?.points || [];
-  found.hidden = points.length < 2;
-  if (found.hidden) return;
-  const ends = routeEndTiles();
-  const all = routeAllTiles();
-  setText(
-    $("route-what"),
-    t("plan.route_what", {
-      from: points[0].ident,
-      to: points[points.length - 1].ident,
-      km: fmtInt(Math.round(routeLength(points))),
-    }),
-  );
-  setText($("route-ends"), t("plan.route_ends", { n: ends.length }));
-  setText($("route-all"), t("plan.route_all", { n: all.length - ends.length }));
-  renderZlOptions(); // the two groups' levels follow the route and the squares chosen
-}
-
 /**
  * What to say when the engine could not answer about an airport.
  *
@@ -3110,114 +3025,170 @@ function airportTrouble(err, code) {
   return t("plan.icao_unknown", { icao: code });
 }
 
-/** Read the codes, ask the engine where those airports are, and draw the line. */
-async function drawRoute() {
-  const codes = routeCodes($("route-input").value);
-  if (codes.length < 2) {
-    showWayError(t("plan.route_short"));
-    return;
+let flightPlanLoading = false;
+
+/** The plan kept between two visits, or taken away; a browser that refuses to keep it keeps it
+ * as long as the page is open. */
+function setFlightPlanState(fp) {
+  state.flightPlan = fp;
+  try {
+    if (fp) localStorage.setItem(STORAGE_KEY, toSaved(fp));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* the storage is refused: nothing else to do */
   }
-  // A pasted route carries waypoints and DCT between its airports: what the engine does not know
-  // as an airport is left out, and the line says which two ends were kept.
-  const points = [];
-  const missing = [];
-  let trouble = null;  // the engine could not answer at all: that is what to say, not "unknown"
-  for (const code of codes) {
-    try {
-      const airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
-      points.push({ ident: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
-    } catch (err) {
-      missing.push(code);
-      if (trouble === null && err instanceof ApiError && err.status !== 404) trouble = airportTrouble(err, code);
-    }
-  }
-  if (points.length < 2) {
-    if (trouble) showWayError(trouble);
-    else showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
-    return;
-  }
-  showWayError(null);
-  setRoute(points);
 }
 
-/** The last flight plan of the SimBrief name set in Settings, drawn as it was filed. */
-async function routeFromSimbrief() {
-  if (!(state.settings?.essential?.simbrief_user || "").trim()) {
-    showWayError(t("plan.route_simbrief_none"));
-    return;
-  }
-  let line;
+/** No flight plan any more, its line taken off the map; the selection is the caller's. */
+function forgetFlightPlan() {
+  if (!state.flightPlan) return;
+  setFlightPlanState(null);
+  showFlightPlanError(null);
+  planMap?.routeChanged();
+}
+
+/** What went wrong with the flight plan, said right under its button. */
+function showFlightPlanError(message) {
+  const box = $("flightplan-error");
+  box.textContent = message || "";
+  box.hidden = !message;
+}
+
+/**
+ * Step 1's button: the pilot's last SimBrief plan, its squares chosen, the map brought to it.
+ *
+ * One at a time: a second click started a second request and the slower one won (review of
+ * 2026-09-23). A new plan replaces the one before, whose squares go unless chosen by hand.
+ */
+async function loadFlightPlan() {
+  if (flightPlanLoading) return;
+  flightPlanLoading = true;
+  showFlightPlanError(null);
+  renderFlightPlan();
   try {
-    line = await api("GET", "/api/simbrief");
+    const r = Math.max(1, Math.min(300, Number($("radius-input").value) || 15));
+    const plan = await api("GET", `/api/flightplan/simbrief?radius_km=${r}`);
+    replaceFlightPlan(plan);
   } catch (err) {
     const d = errorDetail(err);
-    showWayError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
-    return;
+    showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
+  } finally {
+    flightPlanLoading = false;
+    renderFlightPlan();
   }
-  const points = (line?.points || []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-  if (points.length < 2) {
-    showWayError(t("plan.route_short"));
-    return;
-  }
-  showWayError(null);
-  $("route-input").value = `${line.from} ${line.to}`;
-  setRoute(points.map((p) => ({ ident: p.ident, name: p.name || "", lat: p.lat, lon: p.lon })));
-  toast(t("plan.route_simbrief_ok", { from: line.from, to: line.to }));
 }
 
-function setRoute(points) {
-  state.route = points && points.length >= 2 ? { points } : null;
-  try {
-    if (state.route) localStorage.setItem(ROUTE_KEY, JSON.stringify(state.route));
-    else localStorage.removeItem(ROUTE_KEY);
-  } catch (_e) {
-    // a browser that keeps nothing: the route simply goes when the page is read again
+/** A plan in place of the one before: its squares chosen, its levels at their defaults. */
+function replaceFlightPlan(plan) {
+  if (state.flightPlan) state.tiles = withoutPlan(state.tiles, state.flightPlan, state.byHand);
+  const fp = newFlightPlan(plan, defaultLevels(planZl(), sourceMaxZl()));
+  const added = withPlan(state.tiles, fp, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
+  keepInPlace($("flightplan-load"), () => {
+    state.tiles = added.tiles;
+    setFlightPlanState({ ...fp, cut: added.cut, lastKept: added.lastKept });
+    selectionChanged();
+  });
+  planMap?.routeChanged(true);
+  sayTilesInBuild({ skipped: added.skipped });
+  toast(t("flightplan.loaded", { from: plan.from, to: plan.to, n: planGroups().size - added.cut - added.skipped.length }));
+}
+
+/** The flight plan's own button: the plan and its squares go, those chosen by hand stay. */
+function deleteFlightPlan() {
+  if (!state.flightPlan) return;
+  const n = state.tiles.length;
+  state.tiles = withoutPlan(state.tiles, state.flightPlan, state.byHand);
+  forgetFlightPlan();
+  selectionChanged();
+  toast(t("flightplan.deleted", { n: n - state.tiles.length }));
+}
+
+/** One of the plan's two lists: the level of its squares, and of theirs alone. */
+function setFlightPlanLevel(group, value) {
+  const zl = Number(value);
+  if (!state.flightPlan || !Number.isInteger(zl)) return;
+  setFlightPlanState({ ...state.flightPlan, levels: { ...state.flightPlan.levels, [group]: zl } });
+  selectionChanged();
+  renderTilesBuilt();
+  planMap?.planChanged();
+}
+
+/** The box's tick beside the route: its squares chosen, or the departure and the arrival alone
+ * (a user, 2026-09-25). Untick, and the route's squares go, those chosen by hand excepted; tick
+ * again, and they come back as far as one build takes. */
+function setFlightPlanAlong(on) {
+  const fp = state.flightPlan;
+  if (!fp || (fp.along !== false) === on) return;
+  if (on) {
+    const wanted = { ...fp, along: true };
+    const added = withPlan(state.tiles, wanted, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
+    state.tiles = added.tiles;
+    setFlightPlanState({ ...wanted, cut: added.cut, lastKept: added.lastKept });
+    sayTilesInBuild({ skipped: added.skipped });
+  } else {
+    state.tiles = withoutPlan(state.tiles, fp, state.byHand, "along");
+    setFlightPlanState({ ...fp, along: false, cut: 0, lastKept: null });
   }
-  renderRoute();
-  planMap?.routeChanged(Boolean(state.route));
+  selectionChanged();
+  renderTilesBuilt();
+  planMap?.planChanged();
 }
 
-function clearRoute() {
-  $("route-input").value = "";
-  showWayError(null);
-  setRoute(null);
-}
-
-/** The route of the last visit, so a reload does not lose the line (nothing is asked again). */
-function restoreRoute() {
+/** The plan saved at the last visit, its squares chosen again as they were left. */
+function restoreFlightPlan() {
   let saved = null;
   try {
-    saved = JSON.parse(localStorage.getItem(ROUTE_KEY) || "null");
-  } catch (_e) {
-    saved = null;
+    localStorage.removeItem(OLD_STORAGE_KEY); // the first version's route, which nothing reads
+    saved = readSaved(localStorage.getItem(STORAGE_KEY) || "");
+    if (!saved) localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    return;
   }
-  const points = (saved?.points || []).filter(
-    (p) => p && typeof p.ident === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon),
-  );
-  if (points.length < 2) return;
-  state.route = { points };
-  $("route-input").value = [points[0].ident, points[points.length - 1].ident].join(" ");
-  renderRoute();
+  if (!saved) return;
+  const added = withPlan(state.tiles, saved, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
+  state.tiles = added.tiles;
+  state.flightPlan = { ...saved, cut: added.cut, lastKept: added.lastKept };
+  selectionChanged();
+  planMap?.routeChanged();
 }
 
-/** A group of the route: its squares are chosen, and they carry the level shown beside its
- * button, so that the ends and the route may differ. */
-function addRouteTiles(names, zl) {
-  if (!names.length) return;
-  let left = { skipped: [], capped: 0 };
-  keepInPlace($("route-found"), () => {
-    left = addTiles(names);
-    for (const name of names) {
-      if (state.tiles.includes(name)) state.tileZl[name] = zl;
-    }
-    renderTiles();
-    renderZlOptions();
-    renderTilesBuilt();
-    planChanged();
-    planMap?.planChanged();
+/** The flight plan's box: its button, then, with a plan, its route, its two groups and their
+ * levels, and what did not fit. */
+function renderFlightPlan() {
+  const load = $("flightplan-load");
+  if (!load) return;
+  load.disabled = flightPlanLoading;
+  load.textContent = flightPlanLoading ? t("flightplan.loading") : t("flightplan.load");
+  const fp = state.flightPlan;
+  $("flightplan-found").hidden = !fp;
+  if (!fp) return;
+  const groups = planGroups();
+  const chosen = new Set(state.tiles);
+  const alongOn = fp.along !== false;
+  // what is chosen of each group; the route's squares all, while they are not wanted
+  const count = (group) =>
+    group === "along" && !alongOn ? squaresOf(fp, "along").length : [...groups].filter(([name, g]) => g === group && chosen.has(name)).length;
+  $("flightplan-what").textContent = t("flightplan.what", {
+    from: fp.plan.from,
+    to: fp.plan.to,
+    km: fmtInt(Math.round(fp.plan.length_km)),
   });
-  sayTilesInBuild(left);
-  toast(t("plan.route_added", { n: names.length - left.skipped.length - left.capped }));
+  const top = sourceMaxZl();
+  const lat = fp.plan.points[0].lat;
+  for (const group of ["ends", "along"]) {
+    const sel = clear($(`flightplan-${group}-zl`));
+    sel.append(...zlOptions(top, lat, { short: true }));
+    sel.value = String(Math.min(fp.levels[group], top));
+    const words = group === "ends" ? t("flightplan.ends", { n: count(group) }) : t("flightplan.along", { n: count(group) });
+    $(`flightplan-${group}-n`).textContent = words;
+  }
+  $("flightplan-along-on").checked = alongOn;
+  $("flightplan-along-zl").disabled = !alongOn;
+  const notes = [];
+  if (fp.cut) notes.push(t("flightplan.cut", { tile: fp.lastKept || fp.plan.from, n: fp.cut, max: MAX_BUILD_TILES }));
+  if (fp.plan.left_out) notes.push(t("flightplan.left_out", { n: fp.plan.left_out }));
+  $("flightplan-note").textContent = notes.join(" ");
+  $("flightplan-note").hidden = !notes.length;
 }
 
 // ------------------------------------------------------------------ Plan: provider, zoom
@@ -3388,60 +3359,37 @@ function planZl() {
   return Number(state.planZl) || 16;
 }
 
-/** What the squares along a route take unless the pilot says otherwise (a user, 2026-09-22).
- *
- * A route crosses country flown over at altitude, where the ground is scenery and not a place to
- * look at; its two ends are where one lands, and those keep step 1's level. A long route is also
- * a lot of squares, and each level up is four times the imagery. */
-const ROUTE_ALONG_ZL = 14;
-
 /** The highest level the chosen imagery source offers. */
 function sourceMaxZl() {
   const p = currentProvider();
   return Math.min(19, p ? p.max_zl : 19);
 }
 
-/** The level of the squares along a route, never above what the source offers. */
-function routeAlongZl(top = sourceMaxZl()) {
-  return Math.min(ROUTE_ALONG_ZL, top);
+let planGroupsCache = { fp: undefined, groups: new Map() };
+
+/** The flight plan's squares and their group, computed once per plan (flightplan.js groupsOf). */
+function planGroups() {
+  if (planGroupsCache.fp !== state.flightPlan) {
+    planGroupsCache = { fp: state.flightPlan, groups: groupsOf(state.flightPlan) };
+  }
+  return planGroupsCache.groups;
 }
 
-/** What the departure and arrival take unless the pilot says otherwise: the level chosen in step
- * 1's list, and not the one the chosen squares happen to share.
- *
- * Pressing "along the route" on an empty selection put every square at ZL14, so step 1's list
- * followed them there, and the two ends then landed at ZL14 as well: the one thing this feature
- * exists to prevent, and it depended on the order the two buttons were pressed in (2026-09-23).
- */
-function routeEndsZl(top = sourceMaxZl()) {
-  const chosen = Number(state.zlChosen) || Number(state.settings?.essential?.zoom_level) || planZl();
-  return Math.min(chosen, top);
-}
-
-/** The level a square will be built at: its own (the flight plan's groups), else step 1's. */
+/** The level a square will be built at (flightplan.js levelOf): the finest its reasons for being
+ * chosen ask for, step 1's for a square chosen by hand, its group's for one of the flight plan. */
 function tileZl(name) {
-  return Number(state.tileZl[name]) || planZl();
+  return levelOf(name, {
+    byHand: state.byHand,
+    groups: planGroups(),
+    levels: state.flightPlan?.levels ?? {},
+    stepZl: planZl(),
+    maxZl: sourceMaxZl(),
+  });
 }
 
 /** The levels of the chosen squares, without repeats. */
 function chosenLevels() {
   return [...new Set(state.tiles.map(tileZl))];
-}
-
-/**
- * One rule, so that no level is ever hidden: the levels of the squares that are gone are dropped,
- * and when every chosen square is at the same level, that level becomes step 1's and no square
- * carries its own any more. Levels differ only while the flight plan's two groups differ.
- */
-function normalizeLevels() {
-  for (const name of Object.keys(state.tileZl)) {
-    if (!state.tiles.includes(name)) delete state.tileZl[name];
-  }
-  const levels = chosenLevels();
-  if (state.tiles.length && levels.length === 1) {
-    state.planZl = levels[0];
-    for (const name of state.tiles) delete state.tileZl[name];
-  }
 }
 
 /** Every level the source gives, in plain words, sized at a latitude.
@@ -3459,32 +3407,19 @@ function zlOptions(maxZl, lat, { short = false } = {}) {
 
 /** Detail levels in plain words, sized at the first tile's latitude (else the map centre's).
  *
- * The list shows the level of the chosen squares; when they differ, the flight plan having given
- * its ends and its route two levels, it reads "Several levels" and each chip says its own. */
+ * The list is the level of the squares chosen by hand; the flight plan's squares have their own
+ * two lists, and each chip says its level whenever the chosen squares differ. */
 function renderZlOptions() {
   const sel = $("zl-select");
   const top = sourceMaxZl();
   const lat = state.tiles.length ? tileLat(state.tiles[0]) + 0.5 : planMap?.mapLatitude() ?? 45;
-  // a source that stops lower brings every level down with it, the squares' own included
-  // what the squares carry wins over what the list still shows: a level chosen for one group
-  // of the route left the list on the level of before, which then took it back (2026-09-22)
   const wanted = Number(state.planZl) || Number(sel.value) || state.settings?.essential?.zoom_level || 16;
   state.planZl = Math.min(Number(wanted), top);
-  for (const name of Object.keys(state.tileZl)) {
-    state.tileZl[name] = Math.min(state.tileZl[name], top);
-  }
-  normalizeLevels();
   clear(sel);
   sel.append(...zlOptions(top, lat));
-  const levels = chosenLevels();
-  if (state.tiles.length && levels.length > 1) {
-    sel.append(h("option", { value: "", disabled: true }, t("plan.zl_several")));
-    sel.value = "";
-  } else {
-    sel.value = String(planZl());
-  }
+  sel.value = String(planZl());
   $("zl-help").textContent = t("plan.zl_help", { lat: fmtNum(lat, 1) });
-  renderRouteLevels(top, lat);
+  renderFlightPlan();
 }
 
 // ------------------------------------------------------------------ Plan: estimate + build
@@ -3497,12 +3432,13 @@ async function planRequest() {
     showPlanError(t("plan.zones_unavailable"));
     return null;
   }
-  const own = Object.fromEntries(state.tiles.filter((n) => state.tileZl[n]).map((n) => [n, state.tileZl[n]]));
+  const stepZl = planZl();
+  const own = Object.fromEntries(state.tiles.map((n) => [n, tileZl(n)]).filter(([, zl]) => zl !== stepZl));
   return {
     tiles: [...state.tiles],
     provider: $("provider-select").value,
     zoom_level: planZl(),
-    // the squares of a flight plan's ends, or of its route, when the two levels differ
+    // the squares whose level is not step 1's: the flight plan's, by their group
     ...(Object.keys(own).length ? { tiles_zl: own } : {}),
     zones,
     // The squares' own colours travel with the zones: a request that carried its zones alone
@@ -3613,9 +3549,9 @@ async function build(install) {
     // The job has its tiles now: the next selection starts empty. Kept, "add three tiles" built
     // the six of the last job again with them (they stay green on the map once installed).
     state.tiles = [];
-    renderTiles();
-    renderZlOptions();
-    planChanged();
+    state.byHand.clear();
+    forgetFlightPlan(); // built, or waiting to be: restored at the next visit it chose them again
+    selectionChanged();
     if (res.queue_position > 0) {
       // It waits: the Plan stays, where more can be chosen; the map shows its tiles as waiting.
       toast(t("plan.queued", { n: res.queue_position }));
@@ -5646,7 +5582,6 @@ async function boot() {
     renderIcaoList();
   });
   $("icao-add").addEventListener("click", addTilesFromIcao);
-  wireFlightPlan();
   $("sources-open").addEventListener("click", openSources);
   $("sources-close").addEventListener("click", () => $("sources-dialog").close());
   $("source-try").addEventListener("click", trySource);
@@ -5660,28 +5595,18 @@ async function boot() {
     planMap?.planChanged();
   });
   $("zl-select").addEventListener("change", () => {
-    // Chosen here, the level is every chosen square's: the flight plan's two levels give way to it.
+    // the level of the squares chosen by hand; the flight plan's keep their own two
     state.planZl = Number($("zl-select").value) || planZl();
-    state.zlChosen = state.planZl;  // what the pilot asked for, which the ends keep
-    state.tileZl = {};
-    renderTiles();
-    renderZlOptions();
+    selectionChanged();
     renderTilesBuilt();
-    planChanged();
     planMap?.planChanged();
   });
-  for (const [id, tiles] of [["route-ends-zl", routeEndTiles], ["route-all-zl", routeAlongTiles]]) {
-    $(id).addEventListener("change", (ev) => {
-      const zl = Number(ev.target.value);
-      if (!zl) return;
-      for (const name of tiles()) if (state.tiles.includes(name)) state.tileZl[name] = zl;
-      renderTiles();
-      renderZlOptions();
-      renderTilesBuilt();
-      planChanged();
-      planMap?.planChanged();
-    });
+  $("flightplan-load").addEventListener("click", loadFlightPlan);
+  $("flightplan-delete").addEventListener("click", deleteFlightPlan);
+  for (const group of ["ends", "along"]) {
+    $(`flightplan-${group}-zl`).addEventListener("change", (ev) => setFlightPlanLevel(group, ev.target.value));
   }
+  $("flightplan-along-on").addEventListener("change", (ev) => setFlightPlanAlong(ev.target.checked));
   $("estimate-btn").addEventListener("click", estimate);
   $("build-install-btn").addEventListener("click", () => build(true));
   $("build-only-btn").addEventListener("click", () => build(false));
@@ -5727,7 +5652,7 @@ async function boot() {
     h,
     clear,
     tiles: () => state.tiles,
-    route: () => state.route,
+    route: () => state.flightPlan?.plan ?? null,
     toggleTile,
     // a zone drawn outside the chosen tiles offers to add its own (a user, 2026-09-18)
     chooseTiles: (names) => sayTilesInBuild(addTiles(names)),
@@ -5736,8 +5661,8 @@ async function boot() {
     planZl,
     tileZl,
     sweep: { start: sweepStart, to: sweepTo, end: sweepEnd },
-    /** The squares of the route's departure and arrival, which the map draws in its colour. */
-    routeEnds: () => new Set(state.route ? routeEndTiles() : []),
+    /** The flight plan's departure and arrival squares, which the map draws in its colour. */
+    routeEnds: () => new Set([...planGroups()].filter(([, g]) => g === "ends").map(([name]) => name)),
     library: () => state.library,
     builtSummary,
     building: () => buildingOnMap(),
@@ -5753,7 +5678,7 @@ async function boot() {
   });
   renderTiles();
   renderPlanPanel();
-  if (FLIGHT_PLAN) restoreRoute();
+  restoreFlightPlan();
   startPresence();
   // The screen shows at once and fills in as the engine answers. It used to wait for every
   // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu

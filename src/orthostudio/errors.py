@@ -891,6 +891,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Retried with backoff.",
     ),
     _spec(
+        "NET_SIMBRIEF_FAILED",
+        _B,
+        _S,
+        "SimBrief could not be reached ({reason}).",
+        "Try again in a moment; if it keeps failing, SimBrief itself may be down.",
+    ),
+    _spec(
         "NET_TIMEOUT",
         _I,
         _C,

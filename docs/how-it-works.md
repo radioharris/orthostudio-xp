@@ -311,19 +311,19 @@ pilot. It costs no download, the
 list travels with the app, and it answers the question the aerial imagery often does not: is the
 field I want inside this square? They appear from zoom 8 in, where there are few enough to read.
 
-**The squares of a flight plan.** Step 1 takes a route, `LSGG LFMN` or the airports of a plan
-pasted from elsewhere, and draws it on the map. With your SimBrief name in Settings, one button
-reads your last flight plan instead, with the departure and arrival procedures it holds, so the
-line is the one you will fly. Two buttons then choose the squares: departure and arrival, which is
-what you look at when you are low, and the squares along the route. Each says how many squares it
-would add before you press it, because a route across a country is tens of gigabytes: from Geneva
-to Palma, three squares against nine. Beside each button, a list gives that group its own detail
-level: the airports at their sharpest, the way between them lighter. The route starts at ZL14,
-the ground you fly over rather than land on; the two ends start at the level of step 1. Either
-list changes what its button will add. The detail level of step 1
-then reads *Several levels* and each square says its own; choosing a level there puts every
-chosen square back on one. Only the name goes to simbrief.com, only when you press that button,
-and the route is never saved with your tiles.
+**The squares of a flight plan.** With your SimBrief name in Settings, one button in step 1 reads your last
+flight plan, with the departure and arrival procedures it holds, so the line is the one you will fly.
+The engine joins its points by great circles and chooses at once every square within the airport
+field's radius (15 km unless you change it) of the departure, of the arrival and of the whole route:
+a square seven kilometres beside the route is seen from the aircraft. The map is brought to the
+route and draws the very line the squares were counted on. The departure and arrival start at the
+level of step 1 and the route at ZL14, the ground you fly over rather than land on; each has its
+own list, and a tick before the route leaves its squares out if you want the two airports alone.
+Squares X-Plane has no scenery for, open sea or a region not installed, are left out, since a
+build would stop on them, and a route longer than one build takes stops at a square the box names.
+*Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
+kept in the browser until then, and only your name goes to simbrief.com, only when you press the
+button.
 
 **Choosing many squares at once.** Hold Shift, press the mouse on the map and draw a rectangle:
 every square inside it is chosen as you go, and drawing back the other way lets them go again. If

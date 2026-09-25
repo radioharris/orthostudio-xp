@@ -52,40 +52,6 @@ export function wrapLon(lon) {
   return ((((lon + 180) % 360) + 360) % 360) - 180;
 }
 
-/**
- * The 1° squares a flight plan crosses, in the order they come, without repeats.
- *
- * The line between two points is sampled every ``step`` degrees, well under the one degree a
- * square measures, so none is skipped; a leg that crosses the antimeridian is followed the short
- * way round, as an aircraft flies it. It is the map's own arithmetic, so what the buttons count is
- * what the map draws.
- */
-export function tilesAlong(points, step = 0.1) {
-  const seen = new Set();
-  const out = [];
-  const add = (lat, lon) => {
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat >= 90) return;
-    const name = tileName(lat, wrapLon(lon));
-    if (seen.has(name)) return;
-    seen.add(name);
-    out.push(name);
-  };
-  points.forEach((a, i) => {
-    add(a.lat, a.lon);
-    const b = points[i + 1];
-    if (!b) return;
-    const dlat = b.lat - a.lat;
-    let dlon = b.lon - a.lon;
-    if (dlon > 180) dlon -= 360;
-    if (dlon < -180) dlon += 360;
-    const legs = Math.max(1, Math.ceil(Math.max(Math.abs(dlat), Math.abs(dlon)) / step));
-    for (let n = 1; n < legs; n += 1) {
-      add(a.lat + (dlat * n) / legs, a.lon + (dlon * n) / legs);
-    }
-  });
-  return out;
-}
-
 /** The length of a route in kilometres, on the sphere (what the route line says). */
 export function routeLength(points) {
   const R = 6371;

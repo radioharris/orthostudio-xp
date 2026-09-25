@@ -900,43 +900,26 @@ adding more, no longer folded away (a user never opened the *Other ways* line): 
 airport**, an ICAO code with a radius in kilometres, and **along a flight plan**. The folded line
 keeps what nobody plans a flight with: tile names and coordinates.
 
-A **flight plan** is a line of airports (`LSGG LFMN`, resolved one by one against the shipped
-index, and what the engine does not know as an airport is left out, so a route pasted from
-elsewhere works), or the last plan of SimBrief (`GET /api/simbrief`, the name in Settings), whose
-navigation log gives the real path. The map draws it over the grid (`osxpRoute`, under the
-airports, no pointer event), and two buttons say how many squares each would add: **departure and
-arrival**, the squares within the radius of both ends, and **along the route**, the squares the
-line crosses without those two (`geo.js` `tilesAlong`, sampled every 0.1°, well under the one
-degree a square measures; `routeAlongTiles`). Nothing is chosen without a click, and step 3 still
-says what it costs: on a plan from Geneva to Palma, three squares against nine. The route is kept
-in `localStorage` (`osxp.route`) alone, so a reload keeps the line and nothing of it is saved
-with the tiles.
+The **flight plan** (`docs/specs/flight-plan.md`, rebuilt 2026-09-25): *My SimBrief plan* reads
+the pilot's last SimBrief plan through the engine (`GET /api/flightplan/simbrief`, the name set in
+Settings), which computes the line and the squares in one go: great circles, the squares within the
+airport field's radius of the departure and the arrival, and the corridor, every square within that
+radius of the route. The squares are chosen at once and the map is brought to the route. The box
+under the button says the route and its length, then its two groups, each with its own level on
+the right, in two columns (`.flightplan-groups`, written short, `detail.short`): the departure and
+arrival at step 1's level, the route at ZL14, both within the source's maximum, and a tick before
+the route's line that leaves its squares out; then what a build's cap cut and the squares X-Plane
+has no scenery for; then *Delete the flight plan*. Step 1's list is the level of the squares chosen
+by hand; each chip says its level while the chosen squares differ (`+46+006 · ZL16`), and the
+request carries `tiles_zl` for every square whose level is not step 1's (`api.md` 2.2). The plan
+is kept whole in `localStorage` (`osxp.flightplan`), so a reload chooses its squares again. What
+went wrong is said right under the button (`#flightplan-error`); the airport's own line stays
+`#way-error`.
 
 **The page stays where it is** when squares are chosen (`keepInPlace`, 2026-09-22): the chips at
 the top of step 1 push everything under them down, and WebKit, which the app's own window uses,
 has no scroll anchoring; the element that was pressed is measured before the render and the page
-is scrolled back by what it moved. Used by the flight plan's two buttons, the airport's *Add*
-and the two folded ways.
-
-**A level for each group** (2026-09-22): beside each of the two buttons, in a grid of two
-columns so that the buttons share one width and the lists line up (`.route-groups`, the buttons'
-words on the left since they share that width), shown once its
-squares are chosen, a list gives them their own detail level, written short
-(`detail.short`, "Standard · ZL16": the whole sentence of step 1's list sent it to a line of its
-own, a user the same day), so that the departure and the arrival are
-sharper than the squares along the route. The route's list starts at **ZL14** (`ROUTE_ALONG_ZL`,
-`routeAlongZl`, brought down when the source stops lower), the ends' at step 1's level: a route
-is flown over at altitude, the ends are where one lands, and a long route is a lot of squares
-(a user, 2026-09-22). One rule holds it together, so that no level is ever
-hidden: step 1's list shows the level of the chosen squares; when they differ it reads *Several
-levels* (an option nobody can pick) and every chip says its own (`+46+006 · ZL17`); a level
-chosen there is every chosen square's again, and the squares stop carrying their own
-(`normalizeLevels`, `state.tileZl`). The request carries `tiles_zl` for the squares that differ
-(`api.md` 2.2), the engine builds each at its own level, and a source that stops lower brings
-them all down with it.
-An empty line, a code the engine does not know, a SimBrief name missing or refused: each is said
-right under the two ways (`#way-error`), not in step 3's box, where a user pressed *Draw* and saw
-nothing happen (2026-09-22).
+is scrolled back by what it moved. Used by the flight plan's button, the airport's *Add* and the two folded ways.
 
 **A street map beside the photo** (same user, same day): a third checkbox in the legend swaps the
 aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engine
