@@ -52,7 +52,9 @@ the library another project publishes. Each one is taken whole or not at all, an
 against what it promised: a file that does not weigh what its index says, or whose content does not
 hash to what the index announced, is refused and the tile goes to the next place. Nothing is ever a
 dependency: every one of them can be missing, wrong or down, and the build simply asks the servers
-as it always did.
+as it always did. The library is baked once, at road level 5, and answers every level: each tile is
+cut down to the roads your level asks for. A folder in Ortho4XP's shape answers builds at road
+level 0 and 1 only, since its small roads do not say which road level fetched them.
 
 A prepared library is weeks behind by design, so there has to be a way to ask for today's map:
 today that way is `--osm-refresh <anything>` on the command line, which skips all three and goes

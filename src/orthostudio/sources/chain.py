@@ -36,8 +36,13 @@ from orthostudio.sources.library import (
     shipped_library,
     unpack,
 )
-from orthostudio.sources.osm import LayerSpec, OsmSnapshot
-from orthostudio.sources.prepared import EMPTY_LAYER_BYTES, PublicSource, snapshot_from_xml
+from orthostudio.sources.osm import LayerSpec, OsmSnapshot, narrowed
+from orthostudio.sources.prepared import (
+    EMPTY_LAYER_BYTES,
+    ROAD_LEVEL_LAYERS,
+    PublicSource,
+    snapshot_from_xml,
+)
 
 __all__ = [
     "Chain",
@@ -120,6 +125,8 @@ class FolderSource:
         self._index: LibraryIndex | bool | None = False
         """The manifest of a copied library, when the folder is one: read once, on the first
         tile asked for. ``False`` means not looked for yet."""
+        self._said_road_level = False
+        """Whether the log already says why Ortho4XP's small roads are not read: once a build."""
 
     def index(self) -> LibraryIndex | None:
         """The manifest beside the files, when the folder is a copy of a baked library.
@@ -154,6 +161,21 @@ class FolderSource:
         for path in _candidates(self.root, tile, spec.name):
             if not path.is_file():
                 continue
+            if path.suffix != ".zst" and spec.name in ROAD_LEVEL_LAYERS:
+                # An XML file says nothing about the question it answers: Ortho4XP's small roads
+                # of a tile are the same file name whichever road level fetched them, and taken
+                # at another one they give a scenery missing roads, or holding roads the settings
+                # exclude, with nothing to say so. The spec held the folder to this rule; only
+                # the public library applied it (found in review, 2026-09-25). Builds at road
+                # level 0 and 1 never ask for this layer.
+                if not self._said_road_level:
+                    self._said_road_level = True
+                    log.info(
+                        "%s: the small roads of an Ortho4XP folder do not say which road level "
+                        "fetched them; the next source takes over",
+                        self.name,
+                    )
+                return None
             if path.stat().st_size < EMPTY_BYTES and spec.name != "coastline":
                 # under this there is no document at all, not even the wrapper of an empty
                 # layer. An empty coastline is the exception: Ortho4XP's format writes one in
@@ -178,12 +200,13 @@ class FolderSource:
                         log.info("%s: %s of %s holds nothing and says so on nobody's word",
                                  self.name, spec.name, tile.name)  # fmt: skip
                         return None
-                    if tuple(snap.selectors) != tuple(spec.selectors):
-                        # the same layer name, a different question (``library.py``)
+                    cut = narrowed(snap, spec)
+                    if cut is None:
+                        # the same layer name, a different question (``library.py``); a file
+                        # prepared for more is cut down to what was asked instead
                         log.info("%s: %s of %s was prepared for other selectors", self.name,
                                  spec.name, tile.name)  # fmt: skip
-                        return None
-                    return snap
+                    return cut
                 return snapshot_from_xml(raw, tile, spec, mirror=self.name)
             except Exception:  # unreadable is unreadable: XML raises SyntaxError, zstd its own
                 log.warning("%s: %s unreadable in %s", tile.name, spec.name, self.name)

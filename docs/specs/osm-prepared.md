@@ -100,6 +100,10 @@ are OSM 0.6 XML and carry no selectors: nothing in one says whether `small_roads
 tertiary roads or for tracks as well, and taking it at a road level it was not baked for gives a
 scenery quietly missing every forest track. Our own format carries its selectors and is checked
 against them, so only the XML sources (a folder in Ortho4XP's layout, xpconnect) are held to this.
+A folder in Ortho4XP's shape therefore answers builds at road level 0 and 1, which never ask for
+`small_roads`, and leaves the others to the next source; its small roads are refused before they
+are read. Until 2026-09-25 only the public library applied the rule, and a folder's small roads
+were taken at any level under the build's own selectors.
 
 **Our own library needs no whitelist**, since its manifest is written by the same tool that cut
 the tiles: a tile is in it when its layers were written, and the coverage is whatever the extract
@@ -109,15 +113,18 @@ covered. What it does carry, per file, is the digest and the size, and per bake:
 |---|---|
 | `bake` | twelve characters taken from what the library holds. Two bakes of the same extract are the same bake, one file changing makes another. A build says which one it read, a verification is recorded against it, and a rollback names it |
 | `extracted` | when the data was cut from the planet, as the extract's own header records it, not when we downloaded it |
-| `road_level` | which layers it answers for. Compared with the build's before anything is downloaded, so a library baked for other layers costs one manifest and not one tile per tile |
+| `road_level` | which layers it answers for: those of every level up to it. Compared with the build's before anything is downloaded, so a library baked for less costs one manifest and not one tile per tile |
 
-A library baked at road level 1 answers builds at road level 0 and 1, which is the default and
-what almost every build uses, and is skipped entirely above that: level 2 adds tertiary roads,
-which the extract was filtered out of and the bake never saw. Such a build downloads every layer
-live, as every version before this one. Serving the four layers that do not depend on the road
-level from the library and asking the servers for the fifth alone would be sound, since both
-sources cover the whole square, but it is not what the all-or-nothing rule says today and it is
-not worth breaking that rule without measuring first.
+**A library answers every road level up to the one it was baked at.** The planet is baked at road
+level 5, which holds every road a lower level asks for, and each file is cut down on arrival to
+exactly what the build's level asks (`osm.narrowed`): a way is kept when its tags match one of the
+level's selectors, a node when a kept way names it, and the digest is taken again over what is
+left, so the result is bit for bit what a bake at that level writes. The four layers other than
+`small_roads` ask the same question at every level and pass through untouched. A library baked
+below the level asked cannot invent the roads it lacks and is skipped entirely: one baked at road
+level 1 sends a build at level 2 or above to the live servers. Asking for exactly the baked level,
+as the chain first did, sent every build at the default level 1 to the public servers once the
+planet was baked at 5 (2026-09-25). A copy of the library in a folder is read the same way.
 
 The coverage is *not* whatever the extract's bounding box covers. Geofabrik clips to a country
 outline, so a square on the border of the download holds one side of it and nothing of the other,

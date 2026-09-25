@@ -394,3 +394,45 @@ def test_a_copied_library_keeps_its_proofs_in_a_folder(tmp_path: Path) -> None:
     (root / "manifest.json").write_text(json.dumps(manifest))
     got = FolderSource(root).layers(TILE, SPECS)
     assert got is not None and got["big_roads"].is_empty
+
+
+# -- road levels in a folder (2026-09-25) ---------------------------------------------------------
+
+
+def test_a_copied_level_5_library_answers_a_lower_level_in_a_folder(tmp_path: Path) -> None:
+    """Whoever copies the library to disk gets what the library gets: one bake for every level,
+    each cut down to its own roads."""
+    from test_sources_library import _roads
+
+    root = tmp_path / "copy"
+    store = SnapshotStore(root)
+    for spec in layers_for(5):
+        store.save(_roads(5) if spec.name == "small_roads" else _snapshot(spec.name))
+    got = FolderSource(root).layers(TILE, layers_for(2))
+    assert got is not None
+    assert got["small_roads"].digest == _roads(2).digest
+    assert {w.tags["highway"] for w in got["small_roads"].ways} == {"tertiary"}
+
+
+def test_the_small_roads_of_an_ortho4xp_folder_are_not_read(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """An XML file says nothing about the road level that fetched it. The spec held the folder to
+    this rule and only the public library applied it: a build at road level 5 took whatever
+    Ortho4XP had fetched, and labelled it with its own selectors (found in review, 2026-09-25)."""
+    import orthostudio.sources.chain as chain_module
+
+    root = tmp_path / "their-folder"
+    root.mkdir()
+    for spec in layers_for(5):
+        (root / f"{TILE.name}_{spec.name}.osm.bz2").write_bytes(bz2.compress(XML))
+    read: list[str] = []
+    real = chain_module.snapshot_from_xml
+
+    def spy(raw, tile, spec, **kw):  # type: ignore[no-untyped-def]
+        read.append(spec.name)
+        return real(raw, tile, spec, **kw)
+
+    monkeypatch.setattr(chain_module, "snapshot_from_xml", spy)
+    assert FolderSource(root).layers(TILE, layers_for(2)) is None
+    assert "small_roads" not in read, "refused before it is even read"
+    # and the levels that never ask for it are served from the same folder, as before
+    assert FolderSource(root).layers(TILE, layers_for(1)) is not None

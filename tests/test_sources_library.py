@@ -459,3 +459,82 @@ def test_a_truncated_file_is_refused_before_it_is_downloaded(tmp_path: Path) -> 
     src = _source(served)
     assert src.layers(TILE, SPECS) is None
     assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]
+
+
+# -- one bake at road level 5 serves every level (2026-09-25) --------------------------------------
+
+
+def _roads(level: int) -> OsmSnapshot:
+    """``small_roads`` as a bake at ``level`` writes it: one way of every class that level asks
+    for, in the order the levels add them, so a lower level's file is a prefix of a higher one's."""
+    import blake3
+
+    from orthostudio.sources.osm import _canonical, selector_tag
+
+    spec = next(s for s in layers_for(level) if s.name == "small_roads")
+    classes = [selector_tag(sel)[1] for sel in spec.selectors]  # type: ignore[index]
+    nodes = tuple(OsmNode(i, 43.1 + i / 100, 5.1, {}) for i in range(1, 2 * len(classes) + 1))
+    ways = tuple(
+        OsmWay(100 + i, (2 * i + 1, 2 * i + 2), {"highway": c}) for i, c in enumerate(classes)
+    )
+    return OsmSnapshot(
+        tile=TILE,
+        layer="small_roads",
+        selectors=tuple(spec.selectors),
+        query="",
+        mirror="baked:planet",
+        fetched_at="2026-09-13T23:59:59Z",
+        generator="orthostudio bake_tile",
+        osm_base="",
+        nodes=nodes,
+        ways=ways,
+        relations=(),
+        digest=blake3.blake3(_canonical(nodes, ways, ())).hexdigest(),
+    )
+
+
+def _planet(root: Path) -> dict[str, bytes]:
+    """A library baked like the planet one: road level 5, every layer of it."""
+    store = SnapshotStore(root)
+    files: dict[str, dict[str, object]] = {}
+    served: dict[str, bytes] = {}
+    for spec in layers_for(5):
+        snap = _roads(5) if spec.name == "small_roads" else _snapshot(spec.name)
+        path = store.save(snap)
+        rel = str(path.relative_to(root))
+        files[rel] = {"tile": TILE.name, "layer": spec.name, "digest": snap.digest,
+                      "bytes": path.stat().st_size}  # fmt: skip
+        served[rel] = path.read_bytes()
+    manifest = {"format": "osxp-baked-1", "source": "planet-l5.osm.pbf",
+                "extracted": "2026-09-13T23:59:59Z", "road_level": 5, "files": files}  # fmt: skip
+    served["manifest.json"] = json.dumps(manifest).encode()
+    return served
+
+
+def test_a_library_baked_at_road_level_5_answers_every_level_below_it(tmp_path: Path) -> None:
+    """The planet is baked once, at road level 5. Asked for exactly the baked level, the library
+    sent every build at the default level 1 to the public servers; asked for at least it, each
+    level gets its own roads and no others, bit for bit what a bake at that level writes."""
+    served = _planet(tmp_path / "lib")
+    for level in range(6):
+        specs = layers_for(level)
+        got = _source(served).layers(TILE, specs)
+        assert got is not None, f"road level {level} refused"
+        assert sorted(got) == sorted(s.name for s in specs)
+        for spec in specs:
+            assert got[spec.name].selectors == tuple(spec.selectors), (level, spec.name)
+        if level >= 2:
+            assert got["small_roads"].digest == _roads(level).digest, level
+            assert got["small_roads"].ways == _roads(level).ways, level
+            assert got["small_roads"].nodes == _roads(level).nodes, level
+
+
+def test_a_library_baked_below_the_level_asked_is_still_refused(tmp_path: Path) -> None:
+    """Narrowing only takes away: a library at road level 2 cannot invent the tracks of level 5."""
+    served = _planet(tmp_path / "lib")
+    manifest = json.loads(served["manifest.json"])
+    manifest["road_level"] = 2
+    served["manifest.json"] = json.dumps(manifest).encode()
+    src = _source(served)
+    assert src.layers(TILE, layers_for(5)) is None
+    assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]

@@ -34,7 +34,7 @@ import zstandard
 
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
-from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for
+from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for, narrowed
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
 
@@ -347,14 +347,21 @@ class LibrarySource:
     # -- the layers ---------------------------------------------------------------------------
 
     def _answers(self, specs: Sequence[LayerSpec], index: LibraryIndex) -> bool:
-        """Whether the library was baked for the very layers this build is asking for.
+        """Whether the library was baked for at least the layers this build is asking for.
 
         The manifest says at which road level it was baked, and that settles it for every tile at
         once. It used to be found out by downloading the whole tile and reading the selectors
         inside it, once per tile, to refuse it every time (review F2).
+
+        At least, not exactly: the planet is baked once, at road level 5, and a file of it holds
+        every road a lower level asks for, the extra being cut away tile by tile
+        (:func:`~orthostudio.sources.osm.narrowed`). Asking for exactly the baked level sent every
+        build at the default level 1 to the public servers (2026-09-25).
         """
-        baked = {spec.name: tuple(spec.selectors) for spec in layers_for(index.road_level)}
-        wrong = [s.name for s in specs if baked.get(s.name) != tuple(s.selectors)]
+        baked = {spec.name: set(spec.selectors) for spec in layers_for(index.road_level)}
+        wrong = [
+            s.name for s in specs if s.name not in baked or not set(s.selectors) <= baked[s.name]
+        ]
         if not wrong:
             return True
         if not self._refused.issuperset(wrong):
@@ -447,10 +454,12 @@ class LibrarySource:
             log.info("%s: %s of %s holds nothing and says so on nobody's word", self.name,
                      spec.name, tile.name)  # fmt: skip
             return None
-        if tuple(snap.selectors) != tuple(spec.selectors):
+        cut = narrowed(snap, spec)
+        if cut is None:
             # the same layer name, a different question: small_roads baked at road level 2 holds
             # tertiary roads and no more, and a build asking for level 5 wants the tracks too.
-            # Taking it would give a scenery quietly missing them (2026-09-23).
+            # Taking it would give a scenery quietly missing them (2026-09-23). The other way
+            # round is fine: a file baked for more is cut down to exactly what was asked.
             log.info(
                 "%s: %s of %s was baked for other selectors; the next source takes over",
                 self.name,
@@ -458,7 +467,7 @@ class LibrarySource:
                 tile.name,
             )
             return None
-        return snap
+        return cut
 
 
 @functools.cache
