@@ -295,3 +295,9 @@ stale copy. So `tools/bake/verify_library.py` reads the published library with t
 the same key a build uses, takes a sample of tiles and says how many come back whole, and with
 `--compare` weighs one of them against the live servers as the map stood when the extract was cut.
 The key is read from a file and never printed, logged or put in a URL.
+
+Every request of a build also names the program and its version (`OrthoStudio-XP/0.1.17 (+...)`,
+the user agent the app sends everywhere), which is what the server's log shows: which version asks
+what. It is no lock, since anyone may send the same words, but a program that does not bother
+stands out (2026-09-25). The server's log never holds the key: the web server writes
+`Authorization` as `REDACTED`.

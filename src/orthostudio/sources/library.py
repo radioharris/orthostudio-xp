@@ -34,6 +34,7 @@ import zstandard
 
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
+from orthostudio.net import USER_AGENT
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for, narrowed
 from orthostudio.sources.prepared import EMPTY_LAYER_BYTES as EMPTY_BYTES
 
@@ -280,7 +281,10 @@ class LibrarySource:
     # -- the manifest, read once and kept ----------------------------------------------------
 
     def _headers(self) -> dict[str, str]:
-        headers = {"Accept": "application/json"}
+        # the program and its version, as the server's log shows them: no lock, since anyone may
+        # send the same words, but which version asks what, and a program that does not bother
+        # stands out (2026-09-25)
+        headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers

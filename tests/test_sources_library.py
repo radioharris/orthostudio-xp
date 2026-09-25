@@ -134,6 +134,26 @@ def test_without_the_key_the_library_gives_nothing(tmp_path: Path) -> None:
     assert src.index is None
 
 
+def test_the_library_is_told_which_program_asks(tmp_path: Path) -> None:
+    """Not a lock, since anyone may send the same words: what the server's log shows, which
+    version asks what, and a program that does not bother stands out (2026-09-25)."""
+    from orthostudio import __version__
+    from orthostudio.net import USER_AGENT
+
+    server = _Server(_library(tmp_path / "lib"))
+    seen: list[dict[str, str]] = []
+
+    def fetch(urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
+        seen.append(dict(headers))
+        return server(urls, headers)
+
+    src = LibrarySource("https://example.invalid/data", TOKEN, fetch=fetch)
+    assert src.layers(TILE, SPECS) is not None
+    assert len(seen) >= 2  # the manifest, then the tile
+    assert all(h["User-Agent"] == USER_AGENT for h in seen)
+    assert USER_AGENT.startswith(f"OrthoStudio-XP/{__version__} ")
+
+
 def test_a_wrong_key_is_not_retried_all_build_long(tmp_path: Path) -> None:
     src = _source(_library(tmp_path / "lib"), token="the-old-key")
     for _ in range(3):
