@@ -420,6 +420,7 @@ const STRINGS = {
     "works.dec_recovered": "Morceaux d'image récupérés après une pause",
 
     "step.data": "Données",
+    "step.data_help": "Données de carte et relief, puis tracé des routes, de l'eau et des aéroports pour le maillage.",
     "step.terrain": "Terrain",
     "step.coast": "Côtes",
     "step.imagery": "Images",
@@ -1327,6 +1328,7 @@ const STRINGS = {
     "works.dec_recovered": "Image pieces recovered after a pause",
 
     "step.data": "Data",
+    "step.data_help": "Map data and relief, then the roads, water and airports traced for the mesh.",
     "step.terrain": "Terrain",
     "step.coast": "Coast",
     "step.imagery": "Imagery",

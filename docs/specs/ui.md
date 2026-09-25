@@ -495,7 +495,10 @@ The selected job (default: the running one, else the newest) shows, from top to 
     and says `build`.
 - **One row per tile**, six step cells *Data · Terrain · Coast · Imagery · Assembly · Install*.
   Each cell has a dot, its name, a thin progress bar (`role="progressbar"`, `aria-valuenow`, the
-  words in `aria-valuetext`) and one line of plain words (the full text in the cell's tooltip):
+  words in `aria-valuetext`) and one line of plain words (the full text in the cell's tooltip).
+  Data's tooltip also says what the step holds (`STEP_HELP`): map data and relief, then the roads,
+  water and airports traced for the mesh, since a user took its minutes for downloading
+  (2026-09-25):
 
   | Step status | Bar | Words |
   |---|---|---|

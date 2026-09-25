@@ -4350,6 +4350,10 @@ export function stepView(job, tile, s) {
   return { status, pct, text: text ?? word(), detail, help };
 }
 
+/** What a step holds, for the one whose name says less than it does: Data also prepares the relief
+ * and traces the map for the mesh, and a user took its minutes for downloading (2026-09-25). */
+export const STEP_HELP = { data: () => t("step.data_help") };
+
 /** One step of a tile: a thin bar for every status, then what it is doing in plain words. */
 function updateStepCell(c, job, tile, s) {
   if (!c) return;
@@ -4365,7 +4369,8 @@ function updateStepCell(c, job, tile, s) {
   setAttr(c.bar, "aria-valuetext", detail ? `${text}, ${detail}` : text);
   setText(c.state, text);
   setText(c.detail, detail);
-  setAttr(c.root, "title", `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}`);
+  const about = STEP_HELP[s]?.();
+  setAttr(c.root, "title", `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}${about ? `\n${about}` : ""}`);
 }
 
 function updateErrors(v, job, active) {

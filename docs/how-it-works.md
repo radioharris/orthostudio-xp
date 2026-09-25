@@ -41,10 +41,13 @@ the measurements, `docs/benchmarks/`.
 
 A build shows six steps per tile on the Works screen. A tile's Data step starts by reading its
 OpenStreetMap data when it does not have it yet. Where a prepared library covers the tile it takes
-under a second, because the same four questions have already been answered for that square and the
-answers are files; elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile
-when they answer (measured 2026-09-14), with the layers received and the download rate shown in the
-step.
+about a second, because the same questions have already been answered for that square and the
+answers are files; at road level 5 a dense tile's small roads weigh tens of megabytes, and it
+takes up to ten seconds or so, two or three of them downloading (Switzerland, 2026-09-25).
+Elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile when they answer
+(measured 2026-09-14), with the layers received and the download rate shown in the step. The step
+then prepares the relief and traces the roads, water and airports for the mesh, which is most of
+its time: on those Swiss tiles at road level 5, 17 to 36 s of relief and 46 to 75 s of tracing.
 
 Two places are looked in before those servers, in order: a folder of your own, if you named one in
 Settings, and the prepared library this version carries. Each one is taken whole or not at all, and
@@ -57,8 +60,9 @@ builds at road level 0 and 1 only, since its small roads do not say which road l
 
 A prepared library is behind the live map by design, and it is baked again regularly. There is
 no button to skip it, on purpose: a build from the library is the fast one. The command line keeps
-`--osm-refresh <anything>`, which skips both and goes to the servers. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
-each goes on with its relief at once, and with the rest as soon as its own data is in. A server
+`--osm-refresh <anything>`, which skips both and goes to the servers. One tile downloads at a
+time, since the servers refuse more, but the other tiles do not wait: each goes on with its relief
+at once, and with the rest as soon as its own data is in. A server
 that does not answer is left aside for the rest of the build, instead of being waited for by every
 tile; a build you start again asks all of them once more, and says which one answered what when a
 tile fails for want of map data.

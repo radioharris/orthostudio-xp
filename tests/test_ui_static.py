@@ -3230,6 +3230,18 @@ def test_a_table_wider_than_its_box_keeps_its_scrollbar() -> None:
     assert 'window.addEventListener("resize", markWideTables);' in _function_body(app_js, "boot")
 
 
+def test_the_data_step_says_it_is_more_than_a_download() -> None:
+    """A user took the minutes of a tile's Data step for downloading: at road level 5 on Swiss
+    tiles the library's files took 2 to 3 s, the relief 17 to 36 s and the tracing of the map for
+    the mesh 46 to 75 s (2026-09-25). The step's tooltip says what it holds, in both languages."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert 'export const STEP_HELP = { data: () => t("step.data_help") };' in app_js
+    assert "const about = STEP_HELP[s]?.();" in _function_body(app_js, "updateStepCell")
+    assert '"step.data_help": "Données de carte et relief, puis tracé' in i18n
+    assert '"step.data_help": "Map data and relief, then the roads, water and airports' in i18n
+
+
 def test_a_chosen_tile_a_build_would_change_is_marked_at_a_glance() -> None:
     """Under the chips, what a build would change is a warning line; a user asked it to line up
     and stand apart from the tile's line, and the tile's chip to take its colour (2026-09-22)."""
