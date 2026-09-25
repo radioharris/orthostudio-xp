@@ -3923,7 +3923,7 @@ function renderJobList() {
 function forgetButton(j, tiles) {
   return h("button", {
     type: "button",
-    class: "btn btn-small btn-icon btn-danger job-forget",
+    class: "btn btn-small btn-icon btn-danger btn-trash job-forget", // the same bin as the one above the list
     title: t("works.forget"),
     disabled: state.jobsClearing || Boolean(state.engineOutdated),
     onclick: () => forgetJob(j),

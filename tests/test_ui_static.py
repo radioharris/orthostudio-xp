@@ -2142,6 +2142,15 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     assert "await followJobGone();" in code, "the same rule the whole-list trash follows"
     assert "state.jobsClearing" in code and ".focus({ preventScroll: true })" in code
 
+    # the same bin as the one above the list, drawn by the same rule: it was 24 px in a 30 px
+    # button beside the 15 px one (a user, 2026-09-25)
+    bin_row = _function_body(app_js, "forgetButton")
+    assert '"btn btn-small btn-icon btn-danger btn-trash job-forget"' in bin_row
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert 'class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear"' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".btn-trash svg { width: 15px; height: 15px; }" in css
+
     # the bin says what goes, and both languages have the words
     tables = _i18n_tables()
     for lang in ("fr", "en"):
