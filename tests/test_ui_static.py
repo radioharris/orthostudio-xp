@@ -3110,8 +3110,13 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     found = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert found is not None
     grid = found.group(0)
-    assert "osxp-tile-${building.get(name)}" in grid
-    assert grid.index("osxp-tile-${kind}${both}") < grid.index("osxp-tile-${building.get(name)}")
+    assert "if (building.has(name)) busy.push([box, building.get(name)]);" in grid
+    assert "className: `osxp-tile-${state}`" in grid
+    drawn = [
+        grid.index(mark)
+        for mark in ("osxp-tile-installed${both}", '"osxp-tile-built"', "osxp-tile-${state}")
+    ]
+    assert drawn == sorted(drawn), "installed, then the built sides, then the running build on top"
     assert "JSON.stringify([...buildingNow().entries()])" in map_js  # redrawn on change only
     css = (UI / "styles.css").read_text(encoding="utf-8")
     # marks are outlines, never fills (2026-09-18): the tile worked on pulses on its stroke
@@ -3318,8 +3323,7 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     assert "kept && selected.has(name) ? insetBox(box, 4) : null;" in body
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index("className: `osxp-tile-${kind}${both}`")
-    assert 'const kind = installed.has(name) ? "installed" : "built";' in body
+    green = body.index("className: `osxp-tile-installed${both}`")
     # the blue after the green, the route's ends in their own colour (2026-09-22)
     assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
     assert 'const both = inner ? " is-both" : "";' in body
@@ -3334,10 +3338,7 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     # whole pixels keep at two pixels of a Retina screen wherever the layer lies
     casing_rule = rules[".plan-map .osxp-tile-casing"]
     assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
-    both_rule = (
-        ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, "
-        ".plan-map .osxp-tile-selected.is-both"
-    )
+    both_rule = ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both"
     assert "stroke-width: 2.5;" in rules[both_rule]
     marks = ("selected", "installed", "built", "casing")
     crisp = ", ".join(f".plan-map .osxp-tile-{mark}" for mark in marks)
@@ -3347,45 +3348,93 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
 
 
 def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
-    """A user asked to see the tiles built on the map (2026-09-24). The map drew the installed
-    ones only, so a tile built with *Build only*, or taken out of X-Plane with its files kept, was
-    nowhere to be seen. It is drawn in the green of a built tile, dashed since X-Plane does not
-    have it, named in the legend when there is one, and described on hover like an installed one.
-    Chosen as well, it keeps the drawing of an installed tile chosen: the blue inside it. The
-    Library rows already said it (`installed`, `present`): only the page changes. Measured in the
-    page."""
+    """A user asked to see the tiles built on the map (2026-09-24): a tile built with *Build only*,
+    or taken out of X-Plane with its files kept, was nowhere to be seen. The Library rows already
+    said it (`installed`, `present`): only the page changes.
+
+    Then, looking at three of his (2026-09-25): two neighbours showed a solid line between them,
+    since each rectangle laid its dashes over the shared edge out of step. Each side is now drawn
+    once, from its south or west end. It is dashed pink, the one colour no other mark uses, and
+    the legend line is a checkbox, remembered, as the airports' is. Measured in the page: three
+    squares in an L drawn with 10 sides, not 12."""
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     built = map_js[map_js.index("  function builtTiles() {") : map_js.index("  function insetBox(")]
-    assert "!e.installed && e.present !== false && parseTile(e.tile)" in built, (
-        "on the disk, not in X-Plane"
-    )
+    assert "!e.installed && e.present !== false && parseTile(e.tile)" in built, "on the disk only"
     assert ".filter((name) => !installed.has(name))" in built, (
         "another pack of it in X-Plane: green"
     )
+
     grid = map_js[
         map_js.index("  function renderGrid() {") : map_js.index("    if (zoom < LABEL_MIN_ZOOM")
     ]
-    assert "const built = new Set(builtTiles());" in grid
-    assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
-    assert (
-        "showTip" in map_js
-        and "installedTiles().includes(name) || builtTiles().includes(name)" in map_js
+    assert "const built = new Set(zs.builtWanted ? builtTiles() : []);" in grid, (
+        "hidden when unticked"
     )
+    assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
+    assert 'sides.set(side.flat().join(","), side);' in grid, "a side shared by two is one side"
+    lat_lon = "[[lat, lon], [lat, lon + 1]], [[lat + 1, lon], [lat + 1, lon + 1]]"
+    assert lat_lon in grid, "each side from its south or west end, so neighbours give the same one"
+    assert 'L.polyline(side, { pane: "osxpGrid", className: "osxp-tile-built"' in grid
+    assert "osxp-tile-built${both}" not in grid, "no rectangle of its own any more"
+    hover = map_js[map_js.index("  function showTip(ev) {") :]
+    assert "(zs.builtWanted && builtTiles().includes(name))" in hover[: hover.index("\n  }\n")]
+
+    # the legend line is a checkbox, remembered, and shown when there are such tiles
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
-    assert (
-        'if (builtTiles().length) items.push(row("legend-built", t("map.legend_built")));' in legend
-    )
+    assert "if (builtTiles().length) items.push(builtToggle());" in legend
+    assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
+    assert 'builtWanted: storageGet(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
+    toggle = map_js[
+        map_js.index("  function builtToggle() {") : map_js.index("  function setLegendOpen(")
+    ]
+    assert 'storageSet(BUILT_KEY, wanted ? "1" : "0");' in toggle
+    assert "renderGrid();" in toggle and "renderLegend();" in toggle
     changed = map_js[map_js.index("    libraryChanged() {") :]
     assert "renderLegend();" in changed[: changed.index("},")], "the legend follows the Library"
+
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
-    assert "stroke: var(--ok);" in rules[".plan-map .osxp-tile-built"]
+    assert "stroke: var(--map-built);" in rules[".plan-map .osxp-tile-built"]
     assert "stroke-dasharray: 7 5;" in rules[".plan-map .osxp-tile-built"]
-    assert "border: 2px dashed var(--ok);" in rules[".legend-built"]
+    assert "border: 2px dashed var(--map-built);" in rules[".legend-built"]
+    assert "--map-built: #ff4fc1;" in rules[":root"]
     tables = _i18n_tables()
     for lang in ("fr", "en"):
-        assert "map.legend_built" in tables[lang]
+        for key in ("map.legend_built", "map.built_hint", "map.legend_hide", "map.legend_show"):
+            assert key in tables[lang], (lang, key)
+
+
+def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
+    """Three things a user asked of the legend (2026-09-25). Its labels started at three places
+    (52, 67 and 71 px, measured): a line without a checkbox now keeps the checkbox's room and every
+    mark is as wide as the others, and they all start at 71. It can be folded away to see the map
+    under it, and the choice is remembered. And a redraw, on every zoom, gives the focus back to
+    the control that had it: it used to go to the first checkbox, whichever had it."""
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    spacer = rules[".map-legend li:not(.legend-toggle)::before"]
+    assert 'content: "";' in spacer and "width: 13px;" in spacer
+    assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
+    assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
+
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    legend = map_js[
+        map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
+    ]
+    assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
+    folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const row = ")]
+    assert 'class: "legend-unfold"' in folded and "onclick: () => setLegendOpen(true)" in folded
+    assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
+    assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
+    opening = map_js[map_js.index("  function setLegendOpen(open) {") :]
+    assert 'storageSet(LEGEND_KEY, open ? "1" : "0");' in opening[: opening.index("\n  }\n")]
+    assert 'legendOpen: storageGet(LEGEND_KEY) !== "0",' in map_js, "open unless folded"
+
+    # the focus comes back to the control that had it, each named
+    assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in legend
+    for key in ("built", "airports", "street", "borders"):
+        assert f'"data-keep": "{key}",' in map_js, key
+    assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
@@ -4792,7 +4841,7 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     code = (UI / "map.js").read_text(encoding="utf-8")
     legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
     assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
-    assert "clear(box).append(view, list)" in legend
+    assert "clear(box).append(fold, view, list)" in legend, "the view line first, under the fold"
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()

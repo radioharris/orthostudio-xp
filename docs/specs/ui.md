@@ -986,11 +986,27 @@ The line keeps the language it was written in until the next view is drawn, as i
 2026-09-24). The map drew the installed ones only (`installedTiles`), so a tile built with *Build
 only*, or taken out of X-Plane with its files kept, was nowhere to be seen. `builtTiles` reads the
 same Library rows, the ones on the disk (`present`) and not in X-Plane (`installed` false), and
-leaves out a tile another pack of which is installed: that one is green. It is drawn in the green
-of a built tile, dashed since X-Plane does not have it (`osxp-tile-built`), named in the legend
-only when there is one (*Built, not in X-Plane*, redrawn when the Library changes), and described
-on hover like an installed one (`builtSummary`). Chosen as well, it is drawn as an installed tile
-chosen: the blue inside it, over the casing. Only the page changes: the rows already said it.
+leaves out a tile another pack of which is installed: that one is green. It is drawn dashed in
+pink (`--map-built`), the one colour no other mark of the map uses (the zones stop at ZL19, so the
+pink of ZL20 is never drawn), described on hover like an installed one (`builtSummary`), and,
+chosen as well, drawn with the blue inside it over the casing. Only the page changes: the rows
+already said it.
+
+Each side is drawn once, as its own line from its south or west end (`sides` in `renderGrid`):
+drawn as rectangles, two neighbours laid their dashes over the shared edge out of step and it read
+as a solid line (the same user, looking at three of his, 2026-09-25). Three squares in an L are
+drawn with 10 sides, not 12, measured in the page. The running build's marks stay on top.
+
+Its legend line is a checkbox, as the airports' is, shown when there is such a tile, on unless
+unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the hover.
+
+**The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
+a line without a checkbox now keeps the checkbox's room (`li:not(.legend-toggle)::before`, 13 px)
+and every mark is 14 px wide (the airport's 10 px ring gets 2 px each side), and they all start at
+71. A chevron in its corner folds it away to see the map under it, one *Legend* button brings it
+back, and the choice is remembered (`osxp.mapLegend`, open unless folded; `aria-expanded` on
+both). A redraw, which happens on every zoom, gives the focus back to the control that had it
+(`data-keep`): it went to the first checkbox, whichever had it.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it

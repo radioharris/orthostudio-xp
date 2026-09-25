@@ -94,6 +94,12 @@ const AIRPORTS_KEY = "osxp.mapAirports";
  * It is vector, so it needs MapLibre GL, which weighs a megabyte: the renderer is loaded the
  * first time the map is asked for, never on a page that stays on the photo. */
 const STREET_KEY = "osxp.mapStreet";
+
+/** The tiles built and not in X-Plane on the map: shown unless the user unticked them. */
+const BUILT_KEY = "osxp.mapBuilt";
+
+/** The legend folded away, to see the map under it (a user, 2026-09-25): open unless folded. */
+const LEGEND_KEY = "osxp.mapLegend";
 const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
 const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
 const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
@@ -356,6 +362,8 @@ export function createPlanMap(ctx) {
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
+    builtWanted: storageGet(BUILT_KEY) !== "0",
+    legendOpen: storageGet(LEGEND_KEY) !== "0",
     street: {
       wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
@@ -1147,7 +1155,7 @@ export function createPlanMap(ctx) {
     const lat = Math.floor(clampLat(ev.latlng.lat));
     const lon = Math.floor(wrapLon(ev.latlng.lng));
     const name = tileName(lat, lon);
-    const text = installedTiles().includes(name) || builtTiles().includes(name) ? ctx.builtSummary?.(name) : null;
+    const text = installedTiles().includes(name) || (zs.builtWanted && builtTiles().includes(name)) ? ctx.builtSummary?.(name) : null;
     if (!text) return hideTip();
     if (!tip) {
       tip = document.createElement("div");
@@ -1575,6 +1583,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: zs.airports.wanted,
+      "data-keep": "airports",
       onchange: (ev) => setAirportsWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
@@ -1787,6 +1796,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: zs.street.wanted,
+      "data-keep": "street",
       onchange: (ev) => setStreetWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
@@ -2023,8 +2033,10 @@ export function createPlanMap(ctx) {
     }
     const selected = new Set(ctx.tiles());
     const installed = new Set(installedTiles());
-    const built = new Set(builtTiles());
+    const built = new Set(zs.builtWanted ? builtTiles() : []);
     const building = buildingNow();
+    const sides = new Map(); // the sides of the tiles built and not in X-Plane, each drawn once
+    const busy = []; // what the running build does, drawn over everything else
     for (const name of new Set([...installed, ...built, ...selected, ...building.keys()])) {
       const c = parseTile(name);
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
@@ -2042,9 +2054,16 @@ export function createPlanMap(ctx) {
         }
       }
       const both = inner ? " is-both" : "";
-      if (kept) {
-        const kind = installed.has(name) ? "installed" : "built";
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}`, interactive: false, fill: false, weight: 3 }));
+      if (installed.has(name)) {
+        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
+      } else if (kept) {
+        // Each side from its south or west end, keyed by where it lies: two neighbours share one.
+        // Drawn as rectangles, they laid their dashes over the same edge out of step, and it read
+        // as a solid line (a user, 2026-09-25).
+        const { lat, lon } = c;
+        for (const side of [[[lat, lon], [lat, lon + 1]], [[lat + 1, lon], [lat + 1, lon + 1]], [[lat, lon], [lat + 1, lon]], [[lat, lon + 1], [lat + 1, lon + 1]]]) {
+          sides.set(side.flat().join(","), side);
+        }
       }
       if (selected.has(name) && (inner || !kept)) {
         // The route's departure and arrival in the route's own colour: on a plan across Europe
@@ -2052,11 +2071,15 @@ export function createPlanMap(ctx) {
         const end = routeEnds.has(name) ? " is-route-end" : "";
         layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
       }
-      // Over the others: a tile the running build works on pulses, one waiting for its turn is
-      // dashed, a failed one dashed red (buildingTiles in app.js).
-      if (building.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${building.get(name)}`, interactive: false, weight: 3 }));
-      }
+      if (building.has(name)) busy.push([box, building.get(name)]);
+    }
+    for (const side of sides.values()) {
+      layers.tiles.addLayer(L.polyline(side, { pane: "osxpGrid", className: "osxp-tile-built", interactive: false, weight: 3 }));
+    }
+    // Over the others: a tile the running build works on pulses, one waiting for its turn is
+    // dashed, a failed one dashed red (buildingTiles in app.js).
+    for (const [box, state] of busy) {
+      layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${state}`, interactive: false, weight: 3 }));
     }
     if (zoom < LABEL_MIN_ZOOM || (north - south) * (east - west) > MAX_LABELS) return;
     // Each label sits in the north-west corner of the visible part of its tile, when that part
@@ -2282,12 +2305,22 @@ export function createPlanMap(ctx) {
   function renderLegend() {
     const box = $("map-legend");
     if (!box) return;
-    // The legend is rebuilt on zoom and on a toggle: the borders checkbox keeps the focus it had.
-    const hadFocus = document.activeElement !== null && box.querySelector(".legend-toggle input") === document.activeElement;
+    // The legend is rebuilt on zoom and on a toggle: the control that had the focus keeps it. It
+    // used to be the first checkbox whichever had it, which took a keyboard user elsewhere.
+    const focused = box.contains(document.activeElement) ? document.activeElement.closest("[data-keep]")?.dataset.keep : null;
+    const refocus = () => focused && box.querySelector(`[data-keep="${focused}"]`)?.focus();
+    box.classList.toggle("is-folded", !zs.legendOpen);
+    if (!zs.legendOpen) {
+      // Folded away to see the map under it: one button brings it back.
+      clear(box).append(h("button", { type: "button", class: "legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
+      refocus();
+      return;
+    }
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
     const items = [row("legend-installed", t("map.legend_installed"))];
-    if (builtTiles().length) items.push(row("legend-built", t("map.legend_built")));
+    if (builtTiles().length) items.push(builtToggle());
     items.push(row("legend-selected", t("map.legend_selected")));
+    const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
     const view = h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) }));
     if ((ctx.route?.() || {}).points?.length >= 2) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
@@ -2299,13 +2332,40 @@ export function createPlanMap(ctx) {
     if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
-    clear(box).append(view, list);
-    if (hadFocus) box.querySelector(".legend-toggle input")?.focus();
+    clear(box).append(fold, view, list);
+    refocus();
     if (!levels.length) return;
     box.append(
       h("p", { class: "legend-title" }, t("map.legend_zones")),
       h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))),
     );
+  }
+
+  /** The legend's line for the tiles built and not in X-Plane: a checkbox, as the airports' is,
+   * shown only when there are some (a user asked to be able to hide them, 2026-09-25). */
+  function builtToggle() {
+    const input = h("input", {
+      type: "checkbox",
+      checked: zs.builtWanted,
+      "data-keep": "built",
+      onchange: (ev) => setBuiltWanted(ev.target.checked),
+    });
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: t("map.built_hint") },
+        input, h("span", { class: "legend-swatch legend-built", "aria-hidden": "true" }), t("map.legend_built")));
+  }
+
+  function setBuiltWanted(wanted) {
+    zs.builtWanted = wanted;
+    storageSet(BUILT_KEY, wanted ? "1" : "0");
+    renderGrid();
+    renderLegend();
+  }
+
+  function setLegendOpen(open) {
+    zs.legendOpen = open;
+    storageSet(LEGEND_KEY, open ? "1" : "0");
+    renderLegend();
   }
 
   /** The legend's borders line: a checkbox, and why nothing shows when zoomed in close. */
@@ -2316,6 +2376,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: borders.wanted,
+      "data-keep": "borders",
       onchange: (ev) => setBordersWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
