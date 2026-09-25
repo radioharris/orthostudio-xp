@@ -51,6 +51,12 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   (`zOrthoStudio_<tile>`, `yOrthoStudio_Overlays`), `scenery_packs.ini` in the right order, a
   backup of the original, overlays kept in step with their tiles, or left out when simHeaven
   X-World brings its own.
+- **Map data in seconds.** The airports, roads, coastline and water of every tile of the planet
+  come from OrthoStudio XP's own library (OpenStreetMap as of 13 September 2026, updated
+  regularly), at every road level, where a public server can take minutes or fail; when the library
+  cannot answer, the public Overpass servers are asked as before. A folder of map data you already
+  have, ours or Ortho4XP's (road levels 0 and 1 for Ortho4XP's), can be read first: Settings,
+  under "For experts".
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
   For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept),
   the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), the USGS
@@ -281,9 +287,10 @@ DSFTool (Laminar Research's X-Plane Scenery Tools, MIT/X11 licence) extracts the
 macOS, Windows and Linux binaries are in `native/dsftool/`, with their checksums.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under the Open
-Database Licence (ODbL): OrthoStudio XP downloads the airports, roads, coastline and water of each
-tile from public Overpass servers to shape its terrain. Like the imagery, the tiles built from them
-are for your own use.
+Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and water of each
+tile from its own library, cut from OpenStreetMap's planet file by the tools in `tools/bake/`, or
+from public Overpass servers when the library cannot answer, to shape its terrain. Like the
+imagery, the tiles built from them are for your own use.
 
 The page's street map comes from [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, data ©
 OpenStreetMap contributors), read through the engine so the page contacts nothing but its own
