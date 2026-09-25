@@ -8,6 +8,7 @@ geometry (``geo.js``) are run under ``node`` (skipped when ``node`` is missing).
 
 from __future__ import annotations
 
+import ast
 import itertools
 import json
 import os
@@ -4967,6 +4968,107 @@ def test_an_error_in_one_line_says_what_to_do_as_well() -> None:
         "a code the page has no words for"
     )
     assert got["engines"] == f"SYS_WORKING_DIR_INVALID: {e['message']} {e['remedy']}"
+
+
+# The codes that had French words before the rule below, written for the page on purpose; the
+# engine raises each somewhere with a sentence or a remedy of its own, and the page's words stand.
+FRENCH_BEFORE_THE_RULE = frozenset(
+    {
+        "CFG_DATA_DIR_INVALID", "CFG_PROVIDER_UNKNOWN", "DEM_TILE_UNAVAILABLE",
+        "DSF_GLOBAL_SCENERY_MISSING", "IMG_TILE_MISSING", "IMG_TILE_PLACEHOLDER", "NET_TIMEOUT",
+        "SYS_DISK_FULL", "SYS_UPSTREAM_FAILED", "TEX_MISSING", "XP_DIR_NOT_FOUND",
+        "XP_GLOBAL_SCENERY_NOT_FOUND", "XP_RUNNING", "ZONE_INVALID",
+    }
+)  # fmt: skip
+
+
+def _codes_raised_with_own_words() -> set[str]:
+    """The engine's codes raised somewhere with a ``message`` or a ``remedy`` of their own, read
+    from the syntax tree (a code named by a module constant, as ``_CORRUPT_CODE``, counts)."""
+    out: set[str] = set()
+    for path in UI.parent.rglob("*.py"):  # the orthostudio package
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        consts = {
+            target.id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and node.args):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if name != "OsxpError":
+                continue
+            first = node.args[0]
+            code = first.value if isinstance(first, ast.Constant) else None
+            if code is None and isinstance(first, ast.Name):
+                code = consts.get(first.id)
+            if isinstance(code, str) and any(k.arg in ("message", "remedy") for k in node.keywords):
+                out.add(code)
+    return out
+
+
+def _page_code_words(lang: str) -> dict[str, str]:
+    """The page's words for each code in ``lang``, as their source text (``CODES`` in i18n.js)."""
+    js = (UI / "i18n.js").read_text(encoding="utf-8")
+    block = js[js.index("const CODES = {") :]
+    start = block.index(f"  {lang}: {{")
+    body = block[start : block.index("\n  },", start)]
+    found = re.finditer(
+        r"^\s{4}([A-Z][A-Z0-9_]+)\s*:(.*?)(?=^\s{4}[A-Z][A-Z0-9_]+\s*:|\Z)", body, re.M | re.S
+    )
+    return {m.group(1): m.group(2) for m in found}
+
+
+def test_the_engines_errors_are_said_in_french_and_never_with_a_hole() -> None:
+    """86 of the engine's 120 codes had no French words, so a French page showed them in English
+    (found in review, 2026-09-24). Every code now has French words, but one the engine raises
+    somewhere with a sentence or a remedy of its own: there a translation of its general sense
+    would replace precise words with vaguer ones, or wrong ones (``MASK_CUSTOM_EXTENT_INVALID``
+    would have said to check a PNG where the engine says the feature does not exist yet), so the
+    engine's words stand. English keeps the engine's words.
+
+    The words name only what the engine's own sentence names, and a code raised with other facts
+    elsewhere cannot print a brace: words naming something the error did not send give way to
+    the engine's."""
+    from orthostudio import errors
+
+    specs = {spec.code: spec for spec in errors._SPECS}
+    own = _codes_raised_with_own_words() & set(specs)
+    french = _page_code_words("fr")
+    missing = sorted(set(specs) - set(french) - own)
+    assert missing == [], f"no French words, and the engine has no words of its own for: {missing}"
+    stray = sorted(own & set(french) - FRENCH_BEFORE_THE_RULE)
+    assert stray == [], f"raised with words of their own, so leave them to the engine: {stray}"
+    for code, text in french.items():
+        if code not in specs or code in FRENCH_BEFORE_THE_RULE:
+            continue
+        named = set(re.findall(r"\{(\w+)\}", text))
+        declared = set(re.findall(r"\{(\w+)", specs[code].message + specs[code].remedy))
+        assert named <= declared, (code, sorted(named - declared))
+    assert "\u2014" not in "".join(french.values()) and "\u2013" not in "".join(french.values())
+
+    # the words in use, and the engine's when the error did not send what they name
+    said = _node_json(
+        "i18n.js",
+        """(() => {
+          globalThis.document = { documentElement: {} };
+          m.setLanguage("fr");
+          const whole = m.codeText("NET_FORBIDDEN", { host: "tiles.example" });
+          const hole = m.codeText("NET_FORBIDDEN", {});
+          m.setLanguage("en");
+          const english = m.codeText("NET_FORBIDDEN", { host: "tiles.example" });
+          return [whole, hole, english];
+        })()""",
+    )
+    assert said[0][0] == "Le serveur tiles.example a refusé la requête (HTTP 403)."
+    assert said[1] is None, "a hole gives way to the engine's own words (codeWords)"
+    assert said[2] is None, "English keeps the engine's words"
 
 
 def test_the_map_goes_to_the_airport_chosen() -> None:

@@ -248,6 +248,18 @@ form every toast and every note under a button shows: the code, then **both** ha
 keep the message only, so they said what went wrong and never what to do about it (found in
 review, 2026-09-24).
 
+**The page's words, in French.** Every code has French words in `CODES.fr`, the same two
+sentences as here, naming only what this spec's sentence names, filled from the context. The
+exception is a code the engine raises somewhere with a `message` or a `remedy` of its own: a
+translation of its general sense would there replace precise words with vaguer ones, or wrong
+ones (`MASK_CUSTOM_EXTENT_INVALID` is raised with one remedy only, "the feature does not exist
+yet; clear the setting", where its general sense says to check the PNG), so the engine's words
+stand, in English. Fourteen of those had French words before this rule, written for the page on
+purpose, and keep them. English keeps the engine's words for every code. And words naming
+something an error did not send give way to the engine's (`codeText`), so no page ever prints a
+`{brace}`. `tests/test_ui_static.py` reads the codes raised with words of their own from the
+syntax tree and holds all of this. Before 2026-09-25, 86 of the 120 codes had no page words.
+
 ## Wanted differences from Ortho4XP
 
 - Nothing is filled with white, zero or "nothing" silently: every such decision has a code and

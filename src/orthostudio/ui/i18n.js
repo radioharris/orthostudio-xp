@@ -1890,6 +1890,69 @@ const CODES = {
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
     ZONE_CONFLICT: ["Les zones ont été modifiées ailleurs (autre fenêtre ou fichier) : rien n'a été enregistré.", "La liste a été rechargée ; refaites votre dernière modification."],
     ZONE_TOO_MANY: ["Trop de zones touchent une même tuile (254 au plus).", "Fusionnez ou supprimez des zones sur cette tuile."],
+    // The codes the page had no words for, in the engine's sense (errors.py), filled from the
+    // error's context. A code the engine also raises with a sentence or a remedy of its own keeps
+    // the engine's words, which a translation of its general sense would make vaguer or wrong
+    // (tests/test_ui_static.py finds them). English keeps the engine's words, which are these.
+    OSM_MIRROR_REJECTED: ["Le miroir Overpass {mirror} a refusé la requête (HTTP {status}).", "Nouvel essai sur un autre miroir dans {delay} s ; si cela persiste, réduisez le nombre de requêtes OSM en parallèle."],
+    OSM_MIRROR_RATE_LIMITED: ["Le serveur de données cartographiques {mirror} n'accepte plus vos requêtes pour l'instant ({delay}).", "Ces serveurs comptent les requêtes par adresse internet, et une région entière en demande des centaines : attendez quelques minutes et relancez, ou construisez moins de tuiles à la fois. Un autre serveur est essayé en attendant."],
+    OSM_RESPONSE_TRUNCATED: ["La réponse d'Overpass pour la couche {layer} est tronquée (balise de fin absente).", "La requête est relancée ; un fichier en cache tronqué est supprimé et téléchargé à nouveau."],
+    OSM_RESPONSE_ERROR: ["Overpass a répondu par une erreur pour la couche {layer} ({reason}).", "La zone est découpée en requêtes plus petites, puis relancée."],
+    OSM_CACHE_WRITE_FAILED: ["Le fichier de cache OSM {path} n'a pas pu être écrit ({reason}).", "Libérez de l'espace disque ou corrigez les droits du dossier de cache ; la construction continue."],
+    OSM_COAST_ORIENTATION: ["Le trait de côte OSM de la tuile {tile} a un chemin dont l'eau est du mauvais côté.", "Inversez le chemin de trait de côte fautif dans OpenStreetMap, puis construisez cette tuile à nouveau."],
+    OSM_COAST_TRIPLE_JUNCTION: ["Le trait de côte OSM de la tuile {tile} a une jonction triple près de lat={lat} lon={lon}.", "Corrigez la jonction dans OpenStreetMap, puis construisez cette tuile à nouveau."],
+    OSM_WAY_NOT_CLOSED: ["Le chemin OSM {osm_id}, utilisé comme polygone, n'est pas fermé ; il est ignoré.", "Rien à faire ; l'élément figure dans le rapport des décisions."],
+    OSM_WAY_INVALID: ["Le chemin OSM {osm_id} est un polygone invalide ; il est ignoré.", "Rien à faire ; corrigez sa géométrie dans OSM si l'élément compte pour vous."],
+    OSM_RELATION_INVALID: ["La relation OSM {osm_id} donne un polygone invalide ; elle est ignorée.", "Rien à faire ; la relation figure dans le rapport des décisions."],
+    OSM_AIRPORT_TAG_INVALID: ["L'élément d'aérodrome près de {point} a une géométrie inutilisable ; l'aéroport est ignoré.", "Vérifiez l'élément d'aérodrome dans OSM près de ce point."],
+    OSM_AIRPORT_BOUNDARY_INVALID: ["Le contour de l'aéroport {airport} est un polygone invalide ; seules les pistes sont utilisées.", "Corrigez le contour de l'aérodrome dans OSM ; les pistes sont tout de même aplanies."],
+    OSM_AIRPORT_TOO_SMALL: ["L'aéroport {airport} est sous le seuil de taille ; il est ignoré.", "Rien à faire ; il figure dans le rapport des décisions."],
+    OSM_AIRPORT_SMOOTHING_INVALID: ["L'aéroport {airport} porte smoothing_pix={value}, hors de {range} ; le réglage de la tuile apt_smoothing_pix est utilisé à la place.", "Corrigez l'étiquette smoothing_pix de l'aérodrome dans OSM, ou retirez-la."],
+    OSM_AIRPORT_SURFACE_INVALID: ["Une surface {surface} de l'aéroport {airport} n'est pas un polygone valide ; elle est ignorée.", "Rien à faire ; elle figure dans le rapport des décisions."],
+    OSM_PATCH_INVALID: ["Le fichier de patch {path} est invalide ({reason}) ; la tuile est construite sans lui.", "Corrigez le fichier de patch et reconstruisez la tuile."],
+    DEM_OVERLAY_UNAVAILABLE: ["Aucune donnée d'altitude de {source} sur le carré {cell} : le relief posé dessous y est utilisé seul.", "Rien à faire : cette source ne couvre qu'une partie du pays (le lidar canadien), et le relief de base répond pour le reste."],
+    DEM_OVERLAY_COARSER: ["Votre fichier pour le carré {cell} ({own}) a {own_m} m entre deux points, là où {source} a {base_m} m : le plus fin des deux est utilisé, donc {source} répond sur ce carré.", "Rien à faire. Si vous voulez que votre fichier réponde ici, mettez dans le dossier un fichier au moins aussi fin que le relief choisi, ou choisissez un relief plus grossier."],
+    DEM_NEIGHBOUR_UNAVAILABLE: ["Les données d'altitude du carré voisin {cell} sont indisponibles ; le bord de la tuile utilise ses propres données.", "Fournissez le relief du carré voisin pour éviter une marche possible au bord."],
+    DEM_SOURCE_MANUAL_DOWNLOAD: ["La source d'altitude {source} demande un téléchargement manuel ; {expected_name} est absent.", "Téléchargez le fichier à la main dans le dossier du relief, ou passez à Viewfinderpanoramas."],
+    DEM_RASTER_LIBRARY_MISSING: ["Le raster {path} demande la bibliothèque raster optionnelle, qui n'est pas installée.", "Convertissez le relief en .hgt, ou en GeoTIFF non compressé."],
+    DEM_NODATA_UNDECLARED: ["Le raster {path} ne déclare aucune valeur nodata ; -32768 est supposé.", "Rien à faire sauf si des trous apparaissent ; déclarez alors la valeur nodata dans le raster."],
+    DEM_EPSG_UNDECLARED: ["Le raster {path} ne déclare aucun système de coordonnées ; EPSG:4326 est supposé.", "Rien à faire si le raster est en coordonnées géographiques."],
+    DEM_EPSG_UNSUPPORTED: ["Le raster {path} est en EPSG:{epsg} ; seul EPSG:4326 est pris en charge.", "Reprojetez le relief en EPSG:4326 (par exemple gdalwarp -t_srs EPSG:4326)."],
+    DEM_CELL_ASSUMED_OCEAN: ["Le carré {cell} est marqué comme océan dans la carte du monde ; l'altitude y est de 0 m.", "Fournissez un fichier de relief pour ce carré s'il ne s'agit pas de pleine mer."],
+    DEM_CACHE_STALE: ["Le relief en cache de la tuile {tile} ne correspond pas aux réglages de relief actuels.", "Reconstruisez l'étape vecteurs de la tuile."],
+    MESH_TILE_ASSUMED_SEA: ["La tuile {tile} n'a pas de trait de côte et un relief plat ; toute la tuile est traitée comme de la mer.", "Vérifiez le relief et le trait de côte de cette tuile ; forcez la terre avec sea_seed = none."],
+    MESH_QUALITY_RELAXED: ["Triangle4XP n'a pas pu tenir min_angle={min_angle} sur la tuile {tile} ; nouvel essai avec 0.", "Vérifiez les couches OSM signalées comme invalides pour cette tuile."],
+    MESH_WEIGHT_MAP_INCOMPLETE: ["La carte d'affinage du trait de côte de la tuile {tile} est incomplète ({reason}).", "La couche de trait de côte de l'étape vecteurs est réutilisée ; rien à faire."],
+    MASK_NEIGHBOUR_MESH_MISSING: ["La tuile voisine {neighbour} n'a pas de maillage ; les masques de la tuile {tile} peuvent montrer un bord net à cette frontière.", "Construisez d'abord la voisine, ou utilisez son polygone d'eau OSM (--neighbour-water osm)."],
+    MASK_NEIGHBOUR_MESH_UNREADABLE: ["Le maillage voisin {path} est illisible ; il est ignoré pour les masques de la tuile {tile}.", "Reconstruisez le maillage de la voisine."],
+    MASK_DISTANCE_MISSING: ["Le masque de distance {mask} est absent ; la bathymétrie de la tuile {tile} y est plate.", "Les masques de distance s'activent d'eux-mêmes avec l'eau XP12 ; reconstruisez les masques."],
+    MASK_FILE_UNREADABLE: ["Le fichier de masque {path} est illisible ({reason}).", "Supprimez le fichier et reconstruisez les masques de cette tuile."],
+    IMG_BAD_CONTENT_TYPE: ["Le fournisseur {provider} a répondu {content_type} au lieu d'une image pour le carreau {chunk}.", "La source demande une clé ou n'est plus servie ; choisissez-en une autre dans le Plan, et regardez dans Vérifications quelles sources répondent."],
+    IMG_COLOR_FILTER_FAILED: ["Le filtre de couleur {filter} a échoué sur la texture {texture} ; elle est gardée sans filtre.", "Vérifiez la définition du filtre."],
+    IMG_COMBINED_NO_DATA: ["Le fournisseur combiné {provider} n'a aucune couche avec des données pour {texture}.", "Ajoutez une couche de repli au fichier .comb, ou changez de fournisseur pour cette zone."],
+    IMG_EXTENT_UNTESTABLE: ["La couverture de l'emprise {extent} n'a pas pu être testée ({reason}) ; elle est traitée comme sans données.", "Vérifiez les fichiers d'emprise dans le dossier Extents."],
+    IMG_EXTENT_DATA_MISSING: ["L'emprise {extent} demande des données OSM absentes ou vides.", "Téléchargez les données de l'emprise comme l'indique la documentation, ou retirez la couche."],
+    IMG_LOCAL_TILE_MISSING: ["Le fichier d'imagerie locale {path} du fournisseur {provider} est absent.", "Vérifiez le dossier d'imagerie locale de ce fournisseur."],
+    IMG_CUSTOM_URL_MODULE_INVALID: ["Le module de jetons {path} n'a pas pu être chargé ({reason}) ; ses fournisseurs sont indisponibles.", "Corrigez ou retirez le module de jetons."],
+    TEX_ENCODE_FAILED: ["L'encodage DDS de {texture} a échoué avec {encoder} ({reason}).", "Cette texture n'est pas construite. Lancez osxp doctor, qui dit quels encodeurs cette machine possède, et installez-en un qu'il nomme."],
+    TEX_ENCODER_UNAVAILABLE: ["Aucun encodeur DDS n'est disponible ({reason}).", "Lancez osxp doctor, qui dit quels encodeurs cette machine possède, et installez-en un qu'il nomme."],
+    TEX_GEOTIFF_TOOL_MISSING: ["L'export GeoTIFF demande GDAL, qui n'est pas installé.", "Installez GDAL pour l'export GeoTIFF ; les fichiers DDS ne sont pas concernés."],
+    DSF_GLOBAL_SCENERY_COPY_FAILED: ["Le DSF Global Scenery de {tile} n'a pas pu être copié ({reason}).", "Libérez de l'espace disque ou corrigez les droits du magasin d'OrthoStudio XP."],
+    DSF_SOURCE_DECOMPRESS_FAILED: ["Le DSF Global Scenery de {tile} n'a pas pu être décompressé ({reason}).", "Réinstallez la Global Scenery de cette tuile dans X-Plane."],
+    DSF_POOL_OVERFLOW: ["Un groupe de sommets de la tuile {tile} dépasse 65535 entrées.", "Envoyez serve.log avec un rapport de ce que vous construisiez ; le README dit où il se trouve sur chaque système."],
+    DSF_OVERLAY_SOURCE_MISSING: ["Le DSF source des overlays de {tile} est introuvable à {path}.", "Indiquez le dossier d'X-Plane ou le décor source des overlays."],
+    CFG_GLOBAL_FILE_MISSING: ["Aucune configuration globale trouvée à {path} ; les valeurs par défaut sont utilisées.", "Une configuration par défaut est écrite."],
+    CFG_LINE_INVALID: ["Configuration {path}, ligne {line} : {reason}.", "Corrigez la ligne ; OrthoStudio XP vérifie toute la configuration avant de construire."],
+    CFG_TILE_WRITE_FAILED: ["La configuration {path} n'a pas pu être écrite ({reason}).", "Corrigez les droits du fichier."],
+    CFG_ZONE_LIST_INVALID: ["La zone {index} de la tuile {tile} est invalide : {reason}.", "Corrigez la définition de la zone ; les zones sont vérifiées et dessinées avant la construction."],
+    CFG_DEM_SOURCE_INVALID: ["La source d'altitude {source} est inconnue ou illisible.", "Choisissez une source dans la liste, ou un chemin de raster lisible pour custom_dem."],
+    CFG_BUILD_DIR_UNWRITABLE: ["Le dossier de sortie {path} n'est pas accessible en écriture ({reason}).", "Corrigez les droits du dossier ou choisissez un autre dossier de sortie."],
+    NET_CONNECTION_FAILED: ["La connexion à {host} a échoué ({reason}).", "Nouvel essai, avec des pauses de plus en plus longues."],
+    NET_FORBIDDEN: ["Le serveur {host} a refusé la requête (HTTP 403).", "Les téléchargements depuis ce serveur sont suspendus ; attendez avant de réessayer, et vérifiez les conditions d'utilisation du fournisseur."],
+    NET_SERVER_ERROR: ["Le serveur {host} a répondu HTTP {status}.", "Nouvel essai, avec des pauses de plus en plus longues."],
+    NET_UNEXPECTED_STATUS: ["Le fournisseur {provider} a répondu HTTP {status} pour {url}.", "Regardez dans Vérifications si cette source répond, ou choisissez-en une autre dans le Plan."],
+    SYS_ROSETTA_MISSING: ["{tool} est un programme x86_64 et Rosetta 2 n'est pas installé.", "N'installez Rosetta 2 que si vous choisissez cet outil de secours ; OrthoStudio XP n'en a pas besoin."],
+    SYS_OUT_OF_MEMORY: ["L'étape {stage} de la tuile {tile} a manqué de mémoire.", "Fermez d'autres applications ou réduisez le parallélisme (--jobs)."],
   },
   en: {
     TEX_MISSING: ["Some textures could not be downloaded.", "Retry: only the missing ones are requested again."],
@@ -2012,6 +2075,10 @@ export function codeText(code, context = null) {
   if (entry == null) return null;
   const ctx = context && typeof context === "object" ? context : {};
   const words = typeof entry === "function" ? entry(ctx) : entry;
+  // Words naming something the error did not send would show their {hole}: the engine's own
+  // words then (codeWords in app.js), which it wrote for this very error. A code raised in one
+  // place with other facts than elsewhere cannot print a brace to the user.
+  if (words.some((text) => [...String(text).matchAll(/\{(\w+)\}/g)].some(([, key]) => !(key in ctx)))) return null;
   return words.map((text) => interpolate(text, ctx));
 }
 
