@@ -3111,7 +3111,7 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     assert found is not None
     grid = found.group(0)
     assert "osxp-tile-${building.get(name)}" in grid
-    assert grid.index("osxp-tile-installed") < grid.index("osxp-tile-${building.get(name)}")
+    assert grid.index("osxp-tile-${kind}${both}") < grid.index("osxp-tile-${building.get(name)}")
     assert "JSON.stringify([...buildingNow().entries()])" in map_js  # redrawn on change only
     css = (UI / "styles.css").read_text(encoding="utf-8")
     # marks are outlines, never fills (2026-09-18): the tile worked on pulses on its stroke
@@ -3314,17 +3314,19 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert grid is not None
     body = grid.group(0)
-    assert "installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;" in body
+    assert "const kept = installed.has(name) || built.has(name);" in body
+    assert "kept && selected.has(name) ? insetBox(box, 4) : null;" in body
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index("className: `osxp-tile-installed${both}`")
+    green = body.index("className: `osxp-tile-${kind}${both}`")
+    assert 'const kind = installed.has(name) ? "installed" : "built";' in body
     # the blue after the green, the route's ends in their own colour (2026-09-22)
     assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
     assert 'const both = inner ? " is-both" : "";' in body
     assert "for (const b of [box, inner])" in body
     assert "L.rectangle(inner || box," in body
     # too small for both, the blue is left out and the green shows
-    assert "if (selected.has(name) && (inner || !installed.has(name))) {" in body
+    assert "if (selected.has(name) && (inner || !kept)) {" in body
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-installed"]
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-selected"]
@@ -3332,13 +3334,58 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     # whole pixels keep at two pixels of a Retina screen wherever the layer lies
     casing_rule = rules[".plan-map .osxp-tile-casing"]
     assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
-    both_rule = ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both"
+    both_rule = (
+        ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, "
+        ".plan-map .osxp-tile-selected.is-both"
+    )
     assert "stroke-width: 2.5;" in rules[both_rule]
-    marks = ("selected", "installed", "casing")
+    marks = ("selected", "installed", "built", "casing")
     crisp = ", ".join(f".plan-map .osxp-tile-{mark}" for mark in marks)
     assert "shape-rendering: crispEdges;" in rules[crisp]
     for theme in (":root", ':root:not([data-theme="light"])', ':root[data-theme="dark"]'):
         assert "--map-casing:" in rules[theme], theme
+
+
+def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
+    """A user asked to see the tiles built on the map (2026-09-24). The map drew the installed
+    ones only, so a tile built with *Build only*, or taken out of X-Plane with its files kept, was
+    nowhere to be seen. It is drawn in the green of a built tile, dashed since X-Plane does not
+    have it, named in the legend when there is one, and described on hover like an installed one.
+    Chosen as well, it keeps the drawing of an installed tile chosen: the blue inside it. The
+    Library rows already said it (`installed`, `present`): only the page changes. Measured in the
+    page."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    built = map_js[map_js.index("  function builtTiles() {") : map_js.index("  function insetBox(")]
+    assert "!e.installed && e.present !== false && parseTile(e.tile)" in built, (
+        "on the disk, not in X-Plane"
+    )
+    assert ".filter((name) => !installed.has(name))" in built, (
+        "another pack of it in X-Plane: green"
+    )
+    grid = map_js[
+        map_js.index("  function renderGrid() {") : map_js.index("    if (zoom < LABEL_MIN_ZOOM")
+    ]
+    assert "const built = new Set(builtTiles());" in grid
+    assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
+    assert (
+        "showTip" in map_js
+        and "installedTiles().includes(name) || builtTiles().includes(name)" in map_js
+    )
+    legend = map_js[
+        map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
+    ]
+    assert (
+        'if (builtTiles().length) items.push(row("legend-built", t("map.legend_built")));' in legend
+    )
+    changed = map_js[map_js.index("    libraryChanged() {") :]
+    assert "renderLegend();" in changed[: changed.index("},")], "the legend follows the Library"
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "stroke: var(--ok);" in rules[".plan-map .osxp-tile-built"]
+    assert "stroke-dasharray: 7 5;" in rules[".plan-map .osxp-tile-built"]
+    assert "border: 2px dashed var(--ok);" in rules[".legend-built"]
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "map.legend_built" in tables[lang]
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:

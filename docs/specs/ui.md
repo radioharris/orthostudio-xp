@@ -982,6 +982,16 @@ at ZL4 and another from ZL5 (the same user, same day). Measured in the page over
 and Luxembourg, ZL4 to ZL19, twelve sources: one place, one source, one sentence at every zoom.
 The line keeps the language it was written in until the next view is drawn, as it did before.
 
+**A tile built and not in X-Plane is on the map** (a user asked to see the tiles built,
+2026-09-24). The map drew the installed ones only (`installedTiles`), so a tile built with *Build
+only*, or taken out of X-Plane with its files kept, was nowhere to be seen. `builtTiles` reads the
+same Library rows, the ones on the disk (`present`) and not in X-Plane (`installed` false), and
+leaves out a tile another pack of which is installed: that one is green. It is drawn in the green
+of a built tile, dashed since X-Plane does not have it (`osxp-tile-built`), named in the legend
+only when there is one (*Built, not in X-Plane*, redrawn when the Library changes), and described
+on hover like an installed one (`builtSummary`). Chosen as well, it is drawn as an installed tile
+chosen: the blue inside it, over the casing. Only the page changes: the rows already said it.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

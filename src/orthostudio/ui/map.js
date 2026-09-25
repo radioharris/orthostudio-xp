@@ -1147,7 +1147,7 @@ export function createPlanMap(ctx) {
     const lat = Math.floor(clampLat(ev.latlng.lat));
     const lon = Math.floor(wrapLon(ev.latlng.lng));
     const name = tileName(lat, lon);
-    const text = installedTiles().includes(name) ? ctx.builtSummary?.(name) : null;
+    const text = installedTiles().includes(name) || builtTiles().includes(name) ? ctx.builtSummary?.(name) : null;
     if (!text) return hideTip();
     if (!tip) {
       tip = document.createElement("div");
@@ -1980,6 +1980,18 @@ export function createPlanMap(ctx) {
       .map((e) => e.tile);
   }
 
+  /** Tiles built and kept in the Library but not in X-Plane: *Build only*, or taken out of X-Plane
+   * with their files kept. The map drew only the installed ones, so these were nowhere to be seen
+   * (a user asked to see the tiles built, 2026-09-24). A pack gone from the disk is not one. */
+  function builtTiles() {
+    const installed = new Set(installedTiles());
+    return ctx
+      .library()
+      .filter((e) => e && (e.kind == null || e.kind === "ortho") && !e.installed && e.present !== false && parseTile(e.tile))
+      .map((e) => e.tile)
+      .filter((name) => !installed.has(name)); // another pack of the tile is in X-Plane: it is green
+  }
+
   /** `box` ([[south, west], [north, east]]) drawn `px` pixels inside itself at the map's zoom, or
    * null when the tile is too small on the screen for it. */
   function insetBox(box, px) {
@@ -2011,8 +2023,9 @@ export function createPlanMap(ctx) {
     }
     const selected = new Set(ctx.tiles());
     const installed = new Set(installedTiles());
+    const built = new Set(builtTiles());
     const building = buildingNow();
-    for (const name of new Set([...installed, ...selected, ...building.keys()])) {
+    for (const name of new Set([...installed, ...built, ...selected, ...building.keys()])) {
       const c = parseTile(name);
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
@@ -2021,17 +2034,19 @@ export function createPlanMap(ctx) {
       // and from the photo. On the same line the green hid the blue, and a thin blue beside the
       // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the green:
       // from far away the map is there to show which tiles are installed (the same user).
-      const inner = installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;
+      const kept = installed.has(name) || built.has(name); // a pack of the tile is on the disk
+      const inner = kept && selected.has(name) ? insetBox(box, 4) : null;
       if (inner) {
         for (const b of [box, inner]) {
           layers.tiles.addLayer(L.rectangle(b, { pane: "osxpGrid", className: "osxp-tile-casing", interactive: false, fill: false, weight: 5 }));
         }
       }
       const both = inner ? " is-both" : "";
-      if (installed.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
+      if (kept) {
+        const kind = installed.has(name) ? "installed" : "built";
+        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}`, interactive: false, fill: false, weight: 3 }));
       }
-      if (selected.has(name) && (inner || !installed.has(name))) {
+      if (selected.has(name) && (inner || !kept)) {
         // The route's departure and arrival in the route's own colour: on a plan across Europe
         // every square was the same blue and the two ends were lost in it (a user, 2026-09-22).
         const end = routeEnds.has(name) ? " is-route-end" : "";
@@ -2270,7 +2285,9 @@ export function createPlanMap(ctx) {
     // The legend is rebuilt on zoom and on a toggle: the borders checkbox keeps the focus it had.
     const hadFocus = document.activeElement !== null && box.querySelector(".legend-toggle input") === document.activeElement;
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
-    const items = [row("legend-installed", t("map.legend_installed")), row("legend-selected", t("map.legend_selected"))];
+    const items = [row("legend-installed", t("map.legend_installed"))];
+    if (builtTiles().length) items.push(row("legend-built", t("map.legend_built")));
+    items.push(row("legend-selected", t("map.legend_selected")));
     const view = h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) }));
     if ((ctx.route?.() || {}).points?.length >= 2) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
@@ -2752,6 +2769,7 @@ export function createPlanMap(ctx) {
     },
     libraryChanged() {
       renderGrid();
+      renderLegend(); // it names the tiles built and not in X-Plane only when there are some
     },
     /** The running build moved on: its tiles are drawn again when what it does with them changed
      * (a progress report alone changes nothing on the map). */
