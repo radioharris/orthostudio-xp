@@ -18,6 +18,7 @@ import test_api_fakes as fakes
 from orthostudio.api import serve as serve_mod
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
+from orthostudio.codemark import code_mark
 from orthostudio.fsutil import reveal_command
 from orthostudio.install.library import Library
 from orthostudio.model import TileRef
@@ -123,10 +124,17 @@ def test_a_second_launch_finds_no_osxp_on_a_free_port() -> None:
 
 class _RunningOsxp:
     """A stand-in for an OrthoStudio XP already serving a port: its ``/api/status`` gives
-    ``api_level`` and, when ``root`` is given, the package folder it runs; its ``/api/quit``
-    answers ``quit_status`` and, on 200, stops serving."""
+    ``api_level`` and, when ``root`` is given, the package folder it runs and the mark of the code
+    it started with (``code``, the files as they are by default); its ``/api/quit`` answers
+    ``quit_status`` and, on 200, stops serving."""
 
-    def __init__(self, api_level: int, quit_status: int = 200, root: str | None = None) -> None:
+    def __init__(
+        self,
+        api_level: int,
+        quit_status: int = 200,
+        root: str | None = None,
+        code: str | None = None,
+    ) -> None:
         import json
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -146,7 +154,7 @@ class _RunningOsxp:
             def do_GET(self) -> None:
                 doc: dict = {"api_level": api_level}
                 if root is not None:
-                    doc["engine"] = {"root": root, "pid": 1}
+                    doc["engine"] = {"root": root, "pid": 1, "code": code or code_mark()}
                 self._answer(200, doc)
 
             def do_POST(self) -> None:
@@ -182,7 +190,8 @@ def test_a_second_launch_opens_the_osxp_already_running() -> None:
     running = _RunningOsxp(API_LEVEL, root=root)
     try:
         status = serve_mod.running_osxp(running.port)
-        assert status == {"api_level": API_LEVEL, "engine": {"root": root, "pid": 1}}
+        engine = {"root": root, "pid": 1, "code": code_mark()}
+        assert status == {"api_level": API_LEVEL, "engine": engine}
         serve_mod.serve(port=running.port, open_browser=False)  # returns at once: nothing starts
         assert running.quits == 0 and not running.stopped
     finally:
@@ -233,7 +242,8 @@ def test_a_second_launch_recognises_an_osxp_slow_to_give_its_status(
 
     from orthostudio.api.app import API_LEVEL
 
-    doc = {"api_level": API_LEVEL, "engine": {"root": str(serve_mod.package_root()), "pid": 1}}
+    engine = {"root": str(serve_mod.package_root()), "pid": 1, "code": code_mark()}
+    doc = {"api_level": API_LEVEL, "engine": engine}
     running = _Answering({"/api/engine": (0.0, 200, doc), "/api/status": (3.0, 200, doc)})
     opened: list[str] = []
     monkeypatch.setattr(serve_mod.webbrowser, "open", opened.append)
@@ -305,6 +315,35 @@ def test_another_installation_takes_the_place_of_the_running_one(root: str | Non
         assert busy.quits == 1 and not busy.stopped
     finally:
         busy.stop()
+
+
+def test_a_checkout_opened_again_after_a_change_runs_the_new_code(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A checkout's engine loads its code when it starts, and ``osxp serve --open`` run again after
+    a change showed that engine: the new page on the old code, and a pilot tested a fix that was
+    not running (2026-09-25). The same installation started before its files changed is asked to
+    quit, as recent as it is; with the same files, it stays."""
+    from orthostudio.api.app import API_LEVEL
+
+    root = str(serve_mod.package_root())
+    running = _RunningOsxp(API_LEVEL, root=root, code="started-before")
+    try:
+        status = serve_mod.running_osxp(running.port)
+        assert status is not None
+        assert serve_mod.take_over(running.port, status, timeout_s=10.0) is True
+        assert running.quits == 1 and running.stopped
+    finally:
+        running.stop()
+    assert "started before its code changed was running: it stopped" in capsys.readouterr().out
+    same = _RunningOsxp(API_LEVEL, root=root)
+    try:
+        status = serve_mod.running_osxp(same.port)
+        assert status is not None
+        assert serve_mod.take_over(same.port, status, timeout_s=1.0) is False
+        assert same.quits == 0 and not same.stopped
+    finally:
+        same.stop()
 
 
 def test_a_launch_stops_an_older_osxp_and_takes_its_place() -> None:

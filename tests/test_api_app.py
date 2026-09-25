@@ -14,6 +14,7 @@ import pytest
 import test_api_fakes as fakes
 from orthostudio.api.app import API_LEVEL, create_app
 from orthostudio.api.jobs import JobManager
+from orthostudio.codemark import code_mark
 from orthostudio.net.fetch import FetchRequest, FetchResult
 from orthostudio.pipeline.build import BuildEnv
 from test_api_fakes import FakeBuild, FakeIndex, client_for
@@ -60,8 +61,10 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         assert doc["api_level"] == API_LEVEL  # the page asks for a restart below its own level
         from orthostudio.api.serve import package_root
 
-        # which installation serves: another one launched takes its place (serve.take_over)
-        assert doc["engine"] == {"root": str(package_root()), "pid": os.getpid()}
+        # which installation serves, and the code it started with: another one launched, or this
+        # one after its files changed, takes its place (serve.take_over)
+        engine = {"root": str(package_root()), "pid": os.getpid(), "code": code_mark()}
+        assert doc["engine"] == engine
         r = await c.get("/api/status")
         assert r.json()["language"] == "en"
         r = await c.get("/api/providers")

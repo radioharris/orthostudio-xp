@@ -32,6 +32,7 @@ from pathlib import Path
 from platformdirs import user_log_dir
 
 from orthostudio import __version__
+from orthostudio.codemark import code_mark
 from orthostudio.home import osxp_home
 
 __all__ = [
@@ -178,10 +179,11 @@ def _listening(port: int) -> bool:
 
 
 def engine_here(port: int = ENGINE_PORT, *, timeout_s: float = 5.0) -> bool:
-    """Whether the OrthoStudio XP already serving ``port`` is this installation at this version
-    (``GET /api/engine``: the same package folder, the same version). ``False`` when another one,
-    an older one, or something else holds the port: the usual start then decides (it is asked to
-    stop, :func:`orthostudio.api.serve.take_over`).
+    """Whether the OrthoStudio XP already serving ``port`` is this installation at this version,
+    running the files on disk (``GET /api/engine``: the same package folder, the same version, the
+    same mark of its code, :mod:`orthostudio.codemark`). ``False`` when another one, an older one,
+    one started before its files changed, or something else holds the port: the usual start then
+    decides (it is asked to stop, :func:`orthostudio.api.serve.take_over`).
 
     Asked before the engine's imports, which take seconds: a user on Windows who closed the
     browser and opened the app again saw nothing come, and ended the engine in the Task Manager
@@ -200,6 +202,7 @@ def engine_here(port: int = ENGINE_PORT, *, timeout_s: float = 5.0) -> bool:
             doc.get("version") == __version__
             and isinstance(root, str)
             and Path(root).resolve() == Path(__file__).resolve().parent
+            and engine.get("code") == code_mark()
         )
     except (OSError, ValueError, AttributeError):
         return False

@@ -4,8 +4,10 @@ OrthoStudio XP and opens its page, no terminal.
 For a checkout of this repository on macOS (``uv sync`` done): the app runs the checkout's
 ``.venv/bin/orthostudio serve --open``, writing its log to
 ``~/Library/Logs/OrthoStudio XP/serve.log``, so it follows every change of the code. Opening it
-while OrthoStudio XP already runs opens the running one's page; *Quit* in the page, or *Quit* on
-the app's Dock icon, stops it. The installers, with Python inside, are ``build.py``'s.
+while OrthoStudio XP already runs opens the running one's page, when it runs this checkout's files
+as they are; one started before they changed is stopped first, a build running in it excepted
+(``orthostudio.codemark``). *Quit* in the page, or *Quit* on the app's Dock icon, stops it. The
+installers, with Python inside, are ``build.py``'s.
 
     uv run python tools/package/checkout_app.py
     # then drag "dist/OrthoStudio XP.app" to Applications or the Dock

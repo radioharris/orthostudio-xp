@@ -238,6 +238,10 @@ On macOS, `uv run python tools/package/checkout_app.py` makes `dist/OrthoStudio 
 that runs this checkout. `uv run python tools/package/build.py --check` builds and checks the
 installer of the system it runs on (`docs/specs/packaging.md`).
 
+Started again while it runs, OrthoStudio XP shows the running one, unless the code changed in
+between (a pull, another branch, an edit): the one started before is then stopped and the new
+code starts, a build running in it excepted.
+
 Quit X-Plane before installing or removing tiles: OrthoStudio XP refuses to change the scenery while
 it runs.
 

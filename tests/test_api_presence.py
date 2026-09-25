@@ -23,6 +23,7 @@ from orthostudio.api import serve as serve_mod
 from orthostudio.api.app import API_LEVEL, create_app
 from orthostudio.api.jobs import JobManager
 from orthostudio.api.presence import QUIT_AFTER_S, TICK_S, Presence, quit_when_closed
+from orthostudio.codemark import code_mark
 from test_api_fakes import FakeBuild, client_for
 
 anyio_backend = fakes.anyio_backend
@@ -137,6 +138,7 @@ async def test_engine_says_at_once_which_osxp_serves_the_port(app) -> None:  # t
     assert doc["version"] == __version__ and doc["api_level"] == API_LEVEL
     assert doc["engine"]["root"] == str(serve_mod.package_root())
     assert isinstance(doc["engine"]["pid"], int)
+    assert doc["engine"]["code"] == code_mark()  # the files it started with
     assert doc["active_job"] is None and doc["can_quit"] is False
 
 
