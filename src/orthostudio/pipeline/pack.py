@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.errors import OsxpError
-from orthostudio.fsutil import atomic_link_or_copy, atomic_write_text
+from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
 from orthostudio.home import default_store_root, default_tiles_root
 from orthostudio.install import (
@@ -52,6 +52,7 @@ from orthostudio.install.scenery_packs import (
     pack_kind,
 )
 from orthostudio.model import OVERLAY_PACK, PACK_PREFIX, TileRef, pack_dir_name
+from orthostudio.textures.ter import with_decal
 
 __all__ = [
     "LEFT_OVERLAY",
@@ -140,12 +141,18 @@ class PackParams(RuleParams):
     photo_saturation: float = 0.0
     """Colours of the square, written into the manifest so that the page can say when the tile in
     X-Plane no longer matches its setting (2026-09-18)."""
+    decal: str = ""
+    """The decal the terrain files name (``expert.decal``) when it is not Ortho4XP's, which the DSF
+    step writes; empty = that one. Given only to a tile that has decals at all, so that choosing
+    another rebuilds no pack without them."""
 
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if not (self.photo_brightness or self.photo_contrast or self.photo_saturation):
             for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
                 doc.pop(name, None)  # a plain pack keeps the key it had
+        if not self.decal:
+            doc.pop("decal", None)  # Ortho4XP's decal: the key of every pack built before
         return doc
 
 
@@ -336,6 +343,7 @@ def write_pack(
     overlay_file: Path | None,
     link: bool = True,
     tile_cfg: str | None = None,
+    decal: str = "",
 ) -> PackFiles:
     """Assemble ``<out_root>/zOrthoStudio_<tile>/`` from the DSF and textures artefacts.
 
@@ -344,7 +352,8 @@ def write_pack(
     Files the new DSF no longer references are removed from ``textures/`` and ``terrain/``;
     an existing DSF with different bytes becomes ``.dsf.bak`` (DDS are replaced without a
     backup). ``tile_cfg`` (the text of the 44 tile variables) is written as
-    ``tile_settings.cfg``.
+    ``tile_settings.cfg``. ``decal``, when given, is named in the terrain files in place of
+    Ortho4XP's (``with_decal``).
     """
     out_root = Path(out_root)
     pack_dir = out_root / pack_dir_name(tile)
@@ -375,8 +384,10 @@ def write_pack(
             wanted_ter.add(src.name)
             dest = terrain_dest / src.name
             text = src.read_bytes()
+            if decal:
+                text = with_decal(text.decode("ascii"), decal).encode("ascii")
             if not dest.is_file() or dest.read_bytes() != text:
-                atomic_link_or_copy(src, dest, link=False)
+                atomic_write_bytes(dest, text)
                 changed += 1
     for stale in terrain_dest.glob("*.ter"):
         if stale.name not in wanted_ter:
@@ -563,6 +574,7 @@ def assemble_pack(
     tile_cfg: str = "",
     photo: dict[str, float] | None = None,
     built: dict[str, Any] | None = None,
+    decal: str = "",
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact)."""
@@ -575,6 +587,7 @@ def assemble_pack(
         overlay_file=overlay.path,
         link=link,
         tile_cfg=tile_cfg or None,
+        decal=decal,
     )
     artefacts: dict[str, ArtefactEntry] = {}
     for label, inp in (("dsf", dsf), ("textures", textures), ("overlay", overlay)):
@@ -1515,6 +1528,7 @@ def _tile_pack(ctx: RunContext) -> None:
             "saturation": params.photo_saturation,
         },
         built=env.built,
+        decal=params.decal,
     )
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 

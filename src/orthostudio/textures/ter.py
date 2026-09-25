@@ -11,6 +11,7 @@ import enum
 from dataclasses import dataclass
 from typing import Literal
 
+from orthostudio.decals import DEFAULT_DECAL, decal_lib
 from orthostudio.imagery.grid import TextureId, texture_name, tile_to_wgs84, webmercator_pixel_size
 
 __all__ = [
@@ -26,9 +27,11 @@ __all__ = [
     "ter_filename",
     "ter_text",
     "texture_dds_name",
+    "with_decal",
 ]
 
-DECAL_LIB = "lib/g10/decals/maquify_2_green_key.dcl"
+DECAL_LIB = decal_lib(DEFAULT_DECAL)
+"""Ortho4XP's decal, which the DSF step writes; the pack names the one chosen (``with_decal``)."""
 WATER_TRANSITION_PNG = "water_transition.png"
 """Copied by Ortho4XP from ``Utils/`` into ``textures/`` whenever an inland-water overlay exists."""
 TEST_TEXTURE = "test_texture.dds"
@@ -151,3 +154,14 @@ def ter_text(
     if kind.is_water or not params.terrain_casts_shadows:
         lines.append("NO_SHADOW")
     return "\n".join(lines) + "\n"
+
+
+def with_decal(text: str, decal: str) -> str:
+    """``text`` of a terrain file naming ``decal`` where it names Ortho4XP's.
+
+    The DSF step writes every terrain file with Ortho4XP's decal and the pack names the one
+    chosen in Settings, so that changing it rewrites the pack's terrain files alone, never the
+    DSF nor the textures: what setdecal does to a tile already built (a user asked for the choice,
+    2026-09-25). A file without the line (water, decals off) comes back as it is.
+    """
+    return text.replace(f"DECAL_LIB {DECAL_LIB}\n", f"DECAL_LIB {decal_lib(decal)}\n")

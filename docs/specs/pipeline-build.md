@@ -68,7 +68,7 @@ id gets a `#2` suffix.
 | dsf | `tile.dsf@1` | cpu, 3 GB | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
 | textures | `tile.textures@1` | net (+ its own encoding pool), `workers x 0.25 GB` | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
 | overlay | `tile.overlay@1` | subprocess, 0.3 GB | `OverlayParams` = `OverlayExclusions` + `tile`; values from `config` / the spec fields, else the OrthoStudio XP defaults (`overlay_settings`) | `source` = the Global Scenery DSF, by digest | file: the overlay DSF |
-| pack | `tile.pack@1` | io | `PackParams`: `tile`, `provider`, `zl`, `out_dir`, `link`, `tile_cfg` (the text of `Ortho4XP_<tile>.cfg`: the 44 tile variables the build consumed) | `dsf`, `textures`, `overlay` (None with `--no-overlay`) | file `orthostudio.toml` (the manifest, also written in the pack) |
+| pack | `tile.pack@1` | io | `PackParams`: `tile`, `provider`, `zl`, `out_dir`, `link`, `tile_cfg` (the text of `Ortho4XP_<tile>.cfg`: the 44 tile variables the build consumed), `decal` (the decal chosen when it is not Ortho4XP's, left out of the key when empty) | `dsf`, `textures`, `overlay` (None with `--no-overlay`) | file `orthostudio.toml` (the manifest, also written in the pack) |
 | install | `tile.install@1` | io | `InstallParams`: `tile`, `custom_scenery`, `link` | `pack` | file `install.json` (receipt) |
 
 ### 2.1 Keys and what changes what
@@ -138,12 +138,18 @@ idempotent.
 ```
 <out>/zOrthoStudio_+43+005/
   Earth nav data/+40+000/+43+005.dsf      hard link (copy across file systems) of the DSF artefact
-  terrain/*.ter                           copies (1-2 kB each)
+  terrain/*.ter                           copies (1-2 kB each), naming the decal chosen
   textures/*.dds, water_transition.png    hard links of the textures artefact
   orthostudio.toml                        manifest (section 3)
   tile_settings.cfg                       the 44 tile variables the build consumed
 <out>/yOrthoStudio_Overlays/Earth nav data/+40+000/+43+005.dsf   hard link of the overlay artefact
 ```
+
+The terrain files come from the DSF artefact, which writes Ortho4XP's decal; the pack names the
+one chosen in Settings in its place (`PackParams.decal`, `with_decal`). It is given only to a tile
+with decals and left out of the key when it is Ortho4XP's, so no pack built before moves; another
+choice assembles the pack again while the DSF and the textures hit, as setdecal rewrites a built
+tile (a user asked for the choice, 2026-09-25; measured at a second, 2026-09-26).
 
 An existing DSF of a different content becomes `<name>.dsf.bak` (Ortho4XP convention, `write_dsf`;
 the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per

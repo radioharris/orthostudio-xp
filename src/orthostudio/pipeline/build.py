@@ -33,6 +33,7 @@ import blake3
 from pydantic import Field
 
 from orthostudio import __version__
+from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
 from orthostudio.dem.sources import (
@@ -269,6 +270,25 @@ def _check_overlay_setting(name: str, value: Any) -> Any:
             message=f"{name}={value!r}: {exc}",
         ) from None
     return getattr(checked, name)
+
+
+def _pack_decal(cfg: Mapping[str, Any]) -> str:
+    """The decal the pack names in place of Ortho4XP's (``PackParams.decal``), or ``""``.
+
+    Given only to a tile with decals at all, so that a choice made with them off rebuilds no pack.
+    A name X-Plane 12 does not have (``--set decal=...``) is refused before anything is built.
+    """
+    if not cfg.get("use_decal_on_terrain"):
+        return ""
+    decal = str(cfg.get("decal") or DEFAULT_DECAL)
+    if decal not in DECALS:
+        raise OsxpError(
+            "CFG_VALUE_INVALID",
+            context={"name": "decal", "value": decal, "type": "-", "range": "-"},
+            message=f"decal={decal!r} is not one of the decals X-Plane 12 ships.",
+            remedy="Choose one in Settings, For experts, Light and ground.",
+        )
+    return "" if decal == DEFAULT_DECAL else decal
 
 
 @dataclass(slots=True)
@@ -1988,6 +2008,7 @@ def declare(
                 out_dir=out_dir,
                 link=spec.link,
                 tile_cfg=tile_cfg_text(cfg),
+                decal=_pack_decal(cfg),
             ),
             {"dsf": dsf, "textures": textures, "overlay": overlay},
             kind="io",
@@ -2523,6 +2544,7 @@ def _verify_effects(
             },
             # the facts of the pack it replaces: a repair puts back what was, it decides nothing
             built=manifest.built or None,
+            decal=cast(PackParams, nodes.pack.params).decal,
         )
         repaired.append("pack")
     installed = False

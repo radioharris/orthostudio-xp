@@ -17,6 +17,7 @@ from orthostudio.textures.ter import (
     ter_filename,
     ter_text,
     texture_dds_name,
+    with_decal,
 )
 
 T = TextureId(til_x=8416, til_y=5984, zl=14, provider="BI")
@@ -147,3 +148,17 @@ def test_five_decimals_and_int_truncation() -> None:
     line = _lines(ter_text(t, TerKind.LAND, lat_med=lat, lon_med=lon, params=DEFAULTS))[4]
     assert line == f"LOAD_CENTER {lat:.5f} {lon:.5f} {load_center_size(lat, 14)} 4096"
     assert lon == -180.0 + 8 * 360 / 2**14
+
+
+def test_with_decal_names_the_one_chosen_where_ortho4xps_is() -> None:
+    """The DSF step writes Ortho4XP's decal and the pack names the one chosen in Settings: the
+    land's line changes and nothing else, water has no line to change (2026-09-26)."""
+    on = TerParams(use_decal_on_terrain=True)
+    lat, lon = CENTER
+    land = ter_text(T, TerKind.LAND, lat_med=lat, lon_med=lon, params=on)
+    water = ter_text(T, TerKind.WATER_OVERLAY, lat_med=lat, lon_med=lon, params=on)
+    assert "DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\n" in land
+    grass = with_decal(land, "grass_and_stony_dirt_1.dcl")
+    assert grass == land.replace("maquify_2_green_key.dcl", "grass_and_stony_dirt_1.dcl")
+    assert with_decal(land, "maquify_2_green_key.dcl") == land
+    assert "DECAL_LIB" not in water and with_decal(water, "grass_and_stony_dirt_1.dcl") == water

@@ -270,6 +270,19 @@ clears everything, and *Go back to the colours already built* gives each square 
 tile you already have on the disk -- the Library says which tiles no longer match, and this is how
 you agree with them again without building anything.
 
+**The grain of the ground.** Seen from very low, a photo is blurred: at ZL16 a pixel covers about
+two metres of ground. Under *For experts*, *Light and ground*, *Fine ground detail at very low
+height (decals)* has X-Plane lay a decal over it: a small image of grass, shrubs or stones repeated
+on the ground and mixed with the photo according to its colours, unseen from higher up. *Ground
+decal* chooses which one among those X-Plane 12 ships: Ortho4XP's `maquify_2_green_key.dcl` by
+default (shrubs on what is green, stony dirt elsewhere), `grass_and_stony_dirt_1.dcl` for rough
+grass instead of shrubs, or any other of the list the setdecal tool offers, less five names X-Plane
+12 no longer has. Every terrain file of a tile names its decal, which is all setdecal changes; here
+the tiles already built take the new one at their next build, which writes their terrain files
+again and nothing else: no download, no texture encoded again, about a second a tile. The decal
+goes on land only unless *Fine ground detail on the sea too* is on; lakes and rivers never have
+one.
+
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken
 out of X-Plane with its files kept) is outlined in dashed pink; its line in the legend is a box to

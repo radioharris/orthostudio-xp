@@ -428,7 +428,7 @@ export const EXPERT_GROUPS = [
     fields: ["advanced.curvature_tol", "advanced.limit_tris", "expert.min_angle", "expert.apt_curv_tol", "expert.apt_curv_ext", "expert.coast_curv_tol", "expert.coast_curv_ext", "advanced.apt_smoothing_pix", "expert.patches_dir"],
   },
   { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
-  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
+  { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.decal", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
   // Where the map data of a tile comes from, before the public servers are asked (osm-prepared.md).
   { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token"] },
@@ -475,6 +475,7 @@ const FIELD_TEXT = {
   "expert.normal_map_strength": [() => t("settings.x.normals"), () => t("settings.x.normals_hint")],
   "expert.use_decal_on_terrain": [() => t("settings.x.decal"), () => t("settings.x.decal_hint")],
   "expert.decal_on_sea": [() => t("settings.x.decal_sea"), () => t("settings.x.decal_sea_hint")],
+  "expert.decal": [() => t("settings.x.decal_name"), () => t("settings.x.decal_name_hint")],
   "expert.photo_brightness": [() => t("settings.x.photo_brightness"), () => t("settings.x.photo_brightness_hint")],
   "expert.photo_contrast": [() => t("settings.x.photo_contrast"), () => t("settings.x.photo_contrast_hint")],
   "expert.photo_saturation": [() => t("settings.x.photo_saturation"), () => t("settings.x.photo_saturation_hint")],
@@ -488,6 +489,7 @@ const FIELD_TEXT = {
 };
 
 const OPTION_TEXT = {
+  "expert.decal": { "maquify_2_green_key.dcl": () => t("settings.x.decal_ortho4xp") },
   "advanced.road_level": {
     0: () => t("settings.x.road_0"),
     1: () => t("settings.x.road_1"),

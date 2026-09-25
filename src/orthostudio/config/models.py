@@ -13,6 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orthostudio.config.hints import ORTHO4XP_HINTS
+from orthostudio.decals import DECALS, DEFAULT_DECAL
 
 __all__ = [
     "LEVELS",
@@ -294,6 +295,15 @@ class Expert(BaseModel):
         "",
         hint="The decals go on land only. With this on they go on the sea as well, as Ortho4XP "
         "writes them; lakes and rivers never have them.",
+    )
+    decal: Literal[DECALS] = _field(  # type: ignore[valid-type]
+        DEFAULT_DECAL,
+        "expert",
+        None,
+        "",
+        hint="Which of X-Plane 12's decals the ground takes, when decals are on: "
+        "maquify_2_green_key.dcl is Ortho4XP's. A tile already built takes another at its next "
+        "build, which writes its terrain files again and nothing else.",
     )
     photo_brightness: float = _field(
         0.0,

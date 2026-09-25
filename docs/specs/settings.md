@@ -130,6 +130,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `photo_contrast` | float `[-0.5, 0.5]` | - | 0 | – | Contrast of the photo, used when `essential.photo_look` is `custom`. |
 | `photo_saturation` | float `[-1, 0.5]` | - | 0 | – | Colour of the photo, used when `essential.photo_look` is `custom`; -1 is grey. |
 | `decal_on_sea` | bool | - | false | – | The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them. |
+| `decal` | one of 67 names | - | `maquify_2_green_key.dcl` | none | OrthoStudio XP's own: which of X-Plane 12's decals the terrain files name when decals are on (`orthostudio/decals.py`: the list of the setdecal tool, less the five names X-Plane 12.4.4 no longer exports). The pack writes it, so another choice assembles the pack again and builds nothing else (`pipeline-build.md` 2.3). |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
 | `ovl_exclude_net` | list of int or str | - | `[]` | `ovl_exclude_net` | Indices of road types which one would like to left aside in the extraction of overlays. [...] |
 | `check_updates` | bool | - | `true` | – | OrthoStudio XP's own: asks GitHub once a day which version is the latest, and says at the top of the page when it is newer than this one (`GET /api/update`). GitHub then sees the computer's address, as the imagery servers do; nothing is downloaded or installed. |

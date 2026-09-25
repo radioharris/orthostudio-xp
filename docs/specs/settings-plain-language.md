@@ -116,6 +116,7 @@ Findings that change what the page may say (details in section 6):
 | 42 | `expert.normal_map_strength` | `normal_map_strength` | 1 | Folded | Sun shading of slopes |
 | 43 | `expert.use_decal_on_terrain` | `use_decal_on_terrain` | false | Folded | Fine ground detail at very low height (decals) |
 | 43b | `expert.decal_on_sea` | – | false | Folded | Fine ground detail on the sea too |
+| 43c | `expert.decal` | none | `maquify_2_green_key.dcl` | Folded (list) | Ground decal |
 | 44 | `expert.ovl_exclude_pol` | `ovl_exclude_pol` | `[0]` | Folded (checklist) | X-Plane objects to remove |
 | 45 | `expert.ovl_exclude_net` | `ovl_exclude_net` | `[]` | Folded | X-Plane networks to remove |
 
@@ -1083,7 +1084,8 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 
 - **Does.** Adds `DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl` to the land and masked-sea
   `.ter` files, not to inland water (Ortho4XP `O4_DSF_Utils.py:342-344`; OrthoStudio XP
-  `textures/ter.py:144-146`). The hint names `maquify_1` and says "all but water".
+  `textures/ter.py:144-146`). The hint names `maquify_1` and says "all but water". Which decal is
+  `expert.decal` (4.17c).
 - **In X-Plane.** Expected: fine grain on the ground seen from very low; whether X-Plane 12 still
   ships that decal is Q5.
 - **Recommendation. Folded.**
@@ -1101,6 +1103,27 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
   Inland water never has it, in either case.
 - **Recommendation. Folded**, next to the decal setting it completes.
 - **Expert label.** EN *Fine ground detail on the sea too* · FR *Grain du sol aussi sur la mer*.
+
+### 4.17c `expert.decal` (OrthoStudio XP only)
+
+No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/decals.py`).
+
+- **Does.** Names the decal of the `DECAL_LIB` line, `lib/g10/decals/<name>`, when
+  `use_decal_on_terrain` is on; off, it reaches nothing. The list is the one of setdecal, a tool of
+  the X-Plane.Org forum that rewrites that line in tiles already built, whose author asked for the
+  choice here (2026-09-25), less `grass_and_asphalt_3`, `mid_freq_test`, `rail_dry_drp`,
+  `rail_dry_grass_emb` and `rail_dry_grd`, which X-Plane 12.4.4 no longer exports. A name outside
+  the list (`--set decal=...`) is `CFG_VALUE_INVALID` before anything is built.
+- **In X-Plane.** Laminar's own words for the two in question: `maquify_2_green_key` draws shrubby
+  vegetation on what is vaguely green and stony dirt elsewhere, in a 25 m pattern;
+  `grass_and_stony_dirt_1`, setdecal's default, rough grass on greenish areas and stony dirt
+  elsewhere, in 9 m.
+- **Cost of a change.** The pack names it (`PackParams.decal`, `with_decal`): the DSF and the
+  textures are hits and the pack alone is assembled again, measured at a second on +43+005 at ZL14
+  (39 terrain files, 17 with a decal). Ortho4XP's decal keeps the key of every pack built before.
+- **Recommendation. Folded (list)**, under the two decal switches.
+- **Expert label.** EN *Ground decal* · FR *Decal du sol*; the default reads
+  *maquify_2_green_key.dcl (Ortho4XP)*.
 
 ### 4.18 `expert.ovl_exclude_pol`
 

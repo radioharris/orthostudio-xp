@@ -211,6 +211,27 @@ def test_pack_params_carry_the_tile_cfg(tmp_path: Path, env: BuildEnv) -> None:
     assert "ovl_exclude" not in params.tile_cfg
 
 
+def test_the_decal_reaches_the_pack_alone(tmp_path: Path, env: BuildEnv) -> None:
+    """Another decal changes the pack's key and nothing upstream: the DSF and the textures are
+    hits and the terrain files alone are written again, setdecal's way (a user asked, 2026-09-25).
+    Ortho4XP's decal keeps every key of before, and with decals off the choice reaches nothing."""
+
+    def keys(**config: object) -> dict[str, dict]:
+        (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+        return {role: g.by_role[role].params.canonical() for role in ("dsf", "textures", "pack")}
+
+    plain = keys()
+    ortho4xp = keys(use_decal_on_terrain=True)
+    grass = keys(use_decal_on_terrain=True, decal="grass_and_stony_dirt_1.dcl")
+    assert "decal" not in plain["pack"] and "decal" not in ortho4xp["pack"]
+    assert grass["pack"].pop("decal") == "grass_and_stony_dirt_1.dcl"
+    assert grass == ortho4xp
+    assert keys(decal="grass_and_stony_dirt_1.dcl") == plain
+    with pytest.raises(OsxpError) as exc:
+        keys(use_decal_on_terrain=True, decal="rail_dry_grd.dcl")  # setdecal's, gone from 12.4.4
+    assert exc.value.code == "CFG_VALUE_INVALID"
+
+
 def test_batch_fields_must_agree(tmp_path: Path) -> None:
     """``BuildEnv.create`` refuses specs that disagree on what is resolved once per batch."""
     a = _spec(tmp_path)
