@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import selectors
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +21,7 @@ import pytest
 
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
+from orthostudio.sources import osm
 from orthostudio.sources.osm import (
     LAYERS,
     MAX_ATTEMPTS,
@@ -307,6 +309,66 @@ def client(transport: ScriptedTransport, **kw: object) -> OverpassClient:
 
 def run(coro: object) -> object:
     return asyncio.run(coro)  # type: ignore[arg-type]
+
+
+# -- a clock that moves only when the client waits -------------------------------------------
+
+
+class VirtualClock:
+    """Time that passes only while the client waits, and then exactly as long as it asked.
+
+    The client is not given a clock: it reads ``time.monotonic()`` through its module and waits
+    with ``asyncio.sleep`` on the loop it runs on. The ``clock`` fixture puts this clock in the
+    first place and :meth:`run` in the second, where a loop with nothing to do moves the clock to
+    its next timer instead of waiting for it. Only with a transport that does no I/O, such as
+    :class:`ScriptedTransport`: the loop would jump over a real wait too.
+
+    A test of the rounds on the machine's clock counts what a busy machine lets them do, and one
+    failed a full parallel run that way (2026-09-25).
+    """
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def run(self, coro: Coroutine[object, object, None]) -> None:
+        """``asyncio.run`` on an event loop that keeps this clock."""
+        asyncio.run(coro, loop_factory=lambda: _VirtualLoop(self))
+
+
+class _VirtualSelector(selectors.DefaultSelector):
+    """Looks for I/O without waiting, and when there is none moves the clock over the wait."""
+
+    def __init__(self, clock: VirtualClock) -> None:
+        super().__init__()
+        self.clock = clock
+
+    def select(self, timeout: float | None = None) -> list[tuple[selectors.SelectorKey, int]]:
+        ready = super().select(0)
+        if not ready and timeout:
+            self.clock.now += timeout
+        return ready
+
+
+class _VirtualLoop(asyncio.SelectorEventLoop):
+    """An event loop whose time is the clock's."""
+
+    def __init__(self, clock: VirtualClock) -> None:
+        self.clock = clock
+        super().__init__(_VirtualSelector(clock))
+
+    def time(self) -> float:
+        return self.clock.now
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> VirtualClock:
+    """The client's clock for this test: a :class:`VirtualClock`, to run the client with."""
+    virtual = VirtualClock()
+    monkeypatch.setattr(osm, "time", virtual)
+    return virtual
 
 
 # -- client behaviour ------------------------------------------------------------------------
@@ -1000,30 +1062,40 @@ def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
     assert took < 5.0, f"it waited {took:.1f} s for rounds the caller would never see"
 
 
-def test_the_deadline_is_the_budget_and_more_room_is_more_rounds() -> None:
+def test_the_deadline_is_the_budget_and_more_room_is_more_rounds(clock: VirtualClock) -> None:
     """Since 0.1.15 the caller's deadline is what bounds the asking, not a count of our own:
-    more room is more attempts, and no deadline at all is one round and the answer."""
+    more room is more attempts, and no deadline at all is one round and the answer.
+
+    On the machine's clock it failed a full parallel run with ``10 <= 9`` (2026-09-25). A round
+    after the first starts when the first breaker is due, and one set a moment later than the
+    others was still shut when the pass reached it: that run asked four mirrors where the other
+    asked five. ``rounds=2`` had made both runs two rounds anyway, which left the deadline
+    nothing to decide. On a clock of its own each round comes exactly when its breakers are due,
+    and the deadline alone says how many there are.
+    """
     busy = HttpReply(504, b"", {}, 0.01)
+    aside = 0.02  # how long a busy machine is set aside, so how far apart the rounds are
 
     def asked(deadline_in: float | None) -> int:
         transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-        c = client(transport, rounds=2, cooldown_s=0.02, busy_cooldown_s=0.02)
+        c = client(transport, cooldown_s=aside, busy_cooldown_s=aside)
 
         async def go() -> None:
-            import time as _time
-
             with pytest.raises(OsxpError):
                 await c.fetch_layer(
                     TileRef(43, 5),
                     "coastline",
-                    deadline=None if deadline_in is None else _time.monotonic() + deadline_in,
+                    deadline=None if deadline_in is None else clock.monotonic() + deadline_in,
                 )
 
-        run(go())
+        clock.run(go())
         return len(transport.sent)
 
-    # the deadline is the budget, so more room is more rounds, and none at all is one round
-    assert asked(None) < asked(1.0) <= asked(3.0)
+    # the deadline is the budget, so more room is more rounds, and none at all is one round.
+    # ROUNDS, forty, is far off: what stops the asking here is the deadline
+    assert asked(None) == len(MIRRORS)
+    assert asked(2.5 * aside) == 3 * len(MIRRORS)  # rounds at 0, 1 and 2 times aside
+    assert asked(5.5 * aside) == 6 * len(MIRRORS)
 
 
 def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
