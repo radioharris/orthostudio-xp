@@ -44,7 +44,7 @@ plan ──► fetch missing tiles (Fetcher, AIMD, hedging) ──► container 
 | `provider` | an `orthostudio.imagery.Provider` (URL grammar, placeholder rule, `max_in_flight`) |
 | `zl` | zoom level of the textures |
 | `jobs` | `TextureJob(texture: TextureId, kinds: tuple[TerKind, ...])`, from `tilefiles.list_textures` in P1, from the OrthoStudio XP mesh stage later. **(review)** A texture listed several times is one job, its kinds merged in first-seen order (`merge_jobs`): one download, one encode, one outcome |
-| `chunks_root` | root of the `ChunkStore` (`<root>/<provider>/<zl>/<y>_<x>.chunks`) and of the parent cache (section 5); default `<data folder>/chunks` |
+| `chunks_root` | root of the `ChunkStore` (`<root>/<folder>/<zl>/<y>_<x>.chunks`, the folder being the source's `cache_name`) and of the parent cache (section 5); default `<data folder>/chunks` |
 | `store_root` | root of the artefact `Store` (`docs/specs/graph-keys.md`); default `<data folder>/store` |
 | `out_dir` | tile directory: `textures/` and `terrain/` are created inside |
 | `mask_lookup`, `mask_zl` | `(m_til_x, m_til_y) -> Path | None` over the masks at `mask_zl` (`tilefiles.masks_index` in P1). **(review)** `mask_zl` is the single source: the pipeline copies it into `ter_params.mask_zl`, so the crop window and the `LOAD_CENTER_BORDER` of the `.ter` cannot disagree |

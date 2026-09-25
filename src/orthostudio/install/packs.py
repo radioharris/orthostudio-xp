@@ -59,11 +59,28 @@ def _refuse_if_running() -> None:
 
 
 def _conflict(target: Path, pack_dir: Path, reason: str) -> OsxpError:
+    """Something is in the way in Custom Scenery, and it is not ours to move.
+
+    Called with ``target`` for both when nothing else is known, which read "X already exists and
+    is not a link to X" and told the user to install, in the middle of taking a tile out (found
+    in review, 2026-09-23).
+    """
+    itself = target == pack_dir
+    message = (
+        f"{target} is a real folder, not a link OrthoStudio XP made ({reason})."
+        if itself
+        else f"{target} already exists and is not a link to {pack_dir} ({reason})."
+    )
+    remedy = (
+        "It was left where it is. Move or delete it yourself if you meant to."
+        if itself
+        else "Remove or rename the existing folder in Custom Scenery, then install again."
+    )
     return OsxpError(
         "XP_PACK_CONFLICT",
         context={"tile": target.name, "pack": str(target), "reason": reason},
-        message=f"{target} already exists and is not a link to {pack_dir} ({reason}).",
-        remedy="Remove or rename the existing folder in Custom Scenery, then install again.",
+        message=message,
+        remedy=remedy,
         severity=Severity.BLOCKING,
         action=Action.STOP,
     )
@@ -81,9 +98,17 @@ def _make_link(pack_dir: Path, target: Path) -> None:
         return
     except OSError as exc:
         if os.name != "nt":
+            # the registry's remedy names Developer Mode, which is a Windows setting: on a Mac
+            # or on Linux a refused link is the file system's doing, an exFAT or SMB Custom
+            # Scenery for instance (found in review, 2026-09-23)
             raise OsxpError(
                 "XP_LINK_FAILED",
                 context={"link": str(target), "reason": f"{type(exc).__name__}: {exc}"},
+                remedy=(
+                    "X-Plane's Custom Scenery is on a disk that does not take links (an exFAT or "
+                    "a network disk, say). Put X-Plane's Custom Scenery on a disk that does, or "
+                    "copy the tile's folder into it by hand."
+                ),
             ) from exc
         first = exc
     # Windows without Developer Mode: a directory junction needs no privilege.
@@ -283,7 +308,20 @@ def uninstall_pack(
     elif target.is_dir():
         if not remove_copy or not _looks_like_pack(target):
             raise _conflict(target, target, "real folder, not removed")
-        shutil.rmtree(target)
+        # guarded: one file held open by X-Plane or by an antivirus left the copy half
+        # destroyed and the page a bare 500, with no code and no remedy (found in review,
+        # 2026-09-23)
+        try:
+            shutil.rmtree(target)
+        except OSError as exc:
+            raise OsxpError(
+                "SYS_WRITE_FAILED",
+                context={"path": str(exc.filename or target), "reason": str(exc.strerror or exc)},
+                remedy=(
+                    "Quit X-Plane and any program that may be using those files, then take the "
+                    "tile out again: what is already removed stays removed."
+                ),
+            ) from exc
         removed = True
     if update_ini:
         removed = _update_ini(custom_scenery, name, add=False) or removed

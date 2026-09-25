@@ -160,6 +160,7 @@ class _NodeState:
     of its extrapolation."""
     fraction0_at: float | None = None
     fraction_at: float | None = None
+    moved_at: float | None = None
     rate: float | None = None
     """Recent rate of its fraction per second (``progress.observe_progress``)."""
 
@@ -355,6 +356,7 @@ class Job:
         self._done = threading.Event()
         self._file: Any = None
         self._last_log: dict[str, float] = {}
+        self._last_said: dict[str, str] = {}
         self._last_file_log: dict[str, float] = {}
         self._stats: dict[str, Any] | None = None
         self._clock: Callable[[], float] = clock if clock is not None else time.perf_counter
@@ -519,7 +521,7 @@ class Job:
                 st.key = event.key
                 st.started_at = now
                 st.fraction, st.ended_at = 0.0, None
-                st.fraction0 = st.fraction0_at = st.fraction_at = st.rate = None
+                st.fraction0 = st.fraction0_at = st.fraction_at = st.moved_at = st.rate = None
             st.kind = event.kind
             self._append(
                 "started", **base, key=event.key, kind=event.kind, weight_s=_weight_json(st)
@@ -536,8 +538,13 @@ class Job:
             # every stage leaves a line, not the images alone: a build that stopped while
             # downloading its OpenStreetMap data showed a bar and wrote nothing (2026-09-22)
             last_log = self._last_log.get(st.node, now - LOG_PERIOD_S)
-            if event.message and now - last_log >= LOG_PERIOD_S:
+            # and not the same line twice: a step that reports every second so the page knows it
+            # is alive wrote that same second a line into the log, for minutes (a user watching
+            # his first build, 2026-09-23)
+            said_before = self._last_said.get(st.node)
+            if event.message and event.message != said_before and now - last_log >= LOG_PERIOD_S:
                 self._last_log[st.node] = now
+                self._last_said[st.node] = event.message
                 self._append("log", **base, message=event.message)
                 last_file = self._last_file_log.get(st.node, now - FILE_LOG_PERIOD_S)
                 if now - last_file >= FILE_LOG_PERIOD_S:
@@ -624,7 +631,7 @@ class Job:
             if st.status in ("failed", "skipped", "cancelled"):  # a second pass runs it again
                 st.status, st.error, st.cause = "pending", None, None
                 st.fraction, st.wall_s, st.started_at, st.ended_at = 0.0, 0.0, None, None
-                st.fraction0 = st.fraction0_at = st.fraction_at = st.rate = None
+                st.fraction0 = st.fraction0_at = st.fraction_at = st.moved_at = st.rate = None
             if st.status == "pending":
                 self._weigh(st)
         for ts in self._tiles.values():
@@ -1281,25 +1288,46 @@ class JobManager:
         specs = list(job.specs)
         return self.start(specs, install=job.install, request=request, queue=queue)
 
+    def _forgettable(self, job: Job) -> bool:
+        """A job the list can let go: it has finished, it is not the one running, and it is not
+        waiting its turn. The one rule, so emptying the list and removing a single job agree.
+
+        The caller holds the lock."""
+        return job.finished and job is not self._active and job not in self._queue
+
+    def _drop(self, jobs: Sequence[Job]) -> None:
+        """Take these jobs out of the list and delete their state and journal files, so a restart
+        does not bring them back. The tiles they built are not touched.
+
+        The caller holds the lock."""
+        for job in jobs:
+            del self._jobs[job.id]
+            for path in (job.state_path(), job.journal_path):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("cannot delete %s", path)
+
     def forget_finished(self) -> Sequence[str]:  # a list; `list` in this class is the method
-        """Empty the job list (the page's trash on Works): the finished jobs leave it and their
-        state and journal files are deleted, so a restart does not bring them back. The active job
-        and the queued ones stay; the tiles the jobs built are not touched. Returns the ids gone,
-        newest first."""
+        """Empty the job list (the page's trash on Works): every finished job leaves it. The
+        active job and the queued ones stay. Returns the ids gone, newest first."""
         with self._lock:
-            gone = [
-                job
-                for job in self._jobs.values()
-                if job.finished and job is not self._active and job not in self._queue
-            ]
-            for job in gone:
-                del self._jobs[job.id]
-                for path in (job.state_path(), job.journal_path):
-                    try:
-                        path.unlink(missing_ok=True)
-                    except OSError:
-                        log.warning("cannot delete %s", path)
+            gone = [job for job in self._jobs.values() if self._forgettable(job)]
+            self._drop(gone)
         return [job.id for job in sorted(gone, key=lambda j: j.created_at, reverse=True)]
+
+    def forget(self, job_id: str) -> bool:
+        """Remove one finished job from the list (the cross on its row, ``DELETE /api/jobs/{id}``).
+
+        False when there is no such job, or when it is still running or waiting: the decision is
+        taken under the lock, so a job that starts between a caller's look and this call is not
+        removed from under the thread that runs it."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or not self._forgettable(job):
+                return False
+            self._drop([job])
+        return True
 
     def close(self, timeout: float = 10.0) -> None:
         """Cancel what runs and join the threads (tests, server shutdown)."""

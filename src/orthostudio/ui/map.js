@@ -12,9 +12,9 @@
 // shape being drawn live here.
 
 import { adjustImageData, photoValues } from "./colour.js";
-import { fmtGround, fmtMB, t } from "./i18n.js";
+import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
-import { sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
+import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
   MAX_NAME,
   MAX_VERTICES,
@@ -42,7 +42,10 @@ import {
   polygonIsSimple,
   round9,
   samePolygon,
+  routeLength,
   snapToTextureCorner,
+  textureCoords,
+  textureCorner,
   textureSquare,
   tileName,
   tileTextureCount,
@@ -69,6 +72,11 @@ const HINT_KEY = "osxp.mapHintDone";
  * BORDERS_MAX_ZOOM they would visibly miss the borders on the imagery, so they are hidden. */
 const BORDERS_URL = "static/vendor/borders/borders.json";
 export const BORDERS_MAX_ZOOM = 10;
+
+/** Deepest zoom of the map, and the deepest level anything is built at: the level lists stop
+ * there (app.js), zones too, and the engine serves no imagery past it (``map_api.py``). The map
+ * went one step further, to 20, where every source was only enlarged (a user, 2026-09-25). */
+const MAX_NATIVE_ZOOM = 19;
 const BORDERS_KEY = "osxp.mapBorders";
 
 /** Airports on the map (`GET /api/airports/in`), from the index the app ships: no request leaves
@@ -86,6 +94,16 @@ const AIRPORTS_KEY = "osxp.mapAirports";
  * It is vector, so it needs MapLibre GL, which weighs a megabyte: the renderer is loaded the
  * first time the map is asked for, never on a page that stays on the photo. */
 const STREET_KEY = "osxp.mapStreet";
+
+/** How far inside its square a tile's frame is drawn, in pixels: half the 3 px line and a pixel
+ * more, so that two neighbours' frames leave the grid line between them. */
+const FRAME_INSET = 2.5;
+
+/** The tiles built and not in X-Plane on the map: shown unless the user unticked them. */
+const BUILT_KEY = "osxp.mapBuilt";
+
+/** The legend folded away, to see the map under it (a user, 2026-09-25): open unless folded. */
+const LEGEND_KEY = "osxp.mapLegend";
 const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
 const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
 const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
@@ -128,6 +146,42 @@ export function detailName(zl) {
 /** "Very sharp, about 40 cm per pixel · ZL18": the name first, the zoom level as secondary text. */
 export function detailLabel(zl, lat) {
   return t("detail.option", { name: detailName(zl), size: fmtGround(metersPerPixel(zl, lat)), zl });
+}
+
+/** Deepest level the base layer downloads for a provider: past it Leaflet enlarges what it has.
+ *
+ * One expression, read by the layer (``maxNativeZoom``) and by the legend, so the line can never
+ * say "enlarged" on a different zoom from the one the imagery stops improving at. A provider the
+ * page does not know, or one without a level, is trusted to the map's own deepest. */
+export function nativeCeiling(p) {
+  return Number.isInteger(p?.max_zl) ? Math.min(MAX_NATIVE_ZOOM, p.max_zl) : MAX_NATIVE_ZOOM;
+}
+
+/** What the view on screen is worth in a build's terms, for the legend.
+ *
+ * The map's zoom **is** the web-mercator level, so what a pilot sees while panning is what that
+ * level would put on the ground. They asked for it in those words: it "helps to get an impression
+ * of just how a given provider's imagery will look at the desired ortho ZL" (a user, 2026-09-24).
+ * Below the levels a build offers, the name would only repeat the number, so the ground size
+ * alone is said.
+ *
+ * Past ``ceiling``, the deepest level the provider has, the map stops downloading and enlarges
+ * the last tiles it got (``maxNativeZoom``): the pixels grow, the detail does not. The line must
+ * not then promise a sharpness no build can deliver, so it says what the provider really gives.
+ * A view that is not the provider's imagery (the street map, the mock) passes no ceiling.
+ */
+export function viewLabel(zoom, lat, ceiling = null, provider = "") {
+  if (Number.isInteger(ceiling) && zoom > ceiling) {
+    return t("map.view_over", {
+      zl: zoom,
+      provider,
+      best: ceiling,
+      size: fmtGround(metersPerPixel(ceiling, lat)),
+    });
+  }
+  return DETAIL_NAMES[zoom]
+    ? detailLabel(zoom, lat)
+    : t("map.view_coarse", { size: fmtGround(metersPerPixel(zoom, lat)), zl: zoom });
 }
 
 function isMac() {
@@ -213,6 +267,71 @@ export function readZonesDocument(doc) {
  * onZonesChanged()}. api() rejects with an error carrying the HTTP `status` when the engine
  * answered, without one when it could not be reached.
  */
+/**
+ * The route's points with their longitudes unrolled, so that a leg crossing the antimeridian is
+ * drawn the short way. Tokyo to Honolulu is 62 degrees eastward over the Pacific, which is what
+ * ``tilesAlong`` counts and what the two buttons offer; drawn from the raw longitudes it went
+ * the other way, over Asia and the Atlantic, and the map moved to the Gulf of Guinea to show it
+ * (2026-09-23). Leaflet draws a longitude past 180 where it belongs.
+ *
+ * A leg is brought within half a turn however far the longitudes have run on, so a route that
+ * goes round the world more than once keeps going the short way at every leg.
+ */
+export function routeLine(points) {
+  let lon = points[0].lon;
+  return points.map((p, i) => {
+    if (i) {
+      let step = p.lon - lon;
+      while (step > 180) step -= 360;
+      while (step < -180) step += 360;
+      lon += step;
+    }
+    return [p.lat, lon];
+  });
+}
+
+/**
+ * The route as pieces that all lie inside the world, and where each of its points is drawn.
+ *
+ * The unrolled line runs past 180, which is how it goes the short way; drawn there, San Francisco
+ * to Tokyo puts Tokyo at longitude -220, outside the bounds the map will pan to, so its ring
+ * could not be reached and the view could not be fitted to it (found in review, 2026-09-23). The
+ * line is cut where it crosses the meridian and continues on the other side, the way a chart
+ * draws it, and every point is drawn where the map can go.
+ */
+export function routePieces(points) {
+  const line = routeLine(points);
+  const pieces = [];
+  const at = [];
+  let piece = [];
+  let shift = -360 * Math.round(line[0][1] / 360);
+  at.push([line[0][0], line[0][1] + shift]);
+  piece.push(at[0]);
+  for (let i = 1; i < line.length; i += 1) {
+    const [lat, lon] = line[i];
+    const [prevLat] = line[i - 1];
+    let a = line[i - 1][1] + shift;
+    let latA = prevLat;
+    let b = lon + shift;
+    while (b > 180 || b < -180) {
+      const edge = b > 180 ? 180 : -180;
+      const part = (edge - a) / (b - a);
+      const latAt = latA + (lat - latA) * part;
+      piece.push([latAt, edge]);
+      pieces.push(piece);
+      piece = [[latAt, -edge]];
+      shift += b > 180 ? -360 : 360;
+      a = -edge;
+      latA = latAt;
+      b = lon + shift;
+    }
+    at.push([lat, b]);
+    piece.push(at[i]);
+  }
+  pieces.push(piece);
+  return { pieces, at };
+}
+
 export function createPlanMap(ctx) {
   const { h, clear } = ctx;
   const L = globalThis.L;
@@ -247,6 +366,8 @@ export function createPlanMap(ctx) {
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
+    builtWanted: storageGet(BUILT_KEY) !== "0",
+    legendOpen: storageGet(LEGEND_KEY) !== "0",
     street: {
       wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
@@ -867,7 +988,23 @@ export function createPlanMap(ctx) {
       flashBanner();
       return;
     }
-    const point = snapped ? snapToTextureCorner(wrapLon(lon), clampLat(lat), zs.nextZl) : [round9(wrapLon(lon)), round9(clampLat(lat))];
+    const here = [round9(wrapLon(lon)), round9(clampLat(lat))];
+    const point = snapped ? snapToTextureCorner(wrapLon(lon), clampLat(lat), zs.nextZl) : here;
+    // A texture is about seven kilometres a side at ZL16, so a point put on its grid can land
+    // kilometres from the click, and nothing said so: a user clicked in the middle of his
+    // village and watched two points appear at the far corners of the map (2026-09-24). The
+    // shortcut list has always said it; the moment it happens did not.
+    if (snapped) {
+      const km = routeLength([
+        { lat: here[1], lon: here[0] },
+        { lat: point[1], lon: point[0] },
+      ]);
+      if (km >= 0.05) {
+        ctx.toast(
+          t("draw.snapped", { mod: keyMod, shift: keyShift(), km: fmtNum(km, 1) }),
+        );
+      }
+    }
     const last = d.vertices[d.vertices.length - 1];
     if (last && last[0] === point[0] && last[1] === point[1]) return;
     if (d.vertices.length >= MAX_VERTICES) {
@@ -1022,7 +1159,7 @@ export function createPlanMap(ctx) {
     const lat = Math.floor(clampLat(ev.latlng.lat));
     const lon = Math.floor(wrapLon(ev.latlng.lng));
     const name = tileName(lat, lon);
-    const text = installedTiles().includes(name) ? ctx.builtSummary?.(name) : null;
+    const text = installedTiles().includes(name) || (zs.builtWanted && builtTiles().includes(name)) ? ctx.builtSummary?.(name) : null;
     if (!text) return hideTip();
     if (!tip) {
       tip = document.createElement("div");
@@ -1093,8 +1230,8 @@ export function createPlanMap(ctx) {
     const { started, capped, removing } = sweep;
     sweep = null;
     map?.dragging.enable();
+    if (!started) return; // nothing was drawn, and the draft layer is not ours to clear
     layers.draft.clearLayers();
-    if (!started) return;
     skipClick = true; // the click that follows the drag would toggle the square under the pointer
     const n = ctx.sweep.end();
     if (!n) return;
@@ -1192,7 +1329,7 @@ export function createPlanMap(ctx) {
       boxZoom: false, // Shift+drag would zoom instead of adding a point
       doubleClickZoom: false, // a double-click finishes a free shape
       minZoom: 3,
-      maxZoom: 20,
+      maxZoom: MAX_NATIVE_ZOOM, // the deepest level anything is built at
       maxBounds: WORLD,
       maxBoundsViscosity: 1,
     });
@@ -1208,6 +1345,7 @@ export function createPlanMap(ctx) {
     const labels = m.createPane("osxpLabels");
     labels.style.zIndex = "360";
     labels.style.pointerEvents = "none";
+    m.createPane("osxpTextureGrid").style.zIndex = "440"; // under the shape being drawn
     m.createPane("osxpDraft").style.zIndex = "450";
     const airportsPane = m.createPane("osxpAirports");
     airportsPane.style.zIndex = "365"; // over the labels, under the zones
@@ -1222,14 +1360,21 @@ export function createPlanMap(ctx) {
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
     layers.zones = L.layerGroup().addTo(m);
+    layers.textureGrid = L.layerGroup().addTo(m);
     layers.draft = L.layerGroup().addTo(m);
     el.classList.toggle("is-mock", Boolean(ctx.mock));
     el.setAttribute("aria-label", t("map.label"));
+    renderWhichShape();
+    document.addEventListener("keydown", onSnapKeys);
+    document.addEventListener("keyup", onSnapKeys);
+    window.addEventListener("blur", forgetSnapKeys);
     m.on("moveend", () => {
       renderGrid();
+      renderTextureGrid();  // the view moved: the squares to aim at moved with it
       renderBanner();
       renderToolOptions(true);
       refreshAirports();
+      renderLegend(); // a pan north or south changes what a pixel covers, so the view line moves too
     });
     m.on("zoomend", () => {
       renderBorders();
@@ -1244,10 +1389,30 @@ export function createPlanMap(ctx) {
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {
       if (!ev.shiftKey || ev.button !== 0) return;
+      // Ctrl (or Cmd) with Shift is the shortcut that puts a point on the texture grid, not a
+      // sweep. Taken for one, the first point of a shape was lost whenever the pointer moved
+      // four pixels while the two keys were held, which is most of the time, and squares were
+      // swept instead. Only the first: from the second point on there is a zone under way, and
+      // ``sweepPress`` steps aside for it (a user, 2026-09-24).
+      if (ev.ctrlKey || ev.metaKey) return;
       ev.preventDefault(); // no text selection on Shift+click
       sweepPress(ev, m.mouseEventToLatLng(ev));
     });
     document.addEventListener("mouseup", sweepEnd);
+    // Leaflet works out where a click landed from the size it last measured, and it measures
+    // only when told. Nothing told it: the window resized, a panel opened, the browser's own
+    // zoom changed, and every click after that fell somewhere else than where the pointer was
+    // (a user drawing a shape, 2026-09-24). Watched, it is told.
+    //
+    // Not a box of nothing: while another screen is shown the map is hidden and measures 0 by 0.
+    // Told so, Leaflet kept that size, and on coming back to the Plan `show` measured again from
+    // it and moved the map by half its width and height: every build, which shows Works, left
+    // the map elsewhere than where the user had it (2026-09-25).
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(([entry]) => {
+        if (entry.contentRect.width && entry.contentRect.height) m.invalidateSize({ animate: false, pan: false });
+      }).observe(el);
+    }
     setBaseLayer(true);
     renderBorders();
     refreshAirports();
@@ -1316,12 +1481,14 @@ export function createPlanMap(ctx) {
     layers.route.clearLayers();
     const points = (ctx.route?.() || {}).points || [];
     if (points.length < 2) return;
-    const line = points.map((p) => [p.lat, p.lon]);
-    L.polyline(line, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
-    L.polyline(line, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
+    const { pieces, at } = routePieces(points);
+    for (const piece of pieces) {
+      L.polyline(piece, { pane: "osxpRoute", color: "#ffffff", weight: 4, opacity: 0.55 }).addTo(layers.route);
+      L.polyline(piece, { pane: "osxpRoute", color: "#e0572f", weight: 2, opacity: 0.95 }).addTo(layers.route);
+    }
     points.forEach((p, i) => {
       const end = i === 0 || i === points.length - 1;
-      L.circleMarker([p.lat, p.lon], {
+      L.circleMarker(at[i], {
         pane: "osxpRoute",
         radius: end ? 5 : 3,
         weight: 2,
@@ -1420,6 +1587,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: zs.airports.wanted,
+      "data-keep": "airports",
       onchange: (ev) => setAirportsWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
@@ -1512,6 +1680,29 @@ export function createPlanMap(ctx) {
     zoomControl = L.control.zoom({ zoomInTitle: t("map.zoom_in"), zoomOutTitle: t("map.zoom_out") }).addTo(map);
   }
 
+  /** What the map says about its imagery once a view is drawn, or "" when there is nothing to say.
+   *
+   * Asked when Leaflet has every tile of the view back, arrived or failed (`load`), and nowhere
+   * else, so it is the same at every zoom and in every window. In this order:
+   * 1. the source is of one country and the square in the middle of the screen is not in it: it
+   *    has nothing here, whether it answers white (the Netherlands), black (Luxembourg) or 404
+   *    (Japan). The question is the one the engine asks before refusing a build there,
+   *    `Provider.covers` (`sourceCovers`);
+   * 2. otherwise, not one tile brought an image: the source has nothing this deep here (Esri
+   *    Clarity past ZL18 over France), or it is not answering.
+   *
+   * The rule used to count failed tiles and speak at six. At the deepest zoom a view holds four,
+   * so it never spoke: a user switched from Bing to Clarity there and the map went blank without
+   * a word (2026-09-25). Asking the coverage second made Japan over Paris say one thing at ZL4
+   * and another from ZL5, for the same fact. */
+  function imageryNotice(code, came) {
+    const p = providerByCode(code);
+    const c = map.getCenter();
+    if (p && !sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))) return t("map.base_outside", { provider: sourceLabel(p) });
+    if (came) return "";
+    return ctx.engineOutdated?.() ? t("app.engine_outdated") : t("map.base_failed", { provider: providerLabel(code) });
+  }
+
   function setNotice(text) {
     const el = $("map-notice");
     if (!el) return;
@@ -1532,6 +1723,10 @@ export function createPlanMap(ctx) {
     else if (zs.street.wanted && !zs.street.failed) base = streetLayer();
     else if (code) base = providerLayer(code);
     if (base) base.addTo(map);
+    // What is under the map changed, so what the view is worth changed with it: a source chosen
+    // in step 1 has its own ceiling, and the street map has none (a user switched to EOX at ZL18
+    // and the line went on promising 40 cm, 2026-09-25).
+    renderLegend();
   }
 
   /** The street map, drawn by MapLibre GL inside the Leaflet map.
@@ -1605,6 +1800,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: zs.street.wanted,
+      "data-keep": "street",
       onchange: (ev) => setStreetWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
@@ -1612,28 +1808,39 @@ export function createPlanMap(ctx) {
         input, h("span", { class: "legend-swatch legend-street", "aria-hidden": "true" }), text));
   }
 
+  /** What the URL of a source's map tile ends with: nothing for a shipped source, and for a
+   * source of the user's the folder its images are kept in (`cache`, the engine's `cache_name`,
+   * which carries its address). A browser keeps a map tile a day under its URL, and the URL
+   * named only the source's code: after its address was changed, the map went on showing the old
+   * address's images for tiles already seen. The base layer and the colours ask the same URL, so
+   * the colours still find the tile the map has. */
+  function tileVersion(code) {
+    const p = providerByCode(code);
+    return p && p.cache && p.cache !== p.code ? `?v=${encodeURIComponent(p.cache)}` : "";
+  }
+
   function providerLayer(code) {
     const p = providerByCode(code);
-    const counts = { loaded: 0, failed: 0 };
-    const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}`, {
+    const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}${tileVersion(code)}`, {
       attribution: escapeHtml(p?.attribution || p?.name || code),
-      maxZoom: 20,
-      maxNativeZoom: Math.min(19, Number.isInteger(p?.max_zl) ? p.max_zl : 19),
+      maxZoom: MAX_NATIVE_ZOOM,
+      maxNativeZoom: nativeCeiling(p),
       noWrap: true,
       // Leaflet 1.9's _isValidTile ignores noWrap on a wrapping CRS: without bounds, a view at
       // the edge of the world requests x = -1 or 2^z, which the engine rightly refuses (422).
       bounds: WORLD,
     });
-    layer.on("tileload", () => {
-      counts.loaded += 1;
-      if (layer === base) setNotice("");
+    let came = 0; // tiles of the view being drawn that brought an image
+    layer.on("loading", () => {
+      came = 0;
+      if (layer === base) setNotice(""); // a new view: nothing to say until it is drawn
     });
-    // A 204 (no image there) is an error for an <img> too: only a view where nothing loads says so.
-    layer.on("tileerror", () => {
-      counts.failed += 1;
-      if (layer === base && !counts.loaded && counts.failed >= 6) {
-        setNotice(ctx.engineOutdated?.() ? t("app.engine_outdated") : t("map.base_failed", { provider: providerLabel(code) }));
-      }
+    layer.on("tileload", () => {
+      came += 1;
+    });
+    // A 204 (no image there) is an error for an <img>: it counts as nothing that came.
+    layer.on("load", () => {
+      if (layer === base) setNotice(imageryNotice(code, came));
     });
     return layer;
   }
@@ -1704,11 +1911,11 @@ export function createPlanMap(ctx) {
         const image = new Image();
         image.onload = () => paint(image);
         image.onerror = () => done(null, canvas);  // no imagery there: nothing to repaint
-        image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}`;
+        image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}${tileVersion(code)}`;
         return canvas;
       },
     });
-    return new Coloured({ pane: "osxpColours", maxZoom: 20, noWrap: true, bounds: WORLD });
+    return new Coloured({ pane: "osxpColours", maxZoom: MAX_NATIVE_ZOOM, noWrap: true, bounds: WORLD });
   }
 
   /** A ring of [lon, lat] in the pixels of one map tile, or null when it misses the tile. */
@@ -1764,7 +1971,7 @@ export function createPlanMap(ctx) {
         return canvas;
       },
     });
-    return new Neutral({ attribution: escapeHtml(t("map.mock_attribution")), maxZoom: 20, noWrap: true, bounds: WORLD });
+    return new Neutral({ attribution: escapeHtml(t("map.mock_attribution")), maxZoom: MAX_NATIVE_ZOOM, noWrap: true, bounds: WORLD });
   }
 
   /** The tiles of the running build and what it does with each (``working``, ``queued``,
@@ -1785,6 +1992,18 @@ export function createPlanMap(ctx) {
       .library()
       .filter((e) => e && (e.kind == null || e.kind === "ortho") && e.installed && parseTile(e.tile))
       .map((e) => e.tile);
+  }
+
+  /** Tiles built and kept in the Library but not in X-Plane: *Build only*, or taken out of X-Plane
+   * with their files kept. The map drew only the installed ones, so these were nowhere to be seen
+   * (a user asked to see the tiles built, 2026-09-24). A pack gone from the disk is not one. */
+  function builtTiles() {
+    const installed = new Set(installedTiles());
+    return ctx
+      .library()
+      .filter((e) => e && (e.kind == null || e.kind === "ortho") && !e.installed && e.present !== false && parseTile(e.tile))
+      .map((e) => e.tile)
+      .filter((name) => !installed.has(name)); // another pack of the tile is in X-Plane: it is green
   }
 
   /** `box` ([[south, west], [north, east]]) drawn `px` pixels inside itself at the map's zoom, or
@@ -1818,37 +2037,49 @@ export function createPlanMap(ctx) {
     }
     const selected = new Set(ctx.tiles());
     const installed = new Set(installedTiles());
+    const built = new Set(zs.builtWanted ? builtTiles() : []);
     const building = buildingNow();
-    for (const name of new Set([...installed, ...selected, ...building.keys()])) {
+    const busy = []; // what the running build does, drawn over everything else
+    for (const name of new Set([...installed, ...built, ...selected, ...building.keys()])) {
       const c = parseTile(name);
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
+      // Every square is framed inside itself, so two neighbours never share a line. On the grid
+      // line itself only one colour could win: a square in X-Plane beside one only built and one
+      // chosen read as a patchwork, green on one side, pink and blue on the others (a user,
+      // 2026-09-25). Far out, too small for it, the frame goes back onto the square's own edge.
+      const frame = insetBox(box, FRAME_INSET) || box;
       // Installed and chosen: the green outline, the blue one inside it, and a line between and
       // around them (--map-casing, dark on the dark theme), so that they stand out from each other
       // and from the photo. On the same line the green hid the blue, and a thin blue beside the
       // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the green:
       // from far away the map is there to show which tiles are installed (the same user).
-      const inner = installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;
+      const kept = installed.has(name) || built.has(name); // a pack of the tile is on the disk
+      const inner = kept && selected.has(name) ? insetBox(box, FRAME_INSET + 4) : null;
       if (inner) {
-        for (const b of [box, inner]) {
+        for (const b of [frame, inner]) {
           layers.tiles.addLayer(L.rectangle(b, { pane: "osxpGrid", className: "osxp-tile-casing", interactive: false, fill: false, weight: 5 }));
         }
       }
       const both = inner ? " is-both" : "";
-      if (installed.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
+      if (kept) {
+        // In X-Plane, green; built and kept but not in X-Plane, dashed pink. Framed inside, two
+        // built neighbours no longer lay their dashes over one edge, out of step, as a solid line.
+        const kind = installed.has(name) ? "installed" : "built";
+        layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}`, interactive: false, fill: false, weight: 3 }));
       }
-      if (selected.has(name) && (inner || !installed.has(name))) {
+      if (selected.has(name) && (inner || !kept)) {
         // The route's departure and arrival in the route's own colour: on a plan across Europe
         // every square was the same blue and the two ends were lost in it (a user, 2026-09-22).
         const end = routeEnds.has(name) ? " is-route-end" : "";
-        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
+        layers.tiles.addLayer(L.rectangle(inner || frame, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
       }
-      // Over the others: a tile the running build works on pulses, one waiting for its turn is
-      // dashed, a failed one dashed red (buildingTiles in app.js).
-      if (building.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${building.get(name)}`, interactive: false, weight: 3 }));
-      }
+      if (building.has(name)) busy.push([frame, building.get(name)]);
+    }
+    // Over the others: a tile the running build works on pulses, one waiting for its turn is
+    // dashed, a failed one dashed red (buildingTiles in app.js).
+    for (const [frame, state] of busy) {
+      layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${state}`, interactive: false, weight: 3 }));
     }
     if (zoom < LABEL_MIN_ZOOM || (north - south) * (east - west) > MAX_LABELS) return;
     // Each label sits in the north-west corner of the visible part of its tile, when that part
@@ -1893,6 +2124,7 @@ export function createPlanMap(ctx) {
   function renderDraft() {
     renderBanner();
     if (!map) return;
+    renderTextureGrid();
     layers.draft.clearLayers();
     band = null;
     map.getContainer().classList.toggle("is-drawing", Boolean(zs.draft));
@@ -1909,6 +2141,80 @@ export function createPlanMap(ctx) {
     layers.draft.addLayer(band);
     for (const p of pts) {
       layers.draft.addLayer(L.circleMarker(p, { pane: "osxpDraft", className: `osxp-draft-vertex ${cls}`, interactive: false, radius: 4 }));
+    }
+  }
+
+  const TEXTURE_GRID_MIN_PX = 28;
+  /** Below this, one texture on screen is too small to aim a point at. */
+
+  /**
+   * The texture grid, while a zone is being drawn.
+   *
+   * A zone takes every texture its outline touches, whole: an outline through the middle of one
+   * pays for all of it. At ZL18 a texture is about 1.7 km a side in mid-latitudes, so a square
+   * zone drawn by hand costs four to eleven textures more than the same zone on the grid, at
+   * about 11 MB and 256 pieces each (measured 2026-09-24). Ctrl+Shift+click puts a point on
+   * this grid; seeing it is what makes that worth doing.
+   *
+   * Drawn for the view only, and only while the squares are big enough to aim at: finer than
+   * that it would be a grey wash and thousands of lines.
+   */
+  /** Which shape each of a zone's two halves wants; it names two keys, so it is filled here. */
+  function renderWhichShape() {
+    const box = $("draw-which");
+    if (box) box.textContent = t("draw.which", { mod: keyMod, shift: keyShift() });
+  }
+
+  let gridTooFine = false;
+  let snapKeysHeld = false;
+
+  /**
+   * The grid is shown while a zone is being drawn **and** while the keys that snap to it are
+   * held, even with nothing started yet.
+   *
+   * The first point is the one that starts the shape, so at that moment there is no zone in
+   * progress: drawn only for a zone under way, the grid appeared after the first click, which
+   * is exactly too late. A user asked for it on the keys, so that he can see where to put that
+   * first point (2026-09-24).
+   */
+  function onSnapKeys(ev) {
+    const held = Boolean((ev.ctrlKey || ev.metaKey) && ev.shiftKey);
+    if (held === snapKeysHeld) return;
+    snapKeysHeld = held;
+    renderTextureGrid();
+  }
+
+  function forgetSnapKeys() {
+    if (!snapKeysHeld) return;
+    snapKeysHeld = false; // the window lost focus with the keys down: they are not held any more
+    renderTextureGrid();
+  }
+
+  function renderTextureGrid() {
+    if (!map || !layers.textureGrid) return;
+    layers.textureGrid.clearLayers();
+    gridTooFine = false;
+    if (!zs.draft && !snapKeysHeld) return;
+    const zl = zs.nextZl;
+    const view = map.getBounds();
+    const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture
+    const west = map.latLngToContainerPoint([view.getNorth(), view.getWest()]);
+    const east = map.latLngToContainerPoint([view.getNorth(), view.getWest() + side]);
+    if (east.x - west.x < TEXTURE_GRID_MIN_PX) {
+      gridTooFine = true; // and the banner says so, rather than showing nothing at all
+      return;
+    }
+    gridTooFine = false;
+    const [u0, v0] = textureCoords(view.getWest(), view.getNorth(), zl);
+    const [u1, v1] = textureCoords(view.getEast(), view.getSouth(), zl);
+    const line = { pane: "osxpTextureGrid", className: "osxp-texture-grid", interactive: false, weight: 1 };
+    for (let u = Math.floor(u0); u <= Math.ceil(u1); u += 1) {
+      const [lon] = textureCorner(u, Math.floor(v0), zl);
+      layers.textureGrid.addLayer(L.polyline([[view.getSouth(), lon], [view.getNorth(), lon]], line));
+    }
+    for (let v = Math.floor(v0); v <= Math.ceil(v1); v += 1) {
+      const [, lat] = textureCorner(Math.floor(u0), v, zl);
+      layers.textureGrid.addLayer(L.polyline([[lat, view.getWest()], [lat, view.getEast()]], line));
     }
   }
 
@@ -1960,6 +2266,7 @@ export function createPlanMap(ctx) {
     if (!map || map.getZoom() < ZONE_MIN_ZOOM) text = t("draw.zoom_in");
     else if (d.kind === "rect") text = d.vertices.length ? t("draw.rect_second") : t("draw.rect_first");
     else text = `${t("draw.shape_hint")} ${t("draw.points", { n: d.vertices.length })}`;
+    if (gridTooFine) text += ` ${t("draw.grid_too_fine")}`;
     $("map-banner-text").textContent = text;
     $("draw-finish").hidden = d.kind !== "shape";
     $("draw-finish").disabled = d.vertices.length < 3;
@@ -1980,13 +2287,43 @@ export function createPlanMap(ctx) {
   }
 
   /** Installed tiles, selected tiles, and the detail levels in use (section 7.0.5). */
+  /** The view's zoom, its latitude, and the ceiling to measure it against.
+   *
+   * The ceiling is ``nativeCeiling``, the very one the base layer stops downloading at. The
+   * street map and the mock are not the provider's imagery: no ceiling, nothing to enlarge. */
+  function viewNow() {
+    const shown = ctx.mock || (zs.street.wanted && !zs.street.failed) ? null : providerByCode(ctx.planProvider() || "");
+    const ceiling = shown ? nativeCeiling(shown) : null;
+    return [
+      map ? map.getZoom() : GRID_MIN_ZOOM,
+      map ? map.getCenter().lat : 45,
+      ceiling,
+      shown ? shown.name || shown.code : "",
+    ];
+  }
+
   function renderLegend() {
     const box = $("map-legend");
     if (!box) return;
-    // The legend is rebuilt on zoom and on a toggle: the borders checkbox keeps the focus it had.
-    const hadFocus = document.activeElement !== null && box.querySelector(".legend-toggle input") === document.activeElement;
+    // The legend is rebuilt on zoom and on a toggle: the control that had the focus keeps it. It
+    // used to be the first checkbox whichever had it, which took a keyboard user elsewhere.
+    const focused = box.contains(document.activeElement) ? document.activeElement.closest("[data-keep]")?.dataset.keep : null;
+    const refocus = () => focused && box.querySelector(`[data-keep="${focused}"]`)?.focus();
+    box.classList.toggle("is-folded", !zs.legendOpen);
+    if (!zs.legendOpen) {
+      // Folded away to see the map under it: one button brings it back.
+      clear(box).append(h("button", { type: "button", class: "btn btn-small legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
+      refocus();
+      return;
+    }
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
-    const items = [row("legend-installed", t("map.legend_installed")), row("legend-selected", t("map.legend_selected"))];
+    const items = [row("legend-installed", t("map.legend_installed"))];
+    if (builtTiles().length) items.push(builtToggle());
+    items.push(row("legend-selected", t("map.legend_selected")));
+    const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
+    // The chevron on the view line itself, the height of one line: it sat two pixels above it,
+    // placed by hand in the corner (measured, 2026-09-25).
+    const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) })), fold);
     if ((ctx.route?.() || {}).points?.length >= 2) {
       items.push(row("legend-route-end", t("map.legend_route_ends")));
     }
@@ -1997,13 +2334,40 @@ export function createPlanMap(ctx) {
     if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     const list = h("ul", null, items);
-    clear(box).append(list);
-    if (hadFocus) box.querySelector(".legend-toggle input")?.focus();
+    clear(box).append(view, list);
+    refocus();
     if (!levels.length) return;
     box.append(
       h("p", { class: "legend-title" }, t("map.legend_zones")),
       h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))),
     );
+  }
+
+  /** The legend's line for the tiles built and not in X-Plane: a checkbox, as the airports' is,
+   * shown only when there are some (a user asked to be able to hide them, 2026-09-25). */
+  function builtToggle() {
+    const input = h("input", {
+      type: "checkbox",
+      checked: zs.builtWanted,
+      "data-keep": "built",
+      onchange: (ev) => setBuiltWanted(ev.target.checked),
+    });
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: t("map.built_hint") },
+        input, h("span", { class: "legend-swatch legend-built", "aria-hidden": "true" }), t("map.legend_built")));
+  }
+
+  function setBuiltWanted(wanted) {
+    zs.builtWanted = wanted;
+    storageSet(BUILT_KEY, wanted ? "1" : "0");
+    renderGrid();
+    renderLegend();
+  }
+
+  function setLegendOpen(open) {
+    zs.legendOpen = open;
+    storageSet(LEGEND_KEY, open ? "1" : "0");
+    renderLegend();
   }
 
   /** The legend's borders line: a checkbox, and why nothing shows when zoomed in close. */
@@ -2014,6 +2378,7 @@ export function createPlanMap(ctx) {
     const input = h("input", {
       type: "checkbox",
       checked: borders.wanted,
+      "data-keep": "borders",
       onchange: (ev) => setBordersWanted(ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
@@ -2397,6 +2762,18 @@ export function createPlanMap(ctx) {
     mapLatitude: () => (map ? map.getCenter().lat : null),
     /** The map centre `{lat, lon}`, or null before the map exists. */
     mapCenter: () => (map ? { lat: map.getCenter().lat, lon: map.getCenter().lng } : null),
+    /**
+     * Bring the map over a point the user named, the airport of step 1's code. A code says
+     * nothing about where its airport is, and the map stayed where it was, so the squares just
+     * chosen were somewhere off the screen (a user, 2026-09-24).
+     *
+     * The zoom is kept, so someone looking closely at one airfield stays that close over the
+     * next, but never so far out that neither the airport nor the squares around it are drawn.
+     */
+    goTo(lat, lon) {
+      if (!map || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      map.setView([lat, lon], Math.max(map.getZoom(), AIRPORTS_MIN_ZOOM));
+    },
     /** The colours the squares given share: `{mixed, photo}` (the Plan's colour control). */
     tilesPhoto,
     /** Set the colours of the squares given; `null` gives them back to Settings. */
@@ -2427,11 +2804,14 @@ export function createPlanMap(ctx) {
      */
     routeChanged(fit = false) {
       drawRoute();
+      // the grid paints a route's two ends differently, so it has to be drawn again: clearing a
+      // route left them painted until the map next moved (found in review, 2026-09-23)
+      renderGrid();
       const points = (ctx.route?.() || {}).points || [];
       if (!fit || !map || points.length < 2) return;
       // setView rather than fitBounds: the latter moved the centre and kept the zoom on this map
       // (measured 2026-09-19), while the zoom it computes is right.
-      const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lon]));
+      const bounds = L.latLngBounds(routePieces(points).at);
       const zoom = Math.min(9, map.getBoundsZoom(bounds, false, L.point(60, 60)));
       map.setView(bounds.getCenter(), zoom);
     },
@@ -2452,6 +2832,7 @@ export function createPlanMap(ctx) {
     },
     libraryChanged() {
       renderGrid();
+      renderLegend(); // it names the tiles built and not in X-Plane only when there are some
     },
     /** The running build moved on: its tiles are drawn again when what it does with them changed
      * (a progress report alone changes nothing on the map). */

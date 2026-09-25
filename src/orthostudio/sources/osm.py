@@ -18,10 +18,11 @@ import asyncio
 import contextlib
 import datetime as dt
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -46,7 +47,6 @@ __all__ = [
     "MIRRORS",
     "PROGRESS_PERIOD_S",
     "ROUNDS",
-    "ROUND_PAUSE_S",
     "SNAPSHOT_FORMAT",
     "USER_AGENT",
     "Attempt",
@@ -65,6 +65,7 @@ __all__ = [
     "SnapshotStore",
     "Transport",
     "layers_for",
+    "narrowed",
     "osm_progress_message",
     "overpass_query",
     "parse_overpass_json",
@@ -82,21 +83,52 @@ DEFAULT_QUERY_TIMEOUT_S = 120
 
 CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
-COOLDOWN_S = 600.0
+COOLDOWN_S = 20.0
+"""First wait of a machine that gave no answer at all, doubling at each failure.
+
+Since the breakers became the one clock that says when to ask again, this is not only "do not
+pick that machine", it is "come back then". Six hundred seconds, which is what it was, made a
+ten-second network blip cost a layer ten minutes (found in review, 2026-09-25). Starting at
+twenty and doubling to :data:`MAX_COOLDOWN_S` costs a blip twenty seconds and still leaves a
+machine that is truly down alone.
+"""
+
+QUOTA_COOLDOWN_S = 60.0
+"""How long a server that refused our address is left alone when it names no delay itself.
+
+Most of them name none. Long enough that a build stops asking, short enough that the next tile
+tries again; the doubling cooldown meant for a machine that is down would shut the whole cluster
+for ten minutes, then twenty (found in review, 2026-09-23)."""
+
+BUSY_COOLDOWN_S = 20.0
+"""Set aside for a machine that answered but could not do the work: any 5xx. Busy is not broken,
+and it does not double: a server busy twice is busy.
+
+Not a 200 carrying a ``remark``: that says the query was too heavy for this machine, not that the
+machine is unwell, so its breaker stays closed and another layer may still use it.
+
+The set must be the one :meth:`_worth_another_round` calls worth waiting for, or the two
+disagree: 500, 501 and a proxy's 52x took the cooldown of a machine that is down while the rounds
+kept retrying them (found in review, 2026-09-25)."""
+
 MAX_COOLDOWN_S = 3600.0
 MAX_ATTEMPTS = 5
 """Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
 are still reached when the three ordinary ones are down (2026-09-22: two of them were)."""
 ATTEMPT_DELAY_S = 5.0
-ROUNDS = 3
-"""Times the whole registry is asked for one layer, when what refused it may pass.
+ROUNDS = 40
+"""Most times the whole registry is asked for one layer: a stop, not a schedule.
 
-An Overpass machine that answers 504, 429 or nothing is busy, not broken: it answers the same
-query a minute later. One round over the mirrors and then a failed build wastes everything the
-tile had already downloaded, and on a bad evening every build failed that way (2026-09-22).
+What bounds the waiting is the caller's deadline (``pipeline.native.OsmJob.timeout_s``, fifteen
+minutes for a tile), and between rounds the wait is what the servers themselves named. This count
+only keeps a caller who gave no deadline, or one whose servers name no wait at all, from looping
+without end; at twenty seconds a round it is more than the deadline allows, which is the point.
+
+It was three, twenty seconds apart, which is one minute of patience: a user whose address had
+spent its quota watched all five mirrors refuse and the build give up while the quota needed
+minutes (2026-09-24). Raising it alone changed nothing while a five-minute deadline cut it short,
+and a schedule of our own beside the breakers made the two fight (2026-09-25).
 """
-ROUND_PAUSE_S = 20.0
-"""Waited before the second round, twice that before the third: a busy server needs a moment."""
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
 PROGRESS_PERIOD_S = 1.0
@@ -535,6 +567,79 @@ def _utc_now() -> str:
     return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+_WAY_TAG_SELECTOR = re.compile(r'^way\["([a-z_:]+)"="([A-Za-z0-9_:-]+)"\]$')
+
+
+def selector_tag(selector: str) -> tuple[str, str] | None:
+    """The key and value a ``way["highway"="track"]`` selector asks for, or ``None``.
+
+    Only this shape is understood, and it is the only one the layers differ by: the road levels
+    add ``way["highway"=...]`` one at a time (:data:`_SMALL_ROAD_SELECTORS`). Anything else is
+    answered ``None``, and a caller that cannot read every selector of a layer must not narrow it.
+    """
+    found = _WAY_TAG_SELECTOR.match(selector.strip())
+    return (found.group(1), found.group(2)) if found else None
+
+
+_QUERY_TIMEOUT = re.compile(r"\[timeout:(\d+)\]")
+_QUERY_DATE = re.compile(r'\[date:"([^"]+)"\]')
+
+
+def _requery(query: str, selectors: tuple[str, ...], tile: TileRef) -> str:
+    """The query of a narrowed layer: its own selectors, the timeout and date of the original.
+
+    Rebuilding it from the defaults dropped the ``[date:…]`` of an attic fetch, which is exactly
+    how a bake is proved, and reset the timeout (found in review, 2026-09-25).
+    """
+    timeout = _QUERY_TIMEOUT.search(query or "")
+    at = _QUERY_DATE.search(query or "")
+    return overpass_query(
+        selectors,
+        tile,
+        int(timeout.group(1)) if timeout else DEFAULT_QUERY_TIMEOUT_S,
+        at.group(1) if at else "",
+    )
+
+
+def narrowed(snap: OsmSnapshot, spec: LayerSpec) -> OsmSnapshot | None:
+    """``snap``, baked for more than ``spec`` asks, cut down to exactly ``spec``; ``None`` when
+    that cannot be done for certain.
+
+    A library baked at road level 5 holds every road a level below it wants and more: the same
+    file answers "+ streets" and "+ tracks", the second having tracks and service roads the first
+    did not ask for. Handing it over whole would flatten the mesh under roads the user's settings
+    say nothing about, so the extra is dropped here instead, and a single bake serves every level
+    (a user asked why 2, 3 and 4 were refused, 2026-09-25).
+
+    Exact by construction: a way is kept when its tags match one of ``spec``'s selectors, a node
+    when a kept way names it or when it is not named by any way at all, and the digest is taken
+    again over what is left.
+    """
+    wanted, held = tuple(spec.selectors), tuple(snap.selectors)
+    if wanted == held:
+        return snap
+    if not set(wanted) <= set(held):
+        return None  # the bake does not hold what this layer asks for
+    rules = [selector_tag(one) for one in held]
+    if any(rule is None for rule in rules):
+        return None  # a selector we cannot read: never guess what a layer holds
+    keep = [selector_tag(one) for one in wanted]
+    ways = tuple(
+        w for w in snap.ways if any((w.tags or {}).get(key) == value for key, value in keep)
+    )
+    named = {i for w in ways for i in w.nodes}
+    every = {i for w in snap.ways for i in w.nodes}
+    nodes = tuple(n for n in snap.nodes if n.id in named or n.id not in every)
+    return replace(
+        snap,
+        selectors=wanted,
+        query=_requery(snap.query, wanted, snap.tile),
+        nodes=nodes,
+        ways=ways,
+        digest=blake3.blake3(_canonical(nodes, ways, snap.relations)).hexdigest(),
+    )
+
+
 def snapshot_from_overpass(
     tile: TileRef,
     layer: LayerSpec | str,
@@ -786,13 +891,22 @@ class _MirrorState:
     requests: int = 0
     last_error: str | None = None
     last_request_at: float = -1e9
-    rate_limited: bool = False
-    """The server named a delay (``Retry-After``): a round does not reopen it."""
 
     def state(self, now: float) -> Literal["closed", "half-open", "open"]:
         if self.open_until <= 0.0:
             return "closed"
         return "open" if now < self.open_until else "half-open"
+
+
+def _later(open_until: float, wait: float) -> float:
+    """The later of a reopen already set and one ``wait`` from now.
+
+    A failure may put a reopen off; it may never bring one forward. The doctor probes every
+    mirror without asking the breaker, so running it because builds were failing replaced the
+    hour a server had asked for with the ten minutes of an ordinary failure (found in review,
+    2026-09-23).
+    """
+    return max(open_until, time.monotonic() + wait)
 
 
 class MirrorBoard:
@@ -831,22 +945,46 @@ class MirrorBoard:
                 code=code, healthy=state != "open", state=state, error=st.last_error
             )
 
-    def open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
+    def open(
+        self,
+        code: str,
+        *,
+        reason: str,
+        seconds: float | None = None,
+        quota: bool = False,
+        busy: bool = False,
+    ) -> None:
         with self._lock:
             st = self._states[code]
             st.failures += 1
             st.last_error = reason
             # a server that named a delay is left alone until it has passed, whatever a round of
-            # this layer or of another would like
-            st.rate_limited = seconds is not None
-            if seconds is not None:
-                # the server named a delay: that is the answer, not a floor to argue with. Taking
-                # max(cooldown, Retry-After) shut three machines for ten minutes over a five
-                # second quota refusal, and armed twenty for the next (2026-09-23).
-                st.open_until = time.monotonic() + min(max(seconds, 1.0), MAX_COOLDOWN_S)
+            # this layer or of another would like. A failure that is not a refusal never clears
+            # it: the doctor probes every mirror without asking the breaker, so running it
+            # because builds were failing turned an hour the server asked for into an immediate
+            # retry (found in review, 2026-09-23)
+            if quota:
+                # What was refused is our address, not this machine, so the wait is what the
+                # server asked for and the doubling meant for a machine that is down does not
+                # apply. Telling the two apart by whether a ``Retry-After`` header came is what
+                # the first attempt at this did, and the servers mostly send none: a 429 then
+                # shut the whole cluster for ten minutes, then twenty, then forty, which is the
+                # outage of 2026-09-22 made by us rather than by them (found in review,
+                # 2026-09-23). A delay longer than an hour is still capped, since no build waits
+                # that long for one layer.
+                wait = QUOTA_COOLDOWN_S if seconds is None else max(seconds, 1.0)
+                st.open_until = _later(st.open_until, min(wait, MAX_COOLDOWN_S))
+            elif busy:
+                # Busy is not broken: a 504 means the machine or its upstream could not finish
+                # this query, and the same query a moment later is answered. It took the cooldown
+                # built for a machine that is down, six hundred seconds and doubling, and nothing
+                # showed while the rounds gave every breaker back before asking again. With the
+                # breakers as the one clock, that mis-tuning cost a layer two thirds of its
+                # attempts (measured against v0.1.14, 2026-09-25). No doubling either: a server
+                # busy twice is busy, not failing.
+                st.open_until = _later(st.open_until, seconds if seconds else BUSY_COOLDOWN_S)
             else:
-                st.open_until = time.monotonic() + st.cooldown_s
-                # a quota refusal says nothing about the machine, so it does not double either
+                st.open_until = _later(st.open_until, st.cooldown_s)
                 st.cooldown_s = min(st.cooldown_s * 2, MAX_COOLDOWN_S)
 
     def close(self, code: str, cooldown_s: float) -> None:
@@ -857,7 +995,6 @@ class MirrorBoard:
             st.cooldown_s = cooldown_s
             st.successes += 1
             st.last_error = None
-            st.rate_limited = False
 
     def failure(self, code: str) -> None:
         with self._lock:
@@ -876,20 +1013,15 @@ class MirrorBoard:
                     out[code] = st.last_error
             return out
 
-    def reopen(self, codes: Iterable[str]) -> None:
-        """Give these mirrors another chance, except one that asked to be left alone.
+    def soonest(self, codes: Iterable[str]) -> float:
+        """The earliest instant one of ``codes`` may be asked again, 0 when any is open now.
 
-        What a round of :meth:`OverpassClient.fetch_layer` needs, and what ``reset`` was wrongly
-        used for: a global reset discards the ``Retry-After`` a server asked for (the way to turn
-        a rate limit into a ban), forgets the doubling, and reaches across the other layers of the
-        same tile, which re-try a machine already known dead (2026-09-23).
+        The one clock of the rounds: each breaker carries what its server said, and this is the
+        first moment any of them is ready. Asking earlier finds nobody and ends the layer.
         """
         with self._lock:
-            for code in codes:
-                st = self._states.get(code)
-                if st is None or st.rate_limited:
-                    continue
-                st.open_until = 0.0
+            times = [self._states[c].open_until for c in codes if c in self._states]
+        return min(times) if times else 0.0
 
     def reset(self) -> None:
         """Give every mirror another chance, cooldowns back to their start.
@@ -905,7 +1037,6 @@ class MirrorBoard:
                 st.failures = 0
                 st.cooldown_s = st.given_cooldown_s
                 st.last_error = None
-                st.rate_limited = False
 
 
 _SHARED_BOARD = MirrorBoard()
@@ -916,18 +1047,53 @@ def shared_board() -> MirrorBoard:
     return _SHARED_BOARD
 
 
-def osm_progress_message(
-    tile: TileRef, done: int, total: int, wire_bytes: int, elapsed_s: float
-) -> str:
-    """The progress line of a tile's download, ``+46+006: 2/4 OSM layers (1.4 MB/s)``.
+LAYER_WORDS = {
+    "airports": "airports",
+    "big_roads": "roads",
+    "small_roads": "small roads",
+    "water": "water",
+    "coastline": "coastline",
+}
+"""What each layer is called for somebody who flies rather than maps."""
 
-    The layers received so far, and the download rate since the tile started in the brackets
-    where the Works page reads the rate of any step (``ui.md`` 2.2). No rate before the first
-    answer: nothing was received yet.
+_RATE_FLOOR_MB_S = 0.05
+"""Below this the average since the tile started says nothing, so it is left out."""
+
+_WAIT_STEP_S = 15
+"""How coarsely the wait is told: a line that changes every second is a line nobody reads."""
+
+
+def osm_progress_message(
+    tile: TileRef,
+    asked: Sequence[str],
+    received: Sequence[str],
+    wire_bytes: int,
+    elapsed_s: float,
+) -> str:
+    """The progress line of a tile's map data.
+
+    A map data server sends nothing until it has worked the whole answer out: it queues the
+    question, computes, then delivers in one burst. So the line sat at ``0/4 OSM layers`` with
+    the average rate falling towards ``0.0 MB/s`` for minutes, which is also exactly what a
+    build that has stopped looks like. A user watching it said it told him nothing, and he was
+    right (2026-09-23).
+
+    It now says what is being waited for, names the layers in words a pilot knows, and gives a
+    rate only when something is really coming down: an average over a long wait is not a rate.
+    The rate keeps its brackets, where the Works page reads it (``ui.md`` 2.2).
     """
-    text = f"{tile.name}: {done}/{total} OSM layers"
-    if wire_bytes > 0 and elapsed_s > 0:
-        text += f" ({wire_bytes / 1e6 / elapsed_s:.1f} MB/s)"
+    if not received:
+        waiting = ", ".join(LAYER_WORDS.get(name, name) for name in asked)
+        text = f"{tile.name}: waiting for the map data server ({waiting})"
+        # how long, in steps of a quarter minute: the wait is reported every second so the page
+        # knows the step is alive, and a line that changes every second is a line nobody reads
+        waited = int(elapsed_s // _WAIT_STEP_S) * _WAIT_STEP_S
+        return f"{text}, {waited} s" if waited else text
+    got = ", ".join(LAYER_WORDS.get(name, name) for name in received)
+    text = f"{tile.name}: {len(received)} of {len(asked)} back: {got}"
+    rate = wire_bytes / 1e6 / elapsed_s if wire_bytes > 0 and elapsed_s > 0 else 0.0
+    if rate >= _RATE_FLOOR_MB_S:
+        text += f" ({rate:.1f} MB/s)"
     return text
 
 
@@ -951,10 +1117,10 @@ class OverpassClient:
         connect_timeout_s: float = CONNECT_TIMEOUT_S,
         health_timeout_s: float = HEALTH_TIMEOUT_S,
         cooldown_s: float = COOLDOWN_S,
+        busy_cooldown_s: float = BUSY_COOLDOWN_S,
         max_attempts: int = MAX_ATTEMPTS,
         attempt_delay_s: float = ATTEMPT_DELAY_S,
         rounds: int = ROUNDS,
-        round_pause_s: float = ROUND_PAUSE_S,
         max_in_flight: int = MAX_IN_FLIGHT,
         min_interval_s: float = MIN_INTERVAL_S,
         allow_last_resort: bool = True,
@@ -974,10 +1140,10 @@ class OverpassClient:
         self.connect_timeout_s = connect_timeout_s
         self.health_timeout_s = health_timeout_s
         self.cooldown_s = cooldown_s
+        self.busy_cooldown_s = busy_cooldown_s
         self.max_attempts = max_attempts
         self.attempt_delay_s = attempt_delay_s
         self.rounds = max(1, rounds)
-        self.round_pause_s = round_pause_s
         self.max_in_flight = max_in_flight
         self.min_interval_s = min_interval_s
         self.allow_last_resort = allow_last_resort
@@ -1018,13 +1184,23 @@ class OverpassClient:
         now = time.monotonic()
         return {m.code: self._board.health(m.code, now) for m in self.mirrors}
 
-    def _open(self, code: str, *, reason: str, seconds: float | None = None) -> None:
-        self._board.open(code, reason=reason, seconds=seconds)
+    def _open(
+        self,
+        code: str,
+        *,
+        reason: str,
+        seconds: float | None = None,
+        quota: bool = False,
+        busy: bool = False,
+    ) -> None:
+        self._board.open(code, reason=reason, seconds=seconds, quota=quota, busy=busy)
 
-    def _open_cluster(self, cluster: str, *, reason: str, seconds: float | None = None) -> None:
+    def _open_cluster(
+        self, cluster: str, *, reason: str, seconds: float | None = None, quota: bool = False
+    ) -> None:
         for m in self.mirrors:
             if m.cluster == cluster:
-                self._open(m.code, reason=reason, seconds=seconds)
+                self._open(m.code, reason=reason, seconds=seconds, quota=quota)
 
     def _close(self, code: str) -> None:
         self._board.close(code, self.cooldown_s)
@@ -1138,7 +1314,12 @@ class OverpassClient:
             if reply.status == 200:
                 self._close(mirror.code)
         elif reply.status == 429:
-            self._open_cluster(mirror.cluster, reason="health: HTTP 429")
+            self._open_cluster(
+                mirror.cluster,
+                reason="health: HTTP 429",
+                seconds=slot_wait_s(reply.body.decode("utf-8", "replace")),
+                quota=True,
+            )
         else:
             self._open(mirror.code, reason=reply.error or f"health: HTTP {reply.status}")
         now = time.monotonic()
@@ -1177,25 +1358,43 @@ class OverpassClient:
         reasons: list[str] = []
         for round_no in range(self.rounds):
             if round_no:
-                # every mirror refused, and at least one of them because it was busy: wait, give
-                # them all their breaker back, and ask the whole list again
-                pause = self.round_pause_s * round_no
-                if deadline is not None and time.monotonic() + pause >= deadline:
+                # Every mirror refused. One clock decides when to ask again: the breakers, which
+                # carry what each server said (a 429's Retry-After, the slot its status page
+                # names, or the cooldown of a machine that is down). Waiting a schedule of our
+                # own instead woke the round before the servers were ready, found nobody to ask
+                # and gave up in a minute (found in review, 2026-09-24).
+                if deadline is None:
+                    # The wait is what the servers named, and the caller's deadline is the budget
+                    # for it. No deadline, no budget: one round and the answer, rather than a
+                    # sleep of whatever length a server happened to ask for.
+                    reasons.append("no deadline to wait against")
+                    break
+                now = time.monotonic()
+                free = self._board.soonest(m.code for m in self.mirrors)
+                pause = max(self.attempt_delay_s, free - now)
+                if now + pause >= deadline:
                     reasons.append("no time left for another round")
                     break
                 await asyncio.sleep(pause)
-                self._board.reopen(m.code for m in self.mirrors)
                 reasons.append(f"round {round_no + 1}")
             snap, asked = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
                 return snap
-            if round_no and not asked:
-                # the breakers were just given back and there was still nobody to ask: every
-                # server is in a cooldown this round's pause will not outlast. Waiting another
-                # forty seconds to be told the same thing costs every tile of the batch
-                # (2026-09-23, the address having spent its quota)
-                reasons.append("every server is still set aside")
-                break
+            if not asked:
+                # Nobody was free to ask. That is not an answer, it is a moment to wait for:
+                # the board says when the first one is ready and the next round waits for it.
+                # Ending the layer here instead is what gave the second tile of a batch no query
+                # at all -- zero, in zero seconds -- as soon as the first tile had set the
+                # breakers, and every tile after it the same (measured against v0.1.14, which
+                # did it too, 2026-09-25).
+                free = self._board.soonest(m.code for m in self.mirrors)
+                if deadline is None:
+                    reasons.append("no deadline to wait against")
+                    break
+                if free >= deadline:
+                    reasons.append("no server free before the deadline")
+                    break
+                continue
             if not self._worth_another_round(reasons):
                 break
             if deadline is not None and time.monotonic() >= deadline:
@@ -1226,6 +1425,15 @@ class OverpassClient:
                 + (f"mirror ({detail})." if detail else "mirror.")
             ),
         )
+
+    @staticmethod
+    def busy(status: int) -> bool:
+        """Whether an answer means the machine could not do the work, not that it is broken.
+
+        The same set the rounds are willing to wait for (:meth:`_worth_another_round`): they must
+        agree, or one keeps asking while the other sets the machine aside for ten minutes.
+        """
+        return status >= 500
 
     @staticmethod
     def _worth_another_round(reasons: Sequence[str]) -> bool:
@@ -1281,6 +1489,11 @@ class OverpassClient:
             if on_reply is not None:
                 on_reply(reply)
             outcome = self._classify(mirror, reply)
+            if reply.status == 429:
+                # the cluster is now set aside for a guess; its status page says when a slot
+                # actually frees, and one small request buys the whole build that number, since
+                # the board is shared by every tile in flight (found attacking this, 2026-09-24)
+                await self._ask_when_free(mirror)
             if outcome is None:
                 self._close(mirror.code)
                 self.attempts.append(
@@ -1335,22 +1548,21 @@ class OverpassClient:
         if cancel is not None and cancel.is_set():
             raise OsxpError("SYS_CANCELLED", context={"stage": "osm", "tile": tile.name})
         t0 = time.monotonic()
-        received = [0, 0]  # layers, bytes
+        asked = [s.name for s in specs]
+        back: list[str] = []
+        wire = [0]
 
         def count(reply: HttpReply) -> None:
-            received[1] += reply.wire_bytes or len(reply.body)
+            wire[0] += reply.wire_bytes or len(reply.body)
 
         def report() -> None:
             if progress is not None:
-                total = len(specs)
-                message = osm_progress_message(
-                    tile, received[0], total, received[1], time.monotonic() - t0
-                )
-                progress(received[0] / total if total else 1.0, message)
+                message = osm_progress_message(tile, asked, back, wire[0], time.monotonic() - t0)
+                progress(len(back) / len(asked) if asked else 1.0, message)
 
         async def one(spec: LayerSpec) -> OsmSnapshot:
             snap = await self.fetch_layer(tile, spec, on_reply=count, deadline=deadline)
-            received[0] += 1
+            back.append(spec.name)
             report()
             return snap
 
@@ -1419,6 +1631,34 @@ class OverpassClient:
                 return spec
         return LAYERS[layer]
 
+    async def _ask_when_free(self, mirror: Mirror) -> float | None:
+        """Ask a mirror's status page when this address may query again, and hold the cluster
+        until then. ``None`` when it has no status page, does not answer, or says neither.
+
+        Overpass counts queries per internet address and frees a slot on its own clock. We set a
+        guessed minute instead of reading the number it publishes, so a build gave up while the
+        quota needed longer (a user, 2026-09-24). One request, at the moment we are about to wait
+        anyway, and every tile of the build learns it through the shared board.
+        """
+        if not mirror.status_url:
+            return None
+        reply = await self.transport.request(
+            "GET",
+            mirror.status_url,
+            headers=self.headers,
+            connect_timeout_s=self.connect_timeout_s,
+            read_timeout_s=self.health_timeout_s,
+        )
+        if reply.error is not None or reply.status != 200:
+            return None
+        wait = slot_wait_s(reply.body.decode("utf-8", "replace"))
+        if wait is None:
+            return None
+        # the same reason the 429 already set: a user reads what his mirrors answered, and
+        # "a slot in 0 s" beside a failed build told him nothing (found in review, 2026-09-24)
+        self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=wait, quota=True)
+        return wait
+
     def _classify(self, mirror: Mirror, reply: HttpReply) -> tuple[str, str] | None:
         """``None`` when the answer is usable, else ``(error code, reason)`` (spec 4)."""
         if reply.error is not None:
@@ -1426,7 +1666,7 @@ class OverpassClient:
             return "OSM_MIRROR_UNREACHABLE", reply.error
         if reply.status == 429:
             delay = _retry_after(reply.headers)
-            self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay)
+            self._open_cluster(mirror.cluster, reason="HTTP 429", seconds=delay, quota=True)
             # not a failure of the machine: the public servers count requests per address, and a
             # whole region is hundreds of them. Said in those words, since "HTTP 429" told a user
             # nothing while he wondered why his builds had turned random (2026-09-23).
@@ -1438,7 +1678,13 @@ class OverpassClient:
                 waited = f"try again in about {delay / 60:.0f} min"
             return "OSM_MIRROR_RATE_LIMITED", f"too many requests from your address, {waited}"
         if reply.status != 200:
-            self._open(mirror.code, reason=f"HTTP {reply.status}")
+            busy = self.busy(reply.status)
+            self._open(
+                mirror.code,
+                reason=f"HTTP {reply.status}",
+                seconds=self.busy_cooldown_s if busy else None,
+                busy=busy,
+            )
             return "OSM_MIRROR_REJECTED", f"HTTP {reply.status}"
         try:
             doc = orjson.loads(reply.body)
@@ -1450,6 +1696,8 @@ class OverpassClient:
             return "OSM_RESPONSE_TRUNCATED", "no 'elements' list"
         remark = doc.get("remark")
         if remark:
+            # the query was too heavy for this machine, not the machine's fault: its breaker
+            # stays closed so another layer may still use it, and this layer goes elsewhere
             self._board.failure(mirror.code)
             return "OSM_RESPONSE_ERROR", str(remark)[:200]
         return None
@@ -1467,11 +1715,57 @@ def _cluster_pushed_back(reply: HttpReply) -> bool:
     return reply.status == 429 or reply.status >= 500 or reply.status == 200
 
 
+_SLOT_NOW = re.compile(r"(\d+)\s+slots?\s+available\s+now", re.I)
+_SLOT_AFTER = re.compile(r"Slot available after:[^,]*,\s*in\s+(-?\d+)\s+seconds?", re.I)
+
+
+def slot_wait_s(body: str) -> float | None:
+    """Seconds until this address may query again, read from an Overpass ``/api/status`` body.
+
+    These servers count queries per internet address and their status page says exactly when the
+    next slot frees::
+
+        Rate limit: 4
+        4 slots available now.
+
+    or, when they are all taken::
+
+        Slot available after: 2026-09-24T21:36:12Z, in 140 seconds.
+
+    We guessed sixty seconds instead of reading it, and a user whose address had spent its quota
+    watched five mirrors refuse and the build give up after a minute (2026-09-24). ``None`` when
+    the body says neither, so the caller keeps its own guess.
+    """
+    if not body:
+        return None
+    now_free = _SLOT_NOW.search(body)
+    if now_free and int(now_free.group(1)) > 0:
+        return 0.0
+    waits = [int(found) for found in _SLOT_AFTER.findall(body)]
+    return float(max(0, min(waits))) if waits else None
+
+
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    raw = headers.get("retry-after")
+    """The delay a server asks for, in seconds, however it writes it.
+
+    RFC 9110 allows a count of seconds or a date, and a server is free to write ``5.5``. Reading
+    only a bare integer sent everything else down the path meant for a machine that is down
+    (found in review, 2026-09-23).
+    """
+    raw = (headers.get("retry-after") or "").strip()
     if not raw:
         return None
     try:
-        return float(int(raw.strip()))
+        return max(0.0, float(raw))
     except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
         return None
+    import datetime as dt
+
+    now = dt.datetime.now(when.tzinfo or dt.UTC)
+    return max(0.0, (when - now).total_seconds())

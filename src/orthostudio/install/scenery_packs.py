@@ -102,6 +102,16 @@ class SceneryPackEntry:
         return pure.name or stripped
 
     @property
+    def beside_xplanes_own(self) -> bool:
+        """Whether the line names a folder in X-Plane's own ``Custom Scenery``.
+
+        A line pointing anywhere else -- an archive copy on another disk -- is the user's, not
+        ours to take out.
+        """
+        written = self.path.strip().replace("\\", "/").lstrip("./").rstrip("/")
+        return written.lower().startswith("custom scenery/")
+
+    @property
     def is_global_airports(self) -> bool:
         return self.path == GLOBAL_AIRPORTS
 
@@ -259,12 +269,15 @@ class SceneryPacks:
             last_ortho = next((i for i, x in reversed(entries) if x.is_ortho), None)
             if last_ortho is not None:
                 return max(last_ortho + 1, floor)
+        # Above **both**, whichever comes first. It looked for AutoOrtho and stopped there, so
+        # an AutoOrtho line below a base mesh put the tile below the mesh too: X-Plane then draws
+        # the mesh, the square never appears in the sim, and the Library says installed (found in
+        # review, 2026-09-23).
         first_ao = next((i for i, x in entries if x.is_autoortho and i >= floor), None)
-        if first_ao is not None:
-            return first_ao
         first_mesh = next((i for i, x in entries if x.is_mesh and i >= floor), None)
-        if first_mesh is not None:
-            return first_mesh
+        above = [i for i in (first_ao, first_mesh) if i is not None]
+        if above:
+            return min(above)
         return len(self.body)
 
     # ------------------------------------------------------------ mutators
@@ -304,9 +317,19 @@ class SceneryPacks:
         return True
 
     def remove(self, pack_name: str) -> bool:
-        """Delete every line naming ``pack_name``; returns whether one existed."""
+        """Delete the line naming ``pack_name`` in Custom Scenery; returns whether one existed.
+
+        Every line ending in that name used to go, wherever it pointed. A simmer who keeps a copy
+        of a tile on another disk has two, and taking the tile out of X-Plane took his other
+        scenery out with it, silently (found in review, 2026-09-23). Only what sits beside
+        X-Plane's own is ours.
+        """
         before = len(self.body)
         self.body = [
-            x for x in self.body if not (isinstance(x, SceneryPackEntry) and x.name == pack_name)
+            x
+            for x in self.body
+            if not (
+                isinstance(x, SceneryPackEntry) and x.name == pack_name and x.beside_xplanes_own
+            )
         ]
         return len(self.body) != before

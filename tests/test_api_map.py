@@ -26,7 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import test_api_fakes as fakes
 from orthostudio.api.map_api import MapProxy, sniff_image_type
-from orthostudio.imagery.providers import Provider, load_registry, tile_url
+from orthostudio.imagery.providers import Provider, cache_name, load_registry, tile_url
 from orthostudio.net.fetch import FetchRequest, FetchResult
 
 anyio_backend = fakes.anyio_backend
@@ -126,6 +126,34 @@ async def test_a_tile_is_fetched_once_then_served_from_the_cache(home: Path) -> 
         assert r.status_code == 200 and r.content == JPEG
         assert r.headers["content-type"] == "image/jpeg"
         assert len(up.requests) == 1  # from the cache
+
+
+@pytest.mark.anyio
+async def test_a_source_of_the_users_is_cached_under_its_address(home: Path) -> None:
+    """A source of the user's keeps its map tiles under its address as well as its code, and the
+    page asks them with that folder in the URL (``?v=``, map.js ``tileVersion``), which the route
+    takes as it takes any tile: the same name with another address is asked again, not served
+    the first address's images from either cache."""
+    up = Upstream()
+
+    def mine(host: str) -> Provider:
+        return Provider(
+            code="Mine", url_template=f"https://{host}/{{zoom}}/{{x}}/{{y}}.jpg", max_zl=19,
+            custom=True,
+        )  # fmt: skip
+
+    first, second = mine("a.example"), mine("b.example")
+    for p in (first, second):
+        async with _client(MapProxy(fetch=up, registry={"Mine": p})) as c:
+            r = await c.get(f"/api/map/Mine/3/4/2?v={cache_name(p)}")
+            assert r.status_code == 200, r.text
+    assert [r.url for r in up.requests] == [
+        "https://a.example/3/4/2.jpg",
+        "https://b.example/3/4/2.jpg",
+    ], "the second address is asked, not answered from the first one's cache"
+    assert _files(home / "mapcache") == sorted(
+        home / "mapcache" / cache_name(p) / "3" / "4" / "2" for p in (first, second)
+    )
 
 
 @pytest.mark.anyio

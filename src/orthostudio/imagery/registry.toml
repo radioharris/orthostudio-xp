@@ -6,7 +6,11 @@
 # max_in_flight: the most requests in flight each server took on 2026-09-15, rising until it
 # refused, slowed down or gave no more (docs/benchmarks/network.md, section 7); 128 at most for the
 # services of a state, which many people share. server_req_per_s: the requests per second a server
-# gave there when it, not the line, was the limit; the estimates never count faster downloads.
+# gave there when it, not the line, was the limit. It is a ceiling, not only a figure for the
+# estimates: no more than that many requests a second are started, whatever the window allows.
+# The numbers below were measured as the servers' own ceilings, so the cap binds only where the
+# server was already the limit; a source of one's own may name a far lower rate for a small
+# server that blocks a caller it finds too eager (a user's EOX source, 2026-09-24).
 
 schema = 1
 
@@ -37,7 +41,11 @@ terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 # Providers/Global/Arc@.lay, Esri "Clarity" beta endpoint (HTTP/2). No placeholder rule in
 # Ortho4XP for this host (its rule tests "arcgisonline" in the URL): open point.
 url_template = "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
-max_zl = 19  # assumed
+# How deep it goes is not one number: ZL19 and ZL20 answer over New York, while ZL19 is a 404
+# over Lyon and Paris (2026-09-25). This is the deepest it ever serves, which is what the page
+# offers; where it stops sooner the map says the view has no imagery, and a build counts those
+# squares as missing rather than failing.
+max_zl = 19
 max_in_flight = 192  # 64, 128, 192, 256 gave 176, 411, 522, 448 req/s; two 502 at 256
 server_req_per_s = 522
 attribution = "Esri World Imagery Clarity (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"
@@ -52,11 +60,20 @@ terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 # decodes like the JPEGs. Free for non-commercial use (CC BY-NC-SA 4.0), its credit shown.
 url_template = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{zoom}/{y}/{x}.jpg"
 max_zl = 14
-max_in_flight = 32  # 8, 16, 32, 64 gave 76, 138, 224, 240 req/s, no error (2026-09-22)
-server_req_per_s = 224
+# 8, 16, 32 and 64 in flight gave 76, 138, 224 and 240 req/s from here with no error
+# (2026-09-22). A user's builds then kept failing on EOX (2026-09-24): from his address the
+# server stops answering around 90 req/s, and his imagery came back whole at 20. A throughput
+# one machine obtained is not a ceiling a server tolerates from everyone, so the rate is his
+# observed 90 and the fetcher approaches it: it starts at a quarter, climbs while the server
+# answers and falls when it does not. The window is no longer what protects the server, the
+# rate is, so the ceiling of connections is the measured one again.
+max_in_flight = 32
+server_req_per_s = 90
 attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
-name = "EOX Sentinel-2 cloudless"
+name = "EOX Sentinel-2 cloudless 2024"  # they publish a new mosaic every year, and the
+# address names the one we ask for: the list must say which, or a pilot cannot tell (user, 2026-09-24)
 terms_url = "https://cloudless.eox.at/documentation/license"
+licence = "CC BY-NC-SA 4.0, non-commercial use only"
 
 # ------------------------------------------------------------------ national
 

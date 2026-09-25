@@ -611,7 +611,13 @@ def install(
             receipt = {"pack": str(pack_dir), "target": str(target), "custom_scenery": str(cs)}
             if tile is not None:
                 with Library(library) as lib:
-                    lib.register(tile, "", 0, pack_dir, "ortho4xp", None)
+                    # A pack without its manifest tells us nothing but its path. A row already
+                    # there knows more, so it is left alone: this wrote "- / ortho4xp" over
+                    # "BI 15 / osxp" and its artefact keys, after which Delete refused the tile
+                    # for good with a reason that was not true (found in review, 2026-09-23).
+                    here = [r for r in lib.list(tile=tile, kind="ortho") if r.path == pack_dir]
+                    if not here:
+                        lib.register(tile, "", 0, pack_dir, "ortho4xp", None)
     except OsxpError as exc:
         _err(exc)
         raise typer.Exit(EXIT_ERROR) from None

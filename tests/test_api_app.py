@@ -423,7 +423,7 @@ async def test_a_folder_of_ortho4xp_tiles_is_imported_without_ortho4xp(
         empty.mkdir()
         r = await c.post("/api/library/import-ortho4xp", json={"folder": str(empty)})
         assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_WORKING_DIR_INVALID"
-        assert "holds neither Ortho4XP nor tiles it built" in r.json()["error"]["message"]
+        assert "holds neither Ortho4XP nor any scenery pack" in r.json()["error"]["message"]
 
 
 @pytest.mark.anyio

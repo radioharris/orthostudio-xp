@@ -159,3 +159,104 @@ def test_import_ortho4xp_rejects_missing_dir(tmp_path: Path) -> None:
     with Library(tmp_path / "lib.sqlite") as lib, pytest.raises(OsxpError) as exc:
         lib.import_ortho4xp(tmp_path / "nope")
     assert exc.value.code == "SYS_WORKING_DIR_INVALID"
+
+
+def test_an_ortho_pack_is_known_by_what_it_holds_not_by_its_name(tmp_path: Path) -> None:
+    """A user's ``/media/Data/X-Plane_Orthos/EUR_EOX_ZL14`` was refused as "not an Ortho4XP
+    installation" because the import knew a pack only by the name Ortho4XP gives it. He was right
+    about the remedy: an ``Earth nav data`` with DSFs in it and the orthophotos beside it is what
+    a pack is (2026-09-23)."""
+    from orthostudio.install.library import holds_ortho4xp_tiles, looks_like_an_ortho_pack
+
+    def pack(path: Path, *, ours: bool = False, dsf: bool = True) -> Path:
+        (path / "Earth nav data" / "+40+000").mkdir(parents=True)
+        if dsf:
+            (path / "Earth nav data" / "+40+000" / "+46+006.dsf").write_bytes(b"x")
+        (path / "textures").mkdir()
+        (path / "textures" / "23440_33760_BI16.dds").write_bytes(b"DDS ")
+        (path / "terrain").mkdir()
+        if ours:
+            (path / "orthostudio.toml").write_text("", encoding="utf-8")
+        return path
+
+    his = pack(tmp_path / "X-Plane_Orthos" / "EUR_EOX_ZL14")
+    assert looks_like_an_ortho_pack(his)
+    assert holds_ortho4xp_tiles(his), "the folder he named"
+    assert holds_ortho4xp_tiles(his.parent), "and the one holding it"
+
+    assert not looks_like_an_ortho_pack(pack(tmp_path / "zOrthoStudio_x", ours=True)), "ours"
+    assert not looks_like_an_ortho_pack(pack(tmp_path / "empty", dsf=False)), "no tile in it"
+    plain = tmp_path / "Documents"
+    (plain / "textures").mkdir(parents=True)
+    assert not looks_like_an_ortho_pack(plain)
+
+
+def _scenery_pack(root: Path, name: str, textures: list[str]) -> Path:
+    """A folder shaped like an X-Plane scenery pack: a DSF, a terrain folder and textures."""
+    pack = root / name
+    (pack / "Earth nav data" / "+40+000").mkdir(parents=True)
+    (pack / "Earth nav data" / "+40+000" / "+46+006.dsf").write_bytes(b"XPLNEDSF")
+    (pack / "terrain").mkdir()
+    (pack / "textures").mkdir()
+    for texture in textures:
+        (pack / "textures" / texture).write_bytes(b"DDS ")
+    return pack
+
+
+def test_a_pack_of_photo_tiles_is_known_by_the_names_of_its_textures(tmp_path: Path) -> None:
+    """A DSF and a textures folder say only "scenery pack": a mesh, an airport and a forest
+    library all have both. Asking for no more than that, over a real Custom Scenery, took a
+    commercial forest pack for 37 632 photo tiles, each a lat/lon its owner never built, with no
+    way to undo them but deleting the library by hand (found in review, 2026-09-23).
+
+    An orthophoto is named ``<til_y>_<til_x>_<provider><zl>.dds``, as Ortho4XP writes it and as
+    OrthoStudio XP does.
+    """
+    from orthostudio.install.library import looks_like_an_ortho_pack
+
+    takes = {
+        "an Ortho4XP pack": ["23440_33760_BI16.dds"],
+        "a folder named the user's own way": ["11720_16880_EOX14.dds"],
+        "a source whose code carries digits": ["23440_33760_PDOK2018.dds"],
+    }
+    for what, textures in takes.items():
+        pack = _scenery_pack(tmp_path, what, textures)
+        assert looks_like_an_ortho_pack(pack), what
+
+    leaves = {
+        "a forest library": ["Global_Forests_NM_fall.dds", "Global_Forests_NM_n.png"],
+        "a base mesh": ["mesh_grass.dds", "mesh_rock.dds"],
+        "an airport": ["apron_01.dds", "terminal.dds"],
+        "a pack whose textures folder is empty": [],
+    }
+    for what, textures in leaves.items():
+        pack = _scenery_pack(tmp_path, what, textures)
+        assert not looks_like_an_ortho_pack(pack), what
+
+    # and our own packs are still left to the library that already knows them
+    ours = _scenery_pack(tmp_path, "zOrthoStudio_+46+006", ["23440_33760_BI16.dds"])
+    (ours / "orthostudio.toml").write_text("format = 'osxp-pack-1'\n", encoding="utf-8")
+    assert not looks_like_an_ortho_pack(ours)
+
+
+def test_a_folder_that_cannot_be_read_does_not_crash_the_import(tmp_path: Path) -> None:
+    """A folder the app may not read, or a drive that stopped answering, raised out of the walk:
+    the endpoint answered 500 with a body that was not even JSON, and the page said only "the
+    engine does not answer". That is the mounted-drive case this feature exists for (found in
+    review, 2026-09-23)."""
+
+    from orthostudio.install.library import holds_ortho4xp_tiles
+
+    root = tmp_path / "X-Plane_Orthos"
+    good = root / "zOrtho4XP_+46+006"
+    (good / "Earth nav data" / "+40+000").mkdir(parents=True)
+    (good / "Earth nav data" / "+40+000" / "+46+006.dsf").write_bytes(b"x")
+    (good / "textures").mkdir()
+    (good / "textures" / "23440_33760_BI16.dds").write_bytes(b"DDS ")
+    shut = root / "not for you"
+    shut.mkdir()
+    shut.chmod(0o000)
+    try:
+        assert holds_ortho4xp_tiles(root), "the folders it can read are still found"
+    finally:
+        shut.chmod(0o755)

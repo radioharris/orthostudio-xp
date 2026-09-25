@@ -26,6 +26,9 @@
   /* The line each side of a map mark that sets it off from the photo and from the next mark:
      against the mark's colour, light where the marks are dark and dark where they are light. */
   --map-casing: rgba(255, 255, 255, 0.75);
+  /* A tile built and not in X-Plane: the one colour no other mark of the map uses (the zones
+     stop at ZL19, so the pink of ZL20 is never drawn), over a photo in either theme. */
+  --map-built: #ff4fc1;
   --radius: 4px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -430,6 +433,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .photo-shot { display: flex; flex-direction: column; gap: 4px; }
 .photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
 .photo-label { font-size: var(--fs-3); color: var(--fg-2); }
+/* Settings: the two share the card's width, up to the photo's own 256 px, and the words go under
+   them. At 148 px, with room left beside them, a user found the change hard to see (2026-09-25). */
+.photo-preview.is-wide .photo-shot { flex: 1 1 0; min-width: 0; max-width: 256px; }
+.photo-preview.is-wide .photo-canvas { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+.photo-preview.is-wide .photo-words { flex-basis: 100%; }
 .tile-colours { display: grid; gap: var(--gap); margin: var(--gap) 0 0; }
 .colours-own { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .colours-own > .help { margin: 0; flex: 1 1 220px; }
@@ -516,9 +524,15 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .map-legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .map-legend li { display: flex; align-items: center; gap: 6px; }
+/* Every label starts at the same place: a line without a checkbox keeps the checkbox's room, and
+   every mark is as wide as the others (they started at three places, a user saw, 2026-09-25). */
+.map-legend li:not(.legend-toggle)::before { content: ""; width: 13px; flex: none; }
+.map-legend .legend-head { display: flex; align-items: flex-start; gap: var(--label-gap); margin-bottom: var(--title-gap); }
+.map-legend .legend-view { flex: 1; margin: 0; color: var(--fg-2); }
 .map-legend .legend-title { margin: 6px 0 2px; font-weight: 600; color: var(--fg-2); }
 .legend-swatch { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .legend-installed { border: 2px solid var(--ok); }
+.legend-built { border: 2px dashed var(--map-built); }
 .legend-selected { border: 2px solid var(--accent); }
 /* The route's own colour, the line's, for the squares of its departure and arrival. */
 .legend-route-end { border: 2px solid var(--route); }
@@ -531,13 +545,29 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .plan-map .osxp-border.is-disputed { stroke-opacity: 0.55; stroke-dasharray: 2 4; }
 .plan-map.is-mock .osxp-border { stroke: var(--fg-2); }
 .map-legend .legend-toggle { pointer-events: auto; }
+/* Folded away to see the map under it (a user, 2026-09-25): a chevron in the corner folds it, one
+   button brings it back, and the choice is remembered. */
+.map-legend .legend-fold, .map-legend .legend-unfold { pointer-events: auto; }
+/* One line high and as wide, at the end of the view line: its centre is the line's. */
+.map-legend .legend-fold {
+  flex: none; width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em); padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; font: inherit; color: var(--fg-2);
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+}
+.map-legend .legend-fold::before {
+  content: ""; width: 6px; height: 6px; margin-top: -3px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+}
+.map-legend .legend-fold:hover { color: var(--fg); border-color: var(--line); }
+/* Folded, only the button is left, an ordinary small button like the others set on the map. */
+.map-legend.is-folded { padding: 0; background: none; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.map-legend .legend-toggle input { margin: 0; }
+.map-legend .legend-toggle input { margin: 0; width: 13px; height: 13px; flex: none; }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }
 /* Airports on the map: a small ring and its code, readable over a photo (a user asked to see
    whether a square holds the airport he wants, 2026-09-19). */
 .legend-street { background: linear-gradient(135deg, #e8e0d8 0 45%, #b9c6a8 45% 100%); border: 1px solid var(--line-2); }
-.legend-airport { width: 10px; border: 2px solid #ffd166; background: rgba(255, 209, 102, 0.35); border-radius: 50%; }
+.legend-airport { width: 10px; margin: 0 2px; border: 2px solid #ffd166; background: rgba(255, 209, 102, 0.35); border-radius: 50%; }
 .osxp-airport-label {
   font: 600 11px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
   color: #ffd166;
@@ -584,6 +614,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .more[open] > summary { margin-bottom: var(--title-gap); }
 .more > summary + * { margin-top: 0; } /* the summary's own space, not more */
 .draw-actions { margin-top: var(--block-gap); }
+.draw-actions + .help { margin-top: var(--help-gap); }
 .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .shortcut-list { margin: 0; padding-left: 18px; font-size: var(--fs-2); color: var(--fg-2); }
 .shortcut-list li { padding: 1px 0; }
@@ -646,6 +677,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Vector layers: Leaflet sets presentation attributes, these rules win over them. */
 /* Faint on purpose: the grid only helps aim; installed and selected tiles carry the colour. */
 .plan-map .osxp-grid-line { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+/* The texture grid, drawn only while a zone is being drawn: a zone takes every texture its
+   outline touches, whole, so these are the lines worth putting an outline on. Dashed and faint,
+   because the photo underneath is what the user is aiming at. */
+.plan-map .osxp-texture-grid { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 4; stroke-opacity: 0.55; }
 .plan-map.is-mock .osxp-grid-line { stroke: var(--fg-3); }
 /* Marks are outlines, never fills: a translucent colour over the ground lies about the photo
    underneath, and the map now shows the very colours a build will encode (a user, 2026-09-18). */
@@ -655,12 +690,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    both stand out from each other and from the photo (map.js renderGrid). */
 .plan-map .osxp-tile-casing { stroke: var(--map-casing); stroke-width: 5; fill: none; }
 .plan-map .osxp-tile-installed { stroke: var(--ok); stroke-width: 3; fill: none; }
+/* Built and kept, not in X-Plane: dashed pink, framed inside its square as every tile is. */
+.plan-map .osxp-tile-built { stroke: var(--map-built); stroke-width: 3; stroke-dasharray: 7 5; fill: none; }
 /* Tile outlines are straight lines across and down: drawn on whole pixels they stay sharp
    wherever the map is moved, where blended over two pixels the thin line between the green
    and the blue faded at some zooms (a user, 2026-09-22). WebKit widens each line to the pixel:
    2.5px there shows as 3px, and leaves the line between them its width. */
-.plan-map .osxp-tile-selected, .plan-map .osxp-tile-installed, .plan-map .osxp-tile-casing { shape-rendering: crispEdges; }
-.plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both { stroke-width: 2.5; }
+.plan-map .osxp-tile-selected, .plan-map .osxp-tile-installed, .plan-map .osxp-tile-built, .plan-map .osxp-tile-casing { shape-rendering: crispEdges; }
+.plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, .plan-map .osxp-tile-selected.is-both { stroke-width: 2.5; }
 /* The running build (map.js renderGrid): the tile worked on pulses, a waiting one is dashed. */
 .plan-map .osxp-tile-working { stroke: var(--accent); stroke-width: 4; fill: none; animation: tile-pulse 1.4s ease-in-out infinite; }
 .plan-map .osxp-tile-queued { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 5; fill: none; }
@@ -806,6 +843,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .jobs-head { display: flex; align-items: center; gap: 8px; min-height: 24px; margin-bottom: var(--title-gap); }
 .jobs-head .h2 { margin: 0; }
 .job-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.job-list li { display: flex; align-items: stretch; gap: 4px; }
+/* Quiet beside the row it belongs to, and plain to see once the row is pointed at or the keyboard
+   reaches it. Never hidden: a user has to be able to find it. */
+.job-forget { flex: none; align-self: center; opacity: .5; transition: opacity 120ms; }
+.job-list li:hover .job-forget, .job-forget:hover, .job-forget:focus-visible { opacity: 1; }
 .job-item {
   width: 100%; text-align: left; font: inherit; cursor: pointer;
   background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px;

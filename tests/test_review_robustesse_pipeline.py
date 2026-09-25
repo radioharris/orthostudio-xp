@@ -246,7 +246,10 @@ def test_server_dies_mid_run_containers_persist_and_resume_fetches_only_the_rest
     report = build_textures(make_spec(server, tmp_path, mask_dir, workers=2))
     # Windows reports a refused connection to a local port after about two seconds (its TCP stack
     # retries the SYN), where POSIX answers at once: the same retries take twice as long there.
-    assert time.perf_counter() - t0 < (90 if os.name == "nt" else 30)
+    # 90 s was a fast PC's figure; GitHub's Windows runner took 115 s for the same
+    # waves (2026-09-24).
+    # The bound is here to catch a run that never ends, and 180 s still catches that.
+    assert time.perf_counter() - t0 < (180 if os.name == "nt" else 30)
     assert _no_child_processes()
     assert not report.ok
     by_name = {o.name: o for o in report.outcomes}

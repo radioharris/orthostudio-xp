@@ -7,6 +7,7 @@ mesh-grid cell at its zoom level. Spec: ``docs/specs/dsf-terrain-assignment.md``
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import cos, pi
@@ -20,6 +21,8 @@ from orthostudio.dsf.params import DsfParams
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.grid import EARTH_RADIUS, TextureId, texture_at, tile_to_wgs84
 from orthostudio.model import TileRef
+
+log = logging.getLogger("orthostudio.dsf.zones")
 
 __all__ = ["AirportCover", "TextureMap", "airport_covers", "texture_map"]
 
@@ -128,28 +131,57 @@ class TextureMap:
         return TextureId(int(tex_x), int(tex_y), int(zl), self.providers[int(provider_idx)])
 
 
-def _zone_image(tile: TileRef, params: DsfParams) -> tuple[np.ndarray, list[tuple[int, str]]]:
+def _zone_image(
+    tile: TileRef,
+    zone_list: Iterable[Sequence[object]],
+    default_zl: int,
+    default_website: str,
+) -> tuple[np.ndarray, list[tuple[int, str]]]:
     """Priority image (``:113``, ``:192-206``) and the ``(zl, provider)`` of each value."""
-    zones = list(params.zone_list)
+    zones = list(zone_list)
     if len(zones) > _MAX_ZONES:
         raise ValueError(f"zone_list holds {len(zones)} zones, at most {_MAX_ZONES} are supported")
     lat, lon = tile.lat, tile.lon
     base: tuple[list[float], int, str] = (
         [lat, lon, lat, lon + 1, lat + 1, lon + 1, lat + 1, lon, lat, lon],
-        params.default_zl,
-        params.default_website,
+        default_zl,
+        default_website,
     )
     im = Image.new("L", (IMAGE_SIDE, IMAGE_SIDE), "black")
     draw = ImageDraw.Draw(im)
     values: list[tuple[int, str]] = [(0, "")]  # value 0 is never read (base covers the tile)
     for i, (coords, zl, provider) in enumerate([base, *zones[::-1]], start=1):
         pol = [
-            (round((x - lon) * 4095), round((lat + 1 - y) * 4095))
-            for (x, y) in zip(coords[1::2], coords[::2], strict=False)
+            (round((float(x) - lon) * 4095), round((lat + 1 - float(y)) * 4095))
+            for (x, y) in zip(coords[1::2], coords[::2], strict=False)  # type: ignore[index]
         ]
         draw.polygon(pol, fill=i)
         values.append((int(zl), str(provider)))
     return np.asarray(im), values
+
+
+def cell_pixels(tile: TileRef, mesh_zl: int) -> tuple[np.ndarray, np.ndarray, range, range]:
+    """Where each mesh cell reads the zone image: ``(rows, cols, til_xs, til_ys)``.
+
+    A cell is read at its centre, which is Ortho4XP's rule, and the centre is clamped into the
+    tile and rounded onto the 4096² image. Both the build and the warning the page gives before
+    it go through here, so the two can no longer answer differently about the same zone (found
+    in review, 2026-09-23). Longitude depends only on ``til_x`` and latitude only on ``til_y``,
+    so a tile costs two short arrays rather than a grid.
+    """
+    lat, lon = tile.lat, tile.lon
+    first = texture_at(lat + 1, lon, mesh_zl, "")
+    last = texture_at(lat, lon + 1, mesh_zl, "")
+    xs = range(first.til_x, last.til_x + 1, 16)
+    ys = range(first.til_y, last.til_y + 1, 16)
+    side = float(2 ** (mesh_zl - 1))
+    rat_x = (np.fromiter(xs, dtype=np.float64, count=len(xs)) + 8.0) / side - 1.0
+    rat_y = 1.0 - (np.fromiter(ys, dtype=np.float64, count=len(ys)) + 8.0) / side
+    lonp = np.clip(rat_x * 180.0, lon, lon + 1)
+    latp = np.clip(360.0 / pi * np.arctan(np.exp(pi * rat_y)) - 90.0, lat, lat + 1)
+    cols = np.round((lonp - lon) * 4095).astype(np.int32)
+    rows = np.round((lat + 1 - latp) * 4095).astype(np.int32)
+    return rows, cols, xs, ys
 
 
 def _airport_array(
@@ -182,6 +214,44 @@ def _airport_array(
     return arr
 
 
+def _say_the_zones_that_raise_nothing(
+    tile: TileRef, params: DsfParams, values: Sequence[tuple[int, str]], claimed: set[int]
+) -> None:
+    """Name the zones that no mesh cell took, so they are not silently paid for.
+
+    A zone's level is read at the centre of each mesh cell, which is Ortho4XP's rule and about
+    850 m at ``mesh_zl`` 19. A zone thinner than that holds no centre and raises nothing, while
+    the page draws the shape the user drew and the estimate charges for the textures it covers: a
+    user set a 300 m band to a sharper level, built, and saw no change and no word (2026-09-23).
+
+    The rule is kept, because it is the one the whole terrain assignment is a port of. What was
+    missing was saying so.
+    """
+    zones = list(params.zone_list)
+    for value in range(2, len(values)):  # 0 unused, 1 is the tile itself, then the zones
+        if value in claimed:
+            continue
+        # ``_zone_image`` paints them reversed, so that the first of the list ends on top
+        position = len(zones) + 1 - value
+        zl, _provider = values[value]
+        log.warning(
+            "%s: the zone %d of the list (level %d) takes no mesh cell, so its level changes "
+            "nothing: either it is finer than a cell, about %d m here, or a zone above it in "
+            "the list covers the cells it would have taken. Its colours follow its shape either "
+            "way",
+            tile.name,
+            position + 1,
+            zl,
+            _mesh_cell_metres(tile, params.mesh_zl),
+        )
+
+
+def _mesh_cell_metres(tile: TileRef, mesh_zl: int) -> int:
+    """The side of one mesh cell here, in metres: 16 tiles of ``mesh_zl`` at this latitude."""
+    around = 2 * pi * EARTH_RADIUS * cos(pi * (tile.lat + 0.5) / 180.0)
+    return round(16 * around / 2**mesh_zl)
+
+
 def texture_map(
     tile: TileRef,
     params: DsfParams,
@@ -195,27 +265,25 @@ def texture_map(
     ``ICAO``; ``existing_textures`` only when it is ``Existing``.
     """
     lat, lon, mesh_zl = tile.lat, tile.lon, params.mesh_zl
-    zone_im, values = _zone_image(tile, params)
+    zone_im, values = _zone_image(tile, params.zone_list, params.default_zl, params.default_website)
     upgrade = params.cover_airports_with_highres in ("True", "ICAO")
     apt_arr = _airport_array(tile, params, airports) if upgrade else None
+    rows, cols, xs, ys = cell_pixels(tile, mesh_zl)
     first = texture_at(lat + 1, lon, mesh_zl, "")
-    last = texture_at(lat, lon + 1, mesh_zl, "")
-    xs = range(first.til_x, last.til_x + 1, 16)
-    ys = range(first.til_y, last.til_y + 1, 16)
     ny, nx = len(ys), len(xs)
     tex_x = np.zeros((ny, nx), dtype=np.int32)
     tex_y = np.zeros((ny, nx), dtype=np.int32)
     zl_arr = np.zeros((ny, nx), dtype=np.int16)
     prov_arr = np.zeros((ny, nx), dtype=np.int16)
     providers: dict[str, int] = {}
+    claimed: set[int] = set()
     for col, til_x in enumerate(xs):
+        x = int(cols[col])
         for row, til_y in enumerate(ys):
-            latp, lonp = tile_to_wgs84(til_x + 8, til_y + 8, mesh_zl)
-            lonp = max(min(lonp, lon + 1), lon)
-            latp = max(min(latp, lat + 1), lat)
-            x = round((lonp - lon) * 4095)
-            y = round((lat + 1 - latp) * 4095)
-            zl, provider = values[int(zone_im[y, x])]
+            y = int(rows[row])
+            chosen = int(zone_im[y, x])
+            claimed.add(chosen)
+            zl, provider = values[chosen]
             if apt_arr is not None and apt_arr[y, x]:
                 zl = max(zl, params.cover_zl)
             factor = 2 ** (mesh_zl - zl)
@@ -223,6 +291,7 @@ def texture_map(
             tex_y[row, col] = 16 * (int(til_y / factor) // 16)
             zl_arr[row, col] = zl
             prov_arr[row, col] = providers.setdefault(provider, len(providers))
+    _say_the_zones_that_raise_nothing(tile, params, values, claimed)
     if params.cover_airports_with_highres == "Existing":
         for t in existing_textures:  # ``:231-257``: claims cells unless a higher zl is there
             if t.zl > mesh_zl:

@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from orthostudio.errors import OsxpError
+from orthostudio.errors import OsxpError, disk_trouble
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import Executor, InputRef, Source, Store, digest_bytes
 from orthostudio.imagery.chunks import (
@@ -53,7 +53,7 @@ from orthostudio.imagery.chunks import (
     now_unix,
 )
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles
-from orthostudio.imagery.providers import Provider, is_placeholder, tile_url
+from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, tile_url
 from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats
 from orthostudio.pipeline.home import default_chunks_root, default_store_root
 from orthostudio.pipeline.parents import (
@@ -70,7 +70,7 @@ from orthostudio.pipeline.rule import (
     dds_node,
     take_build_info,
 )
-from orthostudio.textures.assemble import image_body_complete
+from orthostudio.textures.assemble import GRID, image_body_complete
 from orthostudio.textures.encode import available_encoders, find_nvcompress
 from orthostudio.textures.imprint import (
     MASK_THRESHOLD,
@@ -119,7 +119,22 @@ _PROGRESS_LINE_PERIOD_S = 5.0
 _DEFAULT_ENCODE_S = 0.4
 _PLAN_BATCH = 32
 
-ENCODE_TIMEOUT_S = 300.0
+POOL_CLOSE_S = 20.0
+WORKER_END_S = 2.0
+"""How long an encoder is given to honour the signal to end before it is killed."""
+"""How long the encoders are given to close at the end of the step before they are taken down.
+
+Closing a pool joins its processes, and one that does not come back holds that line for ever: the
+step stayed at 99 %, every file written, Assembly never starting, and stopping the build left the
+Python processes running for the user to find in the task manager and kill by hand (a user,
+2026-09-23). Twenty seconds is far more than a worker needs to notice it has nothing left to do.
+"""
+
+MAX_ENCODE_ROPE_S = 1800.0
+"""The most a texture may ever be waited for. Without a ceiling the rope follows the measured
+mean, and one pathological encode dragged it into the hours."""
+
+ENCODE_TIMEOUT_S = 600.0
 """How long one texture's worker may take before the build gives up on it.
 
 A texture encodes in a second or so, and this is not a budget but a rope end: a worker that never
@@ -174,10 +189,15 @@ asked yet go first in the next round)."""
 RETRYABLE_CODES = frozenset({"NET_TIMEOUT", "NET_CONNECTION_FAILED", "NET_RATE_LIMITED"})
 """Failures that get the second pass: no answer at all, or a 429 beyond the fetcher's budget."""
 
-RETRYABLE_STATUSES = frozenset({502, 503, 504})
-"""``NET_SERVER_ERROR`` statuses that get the second pass too: a gateway or its upstream failed,
-or the server said it is unavailable for now. A 500 is the server's own answer for that URL,
-already asked ``max_attempts`` times: it is final for the run."""
+RETRYABLE_STATUSES = frozenset({403, 408, 425, 502, 503, 504})
+"""Statuses that get the second pass too: a gateway or its upstream failed (502, 504), the server
+said it is unavailable for now (503), it gave up waiting for the request (408) or asked for it
+later (425), and **403**, which is how a server that blocks a caller it finds too eager usually
+says so. A user's own EOX source served two textures, then answered four thousand chunks in eight
+seconds carrying no bytes, and nothing was asked again because a 4xx was final (2026-09-24). A
+403 that is a plain refusal costs the bounded rounds of one pass and then says the same thing,
+with how many rounds it took. A 500 is the server's own answer for that URL, already asked
+``max_attempts`` times, and a 401 or a 451 no waiting changes: those stay final."""
 
 _ANSWERS = (ChunkStatus.OK, ChunkStatus.MISSING, ChunkStatus.PLACEHOLDER)
 _FAILURE_DETAILS = 8
@@ -187,7 +207,9 @@ _FAILURE_DETAILS = 8
 
 def _retryable(code: str, status: int) -> bool:
     """The failure says "try later" (``RETRYABLE_CODES``, ``RETRYABLE_STATUSES``)."""
-    return code in RETRYABLE_CODES or (code == "NET_SERVER_ERROR" and status in RETRYABLE_STATUSES)
+    return code in RETRYABLE_CODES or (
+        code in ("NET_SERVER_ERROR", "NET_UNEXPECTED_STATUS") and status in RETRYABLE_STATUSES
+    )
 
 
 # --- public data types -------------------------------------------------------------------------
@@ -275,6 +297,8 @@ class TexturesSpec:
     hedge_after_s: float = 1.0
     timeout_s: float = 20.0
     max_attempts: int = 4
+    req_per_s: float | None = None
+    """``None``: the provider's own ``server_req_per_s``, the requests a second it takes."""
     second_pass_pauses_s: tuple[float, ...] = SECOND_PASS_PAUSES_S
     second_pass_max_s: float = SECOND_PASS_MAX_S
     parent_levels: int = 5
@@ -354,6 +378,10 @@ class ProgressSnapshot:
     """Rounds the second pass may run; 0 when nothing waits for it."""
     second_pass_wait_s: float = 0.0
     """Seconds left in the pause before the next round."""
+    pushed_back: bool = False
+    """A source answered 429 and the step is waiting out the delay it asked for. Not
+    ``throttled``, which is mostly our own window being lowered and is on throughout a healthy
+    download (a user's own screen, 2026-09-24)."""
 
 
 @dataclass(slots=True)
@@ -521,6 +549,12 @@ def _error_dict(exc: OsxpError, **extra: Any) -> dict[str, Any]:
     return d
 
 
+def _unlink_quietly(path: Path) -> None:
+    """Remove a file that must not be published; a path already gone is fine."""
+    with contextlib.suppress(OSError):
+        path.unlink()
+
+
 def _coded(exc: BaseException, *, path: Path | None = None) -> OsxpError:
     """The ``OsxpError`` for an exception escaping a pipeline task."""
     if isinstance(exc, OsxpError):
@@ -537,6 +571,11 @@ def _coded(exc: BaseException, *, path: Path | None = None) -> OsxpError:
                 remedy="Retry the missing ones; if it happens again, quit OrthoStudio XP and open "
                 "it again.",
             )
+        # a full disk and a read-only drive say so for themselves, here as everywhere else
+        known = disk_trouble(exc)
+        if known is not None:
+            known.__cause__ = exc
+            return known
         return OsxpError("SYS_WRITE_FAILED", context={"path": where, "reason": str(exc)})
     return OsxpError("SYS_INTERNAL_ERROR", context={"type": type(exc).__name__, "detail": str(exc)})
 
@@ -828,14 +867,25 @@ class _Pipeline:
         self.mask_zl = spec.mask_zl
         self.ter_params = dataclasses.replace(spec.ter_params, mask_zl=spec.mask_zl)
         self.out_dir = Path(spec.out_dir)
-        self.chunk_store = ChunkStore(spec.chunks_root, fsync=spec.fsync)
-        self.parent_cache = ParentCache(spec.chunks_root, spec.provider.code, fsync=False)
+        folder = cache_name(spec.provider)  # a source of the user's: its address names it too
+        self.chunk_store = ChunkStore(
+            spec.chunks_root, fsync=spec.fsync, folders={spec.provider.code: folder}
+        )
+        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False)
         self.store = Store(spec.store_root, fsync=spec.fsync)
         self.workers = default_workers() if spec.workers is None else max(0, spec.workers)
         self.jobs = merge_jobs(spec.jobs)
         self.states: list[_TexState] = []
         self.by_index: dict[int, _TexState] = {}
         self.pool: ProcessPoolExecutor | None = None
+        self.encode_slots: asyncio.Semaphore | None = None
+        """At most the pool's own workers and two more are ever handed over at once, so the time
+        a texture waits for a worker is bounded and the rope below measures the encoding rather
+        than the queue (found in review, 2026-09-23)."""
+        self.workers_seen: list[Any] = []
+        """The worker processes, kept as they appear. Closing a pool sets its own ``_processes``
+        to ``None``, so a pool already closed by a cancel had nothing left to take down: the user
+        who pressed Stop found the same two Python processes in his task manager as before."""
         self.encode_timeouts = 0
         """Textures whose worker never answered (:data:`ENCODE_TIMEOUT_S`)."""
         self.io_tasks: set[asyncio.Task[None]] = set()
@@ -957,10 +1007,16 @@ class _Pipeline:
                 ticker.cancel()
             with contextlib.suppress(BaseException):
                 await asyncio.gather(watcher, *([ticker] if ticker else []), return_exceptions=True)
-            if self.pool is not None:
-                self.pool.shutdown(wait=True, cancel_futures=True)
-            self.store.close()
-            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+            try:
+                # a second Ctrl-C lands here: whatever it interrupts, the store is closed and
+                # the scratch is swept, which a bare ``await`` in a ``finally`` did not promise
+                # (found in review, 2026-09-23)
+                with contextlib.suppress(BaseException):
+                    await self._close_pool()
+            finally:
+                self._take_workers_down()
+                self.store.close()
+                shutil.rmtree(self.tmp_dir, ignore_errors=True)
         report = self._report(plan_s, fetch_s)
         if self.progress_renderer is not None:
             self.progress_renderer.finish(self._snapshot())
@@ -1113,11 +1169,70 @@ class _Pipeline:
     # -- pool --------------------------------------------------------------------------------
 
     def _start_pool(self) -> None:
+        # the bound is set whether the encoders are processes or threads: with ``--workers 0``
+        # every texture was handed over at once again, and the rope timed the queue rather than
+        # the encoding, which is the whole point of it (found in review, 2026-09-23)
+        self.encode_slots = asyncio.Semaphore(max(1, self.workers) + 2)
         if self.workers == 0:
             return
         self.pool = ProcessPoolExecutor(
             max_workers=self.workers, mp_context=get_context("spawn"), initializer=_worker_init
         )
+
+    async def _close_pool(self) -> None:
+        """Close the encoders, and take down whatever will not close.
+
+        Nothing here may wait without an end. The step's work is done by the time this runs, so
+        an encoder still holding on is not doing anything for anybody; waiting for it costs the
+        user his build and leaves its processes behind when he stops it (2026-09-23).
+        """
+        pool, self.pool = self.pool, None
+        if pool is None:
+            self._take_workers_down()
+            return
+        # taken now, while they are still there to take: ``shutdown`` sets the pool's own list to
+        # ``None``, and a cancel has usually shut it already (found in review, 2026-09-23)
+        procs = getattr(pool, "_processes", None)
+        if procs:
+            self.workers_seen = list(procs.values())
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                asyncio.to_thread(pool.shutdown, True, cancel_futures=True), POOL_CLOSE_S
+            )
+        self._take_workers_down()
+
+    def _take_workers_down(self) -> None:
+        """End any encoder still running, politely first and then not.
+
+        A worker blocked in a write to a drive that has stopped answering does not die of
+        ``terminate``, and the thread still inside ``pool.shutdown`` then holds the interpreter's
+        own 300 s join at the end of the run: the user's progress line freezes with nothing
+        happening and his Python is still in the task manager, which is the very fault this is
+        here to stop (found in review, 2026-09-23). ``kill`` goes through the same guard on the
+        process's own return code as ``terminate`` does, so it adds no race that the signal
+        before it did not already have.
+        """
+        alive = [p for p in self.workers_seen if p.exitcode is None and p.is_alive()]
+        self.workers_seen = []
+        if not alive:
+            return
+        log.warning(
+            "the encoders did not close in %.0f s; %d of them are being ended",
+            POOL_CLOSE_S,
+            len(alive),
+        )
+        for proc in alive:
+            with contextlib.suppress(Exception):
+                proc.terminate()
+        deadline = time.monotonic() + WORKER_END_S
+        for proc in alive:
+            with contextlib.suppress(Exception):
+                proc.join(max(0.0, deadline - time.monotonic()))
+        for proc in alive:
+            if proc.exitcode is None and proc.is_alive():
+                log.warning("an encoder ignored the signal to end; it is being killed")
+                with contextlib.suppress(Exception):
+                    proc.kill()
 
     # -- fetch -------------------------------------------------------------------------------
 
@@ -1152,6 +1267,7 @@ class _Pipeline:
             hedge_after_s=self.spec.hedge_after_s,
             timeout_s=self.spec.timeout_s,
             max_attempts=self.spec.max_attempts,
+            req_per_s=self.spec.req_per_s or self.provider.server_req_per_s,
         )
         async with fetcher:
             if requests:
@@ -1724,16 +1840,57 @@ class _Pipeline:
             tmp_dir=self.tmp_dir,
             fsync=self.spec.fsync,
         )
+        self._spawn(self._encode_one(st, job, dest), st, encode=True)
+
+    async def _encode_one(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
+        """Wait for a worker, hand the texture over, then wait for its answer.
+
+        Every texture of a tile whose image pieces are already cached used to be handed to the
+        pool at once, so the rope below timed the queue and not the encoding: on a four-core
+        machine the last third of a tile passed it, was marked failed, and took the tile down
+        with it (found in review, 2026-09-23). Only as many as the pool can hold are handed over.
+        """
+        slots = self.encode_slots
+        if slots is None:
+            await self._hand_over(st, job, dest)
+            return
+        async with slots:
+            await self._hand_over(st, job, dest)
+
+    async def _hand_over(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
+        """Give one texture to a worker and wait for its answer.
+
+        ``_schedule`` looked at the stop before this texture queued for a slot, and the wait is
+        where a stop arrives: handed to a pool that has just been shut, the texture came back as
+        an internal error and the report told the user to file a bug for having pressed Stop
+        (found in review, 2026-09-23).
+        """
+        if self.cancelled:
+            self._finish(st, "cancelled")
+            return
         st.submitted_at = time.perf_counter()
         if not self.t_first_submit:
             self.t_first_submit = st.submitted_at
         self.encoding += 1
-        if self.pool is None:
-            awaitable: Any = asyncio.to_thread(_worker_run, job)
-        else:
-            fut: Future[WorkerResult] = self.pool.submit(_worker_run, job)
-            awaitable = asyncio.wrap_future(fut)
-        self._spawn(self._after_worker(st, awaitable, dest), st, encode=True)
+        try:
+            if self.pool is None:
+                awaitable: Any = asyncio.to_thread(_worker_run, job)
+            else:
+                fut: Future[WorkerResult] = self.pool.submit(_worker_run, job)
+                awaitable = asyncio.wrap_future(fut)
+                procs = getattr(self.pool, "_processes", None)
+                if procs:
+                    self.workers_seen = list(procs.values())
+        except RuntimeError:  # "cannot schedule new futures after shutdown": the stop, again
+            self.encoding -= 1
+            if self.cancelled:
+                self._finish(st, "cancelled")
+                return
+            raise
+        except BaseException:
+            self.encoding -= 1  # it never reached a worker, so nothing will count it down
+            raise
+        await self._after_worker(st, awaitable, dest)
 
     async def _publish_hit(self, st: _TexState, src: Path, digest: str, dest: Path) -> None:
         try:
@@ -1748,21 +1905,43 @@ class _Pipeline:
         st.outcome.fmt = "bc3" if st.mask_digest else "bc1"
         self._finish(st, "hit")
 
+    def _encode_deadline(self) -> float:
+        """How long one texture may wait for its answer before the build gives up on it.
+
+        Not a budget: a rope end, so that a worker which never comes back cannot hold the step.
+        It has to be long enough that no healthy texture ever reaches it, and the wait before a
+        worker even starts is part of it: every texture of a tile is handed to the pool at once
+        when its image pieces are already in the cache.
+
+        A user's own reports: 14 workers, 719 textures, 6.7 s each at the median and 60.6 s at
+        the worst, the pool busy throughout (2026-09-23). A fixed 300 s would have fired on the
+        last third of that tile, marked them failed and refused the tile, repeatably, on a build
+        that worked.
+
+        The wait before a worker starts is no longer part of it: ``_encode_one`` hands over only
+        as many textures as the pool can hold, so this times the encoding. What is left is a
+        floor wide enough for the slowest machine and a ceiling so that a worker which never
+        answers cannot hold the step for hours (both found in review, 2026-09-23).
+        """
+        seen = self.encode_seconds
+        typical = (sum(seen) / len(seen)) if seen else _DEFAULT_ENCODE_S
+        return min(MAX_ENCODE_ROPE_S, max(ENCODE_TIMEOUT_S, 20.0 * typical))
+
     async def _after_worker(self, st: _TexState, awaitable: Any, dest: Path) -> None:
         t = st.texture
+        rope_s = self._encode_deadline()
         try:
-            result: WorkerResult = await asyncio.wait_for(awaitable, ENCODE_TIMEOUT_S)
+            result: WorkerResult = await asyncio.wait_for(awaitable, rope_s)
         except TimeoutError:
-            # A worker that never comes back used to hold the whole build: a user watched the
-            # imagery step sit at 196 textures of 696 with nothing in flight, and only quitting
-            # the app freed it (2026-09-23). A texture encodes in a second; past the timeout it
+            # A worker that never comes back would hold the step: nothing in flight, nothing
+            # said, and the end of the step waiting on it (a user, 2026-09-23). Past the rope it
             # is one failed texture, said plainly, and the build carries on.
             self.encoding -= 1
             self.encode_timeouts += 1
             log.warning(
                 "%s: encoder did not answer in %.0f s (%d so far); the texture is marked failed",
                 texture_name(t),
-                ENCODE_TIMEOUT_S,
+                rope_s,
                 self.encode_timeouts,
             )
             stuck = OsxpError(
@@ -1770,7 +1949,7 @@ class _Pipeline:
                 context={
                     "texture": texture_name(t),
                     "encoder": self.encoder,
-                    "reason": f"no answer in {ENCODE_TIMEOUT_S:.0f} s",
+                    "reason": f"no answer in {rope_s:.0f} s",
                 },
             )
             self._finish(st, "failed", error=_error_dict(stuck))
@@ -1811,6 +1990,17 @@ class _Pipeline:
             self.counts["chunks_from_fallback"] += result.info.from_fallback
             self.counts["chunks_unfilled"] += result.info.unfilled
             self.encode_seconds.append(result.seconds)
+            if result.info.unfilled >= GRID * GRID:
+                # nothing at all came back, so what the encoder wrote is one flat grey square
+                # painted from its own emptiness. It was called built, the DSF shipped it, and
+                # the user flew grey ground with nothing said (found in review, 2026-09-23). A
+                # square outside what a source covers, or a level finer than it holds, lands
+                # here for every texture of the tile.
+                await asyncio.to_thread(_unlink_quietly, dest)
+                st.outcome.dds_path = None
+                st.outcome.digest = None
+                self._finish(st, "incomplete", error=self._nothing_came_back(st))
+                return
             if result.info.unfilled:
                 unfilled_exc = OsxpError(
                     "IMG_TILE_MISSING",
@@ -1824,6 +2014,27 @@ class _Pipeline:
             if result.info.corrupted:
                 await self._mark_corrupted(st, result.info.corrupted)
         self._finish(st, result.status)
+
+    def _nothing_came_back(self, st: _TexState) -> dict[str, Any]:
+        """The texture for which the source answered with nothing at all."""
+        name = texture_name(st.texture)
+        exc = OsxpError(
+            "IMG_TILE_MISSING",
+            context={
+                "chunk": f"all {GRID * GRID} chunk(s)",
+                "texture": name,
+                "provider": self.provider.code,
+            },
+            message=(
+                f"{self.provider.code} has no imagery at all for texture {name}: every one of "
+                f"its {GRID * GRID} pieces was refused."
+            ),
+            remedy=(
+                "That square is outside what this source covers, or the detail level is finer "
+                "than it holds. Choose another source in the Plan, or a lower level."
+            ),
+        )
+        return _error_dict(exc, texture=name)
 
     async def _mark_corrupted(self, st: _TexState, indices: tuple[int, ...]) -> None:
         """Bodies that passed the structural check but did not decode: ``ERROR`` on disk so
@@ -1981,6 +2192,7 @@ class _Pipeline:
             retries=int(self.net_totals["retries"] + (s.retries if s is not None else 0)),
             net_errors=int(self.net_totals["errors"] + (s.errors if s is not None else 0)),
             throttled=bool(s.throttled) if s is not None else False,
+            pushed_back=bool(s.pushed_back) if s is not None else False,
             textures_total=self.counts["textures"],
             built=self.counts["built"],
             hits=self.counts["hits"],

@@ -68,6 +68,7 @@ from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
     Provider,
+    cache_name,
     is_placeholder,
     load_registry,
     new_source_code,
@@ -127,7 +128,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 21
+API_LEVEL = 22
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -149,7 +150,7 @@ colours in the zones document, 19 = ``POST /api/library/{name}/forget`` and ``GE
 20 = ``GET /api/sizes`` (the sizes of the store and of the downloaded images, no longer in the
 status), 21 = the setting ``essential.simbrief_user`` (an older engine refuses a settings document
 that holds it), ``GET /api/simbrief`` and ``tiles_zl`` in a plan or a job (the detail level of some
-squares alone). A page
+squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the list). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -537,6 +538,7 @@ def provider_json(p: Provider) -> dict[str, Any]:
         "max_zl": p.max_zl,
         "attribution": p.attribution,
         "terms_url": p.terms_url,
+        "licence": p.licence,
         "alive": None,
         "extent": p.extent,
         "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,
@@ -545,6 +547,9 @@ def provider_json(p: Provider) -> dict[str, Any]:
     }
     if p.custom:
         doc["url_template"] = p.url_template  # shown in the list of the sources the user added
+        # the folder its images are kept in, which carries its address: the page puts it in the
+        # URL of its map tiles, which a browser keeps a day (see map.js tileVersion)
+        doc["cache"] = cache_name(p)
     return doc
 
 
@@ -1362,6 +1367,23 @@ def create_app(
     async def clear_jobs() -> dict[str, Any]:
         return {"removed": await asyncio.to_thread(manager.forget_finished)}
 
+    @app.delete("/api/jobs/{job_id}")
+    async def forget_job(job_id: str) -> Any:
+        """Remove one finished build from the list, its progress and its journal with it. The
+        tiles it built stay, in the Library and in X-Plane. A build running or waiting is
+        refused: cancel it first."""
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        if not await asyncio.to_thread(manager.forget, job_id):
+            return _plain_error(
+                "SYS_BUSY",
+                f"Job {job_id} is {job.status}.",
+                "Only a build that has finished can leave the list; cancel it first.",
+                status=409,
+            )
+        return {"job_id": job_id, "removed": True}
+
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str) -> Any:
         job = job_or_404(job_id)
@@ -1477,9 +1499,10 @@ def create_app(
 
     @app.post("/api/library/import-ortho4xp")
     async def import_ortho4xp(req: ImportRequest) -> Any:
-        folder = check_ortho4xp_folder(req.folder)
-
         def run() -> dict[str, Any]:
+            # in the thread, not on the loop: it walks the folder, and a user's tiles live on
+            # another disk that may be asleep or on the network (found in review, 2026-09-23)
+            folder = check_ortho4xp_folder(req.folder)
             with Library(default_library_path()) as lib:
                 rows = lib.import_ortho4xp(folder)
             # where it looked as well as what it found: finding nothing then says where not

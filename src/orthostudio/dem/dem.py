@@ -33,6 +33,7 @@ from orthostudio.dem.raster import (
 )
 from orthostudio.dem.sources import (
     MANUAL_SOURCES,
+    OWN_SUFFIXES,
     SOURCES,
     CellState,
     EnsureOptions,
@@ -99,6 +100,31 @@ def resolve_source(custom_dem: str, tile: TileRef, elevation_dir: Path) -> list[
         else:
             raise ValueError(f"empty overlay in custom_dem {custom_dem!r}")
     return resolved
+
+
+def _relief_remedy(source: str, cell: str) -> str | None:
+    """What to do about a missing elevation, when the relief is a folder or a file of one's own.
+
+    The registry's remedy speaks of the X-Plane relief and ends by telling the user to give his
+    own elevation file, which is what he just did: a Linux user pointed at his own folder, the
+    build stopped at 0 %, and the advice sent him to the X-Plane installer (found in review,
+    2026-09-23). The relief is the first thing a tile needs, so every stage after it is skipped
+    and the bar never moves.
+    """
+    path = Path(source)
+    if not (path.is_dir() or path.is_file() or source.startswith(("/", "~", "."))):
+        return None  # a named source: the registry's words are right
+    kinds = ", ".join(OWN_SUFFIXES)
+    if path.is_dir():
+        return (
+            f"The folder is read for a file named after the square, {cell}, with one of these "
+            f"endings: {kinds}. Rename or add that file, or choose another relief above, which "
+            "answers for every square the folder has nothing for."
+        )
+    return (
+        f"Check the file is readable and is one of {kinds}, and that it covers {cell}. "
+        "Otherwise choose another relief above."
+    )
 
 
 @dataclass(slots=True)
@@ -243,23 +269,47 @@ class Dem:
         # A folder of one's own files: the one of this square is taken from it, wherever it sits
         # (``cell_file_in_folder``). An overlay finds nothing where the folder has nothing, and the
         # relief under it answers there; a base must have it, as any other base must.
-        if path.is_dir():
+        from_folder = path.is_dir()
+        if from_folder:
             own = cell_file_in_folder(path, tile.lat, tile.lon)
             if own is None:
                 if optional:
                     return None
+                cell = hem_latlon(tile.lat, tile.lon)
                 raise OsxpError(
                     "DEM_TILE_UNAVAILABLE",
                     context={
-                        "cell": hem_latlon(tile.lat, tile.lon),
+                        "cell": cell,
                         "source": source,
                         "reason": f"no file for this square in {path}",
                     },
+                    remedy=_relief_remedy(source, cell),
                 )
             path = own
         if optional and not path.is_file():
             return None
-        read = _read_whole_file(path, tile, str(path), record)
+        try:
+            read = _read_whole_file(path, tile, str(path), record)
+        except OsxpError as exc:
+            if optional and from_folder:
+                # A **folder** of his own holds a file for this square that cannot be read: half
+                # downloaded, or a GeoTIFF in a projection we do not read, which is how most
+                # national lidar ships. Settings promises of that folder that "where your folder
+                # has nothing, the relief chosen above is used, so a partial set is no trouble at
+                # all", and a file we cannot read is nothing for this square. It killed the tile
+                # instead, at nought per cent, and a partial set is exactly what a user collects
+                # (found in review, 2026-09-23). The relief chosen is kept whole, so nothing is
+                # flattened, and ``_read_whole_file`` has already named the file through
+                # ``record``. A single file named as an overlay is a different matter: he named
+                # that one file, and it is still refused.
+                return None
+            cell = hem_latlon(tile.lat, tile.lon)
+            remedy = _relief_remedy(source, cell)
+            if remedy is None or exc.code != "DEM_TILE_UNAVAILABLE":
+                raise
+            raise OsxpError(
+                exc.code, context=exc.context, message=exc.message, remedy=remedy
+            ) from exc
         return cls._from_read(
             tile,
             read,

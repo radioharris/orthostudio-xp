@@ -165,6 +165,7 @@ Column "Origin in Ortho4XP": `file.py:first-last` inside Ortho4XP's `src/` (or i
 | XP_GLOBAL_SCENERY_NOT_FOUND | new | `Global Scenery/X-Plane 12 Global Scenery` is absent from the X-Plane folder | Only discovered per tile as DSF_GLOBAL_SCENERY_MISSING | blocking | stop | Install Global Scenery from the X-Plane installer. |
 | XP_SCENERY_PACKS_UNWRITABLE | new | `scenery_packs.ini` cannot be written (permissions, read-only volume) | Ortho4XP does not manage this file; the user edits it by hand | blocking | stop | Fix permissions on `{path}`; the pack is built but not activated. |
 | XP_LINK_FAILED | new | Symlink or NTFS junction cannot be created, or the app cannot follow the junction it made (Windows privileges, existing folder, the app under RedirectionGuard: `install.md` 4) | Uncaught `OSError` in the GUI callback (O4_GUI_Utils.py:1760-1800) | blocking | stop | Enable Developer Mode on Windows or copy the pack into Custom Scenery; under RedirectionGuard, quit the app and open it again from the Start menu. |
+| XP_PACK_ONLY_COPY | new | The tile's only folder is inside X-Plane's Custom Scenery, so taking it out of X-Plane would delete it | No counterpart: Ortho4XP's GUI deletes a tile's whole build folder with `shutil.rmtree` whatever it holds (O4_GUI_Utils.py:1662-1670) | blocking | stop | Move that folder somewhere else, then add the tile to X-Plane again from the Library. If you meant to remove the tile and its files, use Delete, which asks first. |
 | XP_PACK_CONFLICT | new | The same tile is provided by another pack (AutoOrtho, another folder of that name) | No check; the pack order decides silently | info | continue | Order in `scenery_packs.ini` is adjusted; remove the duplicate `{pack}` if unwanted. |
 
 ### CFG: configuration
@@ -244,6 +245,25 @@ position, when it comes from a saved file) and the `reason`.
 
 `render_json(exc)` accepts any exception: an `OsxpError` is rendered as above, anything else is
 wrapped as `SYS_INTERNAL_ERROR` with the exception type and text in `context`.
+
+**In the page** (`ui/app.js`). `codeWords(error)` is the message and the remedy in the page's
+language: the page's own words for a code when `ui/i18n.js` has them (`CODES`, filled from the
+error's `context`), else the engine's, which are English. `errorMessage(err)` is the one-line
+form every toast and every note under a button shows: the code, then **both** halves. It used to
+keep the message only, so they said what went wrong and never what to do about it (found in
+review, 2026-09-24).
+
+**The page's words, in French.** Every code has French words in `CODES.fr`, the same two
+sentences as here, naming only what this spec's sentence names, filled from the context. The
+exception is a code the engine raises somewhere with a `message` or a `remedy` of its own: a
+translation of its general sense would there replace precise words with vaguer ones, or wrong
+ones (`MASK_CUSTOM_EXTENT_INVALID` is raised with one remedy only, "the feature does not exist
+yet; clear the setting", where its general sense says to check the PNG), so the engine's words
+stand, in English. Fourteen of those had French words before this rule, written for the page on
+purpose, and keep them. English keeps the engine's words for every code. And words naming
+something an error did not send give way to the engine's (`codeText`), so no page ever prints a
+`{brace}`. `tests/test_ui_static.py` reads the codes raised with words of their own from the
+syntax tree and holds all of this. Before 2026-09-25, 86 of the 120 codes had no page words.
 
 ## Wanted differences from Ortho4XP
 

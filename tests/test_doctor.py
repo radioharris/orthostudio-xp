@@ -1,3 +1,11 @@
+"""What the doctor answers about the outside world, without going there.
+
+The probe is injected, so nothing here reaches a server.
+"""
+
+from __future__ import annotations
+
+
 def test_the_doctor_says_which_map_data_servers_answer() -> None:
     """The question nobody could answer on 2026-09-22, when two of the three public machines had
     become unusable and three users' failed builds were how it was found. The probe is the

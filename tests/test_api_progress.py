@@ -254,8 +254,11 @@ def test_replay_progress_elapsed_and_phase(
     job, stats, end = replayed
     values = [st["progress"] for _t, st in stats]
     assert values == sorted(values) and values[0] >= 0.0
-    # 1 once every node ended (the last textures node failed at 538.0 s), not before
-    assert values[-1] == 1.0 and all(st["progress"] < 1.0 for t, st in stats if t < 537.9)
+    # It read 1 as soon as every node had ended, however it ended. This journal's last textures
+    # node *failed*, so the bar stops just short of full: what the build got through, not "all
+    # done" (found in review, 2026-09-23).
+    assert 0.98 < values[-1] < 1.0
+    assert all(st["progress"] <= values[-1] for _t, st in stats)
     # elapsed spans both phases (the journal's ts count from the job's creation, a hair earlier)
     assert all(abs(st["elapsed_s"] - t) < 0.01 for t, st in stats)
     assert all(st["eta_low_s"] is not None for t, st in stats if t < end)
@@ -270,7 +273,10 @@ def test_replay_progress_elapsed_and_phase(
     assert first["hits"] == 2  # the two OSM rows whose data was there
     job._finish("failed", None, None)
     last = job.state()
-    assert last["stats"]["progress"] == 1.0 and last["stats"]["eta_low_s"] == 0.0
+    # the job is finished as *failed*: the bar stops where the work stopped, and the status is
+    # what says nothing more will happen (found in review, 2026-09-23)
+    assert 0.98 < last["stats"]["progress"] < 1.0
+    assert last["stats"]["eta_low_s"] == 0.0
     assert last["eta"] is None
     for tile in last["tiles"]:
         data = tile["stages"]["data"]
@@ -637,13 +643,17 @@ def test_rows_and_events_carry_the_weight_a_page_needs(tmp_path: Path) -> None:
     assert by_event[("started", "+43+005/vectors")]["weight_s"] > 0
     assert by_event[("done", "+43+005/vectors")]["weight_s"] == 0.0  # a hit
     assert by_event[("progress", "+43+005/coastline")]["weight_s"] > 0
-    assert by_event[("failed", "+43+005/masks")]["weight_s"] == 0.0  # skipped before it started
+    # a node skipped before it started used to carry no weight, so it left the sum and the bar
+    # read "all of what is left is done". Work planned that will not happen still counts.
+    assert by_event[("failed", "+43+005/masks")]["weight_s"] > 0.0
     tile = job.state()["tiles"][0]
     for stage in tile["stages"].values():
         if not stage["nodes"]:
             continue
+        # 1 only for what finished; what failed, was skipped or was cancelled counts how far
+        # it got, as the engine's ``progress._fraction`` does
         parts = [
-            (n["weight_s"], 1.0 if n["status"] not in ("pending", "running") else n["fraction"])
+            (n["weight_s"], 1.0 if n["status"] in ("done", "hit") else n["fraction"])
             for n in stage["nodes"]
             if n["status"] != "pending"
         ]
@@ -1231,7 +1241,10 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
     stats = [e["stats"] for e in events if e["event"] == "stats"]
     assert {s["phase"] for s in stats} == {"build"}
     assert [s["progress"] for s in stats] == sorted(s["progress"] for s in stats)
-    assert stats[-1]["progress"] == 1.0 and stats[-1]["eta_low_s"] == 0.0
+    # Nothing was built: no network, so every node failed or was skipped. The bar used to read
+    # 1.0 because every node had *ended*, which is a different question from how much is built
+    # (found in review, 2026-09-23). "failed" above is what says it is over.
+    assert stats[-1]["progress"] == 0.0 and stats[-1]["eta_low_s"] == 0.0
     state = job.state()
     for tile in state["tiles"]:
         rows = [n for stage in tile["stages"].values() for n in stage["nodes"]]
@@ -1247,30 +1260,229 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
 
 def test_a_step_that_stops_reporting_does_not_announce_a_billion_hours() -> None:
     """A user read "Remaining 1 308 980 335 h 33 min" on a build whose imagery step had stopped
-    moving (2026-09-23). The time left is what is missing divided by the recent rate, and that
-    rate decays with the silence: the longer nothing happened, the longer the announcement.
+    moving (2026-09-23). His journal shows why: the step reported twice a second the whole time,
+    always the same 196 textures of 696, so nothing was silent in the literal sense while the
+    recent rate was averaged with zero four times a second. The time left is what is missing
+    divided by that rate.
 
-    A node silent for ``SILENT_S`` is not extrapolated any more, the weights answer in its place,
-    and an estimate above ``ETA_MAX_S`` is no estimate at all: the page is told nothing rather
-    than a number nobody can act on.
+    This drives the real path, report by report, rather than describing a row by hand: the guard
+    written before it watched for a node that stops sending, which this step never does.
     """
-    from orthostudio.api.progress import ETA_MAX_S, SILENT_S, _extrapolation
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import ETA_MAX_S, SILENT_S, _extrapolation, observe_progress
 
-    class Stalled:
-        status = "running"
-        fraction0 = 0.0
-        fraction0_at = 0.0
-        fraction = 0.28  # 196 textures of 696, as the user had
-        rate = 0.01
-        fraction_at = 0.0
-        weight_s = 100.0
-        started_at = 0.0
+    def moving_row(name: str) -> Any:
+        row = _NodeState(node=name, role="textures", stage="imagery")
+        row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+        for i in range(40):  # it moves: nothing to 28 %, as his did
+            observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+        return row
 
-    node = cast(Any, Stalled())
-    moving = _extrapolation(node, 5.0)
-    assert moving is not None and moving[0] < ETA_MAX_S
-    assert _extrapolation(node, SILENT_S) is None
-    assert _extrapolation(node, 6 * 3600.0) is None  # never a billion hours again
+    row = moving_row("+36-118/BI17/textures")
+    last_move = 1.0 + 0.5 * 39
+    healthy = _extrapolation(row, last_move)
+    assert healthy is not None and 0 < healthy[0] < 3600.0
 
-    node.rate = 0.0  # a line that gives nothing: no division by it either
-    assert _extrapolation(node, 1.0) is None
+    t = last_move
+    for _ in range(600):  # then five minutes of the same figure, twice a second
+        t += 0.5
+        observe_progress(row, 0.28, t)
+    assert row.fraction == pytest.approx(0.28)
+    assert row.fraction_at == pytest.approx(t)  # it never stopped talking
+    assert _extrapolation(row, t) is None, "a step that gains nothing is silent, whatever it says"
+
+    # briefly quiet, the estimate may grow, but it may not run away
+    quiet = _extrapolation(moving_row("n"), last_move + SILENT_S - 1.0)
+    assert quiet is not None and quiet[0] < 9 * healthy[0]
+    assert quiet[0] < ETA_MAX_S  # never a billion hours again
+
+
+def test_a_figure_repeated_is_not_a_measurement() -> None:
+    """The time left is what is missing divided by the recent rate, so anything that feeds that
+    rate a zero while the step is only repeating itself makes the answer grow without end. This
+    is the guard itself: it fails if the gain is taken out of what feeds the average, which is
+    the fault a user met as "1 308 980 335 h" (2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import SILENT_S, _extrapolation, observe_progress
+
+    row = _NodeState(node="+36-118/BI17/textures", role="textures", stage="imagery")
+    row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+    for i in range(40):
+        observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+    measured = row.rate
+    assert measured is not None and measured > 0
+
+    t = 1.0 + 0.5 * 39
+    for _ in range(int(SILENT_S / 0.5) - 4):  # it keeps talking, and says the same thing
+        t += 0.5
+        observe_progress(row, 0.28, t)
+    assert row.rate == pytest.approx(measured), "the rate is measured on what was gained"
+
+    still = _extrapolation(row, t)
+    assert still is not None, "not yet silent: it is still answering"
+    left, _trust = still
+    assert 0 < left < 3600.0
+
+
+def test_a_step_that_goes_quiet_speaks_for_its_neighbours_less() -> None:
+    """One running node's extrapolation stands in for the ones queued behind it. Its rate was
+    damped by its silence while its say was not, so the longer it said nothing the more of the
+    whole estimate rested on it (found in review, 2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import REPORT_GRACE_S, _extrapolation, observe_progress
+
+    def moving() -> Any:
+        row = _NodeState(node="+36-118/BI17/textures", role="textures", stage="imagery")
+        row.status, row.started_at, row.weight_s = "running", 0.0, 400.0
+        for i in range(40):
+            observe_progress(row, 0.28 * (i + 1) / 40, 1.0 + 0.5 * i)
+        return row
+
+    last_move = 1.0 + 0.5 * 39
+    answering = _extrapolation(moving(), last_move + REPORT_GRACE_S)
+    quiet = _extrapolation(moving(), last_move + 40.0)
+    assert answering is not None and quiet is not None
+    assert quiet[1] < answering[1] / 2, "its say falls as its silence grows"
+    assert quiet[1] > 0.0, "and it does not vanish: it is still the only thing measured here"
+
+
+def test_the_top_of_the_range_ends_where_the_estimate_ends() -> None:
+    """The estimate itself stops at a day and the band widens the top by up to 1.7, so an
+    estimate of 14 hours was published past the day. The first attempt at this capped
+    ``Estimate.high_s``, which nothing reads: the range the page is shown is made by
+    ``EtaSmoother.update`` from ``eta_s`` and the band, and that is where it has to hold
+    (found in review, 2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import ETA_MAX_S, EtaSmoother, estimate
+
+    rows = []
+    for i in range(400):
+        row = _NodeState(node=f"+36-118/BI17/n{i}", role="textures", stage="imagery")
+        row.status, row.weight_s = "pending", 200.0
+        rows.append(row)
+    done = _NodeState(node="+36-118/BI17/first", role="textures", stage="imagery")
+    done.status, done.weight_s, done.wall_s, done.ended_at, done.fraction = (
+        "done",
+        10.0,
+        10.0,
+        0.0,
+        1.0,
+    )
+    rows.append(done)
+
+    est = estimate(rows, now=100.0, phase="build", declared=True)
+    assert est.eta_s is not None and est.eta_s > 20 * 3600.0, "close to the day it allows"
+    assert est.high_s is not None and est.high_s <= ETA_MAX_S
+    assert est.low_s is not None and est.low_s >= 0.0
+
+    # what the page is actually given: jobs.py publishes this pair as eta_low_s / eta_high_s
+    published = EtaSmoother().update(100.0, est.eta_s, est.band)
+    assert published is not None
+    low_s, high_s = published
+    assert high_s <= ETA_MAX_S, f"the page is shown {high_s / 3600:.1f} h"
+    assert 0.0 <= low_s <= high_s
+
+
+def test_a_build_that_was_stopped_does_not_read_as_finished() -> None:
+    """One number answered two questions: how much of the scenery is built, which is what the
+    bar is read for, and whether anything more will happen, which is what the job's status says.
+    A node that failed, was skipped or was cancelled counted as finished, and one skipped before
+    it started left the sum altogether, so stopping a build twenty seconds in put the bar at
+    99 % beside the word "cancelled" -- the very shape of the complaint this release exists for
+    (found in review, 2026-09-23)."""
+    from orthostudio.api.jobs import _NodeState
+    from orthostudio.api.progress import estimate
+
+    def progress(kinds: list[tuple[str, float, float, float | None]]) -> float:
+        rows = []
+        for i, (status, fraction, weight, started) in enumerate(kinds):
+            n = _NodeState(node=f"+43+005/n{i}", role="textures", stage="imagery")
+            n.status, n.fraction, n.weight_s, n.started_at = status, fraction, weight, started
+            rows.append(n)
+        return estimate(rows, now=100.0, phase="build", declared=True).progress
+
+    stopped_at_once = progress(
+        [
+            ("done", 1.0, 2.5, 0.0),
+            ("cancelled", 0.0, 6.3, 1.0),
+            ("cancelled", 0.0, 41.0, None),
+            ("skipped", 0.0, 1.8, None),
+        ]
+    )
+    assert stopped_at_once < 0.15, f"a build stopped at once reads {stopped_at_once:.0%}"
+
+    half_way = progress(
+        [
+            ("done", 1.0, 2.5, 0.0),
+            ("done", 1.0, 6.3, 0.0),
+            ("cancelled", 0.466, 41.0, 1.0),
+            ("skipped", 0.0, 1.8, None),
+        ]
+    )
+    assert 0.35 < half_way < 0.75, f"cancelled with the imagery half done reads {half_way:.0%}"
+
+    assert (
+        progress(
+            [("failed", 0.0, 2.5, 0.0), ("skipped", 0.0, 6.3, None), ("skipped", 0.0, 41.0, None)]
+        )
+        == 0.0
+    )
+
+    # what really finished still reads as finished, and so does a tile entirely from the store
+    assert progress([("done", 1.0, 2.5, 0.0), ("done", 1.0, 41.0, 0.0)]) == 1.0
+    assert progress([("hit", 1.0, 0.0, None), ("hit", 1.0, 0.0, None)]) == 1.0
+
+
+def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path) -> None:
+    """A step that reports every second, so the page knows it is alive, wrote that same second
+    a line into the log: one a second for minutes, all identical, while the map data server
+    worked out its answer. A user watching his first build asked what it meant (2026-09-23)."""
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+46+006")], lambda: at[0], tmp_path)
+    node = "+46+006/osm"
+    job.on_event(Started(node, "net", "k" * 64))
+    waiting = "+46+006: waiting for the map data server (airports, roads, water, coastline)"
+    for second in range(1, 7):
+        at[0] = float(second)
+        job.on_event(Progress(node, 0.0, waiting))
+
+    def lines() -> list[dict[str, Any]]:
+        return [e for e in job.events() if e["event"] == "log" and e.get("node") == node]
+
+    assert len(lines()) == 1, f"{len(lines())} identical lines written"
+
+    at[0] = 10.0
+    job.on_event(Progress(node, 0.25, "+46+006: 1 of 4 back: airports"))
+    assert len(lines()) == 2, "and a line that says something new is written"
+
+
+def test_only_a_source_that_really_pushed_back_is_reported_as_slowing_us_down() -> None:
+    """The page said "the source is asking us to slow down" beside 1 269 requests a second and
+    18.4 MB/s, because it read ``throttled`` -- which is mostly our **own** window being lowered
+    on a latency spike, something a healthy download does throughout. A user saw it on his first
+    build (2026-09-24). ``pushed_back`` is a server answering 429 and us waiting out the delay it
+    asked for, which is the only one worth telling him about."""
+    import inspect
+    from dataclasses import replace
+
+    from orthostudio.pipeline.build import textures_progress_message
+    from orthostudio.pipeline.textures import ProgressSnapshot
+
+    empty = {
+        name: (False if p.annotation is bool else 0)
+        for name, p in inspect.signature(ProgressSnapshot).parameters.items()
+        if p.default is inspect.Parameter.empty
+    }
+    busy = replace(
+        ProgressSnapshot(**empty),
+        tiles_total=55296,
+        tiles_done=48594,
+        textures_total=234,
+        built=203,
+        req_per_s=1269.0,
+    )
+    said = "the source is asking us to slow down"
+    assert said not in textures_progress_message("BI16", replace(busy, throttled=True), 18.4)
+    assert said in textures_progress_message("BI16", replace(busy, pushed_back=True), 0.4)

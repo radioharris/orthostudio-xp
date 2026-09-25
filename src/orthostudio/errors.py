@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import enum
+import errno
 import json
 import re
 import string
@@ -38,6 +39,7 @@ __all__ = [
     "Severity",
     "by_domain",
     "codes",
+    "disk_trouble",
     "render_json",
     "spec_for",
     "wrap",
@@ -197,7 +199,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _D,
         _C,
         "Cached OSM file {path} is unreadable.",
-        "The corrupted cache file is deleted and the layer downloaded again.",
+        "Delete that file and build the tile again; it is downloaded afresh.",
     ),
     _spec(
         "OSM_CACHE_WRITE_FAILED",
@@ -455,7 +457,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Triangle4XP failed on tile {tile} (exit code {returncode}).",
-        "Report with the files exported by osxp debug export-pslg; check available memory.",
+        "Close other programs to free memory, then build this tile again. If it happens again, "
+        "send serve.log with a report naming the tile.",
     ),
     _spec(
         "MESH_TRIANGLE_BUDGET_REACHED",
@@ -551,7 +554,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _D,
         _C,
         "Provider {provider} answered {content_type} instead of an image for chunk {chunk}.",
-        "The provider needs a token or is retired; run osxp doctor --providers.",
+        "The source needs a token or is no longer served; choose another source in the Plan, "
+        "and use Checks to see which sources answer.",
     ),
     _spec(
         "IMG_CACHE_INCOMPLETE",
@@ -615,14 +619,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "DDS encoding of {texture} failed with {encoder} ({reason}).",
-        "The next encoder of the fallback chain is tried; if all fail run osxp doctor --encoder.",
+        "This texture is not built. Run osxp doctor, which says which encoders this machine "
+        "has, and install one it names.",
     ),
     _spec(
         "TEX_ENCODER_UNAVAILABLE",
         _B,
         _S,
         "No DDS encoder is available ({reason}).",
-        "Run osxp doctor --encoder and install the fallback encoder.",
+        "Run osxp doctor, which says which encoders this machine has, and install one it names.",
     ),
     _spec(
         "TEX_GEOTIFF_TOOL_MISSING",
@@ -673,7 +678,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "A vertex pool of tile {tile} exceeds 65535 entries.",
-        "Internal error; report the tile and parameters with osxp debug report.",
+        "Send serve.log with a report of what you were building; the README says where it is on "
+        "each system.",
     ),
     _spec(
         "DSF_MESH_OUTSIDE_TILE",
@@ -733,6 +739,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Enable Developer Mode on Windows or copy the pack into Custom Scenery.",
     ),
     _spec(
+        "XP_PACK_ONLY_COPY",
+        _B,
+        _S,
+        "The only folder of tile {tile} is inside X-Plane's own Custom Scenery ({path}), so "
+        "taking it out of X-Plane would delete it.",
+        "Move that folder somewhere else, then add the tile to X-Plane again from the Library. "
+        "If you meant to remove the tile and its files, use Delete, which asks first.",
+    ),
+    _spec(
         "XP_PACK_CONFLICT",
         _I,
         _C,
@@ -780,7 +795,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Provider {provider} is unknown.",
-        "Choose a provider from the list; run osxp doctor --providers to see which are alive.",
+        "Choose a source from the list in the Plan; Checks says which ones answer.",
     ),
     _spec(
         "CFG_PROVIDER_DEFINITION_INVALID",
@@ -909,7 +924,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _D,
         _C,
         "Provider {provider} answered HTTP {status} for {url}.",
-        "Run osxp doctor --providers to check the provider.",
+        "Use Checks to see whether that source answers, or choose another one in the Plan.",
     ),
     # ---------------------------------------------------------------- SYS
     _spec(
@@ -953,7 +968,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Internal error: {type}: {detail}",
-        "Report the error with osxp debug report (tile, parameters and traceback included).",
+        "Send serve.log with a report of what you were building; the README says where it is on "
+        "each system.",
     ),
     _spec(
         "SYS_CANCELLED",
@@ -1056,7 +1072,14 @@ def spec_for(code: str) -> ErrorSpec:
 
 
 class _SafeContext(dict[str, Any]):
-    """Formatting mapping that leaves unknown placeholders in place."""
+    """Formatting mapping that leaves unknown placeholders in place.
+
+    A card once read "OSM coastline of tile {tile} has a way with water on the wrong side",
+    which is the program showing a user its own template (found in review, 2026-09-23). Hiding
+    the gap here would only hide it: what a template names, its raise site must supply, and
+    ``test_every_error_supplies_what_its_words_need`` reads the source and says so when one does
+    not. Left visible, a gap that slips through is at least unmistakable.
+    """
 
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
@@ -1156,10 +1179,75 @@ class OsxpError(Exception):
         return json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
+_DISK_FULL_ERRNOS = frozenset({errno.ENOSPC, errno.EDQUOT})
+
+
+def disk_trouble(exc: BaseException) -> OsxpError | None:
+    """The two failures of the machine the user can act on, said in his own terms.
+
+    Everything that was not ours became ``SYS_INTERNAL_ERROR``, whose remedy is "report the
+    error with a bug report". A full disk is the likeliest way a build of several gigabytes a
+    tile ends, and a working folder on a drive remounted read-only is the second: the program
+    asked the user to file a bug for both (found in review, 2026-09-23). Only the conditions
+    that say plainly what happened are recognised here; anything ambiguous stays an internal
+    error, which at least does not mislead.
+    """
+    if isinstance(exc, OSError):
+        where = str(exc.filename or "")
+        if exc.errno in _DISK_FULL_ERRNOS:
+            return OsxpError(
+                "SYS_DISK_FULL",
+                context={"volume": where, "needed": "", "free": ""},
+                message=(
+                    f"There is no room left on the disk holding {where or 'the working folder'}."
+                ),
+                remedy="Free some space, or choose a working folder on another disk in Settings.",
+            )
+        if exc.errno == errno.EROFS:
+            return OsxpError(
+                "SYS_WRITE_FAILED",
+                context={"path": where, "reason": "the disk is mounted read-only"},
+            )
+        if exc.errno in (errno.EACCES, errno.EPERM):
+            # the commonest of the three: a network drive, an external disk, a folder belonging
+            # to somebody else, or macOS refusing a folder the app was never granted. The words
+            # say "use" rather than "write", because this reaches a read as well
+            return OsxpError(
+                "SYS_WRITE_FAILED",
+                context={"path": where, "reason": "permission denied"},
+                message=(
+                    f"OrthoStudio XP is not allowed to use {where or 'the folder it was given'}."
+                ),
+                remedy=(
+                    "Give yourself permission on that folder, or choose another working folder "
+                    "in Settings."
+                ),
+            )
+    text = str(exc)
+    if type(exc).__name__ == "OperationalError":
+        if "readonly database" in text or "attempt to write a readonly" in text:
+            return OsxpError(
+                "SYS_WRITE_FAILED",
+                context={"path": "the working folder", "reason": "it cannot be written to"},
+            )
+        if "disk is full" in text:
+            return OsxpError(
+                "SYS_DISK_FULL",
+                context={"volume": "", "needed": "", "free": ""},
+                message="There is no room left on the disk holding the working folder.",
+                remedy="Free some space, or choose a working folder on another disk in Settings.",
+            )
+    return None
+
+
 def wrap(exc: BaseException) -> OsxpError:
     """Return ``exc`` if it is an ``OsxpError``, else wrap it as ``SYS_INTERNAL_ERROR``."""
     if isinstance(exc, OsxpError):
         return exc
+    known = disk_trouble(exc)
+    if known is not None:
+        known.__cause__ = exc
+        return known
     wrapped = OsxpError(
         "SYS_INTERNAL_ERROR",
         context={"type": type(exc).__name__, "detail": str(exc)},

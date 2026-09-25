@@ -135,6 +135,14 @@ when it is not the current file's revision the answer is **`409 ZONE_CONFLICT`**
 `path`) and nothing is written, so two windows never overwrite each other's zones (the page
 reloads them). Without `If-Match` (the command line, a script) nothing is compared.
 
+**A zone finer than a mesh cell raises nothing, and says so.** The level of a cell is read at its
+centre (`zone_list_to_ortho_dico`, which this is a port of), and a cell is about 850 m at
+`mesh_zl` 19: a zone thinner than that holds no centre. The rule is Ortho4XP's and is kept, since
+the whole terrain assignment is a port of it, but the build now names every zone no cell took,
+with the size of a cell at that latitude. A user set a 300 m band to a sharper level, built, saw
+no change and read no word (2026-09-23). The colours, which are ours and not Ortho4XP's, follow
+the ring itself and have no such limit.
+
 ## 4. From zones to a tile's `zone_list` (`src/orthostudio/zones.py`)
 
 ```python
@@ -185,7 +193,8 @@ clipped polygon. It stays an upper bound, and says so.
 
 - `provider` must be a registry code (else `404`, `CFG_PROVIDER_UNKNOWN`); `z` from 1 to
   `min(19, max_zl)`; `x`, `y` in `[0, 2^z)` (else `422`, `CFG_VALUE_INVALID`).
-- Served from `<data folder>/mapcache/<provider>/<z>/<x>/<y>` when present (`$OSXP_HOME` unless
+- Served from `<data folder>/mapcache/<folder>/<z>/<x>/<y>` when present, the folder being the
+  source's `cache_name` (its code, and for a source of the user's its address as well) (`$OSXP_HOME` unless
   Settings chose another data folder); otherwise fetched once through `orthostudio.net.fetch` with
   `orthostudio.imagery.providers.tile_url`, written atomically, and served. While the data folder
   is missing (its disk unplugged), tiles are fetched and served without the cache, which is neither

@@ -106,6 +106,22 @@ when taken), the address checked first (http or https, and `{x}` `{y}` `{zoom}` 
 Tests never read the machine's own file: `tests/conftest.py` points it elsewhere unless a test sets
 `$OSXP_HOME`.
 
+**Where its downloads are kept** (`cache_name`). A source's images live in the imagery cache and
+the map's under a folder named after it. A shipped source's folder is its code, so nothing a user
+already downloaded moves. A source of the user's is named after what was typed, so its folder adds
+a fingerprint of its address, `Mine@1a2b3c4d` (the first 8 hex of the address's blake3): remove it
+and add another of the same name with another address, or change the address in `sources.toml`,
+and builds and the map used to go on reading the first address's images without asking the new
+one once (reproduced through `build_textures`, 2026-09-25). Its codes are letters and digits only,
+so no such folder is a shipped code. The images of an address no longer used stay until *Free
+space* or `osxp clean --images` empties the cache. The chunk store (`ChunkStore(folders=...)`), the
+parent cache, the estimate and the map route all read the folder from this one function.
+`GET /api/providers` gives it as `cache` for a source of the user's only, and the page ends its map
+tile URLs with it (`?v=`, map.js `tileVersion`): a browser keeps a map tile a day under its URL,
+which named only the code, so the map went on showing the old address's images for the tiles
+already seen. A shipped source's documents and URLs are as before, and so is every tile the
+browser already keeps.
+
 ### Initial content (decided by the user; 12 providers, and EOX since 0.1.14)
 
 | Code | Ortho4XP file | Template (OrthoStudio XP) | max_zl | in flight | Placeholder | Extent |
@@ -136,9 +152,20 @@ most each provider allows): Bing 128 (the line's limit), Esri `Arc` 128 (it was 
 guess: 4.5 times faster), Esri Clarity `Arc@` 192 (two 502 at 256), USGS 128, Spain 128, Japan 64,
 the Netherlands 32 (slower at 64), Luxembourg 16 (slower at 32, with timeouts). The services of a
 state were not tried past 128. The fetcher's AIMD (R2 of `net-download.md`) still lowers the window
-of a server that slows down. `server_req_per_s` is the rate a server gave there when it, not the
-line, was the limit: Esri Clarity 522, Spain 584, USGS 280, the Netherlands 181, Luxembourg 130,
-Japan 103 (none for Bing and Esri `Arc`, which kept up with the line). The time left of a build
+of a server that slows down. `server_req_per_s` is a **ceiling the fetcher climbs to**, never a speed it holds
+(`net-download.md` R2b): a group starts at a quarter of it, climbs while the server answers, falls
+with the window when it does not, and the probe is not paced at all, because a probe measures the
+line. The figures are what each server gave when it, not the line, was the limit: Esri Clarity 522,
+Spain 584, USGS 280, the Netherlands 181, Luxembourg 130, Japan 103; none for Bing and Esri `Arc`,
+which kept up with the line, and those two are not paced.
+
+**EOX's 90 is not a measurement of ours.** We read 224 from here on 2026-09-22, sustained and
+without an error, and a user's builds kept failing on it from an address where the server stops
+answering around 90 (2026-09-24). A throughput one machine obtained is not a ceiling a server
+tolerates from everyone, which is the whole reason these are approached and not held. None of the
+others has been checked against a second address.
+
+The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
 user's builds downloaded, and Japan five times faster than its measured rate (2026-09-15). `headers` is empty for

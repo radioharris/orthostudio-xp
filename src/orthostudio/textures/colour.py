@@ -75,6 +75,7 @@ def adjust_photo_inside(
     contrast: float = 0.0,
     saturation: float = 0.0,
     feather_px: int = 24,
+    source: NDArray[np.uint8] | None = None,
 ) -> NDArray[np.uint8]:
     """``rgb`` with the three adjustments applied **inside** ``ring`` only, with a soft edge.
 
@@ -87,8 +88,15 @@ def adjust_photo_inside(
     The edge is blurred over ``feather_px`` (about 40 m at ZL16 in mid-latitudes) so the join does
     not show, and only the rectangle the ring covers is touched, so a small zone costs little on a
     4096² texture.
+
+    ``source`` is the image the zone's colours are read from, the photograph as it was delivered,
+    where ``rgb`` already carries the square's own. A zone **replaces** what the square asked for,
+    it does not add to it: that is what the page paints and what ``map-zones.md`` says, and adding
+    them meant a zone set to "as delivered" inside a softened square changed nothing at all, which
+    is the very complaint the zones were made for (2026-09-23).
     """
-    if photo_unchanged(brightness, contrast, saturation) or len(ring) < 6:
+    same = source is None or source is rgb
+    if (same and photo_unchanged(brightness, contrast, saturation)) or len(ring) < 6:
         return rgb
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -96,28 +104,47 @@ def adjust_photo_inside(
     xs = [float(ring[i]) for i in range(0, len(ring) - 1, 2)]
     ys = [float(ring[i]) for i in range(1, len(ring), 2)]
     pad = max(feather_px, 1) * 2
-    x0 = max(0, int(min(xs)) - pad)
-    y0 = max(0, int(min(ys)) - pad)
-    x1 = min(width, int(max(xs)) + pad + 1)
-    y1 = min(height, int(max(ys)) + pad + 1)
+    # The soft edge is drawn on a stencil that reaches ``pad`` **past** the texture, and only
+    # then cut to the texture. Cut first, the part of the edge belonging to the texture next door
+    # was lost and the blur held the near side at full strength: a zone whose edge ran within a
+    # feather's width of a join showed the whole step in one pixel, at exactly the join the soft
+    # edge exists to hide (found in review, 2026-09-23). ``pad`` bounds the stencil, so a zone far
+    # larger than the texture costs no more than one a little larger than it.
+    fx0 = max(-pad, int(min(xs)) - pad)
+    fy0 = max(-pad, int(min(ys)) - pad)
+    fx1 = min(width + pad, int(max(xs)) + pad + 1)
+    fy1 = min(height + pad, int(max(ys)) + pad + 1)
+    x0, y0 = max(0, fx0), max(0, fy0)
+    x1, y1 = min(width, fx1), min(height, fy1)
     if x1 <= x0 or y1 <= y0:  # the zone does not reach this texture
         return rgb
 
-    stencil = Image.new("L", (x1 - x0, y1 - y0), 0)
+    stencil = Image.new("L", (fx1 - fx0, fy1 - fy0), 0)
     ImageDraw.Draw(stencil).polygon(
-        [(x - x0, y - y0) for x, y in zip(xs, ys, strict=True)], fill=255
+        [(x - fx0, y - fy0) for x, y in zip(xs, ys, strict=True)], fill=255
     )
     if feather_px > 0:
         stencil = stencil.filter(ImageFilter.GaussianBlur(feather_px / 2))
-    weight = np.asarray(stencil, dtype=np.float32)[..., None] / 255.0
-    if not weight.any():
+    mask = np.asarray(stencil, dtype=np.uint8)[y0 - fy0 : y1 - fy0, x0 - fx0 : x1 - fx0]
+    if not mask.any():
         return rgb
 
     out = rgb.copy()
     window = out[y0:y1, x0:x1]
-    changed = adjust_photo(window, brightness=brightness, contrast=contrast, saturation=saturation)
-    blended = window.astype(np.float32) * (1.0 - weight) + changed.astype(np.float32) * weight
-    np.rint(blended, out=blended)
-    np.clip(blended, 0.0, 255.0, out=blended)
-    out[y0:y1, x0:x1] = blended.astype(np.uint8)
+    base = window if same else source[y0:y1, x0:x1]
+    # a band at a time, as :func:`adjust_photo` does: a zone covering a whole 4096² texture held
+    # 770 MB in one go where the rule declares 250, and several textures encode at once, so a
+    # machine with little memory lost the build (found in review, 2026-09-23)
+    for start in range(0, window.shape[0], _ROWS):
+        stop = start + _ROWS
+        weight = mask[start:stop, :, None].astype(np.float32) / 255.0
+        changed = adjust_photo(
+            base[start:stop], brightness=brightness, contrast=contrast, saturation=saturation
+        )
+        band = window[start:stop].astype(np.float32)
+        band *= 1.0 - weight
+        band += changed.astype(np.float32) * weight
+        np.rint(band, out=band)
+        np.clip(band, 0.0, 255.0, out=band)
+        window[start:stop] = band.astype(np.uint8)
     return out

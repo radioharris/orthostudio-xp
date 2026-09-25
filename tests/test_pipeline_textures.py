@@ -550,6 +550,26 @@ def test_downloads_start_at_the_ceiling_of_the_provider(
     assert report.ok and started and all(pair == (16, 16) for pair in started)
 
 
+def test_the_build_obeys_the_rate_the_provider_names(
+    server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``server_req_per_s`` set the estimate alone until 0.1.14: a user who wrote 3 in his own
+    source to spare a small server watched the build ask for hundreds a second and get blocked
+    (2026-09-24). It is now the ceiling the fetcher starts requests at."""
+    seen: list[float | None] = []
+    real = textures_mod.Fetcher
+
+    class Recording(real):  # type: ignore[misc, valid-type]
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)  # type: ignore[arg-type]
+            seen.append(self.req_per_s)
+
+    monkeypatch.setattr(textures_mod, "Fetcher", Recording)
+    slow = server.provider().model_copy(update={"server_req_per_s": 500.0})
+    report = build_textures(make_spec(server, tmp_path, mask_dir, provider=slow))
+    assert report.ok and seen and all(rate == 500.0 for rate in seen)
+
+
 def test_fetcher_cancelled_before_workers_start_returns(server: TileServer) -> None:
     """Regression: a cancel arriving right after dispatch used to leave the fetcher hanging."""
     import asyncio
@@ -587,4 +607,68 @@ def test_running_out_of_open_files_is_not_called_a_permission() -> None:
     assert err.code == "SYS_WRITE_FAILED" and "Too many files were open" in err.message
     assert "permission" not in err.remedy.lower() and "Retry the missing ones" in err.remedy
     other = textures_mod._coded(PermissionError(errno.EACCES, "Permission denied", "/tiles/x.dds"))
-    assert other.remedy == "Fix permissions on the path." and "/tiles/x.dds" in other.message
+    assert "permission" in other.remedy.lower() and "/tiles/x.dds" in other.message
+
+
+def test_a_texture_the_source_has_nothing_for_is_not_shipped_as_grey(
+    server: TileServer, tmp_path: Path, mask_dir: Path
+) -> None:
+    """Every piece refused, so the assembler painted the whole square with the mean of its
+    filled neighbours -- of which there were none -- and the texture was called *built*: 11 MB
+    of flat grey, installed, with nothing said. A square outside what a source covers, or a
+    level finer than it holds, lands here for every texture of the tile (found in review,
+    2026-09-23)."""
+    st = server.state
+    for job in JOBS:
+        for x, y in texture_tiles(job.texture):
+            st.not_found.add((ZL, x, y))
+            for up in range(1, 8):  # and every parent it would fall back to
+                st.not_found.add((ZL - up, x >> up, y >> up))
+
+    report = build_textures(make_spec(server, tmp_path, mask_dir, workers=1))
+    assert not report.ok, "a tile whose imagery does not exist is not a tile"
+    assert report.counts["built"] == 0 and report.counts["incomplete"] == len(JOBS)
+
+    for outcome in report.outcomes:
+        assert outcome.status == "incomplete"
+        assert outcome.dds_path is None, "nothing is published"
+    assert not list((tmp_path / "out" / "textures").glob("*.dds"))
+
+    said = " ".join(str(e.get("message", "")) for e in report.errors)
+    assert "no imagery at all" in said
+    remedies = " ".join(str(e.get("remedy", "")) for e in report.errors)
+    assert "outside what this source covers" in remedies and "lower level" in remedies
+
+
+def test_a_source_of_the_users_under_the_same_name_with_another_address_is_asked_again(
+    tmp_path: Path, mask_dir: Path
+) -> None:
+    """A source of the user's is named after what they typed, and its downloads were kept under
+    that name: remove it, add another of the same name with another address (or change the address
+    in `sources.toml`), and the build reused the first address's images without asking the new one
+    once. The address now names the folder of a source of the user's; a shipped source keeps its
+    code, so nothing it already downloaded moves.
+    """
+    first, second = TileServer(), TileServer()
+    try:
+
+        def mine(srv: TileServer) -> Provider:
+            return srv.provider().model_copy(update={"code": "Mine", "custom": True})
+
+        jobs = [TextureJob(T_LAND._replace(provider="Mine"), (TerKind.LAND,))]
+        spec = make_spec(first, tmp_path, mask_dir, provider=mine(first), jobs=jobs)
+        assert build_textures(spec).ok
+        assert first.state.total_hits() == 256
+
+        again = make_spec(second, tmp_path, mask_dir, provider=mine(second), jobs=jobs)
+        report = build_textures(again)
+        assert report.ok
+        assert second.state.total_hits() == 256, "the new address must be asked, not the old kept"
+        assert report.counts["tiles_cached"] == 0
+
+        # and the same address twice is the same folder: nothing asked the second time
+        second.reset_hits()
+        assert build_textures(again).ok and second.state.total_hits() == 0
+    finally:
+        first.close()
+        second.close()

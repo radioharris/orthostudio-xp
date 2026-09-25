@@ -39,6 +39,17 @@ __all__ = [
 RULE_NAME = "texture.dds"
 RULE_VERSION = 1
 
+TEXTURE_RAM_MB = 400
+"""What one texture holds while it is built, for the scheduler to count on.
+
+Measured on a 4096 texture taking the heaviest path there is -- the square's colours, a zone
+over the whole of it, the sea blur, a mask and BC3 -- at **288 MB** of arrays above the
+photograph itself, which is 48 MB of that. It was declared as 250, and several textures are
+built at once: on a machine with little memory the promise was what decided how many, so it
+over-committed and the build swapped (found in review, 2026-09-23). The number above adds a
+little for the interpreter and the encoder's own buffers.
+"""
+
 
 class TextureDdsParams(RuleParams):
     """Parameters the DDS depends on (frozen, closed)."""
@@ -110,7 +121,7 @@ def take_build_info(key: str) -> BuildInfo | None:
     version=RULE_VERSION,
     params=TextureDdsParams,
     inputs=("chunks", "mask", "parents"),
-    ram_mb=250,
+    ram_mb=TEXTURE_RAM_MB,
     kind="file",
 )
 def texture_dds(ctx: RunContext) -> None:
@@ -130,13 +141,16 @@ def texture_dds(ctx: RunContext) -> None:
         )
     assembled = assemble_texture_detailed(container, fallback)
     # The photo's colours, before the mask: X-Plane's water keeps its own (2026-09-18).
+    delivered = assembled.rgb
     rgb = adjust_photo(
-        assembled.rgb,
+        delivered,
         brightness=params.photo_brightness,
         contrast=params.photo_contrast,
         saturation=params.photo_saturation,
     )
     for ring, brightness, contrast, saturation in params.photo_shapes:
+        # from the photograph as delivered, not from what the square already did to it: a zone
+        # replaces the square's colours where it covers, which is what the page paints
         rgb = adjust_photo_inside(
             rgb,
             ring,
@@ -144,6 +158,7 @@ def texture_dds(ctx: RunContext) -> None:
             contrast=contrast,
             saturation=saturation,
             feather_px=params.photo_feather_px,
+            source=delivered,
         )
     t1 = time.perf_counter()
     mask_input = ctx.inputs["mask"]

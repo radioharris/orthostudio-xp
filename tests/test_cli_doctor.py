@@ -196,3 +196,23 @@ def test_the_chunks_check_reads_the_listings_alone(
     check = doctor._chunks(root)
     assert check.status == "ok"
     assert check.details["containers"] == 2 and check.details["bytes"] == 30
+
+
+def test_the_doctor_fails_when_no_tile_could_be_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Triangle4XP missing was a warning, and warnings do not make the report fail, so the
+    doctor said everything was fine while every build died at the mesh. It is the first thing a
+    user runs when something is wrong (found in review, 2026-09-23)."""
+    from orthostudio import doctor as doctor_mod
+
+    monkeypatch.setattr(doctor_mod, "_triangle_candidates", lambda: [tmp_path / "nowhere"])
+    result = runner.invoke(
+        app,
+        ["doctor", "--json", "--offline", "--store", str(tmp_path / "s"),
+         "--chunks", str(tmp_path / "c")],
+    )  # fmt: skip
+    report = json.loads(result.output)
+    check = next(c for c in report["checks"] if c["name"] == "triangle4xp")
+    assert check["status"] == "fail" and "no tile can be built" in check["summary"]
+    assert report["ok"] is False and result.exit_code != 0

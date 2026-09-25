@@ -8,6 +8,8 @@ geometry (``geo.js``) are run under ``node`` (skipped when ``node`` is missing).
 
 from __future__ import annotations
 
+import ast
+import itertools
 import json
 import os
 import re
@@ -1752,7 +1754,10 @@ def test_a_mock_build_streams_what_the_engine_would() -> None:
     assert [s["progress"] for s in stats] == sorted(s["progress"] for s in stats)
     assert {s["phase"] for s in stats} == {"build"}
     assert stats[0]["eta_low_s"] is None and any((s["eta_low_s"] or 0) > 0 for s in stats)
-    assert stats[-1]["progress"] == 1
+    # this mock build ends *failed*: the bar stops where the work stopped. A build that really
+    # finishes is set to 1 by the engine itself (``Job._stats_now``), and the page's fallback
+    # has the same rule (found in review, 2026-09-23).
+    assert 0.98 < stats[-1]["progress"] < 1
     assert [s["elapsed_s"] for s in stats] == sorted(s["elapsed_s"] for s in stats)
     for e in entries:
         assert e["event"] in JOURNAL_EVENTS
@@ -1773,7 +1778,8 @@ def test_a_mock_build_streams_what_the_engine_would() -> None:
     assert got["reads"] > 0
     weights = [e["weight_s"] for e in entries if e["event"] in ("started", "progress", "done")]
     assert all(isinstance(w, int | float) and w >= 0 for w in weights) and max(weights) > 0
-    assert got["status"] == "failed" and got["progress"] == 1 and got["log"] > 3
+    # ends failed, so the bar stops where the work stopped (see the stats assertion above)
+    assert got["status"] == "failed" and 0.98 < got["progress"] < 1 and got["log"] > 3
     assert got["errors"] == [["TEX_MISSING", "+44+005", "imagery"]]
     stages = {
         t["tile"]: {s: v["status"] for s, v in t["stages"].items()} for t in got["state"]["tiles"]
@@ -1861,7 +1867,13 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     job = {"status": "running", "install": True, "tiles": []}
     imagery = {"status": "running", "fraction": 0.42, "message": with_rate, "nodes": {}}
     tile = {"tile": "+46+006", "steps": {"imagery": imagery}}
-    osm_line = osm_progress_message(TileRef(46, 6), 2, 4, 4_200_000, 3.0)
+    osm_line = osm_progress_message(
+        TileRef(46, 6),
+        ["airports", "big_roads", "water", "coastline"],
+        ["airports"],
+        4_200_000,
+        3.0,
+    )
     relief_line = build_mod.dem_download_message(TileRef(46, 6), 2, 9_300_000, 3.0)
     data = {"status": "running", "fraction": 0.3, "message": osm_line, "nodes": {}}
     tile["steps"]["data"] = data
@@ -2091,7 +2103,9 @@ def test_the_job_list_empties_after_asking() -> None:
     code = _function_body(app_js, "clearJobs")
     assert code.index("await confirmClearJobs(") < code.index('api("POST", "/api/jobs/clear")')
     assert code.index('api("POST", "/api/jobs/clear")') < code.index("await refreshJobList();")
-    assert "forgetShownJob();" in code and 't("works.cleared"' in code
+    assert "await followJobGone();" in code and 't("works.cleared"' in code
+    gone = _function_body(app_js, "followJobGone")
+    assert "forgetShownJob();" in gone and "watchJob(next.id)" in gone
     listing = _function_body(app_js, "renderJobList")
     assert "!state.jobs.some((j) => !jobActive(j))" in listing
     assert '$("jobs-clear").addEventListener("click", clearJobs);' in app_js
@@ -2111,6 +2125,60 @@ def test_the_job_list_empties_after_asking() -> None:
     assert got["cleared"] == {"removed": ["20260912-174000-7a3c"]}
     assert got["after"] == [got["run"]]  # the running job stays
     assert got["gone"]["status"] == 404
+
+
+def test_one_finished_build_can_leave_the_list_alone() -> None:
+    """A user asked to remove a finished build from the Works list without emptying it (2026-09-24):
+    a bin on the row, only on a row that has finished, DELETE /api/jobs/{id}. Its progress and its
+    journal go with it, the tiles it built stay, and the keyboard is left on the row that takes its
+    place. A build running or waiting has no bin, and the engine refuses it anyway (409).
+    """
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    listing = _function_body(app_js, "renderJobList")
+    assert "if (!jobActive(j)) row.append(forgetButton(j, tiles));" in listing, "finished rows only"
+    code = _function_body(app_js, "forgetJob")
+    assert code.index('api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`)') < code.index(
+        "await refreshJobList();"
+    )
+    assert "state.jobsClearing" in code and ".focus({ preventScroll: true })" in code
+    # the row that takes the gone one's place, the next one down or else the one above, is the one
+    # shown when the gone one was (a user expected the next job, not an empty screen, 2026-09-25)
+    # and the one the keyboard lands on; a removal refused moves nothing
+    assert "const at = Math.min(was, state.jobs.length - 1);" in code
+    assert "if (gone && state.jobId === j.id) {" in code
+    assert code.index("await watchJob(next.id);") < code.index("forgetShownJob();")
+    assert 'const row = at >= 0 ? $("job-list").children[at] : null;' in code
+
+    # the same bin as the one above the list, drawn by the same rule: it was 24 px in a 30 px
+    # button beside the 15 px one (a user, 2026-09-25)
+    bin_row = _function_body(app_js, "forgetButton")
+    assert '"btn btn-small btn-icon btn-danger btn-trash job-forget"' in bin_row
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert 'class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear"' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".btn-trash svg { width: 15px; height: 15px; }" in css
+
+    # the bin says what goes, and both languages have the words
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "works.forget" in tables[lang] and "works.forget_one" in tables[lang]
+
+    script = """
+    const request = {tiles: ["+46+006"], provider: "BI", zoom_level: 16};
+    const run = (await call("POST", "/api/jobs", request)).ok;
+    const live = await call("DELETE", "/api/jobs/" + run.job_id);
+    const past = await call("DELETE", "/api/jobs/20260912-174000-7a3c");
+    const left = (await call("GET", "/api/jobs")).ok.map((j) => j.id);
+    const again = await call("DELETE", "/api/jobs/20260912-174000-7a3c");
+    const out = JSON.stringify({run: run.job_id, live, past, left, again});
+    process.stdout.write(out, () => process.exit(0));  // the running mock job keeps node alive
+    """
+    got = _node_mock(script)
+    assert got["live"]["status"] == 409, "a build under way is refused"
+    assert got["live"]["code"] == "SYS_BUSY"
+    assert got["past"]["ok"] == {"job_id": "20260912-174000-7a3c", "removed": True}
+    assert got["left"] == [got["run"]], "the running build stays, and only it"
+    assert got["again"]["status"] == 404, "gone is gone"
 
 
 def test_the_step_1_trash_unselects_every_tile_at_once() -> None:
@@ -2246,7 +2314,14 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     assert toggle.index("tilesInBuilds(activeJobs()).has(name)") < toggle.index("addTiles([name])")
     assert 't("plan.tile_in_build"' in toggle
     add = _function_body(app_js, "addTiles")
-    assert "if (building.has(n)) skipped.push(n);" in add and "return skipped;" in add
+    assert "if (building.has(n)) skipped.push(n);" in add
+    assert "return { skipped, capped };" in add
+    # the cap lived in the mouse sweep alone, so a flight plan added nine hundred squares and the
+    # estimate then refused the whole selection (found in review, 2026-09-23)
+    assert "state.tiles.length >= MAX_BUILD_TILES" in add, "every way of adding squares is capped"
+    assert "sayTilesInBuild(addTiles(" in _function_body(
+        app_js, "addRouteTiles"
+    ) or "addTiles(names)" in _function_body(app_js, "addRouteTiles")
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
     row = _function_body(app_js, "libraryRow")
@@ -3036,8 +3111,10 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     found = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert found is not None
     grid = found.group(0)
-    assert "osxp-tile-${building.get(name)}" in grid
-    assert grid.index("osxp-tile-installed") < grid.index("osxp-tile-${building.get(name)}")
+    assert "if (building.has(name)) busy.push([frame, building.get(name)]);" in grid
+    assert "className: `osxp-tile-${state}`" in grid
+    drawn = [grid.index(mark) for mark in ("osxp-tile-${kind}${both}", "osxp-tile-${state}")]
+    assert drawn == sorted(drawn), "the frames first, then the running build on top"
     assert "JSON.stringify([...buildingNow().entries()])" in map_js  # redrawn on change only
     css = (UI / "styles.css").read_text(encoding="utf-8")
     # marks are outlines, never fills (2026-09-18): the tile worked on pulses on its stroke
@@ -3240,17 +3317,20 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert grid is not None
     body = grid.group(0)
-    assert "installed.has(name) && selected.has(name) ? insetBox(box, 4) : null;" in body
+    assert "const kept = installed.has(name) || built.has(name);" in body
+    assert "const frame = insetBox(box, FRAME_INSET) || box;" in body
+    assert "kept && selected.has(name) ? insetBox(box, FRAME_INSET + 4) : null;" in body
+    assert "for (const b of [frame, inner])" in body, "the casing under both lines"
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index("className: `osxp-tile-installed${both}`")
+    green = body.index("className: `osxp-tile-${kind}${both}`")
+    assert 'const kind = installed.has(name) ? "installed" : "built";' in body
     # the blue after the green, the route's ends in their own colour (2026-09-22)
     assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
     assert 'const both = inner ? " is-both" : "";' in body
-    assert "for (const b of [box, inner])" in body
-    assert "L.rectangle(inner || box," in body
+    assert "L.rectangle(inner || frame," in body
     # too small for both, the blue is left out and the green shows
-    assert "if (selected.has(name) && (inner || !installed.has(name))) {" in body
+    assert "if (selected.has(name) && (inner || !kept)) {" in body
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-installed"]
     assert "stroke-width: 3;" in rules[".plan-map .osxp-tile-selected"]
@@ -3258,13 +3338,118 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     # whole pixels keep at two pixels of a Retina screen wherever the layer lies
     casing_rule = rules[".plan-map .osxp-tile-casing"]
     assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
-    both_rule = ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both"
+    both_rule = (
+        ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, "
+        ".plan-map .osxp-tile-selected.is-both"
+    )
     assert "stroke-width: 2.5;" in rules[both_rule]
-    marks = ("selected", "installed", "casing")
+    marks = ("selected", "installed", "built", "casing")
     crisp = ", ".join(f".plan-map .osxp-tile-{mark}" for mark in marks)
     assert "shape-rendering: crispEdges;" in rules[crisp]
     for theme in (":root", ':root:not([data-theme="light"])', ':root[data-theme="dark"]'):
         assert "--map-casing:" in rules[theme], theme
+
+
+def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
+    """A user asked to see the tiles built on the map (2026-09-24): a tile built with *Build only*,
+    or taken out of X-Plane with its files kept, was nowhere to be seen. The Library rows already
+    said it (`installed`, `present`): only the page changes.
+
+    Then, looking at his own (2026-09-25): two built neighbours showed a solid line between them,
+    since each laid its dashes over the shared edge out of step, and beside a square in X-Plane
+    and chosen ones the edges read as a patchwork, one colour winning each shared line. Every
+    square is now framed inside itself (``FRAME_INSET``), so neighbours never share a line.
+    Measured in the page on his layout: seven frames, every pair of neighbours 5 or 6 px apart. It
+    is dashed pink, the one colour no other mark uses, and the legend line is a checkbox,
+    remembered, as the airports' is."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    built = map_js[map_js.index("  function builtTiles() {") : map_js.index("  function insetBox(")]
+    assert "!e.installed && e.present !== false && parseTile(e.tile)" in built, "on the disk only"
+    assert ".filter((name) => !installed.has(name))" in built, (
+        "another pack of it in X-Plane: green"
+    )
+
+    grid = map_js[
+        map_js.index("  function renderGrid() {") : map_js.index("    if (zoom < LABEL_MIN_ZOOM")
+    ]
+    assert "const built = new Set(zs.builtWanted ? builtTiles() : []);" in grid, (
+        "hidden when unticked"
+    )
+    assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
+    assert "const frame = insetBox(box, FRAME_INSET) || box;" in grid, "inside its own square"
+    assert "L.rectangle(frame, " in grid and "L.rectangle(box, " not in grid, (
+        "none on the grid line"
+    )
+    assert "const FRAME_INSET = 2.5;" in map_js, "half the 3 px line and a pixel: the grid between"
+    hover = map_js[map_js.index("  function showTip(ev) {") :]
+    assert "(zs.builtWanted && builtTiles().includes(name))" in hover[: hover.index("\n  }\n")]
+
+    # the legend line is a checkbox, remembered, and shown when there are such tiles
+    legend = map_js[
+        map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
+    ]
+    assert "if (builtTiles().length) items.push(builtToggle());" in legend
+    assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
+    assert 'builtWanted: storageGet(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
+    toggle = map_js[
+        map_js.index("  function builtToggle() {") : map_js.index("  function setLegendOpen(")
+    ]
+    assert 'storageSet(BUILT_KEY, wanted ? "1" : "0");' in toggle
+    assert "renderGrid();" in toggle and "renderLegend();" in toggle
+    changed = map_js[map_js.index("    libraryChanged() {") :]
+    assert "renderLegend();" in changed[: changed.index("},")], "the legend follows the Library"
+
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "stroke: var(--map-built);" in rules[".plan-map .osxp-tile-built"]
+    assert "stroke-dasharray: 7 5;" in rules[".plan-map .osxp-tile-built"]
+    assert "border: 2px dashed var(--map-built);" in rules[".legend-built"]
+    assert "--map-built: #ff4fc1;" in rules[":root"]
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in ("map.legend_built", "map.built_hint", "map.legend_hide", "map.legend_show"):
+            assert key in tables[lang], (lang, key)
+
+
+def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
+    """Three things a user asked of the legend (2026-09-25). Its labels started at three places
+    (52, 67 and 71 px, measured): a line without a checkbox now keeps the checkbox's room and every
+    mark is as wide as the others, and they all start at 71. It can be folded away to see the map
+    under it, and the choice is remembered. And a redraw, on every zoom, gives the focus back to
+    the control that had it: it used to go to the first checkbox, whichever had it."""
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    spacer = rules[".map-legend li:not(.legend-toggle)::before"]
+    assert 'content: "";' in spacer and "width: 13px;" in spacer
+    assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
+    assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
+    # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
+    head = rules[".map-legend .legend-head"]
+    assert "gap: var(--label-gap);" in head and "margin-bottom: var(--title-gap);" in head
+    fold = rules[".map-legend .legend-fold"]
+    assert "width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em);" in fold, "one line high"
+    assert "position: absolute" not in fold
+    assert "background: none; border: 0;" in rules[".map-legend.is-folded"], "only the button left"
+
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    legend = map_js[
+        map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
+    ]
+    assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
+    folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const row = ")]
+    assert 'class: "btn btn-small legend-unfold"' in folded, (
+        "an ordinary small button, as on the map"
+    )
+    assert "onclick: () => setLegendOpen(true)" in folded
+    assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
+    assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
+    opening = map_js[map_js.index("  function setLegendOpen(open) {") :]
+    assert 'storageSet(LEGEND_KEY, open ? "1" : "0");' in opening[: opening.index("\n  }\n")]
+    assert 'legendOpen: storageGet(LEGEND_KEY) !== "0",' in map_js, "open unless folded"
+
+    # the focus comes back to the control that had it, each named
+    assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in legend
+    for key in ("built", "airports", "street", "borders"):
+        assert f'"data-keep": "{key}",' in map_js, key
+    assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
@@ -4592,9 +4777,13 @@ def test_a_flight_plan_gives_its_ends_and_its_route_two_levels() -> None:
     assert "Math.min(ROUTE_ALONG_ZL, top)" in js  # never above what the source offers
     levels = re.search(r"\nfunction renderRouteLevels\(maxZl, lat\) \{.*?\n\}\n", js, re.S)
     assert levels is not None
-    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : planZl()' in levels.group(0)
+    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl)' in levels.group(0)
     click = js[js.index('$("route-all").addEventListener') :][:200]
     assert "routeAlongZl()" in click and "planZl()" not in click
+    # the ends take what the pilot chose in step 1, not what the chosen squares happen to share:
+    # the test that runs the two buttons is below (2026-09-23)
+    ends = js[js.index('$("route-ends").addEventListener') :][:200]
+    assert "routeEndsZl()" in ends and "planZl()" not in ends
     listed = js.index('$("zl-select").addEventListener("change"')
     assert js.index("state.tileZl = {};", listed) < js.index("planChanged();", listed)
     for lang, several in (("en", "Several levels"), ("fr", "Plusieurs niveaux")):
@@ -4620,6 +4809,350 @@ def test_what_went_wrong_with_a_way_is_said_under_it() -> None:
         assert "showWayError(" in body.group(0) and "showPlanError(" not in body.group(0), name
     airports = json.loads((UI / "mock" / "airports.json").read_text(encoding="utf-8"))
     assert {"LSGG", "LFMN"} <= {a["icao"] for a in airports}  # the placeholder, "LSGG LFMN"
+
+
+def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
+    """The map's zoom is the web-mercator level, so what a pilot sees while panning is what that
+    level would put on the ground. They asked for it in those words: it "helps to get an impression
+    of just how a given provider's imagery will look at the desired ortho ZL" (2026-09-24).
+
+    Below the levels a build offers the name would only repeat the number, so the ground size
+    alone is said.
+    """
+    said = _node_json(
+        "map.js",
+        "[[18, 46], [16, 46], [12, 46], [8, 46]].map(([z, lat]) => m.viewLabel(z, lat))",
+    )
+    assert said[0] == "Very sharp, about 40 cm per pixel \u00b7 ZL18"
+    assert said[1] == "Standard, about 2 m per pixel \u00b7 ZL16"
+    assert said[2] == "Very coarse, about 27 m per pixel \u00b7 ZL12"
+    assert said[3] == "about 425 m per pixel \u00b7 ZL8", "no name below the levels a build offers"
+
+    # past the provider's own ceiling the map enlarges what it already has, so the line stops
+    # promising a sharpness no build can deliver and says what the provider really gives
+    # (a user zoomed to ZL18 on EOX, which stops at ZL14, 2026-09-25)
+    over = _node_json(
+        "map.js",
+        '[[18, 46, 14, "EOX"], [14, 46, 14, "EOX"], [18, 46, null, ""]]'
+        ".map(([z, lat, cap, name]) => m.viewLabel(z, lat, cap, name))",
+    )
+    assert over[0] == "ZL18, enlarged. EOX goes no further than ZL14, about 7 m per pixel"
+    assert over[1] == "Low, about 7 m per pixel \u00b7 ZL14", "at the ceiling nothing is enlarged"
+    assert over[2] == "Very sharp, about 40 cm per pixel \u00b7 ZL18", "no ceiling, nothing to warn"
+
+    # and the ceiling the line measures against is the one the base layer stops downloading at,
+    # read from the same expression, so the warning cannot land on a different zoom
+    caps = _node_json(
+        "map.js",
+        "[{ max_zl: 14 }, { max_zl: 22 }, { max_zl: 19 }, {}, null].map((p) => m.nativeCeiling(p))",
+    )
+    assert caps == [14, 19, 19, 19, 19], "a provider claiming more than the engine serves is capped"
+    code_ = (UI / "map.js").read_text(encoding="utf-8")
+    assert "maxNativeZoom: nativeCeiling(p)," in code_, "the layer reads it"
+    assert "const ceiling = shown ? nativeCeiling(shown) : null;" in code_, "the legend reads it"
+    assert "viewLabel(...viewNow())" in code_
+
+    # and the legend puts it on the map, redrawn when the zoom or the latitude moves under it
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
+    assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
+    assert "clear(box).append(view, list)" in legend, "the view line first"
+    assert 'h("div", { class: "legend-head" }, h("p", { class: "legend-view" }' in legend
+    for event in ("moveend", "zoomend"):
+        handler = code[code.index(f'm.on("{event}"') :]
+        called = handler[: handler.index("});")].splitlines()
+        assert any(line.strip().startswith("renderLegend();") for line in called), event
+
+    # The source is chosen in step 1, not on the map, and the street map replaces it altogether:
+    # both go through setBaseLayer, so the line is drawn again there. A user switched to EOX at
+    # ZL18 and the line went on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
+    swap = code[code.index("function setBaseLayer(") :]
+    swap = swap[: swap.index("\n  }\n")].splitlines()
+    assert any(line.strip().startswith("renderLegend();") for line in swap), "setBaseLayer"
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
+
+
+def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
+    """One yellow line at the bottom when the source has nothing where the pilot is looking,
+    decided once per view, when Leaflet has every tile back (`load`), so it is the same at every
+    zoom and in every window (a user, 2026-09-25).
+
+    It used to count failed tiles and speak at six: at the deepest zoom a view holds four, so a
+    switch from Bing to Esri Clarity there, which has no ZL19 over France, left the map blank
+    without a word. The coverage is asked first, so a source of one country says the same thing
+    at every zoom whether it answers white, black or 404 outside its own.
+    """
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    loading = layer[layer.index('layer.on("loading", () => {') :]
+    assert "came = 0;" in loading[: loading.index("});")], "a new view starts with nothing counted"
+    assert 'layer.on("tileload", () => {' in layer and "came += 1;" in layer
+    assert "if (layer === base) setNotice(imageryNotice(code, came));" in layer, "decided on load"
+    assert 'layer.on("load", () => {' in layer
+    assert "tileerror" not in layer and ">= 6" not in layer, "no count of failures, no threshold"
+
+    rule = code[code.index("function imageryNotice(") : code.index("function setNotice(")]
+    outside = rule.index("!sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))")
+    nothing = rule.index("if (came) return")
+    assert outside < nothing, "the coverage first: one fact, one sentence, at every zoom"
+    assert "const c = map.getCenter();" in rule and "getBounds" not in rule, "the middle square"
+
+    # the engine's own rule, driven: Paris, Lyon and Toulouse are not PDOK's; Amsterdam is, and a
+    # square across the border is too, as for a build
+    nl = '{"extent_bounds": [3.06, 50.72, 7.26, 53.76]}'
+    said = _node_json(
+        "sources.js",
+        f'["+48+002", "+45+004", "+43+001", "+52+004", "+50+006"]'
+        f".map((name) => m.sourceCovers({nl}, name))",
+    )
+    assert said == [False, False, False, True, True]
+    assert _node_json("sources.js", 'm.sourceCovers({"extent_bounds": null}, "+45+004")') is True
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "map.base_outside" in tables[lang] and "map.base_failed" in tables[lang]
+
+
+def test_the_map_asks_a_users_source_under_its_address() -> None:
+    """A browser keeps a map tile a day under its URL, and the URL named only the source's code:
+    after a source of the user's changed address, the map showed the old address's images for the
+    tiles already seen. The engine names the folder of such a source (``cache``, its address in
+    it); the page ends its tile URLs with it, and a shipped source's URLs stay as they were, so
+    the browser keeps every tile it already has."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    version = code[code.index("function tileVersion(code)") : code.index("function providerLayer(")]
+    assert (
+        'p && p.cache && p.cache !== p.code ? `?v=${encodeURIComponent(p.cache)}` : ""' in version
+    )
+    urls = [line for line in code.splitlines() if "`api/map/${encodeURIComponent(code)}/" in line]
+    assert len(urls) == 2, "the base layer and the colours"
+    assert all("${tileVersion(code)}`" in line for line in urls), "the same URL for both"
+
+
+def test_the_map_stays_where_it_was_left_while_another_screen_is_shown() -> None:
+    """While Works, the Library or Settings is shown, the map is hidden and measures 0 by 0.
+    Leaflet was told so, and on coming back `show` measured again from it and moved the map by
+    half its width and height: every build, which shows Works, left the map elsewhere (a user,
+    2026-09-25). Measured in the page: three round trips, the same centre at ZL12 and ZL16."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    watch = code[code.index("new ResizeObserver(") :]
+    watch = watch[: watch.index(".observe(el);")]
+    assert "if (entry.contentRect.width && entry.contentRect.height)" in watch, (
+        "not a box of nothing"
+    )
+    assert "m.invalidateSize({ animate: false, pan: false })" in watch
+
+
+def test_the_map_stops_where_every_build_stops() -> None:
+    """The level lists, the zones and the engine's map route all stop at ZL19; the map went one
+    step further, to 20, where every source was only enlarged (a user, 2026-09-25)."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    assert "const MAX_NATIVE_ZOOM = 19;" in code
+    assert "maxZoom: MAX_NATIVE_ZOOM, // the deepest level anything is built at" in code
+    assert "maxZoom: 20" not in code
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {" in app_js
+
+
+def test_an_error_in_one_line_says_what_to_do_as_well() -> None:
+    """The engine sends what happened and what to do (docs/specs/errors.md). The one-line form,
+    used by every toast and every note under a button, kept the first half only, so they said
+    what went wrong and never what to do about it (found in review, 2026-09-24). Both halves now,
+    the page's own words where it has them and the engine's where it has none."""
+    script = """
+    const own = await m.mockApi("DELETE", "/api/sources/Nope").catch((e) => e);
+    const engines = await m.mockApi("DELETE", "/api/jobs/no-such").catch((e) => e);
+    const words = m.codeWords(own.detail.error);
+    process.stdout.write(JSON.stringify({
+      own: m.errorMessage(own), ownWords: words, engines: m.errorMessage(engines),
+      enginesError: engines.detail.error,
+    }), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    message, remedy = got["ownWords"]
+    assert got["own"] == f"CFG_PROVIDER_UNKNOWN: {message} {remedy}", "the page's own two halves"
+    e = got["enginesError"]
+    assert e["code"] == "SYS_WORKING_DIR_INVALID" and e["remedy"], (
+        "a code the page has no words for"
+    )
+    assert got["engines"] == f"SYS_WORKING_DIR_INVALID: {e['message']} {e['remedy']}"
+
+
+# The codes that had French words before the rule below, written for the page on purpose; the
+# engine raises each somewhere with a sentence or a remedy of its own, and the page's words stand.
+FRENCH_BEFORE_THE_RULE = frozenset(
+    {
+        "CFG_DATA_DIR_INVALID", "CFG_PROVIDER_UNKNOWN", "DEM_TILE_UNAVAILABLE",
+        "DSF_GLOBAL_SCENERY_MISSING", "IMG_TILE_MISSING", "IMG_TILE_PLACEHOLDER", "NET_TIMEOUT",
+        "SYS_DISK_FULL", "SYS_UPSTREAM_FAILED", "TEX_MISSING", "XP_DIR_NOT_FOUND",
+        "XP_GLOBAL_SCENERY_NOT_FOUND", "XP_RUNNING", "ZONE_INVALID",
+    }
+)  # fmt: skip
+
+
+def _codes_raised_with_own_words() -> set[str]:
+    """The engine's codes raised somewhere with a ``message`` or a ``remedy`` of their own, read
+    from the syntax tree (a code named by a module constant, as ``_CORRUPT_CODE``, counts)."""
+    out: set[str] = set()
+    for path in UI.parent.rglob("*.py"):  # the orthostudio package
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        consts = {
+            target.id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and node.args):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if name != "OsxpError":
+                continue
+            first = node.args[0]
+            code = first.value if isinstance(first, ast.Constant) else None
+            if code is None and isinstance(first, ast.Name):
+                code = consts.get(first.id)
+            if isinstance(code, str) and any(k.arg in ("message", "remedy") for k in node.keywords):
+                out.add(code)
+    return out
+
+
+def _page_code_words(lang: str) -> dict[str, str]:
+    """The page's words for each code in ``lang``, as their source text (``CODES`` in i18n.js)."""
+    js = (UI / "i18n.js").read_text(encoding="utf-8")
+    block = js[js.index("const CODES = {") :]
+    start = block.index(f"  {lang}: {{")
+    body = block[start : block.index("\n  },", start)]
+    found = re.finditer(
+        r"^\s{4}([A-Z][A-Z0-9_]+)\s*:(.*?)(?=^\s{4}[A-Z][A-Z0-9_]+\s*:|\Z)", body, re.M | re.S
+    )
+    return {m.group(1): m.group(2) for m in found}
+
+
+def test_the_engines_errors_are_said_in_french_and_never_with_a_hole() -> None:
+    """86 of the engine's 120 codes had no French words, so a French page showed them in English
+    (found in review, 2026-09-24). Every code now has French words, but one the engine raises
+    somewhere with a sentence or a remedy of its own: there a translation of its general sense
+    would replace precise words with vaguer ones, or wrong ones (``MASK_CUSTOM_EXTENT_INVALID``
+    would have said to check a PNG where the engine says the feature does not exist yet), so the
+    engine's words stand. English keeps the engine's words.
+
+    The words name only what the engine's own sentence names, and a code raised with other facts
+    elsewhere cannot print a brace: words naming something the error did not send give way to
+    the engine's."""
+    from orthostudio import errors
+
+    specs = {spec.code: spec for spec in errors._SPECS}
+    own = _codes_raised_with_own_words() & set(specs)
+    french = _page_code_words("fr")
+    missing = sorted(set(specs) - set(french) - own)
+    assert missing == [], f"no French words, and the engine has no words of its own for: {missing}"
+    stray = sorted(own & set(french) - FRENCH_BEFORE_THE_RULE)
+    assert stray == [], f"raised with words of their own, so leave them to the engine: {stray}"
+    for code, text in french.items():
+        if code not in specs or code in FRENCH_BEFORE_THE_RULE:
+            continue
+        named = set(re.findall(r"\{(\w+)\}", text))
+        declared = set(re.findall(r"\{(\w+)", specs[code].message + specs[code].remedy))
+        assert named <= declared, (code, sorted(named - declared))
+    assert "\u2014" not in "".join(french.values()) and "\u2013" not in "".join(french.values())
+
+    # the words in use, and the engine's when the error did not send what they name
+    said = _node_json(
+        "i18n.js",
+        """(() => {
+          globalThis.document = { documentElement: {} };
+          m.setLanguage("fr");
+          const whole = m.codeText("NET_FORBIDDEN", { host: "tiles.example" });
+          const hole = m.codeText("NET_FORBIDDEN", {});
+          m.setLanguage("en");
+          const english = m.codeText("NET_FORBIDDEN", { host: "tiles.example" });
+          return [whole, hole, english];
+        })()""",
+    )
+    assert said[0][0] == "Le serveur tiles.example a refusé la requête (HTTP 403)."
+    assert said[1] is None, "a hole gives way to the engine's own words (codeWords)"
+    assert said[2] is None, "English keeps the engine's words"
+
+
+def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
+    """A user wanted to see where the recommended value of a setting lies before moving it, above
+    all among the expert ones: every number now starts its explanation, in bold, with what it may
+    take and what it is unless changed (2026-09-25). Only the bounds the schema holds, which the
+    engine checks; a number it does not bound says its default alone. Measured in the page: 23
+    fields, in both languages."""
+    said = _node_json(
+        "settings.js",
+        """(() => {
+          const cases = [
+            [{ minimum: 0, maximum: 30, default: 10 }, "°"],
+            [{ minimum: 0, default: 200 }, "km²"],
+            [{ exclusiveMinimum: 0, default: 2 }, ""],
+            [{ default: 19 }, "ZL"],
+            [{ minimum: 14, maximum: 20, default: 18 }, "ZL"],
+            [{}, ""],
+          ];
+          return cases.map(([prop, unit]) => m.rangeText(prop, unit));
+        })()""",
+    )
+    assert said == [
+        "From 0 to 30°, 10° by default.",
+        "0 km² or more, 200 km² by default.",
+        "More than 0, 2 by default.",
+        "ZL19 by default.",
+        "From ZL14 to ZL20, ZL18 by default.",
+        "",
+    ]
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    assert 'const range = control.type === "number" ? rangeText(prop, unit) : "";' in code
+    assert 'h("strong", { class: "hint-range" }, range)' in code, "first, and in bold"
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in ("between", "at_least", "above", "default"):
+            assert f"settings.x.range_{key}" in tables[lang], (lang, key)
+
+
+def test_the_colour_previews_in_settings_use_the_room_they_have() -> None:
+    """A user found the two colour previews of Settings too small to see the change (Paul,
+    2026-09-25): they were 148 px, from a photo of 256 px, with room left beside them. There they
+    now share the card's width up to the photo's own 256 px, side by side, the words under them.
+    Measured in the page at a window of 1024 px: 222 px each. The Plan's small ones stay as they
+    were."""
+    settings = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "}), { size: 256, wide: true });" in settings, "Settings asks for the wide one"
+    preview = (UI / "preview.js").read_text(encoding="utf-8")
+    assert 'class: wide ? "photo-preview is-wide" : "photo-preview"' in preview
+    assert "wide = false," in preview, "the others keep their size"
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    shot = rules[".photo-preview.is-wide .photo-shot"]
+    assert "flex: 1 1 0;" in shot and "max-width: 256px;" in shot, "shared, never above the photo"
+    assert "aspect-ratio: 1 / 1;" in rules[".photo-preview.is-wide .photo-canvas"]
+    assert "flex-basis: 100%;" in rules[".photo-preview.is-wide .photo-words"], "the words under"
+    assert "width: 110px; height: 110px;" in rules["#plan-preview .photo-canvas"]
+
+
+def test_the_map_goes_to_the_airport_chosen() -> None:
+    """A code says nothing about where its airport is: a user chose one and the map stayed where
+    it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from
+    the list and typing the code in full both bring the map over it, keeping the zoom the user
+    set but never leaving it so far out that the airport and its squares are not drawn."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    body = re.search(r"\n    goTo\(lat, lon\) \{.*?\n    \},\n", map_js, re.S)
+    assert body is not None, "map.js offers goTo"
+    go = body.group(0)
+    assert "if (!map || !Number.isFinite(lat) || !Number.isFinite(lon)) return;" in go
+    # a floor, never a setting: someone close over one airfield stays that close over the next
+    assert "map.setView([lat, lon], Math.max(map.getZoom(), AIRPORTS_MIN_ZOOM));" in go
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    for name in ("pickAirport", "addTilesFromIcao"):
+        assert "planMap?.goTo(" in _function_body(js, name), name
 
 
 def test_the_squares_a_route_crosses_and_its_length() -> None:
@@ -4658,3 +5191,258 @@ def test_a_route_is_read_from_what_a_pilot_types() -> None:
     # a pasted route keeps its four-letter tokens; the engine leaves out what is not an airport
     assert with_fixes == ["LSGG", "DCT", "DCT", "LFMN"]
     assert empty == []
+
+
+# -- the levels of a flight plan, run rather than read -----------------------------------------
+
+
+def _run_in_node(script: str) -> str:
+    """Run a piece of the page in node, so a rule about its state is checked and not merely read.
+
+    The tests around it assert that the source says a thing; this one asks the source to do it,
+    which is what an ordering bug needs (2026-09-23).
+    """
+    import tempfile
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "run.mjs"
+        path.write_text(script, encoding="utf-8")
+        out = subprocess.run([node, str(path)], capture_output=True, text=True, check=False)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.strip()
+
+
+def test_the_two_ends_of_a_route_keep_step_ones_level_whichever_button_is_pressed_first() -> None:
+    """Pressing "along the route" first put every chosen square at ZL14, so step 1's list followed
+    them there, and "departure and arrival" then took ZL14 from it: the ends came out blurred and
+    step 1 was quietly rewritten, all depending on the order the two buttons were pressed in
+    (2026-09-23). The bug lived between two functions that are each correct on their own, which is
+    why reading them could not find it."""
+    app_js = (ui_dir() / "app.js").read_text(encoding="utf-8")
+    pieces = [
+        _function_body(app_js, name)
+        for name in (
+            "planZl",
+            "routeAlongZl",
+            "routeEndsZl",
+            "tileZl",
+            "chosenLevels",
+            "normalizeLevels",
+        )
+    ]
+    along = re.search(r"\nconst ROUTE_ALONG_ZL = \d+;", app_js)
+    assert along is not None
+    script = (
+        "const state = { tiles: [], tileZl: {}, planZl: 16, zlChosen: 16, settings: null };\n"
+        "const sourceMaxZl = () => 18;\n"
+        + along.group(0)
+        + "\n".join(pieces)
+        + """
+function add(names, zl) {                    // what addRouteTiles does to the levels
+  for (const n of names) {
+    if (!state.tiles.includes(n)) state.tiles.push(n);
+    state.tileZl[n] = zl;
+  }
+  normalizeLevels();
+}
+function press(order) {
+  state.tiles = []; state.tileZl = {}; state.planZl = 16; state.zlChosen = 16;
+  for (const which of order) {
+    if (which === "ends") add(["+46+006", "+43+007"], routeEndsZl());
+    else add(["+45+006", "+44+006"], routeAlongZl());
+  }
+  return { ends: tileZl("+46+006"), along: tileZl("+45+006"), step1: state.planZl };
+}
+console.log(JSON.stringify({ a: press(["ends", "along"]), b: press(["along", "ends"]) }));
+"""
+    )
+    got = json.loads(_run_in_node(script))
+    assert got["a"]["ends"] == 16 and got["a"]["along"] == 14
+    assert got["b"]["ends"] == 16, "the ends keep step 1's level whichever button came first"
+    assert got["b"]["along"] == 14
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_route_over_the_pacific_is_drawn_where_the_map_can_go() -> None:
+    """The line's longitude runs on past 180, which is how a leg goes the short way; drawn there,
+    Tokyo sat at -220, outside the bounds the map pans to, so its ring could not be reached and
+    the view could not be fitted to it (found in review, 2026-09-23). The line is cut at the
+    meridian and continues on the other side, the way a chart draws it."""
+    ksfo_rjtt = [{"lat": 37.6, "lon": -122.4}, {"lat": 35.8, "lon": 140.4}]
+    answer = _node_json("map.js", f"m.routePieces({json.dumps(ksfo_rjtt)})")
+    assert len(answer["pieces"]) == 2, "it is cut where it crosses the meridian"
+    assert [round(p[1]) for p in answer["at"]] == [-122, 140]
+    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
+    for piece in answer["pieces"]:
+        assert all(-180 <= lon <= 180 for _lat, lon in piece)
+    # it leaves by one edge of the meridian and comes back by the other, at the same latitude
+    leaves, comes_back = answer["pieces"][0][-1], answer["pieces"][1][0]
+    assert {leaves[1], comes_back[1]} == {-180, 180}
+    assert leaves[0] == comes_back[0]
+
+    # and the unrolled line still goes the short way, which is what the buttons count
+    line = _node_json("map.js", f"m.routeLine({json.dumps(ksfo_rjtt)})")
+    assert [round(p[1]) for p in line] == [-122, -220]
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_route_that_goes_round_the_world_keeps_every_leg_the_short_way() -> None:
+    """One correction of a turn is not enough once the longitude has run on: from Geneva east to
+    Tokyo the accumulated longitude reaches 499, and the next leg was then taken the long way."""
+    round_world = [
+        {"lat": 46, "lon": 6},
+        {"lat": 40, "lon": 116},
+        {"lat": 21, "lon": -158},
+        {"lat": 37, "lon": -122},
+        {"lat": 51, "lon": 0},
+        {"lat": 35, "lon": 139},
+        {"lat": 46, "lon": 6},
+    ]
+    line = _node_json("map.js", f"m.routeLine({json.dumps(round_world)})")
+    steps = [round(b[1] - a[1]) for a, b in itertools.pairwise(line)]
+    assert all(abs(step) <= 180 for step in steps), steps
+    answer = _node_json("map.js", f"m.routePieces({json.dumps(round_world)})")
+    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_selection_full_of_squares_says_so_in_both_languages() -> None:
+    """The cap lived in the mouse sweep alone: a flight plan across a continent added its nine
+    hundred squares, and the estimate then refused the whole selection with no way forward but
+    taking four hundred out by hand (found in review, 2026-09-23)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 't("plan.tiles_capped"' in _function_body(app_js, "sayTilesInBuild")
+    assert 't("plan.tiles_capped"' in _function_body(app_js, "toggleTile")
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        words = tables[lang]["plan.tiles_capped"]
+        assert "{max}" in words and "{n}" in words, lang
+
+
+def test_the_flight_plan_is_not_offered_in_this_release() -> None:
+    """Choosing squares along a route is a feature of its own, and it arrived in the same
+    release as three faults users are waiting on. It waits for 0.1.15: its code, its tests and
+    its words stay, the page does not offer it, and one line turns it back on (2026-09-23)."""
+    release_js = (UI / "release.js").read_text(encoding="utf-8")
+    assert "export const FLIGHT_PLAN = false;" in release_js, "the switch is off for this release"
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'import { FLIGHT_PLAN } from "./release.js";' in app_js, "and there is one of it"
+
+    # Settings asked for a SimBrief name and its help pointed at a Plan button this release does
+    # not have (found in review, 2026-09-23)
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "if (FLIGHT_PLAN) box.append(simbriefQuestion(view));" in settings_js
+    assert 'import { FLIGHT_PLAN } from "./release.js";' in settings_js
+
+    wiring = _function_body(app_js, "wireFlightPlan")
+    assert '$("plan-route").hidden = !FLIGHT_PLAN;' in wiring
+    assert "if (!FLIGHT_PLAN) return;" in wiring
+    # every listener of the route lives behind that guard, and nowhere else
+    for control in (
+        "route-draw",
+        "route-input",
+        "route-ends",
+        "route-all",
+        "route-simbrief",
+        "route-clear",
+    ):
+        assert f'$("{control}")' in wiring, control
+        assert app_js.count(f'$("{control}").addEventListener') == wiring.count(
+            f'$("{control}").addEventListener'
+        ), control
+    assert "if (FLIGHT_PLAN) restoreRoute();" in app_js, "no route comes back from the last visit"
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert '<div id="plan-route">' in html
+    # the error line under the airport field is shared, so it stays outside the box
+    assert html.index('id="plan-route"') < html.index('id="route-input"')
+    assert html.index('id="way-error"') > html.index("</div>", html.index('id="route-input"'))
+
+    notes = (UI / ".." / ".." / ".." / "docs" / "releases" / "0.1.14.md").resolve()
+    assert "SimBrief" not in notes.read_text(encoding="utf-8"), "and the notes do not promise it"
+
+
+def test_the_map_is_told_when_its_box_changes() -> None:
+    """Leaflet works out where a click landed from the size it last measured, and it measures
+    only when told. Nothing told it: `invalidateSize` was called when the map was shown and
+    never again, so a window resized, a panel opened or the browser's own zoom changed put every
+    click somewhere else than where the pointer was (a user drawing a shape, 2026-09-24)."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index("new ResizeObserver(")
+    watched = map_js[start : map_js.index(".observe(el);", start) + len(".observe(el);")]
+    assert "m.invalidateSize({ animate: false, pan: false })" in watched, "told, without moving"
+    assert watched.endswith("}).observe(el);"), "the map's own element is watched"
+    # and it is set up where the map is made, on that map's element
+    assert map_js.index("function createMap") < start
+    assert start < map_js.index("function refreshAirports")
+
+
+def test_a_point_put_on_the_texture_grid_says_so_and_how_far() -> None:
+    """Ctrl+Shift+click puts a point on the texture grid rather than under the pointer, and a
+    texture is about seven kilometres a side at ZL16: a user clicked in the middle of his
+    village and watched two points appear at the far corners of the map, with nothing saying
+    why (2026-09-24). The shortcut list had always said it; the moment it happens had not."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index("function draftPoint(")
+    body = map_js[start : map_js.index("\n  function ", start + 1)]
+    assert "snapToTextureCorner" in body and 't("draw.snapped"' in body
+    assert "routeLength(" in body, "it says how far the point moved"
+
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        words = tables[lang]["draw.snapped"]
+        for field in ("{mod}", "{shift}", "{km}"):
+            assert field in words, (lang, field)
+        # and it says what to do instead, since the two ways differ only by the modifier
+        assert words.count("{mod}") == 2, lang
+
+
+def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
+    """A zone takes every texture its outline touches, whole: a square zone drawn by hand costs
+    four to eleven textures more than the same zone on the grid, at about 11 MB and 256 pieces
+    each (measured 2026-09-24). Ctrl+Shift+click puts a point on that grid, and seeing it is
+    what makes the shortcut worth using: a user asked what two ways of placing a point were
+    for."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index("function renderTextureGrid(")
+    body = map_js[start : map_js.index("\n  function ", start + 1)]
+    # while a zone is under way, and while the keys that snap to the grid are held: the first
+    # point is the one that starts the shape, so at that moment there is no zone in progress and
+    # the grid appeared only after the click that needed it (a user, 2026-09-24)
+    assert "if (!zs.draft && !snapKeysHeld) return;" in body
+    assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
+    assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
+    assert "map.getBounds()" in body, "the view only, or it is thousands of lines"
+
+    # redrawn when the view moves, and when the draft changes
+    assert "renderTextureGrid();  // the view moved" in map_js
+    assert map_js.index("renderTextureGrid();\n    layers.draft.clearLayers();") > 0
+
+    keys = map_js[map_js.index("function onSnapKeys(") :]
+    assert "(ev.ctrlKey || ev.metaKey) && ev.shiftKey" in keys[:400]
+    for listener in ('"keydown", onSnapKeys', '"keyup", onSnapKeys', '"blur", forgetSnapKeys'):
+        assert listener in map_js, listener
+
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".osxp-texture-grid" in css
+
+
+def test_the_snap_shortcut_is_not_taken_for_a_sweep() -> None:
+    """Shift with the mouse held sweeps squares; Ctrl (or Cmd) with Shift puts a point on the
+    texture grid. The press handler looked only at Shift, so the first point of a shape was
+    swallowed whenever the pointer moved four pixels while the two keys were held, and squares
+    were swept instead. Only the first: from the second point on a zone is under way and the
+    sweep steps aside for it (a user, 2026-09-24)."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    start = map_js.index('el.addEventListener("mousedown"')
+    press = map_js[start : map_js.index("});", start)]
+    assert "if (ev.ctrlKey || ev.metaKey) return;" in press
+    assert press.index("ev.ctrlKey") < press.index("sweepPress("), "before the sweep is started"
+
+    # and the end of a sweep no longer wipes a draft it never drew
+    end = map_js[map_js.index("function sweepEnd(") :]
+    end = end[: end.index("\n  }")]
+    assert end.index("if (!started) return;") < end.index("layers.draft.clearLayers();")

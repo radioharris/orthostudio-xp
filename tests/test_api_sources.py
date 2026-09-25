@@ -25,8 +25,8 @@ xplane = fakes.xplane
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 2000
 ADDRESS = "https://tiles.example.com/vt?lyrs=s&x={x}&y={y}&z={zoom}"
-PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "alive", "extent",
-                 "extent_bounds", "same_as", "custom"}  # fmt: skip
+PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "licence", "alive",
+                 "extent", "extent_bounds", "same_as", "custom"}  # fmt: skip
 
 
 def _app(
@@ -59,6 +59,8 @@ async def test_the_sources_say_what_they_cover_bing_and_esri_first(home: Path) -
     by = {r["code"]: r for r in rows}
     assert by["BI"]["name"] == "Bing Maps" and by["BI"]["extent"] is None
     assert by["BI"]["extent_bounds"] is None and by["BI"]["attribution"]
+    # a source whose imagery is not free for everything says so where the credit is read
+    assert "non-commercial" in by["EOX"]["licence"] and not by["BI"]["licence"]
     assert by["PDOK20"]["extent"] == "Netherlands"
     assert by["PDOK20"]["extent_bounds"] == [3.06, 50.72, 7.26, 53.76]
     assert by["NL"]["same_as"] == "PDOK" and by["PDOK"]["same_as"] is None
@@ -130,8 +132,10 @@ async def test_a_user_tries_adds_and_removes_a_source_of_their_own(
             r = await c.post("/api/sources", json=mine)
             assert r.status_code == 201, r.text
             added = r.json()
-            assert set(added) == PROVIDER_KEYS | {"url_template"}
+            assert set(added) == PROVIDER_KEYS | {"url_template", "cache"}
             assert added["code"] == "Mysatellite" and added["custom"] is True
+            # the folder its images are kept in carries its address, for the page's tile URLs
+            assert added["cache"].startswith("Mysatellite@") and len(added["cache"]) == 20
             assert added["name"] == "My satellite" and added["max_zl"] == 20
             assert added["url_template"] == ADDRESS and added["extent"] is None
             twice = await c.post(
@@ -139,8 +143,12 @@ async def test_a_user_tries_adds_and_removes_a_source_of_their_own(
             )
             shipped = await c.post("/api/sources", json={"name": "BI", "url_template": ADDRESS})
             assert twice.json()["code"] == "Mysatellite_2" and shipped.json()["code"] == "BI_2"
-            codes = [row["code"] for row in (await c.get("/api/providers")).json()]
+            rows = (await c.get("/api/providers")).json()
+            codes = [row["code"] for row in rows]
             assert codes[-3:] == ["Mysatellite", "Mysatellite_2", "BI_2"] and codes[0] == "BI"
+            assert all("cache" not in row for row in rows if not row["custom"]), (
+                "shipped: as before"
+            )
             assert user_sources_path() == home / "sources.toml"
             assert list(read_user_sources()[0]) == ["Mysatellite", "Mysatellite_2", "BI_2"]
 

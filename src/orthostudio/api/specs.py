@@ -103,9 +103,10 @@ def check_ortho4xp_folder(value: str | Path) -> Path:
         raise OsxpError(
             "SYS_WORKING_DIR_INVALID",
             context={"path": str(p)},
-            message=f"{p} holds neither Ortho4XP nor tiles it built (zOrtho4XP_...).",
+            message=f"{p} holds neither Ortho4XP nor any scenery pack of photo tiles.",
             remedy=(
-                "Choose the folder holding Ortho4XP.py, or the one holding your zOrtho4XP_ tiles. "
+                "Choose the folder holding Ortho4XP.py, or the one holding your tiles, whatever "
+                "they are called. "
                 "A tile OrthoStudio XP built needs no import: it is in the Library already, where "
                 "Add to X-Plane puts it in X-Plane."
             ),

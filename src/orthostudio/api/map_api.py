@@ -54,7 +54,13 @@ from orthostudio.errors import OsxpError, wrap
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.home import data_root_missing, default_mapcache_root
 from orthostudio.imagery.chunks import normalize_content_type
-from orthostudio.imagery.providers import Provider, is_placeholder, load_registry, tile_url
+from orthostudio.imagery.providers import (
+    Provider,
+    cache_name,
+    is_placeholder,
+    load_registry,
+    tile_url,
+)
 from orthostudio.net.fetch import Fetcher, FetchRequest, FetchResult
 from orthostudio.textures.assemble import image_body_complete
 
@@ -443,10 +449,13 @@ class MapProxy:
         return load_registry()
 
     def cache_path(self, p: Provider, z: int, x: int, y: int) -> Path | None:
-        """``<cache root>/<provider>/<z>/<x>/<y>`` (the marker adds ``.none``), ``None`` without a
-        cache root."""
+        """``<cache root>/<folder>/<z>/<x>/<y>`` (the marker adds ``.none``), ``None`` without a
+        cache root. The folder is the code, and for a source of the user's its address as well
+        (``cache_name``), so the engine never serves the images of an address the source no longer
+        has; the page puts the same folder in its tile URLs for the browser's copy
+        (``tileVersion``)."""
         root = self._cache_root()
-        return None if root is None else root / p.code / str(z) / str(x) / str(y)
+        return None if root is None else root / cache_name(p) / str(z) / str(x) / str(y)
 
     def _lookup(
         self, p: Provider, zl: int, col: int, row: int

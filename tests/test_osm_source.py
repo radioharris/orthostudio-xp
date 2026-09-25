@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 from collections.abc import Mapping
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,7 +24,6 @@ from orthostudio.sources.osm import (
     LAYERS,
     MAX_ATTEMPTS,
     MIRRORS,
-    ROUNDS,
     SNAPSHOT_FORMAT,
     CurlTransport,
     HttpReply,
@@ -299,7 +300,6 @@ def client(transport: ScriptedTransport, **kw: object) -> OverpassClient:
         "attempt_delay_s": 0.0,
         "min_interval_s": 0.0,
         "cooldown_s": 60.0,
-        "round_pause_s": 0.0,
     }
     params.update(kw)
     return OverpassClient(MIRRORS, transport, **params)  # type: ignore[arg-type]
@@ -338,12 +338,16 @@ def test_429_fails_over_and_opens_the_whole_cluster() -> None:
     snap = asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert snap.mirror == "mailru"
     assert [c.health_snapshot()[code].state for code in ("de", "z", "lz4")] == ["open"] * 3
-    # the other two German names are not asked; the last resorts are, in the registry's order
+    # the other two German names are not asked; the last resorts are, in the registry's order.
+    # The 429 is followed by one GET of that machine's status page, which is where these servers
+    # publish when a slot frees (2026-09-24).
     assert [h for h, _ in t.sent] == [
+        "overpass-api.de",
         "overpass-api.de",
         "overpass.openstreetmap.fr",
         "maps.mail.ru",
     ]
+    assert [what for _, what in t.sent].count("GET") == 1
     # a 429 is not a machine failing, it is the per-address quota: its own code, in plain words
     assert [a.error for a in c.attempts] == [
         "OSM_MIRROR_RATE_LIMITED",
@@ -439,6 +443,137 @@ def test_the_last_resort_mirror_can_be_refused() -> None:
         asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert "maps.mail.ru" not in {h for h, _ in t.sent}
+
+
+def test_a_bake_of_more_roads_answers_a_build_that_wants_fewer() -> None:
+    """A library baked at road level 5 holds every road a level below it wants, and more.
+
+    Handing it over whole would flatten the mesh under tracks and service roads the user's
+    settings say nothing about, so the extra is dropped on reading instead, and one bake serves
+    every level (a user asked why 2, 3 and 4 were refused, 2026-09-25).
+
+    Proved against real bakes of +47+013 from the Austrian extract: the level 5 narrowed to
+    level 3 came out with the same 393 698 nodes, the same 34 813 ways and the same digest as a
+    level 3 baked from the same data. This test says the same thing in miniature.
+    """
+    import orjson
+
+    from orthostudio.sources.osm import layers_for, narrowed, snapshot_from_overpass
+
+    five = {s.name: s for s in layers_for(5)}["small_roads"]
+    three = {s.name: s for s in layers_for(3)}["small_roads"]
+
+    def body(kinds: dict[int, str]) -> bytes:
+        elements: list[dict[str, object]] = []
+        for i, (way_id, highway) in enumerate(sorted(kinds.items())):
+            a, b = 100 + 2 * i, 101 + 2 * i
+            elements += [
+                {"type": "node", "id": a, "lat": 47.0 + i / 1000, "lon": 13.0},
+                {"type": "node", "id": b, "lat": 47.0 + i / 1000, "lon": 13.001},
+                {"type": "way", "id": way_id, "nodes": [a, b], "tags": {"highway": highway}},
+            ]
+        return orjson.dumps({"elements": elements})
+
+    every = {1: "tertiary", 2: "residential", 3: "unclassified", 4: "service", 5: "track"}
+    wanted = {k: v for k, v in every.items() if v in ("tertiary", "residential", "unclassified")}
+
+    baked = snapshot_from_overpass(TILE, five, body(every))
+    real = snapshot_from_overpass(TILE, three, body(wanted))
+    cut = narrowed(baked, three)
+
+    assert cut is not None
+    assert cut.counts == real.counts == {"nodes": 6, "ways": 3, "relations": 0}
+    assert cut.digest == real.digest, "narrowing must give what that level would have been given"
+    assert {w.id for w in cut.ways} == {1, 2, 3}  # the service road and the track are gone
+    assert {n.id for n in cut.nodes} == {100, 101, 102, 103, 104, 105}  # and their nodes with them
+    assert cut.selectors == tuple(three.selectors)
+
+    # the other way round is refused: a level 3 bake cannot answer a level 5 build
+    assert narrowed(real, five) is None
+    # and a bake holding a selector we cannot read is refused, never guessed at: the wanted set
+    # is a subset of it, so only the unreadable one can stop us
+    odd = replace(five, selectors=(*five.selectors, 'relation["natural"="water"]'))
+    assert (
+        narrowed(
+            replace(baked, selectors=odd.selectors), replace(three, selectors=odd.selectors[-1:])
+        )
+        is None
+    )
+
+
+def test_the_status_page_says_when_a_slot_frees() -> None:
+    """These servers count queries per address and their status page says exactly when the next
+    slot frees. We guessed sixty seconds instead of reading it, and a user whose address had
+    spent its quota watched five mirrors refuse and the build give up (2026-09-24)."""
+    from orthostudio.sources.osm import slot_wait_s
+
+    free = "Connected as: 2999320354\nRate limit: 4\n4 slots available now.\n"
+    assert slot_wait_s(free) == 0.0
+    one = "Rate limit: 2\nSlot available after: 2026-09-24T21:36:12Z, in 140 seconds.\n"
+    assert slot_wait_s(one) == 140.0
+    two = (
+        "Slot available after: 2026-09-24T21:40:00Z, in 240 seconds.\n"
+        "Slot available after: 2026-09-24T21:34:12Z, in 12 seconds.\n"
+    )
+    assert slot_wait_s(two) == 12.0  # the soonest, not the last read
+    assert slot_wait_s("Slot available after: X, in -3 seconds.") == 0.0  # never negative
+    assert slot_wait_s("Connected as: 1\nCurrent time: now\n") is None  # says neither
+    assert slot_wait_s("") is None
+
+
+def test_a_429_asks_the_status_page_when_a_slot_frees() -> None:
+    """The number these servers publish beats the minute we guessed, and the board is shared by
+    every tile in flight, so one small request buys the whole build that number.
+
+    It was read only by Checks when this was written, which is nowhere a build passes: the value
+    never reached the thing it was for (found attacking the change, 2026-09-24).
+    """
+    status = HttpReply(200, b"Rate limit: 2\nSlot available after: X, in 140 seconds.\n", {}, 0.01)
+    quota = HttpReply(429, b"", {}, 0.01)
+    t = ScriptedTransport(
+        {
+            "overpass-api.de": [quota, status],
+            "z.overpass-api.de": [ok()],
+            "lz4.overpass-api.de": [ok()],
+            "overpass.openstreetmap.fr": [ok()],
+            "maps.mail.ru": [ok()],
+        }
+    )
+    c = client(t)
+    asyncio.run(c.fetch_layer(TILE, "coastline"))
+    assert [what for _, what in t.sent].count("GET") == 1, "the status page is asked once"
+    # and the cluster is held for the 140 s it named, not for the minute we would have guessed.
+    # Asserting only that the breaker is open passed with a version that read the page and set
+    # nothing, since the 429 had already opened it (found in review, 2026-09-24).
+    held = c._board.soonest(["de"]) - time.monotonic()
+    assert 100.0 < held <= 140.0, f"held for {held:.0f} s, not the 140 the page named"
+
+
+def test_the_rounds_wait_for_what_the_servers_said() -> None:
+    """One clock decides when to ask again: the breakers, which carry what each server said.
+
+    A schedule of our own woke the round before the servers were ready, found nobody left to ask
+    and ended the layer after a minute, which is the very thing the patience had been raised to
+    fix. The test that guarded it only did arithmetic on two constants and stayed green
+    throughout (found in review, 2026-09-24), so this one drives the client and measures.
+    """
+    quota = HttpReply(429, b"", {"retry-after": "2"}, 0.0)
+    hosts = {m.interpreter.split("/")[2] for m in MIRRORS} | {
+        m.status_url.split("/")[2] for m in MIRRORS if m.status_url
+    }
+    t = ScriptedTransport({host: [quota] for host in hosts})
+    c = client(t, rounds=3)
+
+    started = time.monotonic()
+    with pytest.raises(OsxpError):
+        run(c.fetch_layer(TILE, "coastline", deadline=started + 60.0))
+    took = time.monotonic() - started
+
+    # a 429 sets the whole cluster aside, so a round asks one machine per cluster
+    clusters = len({m.cluster for m in MIRRORS})
+    asked = [host for host, what in t.sent if what != "GET"]
+    assert len(asked) >= 3 * clusters, f"a round gave up without asking anyone: {asked}"
+    assert took >= 2.0 * 2, f"it did not wait the two seconds each server named ({took:.1f} s)"
 
 
 def test_a_quota_refusal_is_said_in_plain_words() -> None:
@@ -542,16 +677,20 @@ def test_a_new_build_gives_every_mirror_another_chance() -> None:
 
 
 def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
+    # the rounds wait for the breakers and spend the caller's deadline doing it, so a test that
+    # wants to see them all needs a budget and cooldowns it can outlast (0.1.15)
     t = ScriptedTransport({})
-    c = client(t)
+    c = client(t, cooldown_s=0.02)
     with pytest.raises(OsxpError) as err:
-        asyncio.run(c.fetch_layer(TILE, "coastline"))
+        asyncio.run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 30.0))
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert err.value.context["layer"] == "coastline"
     assert err.value.context["tile"] == "+43+005"
-    # one attempt per mirror, three rounds over the list, never eight on the same machine
-    assert len(t.sent) == len(MIRRORS) * ROUNDS
-    assert t.by_host.keys() != {"overpass-api.de"}
+    # one attempt per mirror in a round, and the rounds go on while the budget lasts: what must
+    # never happen is eight attempts on the same machine and none on the others
+    assert len(t.sent) >= len(MIRRORS) * 3
+    assert len(set(t.by_host)) == len(MIRRORS), "every mirror was tried"
+    assert max(t.peak_by_host.values()) == 1, "never two at once on the same machine"
 
 
 def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
@@ -566,8 +705,11 @@ def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
             "maps.mail.ru": [HttpReply(504, b"", {}, 0.01)],
         }
     )
-    c = client(t)
-    assert asyncio.run(c.fetch_layer(TILE, "coastline")).mirror == "de"
+    c = client(t, cooldown_s=0.02, busy_cooldown_s=0.02)
+    assert (
+        asyncio.run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 30.0)).mirror
+        == "de"
+    )
     assert len(t.sent) == len(MIRRORS) + 1  # a whole round refused, then the first of the next
 
 
@@ -575,7 +717,7 @@ def test_a_refusal_of_principle_is_not_asked_twice() -> None:
     """Only what may pass is worth another round: ``.fr``'s 403 will be the same in a minute."""
     mirrors = (Mirror(code="fr", interpreter="https://fr.example/api/interpreter", cluster="fr"),)
     t = ScriptedTransport({"fr.example": [HttpReply(403, b"white-listed usages only", {}, 0.01)]})
-    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0, round_pause_s=0.0)
+    c = OverpassClient(mirrors, t, attempt_delay_s=0.0, min_interval_s=0.0)
     with pytest.raises(OsxpError):
         asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert len(t.sent) == 1
@@ -605,7 +747,7 @@ def test_the_breaker_half_opens_after_the_cooldown() -> None:
             "z.overpass-api.de": [ok()],
         }
     )
-    c = client(t, cooldown_s=0.05)
+    c = client(t, cooldown_s=0.05, busy_cooldown_s=0.05)  # a 504 is busy, not down
     asyncio.run(c.fetch_layer(TILE, "coastline"))
     assert c.health_snapshot()["de"].state == "open"
     asyncio.run(asyncio.sleep(0.06))
@@ -684,9 +826,27 @@ def test_the_tile_reports_each_layer_and_its_download_rate() -> None:
     assert len(got) == 4
     layer_reports = [f for f, _ in seen]
     assert [f for f in layer_reports if f in (0.25, 0.5, 0.75, 1.0)] == [0.25, 0.5, 0.75, 1.0]
-    assert seen[-1][1].startswith("+43+005: 4/4 OSM layers (") and seen[-1][1].endswith(" MB/s)")
-    assert osm_progress_message(TILE, 0, 4, 0, 3.0) == "+43+005: 0/4 OSM layers"
-    assert osm_progress_message(TILE, 2, 4, 4_200_000, 3.0) == "+43+005: 2/4 OSM layers (1.4 MB/s)"
+    last = seen[-1][1]
+    assert last.startswith("+43+005: 4 of 4 back: ")
+    for word in ("airports", "roads", "water", "coastline"):
+        assert word in last, last
+    # the rate rides along only when the average says something: on a machine busy enough that
+    # these four small answers spread over a minute it does not, and that is the point of it
+    assert last.endswith(" MB/s)") or "MB/s" not in last
+
+    # A map data server sends nothing until it has worked the whole answer out, so the line sat
+    # at "0/4 OSM layers" with the rate falling to "0.0 MB/s" for minutes, which is also what a
+    # build that has stopped looks like. A user watching it said it told him nothing (2026-09-23).
+    four = ["airports", "big_roads", "water", "coastline"]
+    waiting = osm_progress_message(TILE, four, [], 0, 3.0)
+    assert waiting == "+43+005: waiting for the map data server (airports, roads, water, coastline)"
+    assert "MB/s" not in osm_progress_message(TILE, four, [], 12_000, 140.0), (
+        "an average over a long wait is not a rate"
+    )
+    assert (
+        osm_progress_message(TILE, four, ["airports", "big_roads"], 4_200_000, 3.0)
+        == "+43+005: 2 of 4 back: airports, roads (1.4 MB/s)"
+    )
 
 
 def test_the_minimum_interval_between_two_requests_is_respected() -> None:
@@ -826,7 +986,7 @@ def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
 
     busy = HttpReply(504, b"", {}, 0.01)
     transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-    c = client(transport, round_pause_s=20.0, rounds=3)
+    c = client(transport, rounds=3)
 
     async def go() -> float:
         started = _time.monotonic()
@@ -840,13 +1000,14 @@ def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
     assert took < 5.0, f"it waited {took:.1f} s for rounds the caller would never see"
 
 
-def test_with_time_to_spare_the_rounds_still_run() -> None:
-    """The deadline shortens nothing when there is room: the point is not to ask less."""
+def test_the_deadline_is_the_budget_and_more_room_is_more_rounds() -> None:
+    """Since 0.1.15 the caller's deadline is what bounds the asking, not a count of our own:
+    more room is more attempts, and no deadline at all is one round and the answer."""
     busy = HttpReply(504, b"", {}, 0.01)
 
     def asked(deadline_in: float | None) -> int:
         transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-        c = client(transport, rounds=2)  # round_pause_s is 0 in the test client
+        c = client(transport, rounds=2, cooldown_s=0.02, busy_cooldown_s=0.02)
 
         async def go() -> None:
             import time as _time
@@ -861,26 +1022,145 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
         run(go())
         return len(transport.sent)
 
-    assert asked(None) == asked(600.0) > 0
+    # the deadline is the budget, so more room is more rounds, and none at all is one round
+    assert asked(None) < asked(1.0) <= asked(3.0)
 
 
-def test_a_round_that_asks_nobody_is_not_repeated() -> None:
-    """Every server refused for the quota, so every one is set aside with a cooldown the round
-    pause will not outlast. Asking again costs forty seconds and learns nothing, once per layer
-    and per tile of the batch (2026-09-23, the address having spent its quota)."""
+def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
+    """A 504 means the machine or its upstream could not finish this query, not that it is down.
+
+    It took the cooldown built for a machine that is down, 600 s and doubling, and nothing showed
+    while the rounds gave every breaker back before asking again. With the breakers as the one
+    clock that mis-tuning cost a layer two thirds of its attempts (measured, 2026-09-25).
+    """
+    from orthostudio.sources.osm import BUSY_COOLDOWN_S, MAX_COOLDOWN_S, OverpassClient
+
+    # what the rounds are willing to wait for and what gets the busy wait must be one set, or
+    # one keeps asking while the other shuts the machine for ten minutes (review, 2026-09-25)
+    assert all(OverpassClient.busy(code) for code in (500, 501, 502, 503, 504, 520))
+    assert not OverpassClient.busy(403) and not OverpassClient.busy(429)
+    assert BUSY_COOLDOWN_S < MAX_COOLDOWN_S / 10, "busy is not down"
+
+    busy = HttpReply(504, b"", {}, 0.01)
+    t = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
+    c = client(t)
+    with pytest.raises(OsxpError):
+        run(c.fetch_layer(TILE, "coastline", deadline=time.monotonic() + 0.1))
+    held = c._board.soonest(["de"]) - time.monotonic()
+    assert 0 < held <= BUSY_COOLDOWN_S, (
+        f"held for {held:.0f} s, not the {BUSY_COOLDOWN_S:.0f} of a busy machine"
+    )
+
+
+def test_a_wait_longer_than_the_budget_is_not_taken() -> None:
+    """A server that names ten minutes when the tile has five has said no, not "later".
+
+    Until 0.1.15 this was a schedule of our own: the round slept twenty seconds, gave every
+    breaker back and asked again, which learnt nothing and cost forty seconds a layer. Now the
+    breakers are the one clock and the caller's deadline is the budget for them, so a wait that
+    does not fit ends the layer at once, with the reason said.
+    """
     import time as _time
 
     quota = HttpReply(429, b"", {"retry-after": "600"}, 0.01)
     transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
-    c = client(transport, round_pause_s=20.0, rounds=3)
+    c = client(transport, rounds=3)
 
     async def go() -> float:
         started = _time.monotonic()
         with pytest.raises(OsxpError) as caught:
-            await c.fetch_layer(TileRef(43, 5), "coastline")
-        assert "every server is still set aside" in str(caught.value.context.get("attempts", ""))
+            await c.fetch_layer(TileRef(43, 5), "coastline", deadline=started + 30.0)
+        assert "no time left for another round" in str(caught.value.context.get("attempts", ""))
         return _time.monotonic() - started
 
     took = run(go())
-    assert took < 25.0, f"it waited {took:.0f} s to be told the same thing twice"
-    assert len(transport.sent) <= len(MIRRORS), "nobody is asked twice while the quota holds"
+    assert took < 25.0, f"it waited {took:.0f} s for a slot it had no time for"
+    queried = [host for host, what in transport.sent if what != "GET"]  # the status pages aside
+    assert len(queried) <= len(MIRRORS), "nobody is asked twice while the quota holds"
+
+
+def test_a_quota_refusal_never_doubles_whether_or_not_a_delay_is_named() -> None:
+    """The public servers mostly send 429 with no ``Retry-After``. Telling a quota refusal apart
+    by whether that header came meant the commonest one fell through to the cooldown built for a
+    machine that is down: the cluster shut for ten minutes, then twenty, then forty, which is the
+    outage of 22 September made by us instead of by them (found in review, 2026-09-23)."""
+    from orthostudio.sources.osm import COOLDOWN_S, QUOTA_COOLDOWN_S, MirrorBoard, _retry_after
+
+    def closes(*, seconds: float | None, quota: bool) -> list[int]:
+        board = MirrorBoard()
+        board.register(MIRRORS, COOLDOWN_S)
+        out: list[int] = []
+        for _ in range(3):
+            board.open("de", reason="t", seconds=seconds, quota=quota)
+            state = board._states["de"]
+            out.append(round(state.open_until - time.monotonic()))
+            state.open_until = 0.0
+        return out
+
+    assert closes(seconds=None, quota=True) == [QUOTA_COOLDOWN_S] * 3
+    assert closes(seconds=5.0, quota=True) == [5, 5, 5]
+    assert closes(seconds=7200.0, quota=True) == [3600, 3600, 3600]  # an hour is the most
+    doubling = closes(seconds=None, quota=False)  # a machine that is down still doubles
+    assert doubling == [COOLDOWN_S, 2 * COOLDOWN_S, 4 * COOLDOWN_S]
+
+    # and the header is read however it is written (RFC 9110 allows a date)
+    assert _retry_after({"retry-after": "5.5"}) == 5.5
+    assert _retry_after({"retry-after": "nonsense"}) is None
+    assert (_retry_after({"retry-after": "Wed, 23 Sep 2036 20:00:00 GMT"}) or 0) > 0
+
+
+def test_a_429_shuts_the_cluster_for_what_it_asked_and_no_longer() -> None:
+    """Through the client, not the board: what a tile actually meets."""
+    quota = HttpReply(429, b"", {}, 0.01)  # no Retry-After, as they send
+    transport = ScriptedTransport({m.interpreter.split("/")[2]: [quota] for m in MIRRORS})
+    c = client(transport, rounds=1)
+
+    async def go() -> None:
+        with pytest.raises(OsxpError):
+            await c.fetch_layer(TileRef(43, 5), "coastline")
+
+    run(go())
+    aside = c._board.last_errors()
+    assert aside, "every mirror answered 429"
+    for code in aside:
+        state = c._board._states[code]
+        left = state.open_until - time.monotonic()
+        assert left <= 61.0, f"{code} is shut for {left:.0f} s over a quota refusal"
+
+
+def test_a_failure_never_brings_a_reopen_forward() -> None:
+    """The doctor probes every mirror without asking the breaker, so running it because builds
+    had started failing replaced the hour a server had asked for with the ten minutes of an
+    ordinary failure, and the next build asked that server again at once (found in review,
+    2026-09-23)."""
+    from orthostudio.sources.osm import Mirror, MirrorBoard
+
+    def board() -> MirrorBoard:
+        b = MirrorBoard()
+        b.register(
+            [Mirror(code="A", interpreter="https://example.invalid/api", cluster="A")], 600.0
+        )
+        return b
+
+    asked = board()
+    asked.open("A", reason="429 Too Many Requests", seconds=3600.0, quota=True)
+    hour = asked._states["A"].open_until
+    asked.open("A", reason="the doctor could not reach it")  # a health probe, not a refusal
+    assert asked._states["A"].open_until >= hour
+    # ``rate_limited`` went with the blanket reopen it was written for: since 0.1.15 the rounds
+    # never clear a breaker, so nothing needs to be told apart from an ordinary failure
+
+    # a machine that is down still backs off as it did
+    down = board()
+    waits = []
+    for _ in range(3):
+        down.open("A", reason="down")
+        waits.append(round(down._states["A"].open_until - time.monotonic()))
+        down._states["A"].open_until = 0.0  # as time passing would leave it
+    assert waits == [600, 1200, 2400]
+
+    # and a success clears everything, whatever was asked for
+    done = board()
+    done.open("A", reason="429", seconds=3600.0, quota=True)
+    done.close("A", cooldown_s=600.0)
+    assert done._states["A"].open_until == 0.0

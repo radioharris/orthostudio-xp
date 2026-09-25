@@ -99,11 +99,14 @@ def test_the_build_says_what_it_asked_for(tmp_path: Path) -> None:
         },
         patches_dir=tmp_path / "Patches",
     )
+    from orthostudio.imagery.providers import load_registry
+
     assert built_facts(spec) == {
         "version": __version__,
         "relief_asked": ["HRDEM"],
         "patches": ["CBH2.patch.osm"],
         "zones": [{"zl": 17, "provider": "BI"}, {"zl": 18, "provider": "BI"}],
+        "imagery_credit": load_registry()["BI"].attribution,
     }
     # the X-Plane relief with nothing over it asks for no overlay
     plain = BuildSpec(tile=T, provider="BI", zl=16, out_dir=tmp_path / "t", config={})
@@ -131,3 +134,119 @@ def test_a_pack_written_before_this_version_reads_as_no_facts() -> None:
     old = PackManifest("+51-116", "BI", 16).to_toml()
     assert "[built]" not in old
     assert PackManifest.from_toml(old).built == {}
+
+
+def test_the_credit_of_the_imagery_travels_with_the_pack(tmp_path: Path) -> None:
+    """A pack is a folder people pass around, and it carried the code of the source and nothing
+    else. EOX's Sentinel-2 is CC BY-NC-SA, so its credit and its licence have to go with the tile
+    (found in review, 2026-09-23)."""
+    from orthostudio.imagery.providers import load_registry
+    from orthostudio.pipeline.pack import CREDITS_NAME, _write_credits
+
+    eox = load_registry()["EOX"]
+    assert eox.licence, "the source says what it is given under"
+
+    facts = built_facts(BuildSpec(tile=T, provider="EOX", zl=14, out_dir=tmp_path, config={}))
+    assert facts["imagery_credit"] == eox.attribution
+    assert facts["imagery_licence"] == eox.licence
+
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    _write_credits(pack, T, facts)
+    text = (pack / CREDITS_NAME).read_text("utf-8")
+    assert T.name in text
+    assert "EOX IT Services GmbH" in text
+    assert "non-commercial" in text
+    assert "OpenStreetMap" in text and "ODbL" in text
+
+    # written again, it is the same file: a pack must not change when it is repaired
+    before = text
+    _write_credits(pack, T, facts)
+    assert (pack / CREDITS_NAME).read_text("utf-8") == before
+
+    # a source that gives no credit leaves no file behind
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    _write_credits(bare, T, {"version": "0"})
+    assert not (bare / CREDITS_NAME).exists()
+
+
+def test_a_tile_built_without_installing_is_in_the_library(tmp_path: Path) -> None:
+    """Only installing ever wrote a library row, so a user who built without installing read "No
+    tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
+    tile(s) -- 4.09 GB", with nothing offering to install them and nothing saying where they
+    were (found in review, 2026-09-23)."""
+    import inspect
+
+    from orthostudio.install import Library
+    from orthostudio.pipeline.build import _remember_the_tile, _verify_effects
+    from orthostudio.pipeline.pack import PackManifest
+
+    library = tmp_path / "library.sqlite"
+    pack_dir = tmp_path / "tiles" / "zOrthoStudio_+51+000"
+    pack_dir.mkdir(parents=True)
+    tile = TileRef(51, 0)
+    from orthostudio.pipeline.pack import ArtefactEntry
+
+    manifest = PackManifest(
+        tile=tile.name,
+        provider="BI",
+        zl=16,
+        artefacts={"dsf": ArtefactEntry("d" * 64, "e" * 64, "tile.dsf")},
+    )
+
+    class JustTheLibrary:  # all ``_remember_the_tile`` reads of the environment
+        def __init__(self, path: Path) -> None:
+            self.library_path = path
+
+    env = JustTheLibrary(library)
+
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, env)
+    with Library(library) as lib:
+        rows = lib.list(tile=tile)
+    assert [(r.provider, r.zl, r.built_by, r.path) for r in rows] == [("BI", 16, "osxp", pack_dir)]
+
+    # a tile imported from Ortho4XP and then built here keeps what it is, or Delete would stop
+    # refusing a folder it did not make
+    with Library(library) as lib:
+        lib.register(tile, "BI", 16, pack_dir, "ortho4xp", None)
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, env)
+    with Library(library) as lib:
+        assert lib.list(tile=tile)[0].built_by == "ortho4xp"
+
+    # and a library that will not open never costs anyone his build
+    broken = JustTheLibrary(tmp_path / "no" / "such.sqlite")
+    _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, broken)
+
+    # the wiring, read rather than run: building a TileNodes costs more than the change itself
+    body = inspect.getsource(_verify_effects)
+    assert "if not installed:\n        _remember_the_tile(" in body
+
+
+def test_a_failed_tile_says_what_the_source_answered() -> None:
+    """A user's own EOX source served two textures, then answered four thousand chunks in eight
+    seconds carrying no bytes. The build said "18 of 20 texture(s) could not be built
+    (IMG_TILE_MISSING)" and printed a traceback, and the reason was only in the textures report
+    on his disk (2026-09-24). The tile's failure now names what came back, commonest first.
+    """
+    from orthostudio.pipeline.build import _what_the_source_answered
+
+    def outcome(*failures: tuple[str, int]) -> object:
+        rows = [{"code": code, "status": status} for code, status in failures]
+        return type("O", (), {"error": {"context": {"failures": rows}}})()
+
+    answered = _what_the_source_answered(
+        [
+            outcome(("NET_UNEXPECTED_STATUS", 403), ("NET_UNEXPECTED_STATUS", 403)),
+            outcome(("NET_UNEXPECTED_STATUS", 403), ("NET_TIMEOUT", 0)),
+        ]
+    )
+    assert answered == ["NET_UNEXPECTED_STATUS 403 x3", "NET_TIMEOUT"]
+    # at most four kinds, and a texture whose error carries nothing costs no answer
+    assert _what_the_source_answered([type("O", (), {"error": None})()]) == []
+    many = [outcome(*((f"C{i}", 500 + i),)) for i in range(6)]
+    assert len(_what_the_source_answered(many)) == 4
+
+
+def _spec_for(tile: TileRef, tmp_path: Path) -> BuildSpec:
+    return BuildSpec(tile=tile, provider="BI", zl=16, out_dir=tmp_path / "tiles", config={})

@@ -117,8 +117,11 @@ and counters. Default `host_group=""` is a group like any other.
   piece of land in 400 ms: a texture of both has a p90 far above its median with no congestion,
   and the window halved round after round down to 8 (39 halvings on such a mix in
   `test_group_latency_signal_is_a_rising_tail_not_a_mix_of_sea_and_land`; now none, one halving
-  from sea to land, and a server whose tail doubles is still seen). A timeout multiplies by 0.75. Other 5xx and connection errors are retried but do not
-  move the window (a single 500 is not a congestion signal). After a decrease no further
+  from sea to land, and a server whose tail doubles is still seen). A timeout multiplies by 0.75, and since 0.1.14 a **refused or dropped connection** halves like
+  a 503: a server that defends itself by closing the door says no as plainly as one answering
+  429, and until then only the two statuses lowered the window, so such a server was knocked on
+  by the whole window until the attempts ran out (a user's EOX source, 2026-09-24). Other 5xx are
+  retried but do not move the window (a single 500 is not a congestion signal). After a decrease no further
   decrease is taken until `window` new completions have been observed (100 for the latency
   signal, so that the recent ring holds only post-decrease samples): one burst of 429, or one
   stalled connection whose 32 streams complete late together, halves once, not once per
@@ -136,6 +139,29 @@ and counters. Default `host_group=""` is a group like any other.
   request sees at most one pushback and none is lost.
 - The benchmark never saw a 429/503 from Bing in 315 000 requests (s. 2); this branch is
   verified against the local test server, not against Bing.
+
+### R2b. Requests a second per host group
+
+`Fetcher(req_per_s=)` (`None`: no ceiling) is a **ceiling the group approaches, not a speed it
+holds**. The group starts at `RATE_START` (a quarter) of it, climbs `ceiling / RATE_STEPS` per
+`RATE_ROUND` answers, falls with the window in `_decrease` on the same signals and by the same
+factor, and never goes below `RATE_FLOOR` (a tenth) nor above the ceiling. At most one request is
+started every `1 / rate` seconds per `host_group`, on top of R2's window: the group holds
+`next_start`, dispatch admits nothing before it, and the loop sleeps until then. The two do not
+compound: what a group achieves is `min(window / latency, rate)`, so whichever binds, binds, and
+a push-back that halves both halves the result once.
+
+**Why a ceiling and not a speed.** Every rate in the registry was measured once, from one machine, on one day. EOX's 224 was real here and eleven times what a user's address could get before the server stopped answering (2026-09-24). A figure like that is worth keeping as a limit nobody should pass, and worthless as an instruction. Climbing to it converges on what this line and this route allow, and costs 1.1 % of a full tile: measured, not guessed, which is why there is no exception for a rate a user declared themselves. It comes from the provider's
+`server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`) and for the
+probe (`estimate.probe`, which asked for every chunk of a texture at once).
+
+**Why a second limit.** R2 counts connections; a server may count requests. Apache with
+mod_evasive, which many small services run, serves a few images and then blocks the caller for
+seconds, and every request sent while blocked pushes the end of the block further away. On a fast
+line a window of 16 is hundreds of requests a second, so `max_in_flight` alone cannot slow a
+caller down to what such a server accepts. A user who wrote `server_req_per_s = 3` in his own
+source to spare one watched the build ask for hundreds a second and fail (2026-09-24): the field
+set the estimate alone.
 
 ### R3. Hedging stragglers
 
@@ -237,7 +263,8 @@ latency signal.
 | 500 then 200 | `status == 200`, `attempts == 2`, `retries == 1` in the stats |
 | 429 with `Retry-After: 1` | `status == 200`, second transfer >= 1 s after the first, `throttled` seen true, window halved for the group; with `max_attempts = 1` the request still succeeds (the 429 cost no attempt) and `attempts == 2`; with `max_pushbacks = 0` it ends `NET_RATE_LIMITED` after one transfer; a route that always answers 429 ends `NET_RATE_LIMITED` after `1 + max_pushbacks` transfers |
 | straggler 5 s, `hedge_after_s = 0.3` | `status == 200` in < 2 s, `hedged`, `hedges == 1` in the stats |
-| dropped connection | `status == 200`, `attempts == 2` |
+| dropped connection | `status == 200`, `attempts == 2`, and the window halved for the group (R2) |
+| `req_per_s = 10`, 6 requests | the run lasts at least `(6 - 1) / 10` s and no two requests reach the server closer than `1 / 20` s (R2b) |
 | AIMD up | start 4, max 16, 400 fast requests: window of the group reaches 16 |
 | AIMD down | after 300 fast completions, 200 slow ones (0.5 s): window of the group is halved at least once |
 | cancellation | 200 requests to a slow route, `cancel.set()` after 0.3 s: `fetch_many` returns within 1 s, undelivered requests carry `SYS_CANCELLED` |
@@ -328,6 +355,18 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
   healthy machine. 3 attempts across machines, then `OSM_UNAVAILABLE`: another cluster's machine
   is asked at once, another machine of the cluster that just failed after 5 s. Never the 2^n
   back-off of Ortho4XP (up to 5 min 40 per query).
+- **One clock for when to ask again** (0.1.15): the breakers, and nothing else. Each carries what
+  its server said (a 429's `Retry-After`, the slot its `/api/status` page names, the cooldown of a
+  machine that is down), `MirrorBoard.soonest` gives the first moment any of them is ready, and a
+  round waits exactly that, floored at `attempt_delay_s`. The caller's `deadline` is the budget: a
+  wait that does not fit ends the layer at once, saying so, and a caller with no deadline gets one
+  round. A schedule of our own beside the breakers is what made the two fight, the round waking
+  before the servers were ready, finding nobody to ask, and giving up in a minute -- the very bug
+  the patience had been raised to fix (found in review, 2026-09-24).
+- **Patience for a spent quota** (0.1.15): these servers count queries per internet address and
+  free a slot on their own clock, in minutes. Three rounds twenty seconds apart gave one minute,
+  and a user watched all five mirrors answer 429/403/504 and the build give up while the quota
+  needed longer (2026-09-24). The rounds are now five and wait for the breakers as above, inside a tile deadline that went from 5 to 15 minutes; raising the rounds under a five-minute deadline would have changed nothing, which is how the minute came about. The rounds still stop early when nothing that refused could pass. And the `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and a 429 **during a layer** asks that machine's page, one GET at the moment we are about to wait anyway, and holds the cluster until the slot it names. It was read only by Checks when first written, which is nowhere a build goes.
 - Each layer goes to the least busy cluster: two healthy clusters take four layers of a tile at
   once, two each. The breakers are the process's (`MirrorBoard`): a machine one tile found dead
   is not asked by the next tile, nor by the next build, until its cooldown ends
@@ -340,9 +379,14 @@ by `tests/test_pipeline_second_pass.py`:
 
 - A chunk whose request ended with a failure that says "try later" is asked again before its
   texture is declared incomplete: `NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED`
-  (429 beyond the pushback budget) and `NET_SERVER_ERROR` with status 502, 503 or 504. Not a
-  500 (the server's own answer for that URL, already asked `max_attempts` times), another 4xx,
-  or a body that is not an image. A 404 and a placeholder are answers, never errors: they go to
+  (429 beyond the pushback budget), and status 502, 503, 504, 408, 425 or **403**, whatever the
+  code carrying it. 403 was final until 0.1.14, and it is how a server that blocks a caller it
+  finds too eager usually says so: a user's own EOX source served two textures, then answered
+  4 000 chunks in eight seconds with no bytes, and not one was asked again (2026-09-24). A 403
+  that is a plain refusal now costs the bounded rounds of one pass and says the same thing, with
+  how many rounds it took. Not a 500 (the server's own answer for that URL, already asked
+  `max_attempts` times), not a 401 or a 451 (no waiting changes them), not a body that is not an
+  image. A 404 and a placeholder are answers, never errors: they go to
   the parent fallback (5.3), which is not applied to a transient failure.
 - Rounds after pauses of 5, 15 and 45 s, once every chunk of the tile has its first-pass
   answer and the parent rounds are over. Each round starts with a probe of two tiles the

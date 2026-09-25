@@ -100,13 +100,23 @@ wait too: the end of the build decides what X-Plane shows of it. Tiles are delet
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and
 *Quit* cancels the waiting builds with the one running.
 
+**Tidying the list.** A build that has finished carries a small bin at the end of its row: it
+leaves the list, with its progress and its log, and the tiles it built stay where they are. If it
+was the build on screen, the next one in the list takes its place. The trash above the list does
+the same for every finished build at once. A build still running or waiting has no bin: stop it
+first.
+
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
 EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,
 from the address of one of its tiles, tried on one tile first: you add it yourself, and its terms
-of use apply to you. It is kept in `sources.toml` in OrthoStudio XP's folder.
+of use apply to you. It is kept in `sources.toml` in OrthoStudio XP's folder, where you may also
+give it `server_req_per_s = 3`: small servers often serve a few images and then block a caller
+that asks too fast, and that line is the most requests a second OrthoStudio XP will start. What a
+source of yours downloads is kept under its address as well as its name, so if you change its
+address, or remove it and add another under the same name, the new address is the one asked.
 
 **Settings.** The Settings screen asks what you want to see in X-Plane rather than naming technical
 parameters: how much detail, sharper airports or not, how the coast fades into the sea, which water,
@@ -157,7 +167,7 @@ window needs there is built for the distribution's own Python, and OrthoStudio X
 so nothing a user installs would reach it. The `window` line of *Checks*, at the foot of the page,
 says so, and the page says it once at the top. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
-`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. It
+`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
 holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each
 one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
 `orthostudio-xp build --tile +50+008 --provider BI --zl 16` builds from the command line and writes
@@ -194,9 +204,11 @@ the data folder (~/.orthostudio unless Settings name another one)/
   tiles/           the tiles ready for X-Plane                     ≈ no extra space
     zOrthoStudio_+46+006/
       Earth nav data/+40+000/+46+006.dsf
-      terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg
+      terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg   CREDITS.txt
                      orthostudio.toml: what the tile was built with (imagery, detail, relief
                      really read, zones, patches), which the Library and the Plan show
+                     CREDITS.txt: who the imagery belongs to and what it is given under, so a
+                     pack passed to somebody else carries its credit
     yOrthoStudio_Overlays/Earth nav data/+40+000/+46+006.dsf
   work/            build reports and temporary files
   osm/             the OpenStreetMap data downloaded
@@ -254,10 +266,31 @@ tile you already have on the disk -- the Library says which tiles no longer matc
 you agree with them again without building anything.
 
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
-chose in blue. A square both built and chosen, to build it again, keeps its green outline with the
+chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken
+out of X-Plane with its files kept) is outlined in dashed pink; its line in the legend is a box to
+tick, to hide them. The legend folds away with the chevron in its corner, and comes back with its
+*Legend* button. Each square is framed just inside its own edges, so two neighbours in
+different states each keep their own colour. A square both built and chosen, to build it again, keeps its green outline with the
 blue one just inside it, and a thin line between them sets both off from the photo. Zoomed out on
 the world, where a square is too small for both, it stays green: the map then shows which tiles
 you have.
+
+**How sharp is what you see.** The first line of the legend says what the map in front of you is
+worth on the ground: *This view: Standard, about 2 m per pixel · ZL16*. It is the same scale a
+build works in, so you can zoom the map until the photo looks the way you want your scenery to
+look, read the level it names, and ask for that one. Below the levels a build offers it gives the
+ground size alone.
+
+The map zooms as deep as a build goes, ZL19, and no deeper. Some sources stop sooner, EOX at
+ZL14: the map still lets you zoom past that, which is handy for clicking precisely, but it is then
+enlarging the last photo it downloaded, not fetching a sharper one. The line says so, and names
+the best that source really has, so you never ask for a level your source cannot give.
+
+When the source you chose has nothing where you are looking, a yellow line at the bottom of the
+map says so once the view is drawn. A country's source outside its country says "Netherlands ·
+PDOK does not cover this view.", the same at every zoom; a source with no photo this deep here,
+like Esri Clarity past ZL18 over France, says "No imagery received". A build over squares a
+source does not reach is refused outright, with the squares named.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
@@ -345,7 +378,7 @@ It downloads its own OpenStreetMap data and elevation files. The only time it lo
 folder is when you import the tiles Ortho4XP built there, from the Library (*Import my Ortho4XP
 tiles…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
 Ortho4XP's own, the one holding `Ortho4XP.py`, where its `Tiles` and the build folder it remembers
-are read, or any folder holding its `zOrtho4XP_` tiles, such as a disk they were built on: a
+are read, or any folder holding ortho tiles, whatever it is called, such as a disk they were built on: a
 user's `M:\XPTilesZL14` was refused until 0.1.14. They are listed beside
 yours, can be installed and compared, and nothing is written into that folder. *Remove from the
 list* takes an imported tile off the list again (once it is out of X-Plane), and leaves its files
@@ -384,6 +417,7 @@ and built again.
 | `osxp clean --all` | - | everything no tile on disk needs, however recent | emptied, with the map cache | emptied |
 | Free space (Library) | - | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
+| Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
 The delays protect a build that may be running at the same time, in the page or in a terminal: it
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,

@@ -4,7 +4,13 @@ Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
 
 - one ``AsyncSession`` for the life of the ``Fetcher`` (connections kept alive);
 - per ``host_group`` AIMD window: +1 per round of successes up to ``max_in_flight``, halved on
-  429/503 or on a latency spike, x0.75 on a timeout, paused on 429 (``Retry-After`` obeyed);
+  429/503, on a refused connection or on a latency spike, x0.75 on a timeout, paused on 429
+  (``Retry-After`` obeyed);
+- an optional ``req_per_s`` **ceiling** per host group, on top of the window, for a server that
+  counts requests rather than connections: the group starts at a quarter of it, climbs a step per
+  round of answers, falls with the window on the same signals and by the same factor, and never
+  exceeds it. A figure measured once from one address is not a ceiling a server tolerates from
+  everyone, so it is a limit to approach, not a speed to hold;
 - hedging: a transfer without an answer after ``hedge_after_s`` is doubled, the first good
   answer wins, the loser is cancelled;
 - bounded attempts with a short exponential back-off for transport errors and 5xx; a 429
@@ -92,6 +98,15 @@ class FetchStats:
     retries: int
     hedges: int
     throttled: bool
+    """Our own window was lowered recently, or a group is paused: the fetcher is holding back.
+
+    This is mostly **us**: the window is lowered on a latency spike, which happens all the time
+    while a healthy download hunts for its right size. It is a developer's figure and says
+    nothing about the server."""
+    pushed_back: bool = False
+    """A server answered 429 and we are waiting out the delay it asked for. This one is the
+    server, and it is the only one worth telling a user about (found on a user's own screen,
+    2026-09-24: "the source is asking us to slow down" beside 1 269 requests a second)."""
 
 
 # --- constants (spec R2-R4, R6) ---------------------------------------------------------------
@@ -115,6 +130,14 @@ BACKOFF_MAX_S = 4.0
 BACKOFF_JITTER = 0.25
 STATS_PERIOD_S = 0.25
 RATE_WINDOW_S = 5.0
+RATE_START = 0.25
+"""Of ``req_per_s`` a group starts at, and climbs from."""
+RATE_FLOOR = 0.10
+"""Of ``req_per_s`` it will not fall below, however often it is pushed back."""
+RATE_STEPS = 12
+"""Rounds of successes from the floor to the ceiling."""
+RATE_ROUND = 50
+"""Answers that make one round, for the rate."""
 THROTTLED_MEMORY_S = 10.0
 CONNECT_TIMEOUT_MAX_S = 10.0
 MAX_REDIRECTS = 5
@@ -181,20 +204,32 @@ class _Group:
         "min_window",
         "name",
         "next_pause_s",
+        "next_start",
         "paused_until",
+        "rate",
+        "rate_ceiling",
+        "rate_floor",
         "ready",
         "seq",
         "successes_since_change",
+        "successes_since_rate",
         "wake",
         "window",
     )
 
-    def __init__(self, name: str, start: int, maximum: int) -> None:
+    def __init__(
+        self, name: str, start: int, maximum: int, rate_ceiling: float | None = None
+    ) -> None:
         self.name = name
         self.window = start
         self.max_window = maximum
         self.min_window = min(MIN_IN_FLIGHT, start)
         self.in_flight = 0
+        self.next_start = 0.0
+        self.rate_ceiling = rate_ceiling
+        self.rate_floor = None if rate_ceiling is None else rate_ceiling * RATE_FLOOR
+        self.rate = None if rate_ceiling is None else rate_ceiling * RATE_START
+        self.successes_since_rate = 0
         self.hedges_in_flight = 0
         self.paused_until = 0.0
         self.last_pause_at = -1e9
@@ -216,6 +251,7 @@ class _Group:
         if kind == "ok":
             self.latencies.append(outcome.latency)
             self.successes_since_change += 1
+            self._rate_up()
             if self.successes_since_change >= self.window and self.window < self.max_window:
                 self.window += 1
                 self.successes_since_change = 0
@@ -227,11 +263,15 @@ class _Group:
                 and self._latency_spike()
             ):
                 self._decrease(0.5, now)
-        elif kind == "pushback" or (kind == "server" and outcome.status == 503):
+        elif kind in ("pushback", "connect") or (kind == "server" and outcome.status == 503):
+            # A server that defends itself by refusing the connection says no as plainly as one
+            # answering 429, and said nothing to us before 0.1.14: the window stayed wide and we
+            # kept knocking until the attempts ran out (a user, 2026-09-24). ``_decrease`` halves
+            # once per round of completions, so a stray reset on a healthy line costs one round.
             self._decrease(0.5, now)
         elif kind == "timeout":
             self._decrease(TIMEOUT_DECREASE, now)
-        # other 5xx and connection errors: retried, window untouched
+        # other 5xx: the URL's own answer, retried, window untouched
 
     def pause(self, retry_after: float | None, now: float) -> float:
         """Pause dispatch after a 429; returns the instant the pause ends."""
@@ -269,10 +309,25 @@ class _Group:
         answers.sort()
         return p90 > LATENCY_RATIO * answers[int(0.9 * (len(answers) - 1))]
 
+    def _rate_up(self) -> None:
+        """One more answer towards the next step of the rate, if a rate is set at all."""
+        if self.rate is None or self.rate_ceiling is None:
+            return
+        self.successes_since_rate += 1
+        if self.successes_since_rate < RATE_ROUND or self.rate >= self.rate_ceiling:
+            return
+        self.successes_since_rate = 0
+        self.rate = min(self.rate_ceiling, self.rate + self.rate_ceiling / RATE_STEPS)
+
     def _decrease(self, factor: float, now: float) -> None:
         if self.completions_since_decrease < self.window:
             return  # one decrease per round
         self.window = max(self.min_window, int(self.window * factor))
+        if self.rate is not None and self.rate_floor is not None:
+            # the rate falls with the window, on the same signal and by the same factor: a server
+            # that counts requests and one that counts connections both said the same thing
+            self.rate = max(self.rate_floor, self.rate * factor)
+            self.successes_since_rate = 0
         self.successes_since_change = 0
         self.completions_since_decrease = 0
         self.last_decrease_at = now
@@ -313,6 +368,7 @@ class Fetcher:
         hedge_after_s: float = 3.0,
         timeout_s: float = 20.0,
         max_attempts: int = 4,
+        req_per_s: float | None = None,
         http2: bool = True,
         max_pushbacks: int = MAX_PUSHBACKS,
         pushback_budget_s: float = PUSHBACK_BUDGET_S,
@@ -321,6 +377,8 @@ class Fetcher:
             raise ValueError("in-flight limits must be >= 1")
         if max_attempts < 1:
             raise ValueError("max_attempts must be >= 1")
+        if req_per_s is not None and req_per_s <= 0:
+            raise ValueError("req_per_s must be > 0")
         if hedge_after_s <= 0 or timeout_s <= 0:
             raise ValueError("hedge_after_s and timeout_s must be > 0")
         if max_pushbacks < 0 or pushback_budget_s < 0:
@@ -330,6 +388,7 @@ class Fetcher:
         self.hedge_after_s = hedge_after_s
         self.timeout_s = timeout_s
         self.max_attempts = max_attempts
+        self.req_per_s = req_per_s
         self.max_pushbacks = max_pushbacks
         self.pushback_budget_s = pushback_budget_s
         self.http2 = http2
@@ -397,7 +456,9 @@ class Fetcher:
     def _group(self, name: str) -> _Group:
         group = self._groups.get(name)
         if group is None:
-            group = self._groups[name] = _Group(name, self.start_in_flight, self.max_in_flight)
+            group = self._groups[name] = _Group(
+                name, self.start_in_flight, self.max_in_flight, self.req_per_s
+            )
         return group
 
     # -- introspection ---------------------------------------------------------------------------
@@ -422,6 +483,7 @@ class Fetcher:
             retries=self._retries,
             hedges=self._hedges,
             throttled=any(g.throttled(now) for g in self._groups.values()),
+            pushed_back=any(now < g.paused_until for g in self._groups.values()),
         )
 
     # -- the run ---------------------------------------------------------------------------------
@@ -557,10 +619,14 @@ class Fetcher:
             elif (
                 group.ready
                 and now >= group.paused_until
+                and now >= group.next_start
                 and group.in_flight < self._admission(group)
             ):
                 pending = group.ready.popleft()
                 group.in_flight += 1
+                # the group's own rate, which climbs while the server answers and falls with
+                # the window when it does not; no ceiling declared, no spacing at all
+                group.next_start = now + (1.0 / group.rate if group.rate else 0.0)
                 task = asyncio.create_task(
                     self._work(pending, group, session, results, on_result, callback_error)
                 )
@@ -573,6 +639,9 @@ class Fetcher:
             if not self._cancelled:
                 if group.ready and now < group.paused_until:
                     timeout = group.paused_until - now
+                if group.ready and now < group.next_start:
+                    wait = group.next_start - now
+                    timeout = wait if timeout is None else min(timeout, wait)
                 if group.delayed:
                     due = group.delayed[0][0] - now
                     timeout = due if timeout is None else min(timeout, due)

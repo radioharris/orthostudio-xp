@@ -144,9 +144,10 @@ A checkout has no `orthostudio/bin`: nothing changes for it.
 ## 4. What the app starts (`desktop.py`)
 
 `python -m orthostudio.desktop [args]` runs the `orthostudio` command with `args`,
-`serve --open --quit-when-closed` by default, its standard output and error appended to `serve.log` in the platform's log folder
-(`platformdirs.user_log_dir("OrthoStudio XP")`): `~/Library/Logs/OrthoStudio XP` on macOS,
-`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux. A
+`serve --open --quit-when-closed` by default, its standard output and error appended to `serve.log` in the folder
+`desktop.log_path()` gives -- `platformdirs.user_log_dir("OrthoStudio XP")` except on Linux, where
+it is `$OSXP_HOME/log` beside everything else of ours: `~/Library/Logs/OrthoStudio XP` on macOS,
+`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. A
 line gives the date and the arguments of each start. Started from the Finder, a menu or `pythonw`,
 the engine has no terminal; without the log, uvicorn's output would have nowhere to go.
 `python -m orthostudio` runs the command itself (`__main__.py`), for a terminal.

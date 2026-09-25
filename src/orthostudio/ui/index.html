@@ -134,6 +134,10 @@
             </div>
             <button type="button" class="btn" id="icao-add" data-i18n="plan.add">Add</button>
           </div>
+          <!-- The flight plan waits for 0.1.15: FLIGHT_PLAN in app.js closes this box and
+               leaves its wiring alone. Its field, its buttons and its groups live here; the
+               error line below it is shared with the airport field and stays out. -->
+          <div id="plan-route">
           <div class="field-row plan-way">
             <div class="field">
               <label for="route-input" data-i18n="plan.route">Along a flight plan</label>
@@ -143,6 +147,7 @@
             <button type="button" class="btn" id="route-simbrief" data-i18n="plan.route_simbrief">My SimBrief plan</button>
           </div>
           <p class="help route-help" data-i18n="plan.route_help">Two airports or more, in the order you fly them.</p>
+          </div>
           <p class="help way-error" id="way-error" role="status" hidden></p>
           <div class="route-found" id="route-found" hidden>
             <p class="route-what" id="route-what"></p>
@@ -193,6 +198,7 @@
             <button type="button" class="btn" id="draw-rect" aria-pressed="false" data-i18n="draw.rect">Add detail: rectangle</button>
             <button type="button" class="btn" id="draw-shape" aria-pressed="false" data-i18n="draw.shape">Add detail: free shape</button>
           </div>
+          <p class="help draw-which" id="draw-which"></p>
           <div class="zones-status" id="zones-status" hidden>
             <span id="zones-status-text"></span>
             <button type="button" class="btn btn-small" id="zones-retry" data-i18n="zones.retry" hidden>Retry</button>

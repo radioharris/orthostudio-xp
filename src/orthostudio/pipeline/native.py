@@ -165,7 +165,15 @@ class OsmJob:
     """
 
     fetch: Callable[[TileRef, Sequence[LayerSpec]], dict[str, OsmSnapshot]] | None = None
-    timeout_s: float = 300.0
+    timeout_s: float = 900.0
+    """Seconds a tile may spend on its map data before ``NET_TIMEOUT``.
+
+    Five minutes until 0.1.15, which cut the rounds short: the public servers count queries per
+    address and a spent quota frees on their clock, in minutes, so a build that gives up after a
+    minute throws away everything the tile had downloaded (a user, 2026-09-24). Nothing hangs for
+    a quarter of an hour on a server that is truly down: the rounds stop as soon as what refused
+    could not pass, and a dead machine opens its breaker at once.
+    """
     cancel: threading.Event | None = None
     progress: Callable[[float, str], None] | None = None
     chain: Chain | None = None
@@ -261,7 +269,7 @@ def osxp_osm(ctx: RunContext) -> None:
     specs = layers_for(params.road_level)
     job = _job()
     if job.progress is not None:
-        job.progress(0.0, osm_progress_message(tile, 0, len(specs), 0, 0.0))
+        job.progress(0.0, osm_progress_message(tile, [s.name for s in specs], [], 0, 0.0))
     snaps = job.run(tile, specs)
     store = SnapshotStore(ctx.out)
     for snap in snaps.values():

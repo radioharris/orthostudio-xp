@@ -320,3 +320,49 @@ def test_real_scenery_packs_ini_is_read_only_and_reordered_on_a_copy(tmp_path: P
 
     assert hashlib.sha256(REAL_INI.read_bytes()).hexdigest() == before
     assert REAL_INI.stat().st_mtime_ns == mtime
+
+
+def test_taking_a_tile_out_leaves_the_users_own_copy_alone() -> None:
+    """Every line ending in the pack's name used to go, wherever it pointed. A simmer who keeps
+    a copy of a tile on another disk has two lines, and taking the tile out of X-Plane took his
+    archive out with it, silently, with nothing said (found in review, 2026-09-23)."""
+    packs = SceneryPacks.from_bytes(
+        b"I\n1000 Version\nSCENERY\n\n"
+        b"SCENERY_PACK Custom Scenery/zOrthoStudio_+43+005/\n"
+        b"SCENERY_PACK /Volumes/OrthoArchive/zOrthoStudio_+43+005/\n"
+        b"SCENERY_PACK C:\\Scenery\\zOrthoStudio_+43+005\\\n"
+        b"SCENERY_PACK Custom Scenery/Airport A/\n"
+    )
+    assert packs.remove("zOrthoStudio_+43+005") is True
+    left = [line for line in packs.to_bytes().decode().splitlines() if "SCENERY_PACK" in line]
+    assert left == [
+        "SCENERY_PACK /Volumes/OrthoArchive/zOrthoStudio_+43+005/",
+        "SCENERY_PACK C:\\Scenery\\zOrthoStudio_+43+005\\",
+        "SCENERY_PACK Custom Scenery/Airport A/",
+    ]
+    # and a tile that is only his archive is not ours to take out at all
+    assert packs.remove("zOrthoStudio_+43+005") is False
+
+
+def test_a_tile_goes_above_the_mesh_as_well_as_above_autoortho() -> None:
+    """The insertion looked for AutoOrtho and stopped there, so an AutoOrtho line sitting below
+    a base mesh put the tile below the mesh too. X-Plane draws the higher one, so the square
+    never appeared in the sim while the Library said it was installed (found in review,
+    2026-09-23)."""
+    for lines in (
+        b"SCENERY_PACK Custom Scenery/XPME_Europe/\nSCENERY_PACK Custom Scenery/z_autoortho/\n",
+        b"SCENERY_PACK Custom Scenery/z_autoortho/\nSCENERY_PACK Custom Scenery/XPME_Europe/\n",
+    ):
+        packs = SceneryPacks.from_bytes(
+            b"I\n1000 Version\nSCENERY\n\nSCENERY_PACK *GLOBAL_AIRPORTS*\n" + lines
+        )
+        packs.ensure("zOrthoStudio_+46+006", kind="ortho")
+        order = [
+            line.split(" ", 1)[1]
+            for line in packs.to_bytes().decode().splitlines()
+            if line.startswith("SCENERY_PACK")
+        ]
+        mine = next(i for i, n in enumerate(order) if "zOrthoStudio" in n)
+        assert mine < next(i for i, n in enumerate(order) if "XPME" in n), order
+        assert mine < next(i for i, n in enumerate(order) if "autoortho" in n), order
+        assert mine > next(i for i, n in enumerate(order) if "GLOBAL_AIRPORTS" in n), order

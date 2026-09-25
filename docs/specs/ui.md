@@ -228,7 +228,9 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
   - ICAO code with completion from `GET /api/airports?q=` (debounced 200 ms, 10 results,
     custom listbox for keyboard use) and a radius in km (default 15) → every 1° cell
     intersecting the bounding box of the circle (`dlat = r / 111.2`,
-    `dlon = r / (111.2 cos lat)`);
+    `dlon = r / (111.2 cos lat)`). Choosing one from the list, and adding by a code typed in
+    full, both bring the map over the airport (`goTo`): the zoom the user set is kept, floored
+    at `AIRPORTS_MIN_ZOOM` so that the airport and the squares around it are drawn;
   - a free text of tile names `+43+005 +43+006` (regex `[+-]\d\d[+-]\d\d\d`, separators
     space, comma, newline);
   - latitude / longitude → tile `floor(lat)`, `floor(lon)` formatted `%+03d%+04d`.
@@ -455,8 +457,19 @@ first ("Clear the job list?", the number of finished jobs, their progress and lo
 tiles kept in the Library and in X-Plane, and "The build in progress stays in the list" when one
 runs; *Keep them* has the focus), then `POST /api/jobs/clear`, reads the list again and says
 "Jobs removed from the list: N." When the job shown was cleared, the running job is shown
-instead, else none. The selected job (default: the running one, else the newest) shows, from
-top to bottom:
+instead, else none.
+
+**One build at a time** (a user, 2026-09-24): a bin at the end of a row, on the rows that have
+finished only, `DELETE /api/jobs/{id}` without asking first, since the tiles stay and only that
+build's progress and journal go. A build running or waiting has no bin, and the engine refuses it
+too (409): it is cancelled first. The row that takes the gone one's place, the next one down or
+else the one above, is where everything goes: the job shown, when the gone one was the one shown
+(the same user expected the next job, not an empty screen, 2026-09-25), and the keyboard, on its
+bin or else on the row. Removing another row leaves the job shown as it is; removing the last one
+says there is no job. The same bin as the trash above the list, drawn by the same `btn-trash` rule
+(26 by 24 with a 15 px icon, measured in the page).
+
+The selected job (default: the running one, else the newest) shows, from top to bottom:
 
 - **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). A job
   waiting in the queue says *waiting*, its button reads *Remove from the queue* (the same request:
@@ -703,7 +716,7 @@ codes `i18n.js` knows.
 and *Import* were two buttons for one thing, and the field left empty imported nothing without a
 word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
 /api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
-your tiles", since 0.1.14 a folder of `zOrtho4XP_` tiles on another disk will do: a page cannot learn
+your tiles", since 0.1.14 a folder of ortho tiles on another disk will do, whatever it is called: a page cannot learn
 the full path of a folder picked in the browser), starting at the folder imported last, else at
 the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then imports it: `POST
 /api/library/import-ortho4xp {folder}`. The line under the button counts the tiles, not the
@@ -717,6 +730,13 @@ bar's count is `library_count`, which counts tiles, not rows.
 
 In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody understands them";
 what each setting really does, and the wording of every question: `settings-plain-language.md`).
+
+**A number says its range first.** Every number of the generated fields starts its explanation,
+in bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*,
+*0 km² or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value
+lies before moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds
+the schema holds, which are what the engine checks; a number it does not bound says its default
+alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages.
 `settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
 `app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
 answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a
@@ -814,6 +834,9 @@ of `textures/colour.py`, and a test holds the two equal to within one step
 has not drawn, or nothing came back) simply leaves the preview out. Under the two images, a line
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
+The two share the card's width, side by side, up to the photo's own 256 px (`wide`, drawn at
+256): at 148 px, with room left beside them, a user found the change hard to see (2026-09-25).
+Measured at a window of 1024 px, 222 px each. The Plan's own, below, keep their 110 px.
 
 The same two images appear in **step 1 of the Plan**, under *Photo colours*, which sits beside
 the imagery source and the detail level and sets the colours of the **squares chosen**: one square
@@ -913,6 +936,96 @@ stays on the photo; until they are there the imagery stays, and a failure says s
 and goes back to the imagery. The colours of a square or a zone are not repainted over it: they
 would tint roads and houses and say nothing about a build. Off by default, remembered in
 `localStorage` (`osxp.mapStreet`), with OpenFreeMap's attribution in the map's corner.
+
+**What the view is worth** (a Linux user, 2026-09-24). The legend's first line reads *This view:
+Standard, about 2 m per pixel · ZL16*. The map's zoom **is** the web-mercator level, so the
+level the map sits at is the level a build would use for what is on screen; the ask was to
+"get an impression of just how a given provider's imagery will look at the desired ortho ZL".
+`viewLabel` says the level's name where a build offers one (`DETAIL_NAMES`) and, below those, the
+ground size alone, since a name there would only repeat the number. It shares `metersPerPixel` and
+`detailLabel` with the level list under it, so the two can never disagree, and the latitude it is
+given is the view's own, a pixel covering less ground the further north it is. The legend is
+redrawn on `zoomend` and on `moveend`: a pan changes the latitude as surely as a zoom changes the
+level.
+
+Past the source's own ceiling the map keeps zooming and Leaflet enlarges the last tiles it
+downloaded (`maxNativeZoom`): the pixels grow, the detail does not, and a user zoomed to ZL18 on
+EOX, which stops at ZL14 (2026-09-25). The line must not then promise a sharpness no build can
+deliver, so it reads *This view: ZL18, enlarged. EOX goes no further than ZL14, about 7 m per
+pixel*. `nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the
+same one, so the warning cannot land on a different zoom from the one the imagery stops improving
+at. The street map and the mock are not the source's imagery: no ceiling is given, and nothing is
+called enlarged.
+
+The source is chosen in step 1, not on the map, so the line is drawn again in `setBaseLayer` as
+well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
+on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
+
+**The map stays where it was left.** While Works, the Library or Settings is shown the map is
+hidden and measures 0 by 0; the `ResizeObserver` that tells Leaflet its size (so a click lands
+where the pointer is) passed that on, and on coming back `show` measured again from it and moved
+the map by half its width and height, so every build, which shows Works, left the map elsewhere
+(a user, 2026-09-25). A box of nothing is no longer passed on: three round trips leave the same
+centre at ZL12 and ZL16.
+
+**The map stops at ZL19**, the deepest level anything is built at: the level lists stop there,
+zones too, and the engine's map route serves nothing deeper (`MAX_NATIVE_ZOOM`). It went one step
+further, to 20, where every source was only enlarged (a user, 2026-09-25).
+
+**One yellow line when the source has nothing here** (`#map-notice`, at the bottom of the map).
+It is decided once per view, when Leaflet has every tile of it back, arrived or failed (`load`),
+and nowhere else, so it is the same at every zoom and in every window (`imageryNotice`):
+
+1. the source is of one country and the square in the middle of the screen is not in it:
+   "Netherlands · PDOK does not cover this view." Outside its own a source may answer plain
+   white (the Netherlands), black (Luxembourg) or 404 (Japan); the answer is the same for all
+   three, and the question is the one the engine asks before refusing a build there
+   (`sourceCovers`, its `Provider.covers`, `CFG_PROVIDER_OUT_OF_COVERAGE`);
+2. otherwise, not one tile of the view brought an image: "No imagery received from {provider}
+   for this view." Esri Clarity has ZL19 over New York and nothing past ZL18 over Lyon or Paris
+   (the engine turns its 404 into a 204, an error for an `<img>`), and a source may be down.
+
+A new view (`loading`) clears the line until it is drawn. The rule used to count failed tiles and
+speak at six: at the deepest zoom a view holds four, so a switch from Bing to Clarity there left
+the map blank without a word, and asking the coverage second made Japan over Paris say one thing
+at ZL4 and another from ZL5 (the same user, same day). Measured in the page over Paris, Amsterdam
+and Luxembourg, ZL4 to ZL19, twelve sources: one place, one source, one sentence at every zoom.
+The line keeps the language it was written in until the next view is drawn, as it did before.
+
+**A tile built and not in X-Plane is on the map** (a user asked to see the tiles built,
+2026-09-24). The map drew the installed ones only (`installedTiles`), so a tile built with *Build
+only*, or taken out of X-Plane with its files kept, was nowhere to be seen. `builtTiles` reads the
+same Library rows, the ones on the disk (`present`) and not in X-Plane (`installed` false), and
+leaves out a tile another pack of which is installed: that one is green. It is drawn dashed in
+pink (`--map-built`), the one colour no other mark of the map uses (the zones stop at ZL19, so the
+pink of ZL20 is never drawn), described on hover like an installed one (`builtSummary`), and,
+chosen as well, drawn with the blue inside it over the casing. Only the page changes: the rows
+already said it.
+
+**Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
+so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
+line and only one colour could win it: two built neighbours laid their dashes over the same edge
+out of step and it read as solid, and a square in X-Plane beside built and chosen ones read as a
+patchwork, green on one side, pink and blue on the others (the same user, 2026-09-25). Now every
+square keeps a whole frame of its own colour, whatever its neighbours are. Measured in the page on
+his own layout, one square in X-Plane, two built, four chosen: seven frames, every pair of
+neighbours 5 or 6 px apart. A square in X-Plane or built and chosen as well keeps the blue inside
+its frame (`FRAME_INSET + 4`), and the running build's marks are drawn on the frame, on top.
+Far out, where a square is too small for the inset, the frame goes back onto its edge.
+
+Its legend line is a checkbox, as the airports' is, shown when there is such a tile, on unless
+unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the hover.
+
+**The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
+a line without a checkbox now keeps the checkbox's room (`li:not(.legend-toggle)::before`, 13 px)
+and every mark is 14 px wide (the airport's 10 px ring gets 2 px each side), and they all start at
+71. A chevron at the end of its first line folds it away to see the map under it, one *Legend*
+button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
+`aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
+is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
+ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
+are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
+(`data-keep`): it went to the first checkbox, whichever had it.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it

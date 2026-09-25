@@ -24,6 +24,7 @@ import {
   tOpt,
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
+import { FLIGHT_PLAN } from "./release.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, routeLength, tileName, tilesAlong, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
@@ -184,6 +185,9 @@ const state = {
   tileZl: {},
   /** The level of step 1's list, kept while the list reads "Several levels". */
   planZl: null,
+  // what the pilot last chose in step 1's list, which is not always what the chosen squares
+  // share: the flight plan's two ends take this one (2026-09-23)
+  zlChosen: null,
   airport: null,
   /** The flight plan drawn on the map: `{points: [{icao, name, lat, lon}]}` or null. */
   route: null,
@@ -360,11 +364,14 @@ export function codeWords(err) {
   return codeText(e.code, e.context) || own;
 }
 
-function errorMessage(err) {
+/** An error in one line: its code, what happened, and what to do. The engine sends both halves
+ * (docs/specs/errors.md), and the line kept only the first: every toast and every note under a
+ * button said what went wrong and never what to do about it (found in review, 2026-09-24). */
+export function errorMessage(err) {
   if (err instanceof ApiError) {
     const d = errorDetail(err);
     if (d) {
-      if (d.code) return `${d.code}: ${codeWords(d)[0]}`;
+      if (d.code) return `${d.code}: ${codeWords(d).filter(Boolean).join(" ")}`;
       if (typeof d.detail === "string") return d.detail;
       if (Array.isArray(d.detail)) {
         return d.detail.map((x) => `${(x.loc || []).join(".")}: ${x.msg}`).join("; ");
@@ -640,10 +647,10 @@ function mockTileStatus(tile, jobStatus) {
   return tile.nodes.some((n) => n.status !== "pending") ? "running" : "pending";
 }
 
-/** A mock node's weight in progress, as the engine's `progress.weight_of`: nothing for a hit, or
- * a node skipped or cancelled before it started. */
+/** A mock node's weight in progress, as the engine's `progress.weight_of`: nothing for a hit,
+ * which is work there was none of. Work planned that will not happen still counts. */
 function mockWeight(n) {
-  if (n.status === "hit" || ((n.status === "skipped" || n.status === "cancelled") && !n.started)) return 0;
+  if (n.status === "hit") return 0;
   return Math.max(0, n.weight_s);
 }
 
@@ -1088,7 +1095,7 @@ export async function mockApi(method, path, body, options = {}) {
     let code = base;
     for (let n = 2; taken.has(code); n += 1) code = `${base}_${n}`;
     const name = String(body.name).trim();
-    const source = { code, name, max_zl: Number(body.max_zl) || 19, attribution: name, terms_url: "", alive: null, extent: null, extent_bounds: null, same_as: null, custom: true, url_template: String(body.url_template).trim() };
+    const source = { code, name, max_zl: Number(body.max_zl) || 19, attribution: name, terms_url: "", licence: "", alive: null, extent: null, extent_bounds: null, same_as: null, custom: true, url_template: String(body.url_template).trim() };
     mock.sources.push(source);
     return structuredClone(source);
   }
@@ -1222,6 +1229,16 @@ export async function mockApi(method, path, body, options = {}) {
     return { removed };
   }
   m = p.match(/^\/api\/jobs\/([^/]+)$/);
+  if (m && method === "DELETE") {
+    // Like the engine: a finished build leaves the list for good, one still under way is refused.
+    const run = mock.jobs.get(m[1]);
+    const past = run ? null : await mockFile("job_done");
+    if (!run && (mock.pastCleared || past.id !== m[1])) throw mockError(404, "SYS_WORKING_DIR_INVALID", `No job ${m[1]}.`, "List the jobs with GET /api/jobs.");
+    if (run && jobActive(run.doc)) throw mockError(409, "SYS_BUSY", `Job ${m[1]} is ${run.doc.status}.`, "Only a build that has finished can leave the list; cancel it first.");
+    if (run) mock.jobs.delete(m[1]);
+    else mock.pastCleared = true;
+    return { job_id: m[1], removed: true };
+  }
   if (m) {
     if (mock.jobs.has(m[1])) return mockJobState(mock.jobs.get(m[1]));
     const done = await mockFile("job_done");
@@ -1396,6 +1413,8 @@ export async function mockSubscribe(jobId, handlers) {
 
 /** Node statuses that end a node: the engine counts such a node whole in its stage's fraction. */
 const NODE_ENDED = new Set(["done", "hit", "failed", "skipped", "cancelled"]);
+/** Ended *and* done (the engine's `progress.FINISHED`): what the bar counts as built. */
+const NODE_FINISHED = new Set(["done", "hit"]);
 /** Job statuses of a build still to come or under way: Stop, Remaining and the ticking clock. */
 const JOB_ACTIVE = new Set(["queued", "pending", "running"]);
 /** The log keeps its last lines only. */
@@ -1480,11 +1499,11 @@ function emptyStep() {
   return { status: "pending", fraction: 0, message: "", wall_s: 0, nodes: {} };
 }
 
-/** A node's share of its step's work: 1 once it ended, its fraction while it runs, else 0 (the
- * engine's `progress._fraction`). */
+/** A node's share of its step's work: 1 once it is done, else how far it got (the engine's
+ * `progress._fraction`). One that failed, was skipped or was cancelled ended without finishing. */
 function nodeFraction(n) {
-  if (NODE_ENDED.has(n.status)) return 1;
-  return n.status === "running" ? clamp01(n.fraction) : 0;
+  if (NODE_FINISHED.has(n.status)) return 1;
+  return NODE_ENDED.has(n.status) || n.status === "running" ? clamp01(n.fraction) : 0;
 }
 
 /**
@@ -1782,7 +1801,7 @@ export function jobProgress(job) {
       if (!n && step.status === "skipped") continue;
       const w = Math.max(1, n);
       weights += w;
-      sum += w * (NODE_ENDED.has(step.status) ? 1 : clamp01(step.fraction));
+      sum += w * (NODE_FINISHED.has(step.status) ? 1 : clamp01(step.fraction));
     }
   }
   return weights ? sum / weights : 0;
@@ -2131,7 +2150,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 21;
+const PAGE_API_LEVEL = 22;
 
 async function loadStatus() {
   try {
@@ -2570,23 +2589,40 @@ function sweepEnd() {
   return n;
 }
 
+/**
+ * Add squares to the selection, up to what one build takes.
+ *
+ * The cap lived in the mouse sweep alone: a flight plan across a continent added its nine
+ * hundred squares here, and the estimate then refused the whole selection, leaving the user to
+ * take four hundred out by hand (found in review, 2026-09-23). Every way of adding squares goes
+ * through this function, so the cap belongs here.
+ */
 function addTiles(names) {
   const building = tilesInBuilds(activeJobs());
   const skipped = [];
+  let capped = 0;
   for (const n of names) {
     if (state.tiles.includes(n) || skipped.includes(n)) continue;
     if (building.has(n)) skipped.push(n);
+    else if (state.tiles.length >= MAX_BUILD_TILES) capped += 1;
     else state.tiles.push(n);
   }
   renderTiles();
   renderZlOptions();
   planChanged();
-  return skipped;
+  return { skipped, capped };
 }
 
-/** The tiles `addTiles` left out, said under the estimate. */
-function sayTilesInBuild(skipped) {
-  if (skipped.length) showPlanError(t("plan.tiles_in_build", { tiles: skipped.join(" ") }));
+/** What `addTiles` left out, said under the estimate: squares already building, and the ones a
+ * build has no room for. */
+function sayTilesInBuild(left) {
+  const skipped = left?.skipped || [];
+  const capped = left?.capped || 0;
+  if (capped) {
+    showPlanError(t("plan.tiles_capped", { max: MAX_BUILD_TILES, n: capped }));
+  } else if (skipped.length) {
+    showPlanError(t("plan.tiles_in_build", { tiles: skipped.join(" ") }));
+  }
 }
 
 function removeTile(name) {
@@ -2612,10 +2648,29 @@ function clearTiles() {
 
 /** A click on the map: the chips and the map show one selection. A tile in a build, under way or
  * waiting, is not chosen: a toast says why. */
+/** The flight plan's own controls, wired only when it is offered. */
+function wireFlightPlan() {
+  $("plan-route").hidden = !FLIGHT_PLAN;
+  if (!FLIGHT_PLAN) return;
+  $("route-draw").addEventListener("click", drawRoute);
+  $("route-input").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      drawRoute();
+    }
+  });
+  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || routeEndsZl()));
+  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
+  $("route-simbrief").addEventListener("click", routeFromSimbrief);
+  $("route-clear").addEventListener("click", clearRoute);
+  // the radius applies to both ends of the route: the counts on the buttons follow it
+  $("radius-input").addEventListener("input", renderRoute);
+}
+
 function toggleTile(name) {
   if (state.tiles.includes(name)) removeTile(name);
   else if (tilesInBuilds(activeJobs()).has(name)) toast(t("plan.tile_in_build", { tile: name }));
-  else addTiles([name]);
+  else if (addTiles([name]).capped) toast(t("plan.tiles_capped", { max: MAX_BUILD_TILES, n: 1 }));
 }
 
 function renderTiles() {
@@ -2883,6 +2938,7 @@ function pickAirport(a) {
   icaoResults = [];
   icaoActive = -1;
   renderIcaoList();
+  planMap?.goTo(a.lat, a.lon);
 }
 
 function onIcaoInput() {
@@ -2941,12 +2997,13 @@ async function addTilesFromIcao() {
   if (!airport) {
     try {
       airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
-    } catch (_e) {
-      showWayError(t("plan.icao_unknown", { icao: code }));
+    } catch (err) {
+      showWayError(airportTrouble(err, code));
       return;
     }
   }
   showWayError(null);
+  planMap?.goTo(airport.lat, airport.lon); // a code typed in full is a choice too
   const r = Math.max(1, Number($("radius-input").value) || 15);
   const names = tilesAround(airport.lat, airport.lon, r);
   keepInPlace($("icao-add"), () => sayTilesInBuild(addTiles(names)));
@@ -2998,9 +3055,15 @@ function renderRouteLevels(maxZl, lat) {
     const group = id === "route-ends-zl" ? routeEndTiles() : routeAlongTiles();
     const chosen = group.filter((name) => state.tiles.includes(name));
     sel.hidden = !chosen.length;
-    if (!chosen.length) continue;
+    if (!chosen.length) {
+      // emptied while it is hidden: it kept the level of an earlier selection, and the button
+      // beside it reads its value first, so it offered that one again (found in review,
+      // 2026-09-23)
+      clear(sel);
+      continue;
+    }
     const levels = [...new Set(chosen.map(tileZl))];
-    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : planZl();
+    const fallback = id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl);
     clear(sel);
     sel.append(...zlOptions(maxZl, lat, { short: true }));
     sel.value = String(levels.length === 1 ? levels[0] : fallback);
@@ -3029,6 +3092,24 @@ function renderRoute() {
   renderZlOptions(); // the two groups' levels follow the route and the squares chosen
 }
 
+/**
+ * What to say when the engine could not answer about an airport.
+ *
+ * It tells a code it does not hold (404) from a machine with no airport database at all (503,
+ * "set the X-Plane folder in Settings"), and the page said "unknown ICAO code" to both, sending
+ * a user hunting for a typo that was not there (found in review, 2026-09-23). The page keeps its
+ * own words for a code that really is unknown, since they are translated and the engine's are
+ * about a latitude.
+ */
+function airportTrouble(err, code) {
+  if (err instanceof ApiError && err.status !== 404) {
+    const d = errorDetail(err);
+    if (d?.code) return codeWords(d).filter(Boolean).join(" ");
+    return errorMessage(err);
+  }
+  return t("plan.icao_unknown", { icao: code });
+}
+
 /** Read the codes, ask the engine where those airports are, and draw the line. */
 async function drawRoute() {
   const codes = routeCodes($("route-input").value);
@@ -3040,16 +3121,19 @@ async function drawRoute() {
   // as an airport is left out, and the line says which two ends were kept.
   const points = [];
   const missing = [];
+  let trouble = null;  // the engine could not answer at all: that is what to say, not "unknown"
   for (const code of codes) {
     try {
       const airport = await api("GET", `/api/airports/${encodeURIComponent(code)}`);
       points.push({ ident: airport.icao, name: airport.name || "", lat: airport.lat, lon: airport.lon });
-    } catch (_e) {
+    } catch (err) {
       missing.push(code);
+      if (trouble === null && err instanceof ApiError && err.status !== 404) trouble = airportTrouble(err, code);
     }
   }
   if (points.length < 2) {
-    showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
+    if (trouble) showWayError(trouble);
+    else showWayError(missing.length ? t("plan.route_unknown", { icao: missing[0] }) : t("plan.route_short"));
     return;
   }
   showWayError(null);
@@ -3120,9 +3204,9 @@ function restoreRoute() {
  * button, so that the ends and the route may differ. */
 function addRouteTiles(names, zl) {
   if (!names.length) return;
-  let skipped = [];
+  let left = { skipped: [], capped: 0 };
   keepInPlace($("route-found"), () => {
-    skipped = addTiles(names);
+    left = addTiles(names);
     for (const name of names) {
       if (state.tiles.includes(name)) state.tileZl[name] = zl;
     }
@@ -3132,8 +3216,8 @@ function addRouteTiles(names, zl) {
     planChanged();
     planMap?.planChanged();
   });
-  sayTilesInBuild(skipped);
-  toast(t("plan.route_added", { n: names.length - skipped.length }));
+  sayTilesInBuild(left);
+  toast(t("plan.route_added", { n: names.length - left.skipped.length - left.capped }));
 }
 
 // ------------------------------------------------------------------ Plan: provider, zoom
@@ -3185,7 +3269,11 @@ function renderSourceCoverage() {
 
 function renderProviderAttribution() {
   const p = currentProvider();
-  $("provider-attribution").textContent = p ? p.attribution || "" : "";
+  // the licence beside the credit: EOX's Sentinel-2 is non-commercial and the page said nothing
+  // of it, while the tiles it builds are folders people pass around (found in review, 2026-09-23)
+  const credit = p ? p.attribution || "" : "";
+  const licence = p ? p.licence || "" : "";
+  $("provider-attribution").textContent = credit && licence ? `${credit} ${licence}.` : credit;
 }
 
 // ------------------------------------------------------------------ Plan: the user's own sources
@@ -3316,6 +3404,18 @@ function sourceMaxZl() {
 /** The level of the squares along a route, never above what the source offers. */
 function routeAlongZl(top = sourceMaxZl()) {
   return Math.min(ROUTE_ALONG_ZL, top);
+}
+
+/** What the departure and arrival take unless the pilot says otherwise: the level chosen in step
+ * 1's list, and not the one the chosen squares happen to share.
+ *
+ * Pressing "along the route" on an empty selection put every square at ZL14, so step 1's list
+ * followed them there, and the two ends then landed at ZL14 as well: the one thing this feature
+ * exists to prevent, and it depended on the order the two buttons were pressed in (2026-09-23).
+ */
+function routeEndsZl(top = sourceMaxZl()) {
+  const chosen = Number(state.zlChosen) || Number(state.settings?.essential?.zoom_level) || planZl();
+  return Math.min(chosen, top);
 }
 
 /** The level a square will be built at: its own (the flight plan's groups), else step 1's. */
@@ -3579,10 +3679,17 @@ const COST_ICON_PATHS = {
   disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
 };
 
+/** The bin, the same drawing as the trash above the job list (`index.html`). */
+const TRASH_PATH = "M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6";
+
 /** Inline SVG icon (static markup, no user data). */
-function costIcon(kind) {
-  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${COST_ICON_PATHS[kind]}"/></svg>`;
+function strokeIcon(d) {
+  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
   return document.createRange().createContextualFragment(markup).firstElementChild;
+}
+
+function costIcon(kind) {
+  return strokeIcon(COST_ICON_PATHS[kind]);
 }
 
 function kv(rows) {
@@ -3807,8 +3914,69 @@ function renderJobList() {
       h("span", { class: "job-tiles" }, tiles.length > 3 ? `${tiles.slice(0, 3).join(" ")} +${tiles.length - 3}` : tiles.join(" ")),
       jobStatusPill(j.status),
       h("span", { class: "job-meta num" }, `${j.provider || ""} ZL${j.zoom_level ?? j.zl ?? ""} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
-    ul.append(h("li", null, btn));
+    const row = h("li", null, btn);
+    if (!jobActive(j)) row.append(forgetButton(j, tiles));
+    ul.append(row);
   }
+}
+
+/** The bin on a finished row: that build alone leaves the list, its progress and its journal with
+ * it, and the tiles it built stay. A build running or waiting has no bin: it is cancelled first,
+ * which is what the engine answers too (409). */
+function forgetButton(j, tiles) {
+  return h("button", {
+    type: "button",
+    class: "btn btn-small btn-icon btn-danger btn-trash job-forget", // the same bin as the one above the list
+    title: t("works.forget"),
+    disabled: state.jobsClearing || Boolean(state.engineOutdated),
+    onclick: () => forgetJob(j),
+  }, strokeIcon(TRASH_PATH), h("span", { class: "sr-only" }, t("works.forget_one", { tiles: tiles.join(" ") || j.id })));
+}
+
+/** One finished build leaves the list (DELETE /api/jobs/{id}).
+ *
+ * The row that takes the gone one's place, the next one down or else the one above, is where
+ * everything goes: the job shown, when the gone one was the one shown (a user expected the next
+ * job, not an empty screen, 2026-09-25), and the keyboard, on its bin or else on the row itself. */
+async function forgetJob(j) {
+  if (state.jobsClearing) return;
+  const was = state.jobs.findIndex((x) => x.id === j.id);
+  state.jobsClearing = true;
+  renderJobList();
+  try {
+    await api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`);
+  } catch (err) {
+    toast(errorMessage(err), "fail");
+  } finally {
+    state.jobsClearing = false;
+  }
+  await refreshJobList();
+  const gone = !state.jobs.some((x) => x.id === j.id); // refused, it is still there, and so is the hand
+  const at = Math.min(was, state.jobs.length - 1);
+  const next = at >= 0 ? state.jobs[at] : null;
+  if (gone && state.jobId === j.id) {
+    if (next) {
+      history.replaceState(null, "", `#works/${next.id}`);
+      await watchJob(next.id);
+    } else {
+      forgetShownJob();
+    }
+  }
+  const row = at >= 0 ? $("job-list").children[at] : null;
+  (row?.querySelector(".job-forget") || row?.querySelector(".job-item") || $("jobs-title")).focus({ preventScroll: true });
+}
+
+/** The trash of the whole list emptied it of the job the page was watching: it follows a build
+ * still under way, or lets go. */
+async function followJobGone() {
+  if (!state.jobId || state.jobs.some((j) => j.id === state.jobId)) return;
+  const next = state.jobs.find((j) => jobActive(j));
+  if (!next) {
+    forgetShownJob();
+    return;
+  }
+  history.replaceState(null, "", `#works/${next.id}`);
+  await watchJob(next.id);
 }
 
 /** The trash above the job list: the finished jobs leave it and their journals are deleted
@@ -3828,15 +3996,7 @@ async function clearJobs() {
     state.jobsClearing = false;
   }
   await refreshJobList();
-  if (state.jobId && !state.jobs.some((j) => j.id === state.jobId)) {
-    const next = state.jobs.find((j) => jobActive(j));
-    if (next) {
-      history.replaceState(null, "", `#works/${next.id}`);
-      await watchJob(next.id);
-    } else {
-      forgetShownJob();
-    }
-  }
+  await followJobGone();
   if (document.activeElement === document.body || $("jobs-clear").hidden) {
     ($("job-list").querySelector("button") || $("jobs-title")).focus({ preventScroll: true });
   }
@@ -3880,7 +4040,8 @@ const clockFormats = new Map();
 
 /** The download rate in the engine message of a step that downloads, in MB/s: Imagery's
  * "… (1392 req/s, 21.6 MB/s)" (build.py textures_progress_message), the OSM layers of Data
- * "+46+006: 2/4 OSM layers (1.4 MB/s)" (sources/osm.py osm_progress_message); null without. */
+ * "+46+006: 2 of 4 back: airports, roads (1.4 MB/s)" (sources/osm.py osm_progress_message);
+ * null without, which is what a tile still waiting for the server has. */
 export function downloadRate(message) {
   const m = /\b(\d+(?:\.\d+)?) MB\/s\)/.exec(String(message || ""));
   return m ? Number(m[1]) : null;
@@ -5481,19 +5642,7 @@ async function boot() {
     renderIcaoList();
   });
   $("icao-add").addEventListener("click", addTilesFromIcao);
-  $("route-draw").addEventListener("click", drawRoute);
-  $("route-input").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      drawRoute();
-    }
-  });
-  $("route-ends").addEventListener("click", () => addRouteTiles(routeEndTiles(), Number($("route-ends-zl").value) || planZl()));
-  $("route-all").addEventListener("click", () => addRouteTiles(routeAlongTiles(), Number($("route-all-zl").value) || routeAlongZl()));
-  $("route-simbrief").addEventListener("click", routeFromSimbrief);
-  $("route-clear").addEventListener("click", clearRoute);
-  // the radius applies to both ends of the route: the counts on the buttons follow it
-  $("radius-input").addEventListener("input", renderRoute);
+  wireFlightPlan();
   $("sources-open").addEventListener("click", openSources);
   $("sources-close").addEventListener("click", () => $("sources-dialog").close());
   $("source-try").addEventListener("click", trySource);
@@ -5509,6 +5658,7 @@ async function boot() {
   $("zl-select").addEventListener("change", () => {
     // Chosen here, the level is every chosen square's: the flight plan's two levels give way to it.
     state.planZl = Number($("zl-select").value) || planZl();
+    state.zlChosen = state.planZl;  // what the pilot asked for, which the ends keep
     state.tileZl = {};
     renderTiles();
     renderZlOptions();
@@ -5599,7 +5749,7 @@ async function boot() {
   });
   renderTiles();
   renderPlanPanel();
-  restoreRoute();
+  if (FLIGHT_PLAN) restoreRoute();
   startPresence();
   // The screen shows at once and fills in as the engine answers. It used to wait for every
   // answer, and where one was slow (Windows, a big cache behind an antivirus) users saw the menu

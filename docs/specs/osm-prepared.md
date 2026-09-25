@@ -40,7 +40,10 @@ One method, three outcomes, nothing else:
 ```python
 class PreparedSource(Protocol):
     name: str
-    def layers(self, tile: TileRef, specs: Sequence[LayerSpec]) -> dict[str, OsmSnapshot] | None: ...
+
+    def layers(
+        self, tile: TileRef, specs: Sequence[LayerSpec]
+    ) -> dict[str, OsmSnapshot] | None: ...
 ```
 
 * **the layers** — every one of `specs`, taken as they are, the chain stops;

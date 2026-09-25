@@ -195,6 +195,10 @@ def clean_halo_mask(mask: np.ndarray, rgb: np.ndarray) -> np.ndarray:
     return out
 
 
+_ROWS = 512
+"""Rows converted to float at a time, as in ``colour.py``."""
+
+
 def _check_pair(rgb: np.ndarray, alpha: np.ndarray) -> None:
     if rgb.dtype != np.uint8 or rgb.ndim != 3 or rgb.shape[2] != 3:
         raise ValueError("rgb must be a (h, w, 3) uint8 array")
@@ -224,9 +228,19 @@ def imprint(
     radius = sea_blur_radius(sea_texture_blur, zl) if sea_texture_blur > 0 else 0.0
     if radius > 0:
         blurred = np.asarray(Image.fromarray(rgb).filter(ImageFilter.GaussianBlur(radius)))
-        water = ((255 - alpha.astype(np.float32)) / 255.0)[:, :, None]
-        mixed = rgb.astype(np.float32) * (1.0 - water) + blurred.astype(np.float32) * water
-        out[:, :, :3] = np.rint(mixed).astype(np.uint8)
+        # band by band, as the colours are: mixed in one go this held five full-size float
+        # arrays at once, 750 MB above the image on a 4096 texture, against the 250 MB the rule
+        # declares and the scheduler counts on. Several textures encode at once, so a machine
+        # with little memory swapped and lost the build (found in review, 2026-09-23). The blur
+        # itself needs the whole image, since it reads across the bands.
+        for start in range(0, rgb.shape[0], _ROWS):
+            stop = start + _ROWS
+            water = ((255 - alpha[start:stop].astype(np.float32)) / 255.0)[:, :, None]
+            band = rgb[start:stop].astype(np.float32)
+            band *= 1.0 - water
+            band += blurred[start:stop].astype(np.float32) * water
+            np.rint(band, out=band)
+            out[start:stop, :, :3] = band.astype(np.uint8)
     else:
         out[:, :, :3] = rgb
     out[:, :, 3] = alpha

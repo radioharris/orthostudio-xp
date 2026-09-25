@@ -526,8 +526,15 @@ def test_nothing_changes_while_xplane_runs(
         assert "nothing was deleted" in refused.value.message
 
     assert _snapshot(tmp_path) == before and world.rows() == rows and world.keys() == keys
-    # without an X-Plane folder there is nothing of X-Plane's to protect
-    assert world.delete(not_installed, T3, custom_scenery=None)["pack_deleted"] is True
+    # It used to read: "without an X-Plane folder there is nothing of X-Plane's to protect", and
+    # the delete went through. But not knowing where X-Plane is does not mean it is not reading
+    # the tile: it means we cannot see that it is. Those users -- the ones whose X-Plane was not
+    # found -- were the only ones whose tiles could be deleted from under a running sim (found in
+    # review, 2026-09-23). X-Plane running is what decides now, folder or no folder.
+    with pytest.raises(OsxpError) as refused:
+        world.delete(not_installed, T3, custom_scenery=None)
+    assert refused.value.code == "XP_RUNNING"
+    assert _snapshot(tmp_path) == before and world.rows() == rows and world.keys() == keys
 
 
 @pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")

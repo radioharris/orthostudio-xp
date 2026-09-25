@@ -18,20 +18,24 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 ## What you get
 
 - **A page with a map.** Click the squares you want, or draw a rectangle over them with Shift
-  held, see the tiles already in X-Plane, draw
+  held, see the tiles already in X-Plane and the ones built but not in it, draw
   sharper zones around airports or anywhere you fly low (one zone may cover several tiles, and
   the list shows those of the squares you chose), check the size and the time before building,
   then build and install in one click. The map shows the aerial imagery or, in one click, the
   OpenStreetMap street map, with the airports and their ICAO codes as you zoom in, to find what
-  you fly over before you choose a square.
+  you fly over before you choose a square. The legend says what the view you are on is worth on
+  the ground, in the levels a build works in, so you can zoom until the photo looks the way you
+  want your scenery to look and ask for the level it names.
 - **Works, as it happens.** A progress bar for every step of every tile, the time elapsed and
   a range for the time left over the whole build (starting from your connection's speed on your
   last builds), errors that say what happened and what to do, and a button to fetch again only
   what is missing. A build takes up to 500 tiles. Start more builds while one runs: they wait in a
-  queue, and a tile being built cannot be chosen twice.
+  queue, and a tile being built cannot be chosen twice. A finished build leaves the list with a
+  bin on its row, or all of them at once with the trash above it; the tiles they built stay.
 - **Settings in plain words.** Questions about what you want to see in X-Plane (detail, airports,
   coast, water, relief, roads and forests), the recommended answer marked, three presets, and every
-  Ortho4XP setting still there under "For experts" with a plain label.
+  Ortho4XP setting still there under "For experts" with a plain label; every number says first
+  what it may take and what it is by default.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
   built with: the imagery, the detail, the relief really read (a lidar asked for where it never
   flew says so), its zones and its patches; the Plan says it too, over a tile and under the
@@ -182,7 +186,7 @@ built for your distribution's own Python, and OrthoStudio XP carries its own, so
 would change nothing. In a browser it stops by itself five minutes after the last page is closed,
 with no build running or waiting. What it does, stage by stage, goes to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
-`~/.local/state/OrthoStudio XP/log` (Linux). Your tiles and settings stay in `~/.orthostudio` (the
+`~/.orthostudio/log` (Linux, beside the rest of what it keeps). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
 
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at

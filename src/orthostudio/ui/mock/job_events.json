@@ -3,10 +3,10 @@
   "about": "Journal entries of GET /api/jobs/{id}/events in the engine's shape (docs/specs/ui.md 2.2 and 3), trimmed from a real 6-tile build. delay_ms: the wait after the entry before it. {tile} and {level} (BI16) are filled in per tile, seq and ts when the mock writes the entry; weight_s is the node's weight in its step (0 for a hit, or a node skipped before it started). osm: the map data download of a tile, which its build waits for (one tile's download after the other); osm_hit: a tile that already has it; tile: the build of a tile, where only ok / failing marks the entries of a tile that builds and of the one that misses a texture.",
   "osm": [
     {"delay_ms": 0, "event": "started", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "key": "4b40c0a128bf", "kind": "net", "weight_s": 26.0},
-    {"delay_ms": 20, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.0, "message": "{tile}: 0/4 OSM layers", "weight_s": 26.0},
-    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.25, "message": "{tile}: 1/4 OSM layers (2.9 MB/s)", "weight_s": 26.0},
-    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.5, "message": "{tile}: 2/4 OSM layers (3.4 MB/s)", "weight_s": 26.0},
-    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.75, "message": "{tile}: 3/4 OSM layers (3.1 MB/s)", "weight_s": 26.0},
+    {"delay_ms": 20, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.0, "message": "{tile}: waiting for the map data server (airports, roads, water, coastline)", "weight_s": 26.0},
+    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.25, "message": "{tile}: 1 of 4 back: airports (2.9 MB/s)", "weight_s": 26.0},
+    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.5, "message": "{tile}: 2 of 4 back: airports, roads (3.4 MB/s)", "weight_s": 26.0},
+    {"delay_ms": 600, "event": "progress", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "fraction": 0.75, "message": "{tile}: 3 of 4 back: airports, roads, water (3.1 MB/s)", "weight_s": 26.0},
     {"delay_ms": 600, "event": "done", "tile": "{tile}", "stage": "data", "node": "{tile}/osm", "role": "osm", "key": "4b40c0a128bf", "hit": false, "wall_s": 2.4, "weight_s": 26.0}
   ],
   "osm_hit": [

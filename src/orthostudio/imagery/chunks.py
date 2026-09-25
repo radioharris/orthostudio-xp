@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import struct
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
@@ -236,14 +236,21 @@ class ChunkContainer:
 
 
 class ChunkStore:
-    """``<root>/<provider>/<zl>/<til_y>_<til_x>.chunks`` with atomic writes."""
+    """``<root>/<folder>/<zl>/<til_y>_<til_x>.chunks`` with atomic writes.
 
-    def __init__(self, root: Path, *, fsync: bool = True) -> None:
+    The folder of a provider is its code, unless ``folders`` names another: a source of the
+    user's is kept under its address as well (``providers.cache_name``)."""
+
+    def __init__(
+        self, root: Path, *, fsync: bool = True, folders: Mapping[str, str] | None = None
+    ) -> None:
         self.root = Path(root)
         self.fsync = fsync
+        self.folders = dict(folders or {})
 
     def path(self, t: TextureId) -> Path:
-        return self.root / t.provider / str(t.zl) / f"{t.til_y}_{t.til_x}.chunks"
+        folder = self.folders.get(t.provider, t.provider)
+        return self.root / folder / str(t.zl) / f"{t.til_y}_{t.til_x}.chunks"
 
     def has(self, t: TextureId) -> bool:
         return self.path(t).is_file()

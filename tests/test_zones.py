@@ -389,7 +389,9 @@ def test_priority_survives_the_clipping_in_the_real_painter() -> None:
     def zl_at(zones: list[Zone], lon: float, lat: float) -> int:
         cfg = with_zone_list({}, zones_for_tile(zones, GENEVA, "BI"), GENEVA)
         params = DsfParams.subset_of({**cfg, "default_zl": 16, "default_website": "BI"})
-        image, values = _zone_image(GENEVA, params)
+        image, values = _zone_image(
+            GENEVA, params.zone_list, params.default_zl, params.default_website
+        )
         x, y = round((lon - GENEVA.lon) * 4095), round((GENEVA.lat + 1 - lat) * 4095)
         return values[int(image[y, x])][0]
 

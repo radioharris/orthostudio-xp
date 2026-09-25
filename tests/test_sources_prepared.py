@@ -147,7 +147,7 @@ def test_a_tile_is_read_from_the_prepared_files() -> None:
     assert water.digest and water.fetched_at
     # every network step says how fast it went (``ui.md`` 2.2)
     assert [round(f, 2) for f, _ in seen] == [0.25, 0.5, 0.75, 1.0]
-    assert seen[-1][1].startswith(f"{TILE.name}: 4/4 OSM layers")
+    assert seen[-1][1].startswith(f"{TILE.name}: 4 of 4 back")
 
 
 def test_a_tile_the_index_does_not_hold_goes_to_overpass() -> None:

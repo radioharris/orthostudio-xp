@@ -191,6 +191,10 @@ RATE_TAU_S = 10.0
 """Time constant of a running node's recent rate (an exponential average of its progress
 between reports): long enough to smooth half-second reports, short enough to forget the slow
 start of the fetcher and to follow a line that slows."""
+SILENCE_FLOOR = 0.125
+"""How far the silence of a node may slow its rate down, and no further. Without a floor the
+time left grew by a factor of 330 over the minute before :data:`SILENT_S`, so a build a minute
+from its end could announce eighteen hours (2026-09-23)."""
 SILENT_S = 60.0
 """A node silent for this long is not extrapolated any more, and the estimate falls back to what
 the weights say. The rate decays with the silence, and the time left is what is missing divided
@@ -238,6 +242,12 @@ ETA_SLEW_MIN_S = 2.0
 BAND_SLEW = 0.01
 """The width of the range (``band``) changes by at most this much per second."""
 ENDED = frozenset({"done", "hit", "failed", "skipped", "cancelled"})
+FINISHED = frozenset({"done", "hit"})
+"""Ended **and** done. A node that failed, was skipped or was cancelled ended without finishing,
+and the two questions are not the same one: how much of the scenery is built, which is what the
+bar is read for, and whether anything more will happen, which is what the job's status says. One
+number answered both, so a build stopped twenty seconds in read 99 % (found in review,
+2026-09-23). A job that really finishes is set to 1 by ``Job._stats_now``, not by this."""
 
 
 class NodeLike(Protocol):
@@ -261,6 +271,10 @@ class NodeLike(Protocol):
     fraction0_at: float | None
     fraction_at: float | None
     """When the node reported its current ``fraction``."""
+    moved_at: float | None
+    """When it last reported a ``fraction`` **above** the one before: the silence that matters.
+    A step reporting twice a second without advancing is silent in every sense but the literal
+    one (2026-09-22)."""
     rate: float | None
     """Its recent rate, fraction per second, since it started moving (:func:`observe_progress`)."""
 
@@ -316,9 +330,13 @@ class EtaSmoother:
         end = max(end, now)
         self.end, self.band, self.at = end, width, now
         left = end - now
+        # the top of the range ends where the estimate itself ends: the band widens it by up to
+        # 1.7, so an estimate of 15 hours was published as more than a day, and the whole reason
+        # there is a cap at all is that a user read a number nobody can read (found in review,
+        # 2026-09-23; the first attempt at this capped a field the page never reads)
         return (
-            left * (1.0 - BAND_LOW_SHARE * width),
-            left * (1.0 + (2.0 - BAND_LOW_SHARE) * width),
+            max(0.0, left * (1.0 - BAND_LOW_SHARE * width)),
+            min(ETA_MAX_S, left * (1.0 + (2.0 - BAND_LOW_SHARE) * width)),
         )
 
 
@@ -446,16 +464,19 @@ def _group(n: NodeLike) -> str:
 
 
 def weight_of(n: NodeLike) -> float:
-    """The node's weight in progress: zero when it does not run (a hit, a skip, a cancel
-    before it started)."""
-    if n.status == "hit" or (n.status in ("skipped", "cancelled") and n.started_at is None):
+    """The node's weight in progress: zero for a hit, which is work there was none of.
+
+    Work that was planned and will not happen still counts, or it leaves the sum and the bar
+    reads "all of what is left is done" (2026-09-23).
+    """
+    if n.status == "hit":
         return 0.0
     return max(0.0, n.weight_s)
 
 
 def weighted_progress(nodes: Sequence[NodeLike]) -> float:
-    """Weighted share of the work ended (1 for an ended node, its fraction while it runs); by
-    count when nothing weighs (every node a hit)."""
+    """Weighted share of the work **done** (1 for a node that finished, else how far it got);
+    by count when nothing weighs (every node a hit)."""
     total = sum(weight_of(n) for n in nodes)
     if total <= 0:
         return sum(_fraction(n) for n in nodes) / len(nodes) if nodes else 0.0
@@ -463,10 +484,10 @@ def weighted_progress(nodes: Sequence[NodeLike]) -> float:
 
 
 def _fraction(n: NodeLike) -> float:
-    if n.status in ENDED:
+    if n.status in FINISHED:
         return 1.0
-    if n.status == "running":
-        return min(1.0, max(0.0, n.fraction))
+    if n.status in ENDED or n.status == "running":
+        return min(1.0, max(0.0, n.fraction))  # how far it got, and no further
     return 0.0
 
 
@@ -477,9 +498,17 @@ def observe_progress(n: NodeLike, fraction: float, now: float) -> None:
     has not started its measurable part). Then ``rate`` is the node's average rate since it
     started moving at the first report, and an exponential average of the rate between
     reports afterwards (:data:`RATE_TAU_S`).
+
+    **A report that carries no progress is not progress.** The imagery step reports twice a
+    second whether anything moved or not, so a step that had stopped advancing was averaging
+    zero into its rate four times a second: the rate fell by a thousandth of itself a minute,
+    the time left is what is missing divided by it, and a user watched the page announce
+    1 308 980 335 hours (2026-09-22). Only a report that gained something feeds the average, and
+    the silence a node keeps is measured from the last time it gained, not from its last word.
     """
     f = min(1.0, max(0.0, fraction))
     prev_f, prev_at = n.fraction, n.fraction_at
+    moved = f > prev_f
     if (
         n.fraction0 is None
         or n.fraction0_at is None
@@ -489,10 +518,12 @@ def observe_progress(n: NodeLike, fraction: float, now: float) -> None:
     elif n.rate is None:
         span = now - n.fraction0_at
         n.rate = (f - n.fraction0) / span if span > 0 else None
-    elif prev_at is not None and now > prev_at:
+    elif moved and prev_at is not None and now > prev_at:
         weight = 1.0 - math.exp(-(now - prev_at) / RATE_TAU_S)
-        n.rate = weight * max(0.0, f - prev_f) / (now - prev_at) + (1.0 - weight) * n.rate
+        n.rate = weight * (f - prev_f) / (now - prev_at) + (1.0 - weight) * n.rate
     n.fraction, n.fraction_at = f, now
+    if moved or n.moved_at is None:
+        n.moved_at = now
 
 
 def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
@@ -503,17 +534,27 @@ def _extrapolation(n: NodeLike, now: float) -> tuple[float, float] | None:
     span = now - n.fraction0_at
     if gained < EXTRAPOLATE_FROM or span < EXTRAPOLATE_MIN_S:
         return None
-    last = n.fraction_at if n.fraction_at is not None else now
+    last = n.moved_at
+    if last is None:
+        last = n.fraction_at if n.fraction_at is not None else now
     silence = max(0.0, now - last)
     if silence >= SILENT_S:  # nothing to extrapolate from: the weights answer instead
         return None
-    rate = n.rate * math.exp(-max(0.0, silence - REPORT_GRACE_S) / RATE_TAU_S)
+    # the silence slows the rate down, but only so far: what is missing divided by a rate that
+    # keeps falling is how a page comes to announce a number nobody can read, and past
+    # ``SILENT_S`` the weights answer instead of this (2026-09-23)
+    slower = max(SILENCE_FLOOR, math.exp(-max(0.0, silence - REPORT_GRACE_S) / RATE_TAU_S))
+    rate = n.rate * slower
     if rate <= 0.0:
         return None
     left = (1.0 - n.fraction) / rate - silence
     by_gain = (gained - EXTRAPOLATE_FROM) / (TRUST_AT - EXTRAPOLATE_FROM)
     by_time = (span - EXTRAPOLATE_MIN_S) / (TRUST_AFTER_S - EXTRAPOLATE_MIN_S)
-    return max(0.0, left), min(1.0, max(0.0, min(by_gain, by_time)))
+    trust = min(1.0, max(0.0, min(by_gain, by_time)))
+    # a node that has gone quiet speaks for itself less and lets the weights speak more. Its
+    # rate was damped by the silence while its say was not, so the longer it said nothing the
+    # more the whole estimate rested on it (found in review, 2026-09-23).
+    return max(0.0, left), trust * slower
 
 
 def _queue_trust(n: NodeLike, now: float, trust: float) -> float:
@@ -734,6 +775,9 @@ def estimate(
     band = BAND_MAX - (BAND_MAX - BAND_MIN) * confidence
     if not math.isfinite(eta) or eta > ETA_MAX_S:
         return Estimate(progress, None, None, None)
+    # the band widens the top by up to 1.675 (``BAND_MAX`` 0.45), so an estimate of 14.3 hours
+    # reaches the day this stops at. ``EtaSmoother.update`` makes the range the page is shown and
+    # holds the same end; these two are the unsmoothed pair, kept in step with it.
     low = eta * (1.0 - BAND_LOW_SHARE * band)
-    high = eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band)
+    high = min(ETA_MAX_S, eta * (1.0 + (2.0 - BAND_LOW_SHARE) * band))
     return Estimate(progress, eta, low, high, band)

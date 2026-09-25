@@ -406,7 +406,9 @@ def tile_snapshots(
             # reaches the network shows its MB/s), over the time this tile's layers took.
             progress(
                 done / len(specs),
-                osm_progress_message(tile, done, len(specs), wire, elapsed),
+                osm_progress_message(
+                    tile, [s.name for s in specs], [s.name for s in specs[:done]], wire, elapsed
+                ),
             )
     return out
 

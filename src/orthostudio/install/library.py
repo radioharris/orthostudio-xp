@@ -15,6 +15,7 @@ from __future__ import annotations
 import builtins
 import json
 import logging
+import os
 import re
 import sqlite3
 import time
@@ -307,8 +308,49 @@ def ortho4xp_searched(folder: Path) -> list[Path]:
     return [*roots, *singles]
 
 
+OSXP_PACK_FILE = "orthostudio.toml"
+"""What tells one of our own packs from someone else's, whatever either is called."""
+
+
+ORTHO_TEXTURE_RE = re.compile(r"^\d+_\d+_[A-Za-z0-9@]+\d\d\.dds$")
+"""One orthophoto's file name: the two tile numbers, the source and the detail level, which is
+how Ortho4XP names them (``22224_10544_BI16.dds``) and how OrthoStudio XP does."""
+
+
+def looks_like_an_ortho_pack(folder: Path) -> bool:
+    """Whether this folder is a scenery pack of photo tiles, whatever it is called.
+
+    Ortho4XP names its packs ``zOrtho4XP_<tile>`` and that name was the only thing the import
+    knew, so a user's ``/media/Data/X-Plane_Orthos/EUR_EOX_ZL14`` was refused as "not an Ortho4XP
+    installation". He was right about the remedy: a pack is known by what it holds, an
+    ``Earth nav data`` with DSFs in it and the textures beside it (2026-09-23).
+
+    Our own packs are left alone: they carry an ``orthostudio.toml`` and the library already
+    knows them.
+
+    What says "photo tiles" is the **name of the textures**: an orthophoto is
+    ``<til_y>_<til_x>_<provider><zl>.dds``, as Ortho4XP writes it and as we do. A DSF and a
+    ``textures`` folder say only "scenery pack": a mesh, an airport and a forest library all have
+    both. Run over a real Custom Scenery, the rule that asked only for those took a commercial
+    forest pack for 37 632 photo tiles, each a lat/lon its owner never built, with no way to undo
+    them but deleting the library by hand (found in review, 2026-09-23).
+    """
+    if (folder / OSXP_PACK_FILE).is_file():
+        return False
+    textures = folder / "textures"
+    if not textures.is_dir():
+        return False
+    if next((folder / "Earth nav data").glob("*/*.dsf"), None) is None:
+        return False
+    try:
+        with os.scandir(textures) as entries:
+            return any(ORTHO_TEXTURE_RE.match(entry.name) for entry in entries)
+    except OSError:
+        return False
+
+
 def holds_ortho4xp_tiles(folder: Path) -> bool:
-    """Whether an import of ``folder`` finds at least one ``zOrtho4XP_*`` tile."""
+    """Whether an import of ``folder`` finds at least one pack of photo tiles in it."""
     return next(_ortho4xp_pack_dirs(Path(folder)), None) is not None
 
 
@@ -323,7 +365,7 @@ def _ortho4xp_roots(folder: Path) -> tuple[list[Path], list[Path]]:
     roots: list[Path] = [folder / IMPORT_TILES_DIR]
     singles: list[Path] = []
     if not (folder / ORTHO4XP_MAIN).is_file():
-        if folder.name.startswith(IMPORTED_PACK_PREFIX):
+        if folder.name.startswith(IMPORTED_PACK_PREFIX) or looks_like_an_ortho_pack(folder):
             singles.append(folder)
         else:
             roots.append(folder)
@@ -343,8 +385,18 @@ def _ortho4xp_pack_dirs(folder: Path) -> Iterator[Path]:
     for root in roots:
         if not root.is_dir():
             continue
-        for child in sorted(root.iterdir()):
-            if child.is_dir() and child.name.startswith(IMPORTED_PACK_PREFIX):
+        try:
+            children = sorted(root.iterdir())
+        except OSError:
+            # a folder we may not read, or a drive that stopped answering: skipped, as its
+            # neighbours already are. It crashed the import with a bare 500 and the page said
+            # only "the engine does not answer", which is the very case this feature is for
+            # (found in review, 2026-09-23)
+            continue
+        for child in children:
+            if child.is_dir() and (
+                child.name.startswith(IMPORTED_PACK_PREFIX) or looks_like_an_ortho_pack(child)
+            ):
                 real = child.resolve()
                 if real not in seen:
                     seen.add(real)

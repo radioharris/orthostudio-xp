@@ -64,4 +64,4 @@ body:
     attributes:
       label: Log
       description: |
-        Drop the file `serve.log` here. It is in `~/Library/Logs/OrthoStudio XP` on macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.local/state/OrthoStudio XP/log` on Linux.
+        Drop the file `serve.log` here. It is in `~/Library/Logs/OrthoStudio XP` on macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux.

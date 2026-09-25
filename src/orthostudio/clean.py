@@ -25,6 +25,7 @@ store size and the size of each pack in its library).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -109,7 +110,30 @@ def pack_dirs(library_path: Path | None, tiles_root: Path | None) -> list[Path]:
     return sorted(found)
 
 
-def keep_keys(store: Store, packs: Iterable[Path]) -> set[str]:
+def keys_of_packs_out_of_reach(library_path: Path | None) -> set[str]:
+    """The artefact keys of tiles the library knows but cannot see on disk right now.
+
+    A pack whose ``orthostudio.toml`` cannot be read was taken for gone, so everything it was
+    built from became collectable: unplug the external disk the tiles live on, press Free space,
+    and the cache of every tile on it is given away under the words "data no tile needs any
+    more". No scenery is lost, but the next build of those tiles downloads and encodes
+    everything again (found in review, 2026-09-23).
+
+    The library recorded those keys when the tile was built, so they are kept without reading
+    anything from the missing disk. A tile imported from Ortho4XP has none, and needs none: it
+    was not built here.
+    """
+    kept: set[str] = set()
+    if library_path is None or not library_path.is_file():
+        return kept
+    with contextlib.suppress(Exception), Library(library_path) as lib:
+        for entry in lib.list():
+            if entry.keys and not (Path(entry.path) / MANIFEST_NAME).is_file():
+                kept.update(str(k) for k in entry.keys.values() if k)
+    return kept
+
+
+def keep_keys(store: Store, packs: Iterable[Path], library_path: Path | None = None) -> set[str]:
     """Every stored artefact the ``packs`` need, see the module docstring."""
     roots: set[str] = set()
     for pack in packs:
@@ -117,6 +141,7 @@ def keep_keys(store: Store, packs: Iterable[Path]) -> set[str]:
             roots.update(read_manifest(pack).keys.values())
         except (OSError, ValueError, KeyError):
             continue
+    roots |= keys_of_packs_out_of_reach(library_path)
     return needed_keys(store, roots)
 
 
@@ -252,7 +277,8 @@ def clean(
     report.packs = [str(p) for p in packs]
     if Path(store_root).is_dir():
         with Store(store_root) as store:
-            _collect(store, store.iter_artifacts(), keep_keys(store, packs), grace_s, report)
+            keep = keep_keys(store, packs, library_path)
+            _collect(store, store.iter_artifacts(), keep, grace_s, report)
             if not dry_run:
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     chunks = Path(chunks_root)
@@ -302,7 +328,8 @@ def clean_after_delete(
         with Store(store_root) as store:
             infos = (store.info(key) for key in sorted(needed_keys(store, roots)))
             candidates = [info for info in infos if info is not None]
-            _collect(store, candidates, keep_keys(store, packs), grace_s, report)
+            keep = keep_keys(store, packs, library_path)
+            _collect(store, candidates, keep, grace_s, report)
     return report
 
 

@@ -21,12 +21,13 @@ import os
 import signal
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import blake3
 from pydantic import Field
@@ -57,7 +58,7 @@ from orthostudio.graph import (
 )
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
-from orthostudio.install import detect_xplane, global_scenery_dir
+from orthostudio.install import Library, detect_xplane, global_scenery_dir
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
@@ -105,6 +106,7 @@ from orthostudio.pipeline.pack import (
     pack_env,
     pack_is_intact,
 )
+from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TexturesReport,
@@ -699,10 +701,21 @@ class TileTexturesParams(RuleParams):
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
 
+    PHOTO_ZONES_RULE: ClassVar[int] = 2
+    """Which way the zone colours are applied. 1 coloured the whole texture file whose centre
+    fell in a zone; 2 colours the shape that was drawn, replaces the tile's colours rather than
+    adding to them, and lets the first zone of the list win where two overlap (2026-09-23).
+
+    It rides in the key so that a tile already built with zones is built again with the colours
+    it should have had: without it the step is a hit and the fix reaches nobody (found in review,
+    2026-09-23). A tile with no zone of its own keeps the key it has and is not rebuilt."""
+
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if not self.photo_zones:
             doc.pop("photo_zones", None)  # no zone of its own: the key of every tile built before
+        else:
+            doc["photo_zones_rule"] = self.PHOTO_ZONES_RULE
         return doc
 
     def ter_params(self) -> TerParams:
@@ -870,6 +883,28 @@ TEXTURES_RATE_WINDOW_S = 4.0
 """Seconds of progress reports the download rate in MB/s is measured over."""
 
 
+def _missing_textures_remedy(codes: Sequence[str], logs: object) -> str:
+    """What to do about textures that were not built, which depends on why.
+
+    It said "run osxp build again" whatever had happened, so a user whose disk was full looped,
+    downloading hundreds of megabytes each time (found in review, 2026-09-23).
+    """
+    if "SYS_DISK_FULL" in codes:
+        return (
+            "Free some space, or choose a working folder on another disk in Settings, then "
+            f"build again: nothing already downloaded is lost. Details: {logs}."
+        )
+    if "SYS_WRITE_FAILED" in codes:
+        return (
+            "Check that the working folder can be written to, then build again: nothing already "
+            f"downloaded is lost. Details: {logs}."
+        )
+    return (
+        "Run osxp build again: only the missing tiles are downloaded and only the missing "
+        f"textures encoded. Details: {logs}."
+    )
+
+
 def textures_progress_message(
     level: str, s: ProgressSnapshot, mb_per_s: float | None = None
 ) -> str:
@@ -897,6 +932,13 @@ def textures_progress_message(
             f"{level}: textures {s.built + s.hits}/{s.textures_total}, "
             "nothing to download (the image pieces are in the cache)"
         )
+    if s.pushed_back:
+        # A source asking us to slow down looks exactly like a build that has stopped, for hours,
+        # and the page said nothing of it. Said from ``throttled`` it was a lie: that flag is
+        # mostly our own window being lowered, which a healthy download does constantly, so it
+        # appeared beside 1 269 requests a second (a user's own screen, 2026-09-24). ``pushed_back``
+        # is a server answering 429 and us waiting out the delay it asked for.
+        message += ", the source is asking us to slow down"
     if s.second_pass_chunks and not s.second_pass_round:
         message += f", {s.second_pass_chunks} image piece(s) to ask for again"
     elif s.second_pass_chunks:
@@ -932,18 +974,29 @@ def photo_zone_shapes(
     for entry in photo_zones:
         ring, brightness, contrast, saturation = entry
         points: list[float] = []
-        inside = False
         for i in range(0, len(ring) - 1, 2):
             lat, lon = float(ring[i]), float(ring[i + 1])
             x, y = wgs84_to_tile(lat, lon, texture.zl)
-            px = (x - texture.til_x) * scale
-            py = (y - texture.til_y) * scale
-            points.extend((px, py))
-            near = -scale <= px <= TEXTURE_PX + scale and -scale <= py <= TEXTURE_PX + scale
-            inside = inside or near
-        if inside and len(points) >= 6:
+            points.extend(((x - texture.til_x) * scale, (y - texture.til_y) * scale))
+        if len(points) < 6:
+            continue
+        # the ring's box against the texture's, not its corners against it: a texture in the
+        # middle of a large zone has no corner of the ring anywhere near it, and asking whether
+        # one is there gave a zone bigger than a texture its four corners coloured and nothing
+        # else -- a checkerboard inside what the user drew as one area (2026-09-23)
+        px, py = points[0::2], points[1::2]
+        reaches = (
+            min(px) <= TEXTURE_PX + scale
+            and max(px) >= -scale
+            and min(py) <= TEXTURE_PX + scale
+            and max(py) >= -scale
+        )
+        if reaches:
             out.append((tuple(points), float(brightness), float(contrast), float(saturation)))
-    return tuple(out)
+    # in the order they are applied, which is the page's reversed: it paints the last first so
+    # that the first ends on top (decision M4, ``map-zones.md``), and applying them in document
+    # order made the last one win instead
+    return tuple(reversed(out))
 
 
 def _tile_textures(ctx: RunContext) -> None:
@@ -1041,18 +1094,21 @@ def _tile_textures(ctx: RunContext) -> None:
         if not report.ok:
             missing = report.missing
             codes = sorted({str((o.error or {}).get("code", "?")) for o in missing})
+            answered = _what_the_source_answered(missing)
             raise OsxpError(
                 "TEX_MISSING",
                 context={
                     "count": len(missing),
                     "tile": tile.name,
                     "codes": codes,
+                    "answered": answered,
                     "textures": [o.name for o in missing][:20],
                 },
                 message=f"{len(missing)} of {len(group)} {code}{zl} texture(s) of tile "
-                f"{tile.name} could not be built ({', '.join(codes)}); nothing is committed.",
-                remedy="Run osxp build again: only the missing tiles are downloaded and only the "
-                f"missing textures encoded. Details: {env.logs}.",
+                f"{tile.name} could not be built ({', '.join(codes)})"
+                + (f"; the source answered {', '.join(answered)}" if answered else "")
+                + "; nothing is committed.",
+                remedy=_missing_textures_remedy(codes, env.logs),
             )
         outcomes.extend(
             {
@@ -1359,6 +1415,10 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
     The overlays of the relief that were *asked for*: the pack adds the relief really read, and the
     page tells the two apart (a lidar asked for where it never flew, 2026-09-20). The hand-made
     patches by name, and each zone that reached the tile by its level and its source.
+
+    And who the imagery belongs to. A pack is a folder people pass around, and it carried the
+    code of the source and nothing else: EOX's Sentinel-2 is CC BY-NC-SA, so its credit has to
+    travel with the tile (found in review, 2026-09-23).
     """
     asked = [x for x in str(spec.config.get("custom_dem") or "").split(";")[1:] if x]
     zones = []
@@ -1366,12 +1426,18 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
         with contextlib.suppress(TypeError, ValueError):
             _coords, zl, provider = entry
             zones.append({"zl": int(zl), "provider": str(provider or spec.provider)})
-    return {
+    facts: dict[str, Any] = {
         "version": __version__,
         "relief_asked": asked,
         "patches": patch_names(spec.patches_dir, spec.tile),
         "zones": zones,
     }
+    source = load_registry().get(spec.provider)
+    if source is not None and source.attribution:
+        facts["imagery_credit"] = source.attribution
+    if source is not None and source.licence:
+        facts["imagery_licence"] = source.licence
+    return facts
 
 
 def _pack_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
@@ -1532,7 +1598,11 @@ def _vectors_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]
     """Bind the layer builders and the cancellation token for ``orthostudio.vectors@1``."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        job = VectorsJob(build_layers=build_layers, cancel=cast(Any, ctx.cancel_event))
+        job = VectorsJob(
+            build_layers=build_layers,
+            cancel=cast(Any, ctx.cancel_event),
+            progress=ctx.progress,
+        )
         with _active_env(env, ctx), vectors_job(job):
             return run_p0_rule(ctx)
 
@@ -1616,6 +1686,34 @@ and never reached the scenery, so a tile of the store built then must be built a
 without overlays keeps the key it has always had, and nothing else is rebuilt."""
 
 
+@lru_cache(maxsize=512)
+def _contents_of(path_s: str, _size: int, _mtime_ns: int) -> str:
+    """``name:digest`` of a file, remembered while its size and date stay as they are."""
+    return f"{Path(path_s).name}:{digest_file(path_s)[:16]}"
+
+
+def _by_its_contents(path: Path) -> str | None:
+    """What marks a file of the user's own in the key, or ``None`` when it cannot be read.
+
+    Its size and the time it was last written used to be the mark, and a file restored from a
+    backup, copied with ``cp -R`` or brought back by a cloud folder keeps every byte and changes
+    its date: the relief, the mesh, the DSF and every texture were built again for nothing, which
+    is hours (found in review, 2026-09-23). It also missed the other way, since a tool that keeps
+    timestamps could change a file without changing the mark.
+
+    The size and the date are still used, as the key of a small cache, so one file that covers
+    five hundred squares is read once. Reading is not the cost: 25 MB measured in 2 ms.
+    """
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    try:
+        return _contents_of(str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
+
+
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     """``params`` with the mark of what the overlays of a composite bring to this square.
 
@@ -1626,21 +1724,28 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     version of itself leaves its path as it was, and the tile would come back from the store
     unchanged. An overlay that is a source rather than a folder (Canada's lidar over Copernicus)
     is named as it is: what it holds for a square is the service's business, not ours.
+
+    The same goes for the **base**, and it did not: *My own elevation file* in Settings puts the
+    file there rather than among the overlays, and nothing weighed it. The path is all that
+    reached the key, so a user who corrected his file, rebuilt and installed flew the relief he
+    had replaced, with nothing to tell him (found in review, 2026-09-23). A base that names a
+    source is still left out, so nobody using one is rebuilt for this.
     """
     marks = []
-    for part in [p for p in str(params.get("custom_dem") or "").split(";")[1:] if p]:
-        folder = Path(part)
-        if not folder.is_dir():
-            marks.append(part)  # a source (Canada's lidar) or a file, named as it is
+    for index, part in enumerate(p for p in str(params.get("custom_dem") or "").split(";") if p):
+        path = Path(part)
+        if path.is_dir():
+            own = cell_file_in_folder(path, spec.tile.lat, spec.tile.lon)
+            mark = None if own is None else _by_its_contents(own)
+        elif path.is_file():
+            mark = _by_its_contents(path)
+        elif index == 0:
+            continue  # a source named as the base (COP30, the X-Plane relief): not ours to weigh
+        else:
+            marks.append(part)  # a source named as an overlay (Canada's lidar), named as it is
             continue
-        own = cell_file_in_folder(folder, spec.tile.lat, spec.tile.lon)
-        if own is None:
-            continue  # the folder holds nothing for this square, so it changes no key
-        try:
-            stat = own.stat()
-        except OSError:
-            continue
-        marks.append(f"{own.name}:{stat.st_size}:{stat.st_mtime_ns}")
+        if mark is not None:
+            marks.append(mark)
     if marks:
         params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
     return params
@@ -1868,7 +1973,7 @@ def declare(
             tex_params,
             {"dsf": dsf, "masks": masks},
             kind="net",
-            ram_mb=max(500, 250 * env.workers),
+            ram_mb=max(500, TEXTURE_RAM_MB * env.workers),
             run=_env_run(env),
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
@@ -2434,7 +2539,55 @@ def _verify_effects(
             )
             repaired.append("install")
         installed = True
+    if not installed:
+        _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
+
+
+def _what_the_source_answered(missing: Sequence[Any]) -> list[str]:
+    """What came back for the chunks of the textures that could not be built, commonest first.
+
+    The tile's failure named ``IMG_TILE_MISSING`` and the textures, and nothing said what the
+    server had answered: a user whose source served two textures and then refused four thousand
+    chunks in eight seconds read that, a traceback, and had to find the textures report on his
+    disk to learn the rest (2026-09-24). The reason and the status are what tells a caller being
+    blocked from an address that is wrong.
+    """
+    seen: Counter[str] = Counter()
+    for outcome in missing:
+        context = (outcome.error or {}).get("context") or {}
+        for failure in context.get("failures") or []:
+            reason = str(failure.get("code") or "?")
+            status = failure.get("status")
+            seen[f"{reason} {status}" if status else reason] += 1
+    return [f"{name} x{n}" if n > 1 else name for name, n in seen.most_common(4)]
+
+
+def _remember_the_tile(
+    spec: BuildSpec, pack_dir: Path, manifest: PackManifest, env: BuildEnv
+) -> None:
+    """Put a tile that was built but not installed into the library.
+
+    Only ``install_receipt`` ever wrote a row, so a user who built without installing saw "No
+    tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
+    tile(s) -- 4.09 GB", with nothing offering to install them and nothing saying where they
+    were (found in review, 2026-09-23).
+
+    Here rather than in the pack rule, because the rule is cached: a tile whose pack was already
+    in the store would never have been recorded. ``keep_built_by`` so that a tile imported from
+    Ortho4XP and rebuilt here does not lose what it is.
+    """
+    # a build is not lost over its library row
+    with contextlib.suppress(Exception), Library(env.library_path) as lib:
+        lib.register(
+            spec.tile,
+            manifest.provider,
+            manifest.zl,
+            pack_dir,
+            "osxp",
+            manifest.keys,
+            keep_built_by=True,
+        )
 
 
 def _learn_texture_cost(scheduler: Scheduler, graphs: Sequence[TileNodes], col: _Collector) -> None:

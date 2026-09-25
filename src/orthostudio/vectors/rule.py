@@ -181,6 +181,10 @@ class LayerRequest:
     """Wave 2: the airport artefact. Always ``None`` while ``orthostudio.airports`` does
     not exist."""
     cancel: threading.Event | None = None
+    progress: Callable[[float, str], None] | None = None
+    """Where each family says it has started. This step said nothing at all, from beginning to
+    end: a user on Linux watched his build sit at 28 % of the Data stage for eight minutes and
+    had no way to tell a long road network from a program that had stopped (2026-09-23)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +224,8 @@ class VectorsJob:
 
     build_layers: Callable[[LayerRequest], LayerBuild] | None = None
     cancel: threading.Event | None = None
+    progress: Callable[[float, str], None] | None = None
+    """``progress(fraction, message)``, as the OSM and imagery jobs take."""
     check_planar: bool = False
     """Audit the planarity of the result (about one second on a real tile) into stats.json."""
 
@@ -289,6 +295,23 @@ def _optional(inputs: dict[str, ResolvedInput] | None, name: str) -> Path | None
     return resolved.path
 
 
+def _teller(job: VectorsJob, tile: TileRef) -> Callable[[float, str], None]:
+    """Where this step says what it is doing, and nothing at all when nobody listens.
+
+    It used to say nothing to anybody: no progress, no line, from the first second to the last.
+    A step that takes eight minutes on a dense tile at road level 5 is then indistinguishable
+    from one that has stopped, which is what a user reported (2026-09-23).
+    """
+
+    def say(fraction: float, what: str) -> None:
+        if job.progress is None:
+            return
+        with contextlib.suppress(Exception):  # telling must never stop a build
+            job.progress(fraction, f"{tile.name}: {what}")
+
+    return say
+
+
 def run_vectors(ctx: RunContext) -> AssembledVectors:
     """Body of the rule, callable without a ``Store`` (which is what the tests do)."""
     params = ctx.params
@@ -297,6 +320,8 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
     job = _job()
     if job.cancel is not None and job.cancel.is_set():
         raise OsxpError("SYS_CANCELLED", context={"stage": "vectors", "tile": tile.name})
+    say = _teller(job, tile)
+    say(0.02, "reading the relief")
     dem = _elevation(ctx.input_path("dem"), tile)
     request = LayerRequest(
         tile=tile,
@@ -306,14 +331,17 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
         patches=_optional(dict(ctx.inputs), "patches"),
         airports=_optional(dict(ctx.inputs), "airports"),
         cancel=job.cancel,
+        progress=job.progress,
     )
     build = _resolve_builder(job)(request)
+    say(0.80, "putting the shapes together")
     assembly = replace(params.assembly(), check_planar=job.check_planar, cancel=job.cancel)
     # ``build.dem`` and not ``dem``: the airports smoothed the raster, and the orthophoto
     # grid, the gluing border and the default seed must sample the same one every family
     # sampled (``airports-integration.md`` R-I1).
     assembled = assemble_vectors(build.layers, tile, build.dem, assembly)
     assembled.stats.update(layer_stats(build))
+    say(0.95, "writing what the relief must follow")
     assembled.write(ctx.out)
     write_elevation_and_airports(ctx.out, tile, build)
     return assembled
