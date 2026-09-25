@@ -599,3 +599,23 @@ def test_a_slow_file_arrives_and_a_silent_one_does_not(monkeypatch) -> None:  # 
     # curl measures the speed once a second, so silence is noticed a second or two after the
     # limit, and long before the nine seconds the server would have taken to hang up
     assert took < 6.0, f"the silent one was waited for {took:.1f} s"
+
+
+def test_a_library_down_all_build_long_is_asked_twice(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Once, then once more two minutes later in case it was a hiccup (review F7), then never
+    again this build: it was asked every two minutes, and a silent one cost 35 s each time."""
+    from orthostudio.sources import library as lib
+
+    clock = [1000.0]
+    monkeypatch.setattr(lib.time, "monotonic", lambda: clock[0])
+    asked: list[str] = []
+
+    def silent(urls: Sequence[str], headers: Mapping[str, str]) -> list[tuple[int, bytes]]:
+        asked.extend(urls)
+        return [(0, b"") for _ in urls]  # what the client returns when nothing came for 30 s
+
+    src = LibrarySource("https://example.invalid/data", TOKEN, fetch=silent)
+    for _ in range(10):  # a three-hour build: ten tiles, twenty minutes apart
+        assert src.layers(TILE, SPECS) is None
+        clock[0] += 1200.0
+    assert len(asked) == 2

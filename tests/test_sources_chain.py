@@ -11,6 +11,8 @@ from __future__ import annotations
 import bz2
 from pathlib import Path
 
+import pytest
+
 from orthostudio.model import TileRef
 from orthostudio.sources.chain import Chain, FolderSource
 from orthostudio.sources.osm import LAYERS, OsmNode, OsmSnapshot, OsmWay, SnapshotStore, layers_for
@@ -195,15 +197,36 @@ def test_the_build_asks_the_prepared_sources_before_overpass(tmp_path: Path) -> 
     assert said and "from library" in said[0]  # the page says where it came from
 
 
-def test_asking_for_fresh_data_goes_straight_to_the_live_servers() -> None:
+def _live(monkeypatch) -> list[str]:  # type: ignore[no-untyped-def]
+    """Overpass, faked where a build reaches it: what answered every tile until 0.1.16.
+
+    Not ``OsmJob(fetch=...)``: an injected fetch answers before the chain is asked at all, so
+    the tests written that way proved nothing about the chain (found in review, 2026-09-25).
+    """
+    from dataclasses import replace
+
+    from orthostudio.sources.osm import OverpassClient
+
+    asked: list[str] = []
+
+    def fetch_tile_sync(self, tile, **kw):  # type: ignore[no-untyped-def]
+        asked.append(tile.name)
+        return {s.name: replace(_snapshot(s.name), mirror="overpass:test") for s in kw["layers"]}
+
+    monkeypatch.setattr(OverpassClient, "fetch_tile_sync", fetch_tile_sync)
+    return asked
+
+
+def test_asking_for_fresh_data_goes_straight_to_the_live_servers(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """A prepared library is weeks behind by design, which is the whole reason for pressing
     Refresh (``osm-prepared.md`` 1)."""
     from orthostudio.pipeline.native import OsmJob
 
+    live = _live(monkeypatch)
     library = _Fake("library", {s.name: _snapshot(s.name) for s in SPECS})
-    job = OsmJob(chain=Chain([library]), refresh=True, fetch=lambda tile, specs: {"live": True})
-    assert job.run(TILE, SPECS) == {"live": True}
-    assert library.asked == 0
+    got = OsmJob(chain=Chain([library]), refresh=True).run(TILE, SPECS)
+    assert {s.mirror for s in got.values()} == {"overpass:test"}
+    assert library.asked == 0 and live == [TILE.name]
 
 
 def test_a_build_without_prepared_sources_behaves_as_before() -> None:
@@ -380,3 +403,111 @@ def test_the_small_roads_of_an_ortho4xp_folder_are_not_read(tmp_path: Path, monk
     assert "small_roads" not in read, "refused before it is even read"
     # and the levels that never ask for it are served from the same folder, as before
     assert FolderSource(root).layers(TILE, layers_for(1)) is not None
+
+
+# -- when the library fails, the public servers answer, as in 0.1.15 (2026-09-25) ---------------
+
+
+def _failing_library(tmp_path: Path, how: str):  # type: ignore[no-untyped-def]
+    """A sound library holding the tile, reached through a server that fails in one way."""
+    from orthostudio.sources.library import LibrarySource
+    from test_sources_library import TOKEN, _library
+
+    served = _library(tmp_path / "lib")
+    asked: list[str] = []
+
+    def answer(path: str) -> tuple[int, bytes]:
+        body = served.get(path, b"")
+        manifest = path == "manifest.json"
+        if how == "down":
+            raise ConnectionError("no route to host")
+        if how == "silent":
+            return 0, b""  # what the client returns when nothing came for 30 s
+        if how == "server error":
+            return 502, b"bad gateway"
+        if how == "key refused":
+            return 403, b"forbidden"
+        if how == "not a library":
+            return (200, b"<html>maintenance</html>") if manifest else (404, b"")
+        if how == "tile missing":
+            return (200, body) if manifest else (404, b"")
+        if how == "tile damaged":
+            return (200, body) if manifest else (200, body[:-8] + b"\0" * 8)
+        raise AssertionError(how)
+
+    def fetch(urls, headers):  # type: ignore[no-untyped-def]
+        paths = [url.split("/data/", 1)[1] for url in urls]
+        asked.extend(paths)
+        return [answer(path) for path in paths]
+
+    library = LibrarySource("https://library.invalid/data", TOKEN, fetch=fetch)
+    library.asked = asked  # type: ignore[attr-defined]
+    return library
+
+
+FAILURES = [
+    "down",
+    "silent",
+    "server error",
+    "key refused",
+    "not a library",
+    "tile missing",
+    "tile damaged",
+]
+
+
+@pytest.mark.parametrize("how", FAILURES)
+def test_whatever_the_library_does_wrong_the_tile_comes_from_overpass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """A server down, silent, in error or refusing the key, a manifest that is not one, a file
+    missing or damaged: the tile gets its map data from the public servers, as in 0.1.15."""
+    from orthostudio.pipeline.native import OsmJob
+
+    live = _live(monkeypatch)
+    library = _failing_library(tmp_path, how)
+    job = OsmJob(chain=Chain([library]))
+    for n in range(3):  # three tiles of one build
+        got = job.run(TILE, SPECS)
+        assert {s.mirror for s in got.values()} == {"overpass:test"}, (how, n)
+    assert live == [TILE.name] * 3
+    # and a library that failed is not asked all build long: a manifest is asked for once, and a
+    # library refusing the tiles it lists is set aside after two
+    assert library.asked.count("manifest.json") == 1, how  # type: ignore[attr-defined]
+    assert len(library.asked) <= 1 + 2 * len(SPECS), how  # type: ignore[attr-defined]
+
+
+def test_even_a_fault_in_the_chain_itself_leaves_the_tile_to_overpass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The chain catches what a source does wrong; nothing caught a bug of ours in the chain."""
+    from orthostudio.pipeline.native import OsmJob
+
+    live = _live(monkeypatch)
+
+    class Broken(Chain):
+        def layers(self, tile, specs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("a bug of ours")
+
+    got = OsmJob(chain=Broken([])).run(TILE, SPECS)
+    assert {s.mirror for s in got.values()} == {"overpass:test"} and live == [TILE.name]
+
+
+def test_a_library_nobody_answers_at_costs_a_tile_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Through the real client: an address where nothing listens is given up at once."""
+    import socket
+    import time
+
+    from orthostudio.pipeline.native import OsmJob
+    from orthostudio.sources.library import LibrarySource
+    from test_sources_library import TOKEN
+
+    live = _live(monkeypatch)
+    with socket.socket() as probe:  # a port that was free a moment ago: nobody listens there
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    library = LibrarySource(f"http://127.0.0.1:{port}/data", TOKEN)
+    started = time.monotonic()
+    got = OsmJob(chain=Chain([library])).run(TILE, SPECS)
+    assert {s.mirror for s in got.values()} == {"overpass:test"} and live == [TILE.name]
+    assert time.monotonic() - started < 5.0

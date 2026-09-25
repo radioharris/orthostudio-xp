@@ -147,12 +147,30 @@ two minutes of waiting, twice, in silence.
 Not answering is not the same as refusing the key. A 401 or a 403 closes the library for the run,
 because the same key will be refused at the next tile; anything else, a 502, a cut connection, a
 restart of the server, is waited out for two minutes and asked again. One hiccup used to close the
-library for the whole job, so a build begun at the wrong second read no prepared tile at all.
+library for the whole job, so a build begun at the wrong second read no prepared tile at all. A
+second failure does close it for the build: a library down all build long was asked every two
+minutes, and a silent one cost 35 s each time, some fifty minutes of a three-hour build
+(2026-09-25).
 
 While a library cannot be reached, the copy of its manifest kept on disk stands in for it. It was
 written at every build and read back at none. A copy is only ever a list of what to ask for, and
 every file it names is still checked against the digest it names, so an old copy costs a refusal,
 never a wrong tile.
+
+**Whatever goes wrong, the tile goes to the public servers, as every tile did in 0.1.15.** Each
+case below is a test through the path a build takes (`test_sources_chain.py`), with Overpass faked
+where a build reaches it:
+
+| What goes wrong | What the build does | What it costs |
+|---|---|---|
+| the server is down, or nobody listens at the address | the tile from Overpass; the manifest is asked once more two minutes later, the copy kept on disk standing in meanwhile, then the library is set aside for the build | 5 s at most, twice in a build |
+| the server says nothing for 30 s | the same | 35 s at most, twice in a build |
+| the manifest answers a 5xx, or is not one of ours | the same; a document that is not ours closes the library at once | nothing more |
+| the key is refused (401, 403) | every tile of the build from Overpass; `OSM_LIBRARY_KEY_REFUSED` said once | nothing more |
+| a tile the manifest lists is missing, damaged, of the wrong size or digest | that tile from Overpass; after two such tiles the library is set aside for the build, `OSM_PREPARED_SET_ASIDE` said once | one request per tile, two tiles at most |
+| a tile the library does not hold | that tile from Overpass | nothing |
+| a fault in our own code reading the library | the tile from Overpass: `OsmJob` catches whatever the chain raises | nothing |
+| the user asked for fresh data | the library is not asked at all | nothing |
 
 A source's own timeouts never touch the Overpass politeness rules, which stay as `osm-source.md`
 describes them.

@@ -87,6 +87,9 @@ its manifest 28 MB; a limit on the whole transfer, 35 s as it first was, failed 
 6.5 Mbit/s, and two such failures set the library aside for the whole build (2026-09-25)."""
 INDEX_TTL_S = 6 * 3600.0
 """How long the manifest kept on disk stands before it is asked for again."""
+GIVE_UP_AFTER = 2
+"""Manifests that could not be read before the library is set aside for the build, as the chain
+sets aside a library that failed two tiles (``chain.GIVE_UP_AFTER``)."""
 RETRY_PAUSE_S = 120.0
 """After a manifest that answered badly -- a 502, a cut connection -- how long before it is asked
 again. One hiccup used to close the library for the whole job, all forty tiles of it, so a build
@@ -269,6 +272,8 @@ class LibrarySource:
         """The door answered 401 or 403: the key is wrong and asking again will not change it."""
         self._retry_at = 0.0
         """A failure that may pass: nothing is asked of the library before this moment."""
+        self._manifest_failures = 0
+        """Manifests that could not be read in this build: at two, the library is set aside."""
         self._refused: set[str] = set()
         """Layers this library was not baked for: said once, not once per tile."""
 
@@ -295,8 +300,7 @@ class LibrarySource:
             ((status, body),) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], self._headers())
         except Exception as exc:  # a library must never stop a build
             log.info("OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, exc)
-            self._retry_at = time.monotonic() + RETRY_PAUSE_S
-            return self._kept()
+            return self._unanswered()
         if status in (401, 403):
             # the door, not a fault: the token is wrong or absent, and it will be at the next
             # tile as well
@@ -307,8 +311,7 @@ class LibrarySource:
             # a restart, a 502, a connection cut: the same question in two minutes may well be
             # answered, and until then the copy on disk is better than nothing (review F7)
             log.info("OSM_LIBRARY_UNREACHABLE: the %s answered HTTP %s", self.name, status)
-            self._retry_at = time.monotonic() + RETRY_PAUSE_S
-            return self._kept()
+            return self._unanswered()
         index = parse_manifest(body)
         if index is None:
             log.warning("%s: manifest is not a %s document", self.name, FORMAT)
@@ -318,6 +321,23 @@ class LibrarySource:
         if self.cache_dir is not None:
             self._keep(body)
         return index
+
+    def _unanswered(self) -> LibraryIndex | None:
+        """A manifest that could not be read: asked again in two minutes, once.
+
+        One hiccup must not close the library for the whole job (review F7), so the first failure
+        waits two minutes and asks again. But a library down for the whole build was asked every
+        two minutes all build long, and a silent one cost 35 s each time, some fifty minutes of
+        a three-hour build: at the second failure it is set aside, as a library that fails two
+        tiles is (``osm-prepared.md`` 4, 2026-09-25).
+        """
+        self._manifest_failures += 1
+        if self._manifest_failures >= GIVE_UP_AFTER:
+            log.info("%s: no manifest twice; set aside for the rest of this build", self.name)
+            self._closed = True
+        else:
+            self._retry_at = time.monotonic() + RETRY_PAUSE_S
+        return self._kept()
 
     def _adopt(self, index: LibraryIndex) -> None:
         self.index = index
