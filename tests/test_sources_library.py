@@ -99,7 +99,7 @@ def _source(served: Mapping[str, bytes], token: str = TOKEN, **kw: object) -> Li
     return src
 
 
-# -- reading ----------------------------------------------------------------------------------
+# -- reading ---------------------------------------------------------------------------------------
 
 
 def test_the_library_gives_the_layers_of_a_tile_it_holds(tmp_path: Path) -> None:
@@ -123,7 +123,7 @@ def test_a_tile_the_library_does_not_hold_is_not_asked_for(tmp_path: Path) -> No
     assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]
 
 
-# -- the door ---------------------------------------------------------------------------------
+# -- the door --------------------------------------------------------------------------------------
 
 
 def test_without_the_key_the_library_gives_nothing(tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ def test_a_wrong_key_is_not_retried_all_build_long(tmp_path: Path) -> None:
     assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]
 
 
-# -- refusing ---------------------------------------------------------------------------------
+# -- refusing --------------------------------------------------------------------------------------
 
 
 def test_a_file_that_is_not_the_one_announced_is_refused(tmp_path: Path) -> None:
@@ -197,7 +197,7 @@ def test_a_foreign_manifest_is_not_read(tmp_path: Path) -> None:
     assert parse_manifest(b"{}") is None and parse_manifest(b"not json") is None
 
 
-# -- in the chain -----------------------------------------------------------------------------
+# -- in the chain ----------------------------------------------------------------------------------
 
 
 def test_the_chain_falls_through_to_the_next_source(tmp_path: Path) -> None:
@@ -210,7 +210,7 @@ def test_the_chain_falls_through_to_the_next_source(tmp_path: Path) -> None:
     assert got.notes == ("library: not held",)
 
 
-# -- the key a release carries ----------------------------------------------------------------
+# -- the key a release carries ---------------------------------------------------------------------
 
 
 def test_the_address_and_key_are_read_in_three_steps(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -244,7 +244,7 @@ def test_this_repository_carries_no_key() -> None:
     assert shipped_library() == ("", "")
 
 
-# -- what a production library does wrong -----------------------------------------------------
+# -- what a production library does wrong ----------------------------------------------------------
 
 
 def test_a_library_that_announces_what_it_does_not_hold_is_set_aside(tmp_path: Path) -> None:
@@ -280,7 +280,7 @@ def test_layers_baked_for_another_road_level_are_refused(tmp_path: Path) -> None
     )
 
 
-# -- a library that is briefly unreachable (review F6, F7) --------------------------------------
+# -- a library that is briefly unreachable (review F6, F7) -----------------------------------------
 
 
 class _Flaky:
@@ -344,7 +344,7 @@ def test_an_unreachable_library_goes_by_the_copy_it_kept(tmp_path: Path) -> None
     assert down.layers(TILE, SPECS) is not None, "the tile is on their server, the list on ours"
 
 
-# -- what a library may not make us do (review F2, F4) ------------------------------------------
+# -- what a library may not make us do (review F2, F4) ---------------------------------------------
 
 
 def test_a_library_baked_for_other_layers_costs_no_download(tmp_path: Path) -> None:
@@ -380,7 +380,7 @@ def test_a_small_file_that_unpacks_to_a_huge_one_is_refused() -> None:
     assert unpack(blob) == b"x" * 50_000_000  # under the real cap it is read as usual
 
 
-# -- emptiness that is the truth ----------------------------------------------------------------
+# -- emptiness that is the truth -------------------------------------------------------------------
 
 
 def _empty(layer: str) -> OsmSnapshot:
@@ -538,3 +538,56 @@ def test_a_library_baked_below_the_level_asked_is_still_refused(tmp_path: Path) 
     src = _source(served)
     assert src.layers(TILE, layers_for(5)) is None
     assert src.server.asked == ["manifest.json"]  # type: ignore[attr-defined]
+
+
+# -- slow is not silent (2026-09-25) ---------------------------------------------------------------
+
+
+def test_a_slow_file_arrives_and_a_silent_one_does_not(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A file of the planet library weighs up to 61 MB (Tokyo's small roads) and its manifest
+    28 MB. A limit on the whole transfer, 35 s as it first was, failed them below 14 and 6.5
+    Mbit/s, and two such failures set the library aside for the whole build. What a hang looks
+    like is silence, not slowness: the limit is on the time without a byte."""
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from orthostudio.sources import library as lib
+
+    monkeypatch.setattr(lib, "CONNECT_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(lib, "LIBRARY_TIMEOUT_S", 1.0)  # 1.5 s in all, as the first client had it
+    body = bytes(range(256)) * 60  # 15 kB, sent over three seconds
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.path == "/trickle":  # slow and steady: 30 pieces, 0.1 s apart
+                for i in range(30):
+                    self.wfile.write(body[i * 512 : (i + 1) * 512])
+                    self.wfile.flush()
+                    time.sleep(0.1)
+            else:  # the headers, then nothing: a server that has stopped answering
+                self.wfile.flush()
+                time.sleep(9.0)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        started = time.monotonic()
+        slow, silent = lib._http_get_many([f"{base}/trickle", f"{base}/stall"], {})
+        took = time.monotonic() - started
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert slow == (200, body), "a file still arriving is waited for"
+    assert silent[0] == 0 and silent[1] == b"", "a silent one is given up"
+    # curl measures the speed once a second, so silence is noticed a second or two after the
+    # limit, and long before the nine seconds the server would have taken to hang up
+    assert took < 6.0, f"the silent one was waited for {took:.1f} s"

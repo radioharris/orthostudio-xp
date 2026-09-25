@@ -59,7 +59,7 @@ def _our_library(root: Path, *, layers: list[str] | None = None) -> Path:
     return root
 
 
-# -- reading ----------------------------------------------------------------------------------
+# -- reading ---------------------------------------------------------------------------------------
 
 
 def test_a_folder_in_our_own_format_is_read(tmp_path: Path) -> None:
@@ -93,7 +93,7 @@ def test_a_flat_folder_is_read_too(tmp_path: Path) -> None:
     assert FolderSource(root).layers(TILE, SPECS) is not None
 
 
-# -- refusing ---------------------------------------------------------------------------------
+# -- refusing --------------------------------------------------------------------------------------
 
 
 def test_a_folder_short_of_one_layer_gives_none(tmp_path: Path) -> None:
@@ -131,7 +131,7 @@ def test_an_unreadable_file_does_not_stop_the_build(tmp_path: Path) -> None:
     assert FolderSource(root).layers(TILE, SPECS) is None
 
 
-# -- the chain --------------------------------------------------------------------------------
+# -- the chain -------------------------------------------------------------------------------------
 
 
 class _Fake:
@@ -178,7 +178,7 @@ def test_nothing_prepared_leaves_the_tile_to_overpass() -> None:
     assert not got and got.source == "" and got.snapshots is None
 
 
-# -- inside a build ---------------------------------------------------------------------------
+# -- inside a build --------------------------------------------------------------------------------
 
 
 def test_the_build_asks_the_prepared_sources_before_overpass(tmp_path: Path) -> None:
@@ -213,7 +213,7 @@ def test_a_build_without_prepared_sources_behaves_as_before() -> None:
     assert job.run(TILE, SPECS) == {"live": True}
 
 
-# -- the whole workflow, failure by failure ---------------------------------------------------
+# -- the whole workflow, failure by failure --------------------------------------------------------
 
 
 def test_every_step_of_the_chain_falls_through_to_the_next(tmp_path: Path) -> None:
@@ -249,7 +249,7 @@ def test_a_source_that_answers_nothing_never_stops_the_build() -> None:
         assert got and got.source == "overpass"
 
 
-# -- what the user is told (review M4) ----------------------------------------------------------
+# -- what the user is told (review M4) -------------------------------------------------------------
 
 
 def test_a_setting_that_names_nothing_is_said_before_the_build(tmp_path: Path) -> None:
@@ -340,7 +340,7 @@ def test_a_copied_library_keeps_its_proofs_in_a_folder(tmp_path: Path) -> None:
     assert got is not None and got["big_roads"].is_empty
 
 
-# -- road levels in a folder (2026-09-25) ---------------------------------------------------------
+# -- road levels in a folder (2026-09-25) ----------------------------------------------------------
 
 
 def test_a_copied_level_5_library_answers_a_lower_level_in_a_folder(tmp_path: Path) -> None:

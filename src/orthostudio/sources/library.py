@@ -76,9 +76,15 @@ this one. Whoever runs their own server fills the two settings instead.
 """
 MANIFEST_NAME = "manifest.json"
 FORMAT = "osxp-baked-1"
+CONNECT_TIMEOUT_S = 5.0
+"""What reaching the server may take."""
 LIBRARY_TIMEOUT_S = 30.0
-"""What one request may take. A library exists to save seconds; one that hangs would cost them,
-so a slow answer is a failure and the chain moves on (``osm-prepared.md`` 4)."""
+"""How long a request may go without receiving a byte. A library exists to save seconds; one that
+hangs would cost them, so silence is a failure and the chain moves on (``osm-prepared.md`` 4).
+
+Silence, not slowness. A file of the planet library weighs up to 61 MB (Tokyo's small roads) and
+its manifest 28 MB; a limit on the whole transfer, 35 s as it first was, failed them below 14 and
+6.5 Mbit/s, and two such failures set the library aside for the whole build (2026-09-25)."""
 INDEX_TTL_S = 6 * 3600.0
 """How long the manifest kept on disk stands before it is asked for again."""
 RETRY_PAUSE_S = 120.0
@@ -147,14 +153,29 @@ def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[tupl
         async with AsyncSession(verify=ca_bundle(), http_version="v1") as session:
 
             async def one(url: str) -> tuple[int, bytes]:
+                # Streamed, because that is where curl_cffi puts the read limit on silence (no
+                # byte for LIBRARY_TIMEOUT_S) instead of on the whole transfer: a 61 MB file of
+                # the planet library arrives however slow the line, as long as it arrives
+                name = url.rsplit("/", 1)[-1]
                 try:
-                    answer = await session.get(
-                        url, headers=dict(headers), timeout=(5.0, LIBRARY_TIMEOUT_S)
-                    )
-                except Exception as exc:  # unreachable, refused, cut: the chain moves on
-                    log.info("library: %s could not be read (%s)", url.rsplit("/", 1)[-1], exc)
+                    async with session.stream(
+                        "GET",
+                        url,
+                        headers=dict(headers),
+                        timeout=(CONNECT_TIMEOUT_S, LIBRARY_TIMEOUT_S),
+                    ) as answer:
+                        pieces: list[bytes] = []
+                        size = 0
+                        async for piece in answer.aiter_content():
+                            size += len(piece)
+                            if size > MAX_LAYER_BYTES:  # longer than any file of ours: not read
+                                log.info("library: %s is longer than any file of ours", name)
+                                return 0, b""
+                            pieces.append(piece)
+                        return int(answer.status_code), b"".join(pieces)
+                except Exception as exc:  # unreachable, refused, cut, silent: the chain moves on
+                    log.info("library: %s could not be read (%s)", name, exc)
                     return 0, b""
-                return int(answer.status_code), bytes(answer.content)
 
             return list(await asyncio.gather(*(one(url) for url in urls)))
 

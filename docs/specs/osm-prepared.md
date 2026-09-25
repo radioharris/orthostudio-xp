@@ -133,7 +133,11 @@ frame that declares its own size is unpacked to that size whatever the limit say
 ## 4. A library must not slow a build down
 
 A prepared source exists to save seconds; one that hangs would cost them. Therefore, per request:
-5 s to connect, 30 s to read, one attempt, then the next source. And per build: **two failures of
+5 s to connect, 30 s without receiving a byte, one attempt, then the next source. The limit is on
+silence, not on the whole transfer: a file of the planet library weighs up to 61 MB (Tokyo's small
+roads) and its manifest 28 MB, and a limit of 35 s on the whole of it, as the client first had,
+failed them below 14 and 6.5 Mbit/s and set the library aside after two tiles (2026-09-25). A body
+longer than the largest file the manifest may announce is not read to its end. And per build: **two failures of
 the same library and it is set aside for the rest of the run**, in the manner of the Overpass
 breaker but simpler, since a library holds no quota and needs no cooldown. A source that refuses a
 tile it announced must say so by raising, or the chain can never count it: xpconnect used to
