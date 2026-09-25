@@ -68,7 +68,12 @@ their textures through hard links (`link` above), so a folder is accepted only o
 them (`check_data_dir`: exFAT and FAT32 would write each texture three times) and all these roots
 live on the same disk; nothing is moved when the setting changes. A data folder that is not there
 (its disk unplugged) is never created: `require_data_root` refuses a plan, a job and `BuildEnv`'s
-default work folder with `CFG_DATA_DIR_MISSING`, and the map proxy serves without its cache.
+default work folder with `CFG_DATA_DIR_MISSING`, and the map proxy serves without its cache. The
+setting is read again from `config.toml` when the file changes; a read that fails (the file in
+use for a moment, an antivirus scanning it) keeps the folder read before and is tried again at
+the next use. It used to be remembered as "no folder chosen", which sent the data to
+`$OSXP_HOME` until the next save; that matches what a user saw after an update, a save of the
+folder setting it right (2026-09-25).
 
 `TexturesReport`: one `TextureOutcome` per job (`status` in `built | hit | incomplete |
 failed | cancelled`, `fmt`, key, digest, fetched / cached / placeholder / 404 / error /
