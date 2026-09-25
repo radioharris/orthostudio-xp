@@ -136,6 +136,9 @@ def test_the_photo_look_and_the_decals_on_the_sea_reach_the_build() -> None:
     assert to_build_overrides(unused)["photo_saturation"] == PHOTO_LOOKS["softer"][2]
     assert to_build_overrides(Settings())["decal_on_sea"] is False
     assert to_build_overrides(Settings(expert=Expert(decal_on_sea=True)))["decal_on_sea"] is True
+    assert to_build_overrides(Settings())["decal"] == "maquify_2_green_key.dcl"
+    grass = Settings(expert=Expert(decal="grass_and_stony_dirt_1.dcl"))
+    assert to_build_overrides(grass)["decal"] == "grass_and_stony_dirt_1.dcl"
 
 
 def test_where_map_data_comes_from_reaches_a_build() -> None:

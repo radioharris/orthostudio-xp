@@ -13,10 +13,13 @@ from orthostudio.textures.ter import (
     border_mask_filename,
     load_center_size,
     sea_kind,
+    takes_decal,
     ter_center,
     ter_filename,
+    ter_kind,
     ter_text,
     texture_dds_name,
+    with_decal,
 )
 
 T = TextureId(til_x=8416, til_y=5984, zl=14, provider="BI")
@@ -147,3 +150,34 @@ def test_five_decimals_and_int_truncation() -> None:
     line = _lines(ter_text(t, TerKind.LAND, lat_med=lat, lon_med=lon, params=DEFAULTS))[4]
     assert line == f"LOAD_CENTER {lat:.5f} {lon:.5f} {load_center_size(lat, 14)} 4096"
     assert lon == -180.0 + 8 * 360 / 2**14
+
+
+def test_the_pack_writes_the_decal_where_ter_text_would() -> None:
+    """The pack adds the decal line to terrain files written without it, as setdecal rewrites a
+    built tile (its author asked for the choice, 2026-09-25): for every kind, with and without the
+    sea, the result is the very file ``ter_text`` writes with decals on."""
+    lat, lon = CENTER
+    for kind in TerKind:
+        assert ter_kind(ter_filename(T, kind)) is kind
+        plain = ter_text(T, kind, lat_med=lat, lon_med=lon, params=DEFAULTS)
+        assert "DECAL_LIB" not in plain and with_decal(plain, "") == plain
+        for on_sea in (False, True):
+            on = TerParams(use_decal_on_terrain=True, decal_on_sea=on_sea)
+            decal = "maquify_2_green_key.dcl" if takes_decal(kind, on_sea=on_sea) else ""
+            written = ter_text(T, kind, lat_med=lat, lon_med=lon, params=on)
+            assert with_decal(plain, decal) == written, (kind, on_sea)
+            assert with_decal(written, "") == plain  # off again: the line goes
+    assert not takes_decal(TerKind.WATER_OVERLAY, on_sea=True)  # inland water never has one
+
+
+def test_with_decal_replaces_the_line_and_keeps_every_byte_else() -> None:
+    lat, lon = CENTER
+    on = TerParams(use_decal_on_terrain=True)
+    land = ter_text(T, TerKind.LAND, lat_med=lat, lon_med=lon, params=on)
+    grass = with_decal(land, "grass_and_stony_dirt_1.dcl")
+    assert grass == land.replace("maquify_2_green_key.dcl", "grass_and_stony_dirt_1.dcl")
+    assert with_decal(grass, "grass_and_stony_dirt_1.dcl") == grass
+    crlf = land.replace("\n", "\r\n")  # a file edited on Windows keeps its line ends
+    assert with_decal(crlf, "") == ter_text(
+        T, TerKind.LAND, lat_med=lat, lon_med=lon, params=DEFAULTS
+    ).replace("\n", "\r\n")

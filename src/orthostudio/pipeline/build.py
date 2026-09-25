@@ -33,6 +33,7 @@ import blake3
 from pydantic import Field
 
 from orthostudio import __version__
+from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
 from orthostudio.dem.sources import (
@@ -269,6 +270,31 @@ def _check_overlay_setting(name: str, value: Any) -> Any:
             message=f"{name}={value!r}: {exc}",
         ) from None
     return getattr(checked, name)
+
+
+NO_DECALS = {"use_decal_on_terrain": False, "decal_on_sea": False}
+"""What the DSF and the textures are given of the decals: nothing. The pack writes them
+(``PackParams.decal``), so that turning them on or off, or choosing another, assembles the pack
+alone, as setdecal rewrites a tile already built (2026-09-26). ``False`` is what every tile built
+without decals has in its keys, so none of them moves; one built with them is built again once."""
+
+
+def _pack_decals(cfg: Mapping[str, Any]) -> tuple[str, bool]:
+    """The decal the pack writes and whether on the sea too (``PackParams``); ``("", False)`` off.
+
+    A name X-Plane 12 does not have (``--set decal=...``) is refused before anything is built.
+    """
+    if not cfg.get("use_decal_on_terrain"):
+        return "", False
+    decal = str(cfg.get("decal") or DEFAULT_DECAL)
+    if decal not in DECALS:
+        raise OsxpError(
+            "CFG_VALUE_INVALID",
+            context={"name": "decal", "value": decal, "type": "-", "range": "-"},
+            message=f"decal={decal!r} is not one of the decals X-Plane 12 ships.",
+            remedy="Choose one in Settings, For experts, Light and ground.",
+        )
+    return decal, bool(cfg.get("decal_on_sea"))
 
 
 @dataclass(slots=True)
@@ -1948,7 +1974,7 @@ def declare(
                     run=_env_run(env),
                 )
         dsf_params = TileDsfParams.subset_of(
-            {**cfg, "tile": name, "creation_agent": spec.creation_agent}
+            {**cfg, **NO_DECALS, "tile": name, "creation_agent": spec.creation_agent}
         )
         needs_apt = dsf_params.cover_airports_with_highres in ("True", "ICAO")
         dsf = reg.node(
@@ -1965,7 +1991,13 @@ def declare(
         )
         encoder, encoder_version = resolve_encoder(spec.encoder)
         tex_params = TileTexturesParams.subset_of(
-            {**cfg, "tile": name, "encoder": encoder, "encoder_version": encoder_version}
+            {
+                **cfg,
+                **NO_DECALS,
+                "tile": name,
+                "encoder": encoder,
+                "encoder_version": encoder_version,
+            }
         )
         textures = reg.node(
             f"{name}/{spec.level}/textures",
@@ -1978,6 +2010,7 @@ def declare(
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
         _refuse_pack_dir_conflict(pack_dirs, spec, out_dir, dsf, textures)
+        decal, decal_on_sea = _pack_decals(cfg)
         pack = reg.node(
             f"{name}/{spec.level}/pack",
             TILE_PACK,
@@ -1988,6 +2021,8 @@ def declare(
                 out_dir=out_dir,
                 link=spec.link,
                 tile_cfg=tile_cfg_text(cfg),
+                decal=decal,
+                decal_on_sea=decal_on_sea,
             ),
             {"dsf": dsf, "textures": textures, "overlay": overlay},
             kind="io",
@@ -2523,6 +2558,8 @@ def _verify_effects(
             },
             # the facts of the pack it replaces: a repair puts back what was, it decides nothing
             built=manifest.built or None,
+            decal=cast(PackParams, nodes.pack.params).decal,
+            decal_on_sea=cast(PackParams, nodes.pack.params).decal_on_sea,
         )
         repaired.append("pack")
     installed = False

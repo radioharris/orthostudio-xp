@@ -6,9 +6,10 @@ import json
 
 from orthostudio.config import LEVELS, Settings, leaf_properties, settings_schema
 from orthostudio.config.hints import ORTHO4XP_HINTS
+from orthostudio.decals import DECALS
 from orthostudio.tilefiles import TILE_PARAMETERS
 
-EXPECTED_LEAVES = {"essential": 17, "advanced": 14, "expert": 28}
+EXPECTED_LEAVES = {"essential": 17, "advanced": 14, "expert": 29}
 ENUMS = {
     "essential.airports.mode": ["off", "on", "icao", "existing"],
     "essential.coast_transition.profile": ["sand", "rocks", "3steps"],
@@ -29,6 +30,7 @@ ENUMS = {
     "advanced.sea_smoothing_mode": ["zero", "mean", "none"],
     "expert.mesh_zl": [16, 17, 18, 19, 20],
     "expert.mask_zl": [14, 15, 16],
+    "expert.decal": list(DECALS),
 }
 
 
@@ -44,7 +46,7 @@ def test_schema_is_inlined_json_and_lists_levels() -> None:
 
 def test_every_leaf_has_unit_hint_level_ortho4xp_default() -> None:
     leaves = leaf_properties()
-    assert len(leaves) == sum(EXPECTED_LEAVES.values()) == 59
+    assert len(leaves) == sum(EXPECTED_LEAVES.values()) == 60
     for level, count in EXPECTED_LEAVES.items():
         assert sum(1 for k in leaves if k.startswith(level + ".")) == count
     for path, prop in leaves.items():

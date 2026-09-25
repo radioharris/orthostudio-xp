@@ -32,6 +32,7 @@ class DsfParams(RuleParams):          # frozen pydantic, subset_of(cfg) works
     water_tech: Literal["XP11 + bathy", "XP12"] = "XP11 + bathy"
     ratio_bathy: float = 1.0 ; ratio_water: float = 0.25 ; normal_map_strength: float = 1.0
     terrain_casts_shadows: bool = True ; use_decal_on_terrain: bool = False ; decal_on_sea: bool = False
+    # a build gives both decal fields False: the pack writes the decals (pipeline-build.md 2.3)
     imprint_masks_to_dds: bool = True ; use_masks_for_inland: bool = False
     mesh_zl: int = 19 ; mask_zl: int = 14 ; default_zl: int = 16 ; default_website: str = "BI"
     zone_list: list[Zone] = [] ; cover_airports_with_highres: str = "False"

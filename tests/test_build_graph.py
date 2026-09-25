@@ -211,6 +211,36 @@ def test_pack_params_carry_the_tile_cfg(tmp_path: Path, env: BuildEnv) -> None:
     assert "ovl_exclude" not in params.tile_cfg
 
 
+def test_the_decals_reach_the_pack_alone(tmp_path: Path, env: BuildEnv) -> None:
+    """Turning decals on or off, putting them on the sea, or choosing another changes the pack's
+    key and nothing upstream: the DSF and the textures hit and the terrain files alone are written
+    again, setdecal's way (its author asked, 2026-09-25). A tile without decals keeps every key."""
+
+    def keys(**config: object) -> dict[str, dict]:
+        (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+        return {role: g.by_role[role].params.canonical() for role in ("dsf", "textures", "pack")}
+
+    plain = keys()
+    on = keys(use_decal_on_terrain=True)
+    grass = keys(use_decal_on_terrain=True, decal="grass_and_stony_dirt_1.dcl")
+    sea = keys(use_decal_on_terrain=True, decal_on_sea=True)
+    for variant in (on, grass, sea):
+        assert variant["dsf"] == plain["dsf"] and variant["textures"] == plain["textures"]
+    assert plain["dsf"]["use_decal_on_terrain"] is False  # what every tile built before holds
+    assert "decal" not in plain["pack"] and "decal_on_sea" not in plain["pack"]
+    assert on["pack"]["decal"] == "maquify_2_green_key.dcl" and "decal_on_sea" not in on["pack"]
+    assert grass["pack"]["decal"] == "grass_and_stony_dirt_1.dcl"
+    assert sea["pack"]["decal_on_sea"] is True
+    moved = {
+        k for k in set(on["pack"]) | set(plain["pack"]) if on["pack"].get(k) != plain["pack"].get(k)
+    }
+    assert moved == {"decal", "tile_cfg"}  # tile_settings.cfg says use_decal_on_terrain=True
+    assert keys(decal="grass_and_stony_dirt_1.dcl", decal_on_sea=True) == plain  # off: nothing
+    with pytest.raises(OsxpError) as exc:
+        keys(use_decal_on_terrain=True, decal="rail_dry_grd.dcl")  # setdecal's, gone from 12.4.4
+    assert exc.value.code == "CFG_VALUE_INVALID"
+
+
 def test_batch_fields_must_agree(tmp_path: Path) -> None:
     """``BuildEnv.create`` refuses specs that disagree on what is resolved once per batch."""
     a = _spec(tmp_path)

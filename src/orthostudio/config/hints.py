@@ -178,7 +178,9 @@ ORTHO4XP_HINTS: dict[str, str] = {
         "only meaningful if scenery shadows are opted for in the X-Plane graphics settings."
     ),
     "use_decal_on_terrain": (
-        "Terrain files will contain the decal maquify_2_green_key.dcl, which X-Plane 12 ships. "
+        "Terrain files will contain one of the decals X-Plane 12 ships, the one the setting "
+        "decal names (maquify_2_green_key.dcl, Ortho4XP's, unless another is chosen); on a tile "
+        "already built, turning it on or off rewrites its terrain files and nothing else. "
         "The effect is noticeable at very low altitude and helps to overcome the "
         "orthophoto blur at such levels. Can be slightly distracting at higher altitude."
     ),

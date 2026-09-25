@@ -129,7 +129,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 24
+API_LEVEL = 25
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -154,7 +154,8 @@ that holds it), ``GET /api/simbrief`` and ``tiles_zl`` in a plan or a job (the d
 squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the list), 23 =
 ``GET /api/flightplan/simbrief`` (the plan's line and its squares, computed here) in place of
 ``GET /api/simbrief``, 24 = ``POST /api/flightplan`` (a route the page kept, its squares computed
-again) and ``radius_km`` in a flight plan. A page
+again) and ``radius_km`` in a flight plan, 25 = the setting ``expert.decal`` (an older engine
+refuses a settings document that holds it). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""

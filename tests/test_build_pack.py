@@ -284,3 +284,89 @@ def test_a_pack_records_the_colours_it_was_built_with(tmp_path: Path) -> None:
     common = {"tile": "+46+006", "provider": "BI", "zl": 16, "out_dir": "/tmp/out"}
     assert "photo_brightness" not in PackParams(**common).canonical()
     assert "photo_brightness" in PackParams(**common, photo_saturation=-0.3).canonical()
+
+
+def test_the_pack_writes_the_decals(tmp_path: Path) -> None:
+    """The DSF step writes the terrain files without decals and the pack writes them: turning
+    them on or off, or choosing another, rewrites the terrain files alone while the DSF and the
+    textures stay the links they are (what setdecal does to a built tile; its author asked for the
+    choice, 2026-09-25). Land always, the sea with ``decal_on_sea``, inland water never."""
+    from orthostudio.imagery.grid import TextureId
+    from orthostudio.textures.ter import TerKind, TerParams, ter_center, ter_filename, ter_text
+
+    tex = TextureId(til_x=8416, til_y=5984, zl=14, provider="BI")
+    lat, lon = ter_center(tex)
+    dsf_dir, tex_dir, out = tmp_path / "dsf", tmp_path / "tex", tmp_path / "out"
+    (dsf_dir / "terrain").mkdir(parents=True)
+    (tex_dir / "textures").mkdir(parents=True)
+    (dsf_dir / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
+    (tex_dir / "textures" / "5984_8416_BI14.dds").write_bytes(b"DDS " + b"\1" * 64)
+    kinds = (TerKind.LAND, TerKind.WATER_OVERLAY, TerKind.SEA_OVERLAY)
+    for kind in kinds:
+        text = ter_text(tex, kind, lat_med=lat, lon_med=lon, params=TerParams())
+        (dsf_dir / "terrain" / ter_filename(tex, kind)).write_text(text, newline="\n")
+    pack = out / pack_dir_name(T)
+
+    def write(decal: str = "", on_sea: bool = False) -> int:
+        return write_pack(
+            out, T, dsf_dir=dsf_dir, textures_dir=tex_dir, overlay_file=None,
+            decal=decal, decal_on_sea=on_sea,
+        ).changed  # fmt: skip
+
+    def decals() -> dict[TerKind, str]:
+        out_ = {}
+        for kind in kinds:
+            text = (pack / "terrain" / ter_filename(tex, kind)).read_text()
+            out_[kind] = next((ln for ln in text.splitlines() if ln.startswith("DECAL_LIB")), "")
+        return out_
+
+    grass = "DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl"
+    write()
+    for kind in kinds:  # no decal: the DSF step's files as they are
+        name = ter_filename(tex, kind)
+        assert (pack / "terrain" / name).read_bytes() == (dsf_dir / "terrain" / name).read_bytes()
+    assert write("grass_and_stony_dirt_1.dcl") == 1  # the land's file, nothing else
+    assert decals() == {TerKind.LAND: grass, TerKind.WATER_OVERLAY: "", TerKind.SEA_OVERLAY: ""}
+    assert write("grass_and_stony_dirt_1.dcl", on_sea=True) == 1  # the sea's
+    assert decals()[TerKind.SEA_OVERLAY] == grass and decals()[TerKind.WATER_OVERLAY] == ""
+    assert write("maquify_2_green_key.dcl", on_sea=True) == 2
+    assert os.path.samefile(pack / T.dsf_relpath, dsf_dir / f"{T.name}.dsf")
+    assert os.path.samefile(
+        pack / "textures" / "5984_8416_BI14.dds", tex_dir / "textures" / "5984_8416_BI14.dds"
+    )
+    assert write("maquify_2_green_key.dcl", on_sea=True) == 0
+    assert write() == 2  # off: both lines go, and the files are the DSF step's again
+    for kind in kinds:
+        name = ter_filename(tex, kind)
+        assert (pack / "terrain" / name).read_bytes() == (dsf_dir / "terrain" / name).read_bytes()
+
+
+def test_a_pack_holding_another_assembly_is_not_intact(
+    tmp_path: Path, artefacts: dict[str, Path]
+) -> None:
+    """Coming back to a state built before finds its receipt in the store, and counting the files
+    said the pack still held it: the tile kept the photos of the colours built last (on 0.1.17,
+    plain colours after a brightness of 0.1, 2026-09-26). Intact now means the pack holds that
+    very assembly: the manifest written in it is the receipt's."""
+    out = tmp_path / "out"
+    files = write_pack(
+        out, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"],
+        overlay_file=artefacts["overlay"],
+    )  # fmt: skip
+    counts = {
+        "dsf": T.dsf_relpath.as_posix(), "dsf_size": files.dsf_size, "textures": 1,
+        "terrain": 2, "overlay": "", "cfg": "",
+    }  # fmt: skip
+
+    def manifest(textures_key: str) -> PackManifest:
+        entry = ArtefactEntry(textures_key, "f" * 64, "tile.textures@3")
+        return PackManifest(T.name, "BI", 14, {"textures": entry}, dict(counts))
+
+    plain, brighter = manifest("a" * 64), manifest("b" * 64)
+    on_disk = files.pack_dir / "orthostudio.toml"
+    on_disk.write_text(plain.to_toml())
+    assert pack_is_intact(files.pack_dir, plain)
+    on_disk.write_text(brighter.to_toml())  # another build of the tile since, same file counts
+    assert pack_is_intact(files.pack_dir, brighter) and not pack_is_intact(files.pack_dir, plain)
+    on_disk.write_text("not a manifest [")
+    assert not pack_is_intact(files.pack_dir, brighter)

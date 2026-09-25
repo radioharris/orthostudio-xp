@@ -56,6 +56,7 @@ _SAME: tuple[tuple[str, str], ...] = (
     # OrthoStudio XP's own, under its own name: Ortho4XP has no such setting, and the
     # switch reached nothing before this line (found on 2026-09-18, shipped in 0.1.3).
     ("decal_on_sea", "decal_on_sea"),
+    ("decal", "decal"),
     ("ovl_exclude_pol", "ovl_exclude_pol"),
     ("ovl_exclude_net", "ovl_exclude_net"),
 )

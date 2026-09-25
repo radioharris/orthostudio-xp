@@ -71,6 +71,11 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   The map is repainted with the very colours the build will encode, so you judge them on the ground
   you fly over rather than on a thumbnail. It is applied when the textures are encoded, so changing
   your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
+- **The grain of the ground, and which one.** Under "For experts", decals lay a fine grain of
+  grass, shrubs or stones over the photos, which hides their blur on the ground and on short final.
+  The decal is yours to choose among X-Plane 12's (the list the setdecal tool offers), Ortho4XP's
+  by default. Turning the grain on or off, or choosing another decal, writes a tile's terrain files
+  again **and nothing else**, in about a second.
 - **The squares of a flight plan.** Read your last SimBrief plan: the map draws the route, and
   brings you back to it with *Recenter*, and the squares within a radius of it are chosen at once, the departure and arrival at step 1's level and
   the route at ZL14, each with its own list, the route's squares optional, and the squares X-Plane

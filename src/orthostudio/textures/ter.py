@@ -11,6 +11,7 @@ import enum
 from dataclasses import dataclass
 from typing import Literal
 
+from orthostudio.decals import DEFAULT_DECAL, decal_lib
 from orthostudio.imagery.grid import TextureId, texture_name, tile_to_wgs84, webmercator_pixel_size
 
 __all__ = [
@@ -22,13 +23,17 @@ __all__ = [
     "border_mask_filename",
     "load_center_size",
     "sea_kind",
+    "takes_decal",
     "ter_center",
     "ter_filename",
+    "ter_kind",
     "ter_text",
     "texture_dds_name",
+    "with_decal",
 ]
 
-DECAL_LIB = "lib/g10/decals/maquify_2_green_key.dcl"
+DECAL_LIB = decal_lib(DEFAULT_DECAL)
+"""Ortho4XP's decal, the one ``ter_text`` writes when asked (its byte fidelity)."""
 WATER_TRANSITION_PNG = "water_transition.png"
 """Copied by Ortho4XP from ``Utils/`` into ``textures/`` whenever an inland-water overlay exists."""
 TEST_TEXTURE = "test_texture.dds"
@@ -142,12 +147,50 @@ def ter_text(
         border = 4096 // 2 ** (t.zl - params.mask_zl)
         lines.append(f"LOAD_CENTER_BORDER {lat_med:.5f} {lon_med:.5f} {size} {border}")
         lines.append(f"BORDER_TEX ../textures/{border_mask_filename(t)}")
-    # Ortho4XP writes the decal on land and sea alike (tri_type != 1), despite its own comment. A
-    # user asked for the land alone (2026-09-17): the sea has it only with ``decal_on_sea``, and
-    # inland water never, as in Ortho4XP.
-    if params.use_decal_on_terrain and (tri == 0 or (tri == 2 and params.decal_on_sea)):
+    if params.use_decal_on_terrain and takes_decal(kind, on_sea=params.decal_on_sea):
         lines.append(f"DECAL_LIB {DECAL_LIB}")
     lines.append("WET" if kind.is_water else "NO_ALPHA")
     if kind.is_water or not params.terrain_casts_shadows:
         lines.append("NO_SHADOW")
     return "\n".join(lines) + "\n"
+
+
+def takes_decal(kind: TerKind, *, on_sea: bool) -> bool:
+    """Whether a terrain of ``kind`` gets the decal: land always, the sea with ``on_sea``.
+
+    Ortho4XP writes the decal on land and sea alike (``tri_type != 1``), despite its own comment.
+    A user asked for the land alone (2026-09-17): the sea has it only with ``decal_on_sea``, and
+    inland water never, as in Ortho4XP.
+    """
+    return kind.tri_type == 0 or (kind.tri_type == 2 and on_sea)
+
+
+def ter_kind(filename: str) -> TerKind:
+    """The kind a terrain file's name says (the suffix ``ter_filename`` gives it).
+
+    A texture's name ends with its level's digits, so no suffix is ever mistaken for part of it.
+    """
+    stem = filename.removesuffix(".ter")
+    for kind in sorted(TerKind, key=lambda k: -len(k.suffix)):
+        if kind.suffix and stem.endswith(kind.suffix):
+            return kind
+    return TerKind.LAND
+
+
+def with_decal(text: str, decal: str) -> str:
+    """``text`` of a terrain file naming ``decal`` on its ``DECAL_LIB`` line, or none when empty.
+
+    The line goes where ``ter_text`` puts it, before ``WET`` or ``NO_ALPHA``, and any line already
+    there goes. The pack writes the decals this way, so that turning them on or off or choosing
+    another rewrites its terrain files alone, never the DSF nor the textures: what setdecal does
+    to a tile already built (its author asked for the choice, 2026-09-25). A file that needs no
+    change comes back byte for byte.
+    """
+    lines = [ln for ln in text.splitlines(keepends=True) if not ln.startswith("DECAL_LIB ")]
+    if decal:
+        at = next(
+            (i for i, ln in enumerate(lines) if ln.rstrip("\r\n") in ("WET", "NO_ALPHA")),
+            len(lines),
+        )
+        lines.insert(at, f"DECAL_LIB {decal_lib(decal)}\n")
+    return "".join(lines)
