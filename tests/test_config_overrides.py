@@ -151,4 +151,5 @@ def test_where_map_data_comes_from_reaches_a_build() -> None:
     mine = to_build_overrides(Settings.model_validate({"expert": {"osm_folder": "/tmp/osm"}}))
     sources = sources_from_settings(mine)
     assert [type(s).__name__ for s in sources] == ["FolderSource"]
-    assert isinstance(sources[0], FolderSource) and str(sources[0].root) == "/tmp/osm"
+    # compared as paths: Windows writes this one back with backslashes
+    assert isinstance(sources[0], FolderSource) and sources[0].root == Path("/tmp/osm")
