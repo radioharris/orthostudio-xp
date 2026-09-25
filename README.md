@@ -288,8 +288,9 @@ macOS, Windows and Linux binaries are in `native/dsftool/`, with their checksums
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under the Open
 Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and water of each
-tile from its own library, cut from OpenStreetMap's planet file by the tools in `tools/bake/`, or
-from public Overpass servers when the library cannot answer, to shape its terrain. Like the
+tile from its own library, cut from OpenStreetMap's planet file (how:
+`docs/specs/osm-prepared.md`, section 8), or from public Overpass servers when the library cannot
+answer, to shape its terrain. Like the
 imagery, the tiles built from them are for your own use.
 
 The page's street map comes from [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, data ©

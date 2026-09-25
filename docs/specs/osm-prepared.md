@@ -240,61 +240,19 @@ A user pointing `osm_folder` at what they already downloaded is the request that
 Nothing here reaches the network in the tests: the sources take their transport injected, as
 `OverpassClient` already does.
 
-## 8. Publishing a library, and checking the one that is published
+## 8. How the library is made, and what travels
 
-Published with `tools/bake/publish.py`, which is three steps and one rule each:
-
-1. **the files first, and alone.** A client reads the manifest and then asks for what it names; a
-   manifest that arrives first announces files that are not there yet, and every tile of every
-   build in progress pays four refused requests for it. `rsync -a --delete` does exactly the wrong
-   thing, since `manifest.json` sorts before `osm/`.
-2. **the manifest it replaces is kept** under the name of its bake, and `publish.py --rollback
-   <bake>` puts it back. That serves the old library again only for the files the new bake left
-   as they were: a rebake writes its files at the same paths, so every file it changed is
-   refused against the old manifest, and after a new extract that is nearly all of them. A real
-   rollback needs the old files kept, which publishing beside the served folder gives (below).
-3. **the manifest last, and by rename**, so a client reads the old one or the new one and never
-   half of either.
-
-Never bake into the served tree: the bake rewrites its manifest after every block, and a client
-that reads a half-written one sets the library aside for its whole job.
-
-**What this order does not fix.** A tile the new bake changed is overwritten while the old manifest
-is still being served, so for as long as the upload takes, roughly half an hour for ten gigabytes,
-a build that reads that tile finds a file whose digest is not the one announced. It refuses it,
-sets the library aside for that job and downloads live, which is the safe end of the wrong: nobody
-gets bad data, some builds get slow ones. Making it airtight means publishing each bake in its own
-directory and swapping the pointer, which is worth doing the day the library is updated often
-enough for anyone to notice.
-
-**How the planet library was put in place (2026-09-25).** By hand, the airtight way:
-`publish.py` sent it to `osxp-data-next`, beside the served `osxp-data`, files first and manifest
-last (97 860 files, 44.9 GB, 1 h 19); every file was then checked on the server against the
-manifest (none missing, none of another size, none extra); then the served folder's contents were
-moved to `osxp-data-old` and the new ones into it. The web server mounts `osxp-data` itself, so
-the change was seen at once, with no restart and nothing else on the machine touched, and moving
-the two back is the rollback. Read afterwards through the client and the key a build uses: the
-manifest in 1.8 s, twelve tiles at random whole at road levels 1, 3 and 5, and the heaviest two
-whole at level 5 (Paris, 47 MB in 6.3 s; Tokyo, 74 MB in 10.9 s); without the key, or with a
-wrong one, nothing but a 403. Folding that into `publish.py` is the change to make before the
-next bake.
+The library is made from OpenStreetMap's planet file (the date is in its manifest). Only the
+elements the layers of `orthostudio.sources.osm` ask for at road level 5 are kept, and each
+one-degree square gets what lies in it or crosses it, cut with a margin of 0.1 degree, in the
+format this document describes. The tools that make and publish it are not part of this
+repository (2026-09-25).
 
 **The manifest travels compressed.** The site compresses what it sends (`encode zstd gzip` in its
 block of the web server's configuration, 2026-09-25): the manifest, 28.4 MB of JSON, arrives as
 3.4 MB, and the client, which asks for it, unpacks it without a word. The layer files are zstd
 already and pass as they are, at exactly the size the manifest announces. A build downloads the
 manifest once, at its first tile that needs map data.
-
-A library replaced in place keeps whatever the last one left, and what the manifest does not name
-is never served but still takes room and still hides what the server holds: `publish.py --prune`
-lists it and, with `--yes`, removes it. That is a separate step because it ends the rollback.
-
-Everything else proves a tile in the folder it was baked into, and between that folder and a user
-there is an upload that can stop half way, a key that can be revoked, a server that can serve a
-stale copy. So `tools/bake/verify_library.py` reads the published library with the same client and
-the same key a build uses, takes a sample of tiles and says how many come back whole, and with
-`--compare` weighs one of them against the live servers as the map stood when the extract was cut.
-The key is read from a file and never printed, logged or put in a URL.
 
 Every request of a build also names the program and its version (`OrthoStudio-XP/0.1.17 (+...)`,
 the user agent the app sends everywhere), which is what the server's log shows: which version asks

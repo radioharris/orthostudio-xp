@@ -1,6 +1,6 @@
 """The baked library a build reads over HTTP, and the key it opens with.
 
-Specification: ``docs/specs/osm-prepared.md``. The files are what ``tools/bake`` writes: one
+Specification: ``docs/specs/osm-prepared.md``. The files are those of the baked library: one
 snapshot per tile and per layer, under ``osm/<cell>/<tile>/<tile>_<layer>.osm.json.zst``, listed
 by a ``manifest.json`` that gives each one its size and the content digest of its layer.
 
