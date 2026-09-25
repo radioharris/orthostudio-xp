@@ -4798,6 +4798,22 @@ def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
         assert "map.base_outside" in tables[lang] and "map.base_failed" in tables[lang]
 
 
+def test_the_map_asks_a_users_source_under_its_address() -> None:
+    """A browser keeps a map tile a day under its URL, and the URL named only the source's code:
+    after a source of the user's changed address, the map showed the old address's images for the
+    tiles already seen. The engine names the folder of such a source (``cache``, its address in
+    it); the page ends its tile URLs with it, and a shipped source's URLs stay as they were, so
+    the browser keeps every tile it already has."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    version = code[code.index("function tileVersion(code)") : code.index("function providerLayer(")]
+    assert (
+        'p && p.cache && p.cache !== p.code ? `?v=${encodeURIComponent(p.cache)}` : ""' in version
+    )
+    urls = [line for line in code.splitlines() if "`api/map/${encodeURIComponent(code)}/" in line]
+    assert len(urls) == 2, "the base layer and the colours"
+    assert all("${tileVersion(code)}`" in line for line in urls), "the same URL for both"
+
+
 def test_the_map_stops_where_every_build_stops() -> None:
     """The level lists, the zones and the engine's map route all stop at ZL19; the map went one
     step further, to 20, where every source was only enlarged (a user, 2026-09-25)."""

@@ -116,6 +116,11 @@ one once (reproduced through `build_textures`, 2026-09-25). Its codes are letter
 so no such folder is a shipped code. The images of an address no longer used stay until *Free
 space* or `osxp clean --images` empties the cache. The chunk store (`ChunkStore(folders=...)`), the
 parent cache, the estimate and the map route all read the folder from this one function.
+`GET /api/providers` gives it as `cache` for a source of the user's only, and the page ends its map
+tile URLs with it (`?v=`, map.js `tileVersion`): a browser keeps a map tile a day under its URL,
+which named only the code, so the map went on showing the old address's images for the tiles
+already seen. A shipped source's documents and URLs are as before, and so is every tile the
+browser already keeps.
 
 ### Initial content (decided by the user; 12 providers, and EOX since 0.1.14)
 

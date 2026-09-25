@@ -1787,9 +1787,20 @@ export function createPlanMap(ctx) {
         input, h("span", { class: "legend-swatch legend-street", "aria-hidden": "true" }), text));
   }
 
+  /** What the URL of a source's map tile ends with: nothing for a shipped source, and for a
+   * source of the user's the folder its images are kept in (`cache`, the engine's `cache_name`,
+   * which carries its address). A browser keeps a map tile a day under its URL, and the URL
+   * named only the source's code: after its address was changed, the map went on showing the old
+   * address's images for tiles already seen. The base layer and the colours ask the same URL, so
+   * the colours still find the tile the map has. */
+  function tileVersion(code) {
+    const p = providerByCode(code);
+    return p && p.cache && p.cache !== p.code ? `?v=${encodeURIComponent(p.cache)}` : "";
+  }
+
   function providerLayer(code) {
     const p = providerByCode(code);
-    const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}`, {
+    const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}${tileVersion(code)}`, {
       attribution: escapeHtml(p?.attribution || p?.name || code),
       maxZoom: MAX_NATIVE_ZOOM,
       maxNativeZoom: nativeCeiling(p),
@@ -1879,7 +1890,7 @@ export function createPlanMap(ctx) {
         const image = new Image();
         image.onload = () => paint(image);
         image.onerror = () => done(null, canvas);  // no imagery there: nothing to repaint
-        image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}`;
+        image.src = `api/map/${encodeURIComponent(code)}/${coords.z}/${coords.x}/${coords.y}${tileVersion(code)}`;
         return canvas;
       },
     });

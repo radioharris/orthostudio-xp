@@ -68,6 +68,7 @@ from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
     Provider,
+    cache_name,
     is_placeholder,
     load_registry,
     new_source_code,
@@ -546,6 +547,9 @@ def provider_json(p: Provider) -> dict[str, Any]:
     }
     if p.custom:
         doc["url_template"] = p.url_template  # shown in the list of the sources the user added
+        # the folder its images are kept in, which carries its address: the page puts it in the
+        # URL of its map tiles, which a browser keeps a day (see map.js tileVersion)
+        doc["cache"] = cache_name(p)
     return doc
 
 

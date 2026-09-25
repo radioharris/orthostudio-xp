@@ -451,7 +451,9 @@ class MapProxy:
     def cache_path(self, p: Provider, z: int, x: int, y: int) -> Path | None:
         """``<cache root>/<folder>/<z>/<x>/<y>`` (the marker adds ``.none``), ``None`` without a
         cache root. The folder is the code, and for a source of the user's its address as well
-        (``cache_name``), so the map never shows the images of an address it no longer has."""
+        (``cache_name``), so the engine never serves the images of an address the source no longer
+        has; the page puts the same folder in its tile URLs for the browser's copy
+        (``tileVersion``)."""
         root = self._cache_root()
         return None if root is None else root / cache_name(p) / str(z) / str(x) / str(y)
 
