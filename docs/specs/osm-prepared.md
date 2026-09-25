@@ -275,6 +275,12 @@ whole at level 5 (Paris, 47 MB in 6.3 s; Tokyo, 74 MB in 10.9 s); without the ke
 wrong one, nothing but a 403. Folding that into `publish.py` is the change to make before the
 next bake.
 
+**The manifest travels compressed.** The site compresses what it sends (`encode zstd gzip` in its
+block of the web server's configuration, 2026-09-25): the manifest, 28.4 MB of JSON, arrives as
+3.4 MB, and the client, which asks for it, unpacks it without a word. The layer files are zstd
+already and pass as they are, at exactly the size the manifest announces. A build downloads the
+manifest once, at its first tile that needs map data.
+
 A library replaced in place keeps whatever the last one left, and what the manifest does not name
 is never served but still takes room and still hides what the server holds: `publish.py --prune`
 lists it and, with `--yes`, removes it. That is a separate step because it ends the rollback.
