@@ -129,8 +129,9 @@ The pack and install nodes have effects outside the store (the output directory,
 Scenery`, `scenery_packs.ini`, the library). Their artefacts are small receipts keyed on the
 inputs and the destination, so that an unchanged build hits and costs nothing. Because a hit
 executes nothing, `build_tiles` **verifies the effects after the run**: a pack whose manifest
-hit but whose directory lacks a listed file is re-assembled (hard links, under a second), an
-install whose link or `scenery_packs.ini` line is gone is redone. Both operations are
+hit but whose directory lacks a listed file, or holds another assembly (the manifest written in
+it is not the receipt's: the tile was built since with other colours, say), is re-assembled (hard
+links, under a second), an install whose link or `scenery_packs.ini` line is gone is redone. Both operations are
 idempotent.
 
 `tile.pack` writes, atomically per file (`fsutil`):

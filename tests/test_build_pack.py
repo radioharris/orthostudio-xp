@@ -329,3 +329,34 @@ def test_the_pack_names_the_decal_chosen(tmp_path: Path) -> None:
     assert write("grass_and_stony_dirt_1.dcl") == 0
     assert write("") == 1  # back to Ortho4XP's
     assert (pack / "terrain" / land).read_bytes() == (dsf_dir / "terrain" / land).read_bytes()
+
+
+def test_a_pack_holding_another_assembly_is_not_intact(
+    tmp_path: Path, artefacts: dict[str, Path]
+) -> None:
+    """Coming back to a state built before finds its receipt in the store, and counting the files
+    said the pack still held it: the tile kept the photos of the colours built last (on 0.1.17,
+    plain colours after a brightness of 0.1, 2026-09-26). Intact now means the pack holds that
+    very assembly: the manifest written in it is the receipt's."""
+    out = tmp_path / "out"
+    files = write_pack(
+        out, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"],
+        overlay_file=artefacts["overlay"],
+    )  # fmt: skip
+    counts = {
+        "dsf": T.dsf_relpath.as_posix(), "dsf_size": files.dsf_size, "textures": 1,
+        "terrain": 2, "overlay": "", "cfg": "",
+    }  # fmt: skip
+
+    def manifest(textures_key: str) -> PackManifest:
+        entry = ArtefactEntry(textures_key, "f" * 64, "tile.textures@3")
+        return PackManifest(T.name, "BI", 14, {"textures": entry}, dict(counts))
+
+    plain, brighter = manifest("a" * 64), manifest("b" * 64)
+    on_disk = files.pack_dir / "orthostudio.toml"
+    on_disk.write_text(plain.to_toml())
+    assert pack_is_intact(files.pack_dir, plain)
+    on_disk.write_text(brighter.to_toml())  # another build of the tile since, same file counts
+    assert pack_is_intact(files.pack_dir, brighter) and not pack_is_intact(files.pack_dir, plain)
+    on_disk.write_text("not a manifest [")
+    assert not pack_is_intact(files.pack_dir, brighter)

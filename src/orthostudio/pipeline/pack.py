@@ -477,7 +477,13 @@ def _count(directory: Path, pattern: str) -> int:
 
 
 def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
-    """True when the pack directory still holds what the manifest lists (sizes and counts)."""
+    """True when the pack directory still holds what the manifest lists (sizes and counts), and
+    holds that very assembly: the manifest written in it is this one.
+
+    Another build of the tile writes its own there, and counting files did not see it: coming back
+    to a state built before finds its receipt in the store, so colours taken back to earlier ones
+    kept the photos of the later (0.1.17, found 2026-09-26).
+    """
     pack_dir = Path(pack_dir)
     files = manifest.files
     dsf = pack_dir / str(files.get("dsf", ""))
@@ -497,7 +503,10 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
     cfg = files.get("cfg")
     if cfg and not (pack_dir / str(cfg)).is_file():
         return False
-    return (pack_dir / MANIFEST_NAME).is_file()
+    try:
+        return read_manifest(pack_dir) == manifest
+    except (OSError, ValueError, KeyError):  # absent, unreadable, or not a manifest of ours
+        return False
 
 
 # -- provenance -> manifest ------------------------------------------------------------------
