@@ -5397,6 +5397,7 @@ def test_the_flight_plan_box_is_in_step_1_and_nothing_of_the_first_one_is_left()
         'id="flightplan-ends-zl"',
         'id="flightplan-along-zl"',
         'id="flightplan-delete"',
+        'id="flightplan-recenter"',
         'id="flightplan-error"',
     )
     for part in parts:
@@ -5456,7 +5457,14 @@ def test_the_map_draws_the_engines_line_and_fits_its_bounds() -> None:
     changed = map_js[map_js.index("    routeChanged(fit = false) {") :]
     changed = changed[: changed.index("\n    },")]
     assert "renderLegend();" in changed and "renderGrid();" in changed
-    assert "const { south, north, west, east } = plan.bounds;" in changed
+    assert "if (fit) this.fitRoute();" in changed
+    fit = map_js[map_js.index("    fitRoute() {") :]
+    fit = fit[: fit.index("\n    },")]
+    assert "const { south, north, west, east } = plan.bounds;" in fit
+    # and the box's Recenter brings the map back there once it has moved away (a user, 2026-09-25)
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    recenter = '$("flightplan-recenter").addEventListener("click", () => planMap?.fitRoute());'
+    assert recenter in app_js
 
 
 def test_the_demo_plan_is_the_engines_own() -> None:

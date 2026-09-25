@@ -71,8 +71,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   The map is repainted with the very colours the build will encode, so you judge them on the ground
   you fly over rather than on a thumbnail. It is applied when the textures are encoded, so changing
   your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
-- **The squares of a flight plan.** Read your last SimBrief plan: the map draws the route and the
-  squares within a radius of it are chosen at once, the departure and arrival at step 1's level and
+- **The squares of a flight plan.** Read your last SimBrief plan: the map draws the route, and
+  brings you back to it with *Recenter*, and the squares within a radius of it are chosen at once, the departure and arrival at step 1's level and
   the route at ZL14, each with its own list, the route's squares optional, and the squares X-Plane
   has no scenery for left out. One button takes the plan and its squares away.
 - **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM

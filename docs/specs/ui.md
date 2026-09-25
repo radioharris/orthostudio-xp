@@ -900,7 +900,9 @@ adding more, no longer folded away (a user never opened the *Other ways* line): 
 airport**, an ICAO code with a radius in kilometres, and **along a flight plan**. The folded line
 keeps what nobody plans a flight with: tile names and coordinates.
 
-The **flight plan** (`docs/specs/flight-plan.md`, rebuilt 2026-09-25): *My SimBrief plan* reads
+The **flight plan** (`docs/specs/flight-plan.md`, rebuilt 2026-09-25): its title, *My SimBrief
+plan* under it, then its words in a paragraph like the others (`.flightplan`; beside the words, the
+button stood against their last line, a user, 2026-09-25). The button reads
 the pilot's last SimBrief plan through the engine (`GET /api/flightplan/simbrief`, the name set in
 Settings), which computes the line and the squares in one go: great circles, the squares within the
 airport field's radius of the departure and the arrival, and the corridor, every square within that
@@ -909,7 +911,8 @@ under the button says the route and its length, then its two groups, each with i
 the right, in two columns (`.flightplan-groups`, written short, `detail.short`): the departure and
 arrival at step 1's level, the route at ZL14, both within the source's maximum, and a tick before
 the route's line that leaves its squares out; then what a build's cap cut and the squares X-Plane
-has no scenery for; then *Delete the flight plan*. Step 1's list is the level of the squares chosen
+has no scenery for; then *Recenter*, which brings the map back to the route, and *Delete the flight
+plan*. Step 1's list is the level of the squares chosen
 by hand; each chip says its level while the chosen squares differ (`+46+006 · ZL16`), and the
 request carries `tiles_zl` for every square whose level is not step 1's (`api.md` 2.2). What the
 pilot chose is kept in `localStorage` (`osxp.flightplan`): the route and its radius, the two

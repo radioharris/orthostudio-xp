@@ -26,7 +26,8 @@ Testing it, the pilot saw the route pass some seven kilometres from the corner o
 not choose, a square plainly seen from the aircraft, and asked for a corridor: every square within
 the airport field's radius of the route (15 km unless changed). And to be able not to choose the
 route's squares at all: a tick before *Along the route*, which leaves the departure and the arrival
-alone (2026-09-25).
+alone (2026-09-25). Then a *Recenter* button, for a map moved away from the route, and the button
+of the plan in the middle of its words rather than against their last line (the same evening).
 
 Typing the airports of a route (`LSGG LFMN`), which the first version also offered, is left out:
 that is where several of its faults were (codes dropped without a word, one request per code), and
@@ -149,7 +150,8 @@ the plan and whether the route's squares are wanted (`along`). Nothing else is h
 
 The map draws the engine's line (`osxpRoute`, over the grid, no pointer event), a ring at each end
 and a smaller one at each point, colours the departure and arrival squares in the route's colour,
-and fits the view to the plan's bounds when it is read.
+and fits the view to the plan's bounds when it is read (`fitRoute`); *Recenter*, beside *Delete the
+flight plan*, fits it again once the map has moved away.
 
 ## 6. What is not there
 

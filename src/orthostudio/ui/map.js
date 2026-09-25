@@ -2746,8 +2746,13 @@ export function createPlanMap(ctx) {
       // 2026-09-23)
       renderGrid();
       renderLegend();
+      if (fit) this.fitRoute();
+    },
+    /** The map brought to the flight plan's route: when the plan is read, and by the box's
+     * *Recenter* once the map has moved away (a user, 2026-09-25). */
+    fitRoute() {
       const plan = ctx.route?.();
-      if (!fit || !map || !plan?.bounds) return;
+      if (!map || !plan?.bounds) return;
       // The engine's bounds keep a Pacific crossing in one frame (east may pass 180), which the
       // points' own longitudes cannot: fitted on them, San Francisco to Tokyo was framed round the
       // other side of the world (review of 2026-09-23). setView rather than fitBounds: the latter

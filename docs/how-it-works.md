@@ -316,7 +316,8 @@ flight plan, with the departure and arrival procedures it holds, so the line is 
 The engine joins its points by great circles and chooses at once every square within the airport
 field's radius (15 km unless you change it) of the departure, of the arrival and of the whole route:
 a square seven kilometres beside the route is seen from the aircraft. The map is brought to the
-route and draws the very line the squares were counted on. The departure and arrival start at the
+route and draws the very line the squares were counted on; *Recenter* brings it back there once you
+have moved away. The departure and arrival start at the
 level of step 1 and the route at ZL14, the ground you fly over rather than land on; each has its
 own list, and a tick before the route leaves its squares out if you want the two airports alone.
 Squares X-Plane has no scenery for, open sea or a region not installed, are left out, since a

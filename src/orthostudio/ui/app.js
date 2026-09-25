@@ -5642,6 +5642,7 @@ async function boot() {
   });
   $("flightplan-load").addEventListener("click", loadFlightPlan);
   $("flightplan-delete").addEventListener("click", deleteFlightPlan);
+  $("flightplan-recenter").addEventListener("click", () => planMap?.fitRoute());
   for (const group of ["ends", "along"]) {
     $(`flightplan-${group}-zl`).addEventListener("change", (ev) => setFlightPlanLevel(group, ev.target.value));
   }

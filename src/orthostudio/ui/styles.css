@@ -1173,6 +1173,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Step 1's ways of choosing squares: the airport and the flight plan, in plain sight since a user
    never opened the "Other ways" line (2026-09-19). */
 .plan-way { margin-top: var(--gap); align-items: flex-end; }
+/* The flight plan: its title, its button under it, then its words, a paragraph like the others.
+   Beside the words, the button stood against their last line (a user, 2026-09-25). */
+.flightplan { margin-top: var(--gap); }
+.flightplan > .btn { margin-bottom: var(--gap); }
 /* The flight plan once read: its route, then its two groups of squares, each with its level on the
    right, in two columns so the lists line up (a user, 2026-09-22), then what did not fit. */
 .flightplan-found {
@@ -1192,6 +1196,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .flightplan-along { display: flex; align-items: center; gap: 6px; }
 .flightplan-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
 .flightplan-note { margin: var(--gap) 0 0; }
-.flightplan-delete { margin-top: var(--gap); }
+.flightplan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--gap); }
 /* What went wrong with the airport or the flight plan, right under them, not in step 3. */
 .way-error { margin: var(--help-gap) 0 0; color: var(--fail); }
