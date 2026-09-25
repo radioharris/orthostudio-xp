@@ -149,6 +149,36 @@ export function detailLabel(zl, lat) {
  * not then promise a sharpness no build can deliver, so it says what the provider really gives.
  * A view that is not the provider's imagery (the street map, the mock) passes no ceiling.
  */
+/** How many tiles of a view must fail before the map says the view has no imagery: fewer than
+ * that is one tile that did not make it, which the next draw usually fixes. */
+const BASE_FAIL_TILES = 6;
+
+/** What the tiles of a base layer say about the view being drawn.
+ *
+ * The counts are **the view's**, not the layer's life: Leaflet's `loading` begins a new one. A
+ * user zoomed from ZL18, where Esri Clarity had imagery over France, to ZL19, where it has none
+ * there, and the map emptied without a word because the tiles of the view before were still
+ * counted (2026-09-25). `missed` is true once enough tiles of this view have failed and not one
+ * has come: a view without imagery, rather than a tile that did not make it.
+ */
+export function tileTally() {
+  let came = 0;
+  let missed = 0;
+  return {
+    starting() {
+      came = 0;
+      missed = 0;
+    },
+    came() {
+      came += 1;
+    },
+    missed() {
+      missed += 1;
+      return came === 0 && missed >= BASE_FAIL_TILES;
+    },
+  };
+}
+
 /** Deepest level the base layer downloads for a provider: past it Leaflet enlarges what it has.
  *
  * One expression, read by the layer (``maxNativeZoom``) and by the legend, so the line can never
@@ -1764,7 +1794,7 @@ export function createPlanMap(ctx) {
 
   function providerLayer(code) {
     const p = providerByCode(code);
-    const counts = { loaded: 0, failed: 0 };
+    const tally = tileTally();
     const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}`, {
       attribution: escapeHtml(p?.attribution || p?.name || code),
       maxZoom: 20,
@@ -1774,14 +1804,14 @@ export function createPlanMap(ctx) {
       // the edge of the world requests x = -1 or 2^z, which the engine rightly refuses (422).
       bounds: WORLD,
     });
+    layer.on("loading", () => tally.starting()); // Leaflet begins the tiles of a new view
     layer.on("tileload", () => {
-      counts.loaded += 1;
+      tally.came();
       if (layer === base) setNotice("");
     });
     // A 204 (no image there) is an error for an <img> too: only a view where nothing loads says so.
     layer.on("tileerror", () => {
-      counts.failed += 1;
-      if (layer === base && !counts.loaded && counts.failed >= 6) {
+      if (tally.missed() && layer === base) {
         setNotice(ctx.engineOutdated?.() ? t("app.engine_outdated") : t("map.base_failed", { provider: providerLabel(code) }));
       }
     });

@@ -41,7 +41,11 @@ terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 # Providers/Global/Arc@.lay, Esri "Clarity" beta endpoint (HTTP/2). No placeholder rule in
 # Ortho4XP for this host (its rule tests "arcgisonline" in the URL): open point.
 url_template = "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
-max_zl = 19  # assumed
+# How deep it goes is not one number: ZL19 and ZL20 answer over New York, while ZL19 is a 404
+# over Lyon and Paris (2026-09-25). This is the deepest it ever serves, which is what the page
+# offers; where it stops sooner the map says the view has no imagery, and a build counts those
+# squares as missing rather than failing.
+max_zl = 19
 max_in_flight = 192  # 64, 128, 192, 256 gave 176, 411, 522, 448 req/s; two 502 at 256
 server_req_per_s = 522
 attribution = "Esri World Imagery Clarity (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"

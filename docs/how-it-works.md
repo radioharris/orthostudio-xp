@@ -265,6 +265,10 @@ which is handy for clicking precisely, but it is then enlarging the last photo i
 fetching a sharper one. The line says so, and names the best that source really has, so you never
 ask for a level your source cannot give.
 
+A source can also stop deeper in one place than another: Esri Clarity has ZL19 and ZL20 over New
+York and nothing past ZL18 over Lyon. Where a source has no photo for the view you are on, the map
+says "No imagery received", rather than going blank without a word.
+
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
 OpenFreeMap, a free service that renders OpenStreetMap without a key; OrthoStudio XP serves it

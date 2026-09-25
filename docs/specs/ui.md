@@ -948,6 +948,15 @@ The source is chosen in step 1, not on the map, so the line is drawn again in `s
 well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
 on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
 
+**A view with no imagery says so** (`map.base_failed`, "No imagery received from {provider} for
+this view."). The tiles counted are **the view's**, begun again on Leaflet's `loading`, not the
+layer's life (`tileTally`): the same user zoomed from ZL18 to ZL19 on Esri Clarity over France,
+where it answers 404, and the map emptied in silence because the tiles of the view before still
+counted as imagery received. `BASE_FAIL_TILES` (6) keeps one tile that did not make it quiet,
+since the next draw usually fixes it. How deep a source goes is not one number: Clarity serves
+ZL19 and ZL20 over New York and nothing past ZL18 over Lyon and Paris, so `max_zl` is the deepest
+it ever serves and the map says where it stops sooner.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

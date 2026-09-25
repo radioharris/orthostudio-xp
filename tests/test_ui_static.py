@@ -4747,6 +4747,51 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
         assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
 
 
+def test_a_view_without_imagery_says_so_however_it_was_reached() -> None:
+    """Esri Clarity serves ZL19 over New York and 404s over France: how deep a source goes is not
+    one number. A user zoomed from ZL18, where it had imagery, to ZL19, where it has none there,
+    and the map emptied without a word (2026-09-25).
+
+    The tiles counted are the view's, not the layer's life, so a view that had imagery a moment
+    ago does not vouch for the one on screen. One tile that does not make it still says nothing:
+    the next draw usually fixes it.
+    """
+    said = _node_json(
+        "map.js",
+        """(() => {
+          const out = [];
+          const tally = m.tileTally();
+          // a view where everything arrives
+          for (let i = 0; i < 8; i++) tally.came();
+          out.push([1, false]);
+          // zoomed deeper: this view is a different one, and nothing comes
+          tally.starting();
+          out.push([2, [1, 2, 3, 4, 5, 6].map(() => tally.missed())]);
+          // back to a view that has imagery: it speaks again only if that one empties
+          tally.starting();
+          tally.came();
+          out.push([3, [1, 2, 3, 4, 5, 6, 7].map(() => tally.missed())]);
+          // and one tile lost out of a full view says nothing
+          tally.starting();
+          out.push([4, [1, 2].map(() => tally.missed())]);
+          return out;
+        })()""",
+    )
+    empty = said[1][1]
+    assert empty == [False] * 5 + [True], "a view that empties says so, once enough tiles failed"
+    assert said[2][1] == [False] * 7, "a view that has imagery never says it has none"
+    assert said[3][1] == [False, False], "one tile lost is not a view without imagery"
+
+    # and the layer hands Leaflet's three moments to it, `loading` being the start of a view
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    assert 'layer.on("loading", () => tally.starting());' in layer, "each view starts its own count"
+    assert "tally.came();" in layer and "if (tally.missed() && layer === base) {" in layer
+    assert "counts" not in layer, "one tally, not a second count beside it"
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from
