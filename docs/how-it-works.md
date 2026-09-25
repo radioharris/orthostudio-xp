@@ -55,9 +55,9 @@ asks the servers as it always did. The library is baked once, at road level 5, a
 level: each tile is cut down to the roads your level asks for. A folder in Ortho4XP's shape answers
 builds at road level 0 and 1 only, since its small roads do not say which road level fetched them.
 
-A prepared library is weeks behind by design, so there has to be a way to ask for today's map:
-today that way is `--osm-refresh <anything>` on the command line, which skips both and goes
-to the servers. A button for it is not there yet. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
+A prepared library is behind the live map by design, and it is baked again regularly. There is
+no button to skip it, on purpose: a build from the library is the fast one. The command line keeps
+`--osm-refresh <anything>`, which skips both and goes to the servers. One tile downloads at a time, since the servers refuse more, but the other tiles do not wait:
 each goes on with its relief at once, and with the rest as soon as its own data is in. A server
 that does not answer is left aside for the rest of the build, instead of being waited for by every
 tile; a build you start again asks all of them once more, and says which one answered what when a

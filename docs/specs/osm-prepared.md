@@ -34,9 +34,13 @@ in our manifest. It was dropped once the whole planet was baked here at road lev
 it covered nothing ours does not, and its files cannot say which road level they answer, so it could
 never serve a build above level 1.
 
-**Fresh data skips the libraries.** A tile asked for with `refresh` (`OsmParams.refresh`, what a
-user presses after correcting their region in OSM) goes straight to Overpass: a prepared library
-is weeks behind by design, and that is its only real defect.
+**Fresh data skips the libraries.** A tile asked for with `refresh` (`OsmParams.refresh`, the
+command line's `--osm-refresh`) goes straight to Overpass: a prepared library is weeks behind by
+design, and that is its only real defect. The page has no switch for it, by decision
+(2026-09-25): a switch sends builds back to the public servers and takes away what the library is
+for, so the library is baked again regularly instead. A rebake reaches the tiles a user builds for
+the first time; a tile already built keeps the snapshot of its first download for as long as the
+store keeps it.
 
 ## 2. What a source is
 

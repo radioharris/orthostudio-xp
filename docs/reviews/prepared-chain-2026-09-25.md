@@ -82,7 +82,11 @@ back over HTTPS with the client and the key a build uses:
 
 ## Still open from the first review
 
-M3 (the page never says where a tile's map data came from, or how old it is) and M5 (fresh data
-only through a command-line flag). M5 matters more now: the library was cut on 13 September, and
-a user who corrected their region in OSM since then gets the old map on a first build unless they
-know the flag.
+M3 (the page never says where a tile's map data came from, or how old it is) is still open.
+
+M5 (fresh data only through a command-line flag) is closed by decision, 2026-09-25: no switch on
+the page. A switch sends builds back to the public servers and takes away what the library is
+for; the library is baked again regularly instead, and the flag stays for the rare case. A user
+who corrected their region in OSM gets the correction at the next bake, on the tiles they build
+for the first time: a tile already built keeps the snapshot of its first download for as long as
+the store keeps it.
