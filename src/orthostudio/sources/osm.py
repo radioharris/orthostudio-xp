@@ -83,42 +83,51 @@ DEFAULT_QUERY_TIMEOUT_S = 120
 
 CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
-COOLDOWN_S = 600.0
-QUOTA_COOLDOWN_S = 60.0
-BUSY_STATUSES = frozenset({502, 503, 504})
-"""Answers that mean the machine is busy or its upstream is, not that it is broken."""
-BUSY_COOLDOWN_S = 20.0
-"""Set aside for a machine that answered 504, 503 or a remark: busy, not broken.
+COOLDOWN_S = 20.0
+"""First wait of a machine that gave no answer at all, doubling at each failure.
 
-It used to take the cooldown built for a machine that is down, 600 seconds and doubling,
-and nothing showed because the rounds gave every breaker back before asking again. With
-the breakers as the one clock, that mis-tuning became a layer that gave up after one round
-where it used to ask fifteen times (measured against v0.1.14, 2026-09-25). Twenty seconds
-is what the old round pause was, now carried by the breaker that knows why it is set."""
+Since the breakers became the one clock that says when to ask again, this is not only "do not
+pick that machine", it is "come back then". Six hundred seconds, which is what it was, made a
+ten-second network blip cost a layer ten minutes (found in review, 2026-09-25). Starting at
+twenty and doubling to :data:`MAX_COOLDOWN_S` costs a blip twenty seconds and still leaves a
+machine that is truly down alone.
+"""
+
+QUOTA_COOLDOWN_S = 60.0
 """How long a server that refused our address is left alone when it names no delay itself.
 
 Most of them name none. Long enough that a build stops asking, short enough that the next tile
 tries again; the doubling cooldown meant for a machine that is down would shut the whole cluster
 for ten minutes, then twenty (found in review, 2026-09-23)."""
 
+BUSY_COOLDOWN_S = 20.0
+"""Set aside for a machine that answered but could not do the work: any 5xx. Busy is not broken,
+and it does not double: a server busy twice is busy.
+
+Not a 200 carrying a ``remark``: that says the query was too heavy for this machine, not that the
+machine is unwell, so its breaker stays closed and another layer may still use it.
+
+The set must be the one :meth:`_worth_another_round` calls worth waiting for, or the two
+disagree: 500, 501 and a proxy's 52x took the cooldown of a machine that is down while the rounds
+kept retrying them (found in review, 2026-09-25)."""
+
 MAX_COOLDOWN_S = 3600.0
 MAX_ATTEMPTS = 5
 """Attempts across mirrors for one layer: one per entry of the registry, so that the last resorts
 are still reached when the three ordinary ones are down (2026-09-22: two of them were)."""
 ATTEMPT_DELAY_S = 5.0
-ROUNDS = 5
-"""Times the whole registry is asked for one layer, when what refused it may pass.
+ROUNDS = 40
+"""Most times the whole registry is asked for one layer: a stop, not a schedule.
 
-An Overpass machine that answers 504, 429 or nothing is busy, not broken: it answers the same
-query a minute later. One round over the mirrors and then a failed build wastes everything the
-tile had already downloaded, and on a bad evening every build failed that way (2026-09-22).
+What bounds the waiting is the caller's deadline (``pipeline.native.OsmJob.timeout_s``, fifteen
+minutes for a tile), and between rounds the wait is what the servers themselves named. This count
+only keeps a caller who gave no deadline, or one whose servers name no wait at all, from looping
+without end; at twenty seconds a round it is more than the deadline allows, which is the point.
 
-Three rounds twenty seconds apart is one minute of patience, and a user whose address had spent
-its quota watched all five mirrors refuse and the build give up while the quota needed minutes
-(2026-09-24). These servers count queries per address and free a slot on their own clock; the
-only thing to do is wait for it. What bounds the waiting is not this count but the tile's own
-deadline (``pipeline.native.OsmJob.timeout_s``), and the rounds stop early of their own accord
-when nothing that refused could pass, or when every server is still set aside.
+It was three, twenty seconds apart, which is one minute of patience: a user whose address had
+spent its quota watched all five mirrors refuse and the build give up while the quota needed
+minutes (2026-09-24). Raising it alone changed nothing while a five-minute deadline cut it short,
+and a schedule of our own beside the breakers made the two fight (2026-09-25).
 """
 MAX_IN_FLIGHT = 2
 MIN_INTERVAL_S = 1.0
@@ -572,6 +581,26 @@ def selector_tag(selector: str) -> tuple[str, str] | None:
     return (found.group(1), found.group(2)) if found else None
 
 
+_QUERY_TIMEOUT = re.compile(r"\[timeout:(\d+)\]")
+_QUERY_DATE = re.compile(r'\[date:"([^"]+)"\]')
+
+
+def _requery(query: str, selectors: tuple[str, ...], tile: TileRef) -> str:
+    """The query of a narrowed layer: its own selectors, the timeout and date of the original.
+
+    Rebuilding it from the defaults dropped the ``[date:…]`` of an attic fetch, which is exactly
+    how a bake is proved, and reset the timeout (found in review, 2026-09-25).
+    """
+    timeout = _QUERY_TIMEOUT.search(query or "")
+    at = _QUERY_DATE.search(query or "")
+    return overpass_query(
+        selectors,
+        tile,
+        int(timeout.group(1)) if timeout else DEFAULT_QUERY_TIMEOUT_S,
+        at.group(1) if at else "",
+    )
+
+
 def narrowed(snap: OsmSnapshot, spec: LayerSpec) -> OsmSnapshot | None:
     """``snap``, baked for more than ``spec`` asks, cut down to exactly ``spec``; ``None`` when
     that cannot be done for certain.
@@ -594,27 +623,21 @@ def narrowed(snap: OsmSnapshot, spec: LayerSpec) -> OsmSnapshot | None:
     rules = [selector_tag(one) for one in held]
     if any(rule is None for rule in rules):
         return None  # a selector we cannot read: never guess what a layer holds
-    keep = {selector_tag(one) for one in wanted}
-    ways = tuple(w for w in snap.ways if (_way_tag(w) in keep))
+    keep = [selector_tag(one) for one in wanted]
+    ways = tuple(
+        w for w in snap.ways if any((w.tags or {}).get(key) == value for key, value in keep)
+    )
     named = {i for w in ways for i in w.nodes}
     every = {i for w in snap.ways for i in w.nodes}
     nodes = tuple(n for n in snap.nodes if n.id in named or n.id not in every)
     return replace(
         snap,
         selectors=wanted,
-        query=overpass_query(wanted, snap.tile),
+        query=_requery(snap.query, wanted, snap.tile),
         nodes=nodes,
         ways=ways,
         digest=blake3.blake3(_canonical(nodes, ways, snap.relations)).hexdigest(),
     )
-
-
-def _way_tag(way: OsmWay) -> tuple[str, str] | None:
-    """The one ``(key, value)`` of a way that a road selector could have matched."""
-    for key, value in (way.tags or {}).items():
-        if key == "highway":
-            return (key, str(value))
-    return None
 
 
 def snapshot_from_overpass(
@@ -868,8 +891,6 @@ class _MirrorState:
     requests: int = 0
     last_error: str | None = None
     last_request_at: float = -1e9
-    rate_limited: bool = False
-    """The server named a delay (``Retry-After``): a round does not reopen it."""
 
     def state(self, now: float) -> Literal["closed", "half-open", "open"]:
         if self.open_until <= 0.0:
@@ -942,7 +963,6 @@ class MirrorBoard:
             # it: the doctor probes every mirror without asking the breaker, so running it
             # because builds were failing turned an hour the server asked for into an immediate
             # retry (found in review, 2026-09-23)
-            st.rate_limited = st.rate_limited or quota
             if quota:
                 # What was refused is our address, not this machine, so the wait is what the
                 # server asked for and the doubling meant for a machine that is down does not
@@ -975,7 +995,6 @@ class MirrorBoard:
             st.cooldown_s = cooldown_s
             st.successes += 1
             st.last_error = None
-            st.rate_limited = False
 
     def failure(self, code: str) -> None:
         with self._lock:
@@ -1004,21 +1023,6 @@ class MirrorBoard:
             times = [self._states[c].open_until for c in codes if c in self._states]
         return min(times) if times else 0.0
 
-    def reopen(self, codes: Iterable[str]) -> None:
-        """Give these mirrors another chance, except one that asked to be left alone.
-
-        What a round of :meth:`OverpassClient.fetch_layer` needs, and what ``reset`` was wrongly
-        used for: a global reset discards the ``Retry-After`` a server asked for (the way to turn
-        a rate limit into a ban), forgets the doubling, and reaches across the other layers of the
-        same tile, which re-try a machine already known dead (2026-09-23).
-        """
-        with self._lock:
-            for code in codes:
-                st = self._states.get(code)
-                if st is None or st.rate_limited:
-                    continue
-                st.open_until = 0.0
-
     def reset(self) -> None:
         """Give every mirror another chance, cooldowns back to their start.
 
@@ -1033,7 +1037,6 @@ class MirrorBoard:
                 st.failures = 0
                 st.cooldown_s = st.given_cooldown_s
                 st.last_error = None
-                st.rate_limited = False
 
 
 _SHARED_BOARD = MirrorBoard()
@@ -1377,13 +1380,21 @@ class OverpassClient:
             snap, asked = await self._one_round(tile, spec, query, reasons, on_reply)
             if snap is not None:
                 return snap
-            if round_no and not asked:
-                # the breakers were just given back and there was still nobody to ask: every
-                # server is in a cooldown this round's pause will not outlast. Waiting another
-                # forty seconds to be told the same thing costs every tile of the batch
-                # (2026-09-23, the address having spent its quota)
-                reasons.append("every server is still set aside")
-                break
+            if not asked:
+                # Nobody was free to ask. That is not an answer, it is a moment to wait for:
+                # the board says when the first one is ready and the next round waits for it.
+                # Ending the layer here instead is what gave the second tile of a batch no query
+                # at all -- zero, in zero seconds -- as soon as the first tile had set the
+                # breakers, and every tile after it the same (measured against v0.1.14, which
+                # did it too, 2026-09-25).
+                free = self._board.soonest(m.code for m in self.mirrors)
+                if deadline is None:
+                    reasons.append("no deadline to wait against")
+                    break
+                if free >= deadline:
+                    reasons.append("no server free before the deadline")
+                    break
+                continue
             if not self._worth_another_round(reasons):
                 break
             if deadline is not None and time.monotonic() >= deadline:
@@ -1414,6 +1425,15 @@ class OverpassClient:
                 + (f"mirror ({detail})." if detail else "mirror.")
             ),
         )
+
+    @staticmethod
+    def busy(status: int) -> bool:
+        """Whether an answer means the machine could not do the work, not that it is broken.
+
+        The same set the rounds are willing to wait for (:meth:`_worth_another_round`): they must
+        agree, or one keeps asking while the other sets the machine aside for ten minutes.
+        """
+        return status >= 500
 
     @staticmethod
     def _worth_another_round(reasons: Sequence[str]) -> bool:
@@ -1658,7 +1678,7 @@ class OverpassClient:
                 waited = f"try again in about {delay / 60:.0f} min"
             return "OSM_MIRROR_RATE_LIMITED", f"too many requests from your address, {waited}"
         if reply.status != 200:
-            busy = reply.status in BUSY_STATUSES
+            busy = self.busy(reply.status)
             self._open(
                 mirror.code,
                 reason=f"HTTP {reply.status}",
@@ -1676,6 +1696,8 @@ class OverpassClient:
             return "OSM_RESPONSE_TRUNCATED", "no 'elements' list"
         remark = doc.get("remark")
         if remark:
+            # the query was too heavy for this machine, not the machine's fault: its breaker
+            # stays closed so another layer may still use it, and this layer goes elsewhere
             self._board.failure(mirror.code)
             return "OSM_RESPONSE_ERROR", str(remark)[:200]
         return None

@@ -96,7 +96,9 @@ Selectors copied verbatim from `O4_Vector_Map.py`; only the output format change
 `small_roads` exists only at `road_level >= 2`; `layers_for(road_level)` returns the layers a
 tile needs (four at the Ortho4XP default `road_level = 1`).
 
-**A layer held for more roads answers a build that wants fewer** (`narrowed`, 0.1.15). The road
+**A layer held for more roads answers a build that wants fewer** (`narrowed`, written in 0.1.15;
+**the helper only, nothing calls it yet** -- wiring it into `sources/library.py`, whose own check
+is an equality made once for the whole build before any tile is read, belongs with that chain). The road
 levels differ in one place only, `small_roads`, and only by `way["highway"=…]` selectors added one
 at a time, so a snapshot baked at level 5 holds every road level 3 asks for and two kinds more.
 Handing it over whole would flatten the mesh under tracks and service roads the user's settings say
@@ -140,10 +142,10 @@ A reply is **usable** when the status is 200, the body parses as JSON, and the d
 
 | Situation | Code emitted | Mirror effect | Next |
 |---|---|---|---|
-| connect error, read timeout, no body | `OSM_MIRROR_UNREACHABLE` | breaker open `cooldown_s` (600 s) | next mirror |
-| HTTP 429 | `OSM_MIRROR_REJECTED` | breaker open on the **whole cluster** for `max(cooldown_s, Retry-After)` | next mirror |
-| HTTP 5xx (504 above all) | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s` | next mirror |
-| other non-200 | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s` | next mirror |
+| connect error, read timeout, no body | `OSM_MIRROR_UNREACHABLE` | breaker open `cooldown_s` (20 s), doubling at each failure to `MAX_COOLDOWN_S` | next mirror |
+| HTTP 429 | `OSM_MIRROR_REJECTED` | breaker open on the **whole cluster** for the delay the server named (`Retry-After`, else the slot its `/api/status` page says, else `QUOTA_COOLDOWN_S` = 60 s), clamped to [1 s, 1 h] and never doubled | next mirror |
+| any HTTP 5xx | `OSM_MIRROR_REJECTED` | breaker open `BUSY_COOLDOWN_S` (20 s), not doubled: busy is not broken | next mirror |
+| other non-200 | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s`, doubling | next mirror |
 | 200, body not JSON / cut | `OSM_RESPONSE_TRUNCATED` | one failure recorded, no breaker | next mirror |
 | 200 with `remark` | `OSM_RESPONSE_ERROR` | one failure recorded, no breaker | next mirror |
 | every mirror exhausted | `OsxpError("OSM_LAYER_UNAVAILABLE")` raised | — | — |
@@ -171,12 +173,26 @@ fixed their connection, or that the machine is back. Kept across builds, it turn
 into an hour of builds failing in four seconds each, with quitting the app as the only way out
 (2026-09-22). Within one build the cooldown still holds, which is what it was written for.
 
-**Rounds.** The whole registry is asked up to `rounds = 3` times for one layer, `round_pause_s`
-= 20 s before the second and 40 s before the third, the breakers cleared between them. A machine
-that answers 504, 429 or nothing is busy, not broken, and answers the same query a minute later;
-one pass and then a failed build threw away everything the tile had downloaded, which is how
-every build failed on the evening of 2026-09-22. A round is only repeated when something that
-refused may pass: `.fr`'s 403 will be the same in a minute, a 504 will not.
+**Rounds.** The whole registry is asked again for one layer as long as the caller's `deadline`
+allows and something that refused may pass. **One clock says when**: the breakers, each carrying
+what its server named, and `MirrorBoard.soonest` gives the first moment any of them is ready.
+A round waits exactly that, floored at `attempt_delay_s`; a wait that does not fit the deadline
+ends the layer, saying so, and a caller with no deadline gets one round. `rounds` (40) is a stop
+against a loop without end, not a schedule: at twenty seconds a round it is more than a tile's
+fifteen-minute deadline allows.
+
+A round that finds nobody free is **not** an answer: it waits for the soonest and asks again.
+Ending the layer there gave the second tile of a batch no query at all, zero in zero seconds, as
+soon as the first tile had set the breakers (measured 2026-09-25; v0.1.14 did it too).
+
+A round is only repeated when something that refused may pass: `.fr`'s 403 will be the same in a
+minute, a 5xx will not. That set and the one that gets the busy cooldown are the same predicate
+(`OverpassClient.busy`), or one keeps asking while the other shuts the machine for ten minutes.
+
+Until 0.1.15 this was a schedule of ours, `rounds = 3` with pauses of 20 s and 40 s and every
+breaker cleared between them: one minute of patience, cut shorter still by a five-minute tile
+deadline. A user whose address had spent its quota watched all five mirrors refuse and the build
+give up while the quota needed minutes (2026-09-24).
 
 **Attempts.** `max_attempts = 5` *across mirrors* within a round, one per entry of the registry,
 so the last resorts are still reached when the three ordinary entries are down (2026-09-22: they were, for

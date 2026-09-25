@@ -24,7 +24,6 @@ from orthostudio.sources.osm import (
     LAYERS,
     MAX_ATTEMPTS,
     MIRRORS,
-    ROUNDS,
     SNAPSHOT_FORMAT,
     CurlTransport,
     HttpReply,
@@ -687,9 +686,11 @@ def test_every_mirror_down_raises_osm_layer_unavailable() -> None:
     assert err.value.code == "OSM_LAYER_UNAVAILABLE"
     assert err.value.context["layer"] == "coastline"
     assert err.value.context["tile"] == "+43+005"
-    # one attempt per mirror, three rounds over the list, never eight on the same machine
-    assert len(t.sent) == len(MIRRORS) * ROUNDS
-    assert t.by_host.keys() != {"overpass-api.de"}
+    # one attempt per mirror in a round, and the rounds go on while the budget lasts: what must
+    # never happen is eight attempts on the same machine and none on the others
+    assert len(t.sent) >= len(MIRRORS) * 3
+    assert len(set(t.by_host)) == len(MIRRORS), "every mirror was tried"
+    assert max(t.peak_by_host.values()) == 1, "never two at once on the same machine"
 
 
 def test_a_busy_mirror_is_asked_again_in_the_next_round() -> None:
@@ -999,13 +1000,14 @@ def test_a_layer_does_not_start_a_round_it_has_no_time_for() -> None:
     assert took < 5.0, f"it waited {took:.1f} s for rounds the caller would never see"
 
 
-def test_with_time_to_spare_the_rounds_still_run() -> None:
-    """The deadline shortens nothing when there is room: the point is not to ask less."""
+def test_the_deadline_is_the_budget_and_more_room_is_more_rounds() -> None:
+    """Since 0.1.15 the caller's deadline is what bounds the asking, not a count of our own:
+    more room is more attempts, and no deadline at all is one round and the answer."""
     busy = HttpReply(504, b"", {}, 0.01)
 
     def asked(deadline_in: float | None) -> int:
         transport = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
-        c = client(transport, rounds=2, cooldown_s=0.02)
+        c = client(transport, rounds=2, cooldown_s=0.02, busy_cooldown_s=0.02)
 
         async def go() -> None:
             import time as _time
@@ -1020,9 +1022,8 @@ def test_with_time_to_spare_the_rounds_still_run() -> None:
         run(go())
         return len(transport.sent)
 
-    assert asked(60.0) == asked(600.0) > 0
-    # and no deadline at all is no budget to wait against: one round, then the answer
-    assert asked(None) < asked(600.0)
+    # the deadline is the budget, so more room is more rounds, and none at all is one round
+    assert asked(None) < asked(1.0) <= asked(3.0)
 
 
 def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
@@ -1032,10 +1033,13 @@ def test_a_busy_machine_is_set_aside_for_seconds_not_for_ten_minutes() -> None:
     while the rounds gave every breaker back before asking again. With the breakers as the one
     clock that mis-tuning cost a layer two thirds of its attempts (measured, 2026-09-25).
     """
-    from orthostudio.sources.osm import BUSY_COOLDOWN_S, BUSY_STATUSES, COOLDOWN_S
+    from orthostudio.sources.osm import BUSY_COOLDOWN_S, MAX_COOLDOWN_S, OverpassClient
 
-    assert {502, 503, 504} == BUSY_STATUSES
-    assert BUSY_COOLDOWN_S < COOLDOWN_S / 10, "busy is not down"
+    # what the rounds are willing to wait for and what gets the busy wait must be one set, or
+    # one keeps asking while the other shuts the machine for ten minutes (review, 2026-09-25)
+    assert all(OverpassClient.busy(code) for code in (500, 501, 502, 503, 504, 520))
+    assert not OverpassClient.busy(403) and not OverpassClient.busy(429)
+    assert BUSY_COOLDOWN_S < MAX_COOLDOWN_S / 10, "busy is not down"
 
     busy = HttpReply(504, b"", {}, 0.01)
     t = ScriptedTransport({m.interpreter.split("/")[2]: [busy] for m in MIRRORS})
@@ -1143,7 +1147,8 @@ def test_a_failure_never_brings_a_reopen_forward() -> None:
     hour = asked._states["A"].open_until
     asked.open("A", reason="the doctor could not reach it")  # a health probe, not a refusal
     assert asked._states["A"].open_until >= hour
-    assert asked._states["A"].rate_limited, "and it is still known to be a refusal"
+    # ``rate_limited`` went with the blanket reopen it was written for: since 0.1.15 the rounds
+    # never clear a breaker, so nothing needs to be told apart from an ordinary failure
 
     # a machine that is down still backs off as it did
     down = board()
@@ -1158,4 +1163,4 @@ def test_a_failure_never_brings_a_reopen_forward() -> None:
     done = board()
     done.open("A", reason="429", seconds=3600.0, quota=True)
     done.close("A", cooldown_s=600.0)
-    assert done._states["A"].open_until == 0.0 and not done._states["A"].rate_limited
+    assert done._states["A"].open_until == 0.0
