@@ -2139,8 +2139,14 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     assert code.index('api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`)') < code.index(
         "await refreshJobList();"
     )
-    assert "await followJobGone();" in code, "the same rule the whole-list trash follows"
     assert "state.jobsClearing" in code and ".focus({ preventScroll: true })" in code
+    # the row that takes the gone one's place, the next one down or else the one above, is the one
+    # shown when the gone one was (a user expected the next job, not an empty screen, 2026-09-25)
+    # and the one the keyboard lands on; a removal refused moves nothing
+    assert "const at = Math.min(was, state.jobs.length - 1);" in code
+    assert "if (gone && state.jobId === j.id) {" in code
+    assert code.index("await watchJob(next.id);") < code.index("forgetShownJob();")
+    assert 'const row = at >= 0 ? $("job-list").children[at] : null;' in code
 
     # the same bin as the one above the list, drawn by the same rule: it was 24 px in a 30 px
     # button beside the 15 px one (a user, 2026-09-25)
@@ -4814,6 +4820,20 @@ def test_the_map_asks_a_users_source_under_its_address() -> None:
     assert all("${tileVersion(code)}`" in line for line in urls), "the same URL for both"
 
 
+def test_the_map_stays_where_it_was_left_while_another_screen_is_shown() -> None:
+    """While Works, the Library or Settings is shown, the map is hidden and measures 0 by 0.
+    Leaflet was told so, and on coming back `show` measured again from it and moved the map by
+    half its width and height: every build, which shows Works, left the map elsewhere (a user,
+    2026-09-25). Measured in the page: three round trips, the same centre at ZL12 and ZL16."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    watch = code[code.index("new ResizeObserver(") :]
+    watch = watch[: watch.index(".observe(el);")]
+    assert "if (entry.contentRect.width && entry.contentRect.height)" in watch, (
+        "not a box of nothing"
+    )
+    assert "m.invalidateSize({ animate: false, pan: false })" in watch
+
+
 def test_the_map_stops_where_every_build_stops() -> None:
     """The level lists, the zones and the engine's map route all stop at ZL19; the map went one
     step further, to 20, where every source was only enlarged (a user, 2026-09-25)."""
@@ -5058,13 +5078,13 @@ def test_the_map_is_told_when_its_box_changes() -> None:
     never again, so a window resized, a panel opened or the browser's own zoom changed put every
     click somewhere else than where the pointer was (a user drawing a shape, 2026-09-24)."""
     map_js = (UI / "map.js").read_text(encoding="utf-8")
-    watched = (
-        "new ResizeObserver(() => m.invalidateSize({ animate: false, pan: false })).observe(el)"
-    )
-    assert watched in map_js, "the map's own element is watched"
+    start = map_js.index("new ResizeObserver(")
+    watched = map_js[start : map_js.index(".observe(el);", start) + len(".observe(el);")]
+    assert "m.invalidateSize({ animate: false, pan: false })" in watched, "told, without moving"
+    assert watched.endswith("}).observe(el);"), "the map's own element is watched"
     # and it is set up where the map is made, on that map's element
-    assert map_js.index("function createMap") < map_js.index(watched)
-    assert map_js.index(watched) < map_js.index("function refreshAirports")
+    assert map_js.index("function createMap") < start
+    assert start < map_js.index("function refreshAirports")
 
 
 def test_a_point_put_on_the_texture_grid_says_so_and_how_far() -> None:

@@ -3932,8 +3932,9 @@ function forgetButton(j, tiles) {
 
 /** One finished build leaves the list (DELETE /api/jobs/{id}).
  *
- * The keyboard is left where the hand was: the bin of the row that takes the gone one's place,
- * else the last one, else the title, rather than the top of the page. */
+ * The row that takes the gone one's place, the next one down or else the one above, is where
+ * everything goes: the job shown, when the gone one was the one shown (a user expected the next
+ * job, not an empty screen, 2026-09-25), and the keyboard, on its bin or else on the row itself. */
 async function forgetJob(j) {
   if (state.jobsClearing) return;
   const was = state.jobs.findIndex((x) => x.id === j.id);
@@ -3947,13 +3948,23 @@ async function forgetJob(j) {
     state.jobsClearing = false;
   }
   await refreshJobList();
-  await followJobGone();
-  const bins = [...$("job-list").querySelectorAll(".job-forget")];
-  (bins[Math.min(was, bins.length - 1)] || $("job-list").querySelector("button") || $("jobs-title")).focus({ preventScroll: true });
+  const gone = !state.jobs.some((x) => x.id === j.id); // refused, it is still there, and so is the hand
+  const at = Math.min(was, state.jobs.length - 1);
+  const next = at >= 0 ? state.jobs[at] : null;
+  if (gone && state.jobId === j.id) {
+    if (next) {
+      history.replaceState(null, "", `#works/${next.id}`);
+      await watchJob(next.id);
+    } else {
+      forgetShownJob();
+    }
+  }
+  const row = at >= 0 ? $("job-list").children[at] : null;
+  (row?.querySelector(".job-forget") || row?.querySelector(".job-item") || $("jobs-title")).focus({ preventScroll: true });
 }
 
-/** The job the page was watching is no longer in the list: it follows a build still under way, or
- * lets go. Shared by the bin of a row and the trash of the whole list. */
+/** The trash of the whole list emptied it of the job the page was watching: it follows a build
+ * still under way, or lets go. */
 async function followJobGone() {
   if (!state.jobId || state.jobs.some((j) => j.id === state.jobId)) return;
   const next = state.jobs.find((j) => jobActive(j));

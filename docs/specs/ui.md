@@ -462,9 +462,12 @@ instead, else none.
 **One build at a time** (a user, 2026-09-24): a bin at the end of a row, on the rows that have
 finished only, `DELETE /api/jobs/{id}` without asking first, since the tiles stay and only that
 build's progress and journal go. A build running or waiting has no bin, and the engine refuses it
-too (409): it is cancelled first. The keyboard is left on the bin of the row that takes the gone
-one's place, else the last, else the title, rather than at the top of the page. `followJobGone`
-is the one rule for the job the page was watching, shared with the trash of the whole list.
+too (409): it is cancelled first. The row that takes the gone one's place, the next one down or
+else the one above, is where everything goes: the job shown, when the gone one was the one shown
+(the same user expected the next job, not an empty screen, 2026-09-25), and the keyboard, on its
+bin or else on the row. Removing another row leaves the job shown as it is; removing the last one
+says there is no job. The same bin as the trash above the list, drawn by the same `btn-trash` rule
+(26 by 24 with a 15 px icon, measured in the page).
 
 The selected job (default: the running one, else the newest) shows, from top to bottom:
 
@@ -947,6 +950,13 @@ called enlarged.
 The source is chosen in step 1, not on the map, so the line is drawn again in `setBaseLayer` as
 well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
 on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
+
+**The map stays where it was left.** While Works, the Library or Settings is shown the map is
+hidden and measures 0 by 0; the `ResizeObserver` that tells Leaflet its size (so a click lands
+where the pointer is) passed that on, and on coming back `show` measured again from it and moved
+the map by half its width and height, so every build, which shows Works, left the map elsewhere
+(a user, 2026-09-25). A box of nothing is no longer passed on: three round trips leave the same
+centre at ZL12 and ZL16.
 
 **The map stops at ZL19**, the deepest level anything is built at: the level lists stop there,
 zones too, and the engine's map route serves nothing deeper (`MAX_NATIVE_ZOOM`). It went one step

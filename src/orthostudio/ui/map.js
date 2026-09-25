@@ -1391,8 +1391,15 @@ export function createPlanMap(ctx) {
     // only when told. Nothing told it: the window resized, a panel opened, the browser's own
     // zoom changed, and every click after that fell somewhere else than where the pointer was
     // (a user drawing a shape, 2026-09-24). Watched, it is told.
+    //
+    // Not a box of nothing: while another screen is shown the map is hidden and measures 0 by 0.
+    // Told so, Leaflet kept that size, and on coming back to the Plan `show` measured again from
+    // it and moved the map by half its width and height: every build, which shows Works, left
+    // the map elsewhere than where the user had it (2026-09-25).
     if (typeof ResizeObserver !== "undefined") {
-      new ResizeObserver(() => m.invalidateSize({ animate: false, pan: false })).observe(el);
+      new ResizeObserver(([entry]) => {
+        if (entry.contentRect.width && entry.contentRect.height) m.invalidateSize({ animate: false, pan: false });
+      }).observe(el);
     }
     setBaseLayer(true);
     renderBorders();
