@@ -95,6 +95,10 @@ const AIRPORTS_KEY = "osxp.mapAirports";
  * first time the map is asked for, never on a page that stays on the photo. */
 const STREET_KEY = "osxp.mapStreet";
 
+/** How far inside its square a tile's frame is drawn, in pixels: half the 3 px line and a pixel
+ * more, so that two neighbours' frames leave the grid line between them. */
+const FRAME_INSET = 2.5;
+
 /** The tiles built and not in X-Plane on the map: shown unless the user unticked them. */
 const BUILT_KEY = "osxp.mapBuilt";
 
@@ -2035,51 +2039,47 @@ export function createPlanMap(ctx) {
     const installed = new Set(installedTiles());
     const built = new Set(zs.builtWanted ? builtTiles() : []);
     const building = buildingNow();
-    const sides = new Map(); // the sides of the tiles built and not in X-Plane, each drawn once
     const busy = []; // what the running build does, drawn over everything else
     for (const name of new Set([...installed, ...built, ...selected, ...building.keys()])) {
       const c = parseTile(name);
       if (!c || c.lat + 1 < south || c.lat > north || c.lon + 1 < west || c.lon > east) continue;
       const box = [[c.lat, c.lon], [c.lat + 1, c.lon + 1]];
+      // Every square is framed inside itself, so two neighbours never share a line. On the grid
+      // line itself only one colour could win: a square in X-Plane beside one only built and one
+      // chosen read as a patchwork, green on one side, pink and blue on the others (a user,
+      // 2026-09-25). Far out, too small for it, the frame goes back onto the square's own edge.
+      const frame = insetBox(box, FRAME_INSET) || box;
       // Installed and chosen: the green outline, the blue one inside it, and a line between and
       // around them (--map-casing, dark on the dark theme), so that they stand out from each other
       // and from the photo. On the same line the green hid the blue, and a thin blue beside the
       // green hardly showed (a user, 2026-09-22). Too small to hold both, the tile shows the green:
       // from far away the map is there to show which tiles are installed (the same user).
       const kept = installed.has(name) || built.has(name); // a pack of the tile is on the disk
-      const inner = kept && selected.has(name) ? insetBox(box, 4) : null;
+      const inner = kept && selected.has(name) ? insetBox(box, FRAME_INSET + 4) : null;
       if (inner) {
-        for (const b of [box, inner]) {
+        for (const b of [frame, inner]) {
           layers.tiles.addLayer(L.rectangle(b, { pane: "osxpGrid", className: "osxp-tile-casing", interactive: false, fill: false, weight: 5 }));
         }
       }
       const both = inner ? " is-both" : "";
-      if (installed.has(name)) {
-        layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-installed${both}`, interactive: false, fill: false, weight: 3 }));
-      } else if (kept) {
-        // Each side from its south or west end, keyed by where it lies: two neighbours share one.
-        // Drawn as rectangles, they laid their dashes over the same edge out of step, and it read
-        // as a solid line (a user, 2026-09-25).
-        const { lat, lon } = c;
-        for (const side of [[[lat, lon], [lat, lon + 1]], [[lat + 1, lon], [lat + 1, lon + 1]], [[lat, lon], [lat + 1, lon]], [[lat, lon + 1], [lat + 1, lon + 1]]]) {
-          sides.set(side.flat().join(","), side);
-        }
+      if (kept) {
+        // In X-Plane, green; built and kept but not in X-Plane, dashed pink. Framed inside, two
+        // built neighbours no longer lay their dashes over one edge, out of step, as a solid line.
+        const kind = installed.has(name) ? "installed" : "built";
+        layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}`, interactive: false, fill: false, weight: 3 }));
       }
       if (selected.has(name) && (inner || !kept)) {
         // The route's departure and arrival in the route's own colour: on a plan across Europe
         // every square was the same blue and the two ends were lost in it (a user, 2026-09-22).
         const end = routeEnds.has(name) ? " is-route-end" : "";
-        layers.tiles.addLayer(L.rectangle(inner || box, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
+        layers.tiles.addLayer(L.rectangle(inner || frame, { pane: "osxpGrid", className: `osxp-tile-selected${both}${end}`, interactive: false, fill: false, weight: 3 }));
       }
-      if (building.has(name)) busy.push([box, building.get(name)]);
-    }
-    for (const side of sides.values()) {
-      layers.tiles.addLayer(L.polyline(side, { pane: "osxpGrid", className: "osxp-tile-built", interactive: false, weight: 3 }));
+      if (building.has(name)) busy.push([frame, building.get(name)]);
     }
     // Over the others: a tile the running build works on pulses, one waiting for its turn is
     // dashed, a failed one dashed red (buildingTiles in app.js).
-    for (const [box, state] of busy) {
-      layers.tiles.addLayer(L.rectangle(box, { pane: "osxpGrid", className: `osxp-tile-${state}`, interactive: false, weight: 3 }));
+    for (const [frame, state] of busy) {
+      layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${state}`, interactive: false, weight: 3 }));
     }
     if (zoom < LABEL_MIN_ZOOM || (north - south) * (east - west) > MAX_LABELS) return;
     // Each label sits in the north-west corner of the visible part of its tile, when that part

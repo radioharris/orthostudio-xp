@@ -992,10 +992,16 @@ pink of ZL20 is never drawn), described on hover like an installed one (`builtSu
 chosen as well, drawn with the blue inside it over the casing. Only the page changes: the rows
 already said it.
 
-Each side is drawn once, as its own line from its south or west end (`sides` in `renderGrid`):
-drawn as rectangles, two neighbours laid their dashes over the shared edge out of step and it read
-as a solid line (the same user, looking at three of his, 2026-09-25). Three squares in an L are
-drawn with 10 sides, not 12, measured in the page. The running build's marks stay on top.
+**Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
+so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
+line and only one colour could win it: two built neighbours laid their dashes over the same edge
+out of step and it read as solid, and a square in X-Plane beside built and chosen ones read as a
+patchwork, green on one side, pink and blue on the others (the same user, 2026-09-25). Now every
+square keeps a whole frame of its own colour, whatever its neighbours are. Measured in the page on
+his own layout, one square in X-Plane, two built, four chosen: seven frames, every pair of
+neighbours 5 or 6 px apart. A square in X-Plane or built and chosen as well keeps the blue inside
+its frame (`FRAME_INSET + 4`), and the running build's marks are drawn on the frame, on top.
+Far out, where a square is too small for the inset, the frame goes back onto its edge.
 
 Its legend line is a checkbox, as the airports' is, shown when there is such a tile, on unless
 unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the hover.

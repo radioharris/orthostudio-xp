@@ -3110,13 +3110,10 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
     found = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", map_js, re.S)
     assert found is not None
     grid = found.group(0)
-    assert "if (building.has(name)) busy.push([box, building.get(name)]);" in grid
+    assert "if (building.has(name)) busy.push([frame, building.get(name)]);" in grid
     assert "className: `osxp-tile-${state}`" in grid
-    drawn = [
-        grid.index(mark)
-        for mark in ("osxp-tile-installed${both}", '"osxp-tile-built"', "osxp-tile-${state}")
-    ]
-    assert drawn == sorted(drawn), "installed, then the built sides, then the running build on top"
+    drawn = [grid.index(mark) for mark in ("osxp-tile-${kind}${both}", "osxp-tile-${state}")]
+    assert drawn == sorted(drawn), "the frames first, then the running build on top"
     assert "JSON.stringify([...buildingNow().entries()])" in map_js  # redrawn on change only
     css = (UI / "styles.css").read_text(encoding="utf-8")
     # marks are outlines, never fills (2026-09-18): the tile worked on pulses on its stroke
@@ -3320,15 +3317,17 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     assert grid is not None
     body = grid.group(0)
     assert "const kept = installed.has(name) || built.has(name);" in body
-    assert "kept && selected.has(name) ? insetBox(box, 4) : null;" in body
+    assert "const frame = insetBox(box, FRAME_INSET) || box;" in body
+    assert "kept && selected.has(name) ? insetBox(box, FRAME_INSET + 4) : null;" in body
+    assert "for (const b of [frame, inner])" in body, "the casing under both lines"
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index("className: `osxp-tile-installed${both}`")
+    green = body.index("className: `osxp-tile-${kind}${both}`")
+    assert 'const kind = installed.has(name) ? "installed" : "built";' in body
     # the blue after the green, the route's ends in their own colour (2026-09-22)
     assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
     assert 'const both = inner ? " is-both" : "";' in body
-    assert "for (const b of [box, inner])" in body
-    assert "L.rectangle(inner || box," in body
+    assert "L.rectangle(inner || frame," in body
     # too small for both, the blue is left out and the green shows
     assert "if (selected.has(name) && (inner || !kept)) {" in body
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
@@ -3338,7 +3337,10 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     # whole pixels keep at two pixels of a Retina screen wherever the layer lies
     casing_rule = rules[".plan-map .osxp-tile-casing"]
     assert "stroke: var(--map-casing);" in casing_rule and "stroke-width: 5;" in casing_rule
-    both_rule = ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both"
+    both_rule = (
+        ".plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, "
+        ".plan-map .osxp-tile-selected.is-both"
+    )
     assert "stroke-width: 2.5;" in rules[both_rule]
     marks = ("selected", "installed", "built", "casing")
     crisp = ", ".join(f".plan-map .osxp-tile-{mark}" for mark in marks)
@@ -3352,11 +3354,13 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     or taken out of X-Plane with its files kept, was nowhere to be seen. The Library rows already
     said it (`installed`, `present`): only the page changes.
 
-    Then, looking at three of his (2026-09-25): two neighbours showed a solid line between them,
-    since each rectangle laid its dashes over the shared edge out of step. Each side is now drawn
-    once, from its south or west end. It is dashed pink, the one colour no other mark uses, and
-    the legend line is a checkbox, remembered, as the airports' is. Measured in the page: three
-    squares in an L drawn with 10 sides, not 12."""
+    Then, looking at his own (2026-09-25): two built neighbours showed a solid line between them,
+    since each laid its dashes over the shared edge out of step, and beside a square in X-Plane
+    and chosen ones the edges read as a patchwork, one colour winning each shared line. Every
+    square is now framed inside itself (``FRAME_INSET``), so neighbours never share a line.
+    Measured in the page on his layout: seven frames, every pair of neighbours 5 or 6 px apart. It
+    is dashed pink, the one colour no other mark uses, and the legend line is a checkbox,
+    remembered, as the airports' is."""
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     built = map_js[map_js.index("  function builtTiles() {") : map_js.index("  function insetBox(")]
     assert "!e.installed && e.present !== false && parseTile(e.tile)" in built, "on the disk only"
@@ -3371,11 +3375,11 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
         "hidden when unticked"
     )
     assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
-    assert 'sides.set(side.flat().join(","), side);' in grid, "a side shared by two is one side"
-    lat_lon = "[[lat, lon], [lat, lon + 1]], [[lat + 1, lon], [lat + 1, lon + 1]]"
-    assert lat_lon in grid, "each side from its south or west end, so neighbours give the same one"
-    assert 'L.polyline(side, { pane: "osxpGrid", className: "osxp-tile-built"' in grid
-    assert "osxp-tile-built${both}" not in grid, "no rectangle of its own any more"
+    assert "const frame = insetBox(box, FRAME_INSET) || box;" in grid, "inside its own square"
+    assert "L.rectangle(frame, " in grid and "L.rectangle(box, " not in grid, (
+        "none on the grid line"
+    )
+    assert "const FRAME_INSET = 2.5;" in map_js, "half the 3 px line and a pixel: the grid between"
     hover = map_js[map_js.index("  function showTip(ev) {") :]
     assert "(zs.builtWanted && builtTiles().includes(name))" in hover[: hover.index("\n  }\n")]
 

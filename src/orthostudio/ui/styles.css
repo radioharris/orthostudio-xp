@@ -684,14 +684,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    both stand out from each other and from the photo (map.js renderGrid). */
 .plan-map .osxp-tile-casing { stroke: var(--map-casing); stroke-width: 5; fill: none; }
 .plan-map .osxp-tile-installed { stroke: var(--ok); stroke-width: 3; fill: none; }
-/* Built and kept, not in X-Plane: dashed pink, each side drawn once (map.js renderGrid). */
+/* Built and kept, not in X-Plane: dashed pink, framed inside its square as every tile is. */
 .plan-map .osxp-tile-built { stroke: var(--map-built); stroke-width: 3; stroke-dasharray: 7 5; fill: none; }
 /* Tile outlines are straight lines across and down: drawn on whole pixels they stay sharp
    wherever the map is moved, where blended over two pixels the thin line between the green
    and the blue faded at some zooms (a user, 2026-09-22). WebKit widens each line to the pixel:
    2.5px there shows as 3px, and leaves the line between them its width. */
 .plan-map .osxp-tile-selected, .plan-map .osxp-tile-installed, .plan-map .osxp-tile-built, .plan-map .osxp-tile-casing { shape-rendering: crispEdges; }
-.plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-selected.is-both { stroke-width: 2.5; }
+.plan-map .osxp-tile-installed.is-both, .plan-map .osxp-tile-built.is-both, .plan-map .osxp-tile-selected.is-both { stroke-width: 2.5; }
 /* The running build (map.js renderGrid): the tile worked on pulses, a waiting one is dashed. */
 .plan-map .osxp-tile-working { stroke: var(--accent); stroke-width: 4; fill: none; animation: tile-pulse 1.4s ease-in-out infinite; }
 .plan-map .osxp-tile-queued { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 5; fill: none; }

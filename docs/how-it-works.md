@@ -255,7 +255,8 @@ you agree with them again without building anything.
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken
 out of X-Plane with its files kept) is outlined in dashed pink; its line in the legend is a box to
 tick, to hide them. The legend folds away with the chevron in its corner, and comes back with its
-*Legend* button. A square both built and chosen, to build it again, keeps its green outline with the
+*Legend* button. Each square is framed just inside its own edges, so two neighbours in
+different states each keep their own colour. A square both built and chosen, to build it again, keeps its green outline with the
 blue one just inside it, and a thin line between them sets both off from the photo. Zoomed out on
 the world, where a square is too small for both, it stays green: the map then shows which tiles
 you have.
