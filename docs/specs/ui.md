@@ -911,8 +911,10 @@ arrival at step 1's level, the route at ZL14, both within the source's maximum, 
 the route's line that leaves its squares out; then what a build's cap cut and the squares X-Plane
 has no scenery for; then *Delete the flight plan*. Step 1's list is the level of the squares chosen
 by hand; each chip says its level while the chosen squares differ (`+46+006 · ZL16`), and the
-request carries `tiles_zl` for every square whose level is not step 1's (`api.md` 2.2). The plan
-is kept whole in `localStorage` (`osxp.flightplan`), so a reload chooses its squares again. What
+request carries `tiles_zl` for every square whose level is not step 1's (`api.md` 2.2). What the
+pilot chose is kept in `localStorage` (`osxp.flightplan`): the route and its radius, the two
+levels, the squares taken out and the tick, never the squares; a reload sends the route to the
+engine (`POST /api/flightplan`), which computes them again by its version's rules. What
 went wrong is said right under the button (`#flightplan-error`); the airport's own line stays
 `#way-error`.
 

@@ -1,13 +1,15 @@
 /**
  * The flight plan of step 1, as the page keeps it (docs/specs/flight-plan.md).
  *
- * The engine computes a plan once: its line, and its squares, the departure's and the arrival's
- * (`ends`) and those it flies over (`along`, in the order flown), GET /api/flightplan/simbrief.
- * The page keeps that answer whole, with two levels, the squares the pilot took out of it and
- * whether the route's squares are wanted at all, and derives everything else from them: which
- * squares are chosen, and at which level. The first
- * flight plan kept the same level in four places and its route in three, and most of what the
- * reviews found was those copies disagreeing (2026-09-23).
+ * The engine computes a plan: its line, and its squares, the departure's and the arrival's
+ * (`ends`) and those along the route (`along`, in the order flown), GET /api/flightplan/simbrief.
+ * The page holds that answer with two levels, the squares the pilot took out of it and whether
+ * the route's squares are wanted at all, and derives everything else from them: which squares are
+ * chosen, and at which level. The first flight plan kept the same level in four places and its
+ * route in three, and most of what the reviews found was those copies disagreeing (2026-09-23).
+ *
+ * Between two visits the page keeps what the pilot chose and never the squares: the route goes
+ * back to the engine (POST /api/flightplan), which computes them again by its own rules.
  *
  * Nothing here touches the page: every function takes what it needs and returns a value, so the
  * tests run this very file.
@@ -23,7 +25,9 @@ export const STORAGE_KEY = "osxp.flightplan";
 /** Where the first flight plan kept its route: read by nothing now, and cleared once. */
 export const OLD_STORAGE_KEY = "osxp.route";
 
-const SAVED_VERSION = 1;
+/** 2: the route and the pilot's choices, the squares computed again at each visit; 1 kept the
+ * engine's answer whole, squares included. */
+const SAVED_VERSION = 2;
 const TILE_NAME = /^[+-]\d{2}[+-]\d{3}$/;
 
 /** The two levels a new plan starts with: its ends at step 1's level, its route at ZL14, never
@@ -120,9 +124,22 @@ export function excluding(fp, names) {
   return { ...fp, excluded: [...fp.excluded, ...more] };
 }
 
-/** What the page saves: the plan whole, so nothing is recomputed or asked again at the next visit. */
+/**
+ * What the page saves: what the pilot chose, never the squares. The route and the radius its
+ * squares were chosen with, the two levels, the squares taken out and the tick; at the next visit
+ * the engine computes the squares again (`restoredPlan`), by the rules of its version. A plan kept
+ * whole came back with the squares of the version it was read under: read before the corridor
+ * came, it still chose the line's squares alone after the update (2026-09-25).
+ */
 export function toSaved(fp) {
-  return JSON.stringify({ v: SAVED_VERSION, plan: fp.plan, levels: fp.levels, excluded: fp.excluded, along: fp.along !== false });
+  const { from, to, points, radius_km } = fp.plan;
+  return JSON.stringify({
+    v: SAVED_VERSION,
+    route: { from, to, points, radius_km },
+    levels: fp.levels,
+    excluded: fp.excluded,
+    along: fp.along !== false,
+  });
 }
 
 function isLevel(n) {
@@ -133,19 +150,17 @@ function isNames(list) {
   return Array.isArray(list) && list.every((n) => typeof n === "string" && TILE_NAME.test(n));
 }
 
-function isPath(path) {
+function isPoints(points) {
   return (
-    Array.isArray(path) &&
-    path.every(
-      (piece) =>
-        Array.isArray(piece) &&
-        piece.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => Number.isFinite(v))),
-    )
+    Array.isArray(points) &&
+    points.length >= 2 &&
+    points.every((p) => p && typeof p === "object" && Number.isFinite(p.lat) && Number.isFinite(p.lon))
   );
 }
 
-/** A plan read back from the browser's storage, or `null` when it is not one this page wrote:
- * anything else is dropped rather than half believed. */
+/** A saved plan read back from the browser's storage: the route to send the engine again and what
+ * the pilot chose, or `null` when it is not one this page wrote; anything else is dropped rather
+ * than half believed. */
 export function readSaved(text) {
   let doc;
   try {
@@ -153,12 +168,23 @@ export function readSaved(text) {
   } catch {
     return null;
   }
-  if (!doc || doc.v !== SAVED_VERSION || typeof doc.plan !== "object" || !doc.plan) return null;
-  const { plan, levels, excluded, along } = doc;
-  const squares = plan.squares || {};
-  if (!isNames(squares.ends) || !isNames(squares.along) || !isNames(excluded ?? [])) return null;
-  if (!isPath(plan.path) || !Array.isArray(plan.points) || plan.points.length < 2) return null;
+  if (!doc || doc.v !== SAVED_VERSION || typeof doc.route !== "object" || !doc.route) return null;
+  const { route, levels, excluded, along } = doc;
+  if (!isPoints(route.points) || !Number.isFinite(route.radius_km)) return null;
+  if (!isNames(excluded ?? [])) return null;
   if (!levels || !isLevel(levels.ends) || !isLevel(levels.along)) return null;
   if (along !== undefined && typeof along !== "boolean") return null;
-  return { plan, levels: { ends: levels.ends, along: levels.along }, excluded: [...(excluded ?? [])], along: along !== false };
+  const name = (v) => (typeof v === "string" ? v : "");
+  return {
+    route: { from: name(route.from), to: name(route.to), points: route.points, radius_km: route.radius_km },
+    levels: { ends: levels.ends, along: levels.along },
+    excluded: [...(excluded ?? [])],
+    along: along !== false,
+  };
+}
+
+/** A saved plan brought back: the engine's answer for its route, computed again, with the levels,
+ * the squares taken out and the tick the pilot left. */
+export function restoredPlan(plan, saved) {
+  return { ...newFlightPlan(plan, saved.levels), excluded: [...saved.excluded], along: saved.along };
 }

@@ -5206,7 +5206,7 @@ def test_a_lone_error_card_takes_the_whole_width() -> None:
 _FP = """
 const plan = {
   from: "LSGG", to: "LFMN", points: [{lat: 46.2, lon: 6.1}, {lat: 43.7, lon: 7.2}],
-  path: [[[46.2, 6.1], [43.7, 7.2]]], length_km: 299, left_out: 0,
+  path: [[[46.2, 6.1], [43.7, 7.2]]], length_km: 299, left_out: 0, radius_km: 15,
   squares: {ends: ["+46+006", "+43+007"], along: ["+45+006", "+44+006", "+44+007"]},
 };
 const fp = m.newFlightPlan(plan, m.defaultLevels(16, 19));
@@ -5314,28 +5314,77 @@ def test_a_square_taken_out_of_the_plan_stays_out() -> None:
     assert "+44+006" not in got["tiles"]
 
 
-def test_the_plan_is_kept_whole_and_anything_else_is_dropped() -> None:
+def test_the_plan_is_kept_as_its_route_and_the_pilots_choices() -> None:
+    """Never its squares: kept whole, a plan read before the corridor came still chose the line's
+    squares alone after the update (2026-09-25). Anything this page did not write is dropped,
+    the first version's whole answer included."""
     got = _node_json(
         "flightplan.js",
         "(() => {"
         + _FP
         + """
         const saved = m.toSaved(m.excluding(fp, ["+44+006"]));
-        const bad = (change) => m.readSaved(JSON.stringify({...JSON.parse(saved), ...change}));
+        const doc = JSON.parse(saved);
+        const bad = (change) => m.readSaved(JSON.stringify({...doc, ...change}));
+        const route = (change) => bad({route: {...doc.route, ...change}});
         return {
+          doc,
           back: m.readSaved(saved),
-          wrong: [bad({v: 2}), bad({levels: {ends: 16, along: 42}}), m.readSaved("not json"),
-                  bad({excluded: ["Geneva"]}), bad({plan: {...plan, path: "a line"}}),
-                  bad({along: "yes"})],
+          wrong: [bad({v: 1}), bad({levels: {ends: 16, along: 42}}), m.readSaved("not json"),
+                  bad({excluded: ["Geneva"]}), route({points: [doc.route.points[0]]}),
+                  route({radius_km: "wide"}), bad({along: "yes"}),
+                  m.readSaved(JSON.stringify({v: 1, plan, levels: fp.levels, excluded: []}))],
           // a plan saved before the route could be left out wants its route
-          older: m.readSaved(JSON.stringify((({along, ...rest}) => rest)(JSON.parse(saved)))).along,
+          older: m.readSaved(JSON.stringify((({along, ...rest}) => rest)(doc))).along,
         };
         })()""",
     )
-    assert got["back"]["levels"] == {"ends": 16, "along": 14}
-    assert got["back"]["excluded"] == ["+44+006"] and got["back"]["plan"]["to"] == "LFMN"
-    assert got["wrong"] == [None, None, None, None, None, None]
-    assert got["back"]["along"] is True and got["older"] is True
+    assert set(got["doc"]) == {"v", "route", "levels", "excluded", "along"}
+    assert set(got["doc"]["route"]) == {"from", "to", "points", "radius_km"}
+    assert "squares" not in json.dumps(got["doc"]) and "path" not in json.dumps(got["doc"])
+    back = got["back"]
+    assert back["route"] == got["doc"]["route"] and back["route"]["radius_km"] == 15
+    assert back["levels"] == {"ends": 16, "along": 14} and back["excluded"] == ["+44+006"]
+    assert got["wrong"] == [None] * 8
+    assert back["along"] is True and got["older"] is True
+
+
+def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
+    """The engine computes the kept route again (POST /api/flightplan): its squares are this
+    version's, the levels, the squares taken out and the tick are the pilot's."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const left = {...m.excluding(fp, ["+44+006"]), levels: {ends: 17, along: 13}, along: true};
+        const saved = m.readSaved(m.toSaved(left));
+        // the next version chooses one more square beside the route
+        const along = [...plan.squares.along, "+45+007"];
+        const again = {...plan, squares: {...plan.squares, along}};
+        const back = m.restoredPlan(again, saved);
+        return {groups: Object.fromEntries(m.groupsOf(back)), levels: back.levels,
+                off: m.restoredPlan(again, {...saved, along: false}).along};
+        })()""",
+    )
+    assert got["groups"] == {
+        "+46+006": "ends",
+        "+43+007": "ends",
+        "+45+006": "along",
+        "+44+007": "along",
+        "+45+007": "along",
+    }
+    assert got["levels"] == {"ends": 17, "along": 13} and got["off"] is False
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    restore = _function_body(app_js, "restoreFlightPlan")
+    assert restore.index("flightPlanLoading = true;") < restore.index(
+        'api("POST", "/api/flightplan", saved.route)'
+    )
+    assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
+    # emptied or built meanwhile, the kept plan is forgotten and the answer dropped
+    assert "if (keptFlightPlan() !== text) return;" in restore
+    forget = _function_body(app_js, "forgetFlightPlan")
+    assert forget.index("setFlightPlanState(null);") < forget.index("if (!had) return;")
 
 
 def test_the_flight_plan_box_is_in_step_1_and_nothing_of_the_first_one_is_left() -> None:
@@ -5424,6 +5473,7 @@ def test_the_demo_plan_is_the_engines_own() -> None:
     assert len(every) - len(kept) == doc["left_out"] > 0
     assert [n for n in every if n in kept] == kept  # in the engine's order
     assert doc["path"] == whole["path"] and doc["bounds"] == whole["bounds"]
+    assert doc["radius_km"] == 15.0
 
 
 def test_the_route_can_be_left_unchosen() -> None:

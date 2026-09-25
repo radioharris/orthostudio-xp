@@ -179,3 +179,38 @@ async def test_the_radius_is_the_pages_and_has_bounds() -> None:
     assert tight["squares"]["ends"] == ["+46+006", "+39+002"]  # the airports' own squares
     assert len(wide["squares"]["ends"]) > len(tight["squares"]["ends"])
     assert refused.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_a_kept_route_is_computed_again_as_it_was_read() -> None:
+    """The page keeps the route, never its squares, and sends it back at the next visit: the
+    engine answers what it answered from SimBrief, and asks nothing of simbrief.com."""
+    asked: list[str] = []
+    url = f"{SIMBRIEF_URL}?username=pilot&json=1"
+    async with _client(_app({url: json.dumps(OFP).encode()}, asked, "pilot")) as c:
+        read = (await c.get("/api/flightplan/simbrief", params={"radius_km": 20})).json()
+        kept = {key: read[key] for key in ("from", "to", "points", "radius_km")}
+        again = await c.post("/api/flightplan", json=kept)
+    assert again.status_code == 200 and asked == [url]
+    assert again.json() == read and read["radius_km"] == 20.0
+
+
+@pytest.mark.anyio
+async def test_a_kept_route_takes_no_squares_from_the_page() -> None:
+    """A page that kept the squares showed a plan read before the corridor came with the line's
+    squares alone (2026-09-25): the squares of a kept route are only ever computed, by the version
+    that answers, and a route is enough without a SimBrief name."""
+    point = {"ident": "LSGG", "name": "Geneva", "lat": 46.238, "lon": 6.109}
+    route = {"from": "LSGG", "to": "LEPA", "points": [point, {**point, "lat": 39.551}]}
+    async with _client(_app({}, [], None)) as c:
+        fine = await c.post("/api/flightplan", json=route)
+        squares = await c.post(
+            "/api/flightplan", json={**route, "squares": {"ends": [], "along": []}}
+        )
+        one = await c.post("/api/flightplan", json={**route, "points": [point]})
+        pole = {**point, "lat": 91}
+        north = await c.post("/api/flightplan", json={**route, "points": [point, pole]})
+        wide = await c.post("/api/flightplan", json={**route, "radius_km": 400})
+        many = await c.post("/api/flightplan", json={**route, "points": [point] * 403})
+    assert fine.status_code == 200 and fine.json()["radius_km"] == 15.0
+    assert [a.status_code for a in (squares, one, north, wide, many)] == [422] * 5

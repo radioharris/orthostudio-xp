@@ -1,6 +1,6 @@
 """The last flight plan of a pilot, from SimBrief, as squares to build.
 
-``GET /api/flightplan/simbrief``.
+``GET /api/flightplan/simbrief``, and ``POST /api/flightplan`` for a route the page kept.
 
 The Plan chooses the squares a flight goes over, and typing the airports is not what a pilot who
 already filed a plan wants to do. SimBrief, which most of them use, serves the last plan of a user
@@ -13,6 +13,11 @@ computation, so the page draws exactly what it chooses. The engine asks, not the
 street map, so the page still talks to nothing but the address it was opened at. The name travels
 to simbrief.com, which the Settings question says in plain words; nothing else of the user leaves
 the machine, and nothing is kept on disk.
+
+The page keeps the route between two visits, never its squares: at the next visit it sends the
+route back (``POST /api/flightplan``) and the squares are computed again, by the rules of the
+version that answers, without asking SimBrief. A page that kept the squares showed a plan read
+before the corridor came with the line's squares alone, a reload after the update (2026-09-25).
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from orthostudio.api.jobs import error_json
 from orthostudio.errors import OsxpError
@@ -34,7 +40,7 @@ from orthostudio.flightplan import has_scenery, plan_of
 
 log = logging.getLogger("orthostudio.api.simbrief")
 
-__all__ = ["SIMBRIEF_URL", "route_of", "simbrief_router", "simbrief_url"]
+__all__ = ["SIMBRIEF_URL", "KeptRoute", "route_of", "simbrief_router", "simbrief_url"]
 
 SIMBRIEF_URL = "https://www.simbrief.com/api/xml.fetcher.php"
 """Where the last plan comes from; ``json=1`` asks for JSON rather than the XML it was built on."""
@@ -50,6 +56,27 @@ RADIUS_KM = 15.0
 
 MAX_USER = 64
 """A SimBrief name or pilot ID is short; the Settings field takes no more."""
+
+
+class RoutePoint(BaseModel):
+    """One point of a kept route, as :func:`route_of` gave it."""
+
+    model_config = ConfigDict(extra="forbid")
+    ident: str = Field(default="", max_length=8)
+    name: str = Field(default="", max_length=60)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+
+
+class KeptRoute(BaseModel):
+    """A route the page kept, and the radius its squares were chosen with: the squares themselves
+    are not taken, only computed (see the module)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    from_: str = Field(default="", alias="from", max_length=8)
+    to: str = Field(default="", max_length=8)
+    points: list[RoutePoint] = Field(min_length=2, max_length=MAX_POINTS + 2)
+    radius_km: float = Field(default=RADIUS_KM, ge=0.0, le=300.0)
 
 
 def _number(value: Any) -> float | None:
@@ -169,6 +196,22 @@ def simbrief_router(
     ask = fetch if fetch is not None else _fetch
     router = APIRouter()
 
+    async def answer(line: dict[str, Any], radius_km: float, how: str) -> dict[str, Any]:
+        """A line's squares and path, by the rules of this version: both routes answer this."""
+        scenery = global_scenery_of()
+        plan = await asyncio.to_thread(
+            plan_of,
+            [(p["lat"], p["lon"]) for p in line["points"]],
+            radius_km=radius_km,
+            has_land=has_scenery(scenery) if scenery is not None else None,
+        )
+        log.info(
+            "flight plan (%s): %s to %s, %d point(s), %d + %d square(s) within %g km, %d left out",
+            how, line["from"], line["to"], len(line["points"]), len(plan["squares"]["ends"]),
+            len(plan["squares"]["along"]), radius_km, plan["left_out"],
+        )  # fmt: skip
+        return {**line, **plan, "radius_km": radius_km, "scenery_checked": scenery is not None}
+
     @router.get("/api/flightplan/simbrief")
     async def flight_plan(
         radius_km: float = Query(RADIUS_KM, ge=0.0, le=300.0),
@@ -191,18 +234,16 @@ def simbrief_router(
         line = route_of(doc if isinstance(doc, dict) else {})
         if len(line["points"]) < 2:
             return _failed("CFG_SIMBRIEF_PLAN_EMPTY", 404)
-        scenery = global_scenery_of()
-        plan = await asyncio.to_thread(
-            plan_of,
-            [(p["lat"], p["lon"]) for p in line["points"]],
-            radius_km=radius_km,
-            has_land=has_scenery(scenery) if scenery is not None else None,
-        )
-        log.info(
-            "flight plan: %s to %s, %d point(s), %d + %d square(s), %d left out",
-            line["from"], line["to"], len(line["points"]), len(plan["squares"]["ends"]),
-            len(plan["squares"]["along"]), plan["left_out"],
-        )  # fmt: skip
-        return {**line, **plan, "scenery_checked": scenery is not None}
+        return await answer(line, radius_km, "SimBrief")
+
+    @router.post("/api/flightplan")
+    async def kept_flight_plan(route: KeptRoute) -> Any:
+        """A route the page kept: its squares and its line computed again, SimBrief not asked."""
+        line = {
+            "from": route.from_,
+            "to": route.to,
+            "points": [p.model_dump() for p in route.points],
+        }
+        return await answer(line, route.radius_km, "kept")
 
     return router

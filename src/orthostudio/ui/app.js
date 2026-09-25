@@ -25,7 +25,7 @@ import {
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
-import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
+import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
@@ -1047,6 +1047,10 @@ export async function mockApi(method, path, body, options = {}) {
     // a real X-Plane, two squares of open sea left out), so the flight plan can be tried without
     // a SimBrief account; fail=simbrief answers as for a name SimBrief does not know.
     if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
+    return mockFile("flightplan");
+  }
+  if (p === "/api/flightplan" && method === "POST") {
+    // A kept route computed again: the demo has one plan, the one it kept.
     return mockFile("flightplan");
   }
   if (p === "/api/status") {
@@ -2140,7 +2144,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 23;
+const PAGE_API_LEVEL = 24;
 
 async function loadStatus() {
   try {
@@ -3039,12 +3043,23 @@ function setFlightPlanState(fp) {
   }
 }
 
-/** No flight plan any more, its line taken off the map; the selection is the caller's. */
+/** No flight plan any more, its line taken off the map; the selection is the caller's. The kept
+ * plan goes even before it is back on the page, so one still being restored is not brought back. */
 function forgetFlightPlan() {
-  if (!state.flightPlan) return;
+  const had = Boolean(state.flightPlan);
   setFlightPlanState(null);
+  if (!had) return;
   showFlightPlanError(null);
   planMap?.routeChanged();
+}
+
+/** The plan kept in the browser's storage as text, or `null` when the storage is refused. */
+function keptFlightPlan() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || "";
+  } catch {
+    return null;
+  }
 }
 
 /** What went wrong with the flight plan, said right under its button. */
@@ -3134,22 +3149,46 @@ function setFlightPlanAlong(on) {
   planMap?.planChanged();
 }
 
-/** The plan saved at the last visit, its squares chosen again as they were left. */
-function restoreFlightPlan() {
-  let saved = null;
+/**
+ * The plan kept at the last visit: its route goes back to the engine, which computes its squares
+ * again by the rules of its version (SimBrief is not asked), and they are chosen with the levels,
+ * the squares taken out and the tick the pilot left. A plan kept whole came back with the squares
+ * of the version it was read under (2026-09-25).
+ *
+ * It holds the button like any reading of the plan. A selection emptied or built meanwhile forgets
+ * the kept plan, and the answer is then dropped; an engine that cannot answer (one older than the
+ * page, before a restart) leaves the plan kept for the next visit.
+ */
+async function restoreFlightPlan() {
   try {
     localStorage.removeItem(OLD_STORAGE_KEY); // the first version's route, which nothing reads
-    saved = readSaved(localStorage.getItem(STORAGE_KEY) || "");
-    if (!saved) localStorage.removeItem(STORAGE_KEY);
   } catch {
     return;
   }
-  if (!saved) return;
-  const added = withPlan(state.tiles, saved, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
-  state.tiles = added.tiles;
-  state.flightPlan = { ...saved, cut: added.cut, lastKept: added.lastKept };
-  selectionChanged();
-  planMap?.routeChanged();
+  const text = keptFlightPlan();
+  const saved = text ? readSaved(text) : null;
+  if (!saved) {
+    if (text) setFlightPlanState(null); // not one this page wrote
+    return;
+  }
+  if (flightPlanLoading) return;
+  flightPlanLoading = true;
+  renderFlightPlan();
+  try {
+    const plan = await api("POST", "/api/flightplan", saved.route);
+    if (keptFlightPlan() !== text) return; // forgotten, or replaced, meanwhile
+    const fp = restoredPlan(plan, saved);
+    const added = withPlan(state.tiles, fp, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
+    state.tiles = added.tiles;
+    setFlightPlanState({ ...fp, cut: added.cut, lastKept: added.lastKept });
+    selectionChanged();
+    planMap?.routeChanged();
+  } catch {
+    /* kept as it is: the next visit asks again */
+  } finally {
+    flightPlanLoading = false;
+    renderFlightPlan();
+  }
 }
 
 /** The flight plan's box: its button, then, with a plan, its route, its two groups and their

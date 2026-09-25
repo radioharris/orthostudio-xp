@@ -4,8 +4,8 @@ Status: rebuilt for the version after 0.1.17, replacing the first flight plan, w
 off before 0.1.14 shipped (2026-09-23) and never offered.
 
 Code: `src/orthostudio/flightplan.py` (the squares and the line), `src/orthostudio/api/simbrief.py`
-(`GET /api/flightplan/simbrief`), `src/orthostudio/ui/flightplan.js` (what the page keeps, and every
-rule on it), the flight plan's section of `ui/app.js`, `drawRoute` and `routeChanged` in
+(`GET /api/flightplan/simbrief`, `POST /api/flightplan`), `src/orthostudio/ui/flightplan.js` (what
+the page holds and keeps, and every rule on it), the flight plan's section of `ui/app.js`, `drawRoute` and `routeChanged` in
 `ui/map.js`. Tests: `tests/test_flightplan.py`, `tests/test_api_simbrief.py`, the flight plan's
 section of `tests/test_ui_static.py`.
 
@@ -91,6 +91,7 @@ The answer:
 | `squares` | `{ends: [...], along: [...]}`, tile names, *along* in the order flown |
 | `left_out` | the squares X-Plane has no scenery for |
 | `length_km`, `bounds` | the plan's length on the sphere; `{south, north, west, east}` |
+| `radius_km` | the radius the squares were chosen with |
 | `scenery_checked` | false when no X-Plane folder is known: then nothing is left out |
 
 `radius_km` is the airport field's radius (0 to 300 km, 15 by default), around the two airports
@@ -98,12 +99,18 @@ and along the whole route; to widen the corridor, change it and read the plan ag
 one shape (code, words, remedy, context): `CFG_SIMBRIEF_USER_MISSING` (400),
 `CFG_SIMBRIEF_USER_UNKNOWN` (404, with the name), `CFG_SIMBRIEF_PLAN_EMPTY` (404),
 `NET_SIMBRIEF_FAILED` (502, with the reason; the network's general code said "retried with
-backoff", which this button never does). API level 23.
+backoff", which this button never does).
+
+`POST /api/flightplan` takes a route the page kept, `{from, to, points, radius_km}`, and answers the
+same: its squares and its line computed again, by the rules of the version that answers, without
+SimBrief and without a name (section 5). It takes nothing else: squares sent with it are refused
+(422), like fewer than 2 points or more than 402, a point off the globe, a radius outside 0 to 300.
+Both routes are one computation (`answer` in the router). API level 24.
 
 ## 5. The page: one object, everything else derived
 
-`state.flightPlan` holds the engine's answer whole, the two levels, the squares the pilot took
-out of the plan and whether the route's squares are wanted (`along`). Nothing else is stored;
+`state.flightPlan` holds the engine's answer, the two levels, the squares the pilot took out of
+the plan and whether the route's squares are wanted (`along`). Nothing else is held;
 `ui/flightplan.js` derives the rest, and the tests run that very file.
 
 * **The levels.** A new plan's departure and arrival start at step 1's level, its route at ZL14
@@ -125,9 +132,18 @@ out of the plan and whether the route's squares are wanted (`along`). Nothing el
 * **Deleting.** *Delete the flight plan* takes the plan's squares away, except those also chosen by
   hand. Step 1's trash empties the whole selection and takes the plan with it. Starting a build
   with the selection forgets the plan too: kept, the next visit would have chosen its squares again.
-* **Kept between visits.** The plan is saved whole in the browser's storage (`osxp.flightplan`,
-  versioned; anything else found there is dropped, and the first version's `osxp.route` is
-  cleared). A reload chooses its squares again, as they were left, without asking SimBrief.
+* **Kept between visits.** What the pilot chose is saved in the browser's storage
+  (`osxp.flightplan`, version 2): the route and the radius its squares were chosen with, the two
+  levels, the squares taken out, the tick; never the squares. A reload sends the route to the
+  engine (`POST /api/flightplan`), which computes the squares again, and they are chosen with the
+  pilot's levels, exclusions and tick; SimBrief is not asked. Testing the corridor, the pilot
+  still saw the line's squares alone: the plan read before it came was saved whole, squares
+  included, and a reload chose them as they were (2026-09-25). Now a plan kept across a new
+  version follows that version's rules. The reload holds the button like any reading of the plan;
+  a selection emptied or built meanwhile forgets the kept plan and the answer is dropped; an
+  engine that cannot answer (older than the page, before a restart) leaves the plan kept for the
+  next visit. Anything else found there is dropped, version 1 (the engine's answer whole)
+  included, and the first version's `osxp.route` is cleared.
 * **One request at a time.** The button is busy while the plan is read; a second click does
   nothing. What went wrong is said right under it, in the page's words for the code.
 

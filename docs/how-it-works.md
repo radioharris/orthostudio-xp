@@ -322,8 +322,9 @@ own list, and a tick before the route leaves its squares out if you want the two
 Squares X-Plane has no scenery for, open sea or a region not installed, are left out, since a
 build would stop on them, and a route longer than one build takes stops at a square the box names.
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
-kept in the browser until then, and only your name goes to simbrief.com, only when you press the
-button.
+kept in the browser until then, with your levels and the squares you took out, and its squares are
+computed again at each visit, so a new version's rules apply to it. Only your name goes to
+simbrief.com, only when you press the button.
 
 **Choosing many squares at once.** Hold Shift, press the mouse on the map and draw a rectangle:
 every square inside it is chosen as you go, and drawing back the other way lets them go again. If
