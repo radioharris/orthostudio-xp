@@ -209,6 +209,30 @@ Without airports, against the fabricated Ortho4XP reference of arbitration A3: 2
 `edges_by_marker` identical to Ortho4XP's (DUMMY 38 808, WATER 79 947, SEA 37 327, WATER|SEA
 1 609, INTERP_ALT 81 543).
 
+#### Geometry within a millimetre of a grid line (known, 2026-09-25)
+
+The contact tests above are relative to the edges' lengths, as Ortho4XP's are, so geometry a few
+nanodegrees from a line of the orthophoto grid is neither merged with it nor kept clear of it.
+Two cases, measured on real tiles with OSM from the planet library and X-Plane's relief:
+
+* **a vertex beside a grid line.** On +34-118 a road vertex lies 0.065 mm east of the line
+  `x = 547/1024`; the line cuts the road's previous edge 0.2 mm before it, a second node is made
+  2e-9 away, and Triangle fills the gap with 872 323 points, 59 % of the tile's mesh. The DSF's
+  quadtree then refused to split a bucket that is one position (`dsf-encoding.md` 3.1), which is
+  what users saw as `OverflowError: Python integer -2 out of bounds for uint64`; the cap on its
+  depth lets the tile build, its piled points sharing one DSF entry, but the mesh keeps the pile;
+* **an edge along a grid line.** On +63-112 a lake's edge runs along the line for a hundred
+  metres, 6e-9 from it: two parallel constraints 0.3 mm apart, a strip Triangle fills with
+  17 391 points in one hundredth of a degree, where a cell holds 100 to 200.
+
+A rule that reused the vertex a crossing lands within a millimetre of fixed the first and made the
+second worse (159 975 points in the cell: the grid line, pulled onto the lake's vertices, met the
+lake's edge at a vanishing angle), and was taken back. The fix is a noder that treats anything
+within a millimetre as touching, a vertex near an edge, a crossing near a vertex and an edge near a
+parallel edge alike, and it ships only once a bench of a few hundred real tiles, noded and meshed
+before and after, shows no cell denser than before anywhere. Of 199 random configurations, main's
+code gives no pile above 27 points on one DSF position, so the cap touches no DSF but a failed one.
+
 #### What is left, and what it is not
 
 Two node sets being equal is not two files being equal. Measured on the same replay:

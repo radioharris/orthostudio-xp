@@ -144,10 +144,27 @@ def _positions(pool: np.ndarray, first: np.ndarray) -> tuple[np.ndarray, np.ndar
     return pos, order
 
 
-def _check_pool_sizes(pos: np.ndarray, tile: TileRef) -> None:
+def _check_pool_sizes(
+    pos: np.ndarray, tile: TileRef, pool: np.ndarray, part: PoolPartition
+) -> None:
+    """A pool holds 65536 entries at most, the DSF indexing them on 16 bits.
+
+    The error says where the fullest pool lies, in ``serve.log``: a pool overflows when the mesh
+    piles far more points on one spot than a scenery has, which is a fault upstream, and knowing
+    the spot is most of finding it (+34-118, 2026-09-25).
+    """
     if len(pos) and int(pos.max()) > MAX_U16:
+        bucket = int(pool[int(np.argmax(pos))]) % part.n_pools
+        side = 2.0 ** -int(part.level[bucket])
+        lat = tile.lat + float(part.key_y[bucket]) * side
+        lon = tile.lon + float(part.key_x[bucket]) * side
         raise OsxpError(
-            "DSF_POOL_OVERFLOW", context={"tile": tile.name, "entries": int(pos.max()) + 1}
+            "DSF_POOL_OVERFLOW",
+            context={
+                "tile": tile.name,
+                "entries": int(pos.max()) + 1,
+                "at": f"{lat:.6f}, {lon:.6f}",
+            },
         )
 
 
@@ -359,7 +376,7 @@ def _terrain_entries(
     e_node, e_ter = nodes[first], ter[first]
     e_pool = bucket[first] + part.n_pools * terrains.family[e_ter]
     pos, order = _positions(e_pool, first)
-    _check_pool_sizes(pos, tile)
+    _check_pool_sizes(pos, tile, e_pool, part)
 
     lat, lon = rm.coords[e_node, 1], rm.coords[e_node, 0]
     s, t = st_coord_arrays(
@@ -402,7 +419,7 @@ def _water_entries(
     e_node = nodes[first]
     e_pool = part.node_bucket[e_node] + FAMILY_WATER * part.n_pools
     pos, order = _positions(e_pool, first)
-    _check_pool_sizes(pos, tile)
+    _check_pool_sizes(pos, tile, e_pool, part)
     values = np.zeros((len(first), PLANES_MASKED), dtype=np.uint16)
     values[:, :3] = icoords[e_node, :3]
     values[:, 3:5] = HALF_U16

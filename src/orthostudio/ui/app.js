@@ -3679,9 +3679,6 @@ const COST_ICON_PATHS = {
   disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
 };
 
-/** The bin, the same drawing as the trash above the job list (`index.html`). */
-const TRASH_PATH = "M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6";
-
 /** Inline SVG icon (static markup, no user data). */
 function strokeIcon(d) {
   const markup = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
@@ -3920,17 +3917,19 @@ function renderJobList() {
   }
 }
 
-/** The bin on a finished row: that build alone leaves the list, its progress and its journal with
- * it, and the tiles it built stay. A build running or waiting has no bin: it is cancelled first,
- * which is what the engine answers too (409). */
+/** The cross in a finished row's corner: that build alone leaves the list, its progress and its
+ * journal with it, and the tiles it built stay. A build running or waiting has none: it is cancelled
+ * first, which is what the engine answers too (409). A cross, not a bin beside the row: the bin
+ * took the row's width and made the list dense (a user, 2026-09-25); the cross is the Plan's, the
+ * one that takes a square off its list. */
 function forgetButton(j, tiles) {
   return h("button", {
     type: "button",
-    class: "btn btn-small btn-icon btn-danger btn-trash job-forget", // the same bin as the one above the list
+    class: "job-forget",
     title: t("works.forget"),
     disabled: state.jobsClearing || Boolean(state.engineOutdated),
     onclick: () => forgetJob(j),
-  }, strokeIcon(TRASH_PATH), h("span", { class: "sr-only" }, t("works.forget_one", { tiles: tiles.join(" ") || j.id })));
+  }, h("span", { "aria-hidden": "true" }, "\u00d7"), h("span", { class: "sr-only" }, t("works.forget_one", { tiles: tiles.join(" ") || j.id })));
 }
 
 /** One finished build leaves the list (DELETE /api/jobs/{id}).

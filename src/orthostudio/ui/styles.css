@@ -842,16 +842,26 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .jobs-head { display: flex; align-items: center; gap: 8px; min-height: 24px; margin-bottom: var(--title-gap); }
 .jobs-head .h2 { margin: 0; }
-.job-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.job-list li { display: flex; align-items: stretch; gap: 4px; }
-/* Quiet beside the row it belongs to, and plain to see once the row is pointed at or the keyboard
-   reaches it. Never hidden: a user has to be able to find it. */
-.job-forget { flex: none; align-self: center; opacity: .5; transition: opacity 120ms; }
-.job-list li:hover .job-forget, .job-forget:hover, .job-forget:focus-visible { opacity: 1; }
+.job-list { list-style: none; margin: 0; padding: 6px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.job-list li { position: relative; }
+/* The cross of a finished row sits astride its top right corner, a small badge on the border: it
+   takes no room in the row. The bin beside the row took its width, and a cross inside the corner
+   pushed the status pill to the left (a user, 2026-09-25). The list's gap and top padding leave the
+   badge room above each row. Quiet, and plain to see once the row is pointed at or the keyboard
+   reaches it; never hidden, a user has to be able to find it. */
+.job-forget {
+  position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0;
+  appearance: none; cursor: pointer; border: 1px solid var(--line); border-radius: 50%;
+  background: var(--bg); color: var(--fg-3); font-size: var(--fs-3); line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.job-list li:hover .job-forget, .job-forget:focus-visible { color: var(--fg-2); border-color: var(--fg-3); }
+.job-forget:hover:not(:disabled) { color: var(--fg); background: var(--bg-3); border-color: var(--fg-3); }
+.job-forget:disabled { cursor: default; opacity: .5; }
 .job-item {
   width: 100%; text-align: left; font: inherit; cursor: pointer;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px;
-  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; color: var(--fg);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px;
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; color: var(--fg);
 }
 .job-item:hover { background: var(--bg-3); }
 .job-item[aria-current="true"] { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
@@ -915,7 +925,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .section-title { margin-top: var(--block-gap); }
 
-.error-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
+/* auto-fit, not auto-fill: auto-fill kept the empty column beside a lone card, which then took half
+   the width, small between the tiles and the log (a user, 2026-09-25) */
+.error-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 8px; }
 .error-card { border: 1px solid var(--line); border-left: 3px solid var(--fail); border-radius: var(--radius); background: var(--bg-2); padding: 8px 10px; }
 .error-card.sev-card-degraded { border-left-color: var(--warn); }
 .error-card.sev-card-info { border-left-color: var(--accent); }

@@ -459,15 +459,17 @@ runs; *Keep them* has the focus), then `POST /api/jobs/clear`, reads the list ag
 "Jobs removed from the list: N." When the job shown was cleared, the running job is shown
 instead, else none.
 
-**One build at a time** (a user, 2026-09-24): a bin at the end of a row, on the rows that have
-finished only, `DELETE /api/jobs/{id}` without asking first, since the tiles stay and only that
+**One build at a time** (a user, 2026-09-24): a small cross in the top right corner of a row, on
+the rows that have finished only, `DELETE /api/jobs/{id}` without asking first, since the tiles stay and only that
 build's progress and journal go. A build running or waiting has no bin, and the engine refuses it
 too (409): it is cancelled first. The row that takes the gone one's place, the next one down or
 else the one above, is where everything goes: the job shown, when the gone one was the one shown
 (the same user expected the next job, not an empty screen, 2026-09-25), and the keyboard, on its
-bin or else on the row. Removing another row leaves the job shown as it is; removing the last one
-says there is no job. The same bin as the trash above the list, drawn by the same `btn-trash` rule
-(26 by 24 with a 15 px icon, measured in the page).
+cross or else on the row. Removing another row leaves the job shown as it is; removing the last one
+says there is no job. The cross is the Plan's, the one that takes a square off its list (18 px,
+round, quiet until the row is pointed at); it replaced a bin at the end of the row, which took the
+row's width and made the list dense (the same user, 2026-09-25). Every row keeps that corner,
+finished or not, so the status pills stay in one column.
 
 The selected job (default: the running one, else the newest) shows, from top to bottom:
 
@@ -576,6 +578,11 @@ page's steps are the engine's after every entry (a test drives the engine's `Job
 `tests/test_ui_static.py`). A recompute never moves a bar back between two reads (the rows no entry
 touched keep the weights of the last read); the next read may. `failed` adds an error card, one per
 failure (a node skipped because of it adds none).
+
+**Error cards** sit in a grid of columns at least 320 px wide, `auto-fit`: a card alone takes the
+whole width, two or more share it. `auto-fill` kept an empty column beside a lone card, which then
+took half the width, small between the tiles and the log (a user, 2026-09-25). The same grid holds
+the cards of the Library, of the disk and of the Plan's warnings.
 
 `GET /api/jobs/{id}` answers `tiles[].stages[stage] = {status, fraction, wall_s, nodes: [{node,
 role, status, key, hit, wall_s, fraction, weight_s}]}` (once the job ended, a stage whose rows

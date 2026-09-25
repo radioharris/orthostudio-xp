@@ -2149,14 +2149,22 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     assert code.index("await watchJob(next.id);") < code.index("forgetShownJob();")
     assert 'const row = at >= 0 ? $("job-list").children[at] : null;' in code
 
-    # the same bin as the one above the list, drawn by the same rule: it was 24 px in a 30 px
-    # button beside the 15 px one (a user, 2026-09-25)
-    bin_row = _function_body(app_js, "forgetButton")
-    assert '"btn btn-small btn-icon btn-danger btn-trash job-forget"' in bin_row
+    # a cross astride the row's corner, not a bin beside the row nor a cross inside the corner: the
+    # bin took the row's width, the inner cross pushed the status pill left (a user, 2026-09-25)
+    cross = _function_body(app_js, "forgetButton")
+    assert 'class: "job-forget"' in cross and '"\\u00d7"' in cross and "TRASH_PATH" not in app_js
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rule = css[css.index(".job-forget {") : css.index("}", css.index(".job-forget {"))]
+    assert "position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;" in rule
+    assert ".job-list li { position: relative; }" in css
+    # nothing reserved inside the row for it, and more room around what the row says
+    item = css[css.index(".job-item {") : css.index("}", css.index(".job-item {"))]
+    assert "padding: 10px 12px;" in item
+    # the list leaves the badge room above every row, the first one included
+    assert "padding: 6px 0 0; display: flex; flex-direction: column; gap: 8px;" in css
+    # the trash above the list is untouched
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     assert 'class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear"' in html
-    css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert ".btn-trash svg { width: 15px; height: 15px; }" in css
 
     # the bin says what goes, and both languages have the words
     tables = _i18n_tables()
@@ -5446,3 +5454,11 @@ def test_the_snap_shortcut_is_not_taken_for_a_sweep() -> None:
     end = map_js[map_js.index("function sweepEnd(") :]
     end = end[: end.index("\n  }")]
     assert end.index("if (!started) return;") < end.index("layers.draft.clearLayers();")
+
+
+def test_a_lone_error_card_takes_the_whole_width() -> None:
+    """auto-fill kept an empty column beside a lone card, which then took half the width, small
+    between the tiles and the log (a user, 2026-09-25): auto-fit lets it spread."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rule = css[css.index(".error-list {") : css.index("}", css.index(".error-list {"))]
+    assert "grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));" in rule
