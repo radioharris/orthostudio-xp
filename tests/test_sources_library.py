@@ -231,6 +231,14 @@ def test_the_address_and_key_are_read_in_three_steps(tmp_path: Path, monkeypatch
     (chosen,) = [s for s in chain_mod.sources_from_settings(mine) if isinstance(s, LibrarySource)]
     assert (chosen.base, chosen.token) == ("https://mine/data", "my-key")
 
+    # and never gets our key: it went to whatever address was typed without one (2026-09-25)
+    keyless = {"osm_library": "https://mine/data"}
+    (theirs,) = [
+        s for s in chain_mod.sources_from_settings(keyless) if isinstance(s, LibrarySource)
+    ]
+    assert (theirs.base, theirs.token) == ("https://mine/data", "")
+    assert [t.code for t in chain_mod.settings_trouble(keyless)] == ["OSM_LIBRARY_KEY_REFUSED"]
+
     # a build from source carries nothing: no library in the chain at all
     monkeypatch.setattr(chain_mod, "shipped_library", lambda: ("", ""))
     assert not [s for s in chain_mod.sources_from_settings({}) if isinstance(s, LibrarySource)]

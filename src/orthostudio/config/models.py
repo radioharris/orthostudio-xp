@@ -267,8 +267,8 @@ class Expert(BaseModel):
         "expert",
         None,
         "",
-        hint="The key of the library named above; it travels with every request. Empty means "
-        "the key this version carries.",
+        hint="The key of the library named above; it travels with every request. The key this "
+        "version carries goes to its own library only.",
     )
     mesh_zl: Literal[16, 17, 18, 19, 20] = _field(19, "expert", "mesh_zl", "ZL")
     mask_zl: Literal[14, 15, 16] = _field(14, "expert", "mask_zl", "ZL")

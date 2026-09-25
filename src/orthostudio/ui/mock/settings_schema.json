@@ -483,8 +483,8 @@
     },
     "osm_library_token": {
      "default": "",
-     "description": "The key of the library named above; it travels with every request. Empty means the key this version carries.",
-     "hint": "The key of the library named above; it travels with every request. Empty means the key this version carries.",
+     "description": "The key of the library named above; it travels with every request. The key this version carries goes to its own library only.",
+     "hint": "The key of the library named above; it travels with every request. The key this version carries goes to its own library only.",
      "level": "expert",
      "ortho4xp": null,
      "title": "Osm Library Token",

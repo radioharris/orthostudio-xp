@@ -193,7 +193,7 @@ is precisely the kind of silence this whole chain exists to end.
 |---|---|---|
 | `expert.osm_folder` | empty | a folder of prepared layers, in our format or Ortho4XP's (bzip2 OSM 0.6 XML) |
 | `expert.osm_library` | empty | another baked library to read; empty means the one this version carries |
-| `expert.osm_library_token` | empty | the key of that library, sent with every request, manifest included; empty means the key this version carries |
+| `expert.osm_library_token` | empty | the key of that library, sent with every request, manifest included; the key this version carries goes to its own library only, never to an address typed here |
 
 Neither the address nor the key this version carries is ever shown: an empty field stands for
 them, so the address stays out of the page as it stays out of the README and the log. The hints

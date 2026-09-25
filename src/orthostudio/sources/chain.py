@@ -291,7 +291,7 @@ def settings_trouble(settings: Mapping[str, object]) -> list[OsxpError]:
         out.append(OsxpError("OSM_PREPARED_FOLDER_MISSING", context={"path": folder}))
     url = str(settings.get("osm_library", "") or "").strip()
     token = str(settings.get("osm_library_token", "") or "").strip()
-    if url and not token and not shipped_library()[1]:
+    if url and not token:
         out.append(
             OsxpError(
                 "OSM_LIBRARY_KEY_REFUSED",
@@ -323,8 +323,13 @@ def sources_from_settings(
     # what the user set wins; what the build carries answers when they set nothing; and a build
     # from source carries nothing, so it downloads every tile live as every version did before
     shipped_url, shipped_token = shipped_library()
-    url = str(settings.get("osm_library", "") or "").strip() or shipped_url
-    if url:
-        token = str(settings.get("osm_library_token", "") or "") or shipped_token
-        out.append(LibrarySource(url, token, cache_dir=cache_dir))
+    mine = str(settings.get("osm_library", "") or "").strip()
+    their_key = str(settings.get("osm_library_token", "") or "").strip()
+    if mine:
+        # an address of the user's gets the user's key and never ours: the key this version
+        # carries opens our library, and went to whatever address was typed without one
+        # (found in review, 2026-09-25)
+        out.append(LibrarySource(mine, their_key, cache_dir=cache_dir))
+    elif shipped_url:
+        out.append(LibrarySource(shipped_url, their_key or shipped_token, cache_dir=cache_dir))
     return out
