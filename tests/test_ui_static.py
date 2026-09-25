@@ -4945,6 +4945,30 @@ def test_the_map_stops_where_every_build_stops() -> None:
     assert "for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {" in app_js
 
 
+def test_an_error_in_one_line_says_what_to_do_as_well() -> None:
+    """The engine sends what happened and what to do (docs/specs/errors.md). The one-line form,
+    used by every toast and every note under a button, kept the first half only, so they said
+    what went wrong and never what to do about it (found in review, 2026-09-24). Both halves now,
+    the page's own words where it has them and the engine's where it has none."""
+    script = """
+    const own = await m.mockApi("DELETE", "/api/sources/Nope").catch((e) => e);
+    const engines = await m.mockApi("DELETE", "/api/jobs/no-such").catch((e) => e);
+    const words = m.codeWords(own.detail.error);
+    process.stdout.write(JSON.stringify({
+      own: m.errorMessage(own), ownWords: words, engines: m.errorMessage(engines),
+      enginesError: engines.detail.error,
+    }), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    message, remedy = got["ownWords"]
+    assert got["own"] == f"CFG_PROVIDER_UNKNOWN: {message} {remedy}", "the page's own two halves"
+    e = got["enginesError"]
+    assert e["code"] == "SYS_WORKING_DIR_INVALID" and e["remedy"], (
+        "a code the page has no words for"
+    )
+    assert got["engines"] == f"SYS_WORKING_DIR_INVALID: {e['message']} {e['remedy']}"
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from

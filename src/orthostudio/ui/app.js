@@ -364,11 +364,14 @@ export function codeWords(err) {
   return codeText(e.code, e.context) || own;
 }
 
-function errorMessage(err) {
+/** An error in one line: its code, what happened, and what to do. The engine sends both halves
+ * (docs/specs/errors.md), and the line kept only the first: every toast and every note under a
+ * button said what went wrong and never what to do about it (found in review, 2026-09-24). */
+export function errorMessage(err) {
   if (err instanceof ApiError) {
     const d = errorDetail(err);
     if (d) {
-      if (d.code) return `${d.code}: ${codeWords(d)[0]}`;
+      if (d.code) return `${d.code}: ${codeWords(d).filter(Boolean).join(" ")}`;
       if (typeof d.detail === "string") return d.detail;
       if (Array.isArray(d.detail)) {
         return d.detail.map((x) => `${(x.loc || []).join(".")}: ${x.msg}`).join("; ");

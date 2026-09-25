@@ -241,6 +241,13 @@ position, when it comes from a saved file) and the `reason`.
 `render_json(exc)` accepts any exception: an `OsxpError` is rendered as above, anything else is
 wrapped as `SYS_INTERNAL_ERROR` with the exception type and text in `context`.
 
+**In the page** (`ui/app.js`). `codeWords(error)` is the message and the remedy in the page's
+language: the page's own words for a code when `ui/i18n.js` has them (`CODES`, filled from the
+error's `context`), else the engine's, which are English. `errorMessage(err)` is the one-line
+form every toast and every note under a button shows: the code, then **both** halves. It used to
+keep the message only, so they said what went wrong and never what to do about it (found in
+review, 2026-09-24).
+
 ## Wanted differences from Ortho4XP
 
 - Nothing is filled with white, zero or "nothing" silently: every such decision has a code and
