@@ -834,6 +834,9 @@ of `textures/colour.py`, and a test holds the two equal to within one step
 has not drawn, or nothing came back) simply leaves the preview out. Under the two images, a line
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
+The two share the card's width, side by side, up to the photo's own 256 px (`wide`, drawn at
+256): at 148 px, with room left beside them, a user found the change hard to see (2026-09-25).
+Measured at a window of 1024 px, 222 px each. The Plan's own, below, keep their 110 px.
 
 The same two images appear in **step 1 of the Plan**, under *Photo colours*, which sits beside
 the imagery source and the detail level and sets the colours of the **squares chosen**: one square

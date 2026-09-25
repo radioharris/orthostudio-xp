@@ -433,6 +433,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .photo-shot { display: flex; flex-direction: column; gap: 4px; }
 .photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
 .photo-label { font-size: var(--fs-3); color: var(--fg-2); }
+/* Settings: the two share the card's width, up to the photo's own 256 px, and the words go under
+   them. At 148 px, with room left beside them, a user found the change hard to see (2026-09-25). */
+.photo-preview.is-wide .photo-shot { flex: 1 1 0; min-width: 0; max-width: 256px; }
+.photo-preview.is-wide .photo-canvas { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+.photo-preview.is-wide .photo-words { flex-basis: 100%; }
 .tile-colours { display: grid; gap: var(--gap); margin: var(--gap) 0 0; }
 .colours-own { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .colours-own > .help { margin: 0; flex: 1 1 220px; }

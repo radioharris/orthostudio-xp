@@ -893,11 +893,13 @@ function renderQuestions(box, view) {
       PHOTO_VALUES.map(([path, label]) => colourNumber(view, path, label()))));
   }
   const sample = view.photoSample ? view.photoSample(getPath(d, "essential.provider")) : null;
+  // As wide as the card gives, up to the photo's own 256 px: at 148 a user found the change
+  // hard to see (Paul, 2026-09-25).
   const preview = colourPreview(view.dom.h, sample, photoValues(getPath(d, "essential.photo_look"), {
     brightness: getPath(d, "expert.photo_brightness"),
     contrast: getPath(d, "expert.photo_contrast"),
     saturation: getPath(d, "expert.photo_saturation"),
-  }));
+  }), { size: 256, wide: true });
   if (preview) colours.push(h("div", { class: "sub-question" }, preview));
   box.append(questionBox(view, "colours", ...colours));
 }

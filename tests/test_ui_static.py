@@ -5119,6 +5119,25 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
             assert f"settings.x.range_{key}" in tables[lang], (lang, key)
 
 
+def test_the_colour_previews_in_settings_use_the_room_they_have() -> None:
+    """A user found the two colour previews of Settings too small to see the change (Paul,
+    2026-09-25): they were 148 px, from a photo of 256 px, with room left beside them. There they
+    now share the card's width up to the photo's own 256 px, side by side, the words under them.
+    Measured in the page at a window of 1024 px: 222 px each. The Plan's small ones stay as they
+    were."""
+    settings = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "}), { size: 256, wide: true });" in settings, "Settings asks for the wide one"
+    preview = (UI / "preview.js").read_text(encoding="utf-8")
+    assert 'class: wide ? "photo-preview is-wide" : "photo-preview"' in preview
+    assert "wide = false," in preview, "the others keep their size"
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    shot = rules[".photo-preview.is-wide .photo-shot"]
+    assert "flex: 1 1 0;" in shot and "max-width: 256px;" in shot, "shared, never above the photo"
+    assert "aspect-ratio: 1 / 1;" in rules[".photo-preview.is-wide .photo-canvas"]
+    assert "flex-basis: 100%;" in rules[".photo-preview.is-wide .photo-words"], "the words under"
+    assert "width: 110px; height: 110px;" in rules["#plan-preview .photo-canvas"]
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from
