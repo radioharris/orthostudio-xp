@@ -110,6 +110,38 @@ def test_the_heavy_data_goes_to_the_data_folder_and_the_personal_data_stays_home
     assert data_root() == tmp_path / "by-hand"
 
 
+def test_a_settings_file_that_cannot_be_read_for_a_moment_changes_nothing(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read that failed once (the file in use for a moment, an antivirus scanning it) was
+    remembered as "no folder chosen": the data went to OrthoStudio XP's own folder until the next
+    save, which matches what a user saw after an update (2026-09-25). It is not remembered, and the
+    folder read before stays."""
+    disk = tmp_path / "D" / "OrthoStudio"
+    disk.mkdir(parents=True)
+    _choose(home, disk)
+    config = home / "config.toml"
+    real = Path.read_text
+    busy = {"now": True}
+
+    def read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self == config and busy["now"]:
+            raise PermissionError(errno.EACCES, "in use by another process")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    assert data_root() == home  # the very first read fails: no folder is known yet
+    busy["now"] = False
+    assert data_root() == disk  # read again, the file unchanged
+    other = tmp_path / "D" / "Other"
+    other.mkdir()
+    _choose(home, other)
+    busy["now"] = True
+    assert data_root() == disk  # a save that cannot be read yet keeps the folder read before
+    busy["now"] = False
+    assert data_root() == other
+
+
 def test_an_unplugged_disk_is_missing_and_nothing_is_made_on_the_computer(
     home: Path, tmp_path: Path
 ) -> None:

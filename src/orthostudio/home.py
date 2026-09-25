@@ -55,7 +55,8 @@ _config_cache: dict[Path, tuple[tuple[int, int, int], Path | None]] = {}
 
 
 def _configured_data_dir() -> Path | None:
-    """``essential.data_dir`` of ``$OSXP_HOME/config.toml``, read again when the file changes."""
+    """``essential.data_dir`` of ``$OSXP_HOME/config.toml``, read again when the file changes; a
+    read that fails keeps the folder read before."""
     path = osxp_home() / "config.toml"
     try:
         stat = path.stat()
@@ -69,7 +70,11 @@ def _configured_data_dir() -> Path | None:
         essential = tomllib.loads(path.read_text("utf-8")).get("essential")
         value = essential.get("data_dir") if isinstance(essential, dict) else None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
-        value = None
+        # Not remembered, and nothing changed: the file may be in use for a moment (an antivirus
+        # scanning it). Remembered as "no folder chosen", it sent the data to OrthoStudio XP's own
+        # folder until the next save, which matches what a user saw after an update, a save of
+        # the folder setting it right (2026-09-25).
+        return hit[1] if hit is not None else None
     folder = Path(value).expanduser() if isinstance(value, str) and value.strip() else None
     _config_cache[path] = (key, folder)
     return folder
