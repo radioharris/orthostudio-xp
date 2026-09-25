@@ -1173,27 +1173,29 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Step 1's ways of choosing squares: the airport and the flight plan, in plain sight since a user
    never opened the "Other ways" line (2026-09-19). */
 .plan-way { margin-top: var(--gap); align-items: flex-end; }
-.route-found {
+/* The flight plan: its title, its button under it, then its words, a paragraph like the others.
+   Beside the words, the button stood against their last line (a user, 2026-09-25). */
+.flightplan { margin-top: var(--gap); }
+.flightplan > .btn { margin-bottom: var(--gap); }
+/* The flight plan once read: its route, then its two groups of squares, each with its level on the
+   right, in two columns so the lists line up (a user, 2026-09-22), then what did not fit. */
+.flightplan-found {
   margin-top: var(--gap);
   padding: var(--gap);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-3);
 }
-.route-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
-/* One line per group of squares: the button, then the level they take once they are chosen. */
-/* Two columns, the buttons then the levels, so that the lists line up under one another and the
-   buttons share one width (a user, 2026-09-22). A list is full width everywhere else. */
-.route-groups {
-  display: grid; grid-template-columns: max-content minmax(0, max-content);
-  gap: 6px 8px; align-items: center;
+.flightplan-what { margin: 0 0 var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
+.flightplan-groups {
+  display: grid; grid-template-columns: minmax(0, max-content) minmax(0, max-content);
+  gap: 6px 12px; align-items: center;
 }
-.route-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
-/* The two buttons share a width, so their words start at the same place, on the left. */
-.route-groups .btn { text-align: left; }
-.route-clear { grid-column: 1 / -1; justify-self: start; }
-/* Under the flight plan's row, not inside its field: the buttons line up with the field itself
-   (a user, 2026-09-22), as the airport's Add does. */
-.route-help { margin: var(--help-gap) 0 0; }
+.flightplan-groups label { font-size: var(--fs-2); }
+/* The route's squares may be left out: a tick before its words (a user, 2026-09-25). */
+.flightplan-along { display: flex; align-items: center; gap: 6px; }
+.flightplan-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
+.flightplan-note { margin: var(--gap) 0 0; }
+.flightplan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--gap); }
 /* What went wrong with the airport or the flight plan, right under them, not in step 3. */
 .way-error { margin: var(--help-gap) 0 0; color: var(--fail); }

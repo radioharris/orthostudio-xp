@@ -9,7 +9,6 @@ geometry (``geo.js``) are run under ``node`` (skipped when ``node`` is missing).
 from __future__ import annotations
 
 import ast
-import itertools
 import json
 import os
 import re
@@ -39,7 +38,16 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 UI = ui_dir()
 NODE = shutil.which("node")
-PAGE_MODULES = ("app.js", "find.js", "geo.js", "map.js", "settings.js", "sources.js", "zoom.js")
+PAGE_MODULES = (
+    "app.js",
+    "find.js",
+    "flightplan.js",
+    "geo.js",
+    "map.js",
+    "settings.js",
+    "sources.js",
+    "zoom.js",
+)
 """The page's own modules: every visible string of theirs goes through a literal t() key."""
 TEXT_FILES = ("index.html", "i18n.js", "styles.css", *PAGE_MODULES)
 LEAFLET_SCRIPT = '<script src="static/vendor/leaflet/leaflet.js">'
@@ -1897,7 +1905,8 @@ def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> Non
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     build = _function_body(app_js, "build")
     assert build.index('api("POST", "/api/jobs"') < build.index("state.tiles = [];")
-    assert build.index("state.tiles = [];") < build.index("renderTiles();")
+    assert build.index("state.tiles = [];") < build.index("selectionChanged();")
+    assert "forgetFlightPlan();" in build  # restored at the next visit, it chose them again
     watch = _function_body(app_js, "watchJob")
     assert watch.index("state.jobId = jobId;") < watch.index("renderJobList();")
 
@@ -2207,10 +2216,17 @@ def test_the_step_1_trash_unselects_every_tile_at_once() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     code = _function_body(app_js, "clearTiles")
     assert "confirm" not in code and "showModal" not in code  # a selection is unselected at once
-    assert code.index("state.tiles = [];") < code.index("renderTiles();")
-    steps = ("renderTiles();", "renderZlOptions();", "planChanged();")
-    for step in (*steps, '$("tiles-panel").focus(', 't("plan.tiles_cleared"'):
+    assert code.index("state.tiles = [];") < code.index("selectionChanged();")
+    for step in (
+        "state.byHand.clear();",
+        "forgetFlightPlan();",
+        '$("tiles-panel").focus(',
+        't("plan.tiles_cleared"',
+    ):
         assert step in code, step
+    changed = _function_body(app_js, "selectionChanged")
+    for step in ("renderTiles();", "renderZlOptions();", "planChanged();"):
+        assert step in changed, step
     assert '$("tiles-clear").hidden = !state.tiles.length;' in _function_body(app_js, "renderTiles")
     assert '$("tiles-clear").addEventListener("click", clearTiles);' in app_js
 
@@ -2327,9 +2343,9 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     # the cap lived in the mouse sweep alone, so a flight plan added nine hundred squares and the
     # estimate then refused the whole selection (found in review, 2026-09-23)
     assert "state.tiles.length >= MAX_BUILD_TILES" in add, "every way of adding squares is capped"
-    assert "sayTilesInBuild(addTiles(" in _function_body(
-        app_js, "addRouteTiles"
-    ) or "addTiles(names)" in _function_body(app_js, "addRouteTiles")
+    replace = _function_body(app_js, "replaceFlightPlan")
+    assert "building: tilesInBuilds(activeJobs())" in replace and "cap: MAX_BUILD_TILES" in replace
+    assert "sayTilesInBuild({ skipped: added.skipped });" in replace
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
     row = _function_body(app_js, "libraryRow")
@@ -2405,14 +2421,18 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
         "if (seq !== estimateSeq)"
     )
     assert "persistSettings" not in estimate  # a live estimate saves nothing
-    for name in ("addTiles", "removeTile", "clearTiles"):
-        assert "planChanged();" in _function_body(app_js, name), name
+    assert "planChanged();" in _function_body(app_js, "selectionChanged")
+    for name in ("addTiles", "removeTile", "clearTiles", "deleteFlightPlan", "setFlightPlanLevel"):
+        assert "selectionChanged();" in _function_body(app_js, name), name
     # the zones changing re-plans, and redraws the Library, which marks a tile whose square
     # now asks for other colours (2026-09-18)
     assert "onZonesChanged: () => {" in app_js
     assert "planChanged();" in app_js and "renderLibrary();" in app_js
     # the source, step 1's level, and the level of a group of the flight plan (2026-09-22)
-    assert app_js.count("planChanged();\n    planMap?.planChanged();") == 3
+    assert app_js.count("planChanged();\n    planMap?.planChanged();") == 1
+    assert "selectionChanged();\n    renderTilesBuilt();\n    planMap?.planChanged();" in app_js
+    level = _function_body(app_js, "setFlightPlanLevel")
+    assert "selectionChanged();" in level and "planMap?.planChanged();" in level
     assert "state.plan = null;" not in "".join(
         _function_body(app_js, n) for n in ("addTiles", "removeTile", "clearTiles", "build")
     )
@@ -4664,25 +4684,6 @@ def test_my_sources_is_a_button_that_can_be_seen() -> None:
     assert "btn-quiet" not in tag and "btn btn-small" in tag
 
 
-def test_the_flight_plan_of_step_1_is_in_plain_sight() -> None:
-    """A route is one more way of choosing squares, beside the airport, and both are visible.
-
-    They were under a folded "Other ways" line, which a user never opened (2026-09-19). What the
-    buttons count is what the map draws: the same arithmetic answers both.
-    """
-    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    step = re.search(r'<section class="plan-step" id="tiles-panel".*?</section>', html, re.S)
-    assert step is not None
-    panel = step.group(0)
-    folded = re.search(r'<details class="more">.*?</details>', panel, re.S)
-    assert folded is not None
-    for element in ('id="icao-input"', 'id="radius-input"', 'id="route-input"', 'id="route-draw"',
-                    'id="route-ends"', 'id="route-all"', 'id="route-clear"'):  # fmt: skip
-        assert element in panel and element not in folded.group(0)
-    # what stays folded: the two ways nobody uses to plan a flight
-    assert 'id="tiles-text"' in folded.group(0) and 'id="lat-input"' in folded.group(0)
-
-
 def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
     """Clicking every square of a route one by one was long (a user, 2026-09-22): Shift held, the
     mouse down and the pointer moved draws a rectangle, and every whole square in it is chosen as
@@ -4727,108 +4728,6 @@ def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
             ' m.t("map.swept_out", {n: 3}), m.t("map.swept_max", {n: 500})])',
         )
         assert "Shift" in texts[0] and "7" in texts[1] and "3" in texts[2] and "500" in texts[3]
-
-
-def test_the_routes_ends_are_marked_on_the_map() -> None:
-    """On a flight plan across Europe, 28 squares of one blue left nothing to tell the departure
-    and the arrival from the way between them (a user, 2026-09-22): their squares take the route's
-    own colour, and the legend says so while a route is drawn."""
-    js = (UI / "map.js").read_text(encoding="utf-8")
-    grid = re.search(r"\n  function renderGrid\(\) \{.*?\n  \}\n", js, re.S)
-    assert grid is not None
-    drawn = grid.group(0)
-    assert "ctx.routeEnds?.()" in drawn
-    assert 'routeEnds.has(name) ? " is-route-end" : ""' in drawn
-    legend = re.search(r"\n  function renderLegend\(\) \{.*?\n  \}\n", js, re.S)
-    assert legend is not None and 't("map.legend_route_ends")' in legend.group(0)
-    app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "routeEnds: () => new Set(state.route ? routeEndTiles() : [])" in app_js
-    css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert "--route: #e0572f;" in css  # map.js draws the line with the same colour
-    assert ".plan-map .osxp-tile-selected.is-route-end { stroke: var(--route); }" in css
-    assert ".legend-route-end { border: 2px solid var(--route); }" in css
-    for lang in ("en", "fr"):
-        text = _node_json(
-            "i18n.js",
-            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
-            ' m.t("map.legend_route_ends"))',
-        )
-        assert text and "{" not in text, text
-
-
-def test_the_page_stays_where_it_was_when_squares_are_added() -> None:
-    """The squares chosen sit at the top of step 1, so choosing more pushes the buttons under them
-    down. Chrome puts the scroll back by itself, WebKit does not, and the app's own window looked
-    as if it had scrolled up under the button just pressed (a user, 2026-09-22)."""
-    js = (UI / "app.js").read_text(encoding="utf-8")
-    helper = re.search(r"\nfunction keepInPlace\(el, fn\) \{.*?\n\}\n", js, re.S)
-    assert helper is not None
-    body = helper.group(0)
-    assert "getBoundingClientRect" in body and "window.scrollBy(0, moved)" in body
-    for name in ("addRouteTiles", "addTilesFromIcao", "addTileFromLatLon", "addTilesFromText"):
-        assert "keepInPlace(" in _function_body(js, name), name
-
-
-def test_a_flight_plan_gives_its_ends_and_its_route_two_levels() -> None:
-    """A pilot wanted his departure and arrival squares sharper than the squares along the route
-    (2026-09-22). Each group carries its level, chosen beside its button; step 1's list shows the
-    level of the chosen squares, or "Several levels" when they differ, and every chip then says
-    its own. A level chosen in that list is every chosen square's again."""
-    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    for element in ('id="route-ends-zl"', 'id="route-all-zl"'):
-        assert element in html and 'class="route-zl" hidden' in html
-    js = (UI / "app.js").read_text(encoding="utf-8")
-    # the two groups are disjoint: the ends are not built twice at the route's level
-    along = re.search(r"\nfunction routeAlongTiles\(\) \{.*?\n\}\n", js, re.S)
-    assert along is not None and "!ends.has(name)" in along.group(0)
-    # one rule: uniform squares carry nothing of their own, and the list holds the level
-    rule = re.search(r"\nfunction normalizeLevels\(\) \{.*?\n\}\n", js, re.S)
-    assert rule is not None
-    assert "delete state.tileZl[name]" in rule.group(0)
-    options = re.search(r"\nfunction renderZlOptions\(\) \{.*?\n\}\n", js, re.S)
-    assert options is not None
-    assert 't("plan.zl_several")' in options.group(0) and "disabled: true" in options.group(0)
-    chips = re.search(r"\nfunction renderTiles\(\) \{.*?\n\}\n", js, re.S)
-    assert chips is not None and "chosenLevels().length > 1" in chips.group(0)
-    request = re.search(r"\nasync function planRequest\(\) \{.*?\n\}\n", js, re.S)
-    assert request is not None and "tiles_zl: own" in request.group(0)
-    # the squares along the route start at 14: flown over, not landed on (a user, 2026-09-22)
-    assert "const ROUTE_ALONG_ZL = 14;" in js
-    assert "Math.min(ROUTE_ALONG_ZL, top)" in js  # never above what the source offers
-    levels = re.search(r"\nfunction renderRouteLevels\(maxZl, lat\) \{.*?\n\}\n", js, re.S)
-    assert levels is not None
-    assert 'id === "route-all-zl" ? routeAlongZl(maxZl) : routeEndsZl(maxZl)' in levels.group(0)
-    click = js[js.index('$("route-all").addEventListener') :][:200]
-    assert "routeAlongZl()" in click and "planZl()" not in click
-    # the ends take what the pilot chose in step 1, not what the chosen squares happen to share:
-    # the test that runs the two buttons is below (2026-09-23)
-    ends = js[js.index('$("route-ends").addEventListener') :][:200]
-    assert "routeEndsZl()" in ends and "planZl()" not in ends
-    listed = js.index('$("zl-select").addEventListener("change"')
-    assert js.index("state.tileZl = {};", listed) < js.index("planChanged();", listed)
-    for lang, several in (("en", "Several levels"), ("fr", "Plusieurs niveaux")):
-        texts = _node_json(
-            "i18n.js",
-            f'(globalThis.document = {{documentElement: {{}}}}, m.setLanguage("{lang}"),'
-            ' [m.t("plan.zl_several"), m.t("plan.route_all", {n: 9}), m.t("plan.route_ends_zl")])',
-        )
-        assert texts[0] == several and "9" in texts[1] and texts[2]
-
-
-def test_what_went_wrong_with_a_way_is_said_under_it() -> None:
-    """A user pressed Draw and saw nothing happen: an empty line or an unknown code was said in
-    step 3's box, far below the button (2026-09-22). The airport and the flight plan say it right
-    under them, and the field's own example works in the mock."""
-    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    at = [html.index(f'id="{name}"') for name in ("route-draw", "way-error", "route-found")]
-    assert at == sorted(at)
-    js = (UI / "app.js").read_text(encoding="utf-8")
-    for name in ("addTilesFromIcao", "drawRoute", "routeFromSimbrief", "clearRoute"):
-        body = re.search(rf"\n(?:async )?function {name}\(\) \{{.*?\n\}}\n", js, re.S)
-        assert body is not None, name
-        assert "showWayError(" in body.group(0) and "showPlanError(" not in body.group(0), name
-    airports = json.loads((UI / "mock" / "airports.json").read_text(encoding="utf-8"))
-    assert {"LSGG", "LFMN"} <= {a["icao"] for a in airports}  # the placeholder, "LSGG LFMN"
 
 
 def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
@@ -5175,44 +5074,6 @@ def test_the_map_goes_to_the_airport_chosen() -> None:
         assert "planMap?.goTo(" in _function_body(js, name), name
 
 
-def test_the_squares_a_route_crosses_and_its_length() -> None:
-    """``tilesAlong`` samples every leg well under the one degree a square measures, so a square
-    the line only clips is still counted; ``routeLength`` measures on the sphere."""
-    calls = ", ".join(
-        [
-            "m.tilesAlong([{lat: 46.24, lon: 6.11}, {lat: 43.66, lon: 7.21}])",
-            "Math.round(m.routeLength([{lat: 46.24, lon: 6.11}, {lat: 43.66, lon: 7.21}]))",
-            # the short way round the antimeridian, as an aircraft flies it
-            "m.tilesAlong([{lat: 0, lon: 179.5}, {lat: 0, lon: -179.5}])",
-            "m.tilesAlong([{lat: 46.24, lon: 6.11}])",
-        ]
-    )
-    geneva_nice, km, dateline, alone = _node_json("geo.js", f"[{calls}]")
-    assert geneva_nice == ["+46+006", "+45+006", "+44+006", "+44+007", "+43+007"]
-    assert 295 <= km <= 305  # 299 km on the great circle
-    assert dateline == ["+00+179", "+00-180"]  # two squares, not the whole world
-    assert alone == ["+46+006"]
-
-
-def test_a_route_is_read_from_what_a_pilot_types() -> None:
-    """Spaces, commas or arrows between the codes, and anything too short is not an airport."""
-    calls = ", ".join(
-        [
-            'm.routeCodes("LSGG LFMN")',
-            'm.routeCodes("lsgg, lfmn")',
-            'm.routeCodes("LSGG -> LFMN -> LIRF")',
-            'm.routeCodes("LSGG DCT MOLUS DCT LFMN")',
-            'm.routeCodes("")',
-        ]
-    )
-    plain, commas, arrows, with_fixes, empty = _node_json("app.js", f"[{calls}]")
-    assert plain == commas == ["LSGG", "LFMN"]
-    assert arrows == ["LSGG", "LFMN", "LIRF"]
-    # a pasted route keeps its four-letter tokens; the engine leaves out what is not an airport
-    assert with_fixes == ["LSGG", "DCT", "DCT", "LFMN"]
-    assert empty == []
-
-
 # -- the levels of a flight plan, run rather than read -----------------------------------------
 
 
@@ -5235,99 +5096,6 @@ def _run_in_node(script: str) -> str:
         return out.stdout.strip()
 
 
-def test_the_two_ends_of_a_route_keep_step_ones_level_whichever_button_is_pressed_first() -> None:
-    """Pressing "along the route" first put every chosen square at ZL14, so step 1's list followed
-    them there, and "departure and arrival" then took ZL14 from it: the ends came out blurred and
-    step 1 was quietly rewritten, all depending on the order the two buttons were pressed in
-    (2026-09-23). The bug lived between two functions that are each correct on their own, which is
-    why reading them could not find it."""
-    app_js = (ui_dir() / "app.js").read_text(encoding="utf-8")
-    pieces = [
-        _function_body(app_js, name)
-        for name in (
-            "planZl",
-            "routeAlongZl",
-            "routeEndsZl",
-            "tileZl",
-            "chosenLevels",
-            "normalizeLevels",
-        )
-    ]
-    along = re.search(r"\nconst ROUTE_ALONG_ZL = \d+;", app_js)
-    assert along is not None
-    script = (
-        "const state = { tiles: [], tileZl: {}, planZl: 16, zlChosen: 16, settings: null };\n"
-        "const sourceMaxZl = () => 18;\n"
-        + along.group(0)
-        + "\n".join(pieces)
-        + """
-function add(names, zl) {                    // what addRouteTiles does to the levels
-  for (const n of names) {
-    if (!state.tiles.includes(n)) state.tiles.push(n);
-    state.tileZl[n] = zl;
-  }
-  normalizeLevels();
-}
-function press(order) {
-  state.tiles = []; state.tileZl = {}; state.planZl = 16; state.zlChosen = 16;
-  for (const which of order) {
-    if (which === "ends") add(["+46+006", "+43+007"], routeEndsZl());
-    else add(["+45+006", "+44+006"], routeAlongZl());
-  }
-  return { ends: tileZl("+46+006"), along: tileZl("+45+006"), step1: state.planZl };
-}
-console.log(JSON.stringify({ a: press(["ends", "along"]), b: press(["along", "ends"]) }));
-"""
-    )
-    got = json.loads(_run_in_node(script))
-    assert got["a"]["ends"] == 16 and got["a"]["along"] == 14
-    assert got["b"]["ends"] == 16, "the ends keep step 1's level whichever button came first"
-    assert got["b"]["along"] == 14
-
-
-@pytest.mark.skipif(NODE is None, reason="node is not installed")
-def test_a_route_over_the_pacific_is_drawn_where_the_map_can_go() -> None:
-    """The line's longitude runs on past 180, which is how a leg goes the short way; drawn there,
-    Tokyo sat at -220, outside the bounds the map pans to, so its ring could not be reached and
-    the view could not be fitted to it (found in review, 2026-09-23). The line is cut at the
-    meridian and continues on the other side, the way a chart draws it."""
-    ksfo_rjtt = [{"lat": 37.6, "lon": -122.4}, {"lat": 35.8, "lon": 140.4}]
-    answer = _node_json("map.js", f"m.routePieces({json.dumps(ksfo_rjtt)})")
-    assert len(answer["pieces"]) == 2, "it is cut where it crosses the meridian"
-    assert [round(p[1]) for p in answer["at"]] == [-122, 140]
-    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
-    for piece in answer["pieces"]:
-        assert all(-180 <= lon <= 180 for _lat, lon in piece)
-    # it leaves by one edge of the meridian and comes back by the other, at the same latitude
-    leaves, comes_back = answer["pieces"][0][-1], answer["pieces"][1][0]
-    assert {leaves[1], comes_back[1]} == {-180, 180}
-    assert leaves[0] == comes_back[0]
-
-    # and the unrolled line still goes the short way, which is what the buttons count
-    line = _node_json("map.js", f"m.routeLine({json.dumps(ksfo_rjtt)})")
-    assert [round(p[1]) for p in line] == [-122, -220]
-
-
-@pytest.mark.skipif(NODE is None, reason="node is not installed")
-def test_a_route_that_goes_round_the_world_keeps_every_leg_the_short_way() -> None:
-    """One correction of a turn is not enough once the longitude has run on: from Geneva east to
-    Tokyo the accumulated longitude reaches 499, and the next leg was then taken the long way."""
-    round_world = [
-        {"lat": 46, "lon": 6},
-        {"lat": 40, "lon": 116},
-        {"lat": 21, "lon": -158},
-        {"lat": 37, "lon": -122},
-        {"lat": 51, "lon": 0},
-        {"lat": 35, "lon": 139},
-        {"lat": 46, "lon": 6},
-    ]
-    line = _node_json("map.js", f"m.routeLine({json.dumps(round_world)})")
-    steps = [round(b[1] - a[1]) for a, b in itertools.pairwise(line)]
-    assert all(abs(step) <= 180 for step in steps), steps
-    answer = _node_json("map.js", f"m.routePieces({json.dumps(round_world)})")
-    assert all(-180 <= lon <= 180 for _lat, lon in answer["at"])
-
-
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_a_selection_full_of_squares_says_so_in_both_languages() -> None:
     """The cap lived in the mouse sweep alone: a flight plan across a continent added its nine
@@ -5340,49 +5108,6 @@ def test_a_selection_full_of_squares_says_so_in_both_languages() -> None:
     for lang in ("fr", "en"):
         words = tables[lang]["plan.tiles_capped"]
         assert "{max}" in words and "{n}" in words, lang
-
-
-def test_the_flight_plan_is_not_offered_in_this_release() -> None:
-    """Choosing squares along a route is a feature of its own, and it arrived in the same
-    release as three faults users are waiting on. It waits for 0.1.15: its code, its tests and
-    its words stay, the page does not offer it, and one line turns it back on (2026-09-23)."""
-    release_js = (UI / "release.js").read_text(encoding="utf-8")
-    assert "export const FLIGHT_PLAN = false;" in release_js, "the switch is off for this release"
-    app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert 'import { FLIGHT_PLAN } from "./release.js";' in app_js, "and there is one of it"
-
-    # Settings asked for a SimBrief name and its help pointed at a Plan button this release does
-    # not have (found in review, 2026-09-23)
-    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
-    assert "if (FLIGHT_PLAN) box.append(simbriefQuestion(view));" in settings_js
-    assert 'import { FLIGHT_PLAN } from "./release.js";' in settings_js
-
-    wiring = _function_body(app_js, "wireFlightPlan")
-    assert '$("plan-route").hidden = !FLIGHT_PLAN;' in wiring
-    assert "if (!FLIGHT_PLAN) return;" in wiring
-    # every listener of the route lives behind that guard, and nowhere else
-    for control in (
-        "route-draw",
-        "route-input",
-        "route-ends",
-        "route-all",
-        "route-simbrief",
-        "route-clear",
-    ):
-        assert f'$("{control}")' in wiring, control
-        assert app_js.count(f'$("{control}").addEventListener') == wiring.count(
-            f'$("{control}").addEventListener'
-        ), control
-    assert "if (FLIGHT_PLAN) restoreRoute();" in app_js, "no route comes back from the last visit"
-
-    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    assert '<div id="plan-route">' in html
-    # the error line under the airport field is shared, so it stays outside the box
-    assert html.index('id="plan-route"') < html.index('id="route-input"')
-    assert html.index('id="way-error"') > html.index("</div>", html.index('id="route-input"'))
-
-    notes = (UI / ".." / ".." / ".." / "docs" / "releases" / "0.1.14.md").resolve()
-    assert "SimBrief" not in notes.read_text(encoding="utf-8"), "and the notes do not promise it"
 
 
 def test_the_map_is_told_when_its_box_changes() -> None:
@@ -5474,3 +5199,321 @@ def test_a_lone_error_card_takes_the_whole_width() -> None:
     css = (UI / "styles.css").read_text(encoding="utf-8")
     rule = css[css.index(".error-list {") : css.index("}", css.index(".error-list {"))]
     assert "grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));" in rule
+
+
+# -- the flight plan of step 1 (docs/specs/flight-plan.md) ---------------------------------------
+
+_FP = """
+const plan = {
+  from: "LSGG", to: "LFMN", points: [{lat: 46.2, lon: 6.1}, {lat: 43.7, lon: 7.2}],
+  path: [[[46.2, 6.1], [43.7, 7.2]]], length_km: 299, left_out: 0, radius_km: 15,
+  squares: {ends: ["+46+006", "+43+007"], along: ["+45+006", "+44+006", "+44+007"]},
+};
+const fp = m.newFlightPlan(plan, m.defaultLevels(16, 19));
+const ctx = (byHand, extra = {}) => ({byHand: new Set(byHand), groups: m.groupsOf(extra.fp ?? fp),
+  levels: (extra.fp ?? fp).levels, stepZl: extra.step ?? 16, maxZl: extra.max ?? 19});
+"""
+
+
+def test_a_flight_plan_starts_at_the_pilots_two_levels() -> None:
+    """The ends at step 1's level, the route at ZL14, both within what the source gives (the
+    pilot's choices, 2026-09-25)."""
+    got = _node_json(
+        "flightplan.js",
+        "[m.defaultLevels(16, 19), m.defaultLevels(18, 19), m.defaultLevels(16, 13), m.ROUTE_ZL]",
+    )
+    assert got == [
+        {"ends": 16, "along": 14},
+        {"ends": 18, "along": 14},
+        {"ends": 13, "along": 13},
+        14,
+    ]
+
+
+def test_every_square_takes_the_finest_level_its_reasons_ask_for() -> None:
+    """One rule, derived and never stored: the first flight plan kept a level in four places and
+    most of its faults were those copies disagreeing (review of 2026-09-23)."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const levels = (hand, names, extra) => names.map((n) => m.levelOf(n, ctx(hand, extra)));
+        const finer = {...fp, levels: {ends: 17, along: 14}};
+        return {
+          plain: levels([], ["+46+006", "+45+006", "+47+008"]),
+          // chosen by hand on the route: the finer of its two reasons
+          both: levels(["+45+006"], ["+45+006"], {step: 17}),
+          // step 1's level is the hand-chosen squares' alone
+          step: levels(["+47+008"], ["+46+006", "+45+006", "+47+008"], {step: 18}),
+          // a source that stops lower caps them, and gives them back afterwards
+          capped: levels([], ["+46+006", "+45+006"], {fp: finer, max: 13}),
+          back: levels([], ["+46+006", "+45+006"], {fp: finer, max: 19}),
+        };
+        })()""",
+    )
+    assert got["plain"] == [16, 14, 16]
+    assert got["both"] == [17]
+    assert got["step"] == [16, 14, 18]
+    assert got["capped"] == [13, 13] and got["back"] == [17, 14]
+
+
+def test_the_plans_squares_come_ends_first_then_in_the_order_flown() -> None:
+    """Up to what one build takes: a plan too long is cut at a square the pilot can name. A
+    square a build is working on is left out and named; one already chosen stays where it is."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        return {
+          all: m.withPlan(["+40+000"], fp, {cap: 500}),
+          cut: m.withPlan(["+40+000"], fp, {cap: 4}),
+          busy: m.withPlan([], fp, {cap: 500, building: new Set(["+44+006"])}),
+          again: m.withPlan(["+44+006"], fp, {cap: 500}).tiles,
+        };
+        })()""",
+    )
+    assert got["all"]["tiles"] == ["+40+000", "+46+006", "+43+007", "+45+006", "+44+006", "+44+007"]
+    assert got["all"]["cut"] == 0 and got["all"]["skipped"] == []
+    assert got["cut"]["tiles"] == ["+40+000", "+46+006", "+43+007", "+45+006"]
+    assert got["cut"]["cut"] == 2 and got["cut"]["lastKept"] == "+45+006"
+    assert got["busy"]["skipped"] == ["+44+006"] and "+44+006" not in got["busy"]["tiles"]
+    assert got["again"][0] == "+44+006"  # where it was
+
+
+def test_deleting_the_plan_keeps_what_was_chosen_by_hand() -> None:
+    """The pilot asked for a way to delete the route and its squares (2026-09-25): the plan's
+    squares go, the hand-chosen ones stay, even one that is also on the route."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const tiles = m.withPlan(["+40+000", "+45+006"], fp, {cap: 500}).tiles;
+        return m.withoutPlan(tiles, fp, new Set(["+40+000", "+45+006"]));
+        })()""",
+    )
+    assert got == ["+40+000", "+45+006"]
+
+
+def test_a_square_taken_out_of_the_plan_stays_out() -> None:
+    """A chip's cross, a click or a sweep takes a square out of the plan too, or the plan would
+    choose it again at the next visit. A square that is not the plan's changes nothing."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const out = m.excluding(fp, ["+44+006", "+40+000"]);
+        return {excluded: out.excluded, same: m.excluding(fp, ["+40+000"]) === fp,
+                tiles: m.withPlan([], out, {cap: 500}).tiles};
+        })()""",
+    )
+    assert got["excluded"] == ["+44+006"] and got["same"] is True
+    assert "+44+006" not in got["tiles"]
+
+
+def test_the_plan_is_kept_as_its_route_and_the_pilots_choices() -> None:
+    """Never its squares: kept whole, a plan read before the corridor came still chose the line's
+    squares alone after the update (2026-09-25). Anything this page did not write is dropped,
+    the first version's whole answer included."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const saved = m.toSaved(m.excluding(fp, ["+44+006"]));
+        const doc = JSON.parse(saved);
+        const bad = (change) => m.readSaved(JSON.stringify({...doc, ...change}));
+        const route = (change) => bad({route: {...doc.route, ...change}});
+        return {
+          doc,
+          back: m.readSaved(saved),
+          wrong: [bad({v: 1}), bad({levels: {ends: 16, along: 42}}), m.readSaved("not json"),
+                  bad({excluded: ["Geneva"]}), route({points: [doc.route.points[0]]}),
+                  route({radius_km: "wide"}), bad({along: "yes"}),
+                  m.readSaved(JSON.stringify({v: 1, plan, levels: fp.levels, excluded: []}))],
+          // a plan saved before the route could be left out wants its route
+          older: m.readSaved(JSON.stringify((({along, ...rest}) => rest)(doc))).along,
+        };
+        })()""",
+    )
+    assert set(got["doc"]) == {"v", "route", "levels", "excluded", "along"}
+    assert set(got["doc"]["route"]) == {"from", "to", "points", "radius_km"}
+    assert "squares" not in json.dumps(got["doc"]) and "path" not in json.dumps(got["doc"])
+    back = got["back"]
+    assert back["route"] == got["doc"]["route"] and back["route"]["radius_km"] == 15
+    assert back["levels"] == {"ends": 16, "along": 14} and back["excluded"] == ["+44+006"]
+    assert got["wrong"] == [None] * 8
+    assert back["along"] is True and got["older"] is True
+
+
+def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
+    """The engine computes the kept route again (POST /api/flightplan): its squares are this
+    version's, the levels, the squares taken out and the tick are the pilot's."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const left = {...m.excluding(fp, ["+44+006"]), levels: {ends: 17, along: 13}, along: true};
+        const saved = m.readSaved(m.toSaved(left));
+        // the next version chooses one more square beside the route
+        const along = [...plan.squares.along, "+45+007"];
+        const again = {...plan, squares: {...plan.squares, along}};
+        const back = m.restoredPlan(again, saved);
+        return {groups: Object.fromEntries(m.groupsOf(back)), levels: back.levels,
+                off: m.restoredPlan(again, {...saved, along: false}).along};
+        })()""",
+    )
+    assert got["groups"] == {
+        "+46+006": "ends",
+        "+43+007": "ends",
+        "+45+006": "along",
+        "+44+007": "along",
+        "+45+007": "along",
+    }
+    assert got["levels"] == {"ends": 17, "along": 13} and got["off"] is False
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    restore = _function_body(app_js, "restoreFlightPlan")
+    assert restore.index("flightPlanLoading = true;") < restore.index(
+        'api("POST", "/api/flightplan", saved.route)'
+    )
+    assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
+    # emptied or built meanwhile, the kept plan is forgotten and the answer dropped
+    assert "if (keptFlightPlan() !== text) return;" in restore
+    forget = _function_body(app_js, "forgetFlightPlan")
+    assert forget.index("setFlightPlanState(null);") < forget.index("if (!had) return;")
+
+
+def test_the_flight_plan_box_is_in_step_1_and_nothing_of_the_first_one_is_left() -> None:
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    box = re.search(r'<div class="flightplan" id="flightplan">.*?\n {10}</div>\n', html, re.S)
+    assert box is not None
+    parts = (
+        'id="flightplan-load"',
+        'id="flightplan-found" hidden',
+        'id="flightplan-ends-zl"',
+        'id="flightplan-along-zl"',
+        'id="flightplan-delete"',
+        'id="flightplan-recenter"',
+        'id="flightplan-error"',
+    )
+    for part in parts:
+        assert part in box.group(0), part
+    # the levels on the right of their group, the two lists lined up (a user, 2026-09-22)
+    assert box.group(0).index('id="flightplan-ends-n"') < box.group(0).index(
+        'id="flightplan-ends-zl"'
+    )
+    code = "\n".join((UI / name).read_text(encoding="utf-8") for name in PAGE_MODULES)
+    gone = (
+        "FLIGHT_PLAN",
+        "route-input",
+        "routeCodes",
+        "addRouteTiles",
+        "tileZl[",
+        "zlChosen",
+        "normalizeLevels",
+        "routePieces",
+        "tilesAlong",
+        '/api/simbrief"',
+    )
+    for old in gone:
+        assert old not in code + html, old
+    assert not (UI / "release.js").exists()
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    assert "  box.append(simbriefQuestion(view));" in settings_js  # asked again, always
+
+
+def test_a_flight_plan_is_read_one_at_a_time_and_its_levels_are_its_own() -> None:
+    """A second click started a second request, and the slower one won (review of 2026-09-23).
+    Step 1's list is the hand-chosen squares' level; the plan's two lists are its own."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    load = _function_body(app_js, "loadFlightPlan")
+    assert load.index("if (flightPlanLoading) return;") < load.index('api("GET"')
+    assert "/api/flightplan/simbrief?radius_km=" in load
+    assert "load.disabled = flightPlanLoading;" in _function_body(app_js, "renderFlightPlan")
+    step = app_js[app_js.index('$("zl-select").addEventListener("change"') :]
+    step = step[: step.index("});")]
+    assert "flightPlan" not in step and "tileZl" not in step
+    level = _function_body(app_js, "setFlightPlanLevel")
+    assert "levels: { ...state.flightPlan.levels, [group]: zl }" in level
+    assert "state.planZl" not in level
+    replace = _function_body(app_js, "replaceFlightPlan")
+    assert "defaultLevels(planZl(), sourceMaxZl())" in replace
+    assert "planMap?.routeChanged(true);" in replace  # the map brought to the route
+
+
+def test_the_map_draws_the_engines_line_and_fits_its_bounds() -> None:
+    """What is drawn is what is chosen: the engine's line, cut at the meridian, and its bounds,
+    which keep a Pacific crossing in one frame (the first version framed San Francisco to Tokyo
+    round the other side of the world, review of 2026-09-23)."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    draw = re.search(r"\n  function drawRoute\(\) \{.*?\n  \}\n", map_js, re.S)
+    assert draw is not None
+    assert "for (const piece of plan.path)" in draw.group(0)
+    assert "L.circleMarker([p.lat, p.lon]" in draw.group(0)
+    changed = map_js[map_js.index("    routeChanged(fit = false) {") :]
+    changed = changed[: changed.index("\n    },")]
+    assert "renderLegend();" in changed and "renderGrid();" in changed
+    assert "if (fit) this.fitRoute();" in changed
+    fit = map_js[map_js.index("    fitRoute() {") :]
+    fit = fit[: fit.index("\n    },")]
+    assert "const { south, north, west, east } = plan.bounds;" in fit
+    # and the box's Recenter brings the map back there once it has moved away (a user, 2026-09-25)
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    recenter = '$("flightplan-recenter").addEventListener("click", () => planMap?.fitRoute());'
+    assert recenter in app_js
+
+
+def test_the_demo_plan_is_the_engines_own() -> None:
+    """mock/flightplan.json is what orthostudio.flightplan answers for its points, with the squares
+    X-Plane has no scenery for left out: every one it keeps is one the engine counts, and the ones
+    it left out are exactly the difference."""
+    from orthostudio.flightplan import plan_of
+
+    doc = json.loads((UI / "mock" / "flightplan.json").read_text(encoding="utf-8"))
+    whole = plan_of([(p["lat"], p["lon"]) for p in doc["points"]], radius_km=15.0)
+    kept = doc["squares"]["ends"] + doc["squares"]["along"]
+    every = whole["squares"]["ends"] + whole["squares"]["along"]
+    assert set(kept) <= set(every)
+    assert len(every) - len(kept) == doc["left_out"] > 0
+    assert [n for n in every if n in kept] == kept  # in the engine's order
+    assert doc["path"] == whole["path"] and doc["bounds"] == whole["bounds"]
+    assert doc["radius_km"] == 15.0
+
+
+def test_the_route_can_be_left_unchosen() -> None:
+    """The pilot asked to be able not to choose the route's squares (2026-09-25): unticked, the plan
+    chooses its departure and arrival alone, and the box still counts the route; ticked again, its
+    squares come back. Squares chosen by hand stay either way, and the choice is kept."""
+    got = _node_json(
+        "flightplan.js",
+        "(() => {"
+        + _FP
+        + """
+        const off = {...fp, along: false};
+        const tiles = m.withPlan(["+40+000"], fp, {cap: 500}).tiles;
+        return {
+          ends: m.withPlan([], off, {cap: 500}).tiles,
+          groups: [...m.groupsOf(off).keys()],
+          counted: m.squaresOf(off, "along"),
+          untick: m.withoutPlan(tiles, fp, new Set(["+40+000", "+44+006"]), "along"),
+          kept: m.readSaved(m.toSaved(off)).along,
+        };
+        })()""",
+    )
+    assert got["ends"] == ["+46+006", "+43+007"] and got["groups"] == ["+46+006", "+43+007"]
+    assert got["counted"] == ["+45+006", "+44+006", "+44+007"]
+    assert got["untick"] == ["+40+000", "+46+006", "+43+007", "+44+006"]
+    assert got["kept"] is False
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert '<input type="checkbox" id="flightplan-along-on" checked>' in html
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert (
+        '$("flightplan-along-on").addEventListener("change", (ev) => setFlightPlanAlong(' in app_js
+    )
+    along = _function_body(app_js, "setFlightPlanAlong")
+    assert 'withoutPlan(state.tiles, fp, state.byHand, "along")' in along
+    assert "cap: MAX_BUILD_TILES" in along and "sayTilesInBuild(" in along

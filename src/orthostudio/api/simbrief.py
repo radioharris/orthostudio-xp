@@ -1,30 +1,46 @@
-"""The last flight plan of a pilot, from SimBrief: ``GET /api/simbrief``.
+"""The last flight plan of a pilot, from SimBrief, as squares to build.
 
-The Plan draws a route to help choose the squares to build, and typing the airports is not what a
-pilot who already filed a plan wants to do. SimBrief, which most of them use, serves the last plan
-of a user without a key and without a password: one address, a name or a pilot ID, and the whole
-briefing comes back (``https://www.simbrief.com/api/xml.fetcher.php?username=...&json=1``).
+``GET /api/flightplan/simbrief``, and ``POST /api/flightplan`` for a route the page kept.
 
-Only what draws a line is kept here: the two airports and the points between them, with their
-coordinates. The engine asks, not the page, as for the street map, so the page still talks to
-nothing but the address it was opened at. The name travels to simbrief.com, which the Settings
-question says in plain words; nothing else of the user leaves the machine, and nothing is kept on
-disk.
+The Plan chooses the squares a flight goes over, and typing the airports is not what a pilot who
+already filed a plan wants to do. SimBrief, which most of them use, serves the last plan of a user
+without a key and without a password: one address, a name or a pilot ID, and the whole briefing
+comes back (``https://www.simbrief.com/api/xml.fetcher.php?username=...&json=1``).
+
+Only what the route needs is kept: the two airports and the points between them, with their
+coordinates; :mod:`orthostudio.flightplan` turns them into the line and the squares, in one
+computation, so the page draws exactly what it chooses. The engine asks, not the page, as for the
+street map, so the page still talks to nothing but the address it was opened at. The name travels
+to simbrief.com, which the Settings question says in plain words; nothing else of the user leaves
+the machine, and nothing is kept on disk.
+
+The page keeps the route between two visits, never its squares: at the next visit it sends the
+route back (``POST /api/flightplan``) and the squares are computed again, by the rules of the
+version that answers, without asking SimBrief. A page that kept the squares showed a plan read
+before the corridor came with the line's squares alone, a reload after the update (2026-09-25).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from orthostudio.api.jobs import error_json
+from orthostudio.errors import OsxpError
+from orthostudio.flightplan import has_scenery, plan_of
 
 log = logging.getLogger("orthostudio.api.simbrief")
 
-__all__ = ["SIMBRIEF_URL", "route_of", "simbrief_router"]
+__all__ = ["SIMBRIEF_URL", "KeptRoute", "route_of", "simbrief_router", "simbrief_url"]
 
 SIMBRIEF_URL = "https://www.simbrief.com/api/xml.fetcher.php"
 """Where the last plan comes from; ``json=1`` asks for JSON rather than the XML it was built on."""
@@ -35,13 +51,40 @@ DEADLINE_S = 20.0
 MAX_POINTS = 400
 """A navigation log holds one line per fix; a long-haul plan stays well under this."""
 
+RADIUS_KM = 15.0
+"""Around the departure and the arrival, when the page does not say: the airport field's own."""
+
+MAX_USER = 64
+"""A SimBrief name or pilot ID is short; the Settings field takes no more."""
+
+
+class RoutePoint(BaseModel):
+    """One point of a kept route, as :func:`route_of` gave it."""
+
+    model_config = ConfigDict(extra="forbid")
+    ident: str = Field(default="", max_length=8)
+    name: str = Field(default="", max_length=60)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+
+
+class KeptRoute(BaseModel):
+    """A route the page kept, and the radius its squares were chosen with: the squares themselves
+    are not taken, only computed (see the module)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    from_: str = Field(default="", alias="from", max_length=8)
+    to: str = Field(default="", max_length=8)
+    points: list[RoutePoint] = Field(min_length=2, max_length=MAX_POINTS + 2)
+    radius_km: float = Field(default=RADIUS_KM, ge=0.0, le=300.0)
+
 
 def _number(value: Any) -> float | None:
     try:
         out = float(value)
     except (TypeError, ValueError):
         return None
-    return out if -90.0 <= out <= 90.0 or abs(out) <= 180.0 else None
+    return out if abs(out) <= 180.0 else None
 
 
 def _point(ident: str, name: str, lat: Any, lon: Any) -> dict[str, Any] | None:
@@ -123,72 +166,84 @@ def _fetch(url: str) -> tuple[bytes | None, str]:
     return answer.body, ""
 
 
+def simbrief_url(user: str) -> str:
+    """The fetcher's address for a SimBrief name, or for a pilot ID, which it takes under another
+    key. The name is encoded: a space or an ``&`` in it changed the question (2026-09-23)."""
+    key = "userid" if user.isdigit() else "username"
+    return f"{SIMBRIEF_URL}?{key}={quote(user, safe='')}&json=1"
+
+
+def _failed(code: str, status: int, context: dict[str, Any] | None = None) -> JSONResponse:
+    """An answer in the engine's one error shape, with its code, words, remedy and context. The
+    network's own code said "retried with backoff", which this button never does: SimBrief out of
+    reach has a code of its own (``NET_SIMBRIEF_FAILED``)."""
+    err = OsxpError(code, context=context)
+    return JSONResponse({"error": error_json(err)}, status_code=status)
+
+
 def simbrief_router(
     user_of: Callable[[], str | None],
     *,
+    global_scenery_of: Callable[[], Path | None] = lambda: None,
     fetch: Callable[[str], tuple[bytes | None, str]] | None = None,
 ) -> APIRouter:
-    """The router: ``app.include_router(simbrief_router(lambda: settings...simbrief_user))``.
+    """The router: ``app.include_router(simbrief_router(lambda: settings...simbrief_user, ...))``.
 
-    ``user_of`` is called on each request, so a name changed in Settings is honoured without a
-    restart. ``fetch`` replaces the upstream request, which is how the tests run without a network.
+    ``user_of`` and ``global_scenery_of`` are called on each request, so a name or an X-Plane
+    folder changed in Settings is honoured without a restart. ``fetch`` replaces the upstream
+    request, which is how the tests run without a network.
     """
     ask = fetch if fetch is not None else _fetch
     router = APIRouter()
 
-    def failed(code: str, message: str, remedy: str, status: int) -> JSONResponse:
-        return JSONResponse(
-            {"error": {"code": code, "severity": "blocking", "message": message, "remedy": remedy}},
-            status_code=status,
+    async def answer(line: dict[str, Any], radius_km: float, how: str) -> dict[str, Any]:
+        """A line's squares and path, by the rules of this version: both routes answer this."""
+        scenery = global_scenery_of()
+        plan = await asyncio.to_thread(
+            plan_of,
+            [(p["lat"], p["lon"]) for p in line["points"]],
+            radius_km=radius_km,
+            has_land=has_scenery(scenery) if scenery is not None else None,
         )
+        log.info(
+            "flight plan (%s): %s to %s, %d point(s), %d + %d square(s) within %g km, %d left out",
+            how, line["from"], line["to"], len(line["points"]), len(plan["squares"]["ends"]),
+            len(plan["squares"]["along"]), radius_km, plan["left_out"],
+        )  # fmt: skip
+        return {**line, **plan, "radius_km": radius_km, "scenery_checked": scenery is not None}
 
-    @router.get("/api/simbrief")
-    async def simbrief() -> Any:
-        """The last plan of the SimBrief user named in Settings, as a line to draw."""
-        import asyncio
-
-        user = (user_of() or "").strip()
+    @router.get("/api/flightplan/simbrief")
+    async def flight_plan(
+        radius_km: float = Query(RADIUS_KM, ge=0.0, le=300.0),
+    ) -> Any:
+        """The last plan of the SimBrief user named in Settings: its line and its squares."""
+        user = (user_of() or "").strip()[:MAX_USER]
         if not user:
-            return failed(
-                "CFG_SIMBRIEF_USER_MISSING",
-                "No SimBrief name is set.",
-                "Settings asks for your SimBrief name, the one you sign in with.",
-                400,
-            )
-        url = f"{SIMBRIEF_URL}?username={user}&json=1"
-        body, why = await asyncio.to_thread(ask, url)
+            return _failed("CFG_SIMBRIEF_USER_MISSING", 400)
+        body, why = await asyncio.to_thread(ask, simbrief_url(user))
         if body is None:
             if why == "unknown user":
-                return failed(
-                    "CFG_SIMBRIEF_USER_UNKNOWN",
-                    f"SimBrief does not know {user}.",
-                    "Check the name in Settings: it is your SimBrief name, or your pilot ID.",
-                    404,
-                )
-            return failed(
-                "NET_CONNECTION_FAILED",
-                f"SimBrief could not be reached ({why}).",
-                "Try again later, or type the airports of your route by hand.",
-                502,
-            )
+                return _failed("CFG_SIMBRIEF_USER_UNKNOWN", 404, {"user": user})
+            return _failed("NET_SIMBRIEF_FAILED", 502, {"reason": why})
         try:
             doc = json.loads(body)
         except ValueError:
-            return failed(
-                "NET_CONNECTION_FAILED",
-                "SimBrief answered something this version cannot read.",
-                "Try again later, or type the airports of your route by hand.",
-                502,
+            return _failed(
+                "NET_SIMBRIEF_FAILED", 502, {"reason": "an answer this version cannot read"}
             )
         line = route_of(doc if isinstance(doc, dict) else {})
         if len(line["points"]) < 2:
-            return failed(
-                "CFG_SIMBRIEF_PLAN_EMPTY",
-                "The last SimBrief plan says nothing of where it goes.",
-                "Generate a flight plan on simbrief.com, then try again.",
-                404,
-            )
-        log.info("simbrief: %s to %s, %d point(s)", line["from"], line["to"], len(line["points"]))
-        return line
+            return _failed("CFG_SIMBRIEF_PLAN_EMPTY", 404)
+        return await answer(line, radius_km, "SimBrief")
+
+    @router.post("/api/flightplan")
+    async def kept_flight_plan(route: KeptRoute) -> Any:
+        """A route the page kept: its squares and its line computed again, SimBrief not asked."""
+        line = {
+            "from": route.from_,
+            "to": route.to,
+            "points": [p.model_dump() for p in route.points],
+        }
+        return await answer(line, route.radius_km, "kept")
 
     return router
