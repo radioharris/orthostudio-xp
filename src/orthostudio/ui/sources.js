@@ -7,16 +7,25 @@ import { t, tOpt } from "./i18n.js";
 
 const TILE_NAME_RE = /^([+-]\d{2})([+-]\d{3})$/;
 
-/** Whether a source's rectangle meets the 1° tile `name` (`+46+006`), as the engine's
- * `Provider.covers`; always true for a source without one (the whole world). */
-export function sourceCovers(p, name) {
+/** Whether a source's rectangle meets the box `[west, south, east, north]`, in degrees; always
+ * true for a source without one (the whole world). The one rectangle rule: a 1° tile is a box
+ * like any other, and so is the map's view. */
+export function sourceMeets(p, box) {
   const b = p?.extent_bounds;
+  if (!Array.isArray(b) || b.length !== 4 || !Array.isArray(box) || box.length !== 4) return true;
+  const [lon0, lat0, lon1, lat1] = b;
+  const [west, south, east, north] = box;
+  return west < lon1 && east > lon0 && south < lat1 && north > lat0;
+}
+
+/** Whether a source's rectangle meets the 1° tile `name` (`+46+006`), as the engine's
+ * `Provider.covers`. */
+export function sourceCovers(p, name) {
   const m = TILE_NAME_RE.exec(String(name));
-  if (!Array.isArray(b) || b.length !== 4 || !m) return true;
+  if (!m) return true;
   const lat = Number(m[1]);
   const lon = Number(m[2]);
-  const [lon0, lat0, lon1, lat1] = b;
-  return lon < lon1 && lon + 1 > lon0 && lat < lat1 && lat + 1 > lat0;
+  return sourceMeets(p, [lon, lat, lon + 1, lat + 1]);
 }
 
 /** A country's name in the page's language (the engine gives it in English). */

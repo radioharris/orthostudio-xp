@@ -4734,17 +4734,68 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()
-        assert any(line.strip().startswith("renderLegend();") for line in called), event
+        assert any(line.strip().startswith("viewChanged();") for line in called), event
+    pair = code[code.index("function viewChanged()") : code.index("function showNotice()")]
+    assert "renderLegend();" in pair and 'setNotice("");' in pair
 
     # The source is chosen in step 1, not on the map, and the street map replaces it altogether:
     # both go through setBaseLayer, so the line is drawn again there. A user switched to EOX at
     # ZL18 and the line went on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
     swap = code[code.index("function setBaseLayer(") :]
     swap = swap[: swap.index("\n  }\n")].splitlines()
-    assert any(line.strip().startswith("renderLegend();") for line in swap), "setBaseLayer"
+    assert any(line.strip().startswith("viewChanged();") for line in swap), "setBaseLayer"
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
+
+
+def test_a_source_that_does_not_cover_the_view_says_so() -> None:
+    """A source of one country answers a plain white (PDOK) or black (Luxembourg) image outside
+    its own, with a 200: nothing fails, so the map went blank without a word (a user, 2026-09-25).
+    The engine refuses a build there (CFG_PROVIDER_OUT_OF_COVERAGE); the map says it first.
+
+    One rectangle rule, shared with the lists and with the engine's `Provider.covers`: a 1-degree
+    tile and the map's view are both boxes. A view that straddles the border is covered, since
+    part of it has imagery.
+    """
+    nl = {"extent_bounds": [3.06, 50.72, 7.26, 53.76]}  # the registry's own, Netherlands
+    world = {"extent_bounds": None}
+    said = _node_json(
+        "sources.js",
+        f"""[
+          m.sourceMeets({nl!s}, [4.5, 51.5, 5.0, 52.0]),
+          m.sourceMeets({nl!s}, [4.5, 45.5, 5.0, 46.0]),
+          m.sourceMeets({nl!s}, [4.5, 50.0, 5.0, 51.0]),
+          m.sourceMeets({world!s}, [4.5, 45.5, 5.0, 46.0]),
+          m.sourceCovers({nl!s}, "+52+004"),
+          m.sourceCovers({nl!s}, "+45+004"),
+        ]""".replace("None", "null").replace("'", '"'),
+    )
+    assert said[0] is True, "over the Netherlands"
+    assert said[1] is False, "over France, where it answers a blank image"
+    assert said[2] is True, "straddling the border, part of the view has imagery"
+    assert said[3] is True, "a source of the whole world covers everything"
+    assert said[4] is True and said[5] is False, "a tile reads the same rule"
+
+    # the map says it, and a blank tile arriving does not wipe the word away
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    standing = code[code.index("function standingNotice()") : code.index("function viewChanged()")]
+    assert "ctx.mock || (zs.street.wanted && !zs.street.failed)" in standing, (
+        "not a source's imagery"
+    )
+    assert 'sourceMeets(p, box) ? "" : t("map.base_outside"' in standing
+    shown = code[code.index("function showNotice()") : code.index("function setNotice(")]
+    assert "const text = happened || standingNotice();" in shown, (
+        "what happened wins, else what stands"
+    )
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    assert 'setNotice(""); // a blank tile is a tile that came; the standing word stays' in layer
+    assert "showNotice(); // in the language now chosen" in code, "a language change re-words it"
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "map.base_outside" in tables[lang]
 
 
 def test_a_view_without_imagery_says_so_however_it_was_reached() -> None:

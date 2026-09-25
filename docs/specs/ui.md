@@ -957,6 +957,19 @@ since the next draw usually fixes it. How deep a source goes is not one number: 
 ZL19 and ZL20 over New York and nothing past ZL18 over Lyon and Paris, so `max_zl` is the deepest
 it ever serves and the map says where it stops sooner.
 
+**A source that does not reach here says so** (`map.base_outside`, "Netherlands · PDOK does not
+cover this view."). A source of one country answers a plain white (PDOK) or black (Luxembourg)
+image outside its own, with a 200: nothing fails, the tiles arrive, and the map used to go blank
+without a word (a user, 2026-09-25). `standingNotice` reads the source's own rectangle through
+`sourceMeets`, the one rule the lists and the engine's `Provider.covers` share, so a view that
+straddles a border is covered. The engine refuses a build there outright
+(`CFG_PROVIDER_OUT_OF_COVERAGE`); the map says it before he asks for one.
+
+The map's word has two sources and one line (`showNotice`): what just happened (`setNotice`: tiles
+that do not come, the street map's renderer, an engine older than the page) if there is any, else
+what is standing. A tile that arrives clears the first and never the second, and the line is
+written from scratch each time, so a change of language says it in the new one.
+
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
 now that the map shows the very colours a build will encode. The tile being built still pulses,

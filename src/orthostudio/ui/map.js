@@ -14,7 +14,7 @@
 import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
-import { sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
+import { sourceGroups, sourceGroupTitle, sourceLabel, sourceMeets } from "./sources.js";
 import {
   MAX_NAME,
   MAX_VERTICES,
@@ -1390,12 +1390,12 @@ export function createPlanMap(ctx) {
       renderBanner();
       renderToolOptions(true);
       refreshAirports();
-      renderLegend(); // a pan north or south changes what a pixel covers, so the view line moves too
+      viewChanged(); // a pan changes what a pixel covers, and may leave what the source covers
     });
     m.on("zoomend", () => {
       renderBorders();
       drawAirports(); // the codes appear one zoom before they would be unreadable
-      renderLegend();
+      viewChanged();
     });
     m.on("click", onMapClick);
     m.on("dblclick", onMapDblClick);
@@ -1688,11 +1688,50 @@ export function createPlanMap(ctx) {
     zoomControl = L.control.zoom({ zoomInTitle: t("map.zoom_in"), zoomOutTitle: t("map.zoom_out") }).addTo(map);
   }
 
-  function setNotice(text) {
+  /** What is true of this view whatever its tiles do: a source of one country answers a plain
+   * white or black image outside its own, with a 200, so nothing fails and the map used to go
+   * blank without a word (a user, 2026-09-25). The engine refuses a build there outright
+   * (CFG_PROVIDER_OUT_OF_COVERAGE); the map says it before he asks for one.
+   *
+   * The rectangle is the source's own, read with the rule the lists and the engine share. The
+   * street map and the mock are not a source's imagery, and a source without a rectangle covers
+   * the world: both give nothing to say. */
+  /** What the map last said just happened, as opposed to what is standing (`showNotice`). */
+  let happened = "";
+
+  function standingNotice() {
+    if (!map || ctx.mock || (zs.street.wanted && !zs.street.failed)) return "";
+    const p = providerByCode(ctx.planProvider() || "");
+    if (!p) return "";
+    const b = map.getBounds();
+    const box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    return sourceMeets(p, box) ? "" : t("map.base_outside", { provider: sourceLabel(p) });
+  }
+
+  /** The view moved, or what is under it changed: the legend says what this view is worth, and
+   * the map forgets what happened to the view before. One pair, so the two cannot drift apart. */
+  function viewChanged() {
+    renderLegend();
+    setNotice(""); // what failed in the view before is not this one's news
+  }
+
+  /** The word on the map: what just happened if anything, else what is true of this view.
+   *
+   * Two sources, one line. A tile that arrives clears what happened, never what is standing: a
+   * source of one country answers a plain white image outside its own, so its tiles arrive and
+   * the map would fall silent again. Written from scratch each time, so a change of language
+   * says it in the new one. */
+  function showNotice() {
     const el = $("map-notice");
     if (!el) return;
+    const text = happened || standingNotice();
     el.hidden = !text;
-    el.textContent = text || "";
+    el.textContent = text;
+  }
+
+  function setNotice(text) {
+    happened = text || "";
+    showNotice();
   }
 
   function setBaseLayer(force = false) {
@@ -1711,7 +1750,7 @@ export function createPlanMap(ctx) {
     // What is under the map changed, so what the view is worth changed with it: a source chosen
     // in step 1 has its own ceiling, and the street map has none (a user switched to EOX at ZL18
     // and the line went on promising 40 cm, 2026-09-25).
-    renderLegend();
+    viewChanged();
   }
 
   /** The street map, drawn by MapLibre GL inside the Leaflet map.
@@ -1807,7 +1846,7 @@ export function createPlanMap(ctx) {
     layer.on("loading", () => tally.starting()); // Leaflet begins the tiles of a new view
     layer.on("tileload", () => {
       tally.came();
-      if (layer === base) setNotice("");
+      if (layer === base) setNotice(""); // a blank tile is a tile that came; the standing word stays
     });
     // A 204 (no image there) is an error for an <img> too: only a view where nothing loads says so.
     layer.on("tileerror", () => {
@@ -2195,6 +2234,7 @@ export function createPlanMap(ctx) {
     renderZones();
     renderGrid();
     renderLegend();
+    showNotice(); // in the language now chosen
     renderSizes();
     renderHint();
     drawRoute();
