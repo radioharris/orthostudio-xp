@@ -86,6 +86,11 @@ wait too: the end of the build decides what X-Plane shows of it. Tiles are delet
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and
 *Quit* cancels the waiting builds with the one running.
 
+**Tidying the list.** A build that has finished carries a small bin at the end of its row: it
+leaves the list, with its progress and its log, and the tiles it built stay where they are. The
+trash above the list does the same for every finished build at once. A build still running or
+waiting has no bin: stop it first.
+
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
 EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
@@ -385,6 +390,7 @@ and built again.
 | `osxp clean --all` | - | everything no tile on disk needs, however recent | emptied, with the map cache | emptied |
 | Free space (Library) | - | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
+| Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
 The delays protect a build that may be running at the same time, in the page or in a terminal: it
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,

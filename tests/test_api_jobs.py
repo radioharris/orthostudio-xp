@@ -275,6 +275,53 @@ def test_manager_clears_finished_jobs_and_their_files(home: Path) -> None:
     assert _manager(home, FakeBuild()).list() == []
 
 
+def test_manager_forgets_one_finished_job_only(home: Path) -> None:
+    """A single finished build can leave the list, with its state and journal files. The one
+    running and the one waiting behind it are refused, so nothing is taken from under a thread,
+    and the list keeps everything else.
+
+    What "finished" adds to those two is the rule's name, not a third case: a job the manager
+    holds is always the active one, a queued one, or one that has finished, since a build killed
+    mid-run writes no state file and is not read back. It stays as the meaning a reader and the
+    409 rely on, and as the guard if that order ever changes.
+    """
+    build = FakeBuild()
+    mgr = _manager(home, build)
+    first = mgr.start([make_spec(home=home)])
+    assert first.wait(10.0)
+    second = mgr.start([make_spec("+45+006", home=home)])
+    assert second.wait(10.0)
+    build.delay_s = 0.5
+    running = mgr.start([make_spec("+44+005", home=home)])
+    queued = mgr.start([make_spec("+43+004", home=home)], queue=True)
+
+    files = [first.state_path(), first.journal_path]
+    assert all(f.is_file() for f in files)
+    assert mgr.forget(first.id) is True
+    assert not any(f.exists() for f in files) and mgr.get(first.id) is None
+    assert {j.id for j in mgr.list()} == {second.id, running.id, queued.id}
+
+    assert mgr.forget(running.id) is False, "the build under way stays"
+    assert mgr.forget(queued.id) is False, "a build waiting its turn stays"
+    assert mgr.forget("no-such-job") is False
+    assert mgr.forget(first.id) is False, "already gone"
+    assert {j.id for j in mgr.list()} == {second.id, running.id, queued.id}
+
+    assert _manager(home, FakeBuild()).get(first.id) is None, "a restart does not bring it back"
+
+    # The two guards beyond "finished" are for the moment the worker has marked a job finished but
+    # the manager has not let go of it yet: `_finish` runs, then `save_state` writes, and only then
+    # is the lock taken to clear the active slot and start the next one. Forgetting the job in that
+    # window would delete the file being written and pull it from under that bookkeeping.
+    mgr._active = second
+    assert mgr.forget(second.id) is False, "finished, but still the active one"
+    mgr._active = None
+    mgr._queue.append(second)
+    assert mgr.forget(second.id) is False, "finished, but still in the queue"
+    mgr._queue.remove(second)
+    assert mgr.forget(second.id) is True, "let go of, and now it can leave"
+
+
 # -- over HTTP ----------------------------------------------------------------------------------
 
 
@@ -463,4 +510,34 @@ async def test_http_clear_empties_the_job_list(home: Path, xplane: Path) -> None
         assert (await c.get(f"/api/jobs/{job_id}")).status_code == 404
         r = await c.post("/api/jobs/clear")
         assert r.status_code == 200 and r.json() == {"removed": []}
+    mgr.close()
+
+
+@pytest.mark.anyio
+async def test_http_removes_one_finished_job_and_refuses_a_live_one(
+    home: Path, xplane: Path
+) -> None:
+    """``DELETE /api/jobs/{id}``: the finished build leaves the list alone, an unknown id is 404,
+    and a build still under way is 409 with what to do about it."""
+    build = FakeBuild()
+    app, mgr = _app(home, build)
+    body = {"tiles": ["+43+005"], "zoom_level": 14, "xplane_dir": str(xplane)}
+    async with client_for(app) as c:
+        done_id = (await c.post("/api/jobs", json=body)).json()["job_id"]
+        assert mgr.get(done_id).wait(10.0)  # type: ignore[union-attr]
+        build.delay_s = 0.5
+        live_id = (await c.post("/api/jobs", json={**body, "tiles": ["+44+005"]})).json()["job_id"]
+
+        r = await c.delete(f"/api/jobs/{live_id}")
+        assert r.status_code == 409
+        err = r.json()["error"]
+        assert err["code"] == "SYS_BUSY" and "cancel it first" in err["remedy"]
+
+        assert (await c.delete("/api/jobs/no-such-job")).status_code == 404
+
+        r = await c.delete(f"/api/jobs/{done_id}")
+        assert r.status_code == 200 and r.json() == {"job_id": done_id, "removed": True}
+        assert [j["id"] for j in (await c.get("/api/jobs")).json()] == [live_id]
+        assert (await c.get(f"/api/jobs/{done_id}")).status_code == 404
+        assert (await c.delete(f"/api/jobs/{done_id}")).status_code == 404, "gone is gone"
     mgr.close()

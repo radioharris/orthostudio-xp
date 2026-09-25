@@ -457,8 +457,16 @@ first ("Clear the job list?", the number of finished jobs, their progress and lo
 tiles kept in the Library and in X-Plane, and "The build in progress stays in the list" when one
 runs; *Keep them* has the focus), then `POST /api/jobs/clear`, reads the list again and says
 "Jobs removed from the list: N." When the job shown was cleared, the running job is shown
-instead, else none. The selected job (default: the running one, else the newest) shows, from
-top to bottom:
+instead, else none.
+
+**One build at a time** (a user, 2026-09-24): a bin at the end of a row, on the rows that have
+finished only, `DELETE /api/jobs/{id}` without asking first, since the tiles stay and only that
+build's progress and journal go. A build running or waiting has no bin, and the engine refuses it
+too (409): it is cancelled first. The keyboard is left on the bin of the row that takes the gone
+one's place, else the last, else the title, rather than at the top of the page. `followJobGone`
+is the one rule for the job the page was watching, shared with the trash of the whole list.
+
+The selected job (default: the running one, else the newest) shows, from top to bottom:
 
 - **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). A job
   waiting in the queue says *waiting*, its button reads *Remove from the queue* (the same request:

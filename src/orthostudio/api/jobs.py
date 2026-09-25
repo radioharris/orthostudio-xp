@@ -1288,25 +1288,46 @@ class JobManager:
         specs = list(job.specs)
         return self.start(specs, install=job.install, request=request, queue=queue)
 
+    def _forgettable(self, job: Job) -> bool:
+        """A job the list can let go: it has finished, it is not the one running, and it is not
+        waiting its turn. The one rule, so emptying the list and removing a single job agree.
+
+        The caller holds the lock."""
+        return job.finished and job is not self._active and job not in self._queue
+
+    def _drop(self, jobs: Sequence[Job]) -> None:
+        """Take these jobs out of the list and delete their state and journal files, so a restart
+        does not bring them back. The tiles they built are not touched.
+
+        The caller holds the lock."""
+        for job in jobs:
+            del self._jobs[job.id]
+            for path in (job.state_path(), job.journal_path):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("cannot delete %s", path)
+
     def forget_finished(self) -> Sequence[str]:  # a list; `list` in this class is the method
-        """Empty the job list (the page's trash on Works): the finished jobs leave it and their
-        state and journal files are deleted, so a restart does not bring them back. The active job
-        and the queued ones stay; the tiles the jobs built are not touched. Returns the ids gone,
-        newest first."""
+        """Empty the job list (the page's trash on Works): every finished job leaves it. The
+        active job and the queued ones stay. Returns the ids gone, newest first."""
         with self._lock:
-            gone = [
-                job
-                for job in self._jobs.values()
-                if job.finished and job is not self._active and job not in self._queue
-            ]
-            for job in gone:
-                del self._jobs[job.id]
-                for path in (job.state_path(), job.journal_path):
-                    try:
-                        path.unlink(missing_ok=True)
-                    except OSError:
-                        log.warning("cannot delete %s", path)
+            gone = [job for job in self._jobs.values() if self._forgettable(job)]
+            self._drop(gone)
         return [job.id for job in sorted(gone, key=lambda j: j.created_at, reverse=True)]
+
+    def forget(self, job_id: str) -> bool:
+        """Remove one finished job from the list (the cross on its row, ``DELETE /api/jobs/{id}``).
+
+        False when there is no such job, or when it is still running or waiting: the decision is
+        taken under the lock, so a job that starts between a caller's look and this call is not
+        removed from under the thread that runs it."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or not self._forgettable(job):
+                return False
+            self._drop([job])
+        return True
 
     def close(self, timeout: float = 10.0) -> None:
         """Cancel what runs and join the threads (tests, server shutdown)."""

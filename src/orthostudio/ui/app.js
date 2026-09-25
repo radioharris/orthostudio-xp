@@ -1226,6 +1226,16 @@ export async function mockApi(method, path, body, options = {}) {
     return { removed };
   }
   m = p.match(/^\/api\/jobs\/([^/]+)$/);
+  if (m && method === "DELETE") {
+    // Like the engine: a finished build leaves the list for good, one still under way is refused.
+    const run = mock.jobs.get(m[1]);
+    const past = run ? null : await mockFile("job_done");
+    if (!run && (mock.pastCleared || past.id !== m[1])) throw mockError(404, "SYS_WORKING_DIR_INVALID", `No job ${m[1]}.`, "List the jobs with GET /api/jobs.");
+    if (run && jobActive(run.doc)) throw mockError(409, "SYS_BUSY", `Job ${m[1]} is ${run.doc.status}.`, "Only a build that has finished can leave the list; cancel it first.");
+    if (run) mock.jobs.delete(m[1]);
+    else mock.pastCleared = true;
+    return { job_id: m[1], removed: true };
+  }
   if (m) {
     if (mock.jobs.has(m[1])) return mockJobState(mock.jobs.get(m[1]));
     const done = await mockFile("job_done");
@@ -3666,10 +3676,17 @@ const COST_ICON_PATHS = {
   disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
 };
 
+/** The bin, the same drawing as the trash above the job list (`index.html`). */
+const TRASH_PATH = "M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6";
+
 /** Inline SVG icon (static markup, no user data). */
-function costIcon(kind) {
-  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${COST_ICON_PATHS[kind]}"/></svg>`;
+function strokeIcon(d) {
+  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
   return document.createRange().createContextualFragment(markup).firstElementChild;
+}
+
+function costIcon(kind) {
+  return strokeIcon(COST_ICON_PATHS[kind]);
 }
 
 function kv(rows) {
@@ -3894,8 +3911,58 @@ function renderJobList() {
       h("span", { class: "job-tiles" }, tiles.length > 3 ? `${tiles.slice(0, 3).join(" ")} +${tiles.length - 3}` : tiles.join(" ")),
       jobStatusPill(j.status),
       h("span", { class: "job-meta num" }, `${j.provider || ""} ZL${j.zoom_level ?? j.zl ?? ""} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
-    ul.append(h("li", null, btn));
+    const row = h("li", null, btn);
+    if (!jobActive(j)) row.append(forgetButton(j, tiles));
+    ul.append(row);
   }
+}
+
+/** The bin on a finished row: that build alone leaves the list, its progress and its journal with
+ * it, and the tiles it built stay. A build running or waiting has no bin: it is cancelled first,
+ * which is what the engine answers too (409). */
+function forgetButton(j, tiles) {
+  return h("button", {
+    type: "button",
+    class: "btn btn-small btn-icon btn-danger job-forget",
+    title: t("works.forget"),
+    disabled: state.jobsClearing || Boolean(state.engineOutdated),
+    onclick: () => forgetJob(j),
+  }, strokeIcon(TRASH_PATH), h("span", { class: "sr-only" }, t("works.forget_one", { tiles: tiles.join(" ") || j.id })));
+}
+
+/** One finished build leaves the list (DELETE /api/jobs/{id}).
+ *
+ * The keyboard is left where the hand was: the bin of the row that takes the gone one's place,
+ * else the last one, else the title, rather than the top of the page. */
+async function forgetJob(j) {
+  if (state.jobsClearing) return;
+  const was = state.jobs.findIndex((x) => x.id === j.id);
+  state.jobsClearing = true;
+  renderJobList();
+  try {
+    await api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`);
+  } catch (err) {
+    toast(errorMessage(err), "fail");
+  } finally {
+    state.jobsClearing = false;
+  }
+  await refreshJobList();
+  await followJobGone();
+  const bins = [...$("job-list").querySelectorAll(".job-forget")];
+  (bins[Math.min(was, bins.length - 1)] || $("job-list").querySelector("button") || $("jobs-title")).focus({ preventScroll: true });
+}
+
+/** The job the page was watching is no longer in the list: it follows a build still under way, or
+ * lets go. Shared by the bin of a row and the trash of the whole list. */
+async function followJobGone() {
+  if (!state.jobId || state.jobs.some((j) => j.id === state.jobId)) return;
+  const next = state.jobs.find((j) => jobActive(j));
+  if (!next) {
+    forgetShownJob();
+    return;
+  }
+  history.replaceState(null, "", `#works/${next.id}`);
+  await watchJob(next.id);
 }
 
 /** The trash above the job list: the finished jobs leave it and their journals are deleted
@@ -3915,15 +3982,7 @@ async function clearJobs() {
     state.jobsClearing = false;
   }
   await refreshJobList();
-  if (state.jobId && !state.jobs.some((j) => j.id === state.jobId)) {
-    const next = state.jobs.find((j) => jobActive(j));
-    if (next) {
-      history.replaceState(null, "", `#works/${next.id}`);
-      await watchJob(next.id);
-    } else {
-      forgetShownJob();
-    }
-  }
+  await followJobGone();
   if (document.activeElement === document.body || $("jobs-clear").hidden) {
     ($("job-list").querySelector("button") || $("jobs-title")).focus({ preventScroll: true });
   }

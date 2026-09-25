@@ -1363,6 +1363,23 @@ def create_app(
     async def clear_jobs() -> dict[str, Any]:
         return {"removed": await asyncio.to_thread(manager.forget_finished)}
 
+    @app.delete("/api/jobs/{job_id}")
+    async def forget_job(job_id: str) -> Any:
+        """Remove one finished build from the list, its progress and its journal with it. The
+        tiles it built stay, in the Library and in X-Plane. A build running or waiting is
+        refused: cancel it first."""
+        job = job_or_404(job_id)
+        if isinstance(job, JSONResponse):
+            return job
+        if not await asyncio.to_thread(manager.forget, job_id):
+            return _plain_error(
+                "SYS_BUSY",
+                f"Job {job_id} is {job.status}.",
+                "Only a build that has finished can leave the list; cancel it first.",
+                status=409,
+            )
+        return {"job_id": job_id, "removed": True}
+
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str) -> Any:
         job = job_or_404(job_id)

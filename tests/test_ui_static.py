@@ -2102,7 +2102,9 @@ def test_the_job_list_empties_after_asking() -> None:
     code = _function_body(app_js, "clearJobs")
     assert code.index("await confirmClearJobs(") < code.index('api("POST", "/api/jobs/clear")')
     assert code.index('api("POST", "/api/jobs/clear")') < code.index("await refreshJobList();")
-    assert "forgetShownJob();" in code and 't("works.cleared"' in code
+    assert "await followJobGone();" in code and 't("works.cleared"' in code
+    gone = _function_body(app_js, "followJobGone")
+    assert "forgetShownJob();" in gone and "watchJob(next.id)" in gone
     listing = _function_body(app_js, "renderJobList")
     assert "!state.jobs.some((j) => !jobActive(j))" in listing
     assert '$("jobs-clear").addEventListener("click", clearJobs);' in app_js
@@ -2122,6 +2124,45 @@ def test_the_job_list_empties_after_asking() -> None:
     assert got["cleared"] == {"removed": ["20260912-174000-7a3c"]}
     assert got["after"] == [got["run"]]  # the running job stays
     assert got["gone"]["status"] == 404
+
+
+def test_one_finished_build_can_leave_the_list_alone() -> None:
+    """A user asked to remove a finished build from the Works list without emptying it (2026-09-24):
+    a bin on the row, only on a row that has finished, DELETE /api/jobs/{id}. Its progress and its
+    journal go with it, the tiles it built stay, and the keyboard is left on the row that takes its
+    place. A build running or waiting has no bin, and the engine refuses it anyway (409).
+    """
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    listing = _function_body(app_js, "renderJobList")
+    assert "if (!jobActive(j)) row.append(forgetButton(j, tiles));" in listing, "finished rows only"
+    code = _function_body(app_js, "forgetJob")
+    assert code.index('api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`)') < code.index(
+        "await refreshJobList();"
+    )
+    assert "await followJobGone();" in code, "the same rule the whole-list trash follows"
+    assert "state.jobsClearing" in code and ".focus({ preventScroll: true })" in code
+
+    # the bin says what goes, and both languages have the words
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        assert "works.forget" in tables[lang] and "works.forget_one" in tables[lang]
+
+    script = """
+    const request = {tiles: ["+46+006"], provider: "BI", zoom_level: 16};
+    const run = (await call("POST", "/api/jobs", request)).ok;
+    const live = await call("DELETE", "/api/jobs/" + run.job_id);
+    const past = await call("DELETE", "/api/jobs/20260912-174000-7a3c");
+    const left = (await call("GET", "/api/jobs")).ok.map((j) => j.id);
+    const again = await call("DELETE", "/api/jobs/20260912-174000-7a3c");
+    const out = JSON.stringify({run: run.job_id, live, past, left, again});
+    process.stdout.write(out, () => process.exit(0));  // the running mock job keeps node alive
+    """
+    got = _node_mock(script)
+    assert got["live"]["status"] == 409, "a build under way is refused"
+    assert got["live"]["code"] == "SYS_BUSY"
+    assert got["past"]["ok"] == {"job_id": "20260912-174000-7a3c", "removed": True}
+    assert got["left"] == [got["run"]], "the running build stays, and only it"
+    assert got["again"]["status"] == 404, "gone is gone"
 
 
 def test_the_step_1_trash_unselects_every_tile_at_once() -> None:
