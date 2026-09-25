@@ -948,32 +948,29 @@ The source is chosen in step 1, not on the map, so the line is drawn again in `s
 well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
 on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
 
-**A view with no imagery says so** (`map.base_failed`, "No imagery received from {provider} for
-this view."). The tiles counted are **the view's**, begun again on Leaflet's `loading`, not the
-layer's life (`tileTally`): the same user zoomed from ZL18 to ZL19 on Esri Clarity over France,
-where it answers 404, and the map emptied in silence because the tiles of the view before still
-counted as imagery received. `BASE_FAIL_TILES` (6) keeps one tile that did not make it quiet,
-since the next draw usually fixes it. How deep a source goes is not one number: Clarity serves
-ZL19 and ZL20 over New York and nothing past ZL18 over Lyon and Paris, so `max_zl` is the deepest
-it ever serves and the map says where it stops sooner.
+**The map stops at ZL19**, the deepest level anything is built at: the level lists stop there,
+zones too, and the engine's map route serves nothing deeper (`MAX_NATIVE_ZOOM`). It went one step
+further, to 20, where every source was only enlarged (a user, 2026-09-25).
 
-**A source that does not reach here says so** (`map.base_outside`, "Netherlands · PDOK does not
-cover this view."). A source of one country answers a plain white (PDOK) or black (Luxembourg)
-image outside its own, with a 200: nothing fails, the tiles arrive, and the map used to go blank
-without a word (a user, 2026-09-25). The engine refuses a build there outright
-(`CFG_PROVIDER_OUT_OF_COVERAGE`); the map says it before he asks for one.
+**One yellow line when the source has nothing here** (`#map-notice`, at the bottom of the map).
+It is decided once per view, when Leaflet has every tile of it back, arrived or failed (`load`),
+and nowhere else, so it is the same at every zoom and in every window (`imageryNotice`):
 
-`standingNotice` asks the engine's own question, `sourceCovers` (its `Provider.covers`) on **the
-square in the middle of the screen**. Weighing the whole visible rectangle instead made the word
-come and go with the zoom, because a wide view over Paris still touches the Netherlands: PDOK said
-nothing until ZL8, over Lyon nothing until ZL6, and a small pan near that threshold turned it on
-and off (the same user, same day). The middle of the screen is what he is looking at, and it
-answers the same from ZL4 to ZL20.
+1. the source is of one country and the square in the middle of the screen is not in it:
+   "Netherlands · PDOK does not cover this view." Outside its own a source may answer plain
+   white (the Netherlands), black (Luxembourg) or 404 (Japan); the answer is the same for all
+   three, and the question is the one the engine asks before refusing a build there
+   (`sourceCovers`, its `Provider.covers`, `CFG_PROVIDER_OUT_OF_COVERAGE`);
+2. otherwise, not one tile of the view brought an image: "No imagery received from {provider}
+   for this view." Esri Clarity has ZL19 over New York and nothing past ZL18 over Lyon or Paris
+   (the engine turns its 404 into a 204, an error for an `<img>`), and a source may be down.
 
-The map's word has two sources and one line (`showNotice`): what just happened (`setNotice`: tiles
-that do not come, the street map's renderer, an engine older than the page) if there is any, else
-what is standing. A tile that arrives clears the first and never the second, and the line is
-written from scratch each time, so a change of language says it in the new one.
+A new view (`loading`) clears the line until it is drawn. The rule used to count failed tiles and
+speak at six: at the deepest zoom a view holds four, so a switch from Bing to Clarity there left
+the map blank without a word, and asking the coverage second made Japan over Paris say one thing
+at ZL4 and another from ZL5 (the same user, same day). Measured in the page over Paris, Amsterdam
+and Luxembourg, ZL4 to ZL19, twelve sources: one place, one source, one sentence at every zoom.
+The line keeps the language it was written in until the next view is drawn, as it did before.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it

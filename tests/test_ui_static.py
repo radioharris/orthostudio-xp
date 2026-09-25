@@ -4734,107 +4734,70 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()
-        assert any(line.strip().startswith("viewChanged();") for line in called), event
-    pair = code[code.index("function viewChanged()") : code.index("function showNotice()")]
-    assert "renderLegend();" in pair and 'setNotice("");' in pair
+        assert any(line.strip().startswith("renderLegend();") for line in called), event
 
     # The source is chosen in step 1, not on the map, and the street map replaces it altogether:
     # both go through setBaseLayer, so the line is drawn again there. A user switched to EOX at
     # ZL18 and the line went on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
     swap = code[code.index("function setBaseLayer(") :]
     swap = swap[: swap.index("\n  }\n")].splitlines()
-    assert any(line.strip().startswith("viewChanged();") for line in swap), "setBaseLayer"
+    assert any(line.strip().startswith("renderLegend();") for line in swap), "setBaseLayer"
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         assert "map.view" in tables[lang] and "map.view_coarse" in tables[lang]
 
 
-def test_a_source_that_does_not_cover_the_view_says_so() -> None:
-    """A source of one country answers a plain white (PDOK) or black (Luxembourg) image outside
-    its own, with a 200: nothing fails, so the map went blank without a word (a user, 2026-09-25).
+def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
+    """One yellow line at the bottom when the source has nothing where the pilot is looking,
+    decided once per view, when Leaflet has every tile back (`load`), so it is the same at every
+    zoom and in every window (a user, 2026-09-25).
 
-    The question asked is the engine's own, `Provider.covers` on the square in the middle of the
-    screen. Weighing the whole visible rectangle made the word come and go with the zoom, since a
-    wide view over Paris still touches the Netherlands: PDOK said nothing until ZL8, over Lyon
-    nothing until ZL6, and a small pan near the threshold turned it on and off. The middle of the
-    screen answers the same at every zoom, which is what the user asked for.
+    It used to count failed tiles and speak at six: at the deepest zoom a view holds four, so a
+    switch from Bing to Esri Clarity there, which has no ZL19 over France, left the map blank
+    without a word. The coverage is asked first, so a source of one country says the same thing
+    at every zoom whether it answers white, black or 404 outside its own.
     """
-    nl = '{"extent_bounds": [3.06, 50.72, 7.26, 53.76]}'  # the registry's own, Netherlands
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    loading = layer[layer.index('layer.on("loading", () => {') :]
+    assert "came = 0;" in loading[: loading.index("});")], "a new view starts with nothing counted"
+    assert 'layer.on("tileload", () => {' in layer and "came += 1;" in layer
+    assert "if (layer === base) setNotice(imageryNotice(code, came));" in layer, "decided on load"
+    assert 'layer.on("load", () => {' in layer
+    assert "tileerror" not in layer and ">= 6" not in layer, "no count of failures, no threshold"
+
+    rule = code[code.index("function imageryNotice(") : code.index("function setNotice(")]
+    outside = rule.index("!sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))")
+    nothing = rule.index("if (came) return")
+    assert outside < nothing, "the coverage first: one fact, one sentence, at every zoom"
+    assert "const c = map.getCenter();" in rule and "getBounds" not in rule, "the middle square"
+
+    # the engine's own rule, driven: Paris, Lyon and Toulouse are not PDOK's; Amsterdam is, and a
+    # square across the border is too, as for a build
+    nl = '{"extent_bounds": [3.06, 50.72, 7.26, 53.76]}'
     said = _node_json(
         "sources.js",
         f'["+48+002", "+45+004", "+43+001", "+52+004", "+50+006"]'
         f".map((name) => m.sourceCovers({nl}, name))",
     )
-    assert said == [False, False, False, True, True], "Paris, Lyon, Toulouse no; Amsterdam yes"
-    # and the last one straddles the border, where a build would have imagery for part of it
+    assert said == [False, False, False, True, True]
     assert _node_json("sources.js", 'm.sourceCovers({"extent_bounds": null}, "+45+004")') is True
-
-    # the map asks it about the middle of the screen, so the answer cannot change with the zoom
-    code = (UI / "map.js").read_text(encoding="utf-8")
-    standing = code[code.index("function standingNotice()") : code.index("let happened")]
-    assert "const c = map.getCenter();" in standing
-    assert "sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))" in standing
-    assert "getBounds" not in standing, "not the visible rectangle: that is what came and went"
-    assert "ctx.mock || (zs.street.wanted && !zs.street.failed)" in standing, (
-        "not a source's imagery"
-    )
-
-    # what just happened wins over what is standing, and a blank tile is not news
-    shown = code[code.index("function showNotice()") : code.index("function setNotice(")]
-    assert "const text = happened || standingNotice();" in shown
-    layer = code[
-        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
-    ]
-    assert 'setNotice(""); // a blank tile is a tile that came; the standing word stays' in layer
-    assert "showNotice(); // in the language now chosen" in code, "a language change re-words it"
     tables = _i18n_tables()
     for lang in ("fr", "en"):
-        assert "map.base_outside" in tables[lang]
+        assert "map.base_outside" in tables[lang] and "map.base_failed" in tables[lang]
 
 
-def test_a_view_without_imagery_says_so_however_it_was_reached() -> None:
-    """Esri Clarity serves ZL19 over New York and 404s over France: how deep a source goes is not
-    one number. A user zoomed from ZL18, where it had imagery, to ZL19, where it has none there,
-    and the map emptied without a word (2026-09-25).
-
-    The tiles counted are the view's, not the layer's life, so a view that had imagery a moment
-    ago does not vouch for the one on screen. One tile that does not make it still says nothing:
-    the next draw usually fixes it.
-    """
-    said = _node_json(
-        "map.js",
-        """(() => {
-          const out = [];
-          const tally = m.tileTally();
-          // a view where everything arrives
-          for (let i = 0; i < 8; i++) tally.came();
-          out.push([1, false]);
-          // zoomed deeper: this view is a different one, and nothing comes
-          tally.starting();
-          out.push([2, [1, 2, 3, 4, 5, 6].map(() => tally.missed())]);
-          // back to a view that has imagery: it speaks again only if that one empties
-          tally.starting();
-          tally.came();
-          out.push([3, [1, 2, 3, 4, 5, 6, 7].map(() => tally.missed())]);
-          // and one tile lost out of a full view says nothing
-          tally.starting();
-          out.push([4, [1, 2].map(() => tally.missed())]);
-          return out;
-        })()""",
-    )
-    empty = said[1][1]
-    assert empty == [False] * 5 + [True], "a view that empties says so, once enough tiles failed"
-    assert said[2][1] == [False] * 7, "a view that has imagery never says it has none"
-    assert said[3][1] == [False, False], "one tile lost is not a view without imagery"
-
-    # and the layer hands Leaflet's three moments to it, `loading` being the start of a view
+def test_the_map_stops_where_every_build_stops() -> None:
+    """The level lists, the zones and the engine's map route all stop at ZL19; the map went one
+    step further, to 20, where every source was only enlarged (a user, 2026-09-25)."""
     code = (UI / "map.js").read_text(encoding="utf-8")
-    layer = code[
-        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
-    ]
-    assert 'layer.on("loading", () => tally.starting());' in layer, "each view starts its own count"
-    assert "tally.came();" in layer and "if (tally.missed() && layer === base) {" in layer
-    assert "counts" not in layer, "one tally, not a second count beside it"
+    assert "const MAX_NATIVE_ZOOM = 19;" in code
+    assert "maxZoom: MAX_NATIVE_ZOOM, // the deepest level anything is built at" in code
+    assert "maxZoom: 20" not in code
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {" in app_js
 
 
 def test_the_map_goes_to_the_airport_chosen() -> None:

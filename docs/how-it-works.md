@@ -260,21 +260,16 @@ build works in, so you can zoom the map until the photo looks the way you want y
 look, read the level it names, and ask for that one. Below the levels a build offers it gives the
 ground size alone.
 
-Every source stops somewhere: EOX at ZL14, Bing at ZL19. The map still lets you zoom past that,
-which is handy for clicking precisely, but it is then enlarging the last photo it downloaded, not
-fetching a sharper one. The line says so, and names the best that source really has, so you never
-ask for a level your source cannot give.
+The map zooms as deep as a build goes, ZL19, and no deeper. Some sources stop sooner, EOX at
+ZL14: the map still lets you zoom past that, which is handy for clicking precisely, but it is then
+enlarging the last photo it downloaded, not fetching a sharper one. The line says so, and names
+the best that source really has, so you never ask for a level your source cannot give.
 
-A source can also stop deeper in one place than another: Esri Clarity has ZL19 and ZL20 over New
-York and nothing past ZL18 over Lyon. Where a source has no photo for the view you are on, the map
-says "No imagery received", rather than going blank without a word.
-
-And a source of one country has nothing at all elsewhere. Asked over France, the Netherlands and
-Luxembourg both answer a blank image rather than an error, so the map would simply turn white or
-black. It now says "Netherlands · PDOK does not cover this view." The question it answers is the
-one a build answers: does this source have imagery for the square in the middle of your screen?
-So the message is the same whatever your zoom. A build over squares a source does not reach is
-refused outright, with the squares named.
+When the source you chose has nothing where you are looking, a yellow line at the bottom of the
+map says so once the view is drawn. A country's source outside its country says "Netherlands ·
+PDOK does not cover this view.", the same at every zoom; a source with no photo this deep here,
+like Esri Clarity past ZL18 over France, says "No imagery received". A build over squares a
+source does not reach is refused outright, with the squares named.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from

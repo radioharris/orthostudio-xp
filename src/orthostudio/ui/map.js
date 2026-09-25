@@ -73,7 +73,9 @@ const HINT_KEY = "osxp.mapHintDone";
 const BORDERS_URL = "static/vendor/borders/borders.json";
 export const BORDERS_MAX_ZOOM = 10;
 
-/** Deepest zoom the engine serves imagery for, whatever a provider claims (``map_api.py``). */
+/** Deepest zoom of the map, and the deepest level anything is built at: the level lists stop
+ * there (app.js), zones too, and the engine serves no imagery past it (``map_api.py``). The map
+ * went one step further, to 20, where every source was only enlarged (a user, 2026-09-25). */
 const MAX_NATIVE_ZOOM = 19;
 const BORDERS_KEY = "osxp.mapBorders";
 
@@ -136,6 +138,15 @@ export function detailLabel(zl, lat) {
   return t("detail.option", { name: detailName(zl), size: fmtGround(metersPerPixel(zl, lat)), zl });
 }
 
+/** Deepest level the base layer downloads for a provider: past it Leaflet enlarges what it has.
+ *
+ * One expression, read by the layer (``maxNativeZoom``) and by the legend, so the line can never
+ * say "enlarged" on a different zoom from the one the imagery stops improving at. A provider the
+ * page does not know, or one without a level, is trusted to the map's own deepest. */
+export function nativeCeiling(p) {
+  return Number.isInteger(p?.max_zl) ? Math.min(MAX_NATIVE_ZOOM, p.max_zl) : MAX_NATIVE_ZOOM;
+}
+
 /** What the view on screen is worth in a build's terms, for the legend.
  *
  * The map's zoom **is** the web-mercator level, so what a pilot sees while panning is what that
@@ -149,45 +160,6 @@ export function detailLabel(zl, lat) {
  * not then promise a sharpness no build can deliver, so it says what the provider really gives.
  * A view that is not the provider's imagery (the street map, the mock) passes no ceiling.
  */
-/** How many tiles of a view must fail before the map says the view has no imagery: fewer than
- * that is one tile that did not make it, which the next draw usually fixes. */
-const BASE_FAIL_TILES = 6;
-
-/** What the tiles of a base layer say about the view being drawn.
- *
- * The counts are **the view's**, not the layer's life: Leaflet's `loading` begins a new one. A
- * user zoomed from ZL18, where Esri Clarity had imagery over France, to ZL19, where it has none
- * there, and the map emptied without a word because the tiles of the view before were still
- * counted (2026-09-25). `missed` is true once enough tiles of this view have failed and not one
- * has come: a view without imagery, rather than a tile that did not make it.
- */
-export function tileTally() {
-  let came = 0;
-  let missed = 0;
-  return {
-    starting() {
-      came = 0;
-      missed = 0;
-    },
-    came() {
-      came += 1;
-    },
-    missed() {
-      missed += 1;
-      return came === 0 && missed >= BASE_FAIL_TILES;
-    },
-  };
-}
-
-/** Deepest level the base layer downloads for a provider: past it Leaflet enlarges what it has.
- *
- * One expression, read by the layer (``maxNativeZoom``) and by the legend, so the line can never
- * say "enlarged" on a different zoom from the one the imagery stops improving at. A provider the
- * page does not know, or one without a level, is trusted to the map's own deepest. */
-export function nativeCeiling(p) {
-  return Number.isInteger(p?.max_zl) ? Math.min(MAX_NATIVE_ZOOM, p.max_zl) : MAX_NATIVE_ZOOM;
-}
-
 export function viewLabel(zoom, lat, ceiling = null, provider = "") {
   if (Number.isInteger(ceiling) && zoom > ceiling) {
     return t("map.view_over", {
@@ -1345,7 +1317,7 @@ export function createPlanMap(ctx) {
       boxZoom: false, // Shift+drag would zoom instead of adding a point
       doubleClickZoom: false, // a double-click finishes a free shape
       minZoom: 3,
-      maxZoom: 20,
+      maxZoom: MAX_NATIVE_ZOOM, // the deepest level anything is built at
       maxBounds: WORLD,
       maxBoundsViscosity: 1,
     });
@@ -1390,12 +1362,12 @@ export function createPlanMap(ctx) {
       renderBanner();
       renderToolOptions(true);
       refreshAirports();
-      viewChanged(); // a pan changes what a pixel covers, and may leave what the source covers
+      renderLegend(); // a pan north or south changes what a pixel covers, so the view line moves too
     });
     m.on("zoomend", () => {
       renderBorders();
       drawAirports(); // the codes appear one zoom before they would be unreadable
-      viewChanged();
+      renderLegend();
     });
     m.on("click", onMapClick);
     m.on("dblclick", onMapDblClick);
@@ -1688,57 +1660,34 @@ export function createPlanMap(ctx) {
     zoomControl = L.control.zoom({ zoomInTitle: t("map.zoom_in"), zoomOutTitle: t("map.zoom_out") }).addTo(map);
   }
 
-  /** What is true of this view whatever its tiles do: a source of one country answers a plain
-   * white or black image outside its own, with a 200, so nothing fails and the map used to go
-   * blank without a word (a user, 2026-09-25). The engine refuses a build there outright
-   * (CFG_PROVIDER_OUT_OF_COVERAGE); the map says it before he asks for one.
+  /** What the map says about its imagery once a view is drawn, or "" when there is nothing to say.
    *
-   * The question is the one the engine answers for a build: does this source cover the square in
-   * the middle of the screen (`sourceCovers`, its own `Provider.covers`)? Weighing the whole
-   * visible rectangle instead made the word come and go with the zoom, since a wide view over
-   * Paris still touches the Netherlands: PDOK said nothing until ZL8, over Lyon nothing until
-   * ZL6, and a small pan near the threshold turned it on and off (a user, 2026-09-25). The
-   * middle of the screen is what he is looking at, and it answers the same at every zoom.
+   * Asked when Leaflet has every tile of the view back, arrived or failed (`load`), and nowhere
+   * else, so it is the same at every zoom and in every window. In this order:
+   * 1. the source is of one country and the square in the middle of the screen is not in it: it
+   *    has nothing here, whether it answers white (the Netherlands), black (Luxembourg) or 404
+   *    (Japan). The question is the one the engine asks before refusing a build there,
+   *    `Provider.covers` (`sourceCovers`);
+   * 2. otherwise, not one tile brought an image: the source has nothing this deep here (Esri
+   *    Clarity past ZL18 over France), or it is not answering.
    *
-   * The street map and the mock are not a source's imagery, and a source without a rectangle
-   * covers the world: both give nothing to say. */
-  function standingNotice() {
-    if (!map || ctx.mock || (zs.street.wanted && !zs.street.failed)) return "";
-    const p = providerByCode(ctx.planProvider() || "");
-    if (!p) return "";
+   * The rule used to count failed tiles and speak at six. At the deepest zoom a view holds four,
+   * so it never spoke: a user switched from Bing to Clarity there and the map went blank without
+   * a word (2026-09-25). Asking the coverage second made Japan over Paris say one thing at ZL4
+   * and another from ZL5, for the same fact. */
+  function imageryNotice(code, came) {
+    const p = providerByCode(code);
     const c = map.getCenter();
-    return sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))
-      ? ""
-      : t("map.base_outside", { provider: sourceLabel(p) });
-  }
-
-  /** What the map last said just happened, as opposed to what is standing (`showNotice`). */
-  let happened = "";
-
-  /** The view moved, or what is under it changed: the legend says what this view is worth, and
-   * the map forgets what happened to the view before. One pair, so the two cannot drift apart. */
-  function viewChanged() {
-    renderLegend();
-    setNotice(""); // what failed in the view before is not this one's news
-  }
-
-  /** The word on the map: what just happened if anything, else what is true of this view.
-   *
-   * Two sources, one line. A tile that arrives clears what happened, never what is standing: a
-   * source of one country answers a plain white image outside its own, so its tiles arrive and
-   * the map would fall silent again. Written from scratch each time, so a change of language
-   * says it in the new one. */
-  function showNotice() {
-    const el = $("map-notice");
-    if (!el) return;
-    const text = happened || standingNotice();
-    el.hidden = !text;
-    el.textContent = text;
+    if (p && !sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))) return t("map.base_outside", { provider: sourceLabel(p) });
+    if (came) return "";
+    return ctx.engineOutdated?.() ? t("app.engine_outdated") : t("map.base_failed", { provider: providerLabel(code) });
   }
 
   function setNotice(text) {
-    happened = text || "";
-    showNotice();
+    const el = $("map-notice");
+    if (!el) return;
+    el.hidden = !text;
+    el.textContent = text || "";
   }
 
   function setBaseLayer(force = false) {
@@ -1757,7 +1706,7 @@ export function createPlanMap(ctx) {
     // What is under the map changed, so what the view is worth changed with it: a source chosen
     // in step 1 has its own ceiling, and the street map has none (a user switched to EOX at ZL18
     // and the line went on promising 40 cm, 2026-09-25).
-    viewChanged();
+    renderLegend();
   }
 
   /** The street map, drawn by MapLibre GL inside the Leaflet map.
@@ -1840,26 +1789,26 @@ export function createPlanMap(ctx) {
 
   function providerLayer(code) {
     const p = providerByCode(code);
-    const tally = tileTally();
     const layer = L.tileLayer(`api/map/${encodeURIComponent(code)}/{z}/{x}/{y}`, {
       attribution: escapeHtml(p?.attribution || p?.name || code),
-      maxZoom: 20,
+      maxZoom: MAX_NATIVE_ZOOM,
       maxNativeZoom: nativeCeiling(p),
       noWrap: true,
       // Leaflet 1.9's _isValidTile ignores noWrap on a wrapping CRS: without bounds, a view at
       // the edge of the world requests x = -1 or 2^z, which the engine rightly refuses (422).
       bounds: WORLD,
     });
-    layer.on("loading", () => tally.starting()); // Leaflet begins the tiles of a new view
-    layer.on("tileload", () => {
-      tally.came();
-      if (layer === base) setNotice(""); // a blank tile is a tile that came; the standing word stays
+    let came = 0; // tiles of the view being drawn that brought an image
+    layer.on("loading", () => {
+      came = 0;
+      if (layer === base) setNotice(""); // a new view: nothing to say until it is drawn
     });
-    // A 204 (no image there) is an error for an <img> too: only a view where nothing loads says so.
-    layer.on("tileerror", () => {
-      if (tally.missed() && layer === base) {
-        setNotice(ctx.engineOutdated?.() ? t("app.engine_outdated") : t("map.base_failed", { provider: providerLabel(code) }));
-      }
+    layer.on("tileload", () => {
+      came += 1;
+    });
+    // A 204 (no image there) is an error for an <img>: it counts as nothing that came.
+    layer.on("load", () => {
+      if (layer === base) setNotice(imageryNotice(code, came));
     });
     return layer;
   }
@@ -1934,7 +1883,7 @@ export function createPlanMap(ctx) {
         return canvas;
       },
     });
-    return new Coloured({ pane: "osxpColours", maxZoom: 20, noWrap: true, bounds: WORLD });
+    return new Coloured({ pane: "osxpColours", maxZoom: MAX_NATIVE_ZOOM, noWrap: true, bounds: WORLD });
   }
 
   /** A ring of [lon, lat] in the pixels of one map tile, or null when it misses the tile. */
@@ -1990,7 +1939,7 @@ export function createPlanMap(ctx) {
         return canvas;
       },
     });
-    return new Neutral({ attribution: escapeHtml(t("map.mock_attribution")), maxZoom: 20, noWrap: true, bounds: WORLD });
+    return new Neutral({ attribution: escapeHtml(t("map.mock_attribution")), maxZoom: MAX_NATIVE_ZOOM, noWrap: true, bounds: WORLD });
   }
 
   /** The tiles of the running build and what it does with each (``working``, ``queued``,
@@ -2241,7 +2190,6 @@ export function createPlanMap(ctx) {
     renderZones();
     renderGrid();
     renderLegend();
-    showNotice(); // in the language now chosen
     renderSizes();
     renderHint();
     drawRoute();
