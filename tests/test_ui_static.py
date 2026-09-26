@@ -2219,7 +2219,7 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
         },
         {
             "tile": "+47+011",
-            "provider": "GO2",
+            "provider": "Arc",
             "zl": 17,
             "installed": False,
             "size_bytes": 9,
@@ -2242,14 +2242,12 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
             "built_by": "osxp",
         },
     ]
-    labels = {"BI": "Bing", "GO2": "Google"}
     got = _node_json(
         "app.js",
         f"""(() => {{
           const rows = {json.dumps(rows)};
-          const labels = {json.dumps(labels)};
           const order = (key, dir) =>
-            m.sortLibrary(rows, {{key, dir}}, (c) => labels[c]).map((e) => e.tile);
+            m.sortLibrary(rows, {{key, dir}}).map((e) => e.tile);
           return {{tile: order("tile", 1), tileBack: order("tile", -1),
                    imagery: order("imagery", 1), xplane: order("xplane", 1),
                    size: order("size", 1), sizeBack: order("size", -1), built: order("built", 1),
@@ -2259,11 +2257,11 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
     assert got["tile"] == ["-12+045", "+47+011", "+49+008", "+49+011"]
     assert got["tileBack"] == ["+49+011", "+49+008", "+47+011", "-12+045"]
     assert got["imagery"] == [
+        "+47+011",
         "-12+045",
         "+49+008",
         "+49+011",
-        "+47+011",
-    ]  # Bing ZL14, 16, 16, Google
+    ]  # Arc, then BI at ZL14, 16, 16: the codes the column shows, not the sources' names
     assert got["xplane"] == ["-12+045", "+49+011", "+47+011", "+49+008"]  # in X-Plane first
     assert got["size"] == ["+47+011", "+49+008", "+49+011", "-12+045"]  # largest first, none last
     assert got["sizeBack"] == ["-12+045", "+49+011", "+49+008", "+47+011"]
@@ -2282,9 +2280,7 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app_js, "renderLibrary")
-    assert (
-        "sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort, providerLabel)" in body
-    )
+    assert "sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);" in body
     assert 't("library.search_found"' in body and 't("library.search_none")' in body
     assert "for (const e of shown) body.append(...libraryRow(e));" in body
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js

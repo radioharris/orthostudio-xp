@@ -631,9 +631,10 @@ table (`#library-search`, `tileMatches`), "{n} of {total} tiles." or, in orange,
 matches."; and the headers *Tile*, *Imagery*, *In X-Plane*, *Size* and *Built by* are buttons
 (`.th-sort`, `aria-sort` on the `th`, an arrow after the words) that sort the rows
 (`sortLibrary`). The first click gives each column its most useful order (`LIBRARY_SORT_FIRST`):
-tiles south to north then west to east, imagery by name then level, the tiles in X-Plane, the
-largest and OrthoStudio XP's own first; the second reverses it; ties, and the rows by default,
-keep the tile order the engine lists them in. The sort is kept in this browser
+tiles south to north then west to east, imagery by the code its column shows then level (by the
+sources' full names, which the column does not show, "BI" came before "Arc"), the tiles in
+X-Plane, the largest and OrthoStudio XP's own first; the second reverses it; ties, and the rows
+by default, keep the tile order the engine lists them in. The sort is kept in this browser
 (`osxp.librarySort`, a convenience: storage refused keeps the tile order); the search is not. A
 tile's detail row stays under it whatever the order.
 

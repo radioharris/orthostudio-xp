@@ -4711,14 +4711,16 @@ export function libraryTiles(rows) {
 }
 
 /** Which way round each Library column sorts at its first click: its most useful order. The
- * tiles south to north then west to east, the imagery by name then level; the tiles X-Plane
- * shows, the largest, and OrthoStudio XP's own first. */
+ * tiles south to north then west to east, the imagery by the code its column shows then level;
+ * the tiles X-Plane shows, the largest, and OrthoStudio XP's own first. */
 export const LIBRARY_SORT_FIRST = { tile: 1, imagery: 1, xplane: -1, size: -1, built: -1 };
 
 /** The Library's rows in the order a column's header asks for (a user, 2026-09-26): ``sort`` is
  * ``{key, dir}``, ``dir`` 1 for the column's first-click order and -1 for its reverse. Ties, and
- * an unknown key, keep the tile order the engine lists them in. */
-export function sortLibrary(rows, sort, labelOf = (code) => code) {
+ * an unknown key, keep the tile order the engine lists them in. The imagery sorts by the code
+ * its column shows: sorted by the sources' full names, which the column does not show, "BI"
+ * came before "Arc" under an A to Z arrow (review of 2026-09-26). */
+export function sortLibrary(rows, sort) {
   const at = (e) => {
     const m = /^([+-]\d{2})([+-]\d{3})$/.exec(e.tile || "");
     return m ? [Number(m[1]), Number(m[2])] : [999, 999];
@@ -4731,7 +4733,7 @@ export function sortLibrary(rows, sort, labelOf = (code) => code) {
   const size = (e) => (typeof e.size_bytes === "number" ? e.size_bytes : -1);
   const values = {
     tile: byTile,
-    imagery: (a, b) => String(labelOf(a.provider) ?? "").localeCompare(String(labelOf(b.provider) ?? "")) || (Number(a.zl) || 0) - (Number(b.zl) || 0),
+    imagery: (a, b) => String(a.provider ?? "").localeCompare(String(b.provider ?? "")) || (Number(a.zl) || 0) - (Number(b.zl) || 0),
     xplane: (a, b) => Number(Boolean(a.installed)) - Number(Boolean(b.installed)),
     size: (a, b) => size(a) - size(b),
     built: (a, b) => Number(a.built_by === "osxp") - Number(b.built_by === "osxp"),
@@ -5038,7 +5040,7 @@ function renderLibrary() {
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
   const query = (state.librarySearch || "").trim();
-  const shown = sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort, providerLabel);
+  const shown = sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);
   const note = $("library-search-note");
   note.hidden = !query || !rows.length;
   note.classList.toggle("is-warn", Boolean(query) && !shown.length);
@@ -5051,12 +5053,6 @@ function renderLibrary() {
   for (const e of shown) body.append(...libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
   markWideTables();
-}
-
-/** An imagery source's name as the page shows it, or its code when the page does not know it. */
-function providerLabel(code) {
-  const p = state.providers.find((x) => x.code === code);
-  return p ? sourceLabel(p) : code;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
