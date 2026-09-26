@@ -4253,7 +4253,7 @@ function buildStepCell(tileName, s) {
   c.bar = h("div", { class: "progress step-bar progress-pending", role: "progressbar", "aria-label": `${tileName} ${STEP_KEYS[s]()}`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, c.fill);
   c.state = h("span", { class: "step-state" });
   c.detail = h("span", { class: "step-detail" });
-  c.root = h("div", { class: "step step-pending" }, h("div", { class: "step-label" }, c.dot, STEP_KEYS[s]()), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
+  c.root = h("div", { class: "step step-pending" }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
   return c;
 }
 
