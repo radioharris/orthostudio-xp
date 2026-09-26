@@ -1,13 +1,24 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Our own providers, decoding, levels and BC1: what replaced OrthoStudio XP's."""
+"""The imagery sources (OrthoStudio XP's), decoding, levels and BC1."""
 
 import io
+import math
 import struct
 import unittest
 
 from live_helpers import bc1_texel
-from orthostudio.live.providers import PROVIDERS, Provider, no_imagery, quadkey, tile_url
+from orthostudio.live.providers import (
+    Provider,
+    cache_key,
+    covers,
+    fallback_for,
+    listing,
+    no_imagery,
+    quadkey,
+    registry,
+    tile_url,
+)
 
 try:
     import ispc_texcomp  # noqa: F401
@@ -24,22 +35,44 @@ class ProvidersTest(unittest.TestCase):
         self.assertEqual(quadkey(16968, 11760, 15), "120221223221000")
 
     def test_urls(self):
-        p = Provider("T", "https://t{switch:a,b}.example/{zoom}/{x}/{y}/{quadkey}", max_zl=19)
+        template = "https://t{switch:a,b}.example/{zoom}/{x}/{y}/{quadkey}"
+        p = Provider(code="T", url_template=template, max_zl=19)
         self.assertEqual(tile_url(p, 3, 5, 3), "https://ta.example/3/3/5/213")  # (3 + 5) % 2 = 0
         self.assertEqual(tile_url(p, 3, 4, 3), "https://tb.example/3/3/4/211")
-        self.assertEqual(
-            tile_url(PROVIDERS["BI"], 16968, 11760, 15),
-            "https://ecn.t0.tiles.virtualearth.net/tiles/a120221223221000.jpeg?g=1",
+        bi = registry()["BI"]
+        self.assertTrue(
+            tile_url(bi, 16968, 11760, 15).startswith(
+                "https://ecn.t0.tiles.virtualearth.net/tiles/a120221223221000.jpeg"
+            )
         )
-        self.assertEqual(
-            tile_url(PROVIDERS["BI"], 16968, 11760, 15, shift=1),  # the same piece, another server
-            "https://ecn.t1.tiles.virtualearth.net/tiles/a120221223221000.jpeg?g=1",
-        )
+        # the same piece, another server
+        self.assertTrue(tile_url(bi, 16968, 11760, 15, shift=1).startswith("https://ecn.t1."))
 
     def test_no_imagery(self):
-        bi = PROVIDERS["BI"]
+        bi = registry()["BI"]
         self.assertTrue(no_imagery(bi, {"x-ve-tile-info": "no-tile"}))
-        self.assertFalse(no_imagery(bi, {"Content-Type": "image/jpeg"}))
+        self.assertFalse(no_imagery(bi, {"Content-Type": "image/jpeg"}, b"a photo"))
+
+    def test_osxp_sources_and_bing_beyond_a_country(self):
+        sources = registry()
+        self.assertEqual(next(iter(sources)), "BI")  # OrthoStudio XP's order: Bing Maps first
+        self.assertIsNone(fallback_for(sources["BI"]))
+        self.assertIsNone(fallback_for(sources["Arc"]))  # the whole world: nothing beyond
+        spain = sources["SP"]
+        self.assertEqual(fallback_for(spain).code, "BI")
+        self.assertTrue(covers(spain, *_tile(40.42, -3.70, 16), 16))  # Madrid
+        self.assertFalse(covers(spain, *_tile(45.76, 4.84, 16), 16))  # Lyon
+        self.assertEqual(cache_key("BI"), "BI")  # where Live's imagery always was
+        self.assertEqual(cache_key("SP"), "SP+BI")
+        codes = [p["code"] for p in listing()]
+        self.assertIn("PDOK", codes)
+        self.assertNotIn("NL", codes)  # the very same imagery as PDOK: listed once
+
+
+def _tile(lat: float, lon: float, zoom: int) -> tuple[int, int]:
+    n = 2**zoom
+    y = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
+    return int((lon + 180) / 360 * n), int(y)
 
 
 @unittest.skipIf(np is None, "needs numpy, Pillow and ispc_texcomp")

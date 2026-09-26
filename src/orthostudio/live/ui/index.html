@@ -1,6 +1,11 @@
 <!doctype html>
 <!-- OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
      Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
+<!-- The Live window's page. Its parts are OrthoStudio XP's (styles.css): the cards and fields of its
+     Settings (.question, .sub-question, .question-help, .with-unit, .path-row), its dialogs and its
+     buttons, so that the spacing is the same. A field's title is a span tied to it by
+     aria-labelledby, not a label: pressing a label's text pressed its field, and the title could
+     not be selected (a user, 2026-09-27). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -23,8 +28,8 @@
   </div>
   <div class="nav"></div>
   <div class="topbar-tools">
-    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
-    <select id="lang-select" class="tool-select">
+    <span class="sr-only" id="lang-title" data-i18n="app.language">Language</span>
+    <select id="lang-select" class="tool-select" aria-labelledby="lang-title">
       <option value="en">EN</option>
       <option value="fr">FR</option>
     </select>
@@ -32,15 +37,15 @@
 </header>
 
 <main id="main" class="main live">
-  <section class="live-card live-state" aria-live="polite">
+  <section class="question live-state" aria-live="polite">
     <div class="live-state-head">
       <span class="dot" id="state-dot"></span>
       <h1 id="state-title"></h1>
     </div>
-    <p class="lead" id="state-lead"></p>
+    <p class="question-help" id="state-lead"></p>
     <div class="live-hold" id="hold" hidden>
       <div class="progress"><span id="hold-bar"></span></div>
-      <p class="help num" id="hold-text"></p>
+      <p class="question-help num" id="hold-text"></p>
     </div>
     <p class="error-inline" id="state-error" role="alert" hidden></p>
     <div class="actions">
@@ -50,85 +55,119 @@
         <span data-i18n="action.fresh">From scratch</span>
       </label>
       <button type="button" class="btn btn-danger" id="stop-btn" data-i18n="action.stop" hidden>Stop</button>
+      <button type="button" class="btn" id="xplane-btn" data-i18n="action.xplane" disabled>Start X-Plane</button>
       <button type="button" class="btn" id="leave-btn" data-i18n="action.leave" hidden>Leave it installed</button>
       <button type="button" class="btn btn-accent" id="uninstall-btn" data-i18n="action.uninstall" hidden>Take the pack out of X-Plane</button>
     </div>
-    <p class="help live-fresh-help" id="fresh-help" data-i18n="action.fresh_help" hidden></p>
+    <p class="question-help live-after-actions" id="action-help"></p>
   </section>
 
   <div class="cols live-cols">
-    <section class="live-card">
-      <h2 data-i18n="flight.title">Flight</h2>
+    <section class="question">
+      <h2 class="question-title live-card-title" data-i18n="flight.title">Flight</h2>
       <dl class="kv" id="flight"></dl>
     </section>
-    <section class="live-card">
-      <h2 data-i18n="build.title">Textures</h2>
+    <section class="question">
+      <h2 class="question-title live-card-title" data-i18n="build.title">Textures</h2>
       <dl class="kv" id="build"></dl>
-      <p class="help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</p>
+      <p class="question-help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</p>
       <div class="progress live-disk" id="disk" hidden><span id="disk-bar"></span></div>
     </section>
   </div>
 
-  <div class="cols live-cols">
-    <section class="live-card">
-      <h2 data-i18n="checks.title">Checks</h2>
-      <ul class="live-checks" id="checks"></ul>
-    </section>
-    <section class="live-card">
-      <h2 data-i18n="settings.title">Settings</h2>
-      <p class="lead" data-i18n="settings.lead">They take effect at the next start.</p>
-      <form id="settings-form" class="live-settings" novalidate>
-        <div class="field">
-          <label for="set-disk" data-i18n="settings.disk">Disk for the textures</label>
-          <span class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1" required>
-            <span class="unit" data-i18n="unit.gb">GB</span></span>
-          <p class="help" data-i18n="settings.disk_help"></p>
-        </div>
-        <div class="field">
-          <label for="set-cache" data-i18n="settings.cache">Disk for the downloaded imagery</label>
-          <span class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1" required>
-            <span class="unit" data-i18n="unit.gb">GB</span></span>
-          <p class="help" data-i18n="settings.cache_help"></p>
-        </div>
-        <div class="field">
-          <label for="set-reach" data-i18n="settings.reach">Sharp this far for outside views</label>
-          <span class="with-unit"><input type="number" id="set-reach" name="camera_reach_km" min="0" max="200" step="1" required>
-            <span class="unit" data-i18n="unit.km">km</span></span>
-          <p class="help" data-i18n="settings.reach_help"></p>
-        </div>
-        <div class="field">
-          <label for="set-quality" data-i18n="settings.quality">Texture quality</label>
-          <select id="set-quality" name="quality">
-            <option value="auto" data-i18n="settings.quality_auto">As X-Plane is set</option>
-            <option value="maximum" data-i18n="settings.quality_maximum">Maximum (4096 px)</option>
-            <option value="high" data-i18n="settings.quality_high">High (2048 px)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="set-folder" data-i18n="settings.folder">Live's folder</label>
-          <input type="text" id="set-folder" name="folder" spellcheck="false" autocomplete="off">
-          <p class="help" data-i18n="settings.folder_help"></p>
-        </div>
-        <div class="field">
-          <label for="set-provider" data-i18n="settings.provider">Imagery</label>
-          <select id="set-provider" name="provider">
-            <option value="BI">Bing</option>
-          </select>
-        </div>
-        <div class="actions">
-          <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
-          <span class="help" id="settings-status" aria-live="polite"></span>
-        </div>
-        <p class="error-inline" id="settings-error" role="alert" hidden></p>
-      </form>
-    </section>
+  <section class="question">
+    <h2 class="question-title live-card-title" data-i18n="checks.title">Checks</h2>
+    <ul class="live-checks" id="checks"></ul>
+  </section>
+
+  <div class="screen-head live-settings-head">
+    <h1 data-i18n="settings.title">Settings</h1>
+    <p class="lead" data-i18n="settings.lead">They take effect at the next start.</p>
   </div>
+  <form id="settings-form" novalidate>
+    <div class="settings-questions">
+      <fieldset class="question" id="q-source">
+        <legend class="question-title" id="q-source-title" data-i18n="source.title">Imagery source</legend>
+        <p class="question-help" data-i18n="source.help"></p>
+        <select id="set-provider" name="provider" class="question-select" aria-labelledby="q-source-title"></select>
+        <p class="question-help" id="provider-attribution"></p>
+        <p class="question-help is-warn" id="provider-note" hidden></p>
+      </fieldset>
+
+      <fieldset class="question" id="q-disk">
+        <legend class="question-title" data-i18n="disk.title">Disk space</legend>
+        <p class="question-help" data-i18n="disk.help"></p>
+        <div class="sub-question">
+          <span class="sub-question-title" id="t-disk" data-i18n="disk.textures">Built textures</span>
+          <div class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1" aria-labelledby="t-disk">
+            <span class="unit" data-i18n="unit.gb">GB</span></div>
+          <p class="question-help" data-i18n="disk.textures_help"></p>
+          <p class="question-detected" id="disk-now"></p>
+        </div>
+        <div class="sub-question">
+          <span class="sub-question-title" id="t-cache" data-i18n="disk.imagery">Downloaded imagery</span>
+          <div class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1" aria-labelledby="t-cache">
+            <span class="unit" data-i18n="unit.gb">GB</span></div>
+          <p class="question-help" data-i18n="disk.imagery_help"></p>
+          <p class="question-detected" id="cache-now"></p>
+        </div>
+        <div class="actions live-delete">
+          <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>
+          <span class="help" id="delete-help"></span>
+        </div>
+      </fieldset>
+
+      <fieldset class="question" id="q-folder">
+        <legend class="question-title" data-i18n="folder.title">Live's folder</legend>
+        <p class="question-help" data-i18n="folder.help"></p>
+        <p class="question-detected" id="folder-now"></p>
+        <div class="sub-question">
+          <span class="sub-question-title" id="t-folder" data-i18n="folder.other">Another folder</span>
+          <div class="path-row">
+            <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off" aria-labelledby="t-folder">
+            <button type="button" class="btn btn-small" id="folder-choose" data-i18n="folder.choose">Choose…</button>
+          </div>
+        </div>
+        <p class="question-help" data-i18n="folder.moved"></p>
+      </fieldset>
+    </div>
+    <div class="actions settings-actions">
+      <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
+      <button type="button" class="btn" id="settings-undo" data-i18n="settings.undo">Undo my changes</button>
+      <span class="help settings-status" id="settings-status" aria-live="polite"></span>
+    </div>
+    <p class="error-inline" id="settings-error" role="alert" hidden></p>
+  </form>
 
   <details class="log" id="log-box">
     <summary data-i18n="log.title">Log</summary>
     <pre id="log"></pre>
   </details>
 </main>
+
+<!-- Delete: which of the two, what each costs, as OrthoStudio XP's own confirmations. -->
+<dialog id="delete-dialog" class="dialog" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="delete-title" data-i18n="delete.title">Delete what Live keeps?</h2>
+    <div class="dialog-text" id="delete-text">
+      <label class="choice">
+        <input type="checkbox" id="delete-textures" checked>
+        <span class="choice-text"><span id="delete-textures-name"></span>
+          <span class="choice-note" data-i18n="delete.textures_note"></span></span>
+      </label>
+      <label class="choice">
+        <input type="checkbox" id="delete-imagery" checked>
+        <span class="choice-text"><span id="delete-imagery-name"></span>
+          <span class="choice-note" data-i18n="delete.imagery_note"></span></span>
+      </label>
+    </div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="keep" autofocus data-i18n="delete.keep">Keep them</button>
+      <button type="submit" class="btn btn-danger-solid" value="delete" id="delete-confirm" data-i18n="delete.confirm">Delete</button>
+    </div>
+  </form>
+</dialog>
+
 <script type="module" src="live/live.js"></script>
 </body>
 </html>

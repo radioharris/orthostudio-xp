@@ -1,81 +1,101 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Where imagery pieces come from: a URL for each 256 x 256 web-mercator piece.
+"""Where imagery pieces come from: OrthoStudio XP's imagery sources, for 256 x 256 web-mercator
+pieces.
 
-Bing's tiles are addressed by quadkey (Microsoft's published tile system): one digit per zoom level,
-0-3 for the quadrant. Its answer when it has no imagery for a piece is a small PNG with the header
-``X-VE-Tile-Info: no-tile``; its tile service wants a ``g`` parameter (without it: 400).
+The sources are OrthoStudio XP's own (:mod:`orthostudio.imagery.providers`): the registry it ships,
+Bing Maps first, and the sources a user added in its Plan (``sources.toml``), with their URL
+grammar, their answers for "no imagery here" and their limits. Live adds two things a stream needs:
+
+- **Bing Maps beyond a country's source.** A source that covers one country (Spain's PNOA, the
+  Netherlands' PDOK...) has nothing past its border, and a flight crosses borders: a texture
+  without imagery would stay the neutral colour, green-grey. Outside the source's bounds, and
+  wherever it answers "no imagery", the piece is Bing's (:func:`fallback_for`).
+- **Its own place in the imagery cache** (:func:`cache_key`): the source's, which a source of the
+  user's makes out of its address, and Bing's beside it for a country's source (``SP+BI``).
 """
 
 from __future__ import annotations
 
-import re
+import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from typing import Any
 
-_SWITCH = re.compile(r"\{switch:([^}]*)\}")
+from orthostudio.imagery.grid import quadkey
+from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, load_registry
+from orthostudio.imagery.providers import tile_url as _tile_url
+
+__all__ = [
+    "FALLBACK",
+    "Provider",
+    "cache_key",
+    "covers",
+    "fallback_for",
+    "listing",
+    "no_imagery",
+    "provider",
+    "quadkey",
+    "registry",
+    "tile_url",
+]
+
+FALLBACK = "BI"  # Bing Maps: beyond the bounds of a country's source
 
 
-@dataclass(frozen=True)
-class Provider:
-    code: str
-    url_template: str  # {zoom} {x} {y} {quadkey} {switch:a,b,c}
-    max_zl: int
-    max_in_flight: int = 64
-    headers: dict[str, str] = field(default_factory=dict)
-    no_imagery_header: tuple[str, str] | None = None  # (name, value) of a "no imagery here" answer
-    attribution: str = ""
+def registry() -> dict[str, Provider]:
+    """OrthoStudio XP's sources, then the user's own, by code."""
+    return load_registry()
 
 
-def quadkey(x: int, y: int, zoom: int) -> str:
-    digits = []
-    for i in range(zoom, 0, -1):
-        mask = 1 << (i - 1)
-        digits.append(str((1 if x & mask else 0) + (2 if y & mask else 0)))
-    return "".join(digits)
+def provider(code: str) -> Provider:
+    sources = registry()
+    if code not in sources:
+        raise ValueError(f"unknown imagery source {code!r}; known: {', '.join(sources)}")
+    return sources[code]
 
 
 def tile_url(p: Provider, x: int, y: int, zoom: int, shift: int = 0) -> str:
     """URL of piece (x, y) at ``zoom``; ``{switch:...}`` spreads pieces over the listed servers, and
     ``shift`` picks the next one along, to ask a piece again somewhere else."""
-
-    def switch(m: re.Match) -> str:
-        options = m.group(1).split(",")
-        return options[(x + y + shift) % len(options)]
-
-    url = _SWITCH.sub(switch, p.url_template)
-    return (
-        url.replace("{quadkey}", quadkey(x, y, zoom))
-        .replace("{zoom}", str(zoom))
-        .replace("{x}", str(x))
-        .replace("{y}", str(y))
-    )
+    return _tile_url(p, x, y, zoom, switch=x + y + shift)
 
 
-def no_imagery(p: Provider, headers: Mapping[str, str]) -> bool:
-    """Whether an answer is the provider's word that it has no imagery there."""
-    if p.no_imagery_header is None:
-        return False
-    name, value = p.no_imagery_header
-    got = {k.lower(): v for k, v in headers.items()}.get(name.lower())
-    return got is not None and got.strip().lower() == value.lower()
+def no_imagery(p: Provider, headers: Mapping[str, str], body: bytes = b"") -> bool:
+    """Whether an answer is the source's word that it has no imagery there."""
+    return is_placeholder(p, headers, body) is not None
 
 
-PROVIDERS: dict[str, Provider] = {
-    "BI": Provider(
-        code="BI",
-        url_template="https://ecn.t{switch:0,1,2,3}.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=1",
-        max_zl=19,
-        max_in_flight=96,
-        no_imagery_header=("X-VE-Tile-Info", "no-tile"),
-        attribution="Microsoft Bing Maps aerial imagery",
-    ),
-}
+def _lat(y: int, zoom: int) -> float:
+    return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / 2**zoom))))
 
 
-def provider(code: str) -> Provider:
-    if code not in PROVIDERS:
-        raise SystemExit(
-            f"unknown imagery provider {code!r}; known: {', '.join(sorted(PROVIDERS))}"
-        )
-    return PROVIDERS[code]
+def covers(p: Provider, x: int, y: int, zoom: int) -> bool:
+    """Whether piece (x, y) at ``zoom`` meets the source's bounds (always, for the whole world)."""
+    if p.extent_bounds is None:
+        return True
+    lon0, lat0, lon1, lat1 = p.extent_bounds
+    west, east = x / 2**zoom * 360 - 180, (x + 1) / 2**zoom * 360 - 180
+    north, south = _lat(y, zoom), _lat(y + 1, zoom)
+    return west < lon1 and east > lon0 and south < lat1 and north > lat0
+
+
+def fallback_for(p: Provider) -> Provider | None:
+    """Bing Maps for a source that covers one country; None for a source of the whole world."""
+    if p.extent_bounds is None or p.code == FALLBACK:
+        return None
+    return provider(FALLBACK)
+
+
+def cache_key(code: str) -> str:
+    """The name a source's pieces are kept under in the imagery cache."""
+    p = provider(code)
+    fallback = fallback_for(p)
+    return cache_name(p) + (f"+{cache_name(fallback)}" if fallback is not None else "")
+
+
+def listing() -> list[dict[str, Any]]:
+    """The sources as the Live window lists them, as OrthoStudio XP's engine gives them to its Plan
+    (``GET /api/providers``). A source that is the very same imagery as another is listed once."""
+    from orthostudio.api.app import provider_json
+
+    return [provider_json(p) for p in registry().values() if p.same_as is None]

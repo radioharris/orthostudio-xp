@@ -12,6 +12,7 @@ X-Plane started without the streamer.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -113,19 +114,39 @@ def finest_quality(xplane: Path, quality: str) -> int:
     return {"maximum": 0, "high": 1}[quality]
 
 
-def reset(pack: Path, log: Log) -> None:
-    """The pack and the imagery as the first time, to try a start in a new area."""
+def imagery_bytes() -> int:
+    """The disk the downloaded imagery takes: the database and its -wal and -shm."""
+    cache = default_cache_path()
+    total = 0
+    for f in cache.parent.glob(cache.name + "*"):
+        with contextlib.suppress(OSError):
+            total += f.stat().st_size
+    return total
+
+
+def forget_textures(pack: Path, log: Log) -> None:
+    """Every built texture back to the neutral one, as the first time: built again when flown to."""
     from orthostudio.live.region import reset_built
 
     if xplane_running():
         raise RefusedError("X-Plane is running and reads these textures: quit it first")
     reset_built(pack, log=log)
+
+
+def forget_imagery(log: Log) -> None:
+    """The downloaded imagery deleted: downloaded again when needed. Never while a stream runs."""
     cache = default_cache_path()
     removed = 0
     for f in cache.parent.glob(cache.name + "*"):  # the database and its -wal, -shm
         removed += f.stat().st_size
         f.unlink()
     log(f"downloaded imagery deleted ({removed / 1e9:.1f} GB)")
+
+
+def reset(pack: Path, log: Log) -> None:
+    """The pack and the imagery as the first time, to try a start in a new area."""
+    forget_textures(pack, log)
+    forget_imagery(log)
 
 
 def prepare(options: Options, log: Log) -> Prepared:
@@ -212,6 +233,7 @@ def follow(
     (or Ctrl-C). The pack stays installed: :func:`finish` takes it out."""
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
+    from orthostudio.live.providers import cache_key
     from orthostudio.live.streamer import DATAREFS, Streamer, run
     from orthostudio.live.xpudp import XPlaneUDP
 
@@ -232,7 +254,7 @@ def follow(
                     options.margin,
                     options.workers,
                     xplane=xp,
-                    provider=options.provider,
+                    provider=cache_key(options.provider),
                     disk_budget=int(options.disk_budget_gb * 1e9),
                     cache_budget=int(options.cache_budget_gb * 1e9),
                     reach_km=options.camera_reach_km,

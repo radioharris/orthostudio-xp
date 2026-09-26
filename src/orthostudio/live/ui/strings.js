@@ -33,11 +33,15 @@ export const STRINGS = {
     "state.leaving": "Waiting for X-Plane to quit",
     "state.leaving_lead":
       "X-Plane reads its textures from Live's pack: the pack comes out of X-Plane once X-Plane has quit.",
+    "state.deleting": "Deleting…",
     "state.error": "Live stopped: {error}",
     "hold.text": "{left} textures to build · {seconds} s · {mbs} MB/s",
 
     "action.start": "Start",
     "action.stop": "Stop",
+    "action.xplane": "Start X-Plane",
+    "action.xplane_wait":
+      "Start X-Plane once Live is ready: X-Plane sees Live's pack only if it is there when X-Plane starts.",
     "action.leave": "Leave it installed",
     "action.uninstall": "Take the pack out of X-Plane",
     "action.fresh": "From scratch",
@@ -54,11 +58,11 @@ export const STRINGS = {
     "flight.camera": "Camera",
     "flight.camera_value": "{km} km from the aircraft",
     "flight.start": "Start",
-    "flight.none": "Nothing streams.",
     "flight.xplane_running": "running",
     "flight.xplane_stopped": "not running",
 
     "build.title": "Textures",
+    "build.idle": "Shown while Live runs.",
     "build.queued": "To build",
     "build.urgent": "{n} urgent",
     "build.building": "Being built",
@@ -71,10 +75,11 @@ export const STRINGS = {
     "build.disk": "Disk",
     "build.disk_value": "{used} of {budget} GB",
     "build.none": "none",
-    "build.idle": "Shown while Live runs.",
 
     "checks.title": "Checks",
     "checks.macos_no": "Live runs on macOS only for now: its pack relies on APFS clones.",
+    "checks.folder": "Live's folder: {path}",
+    "checks.folder_problem": "Live's folder: {problem}",
     "checks.xplane": "X-Plane 12: {path}",
     "checks.xplane_missing": "X-Plane 12 not found: {problem}",
     "checks.xplane_running": "X-Plane is running",
@@ -92,31 +97,61 @@ export const STRINGS = {
     "checks.plugin_missing": "No X-Plane plugin: X-Plane will not wait for the ortho at a start",
     "checks.left_installed":
       "Live's pack is still in X-Plane: take it out, or X-Plane shows neutral textures wherever nothing was built.",
-    "checks.folder": "Live's folder: {path}",
-    "checks.folder_problem": "Live's folder: {problem}",
 
     "settings.title": "Settings",
     "settings.lead": "They take effect at the next start.",
-    "settings.disk": "Disk for the textures",
-    "settings.disk_help": "Beyond it, the textures farthest from the aircraft are made coarser.",
-    "settings.cache": "Disk for the downloaded imagery",
-    "settings.cache_help": "Kept to build again without downloading; beyond it, the oldest goes.",
-    "settings.reach": "Sharp this far for outside views",
-    "settings.reach_help": "How far an outside view (Shift+4) may take the camera from the aircraft.",
-    "settings.quality": "Texture quality",
-    "settings.quality_auto": "As X-Plane is set",
-    "settings.quality_maximum": "Maximum (4096 px)",
-    "settings.quality_high": "High (2048 px)",
-    "settings.folder": "Live's folder",
-    "settings.folder_help":
-      "Its pack and the downloaded imagery, on an APFS disk. Another folder sets the region up again there (about two minutes); the old one stays where it is.",
-    "settings.provider": "Imagery",
     "settings.save": "Save",
+    "settings.undo": "Undo my changes",
     "settings.saved": "Saved.",
+
+    "source.title": "Imagery source",
+    "source.help":
+      "The aerial photos Live downloads. Textures already built keep theirs: delete them (Disk space) to build them again from another source.",
+    "source.group_world": "The whole world",
+    "source.group_mine": "My sources",
+    "source.group_country": "One country",
+    "source.fallback": "It covers one country only ({country}): elsewhere, Live takes Bing Maps.",
+    "source.low_zoom": "It stops at zoom {zl}: up close, the ortho is blurrier.",
+
+    "disk.title": "Disk space",
+    "disk.help": "Live keeps two things on the disk, each within the space set here.",
+    "disk.textures": "Built textures",
+    "disk.textures_help":
+      "The ortho made for X-Plane around where you fly: what X-Plane shows. Beyond this space, the textures farthest from the aircraft become coarser, and Live builds them again if you fly back there.",
+    "disk.imagery": "Downloaded imagery",
+    "disk.imagery_help":
+      "The photos as the source sent them, kept so that a texture can be built again without downloading them twice. Beyond this space, the oldest are deleted.",
+    "disk.now": "Now: {gb} GB.",
+    "disk.delete": "Delete…",
+    "disk.delete_streaming": "Stop Live to delete.",
+
+    "delete.title": "Delete what Live keeps?",
+    "delete.textures_name": "The built textures ({gb} GB)",
+    "delete.textures_note": "Back to the neutral texture: Live builds them again as you fly.",
+    "delete.imagery_name": "The downloaded imagery ({gb} GB)",
+    "delete.imagery_note": "Downloaded again when needed.",
+    "delete.xplane_running": "X-Plane is running and reads the textures: quit it to delete them.",
+    "delete.keep": "Keep them",
+    "delete.confirm": "Delete",
+
+    "folder.title": "Live's folder",
+    "folder.help": "Where Live keeps its textures and its downloaded imagery, on an APFS disk.",
+    "folder.now": "Now: {path}",
+    "folder.show": "Show in the Finder",
+    "folder.other": "Another folder",
+    "folder.choose": "Choose…",
+    "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its imagery",
+    "folder.moved":
+      "In another folder, Live sets the region up again, about two minutes; what the old one holds stays there.",
+
+    "country.Spain": "Spain",
+    "country.Netherlands": "Netherlands",
+    "country.Luxembourg": "Luxembourg",
+    "country.Japan": "Japan",
+    "country.United States": "United States",
 
     "log.title": "Log",
     "unit.gb": "GB",
-    "unit.km": "km",
     "error.api": "Live does not answer: {error}",
   },
   fr: {
@@ -148,11 +183,15 @@ export const STRINGS = {
     "state.leaving": "En attente de la fermeture de X-Plane",
     "state.leaving_lead":
       "X-Plane lit ses textures dans le pack de Live : le pack sort de X-Plane quand X-Plane quitte.",
+    "state.deleting": "Suppression…",
     "state.error": "Live s'est arrêté : {error}",
     "hold.text": "{left} textures à construire · {seconds} s · {mbs} Mo/s",
 
     "action.start": "Démarrer",
     "action.stop": "Arrêter",
+    "action.xplane": "Lancer X-Plane",
+    "action.xplane_wait":
+      "Lancez X-Plane quand Live est prêt : X-Plane ne voit le pack de Live que s'il est là quand X-Plane démarre.",
     "action.leave": "Le laisser installé",
     "action.uninstall": "Retirer le pack de X-Plane",
     "action.fresh": "Repartir de zéro",
@@ -170,11 +209,11 @@ export const STRINGS = {
     "flight.camera": "Caméra",
     "flight.camera_value": "à {km} km de l'avion",
     "flight.start": "Départ",
-    "flight.none": "Rien ne tourne.",
     "flight.xplane_running": "lancé",
     "flight.xplane_stopped": "pas lancé",
 
     "build.title": "Textures",
+    "build.idle": "Affiché pendant que Live tourne.",
     "build.queued": "À construire",
     "build.urgent": "{n} urgentes",
     "build.building": "En construction",
@@ -187,10 +226,11 @@ export const STRINGS = {
     "build.disk": "Disque",
     "build.disk_value": "{used} sur {budget} Go",
     "build.none": "aucune",
-    "build.idle": "Affiché pendant que Live tourne.",
 
     "checks.title": "Vérifications",
     "checks.macos_no": "Live ne tourne que sur macOS pour l'instant : son pack repose sur les clones APFS.",
+    "checks.folder": "Dossier de Live : {path}",
+    "checks.folder_problem": "Dossier de Live : {problem}",
     "checks.xplane": "X-Plane 12 : {path}",
     "checks.xplane_missing": "X-Plane 12 introuvable : {problem}",
     "checks.xplane_running": "X-Plane tourne",
@@ -209,31 +249,61 @@ export const STRINGS = {
     "checks.plugin_missing": "Pas de plugin X-Plane : X-Plane n'attendra pas l'ortho au départ",
     "checks.left_installed":
       "Le pack de Live est encore dans X-Plane : retirez-le, sinon X-Plane affiche des textures neutres partout où rien n'a été construit.",
-    "checks.folder": "Dossier de Live : {path}",
-    "checks.folder_problem": "Dossier de Live : {problem}",
 
     "settings.title": "Réglages",
     "settings.lead": "Ils s'appliquent au prochain démarrage.",
-    "settings.disk": "Disque pour les textures",
-    "settings.disk_help": "Au-delà, les textures les plus loin de l'avion sont rendues plus grossières.",
-    "settings.cache": "Disque pour les images téléchargées",
-    "settings.cache_help": "Gardées pour reconstruire sans retélécharger ; au-delà, les plus anciennes partent.",
-    "settings.reach": "Net jusqu'à cette distance en vue extérieure",
-    "settings.reach_help": "Jusqu'où une vue extérieure (Maj+4) peut emmener la caméra loin de l'avion.",
-    "settings.quality": "Qualité des textures",
-    "settings.quality_auto": "Comme X-Plane est réglé",
-    "settings.quality_maximum": "Maximale (4096 px)",
-    "settings.quality_high": "Haute (2048 px)",
-    "settings.folder": "Dossier de Live",
-    "settings.folder_help":
-      "Son pack et les images téléchargées, sur un disque APFS. Un autre dossier y prépare la région à nouveau (deux minutes environ) ; l'ancien reste où il est.",
-    "settings.provider": "Imagerie",
     "settings.save": "Enregistrer",
+    "settings.undo": "Annuler mes changements",
     "settings.saved": "Enregistré.",
+
+    "source.title": "Source des images",
+    "source.help":
+      "Les photos aériennes que Live télécharge. Les textures déjà construites gardent les leurs : supprimez-les (Place sur le disque) pour les reconstruire avec une autre source.",
+    "source.group_world": "Le monde entier",
+    "source.group_mine": "Mes sources",
+    "source.group_country": "Un seul pays",
+    "source.fallback": "Elle ne couvre qu'un pays ({country}) : ailleurs, Live prend Bing Maps.",
+    "source.low_zoom": "Elle s'arrête au zoom {zl} : de près, l'ortho est plus floue.",
+
+    "disk.title": "Place sur le disque",
+    "disk.help": "Live garde deux choses sur le disque, chacune dans la place réglée ici.",
+    "disk.textures": "Textures construites",
+    "disk.textures_help":
+      "L'ortho préparée pour X-Plane autour de là où vous volez : ce que X-Plane affiche. Au-delà de cette place, les textures les plus loin de l'avion redeviennent plus grossières, et Live les reconstruit si vous y revenez.",
+    "disk.imagery": "Images téléchargées",
+    "disk.imagery_help":
+      "Les photos telles que la source les envoie, gardées pour reconstruire une texture sans les télécharger deux fois. Au-delà de cette place, les plus anciennes sont effacées.",
+    "disk.now": "En ce moment : {gb} Go.",
+    "disk.delete": "Supprimer…",
+    "disk.delete_streaming": "Arrêtez Live pour supprimer.",
+
+    "delete.title": "Supprimer ce que Live garde ?",
+    "delete.textures_name": "Les textures construites ({gb} Go)",
+    "delete.textures_note": "Elles redeviennent neutres : Live les reconstruit pendant que vous volez.",
+    "delete.imagery_name": "Les images téléchargées ({gb} Go)",
+    "delete.imagery_note": "Téléchargées à nouveau quand il le faut.",
+    "delete.xplane_running": "X-Plane tourne et lit les textures : quittez-le pour les supprimer.",
+    "delete.keep": "Les garder",
+    "delete.confirm": "Supprimer",
+
+    "folder.title": "Dossier de Live",
+    "folder.help": "Où Live garde ses textures et les images téléchargées, sur un disque APFS.",
+    "folder.now": "En ce moment : {path}",
+    "folder.show": "Afficher dans le Finder",
+    "folder.other": "Un autre dossier",
+    "folder.choose": "Choisir…",
+    "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses images",
+    "folder.moved":
+      "Dans un autre dossier, Live prépare la région à nouveau, deux minutes environ ; ce que l'ancien contient y reste.",
+
+    "country.Spain": "Espagne",
+    "country.Netherlands": "Pays-Bas",
+    "country.Luxembourg": "Luxembourg",
+    "country.Japan": "Japon",
+    "country.United States": "États-Unis",
 
     "log.title": "Journal",
     "unit.gb": "Go",
-    "unit.km": "km",
     "error.api": "Live ne répond pas : {error}",
   },
 };
@@ -273,6 +343,11 @@ export function t(key, params) {
   const text = STRINGS[current][key] ?? STRINGS.en[key] ?? key;
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+}
+
+/** A country's name as the registry gives it (English), in the page's language. */
+export function countryName(extent) {
+  return STRINGS[current][`country.${extent}`] ?? extent;
 }
 
 /** Apply the data-i18n attributes of a subtree. */

@@ -108,26 +108,27 @@ def stream(
     ] = None,
     provider: Annotated[
         str | None,
-        typer.Option(help="imagery provider code of orthostudio.live.providers (default: BI)"),
+        typer.Option(help="imagery source, a code of OrthoStudio XP's (default: BI, Bing Maps)"),
     ] = None,
     quality: Annotated[
-        str | None,
+        str,
         typer.Option(
-            help="X-Plane's texture quality: auto (read from its preferences), maximum or high"
+            help="X-Plane's texture quality: auto (read from its preferences), maximum or high "
+            "(less than X-Plane reads shows the neutral colour, green-grey, up close)"
         ),
-    ] = None,
+    ] = "auto",
     max_zoom: Annotated[int, typer.Option(help="sharpest imagery for ZL16 textures")] = 16,
     max_zoom_airports: Annotated[int, typer.Option(help="sharpest imagery for ZL18 textures")] = 18,
     margin: Annotated[
         float, typer.Option(help="build for rings this much wider than measured")
     ] = 1.25,
     camera_reach_km: Annotated[
-        float | None,
+        float,
         typer.Option(
             help="how far external views may take the camera: built sharp that much farther "
-            "(default: 25)"
+            "(less shows the neutral colour, green-grey, to a camera that goes farther)"
         ),
-    ] = None,
+    ] = 25.0,
     workers: Annotated[int, typer.Option(help="encoding processes")] = session.default_workers(),
     port: Annotated[int, typer.Option(help="X-Plane's UDP port")] = 49000,
     source: Annotated[
@@ -174,11 +175,11 @@ def stream(
         pack=pack,
         start=start,
         provider=provider or saved.provider,
-        quality=quality or saved.quality,
+        quality=quality,
         max_zoom=max_zoom,
         max_zoom_airports=max_zoom_airports,
         margin=margin,
-        camera_reach_km=saved.camera_reach_km if camera_reach_km is None else camera_reach_km,
+        camera_reach_km=camera_reach_km,
         workers=workers,
         port=port,
         source=source,

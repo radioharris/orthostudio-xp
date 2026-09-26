@@ -48,20 +48,26 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_the_settings_go_beside_the_switch(home: Path) -> None:
     settings_file().write_text("enabled = true\n")
     assert load_settings() == LiveSettings()
-    save_settings(LiveSettings(disk_budget_gb=50, quality="high"))
+    save_settings(LiveSettings(disk_budget_gb=50, provider="Arc"))
     saved = tomllib.loads(settings_file().read_text())
     assert saved["enabled"] is True  # the switch, as it was
     assert saved["stream"]["disk_budget_gb"] == 50
     assert enabled()
     assert load_settings().disk_budget_gb == 50
-    assert load_settings().quality == "high"
+    assert load_settings().provider == "Arc"
 
 
 def test_a_wrong_value_costs_itself_only(home: Path) -> None:
-    settings_file().write_text("[stream]\ndisk_budget_gb = -3\ncamera_reach_km = 40\n")
+    settings_file().write_text("[stream]\ndisk_budget_gb = -3\ncache_budget_gb = 40\n")
     got = load_settings()
     assert got.disk_budget_gb == LiveSettings().disk_budget_gb
-    assert got.camera_reach_km == 40
+    assert got.cache_budget_gb == 40
+
+
+def test_an_unknown_source_is_bing(home: Path) -> None:
+    """A source of the user's removed from OrthoStudio XP since: Live goes back to Bing Maps."""
+    settings_file().write_text('[stream]\nprovider = "Gone"\n')
+    assert load_settings().provider == "BI"
 
 
 def test_a_file_that_does_not_parse_is_left_alone(home: Path) -> None:
@@ -138,6 +144,11 @@ def checks(**changed: Any):
         "autoortho_mounted": False,
         "installed": False,
         "plugin": "ready",
+        "folder": "/Live",
+        "folder_default": "/Live",
+        "folder_problem": None,
+        "textures_bytes": 2_500_000_000,
+        "imagery_bytes": 900_000_000,
     }
     base.update(changed)
     return lambda: dict(base)
@@ -161,6 +172,7 @@ class FakeStream:
         self.options: session.Options | None = None
         self.finished: list[Path] = []
         self.gave_up: bool | None = None
+        self.done: list[str] = []  # deleted, launched
 
     def prepare(self, options: session.Options, log) -> session.Prepared:
         self.options = options
@@ -192,6 +204,9 @@ def control_for(stream: FakeStream, **changed: Any) -> LiveControl:
         follow=stream.follow,
         finish=stream.finish,
         uninstall=lambda xplane, log: log("uninstalled"),
+        forget_textures=lambda pack, log: stream.done.append("textures"),
+        forget_imagery=lambda log: stream.done.append("imagery"),
+        launch=lambda xplane: stream.done.append(f"launched {xplane}"),
         checks=checks(**changed),
         settings=lambda: LiveSettings(disk_budget_gb=33),
         echo=lambda _: None,
@@ -269,6 +284,41 @@ def test_a_pack_left_installed_comes_out_once_xplane_has_quit(home: Path) -> Non
     c = control_for(FakeStream(), xplane_running=False, installed=True)
     assert c.uninstall()
     assert c.log_after(0)["lines"][-1]["text"] == "uninstalled"
+
+
+def test_delete_only_while_nothing_streams(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+    c.delete(textures=True, imagery=False)
+    c.delete(textures=False, imagery=True)
+    assert stream.done == ["textures", "imagery"]
+    assert c.state == IDLE
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    with pytest.raises(session.RefusedError, match="stop it first"):
+        c.delete(textures=True, imagery=True)
+    c.stop()
+    assert c.wait_idle(5)
+    assert stream.done == ["textures", "imagery"]
+
+
+def test_xplane_starts_only_once_live_is_ready(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+    with pytest.raises(session.RefusedError, match="not ready"):
+        c.launch_xplane()  # the pack and the plugin are not in X-Plane yet
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    c.launch_xplane()
+    assert stream.done == ["launched /X-Plane 12"]
+    c.stop()
+    assert c.wait_idle(5)
+    running = control_for(FakeStream(), xplane_running=True)
+    running._state = STREAMING
+    with pytest.raises(session.RefusedError, match="running already"):
+        running.launch_xplane()
 
 
 def test_the_log_after_a_line(home: Path) -> None:
@@ -349,6 +399,39 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         chosen = await client.put("/api/live/settings", json={"folder": str(home / "Live")})
         assert chosen.status_code == 200 and chosen.json()["folder"] == str(home / "Live")
         assert load_settings().disk_budget_gb == 40  # the rest as it was
+
+
+@pytest.mark.anyio
+async def test_the_buttons_of_the_page(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Delete, Start X-Plane, the sources' list, the folder's dialog and the Finder."""
+    import orthostudio.fsutil as fsutil
+
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    asked, shown = [], []
+
+    def dialog(prompt: str, start: Path | None) -> Path:
+        asked.append(prompt)
+        return tmp_path
+
+    monkeypatch.setattr(fsutil, "choose_folder", dialog)
+    monkeypatch.setattr(fsutil, "reveal_in_file_manager", shown.append)
+    stream = FakeStream()
+    c = control_for(stream)
+    async with client_for(create_live_app(c)) as client:
+        deleted = await client.post("/api/live/delete", json={"textures": True, "imagery": True})
+        assert deleted.status_code == 200 and stream.done == ["textures", "imagery"]
+        early = await client.post("/api/live/launch-xplane")
+        assert early.status_code == 409 and "not ready" in early.json()["detail"]
+        sources = (await client.get("/api/live/providers")).json()
+        assert sources[0]["code"] == "BI" and any(p["extent"] == "Spain" for p in sources)
+        chosen = await client.post("/api/live/choose-folder", json={"prompt": "Live's folder"})
+        assert chosen.json() == {"path": str(tmp_path)} and asked == ["Live's folder"]
+        revealed = await client.post("/api/live/reveal", json={"path": str(tmp_path)})
+        assert revealed.status_code == 200 and shown == [tmp_path]
+        gone = await client.post("/api/live/reveal", json={"path": str(tmp_path / "gone")})
+        assert gone.status_code == 404
 
 
 @pytest.mark.anyio

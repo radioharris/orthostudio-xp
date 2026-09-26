@@ -4,16 +4,18 @@
 // what X-Plane is doing, what is being built, the checks and the settings. The streaming itself
 // runs in the engine (orthostudio/live/control.py); this page only starts it, stops it and shows it.
 
-import { applyStatic, detectLanguage, language, setLanguage, t } from "./strings.js";
+import { applyStatic, countryName, detectLanguage, language, setLanguage, t } from "./strings.js";
 
 const POLL_MS = 1000;
 const API_LEVEL = 1; // orthostudio/live/control.py API
+const SHARP_ZOOM = 16; // a source stopping below it shows blurrier ortho up close
 
 const $ = (id) => document.getElementById(id);
 
 let last = null; // the last status
 let logSeq = 0;
-let settingsShown = false; // the form is filled once, then left to the user
+let providers = []; // GET /api/live/providers
+let saved = null; // the settings as saved: what "Undo my changes" goes back to
 
 // --- talking to the engine ---------------------------------------------------------------------
 
@@ -47,6 +49,8 @@ function byLevel(counts) {
   return parts.length ? parts.join(" · ") : null;
 }
 
+const gb = (bytes) => number(bytes / 1e9, 1);
+
 // --- drawing -----------------------------------------------------------------------------------
 
 function kv(dl, rows) {
@@ -76,6 +80,7 @@ function headline(status) {
     ];
   }
   if (state === "stopping") return [t("state.stopping"), "", "waiting"];
+  if (state === "deleting") return [t("state.deleting"), "", "running"];
   if (state === "leaving") return [t("state.leaving"), t("state.leaving_lead"), "waiting"];
   if (state === "streaming" && stream) {
     const start = stream.start;
@@ -136,15 +141,22 @@ function drawState(status) {
   $("state-error").hidden = !error;
   $("state-error").textContent = error ? t("state.error", { error: status.error }) : "";
 
-  const idle = status.state === "idle";
-  const leftBehind = idle && status.checks.installed && !status.checks.xplane_running;
+  const { state, checks } = status;
+  const idle = state === "idle";
   $("start-btn").hidden = !idle;
-  $("start-btn").disabled = Boolean(blocking(status.checks));
+  $("start-btn").disabled = Boolean(blocking(checks));
   $("fresh-row").hidden = !idle;
-  $("fresh-help").hidden = !idle || !$("fresh").checked;
-  $("stop-btn").hidden = !["starting", "streaming"].includes(status.state);
-  $("leave-btn").hidden = status.state !== "leaving";
-  $("uninstall-btn").hidden = !leftBehind;
+  $("stop-btn").hidden = !["starting", "streaming"].includes(state);
+  // X-Plane sees the pack and loads the plugin only if they are there when it starts
+  $("xplane-btn").disabled = !(state === "streaming" && !checks.xplane_running);
+  $("xplane-btn").hidden = checks.xplane_running || !["idle", "starting", "streaming"].includes(state);
+  $("leave-btn").hidden = state !== "leaving";
+  $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
+  let help = "";
+  if (idle && $("fresh").checked) help = t("action.fresh_help");
+  else if ((idle || state === "starting") && !checks.xplane_running) help = t("action.xplane_wait");
+  $("action-help").textContent = help;
+  $("action-help").hidden = !help;
 }
 
 function drawFlight(status) {
@@ -178,24 +190,22 @@ function drawBuild(status) {
   }
   const s = stream.streamer;
   const queued = byLevel(s.queued);
-  const rows = [
+  const building = s.building || s.pieces_awaited
+    ? t("build.building_value", { n: number(s.building), pieces: number(s.pieces_awaited) })
+    : null;
+  const downloaded = t("build.downloaded_value", {
+    n: number(s.downloaded),
+    mb: number(s.downloaded_bytes / 1e6),
+    cache: number(s.from_cache),
+  }) + (s.failed ? ` · ${t("build.failed", { n: number(s.failed) })}` : "");
+  kv($("build"), [
     [t("build.queued"), queued && `${queued} (${t("build.urgent", { n: number(s.urgent) })})`],
-    [t("build.building"), s.building || s.pieces_awaited
-      ? t("build.building_value", { n: number(s.building), pieces: number(s.pieces_awaited) })
-      : null],
+    [t("build.building"), building],
     [t("build.built"), byLevel(s.built)],
-    [t("build.downloaded"), t("build.downloaded_value", {
-      n: number(s.downloaded),
-      mb: number(s.downloaded_bytes / 1e6),
-      cache: number(s.from_cache),
-    }) + (s.failed ? ` · ${t("build.failed", { n: number(s.failed) })}` : "")],
+    [t("build.downloaded"), downloaded],
     [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
-    [t("build.disk"), t("build.disk_value", {
-      used: number(s.disk_bytes / 1e9, 1),
-      budget: number(s.disk_budget / 1e9),
-    })],
-  ];
-  kv($("build"), rows);
+    [t("build.disk"), t("build.disk_value", { used: gb(s.disk_bytes), budget: number(s.disk_budget / 1e9) })],
+  ]);
   const share = s.disk_budget ? Math.min(1, s.disk_bytes / s.disk_budget) : 0;
   $("disk-bar").style.width = `${Math.round(share * 1000) / 10}%`;
   $("disk").classList.toggle("warn", share > 0.9);
@@ -211,8 +221,8 @@ function drawChecks(status) {
   if (c.xplane) add("done", t("checks.xplane", { path: c.xplane }));
   else add("failed", t("checks.xplane_missing", { problem: c.xplane_problem || "" }));
   if (c.xplane_running) {
-    add(c.installed || status.state !== "idle" ? "done" : "failed",
-      t(c.installed || status.state !== "idle" ? "checks.xplane_running" : "checks.xplane_running_late"));
+    const fine = c.installed || status.state !== "idle";
+    add(fine ? "done" : "failed", t(fine ? "checks.xplane_running" : "checks.xplane_running_late"));
   } else {
     add("done", t("checks.xplane_stopped"));
   }
@@ -240,13 +250,30 @@ function drawChecks(status) {
   }
 }
 
-function fillSettings(settings, checks) {
-  const form = $("settings-form");
-  if (checks) form.elements.namedItem("folder").placeholder = checks.folder_default;
-  for (const [name, value] of Object.entries(settings)) {
-    const field = form.elements.namedItem(name);
-    if (field) field.value = String(value);
-  }
+/** Disk space: what each takes now, and whether they can be deleted. */
+function drawDisk(status) {
+  const streaming = status.state === "streaming" && status.stream;
+  const textures = streaming ? status.stream.streamer.disk_bytes : status.checks.textures_bytes;
+  $("disk-now").textContent = t("disk.now", { gb: gb(textures) });
+  $("cache-now").textContent = t("disk.now", { gb: gb(status.checks.imagery_bytes) });
+  const idle = status.state === "idle";
+  $("delete-btn").disabled = !idle;
+  $("delete-help").textContent = idle ? "" : t("disk.delete_streaming");
+}
+
+/** Live's folder now, and the Finder's button beside it. */
+function drawFolder(status) {
+  const line = $("folder-now");
+  const path = status.checks.folder;
+  if (line.dataset.path === `${language()}:${path}`) return; // drawn already: keep the button
+  line.dataset.path = `${language()}:${path}`;
+  const show = document.createElement("button");
+  show.type = "button";
+  show.className = "btn btn-small reveal-btn";
+  show.textContent = t("folder.show");
+  show.addEventListener("click", () => act("reveal", { path }));
+  line.replaceChildren(document.createTextNode(`${t("folder.now", { path })} `), show);
+  $("set-folder").placeholder = status.checks.folder_default;
 }
 
 function draw(status) {
@@ -255,10 +282,119 @@ function draw(status) {
   drawFlight(status);
   drawBuild(status);
   drawChecks(status);
-  if (!settingsShown) {
-    fillSettings(status.settings, status.checks);
-    settingsShown = true;
+  drawDisk(status);
+  drawFolder(status);
+  if (saved === null) {
+    saved = status.settings;
+    fillSettings(saved);
   }
+}
+
+// --- the imagery source ------------------------------------------------------------------------
+
+function sourceLabel(p) {
+  return p.extent ? `${countryName(p.extent)} · ${p.name}` : p.name;
+}
+
+/** The list grouped as OrthoStudio XP's Plan groups it: the whole world, the user's own, then
+ * the countries' sources. */
+function renderProviders(current) {
+  const select = $("set-provider");
+  select.replaceChildren();
+  const groups = [
+    ["source.group_world", providers.filter((p) => !p.extent && !p.custom)],
+    ["source.group_mine", providers.filter((p) => p.custom)],
+    ["source.group_country", providers.filter((p) => p.extent && !p.custom)
+      .sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b), language()))],
+  ];
+  for (const [title, list] of groups) {
+    if (!list.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = t(title);
+    for (const p of list) {
+      const option = document.createElement("option");
+      option.value = p.code;
+      option.textContent = sourceLabel(p);
+      group.append(option);
+    }
+    select.append(group);
+  }
+  if (providers.some((p) => p.code === current)) select.value = current;
+  drawSource();
+}
+
+/** Under the list: the source's credit and licence, and what it does not cover. */
+function drawSource() {
+  const p = providers.find((q) => q.code === $("set-provider").value);
+  const credit = p ? p.attribution || "" : "";
+  const licence = p ? p.licence || "" : "";
+  $("provider-attribution").textContent = credit && licence ? `${credit} ${licence}.` : credit;
+  const notes = [];
+  if (p && p.extent) notes.push(t("source.fallback", { country: countryName(p.extent) }));
+  if (p && p.max_zl < SHARP_ZOOM) notes.push(t("source.low_zoom", { zl: p.max_zl }));
+  $("provider-note").textContent = notes.join(" ");
+  $("provider-note").hidden = !notes.length;
+}
+
+// --- the settings ------------------------------------------------------------------------------
+
+function fillSettings(settings) {
+  $("set-disk").value = String(settings.disk_budget_gb);
+  $("set-cache").value = String(settings.cache_budget_gb);
+  $("set-folder").value = settings.folder || "";
+  if (providers.length) renderProviders(settings.provider);
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const body = {
+    disk_budget_gb: Number($("set-disk").value),
+    cache_budget_gb: Number($("set-cache").value),
+    provider: $("set-provider").value || saved?.provider || "BI",
+    folder: $("set-folder").value.trim(),
+  };
+  $("settings-error").hidden = true;
+  $("settings-status").textContent = "";
+  try {
+    saved = await api("settings", { method: "PUT", body });
+    fillSettings(saved);
+    $("settings-status").textContent = t("settings.saved");
+  } catch (error) {
+    $("settings-error").hidden = false;
+    $("settings-error").textContent = error.message;
+  }
+}
+
+async function chooseFolder() {
+  const start = $("set-folder").value.trim() || last?.checks.folder || null;
+  try {
+    const got = await api("choose-folder", { method: "POST", body: { prompt: t("folder.prompt"), start } });
+    if (got.path) $("set-folder").value = got.path;
+  } catch (error) {
+    $("settings-error").hidden = false;
+    $("settings-error").textContent = error.message;
+  }
+}
+
+// --- delete ------------------------------------------------------------------------------------
+
+function openDelete() {
+  const c = last.checks;
+  $("delete-textures-name").textContent = t("delete.textures_name", { gb: gb(c.textures_bytes) });
+  $("delete-imagery-name").textContent = t("delete.imagery_name", { gb: gb(c.imagery_bytes) });
+  // X-Plane reads the textures: they stay while it runs
+  $("delete-textures").disabled = c.xplane_running;
+  $("delete-textures").checked = !c.xplane_running;
+  $("delete-textures").closest(".choice").title = c.xplane_running ? t("delete.xplane_running") : "";
+  $("delete-imagery").checked = true;
+  $("delete-dialog").showModal();
+}
+
+async function deleteClosed() {
+  if ($("delete-dialog").returnValue !== "delete") return;
+  const textures = $("delete-textures").checked && !$("delete-textures").disabled;
+  const imagery = $("delete-imagery").checked;
+  if (textures || imagery) await act("delete", { textures, imagery });
 }
 
 // --- the log -----------------------------------------------------------------------------------
@@ -303,26 +439,13 @@ async function act(path, body) {
   }
 }
 
-async function saveSettings(event) {
-  event.preventDefault();
-  const form = $("settings-form");
-  const body = {
-    disk_budget_gb: Number(form.elements.namedItem("disk_budget_gb").value),
-    cache_budget_gb: Number(form.elements.namedItem("cache_budget_gb").value),
-    camera_reach_km: Number(form.elements.namedItem("camera_reach_km").value),
-    quality: form.elements.namedItem("quality").value,
-    provider: form.elements.namedItem("provider").value,
-    folder: form.elements.namedItem("folder").value.trim(),
-  };
-  $("settings-error").hidden = true;
-  $("settings-status").textContent = "";
+async function loadProviders() {
   try {
-    fillSettings(await api("settings", { method: "PUT", body }));
-    $("settings-status").textContent = t("settings.saved");
-  } catch (error) {
-    $("settings-error").hidden = false;
-    $("settings-error").textContent = error.message;
+    providers = await api("providers");
+  } catch (_e) {
+    providers = [{ code: "BI", name: "Bing Maps", attribution: "", licence: "", max_zl: 19 }];
   }
+  renderProviders(saved?.provider || "BI");
 }
 
 function boot() {
@@ -332,16 +455,26 @@ function boot() {
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     applyStatic(document);
+    renderProviders($("set-provider").value);
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
   $("stop-btn").addEventListener("click", () => act("stop"));
+  $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
-  $("fresh").addEventListener("change", () => {
-    $("fresh-help").hidden = !$("fresh").checked;
-  });
+  $("fresh").addEventListener("change", () => last && drawState(last));
+  $("set-provider").addEventListener("change", drawSource);
+  $("folder-choose").addEventListener("click", chooseFolder);
+  $("delete-btn").addEventListener("click", openDelete);
+  $("delete-dialog").addEventListener("close", deleteClosed);
   $("settings-form").addEventListener("submit", saveSettings);
+  $("settings-undo").addEventListener("click", () => {
+    if (saved) fillSettings(saved);
+    $("settings-status").textContent = "";
+    $("settings-error").hidden = true;
+  });
+  loadProviders();
   poll();
 }
 

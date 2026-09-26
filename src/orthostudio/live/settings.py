@@ -12,14 +12,12 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from orthostudio.config.store import toml_dumps
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.live import settings_file
-from orthostudio.live.providers import PROVIDERS
 
 TABLE = "stream"
 
@@ -33,13 +31,9 @@ class LiveSettings(BaseModel):
     """Disk the built textures may take; beyond it, the farthest are made coarser."""
     cache_budget_gb: float = Field(10.0, ge=1.0, le=10_000.0)
     """Disk the downloaded imagery may take; beyond it, the oldest goes."""
-    camera_reach_km: float = Field(25.0, ge=0.0, le=200.0)
-    """How far external views may take the camera from the aircraft: built sharp that much
-    farther."""
-    quality: Literal["auto", "maximum", "high"] = "auto"
-    """X-Plane's texture quality: read from its preferences (auto), or assumed."""
     provider: str = "BI"
-    """The imagery provider, a code of :data:`orthostudio.live.providers.PROVIDERS`."""
+    """The imagery source: a code of OrthoStudio XP's sources
+    (:func:`orthostudio.live.providers.registry`)."""
     folder: str = ""
     """Live's folder, for its pack and its imagery: empty for ``$OSXP_HOME/live``
     (:func:`orthostudio.live.pack.live_root`)."""
@@ -58,8 +52,10 @@ class LiveSettings(BaseModel):
     @field_validator("provider")
     @classmethod
     def _known_provider(cls, code: str) -> str:
-        if code not in PROVIDERS:
-            raise ValueError(f"unknown imagery provider {code!r}")
+        from orthostudio.live.providers import registry
+
+        if code not in registry():
+            raise ValueError(f"unknown imagery source {code!r}")
         return code
 
 

@@ -14,7 +14,9 @@ The states:
 - ``streaming``: following X-Plane;
 - ``stopping``: asked to stop, the builder finishing its textures;
 - ``leaving``: stopped while X-Plane still runs; it reads its textures from the pack, which is
-  taken out once X-Plane quits, unless the user leaves it installed.
+  taken out once X-Plane quits, unless the user leaves it installed;
+- ``deleting``: the built textures, the downloaded imagery or both being forgotten, nothing
+  streaming.
 """
 
 from __future__ import annotations
@@ -24,9 +26,11 @@ import time
 import traceback
 from collections import deque
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from orthostudio.live import session, supported
+from orthostudio.live.evict import usage
 from orthostudio.live.pack import (
     LINK_NAME,
     FolderError,
@@ -34,11 +38,13 @@ from orthostudio.live.pack import (
     default_live_root,
     default_pack_dir,
     live_root,
+    load_built,
 )
 from orthostudio.live.scenery import (
     autoortho_mounted,
     default_source,
     is_installed,
+    launch_xplane,
     xplane_running,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
@@ -47,7 +53,7 @@ API = 1  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
 LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
-STOPPING, LEAVING = "stopping", "leaving"
+STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
 LEAVE_HINT = "Leave it installed, in the window, to stop waiting"
 STOP_HINT = "Stop in the window to end"
 
@@ -55,8 +61,6 @@ STOP_HINT = "Stop in the window to end"
 def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
     return session.Options(
         provider=settings.provider,
-        quality=settings.quality,
-        camera_reach_km=settings.camera_reach_km,
         disk_budget_gb=settings.disk_budget_gb,
         cache_budget_gb=settings.cache_budget_gb,
         fresh=fresh,
@@ -81,6 +85,8 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         "folder_problem": None,
+        "textures_bytes": usage(load_built(default_pack_dir()).get("textures", {})),
+        "imagery_bytes": session.imagery_bytes(),
     }
     try:
         xp = session.xplane_dir(None)
@@ -114,6 +120,9 @@ class LiveControl:
         follow: Callable[..., None] = session.follow,
         finish: Callable[..., bool] = session.finish,
         uninstall: Callable[..., None] = session.uninstall,
+        forget_textures: Callable[..., None] = session.forget_textures,
+        forget_imagery: Callable[..., None] = session.forget_imagery,
+        launch: Callable[..., None] = launch_xplane,
         checks: Callable[[], dict[str, Any]] = gather_checks,
         settings: Callable[[], LiveSettings] = load_settings,
         echo: Callable[[str], None] = print,
@@ -122,6 +131,9 @@ class LiveControl:
         self._follow = follow
         self._finish = finish
         self._uninstall = uninstall
+        self._forget_textures = forget_textures
+        self._forget_imagery = forget_imagery
+        self._launch = launch
         self._checks = checks
         self._settings = settings
         self._echo = echo
@@ -211,6 +223,36 @@ class LiveControl:
         self._uninstall(session.xplane_dir(None), self.log)
         self.checks(fresh=True)
         return True
+
+    def delete(self, *, textures: bool, imagery: bool) -> None:
+        """Forget the built textures (back to the neutral one, built again when flown to), the
+        downloaded imagery (downloaded again when needed), or both. Only while nothing streams,
+        and the textures only while X-Plane does not run: it reads them."""
+        with self._lock:
+            if self._state != IDLE:
+                raise session.RefusedError("Live is streaming: stop it first")
+            self._state = DELETING
+        try:
+            if textures:
+                self._forget_textures(default_pack_dir(), self.log)
+            if imagery:
+                self._forget_imagery(self.log)
+        finally:
+            with self._lock:
+                self._state = IDLE
+            self._checked = (0.0, None)
+
+    def launch_xplane(self) -> None:
+        """Start X-Plane, once Live is ready for it: X-Plane sees the pack and loads the plugin only
+        if they are there when it starts."""
+        if self._state != STREAMING:
+            raise session.RefusedError("Live is not ready: start it first")
+        checks = self.checks(fresh=True)
+        if checks["xplane_running"]:
+            raise session.RefusedError("X-Plane is running already")
+        self._launch(Path(checks["xplane"]))
+        self.log("X-Plane is starting")
+        self._checked = (0.0, None)
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         thread = self._thread

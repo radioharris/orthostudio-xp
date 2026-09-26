@@ -27,7 +27,17 @@ them on the disk as ordinary files. X-Plane never waits for it, so there is noth
 
 Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It shows what Live
 needs (X-Plane, AutoOrtho's mesh, AutoOrtho not running, the plugin), what it does, and its
-settings; its log is at the bottom.
+settings: the imagery source, the disk space for the textures and for the downloaded imagery (with
+what each takes now, and a button to delete either), and Live's folder. Its log is at the bottom.
+
+There is no setting for the texture quality or for how far outside views reach: Live reads the
+texture quality X-Plane is set to, and builds sharp 25 km beyond the aircraft for outside views.
+Less, and X-Plane would show the neutral colour, green-grey, up close or around a distant camera.
+
+The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
+the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. A country's source
+has nothing past its border: there, and wherever it has no imagery, Live takes Bing Maps. Textures
+already built keep their imagery; delete them to build them again from another source.
 
 The first start prepares the whole region of your AutoOrtho scenery (Europe, for example), once,
 in about 2 minutes, so that X-Plane always finds every file it looks for. It takes almost no disk:
@@ -38,7 +48,8 @@ Then, for every flight:
 1. Click Start in the window (or `uv run python -m orthostudio.live stream` in a terminal). It
    starts building around the airport of your last flight at once, while you start X-Plane.
    "From scratch" forgets every texture built and all imagery downloaded, as the very first time.
-2. Start X-Plane, choose your flight and click Start Flight. X-Plane then waits on its loading
+2. Start X-Plane (the window's Start X-Plane button, once Live is ready), choose your flight and
+   click Start Flight. X-Plane then waits on its loading
    screen until the ortho around your departure is built, as it does with AutoOrtho. That takes a
    few seconds where you have flown before, and a minute or two the first time in a new area. The
    Live window counts down the textures still to build, and so does a small panel over X-Plane,

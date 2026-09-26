@@ -16,6 +16,11 @@ placeholder answer, 204 or 404) is reported as such, and so is a piece that fail
 A piece not there after HEDGE_S is asked of another of the provider's servers as well, and the first
 good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
 pieces kept LFMN waiting 30 s, and one of them never came.
+
+A source that covers one country is completed by Bing Maps (:func:`.providers.fallback_for`): a
+piece outside its bounds is asked of Bing only, and a piece it has no imagery for is asked of Bing
+next. A source whose server has a ceiling of its own (``server_req_per_s``, a country's service
+that many people share) is never asked more often than that.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ import time
 from collections.abc import Callable
 
 from .cache import IMAGE, NO_IMAGERY, Key
-from .providers import Provider, no_imagery, tile_url
+from .providers import Provider, covers, fallback_for, no_imagery, tile_url
 from .providers import provider as provider_named
 
 FAILED = 3
@@ -43,11 +48,17 @@ class Downloader:
         max_in_flight: int | None = None,
         timeout_s: float = 8.0,
         attempts: int = 4,
+        fallback: Provider | bool | None = True,
     ):
         """``provider``: a code of ``orthostudio.live.providers``, or a Provider. ``on_piece(key,
         status, body)``
-        is called from the downloader's thread for every piece asked for."""
+        is called from the downloader's thread for every piece asked for. ``fallback``: the
+        source beyond a country's (True: Bing Maps, :func:`.providers.fallback_for`)."""
         self.p: Provider = provider_named(provider) if isinstance(provider, str) else provider
+        self.fallback: Provider | None = (
+            fallback_for(self.p) if fallback is True else (fallback or None)
+        )
+        self._next_request: dict[str, float] = {}  # per source, when its ceiling allows the next
         self.on_piece = on_piece
         self.max_in_flight = max_in_flight or min(self.p.max_in_flight, 96)
         self.timeout_s = timeout_s
@@ -119,10 +130,22 @@ class Downloader:
             with contextlib.suppress(Exception):  # the caller's problem, not the downloader's
                 self.on_piece(key, status, body)
 
-    async def _get(self, url: str):
+    async def _paced(self, p: Provider) -> None:
+        """Wait for the source's next turn when its server has a ceiling of requests a second."""
+        rate = p.server_req_per_s
+        if not rate:
+            return
+        now = time.monotonic()
+        turn = max(now, self._next_request.get(p.code, now))
+        self._next_request[p.code] = turn + 1.0 / rate
+        if turn > now:
+            await asyncio.sleep(turn - now)
+
+    async def _get(self, p: Provider, url: str):
+        await self._paced(p)
         self.in_flight += 1
         try:
-            return await self._session.get(url, headers=dict(self.p.headers))
+            return await self._session.get(url, headers=dict(p.headers))
         except asyncio.CancelledError:
             raise
         except Exception:  # timeout, refused connection, reset...
@@ -130,17 +153,17 @@ class Downloader:
         finally:
             self.in_flight -= 1
 
-    async def _hedged(self, x: int, y: int, z: int, attempt: int):
+    async def _hedged(self, p: Provider, x: int, y: int, z: int, attempt: int):
         """One request, and the same of another server if the first is slow: the first good answer
         (or the last bad one)."""
-        first = asyncio.ensure_future(self._get(tile_url(self.p, x, y, z, 2 * attempt)))
+        first = asyncio.ensure_future(self._get(p, tile_url(p, x, y, z, 2 * attempt)))
         done, _ = await asyncio.wait({first}, timeout=HEDGE_S)
         if done:
             return first.result()
         self.hedged += 1
         pending = {
             first,
-            asyncio.ensure_future(self._get(tile_url(self.p, x, y, z, 2 * attempt + 1))),
+            asyncio.ensure_future(self._get(p, tile_url(p, x, y, z, 2 * attempt + 1))),
         }
         answer = None
         try:
@@ -159,17 +182,27 @@ class Downloader:
                 await asyncio.gather(*pending, return_exceptions=True)
 
     async def _fetch(self, key: Key):
+        """The piece from the source, or from Bing beyond a country's source."""
         z, x, y = key
-        if z > self.p.max_zl:
+        if self.fallback is not None and not covers(self.p, x, y, z):
+            return await self._fetch_from(self.fallback, key)
+        status, body = await self._fetch_from(self.p, key)
+        if status == NO_IMAGERY and self.fallback is not None:
+            return await self._fetch_from(self.fallback, key)
+        return status, body
+
+    async def _fetch_from(self, p: Provider, key: Key):
+        z, x, y = key
+        if z > p.max_zl:
             return NO_IMAGERY, None
         for attempt in range(self.attempts):
             wait = self._paused_until - time.monotonic()
             if wait > 0:
                 await asyncio.sleep(wait)
-            r = await self._hedged(x, y, z, attempt)
+            r = await self._hedged(p, x, y, z, attempt)
             if r is not None:
                 if r.status_code == 200 and r.content:
-                    if no_imagery(self.p, dict(r.headers.items())):
+                    if no_imagery(p, dict(r.headers.items()), r.content):
                         self.no_imagery += 1
                         return NO_IMAGERY, None
                     self.downloaded += 1

@@ -3,6 +3,7 @@
 """The region pack and the streamer's loop, with stand-ins for the imagery and X-Plane."""
 
 import json
+import math
 import os
 import tempfile
 import time
@@ -240,7 +241,7 @@ class NoHeadOfLineTest(unittest.TestCase):
 class _Server:
     """A local tile server: an image, no imagery (404), a 429 then an image, a slow image."""
 
-    def __init__(self, body):
+    def __init__(self, body, missing=((15, 1, 1),)):
         import http.server
         import threading
 
@@ -255,7 +256,7 @@ class _Server:
                 _, z, x, y = self.path.split("/")
                 key = (int(z), int(x), int(y))
                 server.hits[key] = server.hits.get(key, 0) + 1
-                if key == (15, 1, 1):
+                if key in missing:
                     self.send_response(404)
                     self.end_headers()
                     return
@@ -352,6 +353,73 @@ class DownloaderTest(unittest.TestCase):
         self.assertLess(t - t0, 3.0)  # not the 6 s of the stuck answer
         self.assertEqual(server.hits[(15, 4, 4)], 2)
         self.assertEqual((d.hedged, d.downloaded), (1, 1))
+
+    def test_bing_beyond_a_country_source(self):
+        """Outside a country's bounds, a piece is asked of the fallback only; one the country's
+        source has no imagery for (404) is asked of the fallback next."""
+        import queue
+
+        from orthostudio.live.cache import IMAGE
+        from orthostudio.live.downloader import Downloader
+        from orthostudio.live.providers import Provider
+
+        body = jpeg_body()
+        country, world = _Server(body), _Server(body, missing=())
+        corner = -180 + 8 / 2**15 * 360  # ZL15 tiles 0-7 from the grid's top left corner
+        lat0 = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * 8 / 2**15))))
+        inside = Provider(
+            code="C",
+            url_template=f"http://127.0.0.1:{country.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+            extent="Testland",
+            extent_bounds=(-180.0, lat0, corner, 85.05),
+        )
+        elsewhere = Provider(
+            code="W", url_template=f"http://127.0.0.1:{world.port}/{{zoom}}/{{x}}/{{y}}", max_zl=19
+        )
+        got = queue.Queue()
+        d = Downloader(
+            inside, lambda k, st, b: got.put((k, st)), max_in_flight=4, fallback=elsewhere
+        )
+        try:
+            keys = [(15, 1, 1), (15, 5, 5), (15, 20, 20)]  # no imagery, inside, outside
+            for i, k in enumerate(keys):
+                d.submit(k, float(i))
+            answers = dict(got.get(timeout=20) for _ in keys)
+        finally:
+            d.close()
+            country.close()
+            world.close()
+        self.assertEqual(answers, dict.fromkeys(keys, IMAGE))
+        self.assertEqual(set(country.hits), {(15, 1, 1), (15, 5, 5)})
+        self.assertEqual(set(world.hits), {(15, 1, 1), (15, 20, 20)})
+
+    def test_a_server_with_a_ceiling_is_asked_no_faster(self):
+        import queue
+
+        from orthostudio.live.downloader import Downloader
+        from orthostudio.live.providers import Provider
+
+        server = _Server(jpeg_body())
+        p = Provider(
+            code="SLOW",
+            url_template=f"http://127.0.0.1:{server.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+            server_req_per_s=20,
+        )
+        got = queue.Queue()
+        d = Downloader(p, lambda k, st, b: got.put(k), max_in_flight=8, fallback=None)
+        try:
+            t0 = time.time()
+            for i in range(10):
+                d.submit((15, 10 + i, 10), float(i))
+            for _ in range(10):
+                got.get(timeout=20)
+            took = time.time() - t0
+        finally:
+            d.close()
+            server.close()
+        self.assertGreater(took, 0.4)  # 10 requests at 20 a second: 9 gaps of 50 ms at least
 
 
 if __name__ == "__main__":
