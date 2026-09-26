@@ -85,6 +85,14 @@ def built(xplane: Path) -> Path:
     return out
 
 
+def availability() -> str:
+    """``ready`` (shipped, or built already), ``to_build`` (at the start, with Xcode's
+    command-line tools), or ``missing``: X-Plane will not wait for the ortho at a start."""
+    if PREBUILT.is_file() or _xpl(BUILD_DIR / NAME).is_file():
+        return "ready"
+    return "to_build" if SOURCE.is_file() else "missing"
+
+
 def install(xplane: Path, log: Callable[[str], None] = print) -> bool:
     """Put the plugin in X-Plane. False (and why) if it cannot be built: X-Plane then does not wait
     for the ortho, and the streamer reloads the scenery after a start instead."""

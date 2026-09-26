@@ -1,0 +1,41 @@
+/* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+   Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
+/* The Live window: OrthoStudio XP's styles.css (its tokens and parts), and these few of its own. */
+
+.live { max-width: 1100px; }
+
+.live-card {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-2); padding: var(--card-pad);
+  margin-bottom: var(--block-gap); min-width: 0;
+}
+.live-cols { gap: var(--block-gap); }
+.live-cols > .live-card { margin-bottom: 0; }
+.live-cols + .live-cols, .live-cols + .log { margin-top: var(--block-gap); }
+
+.live-state-head { display: flex; align-items: center; gap: 8px; }
+.live-state-head h1 { margin: 0; }
+.live-state .lead { margin-top: var(--title-gap); }
+.live-state .actions { margin-top: var(--block-gap); }
+.live-fresh-help { margin: var(--help-gap) 0 0; }
+
+.live-hold { margin-top: var(--block-gap); }
+.live-hold .progress { height: 10px; border-radius: 5px; }
+.live-hold .help { margin: var(--help-gap) 0 0; }
+
+.live-disk { margin-top: var(--gap); }
+.live-disk.warn > span { background: var(--warn); }
+
+.live .kv dd { text-align: left; overflow-wrap: anywhere; }
+.live .kv .none { color: var(--fg-3); }
+
+.live-checks { list-style: none; margin: 0; padding: 0; }
+.live-checks li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; overflow-wrap: anywhere; }
+.live-checks .dot { margin-top: 4px; }
+.live-checks .dot-warn { border-color: var(--warn); background: var(--warn); }
+.live-checks .dot-info { border-color: var(--accent); }
+
+.live-settings { display: grid; gap: var(--gap); }
+.live-settings .actions { margin-top: 0; }
+
+.live .log pre { max-height: 360px; }

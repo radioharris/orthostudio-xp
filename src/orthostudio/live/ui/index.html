@@ -1,0 +1,134 @@
+<!doctype html>
+<!-- OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+     Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OrthoStudio XP Live</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="live/live.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M3 12h6l3-4 3 6 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">OrthoStudio XP Live</span>
+  </div>
+  <div class="nav"></div>
+  <div class="topbar-tools">
+    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
+    <select id="lang-select" class="tool-select">
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+    </select>
+  </div>
+</header>
+
+<main id="main" class="main live">
+  <section class="live-card live-state" aria-live="polite">
+    <div class="live-state-head">
+      <span class="dot" id="state-dot"></span>
+      <h1 id="state-title"></h1>
+    </div>
+    <p class="lead" id="state-lead"></p>
+    <div class="live-hold" id="hold" hidden>
+      <div class="progress"><span id="hold-bar"></span></div>
+      <p class="help num" id="hold-text"></p>
+    </div>
+    <p class="error-inline" id="state-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
+      <label class="switch" id="fresh-row" hidden>
+        <input type="checkbox" id="fresh">
+        <span data-i18n="action.fresh">From scratch</span>
+      </label>
+      <button type="button" class="btn btn-danger" id="stop-btn" data-i18n="action.stop" hidden>Stop</button>
+      <button type="button" class="btn" id="leave-btn" data-i18n="action.leave" hidden>Leave it installed</button>
+      <button type="button" class="btn btn-accent" id="uninstall-btn" data-i18n="action.uninstall" hidden>Take the pack out of X-Plane</button>
+    </div>
+    <p class="help live-fresh-help" id="fresh-help" data-i18n="action.fresh_help" hidden></p>
+  </section>
+
+  <div class="cols live-cols">
+    <section class="live-card">
+      <h2 data-i18n="flight.title">Flight</h2>
+      <dl class="kv" id="flight"></dl>
+    </section>
+    <section class="live-card">
+      <h2 data-i18n="build.title">Textures</h2>
+      <dl class="kv" id="build"></dl>
+      <p class="help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</p>
+      <div class="progress live-disk" id="disk" hidden><span id="disk-bar"></span></div>
+    </section>
+  </div>
+
+  <div class="cols live-cols">
+    <section class="live-card">
+      <h2 data-i18n="checks.title">Checks</h2>
+      <ul class="live-checks" id="checks"></ul>
+    </section>
+    <section class="live-card">
+      <h2 data-i18n="settings.title">Settings</h2>
+      <p class="lead" data-i18n="settings.lead">They take effect at the next start.</p>
+      <form id="settings-form" class="live-settings" novalidate>
+        <div class="field">
+          <label for="set-disk" data-i18n="settings.disk">Disk for the textures</label>
+          <span class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1" required>
+            <span class="unit" data-i18n="unit.gb">GB</span></span>
+          <p class="help" data-i18n="settings.disk_help"></p>
+        </div>
+        <div class="field">
+          <label for="set-cache" data-i18n="settings.cache">Disk for the downloaded imagery</label>
+          <span class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1" required>
+            <span class="unit" data-i18n="unit.gb">GB</span></span>
+          <p class="help" data-i18n="settings.cache_help"></p>
+        </div>
+        <div class="field">
+          <label for="set-reach" data-i18n="settings.reach">Sharp this far for outside views</label>
+          <span class="with-unit"><input type="number" id="set-reach" name="camera_reach_km" min="0" max="200" step="1" required>
+            <span class="unit" data-i18n="unit.km">km</span></span>
+          <p class="help" data-i18n="settings.reach_help"></p>
+        </div>
+        <div class="field">
+          <label for="set-quality" data-i18n="settings.quality">Texture quality</label>
+          <select id="set-quality" name="quality">
+            <option value="auto" data-i18n="settings.quality_auto">As X-Plane is set</option>
+            <option value="maximum" data-i18n="settings.quality_maximum">Maximum (4096 px)</option>
+            <option value="high" data-i18n="settings.quality_high">High (2048 px)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="set-folder" data-i18n="settings.folder">Live's folder</label>
+          <input type="text" id="set-folder" name="folder" spellcheck="false" autocomplete="off">
+          <p class="help" data-i18n="settings.folder_help"></p>
+        </div>
+        <div class="field">
+          <label for="set-provider" data-i18n="settings.provider">Imagery</label>
+          <select id="set-provider" name="provider">
+            <option value="BI">Bing</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
+          <span class="help" id="settings-status" aria-live="polite"></span>
+        </div>
+        <p class="error-inline" id="settings-error" role="alert" hidden></p>
+      </form>
+    </section>
+  </div>
+
+  <details class="log" id="log-box">
+    <summary data-i18n="log.title">Log</summary>
+    <pre id="log"></pre>
+  </details>
+</main>
+<script type="module" src="live/live.js"></script>
+</body>
+</html>

@@ -13,7 +13,8 @@ nothing to download), and if that is not enough, 256 px ones back to the neutral
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Mapping
 from functools import cache
 
 from . import dds
@@ -33,7 +34,12 @@ def texture_bytes(level: int) -> int:
 
 
 def usage(built: dict[str, int]) -> int:
-    return sum(texture_bytes(level) for level in built.values())
+    return levels_usage(Counter(built.values()))
+
+
+def levels_usage(levels: Mapping[int, int]) -> int:
+    """The disk of textures counted by level."""
+    return sum(texture_bytes(level) * n for level, n in levels.items())
 
 
 def pick(

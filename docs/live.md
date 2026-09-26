@@ -12,7 +12,8 @@ enabled = true
 ```
 
 It runs on macOS only for now (its pack relies on APFS clones), from OrthoStudio XP's folder with
-`uv run python -m orthostudio.live <command>`.
+`uv run python -m orthostudio.live <command>`. `ui` opens its window; the other commands do the
+same from the terminal.
 
 ## What it is
 
@@ -24,21 +25,30 @@ them on the disk as ordinary files. X-Plane never waits for it, so there is noth
 
 ## What you do
 
-Once, the first time: `uv run python -m orthostudio.live setup` (about 3 minutes). It prepares the whole region of your
-AutoOrtho scenery (Europe, for example) so that X-Plane always finds every file it looks for. It
-takes almost no disk: the files share their content with AutoOrtho's until they are filled in.
+Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It shows what Live
+needs (X-Plane, AutoOrtho's mesh, AutoOrtho not running, the plugin), what it does, and its
+settings; its log is at the bottom.
+
+The first start prepares the whole region of your AutoOrtho scenery (Europe, for example), once,
+in about 2 minutes, so that X-Plane always finds every file it looks for. It takes almost no disk:
+the files share their content with AutoOrtho's until they are filled in.
 
 Then, for every flight:
 
-1. `uv run python -m orthostudio.live stream`. It starts building around the airport of your last flight at once, while you
-   start X-Plane.
+1. Click Start in the window (or `uv run python -m orthostudio.live stream` in a terminal). It
+   starts building around the airport of your last flight at once, while you start X-Plane.
+   "From scratch" forgets every texture built and all imagery downloaded, as the very first time.
 2. Start X-Plane, choose your flight and click Start Flight. X-Plane then waits on its loading
    screen until the ortho around your departure is built, as it does with AutoOrtho. That takes a
    few seconds where you have flown before, and a minute or two the first time in a new area. The
-   terminal counts down the textures still to build, and so does a small OrthoStudio XP Live window over
-   X-Plane, with the seconds gone by and the download rate in MB/s. X-Plane's own window looks frozen meanwhile: it is waiting, it has not crashed.
+   Live window counts down the textures still to build, and so does a small panel over X-Plane,
+   with the seconds gone by and the download rate in MB/s. X-Plane's own window looks frozen
+   meanwhile: it is waiting, it has not crashed.
 3. Fly, anywhere. Another flight started from X-Plane's menu waits the same way.
-4. Quit X-Plane, then press Ctrl-C.
+4. Quit X-Plane, then click Stop (Ctrl-C in a terminal). Stopped or closed while X-Plane still
+   runs, Live waits for X-Plane to quit before it takes its pack out: X-Plane reads its textures
+   from it. "Leave it installed" stops waiting; the window then offers to take the pack out once
+   X-Plane has quit.
 
 To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while it runs
 (`Resources/plugins/OrthoStudio XP Live`), and takes it out when it stops.
@@ -110,12 +120,19 @@ and how much disk the textures and the downloaded imagery may take.
 
 ## Where everything is, and the disk
 
-- `live/pack` in OrthoStudio XP's data folder: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while
-  OrthoStudio XP Live runs). Every texture of the region is there: built for real where you have flown,
-  a neutral placeholder that takes no space elsewhere.
-- `live/chunks.sqlite` in the data folder: the downloaded imagery, so that nothing is downloaded twice.
+Live has a folder of its own: `~/.orthostudio/live`, unless its settings choose another, on an APFS
+disk. Not OrthoStudio XP's data folder, which may move to another disk for a while: a pack following
+it would be set up again there, and what it held left behind. A folder whose disk is not plugged in
+is never made on the computer's own disk instead: Live says so and does not start.
 
-Both have a budget (`--disk-budget-gb`, 20 GB by default; `--cache-budget-gb`, 10 GB). Over it,
+- `pack`: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while OrthoStudio
+  XP Live runs). Every texture of the region is there: built for real where you have flown, a
+  neutral placeholder that takes no space elsewhere. (A disk-usage tool counts every placeholder
+  whole, terabytes of them: they share one file's blocks.)
+- `chunks.sqlite`: the downloaded imagery, so that nothing is downloaded twice.
+
+Both have a budget, set in the window (20 GB and 10 GB by default; `--disk-budget-gb` and
+`--cache-budget-gb` in a terminal, where the window's settings are the defaults). Over it,
 OrthoStudio XP Live makes the textures seen longest ago coarser, only those more than 300 km from the
 aircraft and the camera, where X-Plane reads nothing: first back to 256 px (their small levels are
 in the file, nothing to download), then to the placeholder; and it drops the imagery downloaded
@@ -139,6 +156,8 @@ Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
   never freezes waiting for it.
 - Stop OrthoStudio XP Live after quitting X-Plane: it takes its scenery and its plugin out of X-Plane
   when it stops, and if X-Plane is still running it waits for it to quit first.
+- If the streamer stops on an error, the window (or the terminal) says so at once, with the error,
+  and the plugin lets X-Plane go on and says so in X-Plane's Log.txt.
 - The plugin is compiled on your Mac the first time, which needs Xcode's command-line tools
   (`xcode-select --install`). Without them, OrthoStudio XP Live says so and works without the wait.
 

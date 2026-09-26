@@ -10,6 +10,8 @@ import ctypes
 import errno
 import os
 import shutil
+import threading
+from pathlib import Path
 
 _libc = ctypes.CDLL(None, use_errno=True)
 try:
@@ -27,6 +29,22 @@ def clone(src: str, dst: str) -> None:
     if _clonefile(os.fsencode(src), os.fsencode(dst), 0) != 0:
         err = ctypes.get_errno()
         raise OSError(err, os.strerror(err), dst)
+
+
+def clones_work(folder: Path) -> bool:
+    """Whether files in ``folder`` can be cloned: an APFS disk, writable."""
+    probe = folder / f".live-probe-{os.getpid()}-{threading.get_ident()}"
+    twin = Path(f"{probe}.clone")
+    try:
+        probe.write_bytes(b"x")
+        clone(str(probe), str(twin))
+        return True
+    except OSError:
+        return False
+    finally:
+        for f in (twin, probe):
+            with contextlib.suppress(OSError):
+                f.unlink()
 
 
 def clone_or_copy(src: str, dst: str) -> None:

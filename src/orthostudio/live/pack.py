@@ -2,14 +2,16 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Where OrthoStudio XP Live keeps its pack and its imagery, and what it has built.
 
-Both are heavy, so they live in OrthoStudio XP's data folder (:func:`orthostudio.home.data_root`),
-under ``live/``:
-- ``live/pack``, the pack X-Plane reads through the link ``z_osxp_live`` in Custom Scenery;
-- ``live/chunks.sqlite``, the downloaded image pieces.
+Both are heavy, and live in Live's own folder (:func:`live_root`): ``$OSXP_HOME/live``, on the
+computer's own disk, unless the Live window's settings chose another. Not OrthoStudio XP's data
+folder: that one may move to another disk for a while, and a pack following it would be set up
+again there, the textures built and the imagery downloaded left behind (a user, 2026-09-27).
+- ``pack``, the pack X-Plane reads through the link ``z_osxp_live`` in Custom Scenery;
+- ``chunks.sqlite``, the downloaded image pieces.
 
-The pack's textures are APFS clones of one neutral file until they are built, so the data folder
-must be on an APFS volume. ``_live/ortho.json`` in the pack records the level each texture is built
-to.
+The pack's textures are APFS clones of one neutral file until they are built, so the folder must be
+on an APFS disk (:func:`check_folder`). ``_live/ortho.json`` in the pack records the level each
+texture is built to.
 """
 
 from __future__ import annotations
@@ -18,14 +20,50 @@ import json
 from pathlib import Path
 from typing import Any
 
-from orthostudio.home import data_root
+from orthostudio.home import osxp_home
+from orthostudio.live.clone import clones_work
 
 LINK_NAME = "z_osxp_live"
 MARKER = Path("_live") / "ortho.json"
 
 
+def default_live_root() -> Path:
+    return osxp_home() / "live"
+
+
 def live_root() -> Path:
-    return data_root() / "live"
+    """Live's folder: the settings' ``folder``, else :func:`default_live_root`."""
+    from orthostudio.live.settings import load_settings
+
+    folder = load_settings().folder
+    return Path(folder) if folder else default_live_root()
+
+
+class FolderError(ValueError):
+    """A folder that cannot hold Live's pack; the message says why."""
+
+
+def check_folder(path: Path, *, custom_scenery: Path | None = None, create: bool = False) -> Path:
+    """``path``, once it can hold Live's pack. Raises :class:`FolderError` when it is not a full
+    path, when its disk is not there (never made on the computer's own disk instead), when it is a
+    file, inside X-Plane's Custom Scenery (which X-Plane reads as scenery), or on a disk that cannot
+    clone files: not APFS, or read only. ``create`` makes it when its parent is there."""
+    path = Path(path).expanduser()
+    if not path.is_absolute():
+        raise FolderError(f"{path} is not a full path")
+    if not path.exists() and not path.parent.is_dir():
+        raise FolderError(f"{path} is not there: is its disk plugged in?")
+    if path.exists() and not path.is_dir():
+        raise FolderError(f"{path} is a file, not a folder")
+    if custom_scenery is not None:
+        inside, scenery = path.resolve(), Path(custom_scenery).resolve()
+        if inside == scenery or scenery in inside.parents:
+            raise FolderError(f"{path} is inside X-Plane's Custom Scenery, read as scenery")
+    if not clones_work(path if path.exists() else path.parent):
+        raise FolderError(f"{path} cannot hold the pack: its disk must be APFS, and writable")
+    if create:
+        path.mkdir(exist_ok=True)
+    return path
 
 
 def default_pack_dir() -> Path:

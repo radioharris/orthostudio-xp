@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
-from .evict import EVICT_SAFE_KM, TARGET, pick, usage
+from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .geo import haversine_m, parse_texture_name
 from .pack import MARKER, load_built
 from .region import NEUTRAL_FILE, NEUTRAL_LEVEL
@@ -50,6 +50,8 @@ LOAD_KM = (
 LOOKAHEAD_MIN = 5.0  # the path ahead the planner looks along
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
+REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+LEVELS = 5  # 0 (4096 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
@@ -533,26 +535,43 @@ class Streamer:
         tmp.write_text(json.dumps(meta))
         os.replace(tmp, self.pack_dir / MARKER)
 
-    def status(self) -> str:
-        with self.lock:
+    def snapshot(self) -> dict:
+        """What the streamer is doing, counted by level (0 the sharpest, 4 the 256 px one): the
+        status line's figures, and the Live window's."""
+        with self.lock:  # counted here: the builder changes all of them meanwhile
             queued = Counter(level for _, level in self.queue.values())
             urgent = sum(1 for u, _ in self.queue.values() if u <= 0)
             flying = len(self.in_flight)
-            built = dict(self.built)  # a copy: the builder adds to it meanwhile
-            done = sorted(self.done.items())
-        q = " ".join(f"L{k}:{v}" for k, v in sorted(queued.items())) or "empty"
-        d = " ".join(f"L{k}:{v}" for k, v in done) or "nothing yet"
+            levels = Counter(self.built.values())
+            done = dict(self.done)
         dl = self.downloader
-        failed = getattr(dl, "failed", 0)
+        return {
+            "queued": [queued.get(lv, 0) for lv in range(LEVELS)],
+            "urgent": urgent,
+            "building": flying,
+            "pieces_awaited": self.pieces_pending,
+            "built": [done.get(lv, 0) for lv in range(LEVELS)],  # since the streamer started
+            "downloaded": getattr(dl, "downloaded", 0),
+            "downloaded_bytes": getattr(dl, "bytes", 0),
+            "from_cache": self.from_cache,
+            "failed": getattr(dl, "failed", 0),
+            "disk_bytes": levels_usage(levels),
+            "disk_budget": self.disk_budget,
+            "reload_pending": self.reload_pending,
+        }
+
+    def status(self) -> str:
+        s = self.snapshot()
+        q = " ".join(f"L{lv}:{n}" for lv, n in enumerate(s["queued"]) if n) or "empty"
+        d = " ".join(f"L{lv}:{n}" for lv, n in enumerate(s["built"]) if n) or "nothing yet"
         return (
-            f"queue {q} (urgent {urgent}), building {flying}, {self.pieces_pending} pieces "
-            f"awaited | built {d} | "
-            f"pieces {getattr(dl, 'downloaded', 0)} downloaded "
-            f"({getattr(dl, 'bytes', 0) / 1e6:.0f} MB), "
-            f"{self.from_cache} from cache"
-            + (f", {failed} failed" if failed else "")
-            + f" | disk {usage(built) / 1e9:.1f}/{self.disk_budget / 1e9:.0f} GB"
-            + (" | reload pending" if self.reload_pending else "")
+            f"queue {q} (urgent {s['urgent']}), building {s['building']}, "
+            f"{s['pieces_awaited']} pieces awaited | built {d} | "
+            f"pieces {s['downloaded']} downloaded ({s['downloaded_bytes'] / 1e6:.0f} MB), "
+            f"{s['from_cache']} from cache"
+            + (f", {s['failed']} failed" if s["failed"] else "")
+            + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
+            + (" | reload pending" if s["reload_pending"] else "")
         )
 
 
@@ -629,6 +648,52 @@ class Rate:
         return (total_bytes - b0) / 1e6 / (now - t0) if now > t0 else 0.0
 
 
+def progress_report(
+    streamer: Streamer,
+    values: dict[str, float],
+    arrival: Arrival | None,
+    now: float,
+    last_packet: float,
+    mbs: float,
+) -> dict:
+    """What the Live window shows: what X-Plane sends, the start it loads, the streamer's figures.
+
+    ``data`` is ``none`` before X-Plane sends its position, ``fresh`` while it does, and ``stale``
+    once it stops: X-Plane loads a flight, or has quit."""
+    aircraft = None
+    if values.get("lat"):
+        aircraft = {
+            "lat": values["lat"],
+            "lon": values.get("lon", 0.0),
+            "alt_ft": values.get("alt_m", 0.0) * 3.28084,
+            "gs_kt": values.get("gs_ms", 0.0) * 1.94384,
+        }
+    fix = streamer.last_fix
+    camera_km = None
+    if fix is not None and fix.cam_lat is not None and fix.cam_lon is not None:
+        camera_km = haversine_m(fix.lat, fix.lon, fix.cam_lat, fix.cam_lon) / 1000.0
+    start = None
+    if arrival is not None:
+        left, work = streamer.urgent_work()
+        start = {
+            "name": arrival.name,
+            "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
+            "ready": arrival.ready_at is not None,
+            "left": left,
+            "progress": arrival.progress(work),
+            "seconds": now - arrival.since,
+        }
+    fresh = now - last_packet < FRESH_S
+    return {
+        "data": "none" if aircraft is None else "fresh" if fresh else "stale",
+        "aircraft": aircraft,
+        "camera_km": camera_km,
+        "start": start,
+        "mbs": mbs,
+        "streamer": streamer.snapshot(),
+    }
+
+
 def run(
     streamer: Streamer,
     xp,
@@ -638,18 +703,21 @@ def run(
     gate=None,
     start_name: str | None = None,
     guess_last: bool = True,
+    report: Callable[[dict], None] | None = None,
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
     ``gate`` (``orthostudio.live.gate.Gate``) hears of a flight's start from Freeflight.prf and
     from the plugin,
-    and holds X-Plane until everything it will read there is built."""
+    and holds X-Plane until everything it will read there is built. ``report`` is given every
+    second what the Live window shows (:func:`progress_report`)."""
     from .scenery import xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
     values: dict[str, float] = {}
     arrival: Arrival | None = None
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
+    last_report = 0.0
 
     rate = Rate()
 
@@ -814,6 +882,9 @@ def run(
                     if cam_km > 0.5:
                         where += f" (camera {cam_km:.1f} km away)"
                 log(f"  {where} | {streamer.status()} | {mbs:.1f} MB/s")
+            if report is not None and now - last_report >= REPORT_EVERY_S:
+                last_report = now
+                report(progress_report(streamer, values, arrival, now, last_packet, mbs))
             if now - last_save >= 30:
                 streamer.save()
                 last_save = now
