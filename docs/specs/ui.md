@@ -143,7 +143,10 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   a point of a free shape; from there the map stops panning and every whole square between the
   press and the pointer is chosen as it goes (`tilesInBounds`), drawn as a dashed band
   (`osxp-sweep-box`). Drawn back the other way they leave again, since the selection is rebuilt
-  each time from the one before the sweep. **Started on a square already chosen**, the rectangle
+  each time from the one before the sweep, and so are the squares chosen by hand and those taken
+  out of the flight plan: a square of the route the rectangle leaves again is the plan's again,
+  at the route's level (measured step by step, it came back as the pilot's own, review of
+  2026-09-26). **Started on a square already chosen**, the rectangle
   takes its squares out instead (the band in `--fg-2`), which is how a user asked to drop them.
   A sweep never passes `MAX_BUILD_TILES` or takes a tile of a running build, the click that ends
   the drag is dropped (`skipClick`), and a toast says how many went in or out. Below

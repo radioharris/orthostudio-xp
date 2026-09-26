@@ -4900,6 +4900,80 @@ def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
         assert "Shift" in texts[0] and "7" in texts[1] and "3" in texts[2] and "500" in texts[3]
 
 
+def _sweep_script(app_js: str, scenario: str) -> str:
+    """The page's own sweep, hand and flight plan code under node, with the rest stubbed."""
+    sweep_end = _function_body(app_js, "sweepEnd")
+    sweep = app_js[app_js.index("\nlet sweepBefore = null;") : app_js.index(sweep_end)] + sweep_end
+    return "\n".join(
+        [
+            "import { excluding, groupsOf, levelOf, newFlightPlan, toSaved }"
+            ' from "./flightplan.js";',
+            'const STORAGE_KEY = "osxp.flightplan";',
+            "const localStorage = { setItem() {}, removeItem() {} };",
+            "const MAX_BUILD_TILES = 500;",
+            "const activeJobs = () => [];",
+            "const tilesInBuilds = () => new Set();",
+            "const selectionChanged = () => {};",
+            "const state = { tiles: [], byHand: new Set(), flightPlan: null };",
+            sweep,
+            _function_body(app_js, "handChanged"),
+            _function_body(app_js, "setFlightPlanState"),
+            scenario,
+        ]
+    )
+
+
+SWEEP_BACK = """
+const squares = { ends: ["+47+008"], along: ["+46+006", "+45+006", "+44+006"] };
+const answer = { from: "LSZH", to: "LGAV", points: [], radius_km: 15, squares };
+state.flightPlan = newFlightPlan(answer, { ends: 16, along: 14 });
+state.tiles = ["+47+008", "+46+006", "+45+006"]; // +44+006 left out, as by the cap
+const view = (name) => ({
+  chosen: state.tiles.includes(name),
+  byHand: state.byHand.has(name),
+  zl: levelOf(name, {
+    byHand: state.byHand, groups: groupsOf(state.flightPlan),
+    levels: state.flightPlan.levels, stepZl: 16, maxZl: 19,
+  }),
+});
+const out = { before: view("+45+006") };
+sweepStart(true); // started on a chosen square: the rectangle takes out
+sweepTo(["+46+006", "+45+006"]);
+out.during = view("+45+006");
+sweepTo(["+46+006"]); // drawn back: +45+006 outside it again
+sweepEnd();
+out.after = view("+45+006");
+out.outAfterRemoving = [...state.flightPlan.excluded];
+sweepStart(false);
+sweepTo(["+44+006"]);
+out.added = view("+44+006");
+sweepTo([]); // drawn back to nothing
+sweepEnd();
+out.addedThenLeft = view("+44+006");
+out.outAfterAdding = [...state.flightPlan.excluded];
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def test_a_sweep_drawn_back_leaves_the_route_as_it_was() -> None:
+    """A sweep that takes two squares of the route out, then is drawn back over one of them, puts
+    that one back as it was: the plan's, at the route's level. Each step was measured from the one
+    before, so it came back as the pilot's own, at step 1's level (four times the imagery), out of
+    the plan, and kept when the plan was deleted (review of 2026-09-26). A sweep that adds a square
+    of the plan the cap had left out, then leaves it again, does not take it out of the plan."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    got = _run_node(_sweep_script(app_js, SWEEP_BACK))
+    assert got["before"] == {"chosen": True, "byHand": False, "zl": 14}
+    assert got["during"]["chosen"] is False
+    assert got["after"] == got["before"], got["after"]
+    assert got["outAfterRemoving"] == ["+46+006"]  # the square still in the rectangle
+    assert got["added"] == {"chosen": True, "byHand": True, "zl": 16}
+    assert got["addedThenLeft"] == {"chosen": False, "byHand": False, "zl": 14}
+    assert got["outAfterAdding"] == ["+46+006"]
+
+
 def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     """The map's zoom is the web-mercator level, so what a pilot sees while panning is what that
     level would put on the ground. They asked for it in those words: it "helps to get an impression

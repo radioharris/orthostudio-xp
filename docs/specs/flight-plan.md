@@ -129,7 +129,8 @@ the plan and whether the route's squares are wanted (`along`). Nothing else is h
   build takes. Squares chosen by hand stay either way, and the choice is kept with the plan.
 * **By hand.** A square added by hand (a click, a sweep, a name, an airport, a zone) is the pilot's
   (`state.byHand`); one taken out by hand (its chip's cross, a click, a sweep) leaves the plan too,
-  or the next visit would choose it again.
+  or the next visit would choose it again. A sweep counts from where it started: a square its
+  rectangle leaves again is as it was before the sweep, neither the pilot's nor out of the plan.
 * **Deleting.** *Delete the flight plan* takes the plan's squares away, except those also chosen by
   hand. Step 1's trash empties the whole selection and takes the plan with it. Starting a build
   with the selection forgets the plan too: kept, the next visit would have chosen its squares again.

@@ -2538,13 +2538,19 @@ function keepInPlace(el, fn) {
 }
 
 let sweepBefore = null;
+let sweepHand = null;
+let sweepPlan = null;
 let sweepRemoves = false;
 
 /** A sweep on the map (`map.js`): the squares chosen before it, then those of its rectangle, in
  * one render. Started on a square already chosen, it takes the rectangle's out instead (a user,
- * 2026-09-22); the rectangle followed back takes back what it did, either way. */
+ * 2026-09-22); the rectangle followed back takes back what it did, either way. What the pilot's
+ * hand chose and what it took out of the flight plan are kept as they were at its start, since
+ * each of its steps is measured from there. */
 function sweepStart(remove = false) {
   sweepBefore = [...state.tiles];
+  sweepHand = new Set(state.byHand);
+  sweepPlan = state.flightPlan;
   sweepRemoves = Boolean(remove);
 }
 
@@ -2572,9 +2578,17 @@ function sweepTo(names) {
   }
   const same = wanted.length === state.tiles.length && wanted.every((n, i) => n === state.tiles[i]);
   if (!same) {
-    const before = state.tiles;
     state.tiles = wanted;
-    handChanged(before, wanted);
+    // from the sweep's start, not from its last step: measured step by step, a square of the
+    // route the rectangle took out then left again came back as the pilot's own, at step 1's
+    // level and out of the plan (review of 2026-09-26)
+    state.byHand.clear();
+    for (const name of sweepHand) state.byHand.add(name);
+    const fp = state.flightPlan;
+    if (fp && fp.plan === sweepPlan?.plan && fp.excluded !== sweepPlan.excluded) {
+      setFlightPlanState({ ...fp, excluded: sweepPlan.excluded });
+    }
+    handChanged(sweepBefore, wanted);
     selectionChanged();
   }
   return capped;
@@ -2584,6 +2598,8 @@ function sweepTo(names) {
 function sweepEnd() {
   const n = sweepBefore === null ? 0 : Math.abs(state.tiles.length - sweepBefore.length);
   sweepBefore = null;
+  sweepHand = null;
+  sweepPlan = null;
   return n;
 }
 
