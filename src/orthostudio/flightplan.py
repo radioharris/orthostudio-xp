@@ -112,15 +112,20 @@ def pieces_of(path: Sequence[LatLon]) -> list[list[LatLon]]:
     if not path:
         return []
     pieces: list[list[LatLon]] = [[path[0]]]
-    for (lat0, lon0), (lat1, lon1) in pairwise(path):
+    for lat1, lon1 in path[1:]:
+        # from the point last drawn, which may be a fix on the meridian itself: -180 and 180 are
+        # the same place, and a fix at -180 reached from the west, drawn as it was given, joined
+        # 179.9 to -180 across the whole world (review of 2026-09-26)
+        lat0, lon0 = pieces[-1][-1]
         u = _unwrapped(lon0, lon1)
         if -180.0 <= u <= 180.0:
-            pieces[-1].append((lat1, lon1))
+            pieces[-1].append((lat1, u))
             continue
         edge = 180.0 if u > 180.0 else -180.0
         t = (edge - lon0) / (u - lon0)
         lat = lat0 + t * (lat1 - lat0)
-        pieces[-1].append((lat, edge))
+        if lon0 != edge:  # already on it when the fix was
+            pieces[-1].append((lat, edge))
         pieces.append([(lat, -edge), (lat1, lon1)])
     return [p for p in pieces if len(p) > 1] or [pieces[0]]
 

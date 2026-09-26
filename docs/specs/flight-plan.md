@@ -71,7 +71,9 @@ came from copies of one thing disagreeing:
   the installer was not asked for). A build stops on such a square (`DSF_GLOBAL_SCENERY_MISSING`),
   so the plan does not choose it and says how many it left;
 * the path is cut where it crosses the antimeridian, as a chart draws it, since the map cannot pan
-  beyond ±180°; the **bounds** keep a Pacific crossing in one frame (east may pass 180) so the map
+  beyond ±180°; a fix on the meridian itself, given as -180 or 180, belongs to the side the line
+  comes from (drawn as given, it joined 179.9 to -180 across the whole map, review of
+  2026-09-26); the **bounds** keep a Pacific crossing in one frame (east may pass 180) so the map
   can be fitted to it.
 
 What the map draws is this path, so what is drawn is what is chosen. Measured against a walk in

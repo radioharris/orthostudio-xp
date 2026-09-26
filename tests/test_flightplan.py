@@ -106,6 +106,24 @@ def test_the_pacific_is_crossed_the_short_way_and_drawn_within_the_world() -> No
     assert not any(-100 < s.lon < 100 for s in squares)  # never round the long way
 
 
+@pytest.mark.parametrize("fix", [-180.0, 180.0])
+@pytest.mark.parametrize("eastbound", [True, False])
+def test_a_fix_on_the_antimeridian_does_not_draw_across_the_world(
+    fix: float, eastbound: bool
+) -> None:
+    """Pacific routes have fixes on 180 itself, written -180 or 180: reached from the side the
+    other sign names, it was drawn as it came, and the line crossed the whole map (review of
+    2026-09-26). Whatever the sign and the way flown, two pieces meet on the meridian and no step
+    of either jumps."""
+    points = [RJTT, (40.0, 170.0), (40.0, fix), (40.0, -170.0), (33.9425, -118.4081)]
+    pieces = pieces_of(path_of(points if eastbound else points[::-1]))
+    assert len(pieces) == 2
+    for piece in pieces:
+        assert all(-180.0 <= lon <= 180.0 for _, lon in piece)
+        assert all(abs(b[1] - a[1]) < 1.0 for a, b in pairwise(piece)), "a step jumps"
+    assert abs(pieces[0][-1][1]) == abs(pieces[1][0][1]) == 180.0
+
+
 def test_the_ends_are_the_airport_fields_squares_departure_first() -> None:
     plan = plan_of([LSGG, LFMN], radius_km=15.0)
     ends = plan["squares"]["ends"]
