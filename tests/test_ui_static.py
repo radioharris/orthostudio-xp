@@ -3667,7 +3667,7 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     ]
     # a row for each program and a column for X-Plane having them or not, the second column's
     # cells the boxes that hide them, each program its own; Ortho4XP's row when it has tiles
-    assert "clear(box).append(view, tilesTable(), " in legend
+    assert "clear(box).append(view, tilesTable(marks));" in legend
     assert "inside: installed.some((name) => ortho4xp.has(name))," in legend
     assert "outside: built.some((name) => ortho4xp.has(name))" in legend
     assert ".filter((p) => p.inside || p.outside);" in legend
@@ -3719,8 +3719,8 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     under it, and the choice is remembered. And a redraw, on every zoom, gives the focus back to
     the control that had it: it used to go to the first checkbox, whichever had it."""
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
-    spacer = rules[".map-legend li:not(.legend-toggle)::before"]
-    assert 'content: "";' in spacer and "width: 13px;" in spacer
+    # every line starts at the legend's edge, the zones' too (2026-09-26): no room kept
+    assert not any("::before" in selector for selector in rules if ".map-legend li" in selector)
     assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
     assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
     # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
@@ -3736,7 +3736,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
     assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
-    folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const row = ")]
+    folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const marks = ")]
     assert 'class: "btn btn-small legend-unfold"' in folded, (
         "an ordinary small button, as on the map"
     )
@@ -3758,7 +3758,25 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
     # under the tiles' table a line for each mark: set side by side, the map's boxes went on
     # over two lines and read as a jumble (the same user, 2026-09-26)
-    assert "if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());" in legend
+    assert (
+        'if (map) box.append(h("ul", null, bordersToggle(), airportsToggle(), streetToggle()));'
+        in legend
+    )
+    # the chosen tiles, the route's ends and the build's states are rows of the tiles' table,
+    # their mark over both columns (the same user found the blue aside from the rows above)
+    assert 'const marks = [["legend-selected", t("map.legend_selected")]];' in legend
+    assert 'marks.push(["legend-route-end", t("map.legend_route_ends")])' in legend
+    assert 'h("td", { colspan: outside ? "2" : null }, h("span' in legend
+    # the zones' levels fold away under their title, remembered (2026-09-26)
+    assert 'const LEGEND_ZONES_KEY = "osxp.mapLegendZones";' in map_js
+    assert 'legendZonesOpen: storageGet(LEGEND_ZONES_KEY) !== "0",' in map_js
+    assert '"data-keep": "zones-fold",' in legend
+    assert "onclick: () => setLegendZonesOpen(!open)," in legend
+    assert 'if (open) box.append(h("ul", null, levels.map(' in legend
+    zones_fold = map_js[map_js.index("  function setLegendZonesOpen(open) {") :]
+    assert 'storageSet(LEGEND_ZONES_KEY, open ? "1" : "0");' in zones_fold[:200]
+    assert "rotate(-45deg)" in rules[".map-legend .legend-fold.is-closed::before"]
+    assert "vertical-align: middle;" in rules[".map-legend .legend-check"], "on its row's line"
     assert "legend-row" not in map_js
 
 
@@ -5118,9 +5136,19 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     # and the legend puts it on the map, redrawn when the zoom or the latitude moves under it
     code = (UI / "map.js").read_text(encoding="utf-8")
     legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
-    assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
-    assert "clear(box).append(view, tilesTable(), " in legend, "the view line first"
-    assert 'h("div", { class: "legend-head" }, h("p", { class: "legend-view" }' in legend
+    # the level alone on the line, the whole sentence on hover (the same user found it long,
+    # 2026-09-26); past the ceiling the line still says the view is enlarged
+    assert (
+        'h("p", { class: "legend-view", title: t("map.view", { label: viewLabel(...viewNow()) }) }'
+        in legend
+    )
+    assert 't("map.view", { label: short })' in legend
+    assert 't("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow })' in legend
+    assert "clear(box).append(view, tilesTable(marks));" in legend, "the view line first"
+    assert 'h("div", { class: "legend-head" }, h("p", { class: "legend-view",' in legend
+    tables = _i18n_tables()
+    assert tables["fr"]["map.view_zl"] == tables["en"]["map.view_zl"] == "ZL{zl}"
+    assert tables["fr"]["map.view_over_short"] == "ZL{zl}, agrandie"
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]
         called = handler[: handler.index("});")].splitlines()

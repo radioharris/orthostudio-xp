@@ -109,6 +109,9 @@ const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";
 
 /** The legend folded away, to see the map under it (a user, 2026-09-25): open unless folded. */
 const LEGEND_KEY = "osxp.mapLegend";
+
+/** The zones' levels folded away under their title (a user, 2026-09-26): open unless folded. */
+const LEGEND_ZONES_KEY = "osxp.mapLegendZones";
 const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
 const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
 const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
@@ -309,6 +312,7 @@ export function createPlanMap(ctx) {
     builtWanted: storageGet(BUILT_KEY) !== "0",
     builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",
     legendOpen: storageGet(LEGEND_KEY) !== "0",
+    legendZonesOpen: storageGet(LEGEND_ZONES_KEY) !== "0",
     street: {
       wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
@@ -1526,15 +1530,20 @@ export function createPlanMap(ctx) {
     const missing = zs.airports.wanted && zs.airports.missing;
     let text = t("map.airports");
     if (missing) text = t("map.airports_missing");
-    else if (zs.airports.wanted && !close) text = t("map.airports_zoomed");
+    // Too far to show them: said on hover and by a dimmed label, no longer in brackets after the
+    // name (the same user, 2026-09-26).
+    const far = !missing && zs.airports.wanted && !close;
     const input = h("input", {
       type: "checkbox",
       checked: zs.airports.wanted,
       "data-keep": "airports",
       onchange: (ev) => setAirportsWanted(ev.target.checked),
     });
-    return h("li", { class: "legend-toggle" },
-      h("label", { title: missing ? t("map.airports_missing_hint") : t("map.airports_hint") },
+    let hint = t("map.airports_hint");
+    if (missing) hint = t("map.airports_missing_hint");
+    else if (far) hint = `${t("map.airports_zoomed")} ${t("map.airports_hint")}`;
+    return h("li", { class: far ? "legend-toggle is-idle" : "legend-toggle" },
+      h("label", { title: hint },
         input, h("span", { class: "legend-swatch legend-airport", "aria-hidden": "true" }), text));
   }
 
@@ -2287,30 +2296,50 @@ export function createPlanMap(ctx) {
       refocus();
       return;
     }
-    const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
-    const items = [row("legend-selected", t("map.legend_selected"))];
+    // The other marks of a tile go in the tiles' table too, under the programs: on a line of the
+    // list below, the chosen tiles' blue stood aside from the rows above (the same user, 2026-09-26).
+    const marks = [["legend-selected", t("map.legend_selected")]];
     const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
     // The chevron on the view line itself, the height of one line: it sat two pixels above it,
     // placed by hand in the corner (measured, 2026-09-25).
-    const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view" }, t("map.view", { label: viewLabel(...viewNow()) })), fold);
-    if (ctx.route?.()?.path?.length) {
-      items.push(row("legend-route-end", t("map.legend_route_ends")));
-    }
+    // The level alone on the line, the whole sentence on hover (the same user found it long,
+    // 2026-09-26); past the source's ceiling it still says the view is enlarged.
+    const [zoomNow, , ceilingNow] = viewNow();
+    const short = Number.isInteger(ceilingNow) && zoomNow > ceilingNow ? t("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow });
+    const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view", title: t("map.view", { label: viewLabel(...viewNow()) }) }, t("map.view", { label: short })), fold);
+    if (ctx.route?.()?.path?.length) marks.push(["legend-route-end", t("map.legend_route_ends")]);
     const states = new Set(buildingNow().values());
-    if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
-    if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
-    if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
-    if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
+    if (states.has("working")) marks.push(["legend-working", t("map.legend_working")]);
+    if (states.has("queued")) marks.push(["legend-queued", t("map.legend_queued")]);
+    if (states.has("failed")) marks.push(["legend-failed", t("map.legend_failed")]);
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
-    // Under the tiles' table, a line for each mark, as before it came (the same user, 2026-09-26:
-    // set side by side, the map's boxes went on over two lines and read as a jumble).
-    clear(box).append(view, tilesTable(), h("ul", null, items));
+    // Under the tiles' table, a line for each of the map's boxes (the same user, 2026-09-26: set
+    // side by side, they went on over two lines and read as a jumble).
+    clear(box).append(view, tilesTable(marks));
+    if (map) box.append(h("ul", null, bordersToggle(), airportsToggle(), streetToggle()));
+    if (levels.length) {
+      // The zones' levels fold away under their title (the same user, 2026-09-26), as the legend
+      // itself does, and the choice is remembered.
+      const open = zs.legendZonesOpen;
+      const zonesFold = h("button", {
+        type: "button",
+        class: open ? "legend-fold" : "legend-fold is-closed",
+        "data-keep": "zones-fold",
+        "aria-expanded": open ? "true" : "false",
+        title: open ? t("map.legend_zones_hide") : t("map.legend_zones_show"),
+        "aria-label": open ? t("map.legend_zones_hide") : t("map.legend_zones_show"),
+        onclick: () => setLegendZonesOpen(!open),
+      });
+      box.append(h("div", { class: "legend-head legend-zones-head" }, h("p", { class: "legend-title" }, t("map.legend_zones")), zonesFold));
+      if (open) box.append(h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))));
+    }
     refocus();
-    if (!levels.length) return;
-    box.append(
-      h("p", { class: "legend-title" }, t("map.legend_zones")),
-      h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))),
-    );
+  }
+
+  function setLegendZonesOpen(open) {
+    zs.legendZonesOpen = open;
+    storageSet(LEGEND_ZONES_KEY, open ? "1" : "0");
+    renderLegend();
   }
 
   /**
@@ -2319,8 +2348,9 @@ export function createPlanMap(ctx) {
    * has its tiles; the second column only when there are tiles not in X-Plane, each cell there the
    * box that hides them, each program its own. Four lines of the list took the room of two more,
    * and the words over the columns are short ("In XP", "Not in XP"), the whole ones on hover.
+   * `marks`, the other marks of a tile ([swatch, name]), follow as rows of their own.
    */
-  function tilesTable() {
+  function tilesTable(marks) {
     const ortho4xp = ortho4xpTiles();
     const built = builtTiles();
     const installed = installedTiles();
@@ -2341,7 +2371,13 @@ export function createPlanMap(ctx) {
       h("th", { scope: "row" }, p.name),
       h("td", null, p.inside ? mark(p.by) : null),
       outside ? h("td", null, p.outside ? builtToggle(p.by) : null) : null));
-    return h("table", { class: "legend-tiles" }, h("thead", null, head), h("tbody", null, rows));
+    // The chosen tiles, the route's ends and the build's states: their name under the programs',
+    // their mark under the programs' marks, over both columns since X-Plane has nothing to do with
+    // them.
+    const others = marks.map(([swatch, text]) => h("tr", null,
+      h("th", { scope: "row" }, text),
+      h("td", { colspan: outside ? "2" : null }, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }))));
+    return h("table", { class: "legend-tiles" }, h("thead", null, head), h("tbody", null, rows, others));
   }
 
   /** The legend's box for the tiles built and not in X-Plane, OrthoStudio XP's or Ortho4XP's
@@ -2384,16 +2420,18 @@ export function createPlanMap(ctx) {
   /** The legend's borders line: a checkbox, and why nothing shows when zoomed in close. */
   function bordersToggle() {
     let text = t("map.borders");
-    if (borders.wanted && map.getZoom() > BORDERS_MAX_ZOOM) text = t("map.borders_zoomed");
-    else if (borders.wanted && borders.failed) text = t("map.borders_failed");
+    // Too close to show them: said on hover and by a dimmed label, no longer in brackets after
+    // the name (the same user, 2026-09-26).
+    const far = borders.wanted && map.getZoom() > BORDERS_MAX_ZOOM;
+    if (!far && borders.wanted && borders.failed) text = t("map.borders_failed");
     const input = h("input", {
       type: "checkbox",
       checked: borders.wanted,
       "data-keep": "borders",
       onchange: (ev) => setBordersWanted(ev.target.checked),
     });
-    return h("li", { class: "legend-toggle" },
-      h("label", { title: t("map.borders_hint") },
+    return h("li", { class: far ? "legend-toggle is-idle" : "legend-toggle" },
+      h("label", { title: far ? `${t("map.borders_zoomed")} ${t("map.borders_hint")}` : t("map.borders_hint") },
         input, h("span", { class: "legend-swatch legend-border", "aria-hidden": "true" }), text));
   }
 

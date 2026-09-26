@@ -910,7 +910,8 @@ whether a square holds the airport he wants, 2026-09-19): a checkbox in the lege
 airports of the view, from the index the app ships (`GET /api/airports/in`), so nothing is
 downloaded and they show **over the aerial imagery**, where a runway is not always obvious. Off
 unless the user asks, remembered in `localStorage` (`osxp.mapAirports`). Below zoom
-`AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line says to zoom in; from there
+`AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line, dimmed, says to zoom in on
+hover (in brackets after its name until 2026-09-26, when a user asked for them to go); from there
 the rings alone say where the airports are, and the codes join them at `AIRPORTS_LABEL_ZOOM` (9),
 since half a continent of codes is a wall of text (same user). Above the threshold,
 the view is read with a quarter of padding, rounded to a tenth of a degree so that panning a
@@ -989,6 +990,10 @@ The source is chosen in step 1, not on the map, so the line is drawn again in `s
 well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
 on promising 40 cm per pixel over an enlarged ZL14 tile (2026-09-25).
 
+The line itself shows the level alone since 2026-09-26, *This view: ZL16*, or *This view: ZL18,
+enlarged* past the source's ceiling, and the whole sentence above on hover (`title`): the same
+user found it long for a line of the legend (`map.view_zl`, `map.view_over_short`).
+
 **The map stays where it was left.** While Works, the Library or Settings is shown the map is
 hidden and measures 0 by 0; the `ResizeObserver` that tells Leaflet its size (so a click lands
 where the pointer is) passed that on, and on coming back `show` measured again from it and moved
@@ -1040,8 +1045,14 @@ table (`tilesTable`, the same user): a row for each program, *OrthoStudio XP* al
 whole words on hover: *Not in X-Plane* made the legend wider than its view line), the latter
 only when there are such tiles. Each cell of that column is the box that
 hides them, each program its own (`builtShown`: `osxp.mapBuilt`, `osxp.mapBuiltOrtho4xp`),
-named for a screen reader by the line it stands for (*Ortho4XP, not in X-Plane*). Chosen is
-blue, the flight plan's ends orange (`--route`), and the zones keep the colours of their levels.
+named for a screen reader by the line it stands for (*Ortho4XP, not in X-Plane*); its checkbox
+sits on its row's line (`vertical-align: middle`: it stood 3 to 4 px above the name). The other
+marks of a tile follow as rows of the same table, their mark over both columns since X-Plane
+has nothing to do with them: the chosen tiles, the route's ends and the build's states (on a
+line of the list, the chosen tiles' blue stood aside from the rows above, the same user). Chosen
+is blue, the flight plan's ends orange (`--route`), and the zones keep the colours of their
+levels; their levels fold away under their title with a chevron of their own, remembered
+(`osxp.mapLegendZones`, open unless folded).
 
 **Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
 so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
@@ -1059,9 +1070,10 @@ unless unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the
 hover.
 
 **The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
-a line without a checkbox now keeps the checkbox's room (`li:not(.legend-toggle)::before`, 13 px)
-and every mark is 14 px wide (the airport's 10 px ring gets 2 px each side), and they all start at
-71. A chevron at the end of its first line folds it away to see the map under it, one *Legend*
+a line without a checkbox kept the checkbox's room (13 px) and every mark is 14 px wide (the
+airport's 10 px ring gets 2 px each side), so they all started at 71. Since the tile marks went to
+their table (2026-09-26, below), the zones' levels were the only lines without a box; they start
+at the legend's edge as the rest does (the same user). A chevron at the end of its first line folds it away to see the map under it, one *Legend*
 button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
 `aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
 is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an

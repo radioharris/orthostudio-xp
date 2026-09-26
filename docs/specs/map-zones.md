@@ -292,7 +292,9 @@ white at 28 % opacity: installed and selected tiles carry the colour).
   while they are on the map.
 - **Zoom**: shown up to map zoom 10 (`BORDERS_MAX_ZOOM`). The data is accurate to a few hundred
   metres, which would show against the imagery closer in (checked on the Rhine at Basel: on the
-  river at zoom 10). The legend then reads "Country borders (zoom out to see them)".
+  river at zoom 10). The legend's line is then dimmed and says "Zoom out to see them." on hover
+  (it read "Country borders (zoom out to see them)" until a user asked for the brackets to go,
+  2026-09-26).
 - **Switch**: a checkbox in the legend, on by default, remembered in `localStorage`
   (`orthostudio.mapBorders`); the legend keeps the keyboard focus on it when it is rebuilt. A file
   that cannot be read (OrthoStudio XP being restarted, for instance) leaves the rest of the map
