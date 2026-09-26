@@ -104,6 +104,12 @@ const FRAME_INSET = 2.5;
 /** The tiles built and not in X-Plane on the map: shown unless the user unticked them. */
 const BUILT_KEY = "osxp.mapBuilt";
 
+/** The tiles in X-Plane on the map, OrthoStudio XP's: shown unless unticked (a user, 2026-09-26). */
+const INSTALLED_KEY = "osxp.mapInstalled";
+
+/** The same for the tiles in X-Plane Ortho4XP built. */
+const INSTALLED_ORTHO4XP_KEY = "osxp.mapInstalledOrtho4xp";
+
 /** The same for the tiles Ortho4XP built, a line of the legend of their own (2026-09-26). */
 const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";
 
@@ -112,6 +118,9 @@ const LEGEND_KEY = "osxp.mapLegend";
 
 /** The zones' levels folded away under their title (a user, 2026-09-26): open unless folded. */
 const LEGEND_ZONES_KEY = "osxp.mapLegendZones";
+
+/** The legend's display boxes folded away under "Show" (a user, 2026-09-26): open unless folded. */
+const LEGEND_SHOW_KEY = "osxp.mapLegendShow";
 const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
 const MAPLIBRE_JS = "static/vendor/maplibre/maplibre-gl.js";
 const MAPLIBRE_BRIDGE = "static/vendor/maplibre/leaflet-maplibre-gl.js";
@@ -309,10 +318,13 @@ export function createPlanMap(ctx) {
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
+    installedWanted: storageGet(INSTALLED_KEY) !== "0",
+    installedOrtho4xpWanted: storageGet(INSTALLED_ORTHO4XP_KEY) !== "0",
     builtWanted: storageGet(BUILT_KEY) !== "0",
     builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",
     legendOpen: storageGet(LEGEND_KEY) !== "0",
     legendZonesOpen: storageGet(LEGEND_ZONES_KEY) !== "0",
+    legendShowOpen: storageGet(LEGEND_SHOW_KEY) !== "0",
     street: {
       wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
@@ -1104,7 +1116,7 @@ export function createPlanMap(ctx) {
     const lat = Math.floor(clampLat(ev.latlng.lat));
     const lon = Math.floor(wrapLon(ev.latlng.lng));
     const name = tileName(lat, lon);
-    const text = installedTiles().includes(name) || builtShown().includes(name) ? ctx.builtSummary?.(name) : null;
+    const text = installedShown().includes(name) || builtShown().includes(name) ? ctx.builtSummary?.(name) : null;
     if (!text) return hideTip();
     if (!tip) {
       tip = document.createElement("div");
@@ -1976,6 +1988,13 @@ export function createPlanMap(ctx) {
     return new Set([...shown].filter(([, [, theirs]]) => theirs).map(([tile]) => tile));
   }
 
+  /** The tiles in X-Plane the map shows: OrthoStudio XP's and Ortho4XP's, each unless the user
+   * unticked its own line of the legend (2026-09-26). Hidden, they stay in X-Plane. */
+  function installedShown() {
+    const ortho4xp = ortho4xpTiles();
+    return installedTiles().filter((name) => (ortho4xp.has(name) ? zs.installedOrtho4xpWanted : zs.installedWanted));
+  }
+
   /** The tiles built and not in X-Plane the map shows: OrthoStudio XP's and Ortho4XP's, each
    * unless the user unticked their own line of the legend. */
   function builtShown() {
@@ -2013,7 +2032,7 @@ export function createPlanMap(ctx) {
       for (let lat = south; lat <= north; lat += 1) layers.grid.addLayer(L.polyline([[lat, west], [lat, east]], line));
     }
     const selected = new Set(ctx.tiles());
-    const installed = new Set(installedTiles());
+    const installed = new Set(installedShown());
     const built = new Set(builtShown());
     const ortho4xp = ortho4xpTiles();
     const building = buildingNow();
@@ -2296,9 +2315,6 @@ export function createPlanMap(ctx) {
       refocus();
       return;
     }
-    // The other marks of a tile go in the tiles' table too, under the programs: on a line of the
-    // list below, the chosen tiles' blue stood aside from the rows above (the same user, 2026-09-26).
-    const marks = [["legend-selected", t("map.legend_selected")]];
     const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
     // The chevron on the view line itself, the height of one line: it sat two pixels above it,
     // placed by hand in the corner (measured, 2026-09-25).
@@ -2307,33 +2323,63 @@ export function createPlanMap(ctx) {
     const [zoomNow, , ceilingNow] = viewNow();
     const short = Number.isInteger(ceilingNow) && zoomNow > ceilingNow ? t("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow });
     const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view", title: t("map.view", { label: viewLabel(...viewNow()) }) }, t("map.view", { label: short })), fold);
-    if (ctx.route?.()?.path?.length) marks.push(["legend-route-end", t("map.legend_route_ends")]);
+    // A line for each mark, its sign first and its words after, "OrthoStudio, in XP" and the three
+    // others each read by itself (the same user, 2026-09-26, where a table's columns had to be
+    // decoded), each only when the map has such tiles. Each carries the box that hides its tiles on
+    // the map (the same user: the tiles in X-Plane too, "on généralise"); the lines without one,
+    // the chosen tiles and the build's, keep its room, so that the signs line up and the words too.
+    const ortho4xp = ortho4xpTiles();
+    const installed = installedTiles();
+    const built = builtTiles();
+    const has = {
+      installed: installed.some((name) => !ortho4xp.has(name)),
+      built: built.some((name) => !ortho4xp.has(name)),
+      "installed-ortho4xp": installed.some((name) => ortho4xp.has(name)),
+      "built-ortho4xp": built.some((name) => ortho4xp.has(name)),
+    };
+    const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
+    const items = ["installed", "built", "installed-ortho4xp", "built-ortho4xp"].filter((kind) => has[kind]).map(tileToggle);
+    items.push(row("legend-selected", t("map.legend_selected")));
+    if (ctx.route?.()?.path?.length) items.push(row("legend-route-end", t("map.legend_route_ends")));
     const states = new Set(buildingNow().values());
-    if (states.has("working")) marks.push(["legend-working", t("map.legend_working")]);
-    if (states.has("queued")) marks.push(["legend-queued", t("map.legend_queued")]);
-    if (states.has("failed")) marks.push(["legend-failed", t("map.legend_failed")]);
+    if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
+    if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
+    if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
+    clear(box).append(view, h("ul", { class: "legend-marks" }, items));
+    if (map) {
+      // The map's own options under "Show", which folds away (the same user, 2026-09-26)
+      const open = zs.legendShowOpen;
+      box.append(groupHead(t("map.legend_show_group"), open, "show-fold", { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") }, setLegendShowOpen));
+      if (open) box.append(h("ul", null, bordersToggle(), airportsToggle(), streetToggle()));
+    }
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
-    // Under the tiles' table, a line for each of the map's boxes (the same user, 2026-09-26: set
-    // side by side, they went on over two lines and read as a jumble).
-    clear(box).append(view, tilesTable(marks));
-    if (map) box.append(h("ul", null, bordersToggle(), airportsToggle(), streetToggle()));
     if (levels.length) {
-      // The zones' levels fold away under their title (the same user, 2026-09-26), as the legend
-      // itself does, and the choice is remembered.
       const open = zs.legendZonesOpen;
-      const zonesFold = h("button", {
-        type: "button",
-        class: open ? "legend-fold" : "legend-fold is-closed",
-        "data-keep": "zones-fold",
-        "aria-expanded": open ? "true" : "false",
-        title: open ? t("map.legend_zones_hide") : t("map.legend_zones_show"),
-        "aria-label": open ? t("map.legend_zones_hide") : t("map.legend_zones_show"),
-        onclick: () => setLegendZonesOpen(!open),
-      });
-      box.append(h("div", { class: "legend-head legend-zones-head" }, h("p", { class: "legend-title" }, t("map.legend_zones")), zonesFold));
+      box.append(groupHead(t("map.legend_zones"), open, "zones-fold", { hide: t("map.legend_zones_hide"), show: t("map.legend_zones_show") }, setLegendZonesOpen));
       if (open) box.append(h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))));
     }
     refocus();
+  }
+
+  /** A group's title with a chevron that folds its lines away, as the legend itself folds: the
+   * display boxes under "Show" and the zones' levels (the same user, 2026-09-26). */
+  function groupHead(title, open, keep, words, setOpen) {
+    const button = h("button", {
+      type: "button",
+      class: open ? "legend-fold" : "legend-fold is-closed",
+      "data-keep": keep,
+      "aria-expanded": open ? "true" : "false",
+      title: open ? words.hide : words.show,
+      "aria-label": open ? words.hide : words.show,
+      onclick: () => setOpen(!open),
+    });
+    return h("div", { class: "legend-head legend-group-head" }, h("p", { class: "legend-title" }, title), button);
+  }
+
+  function setLegendShowOpen(open) {
+    zs.legendShowOpen = open;
+    storageSet(LEGEND_SHOW_KEY, open ? "1" : "0");
+    renderLegend();
   }
 
   function setLegendZonesOpen(open) {
@@ -2342,71 +2388,37 @@ export function createPlanMap(ctx) {
     renderLegend();
   }
 
-  /**
-   * The tiles' four marks as a table (a user, 2026-09-26): a row for each program, a column for
-   * X-Plane having its tiles or not. OrthoStudio XP's row is always there, Ortho4XP's when the map
-   * has its tiles; the second column only when there are tiles not in X-Plane, each cell there the
-   * box that hides them, each program its own. Four lines of the list took the room of two more,
-   * and the words over the columns are short ("In XP", "Not in XP"), the whole ones on hover.
-   * `marks`, the other marks of a tile ([swatch, name]), follow as rows of their own.
-   */
-  function tilesTable(marks) {
-    const ortho4xp = ortho4xpTiles();
-    const built = builtTiles();
-    const installed = installedTiles();
-    const programs = [
-      { by: "osxp", name: t("map.legend_osxp"), inside: true, outside: built.some((name) => !ortho4xp.has(name)) },
-      { by: "ortho4xp", name: t("map.legend_o4"), inside: installed.some((name) => ortho4xp.has(name)), outside: built.some((name) => ortho4xp.has(name)) },
-    ].filter((p) => p.inside || p.outside);
-    const outside = programs.some((p) => p.outside);
-    // Short words over the columns, the whole ones on hover: "Pas dans X-Plane" made the legend
-    // wider than the view line above it (the same user, 2026-09-26).
-    const head = h("tr", null, h("td", null),
-      h("th", { scope: "col", title: t("map.legend_in_xplane") }, t("map.legend_in_xp")),
-      outside ? h("th", { scope: "col", title: t("map.legend_not_in_xplane") }, t("map.legend_not_in_xp")) : null);
-    const mark = (by) => (by === "ortho4xp"
-      ? h("span", { class: "legend-swatch legend-ortho4xp", role: "img", "aria-label": t("map.legend_ortho4xp") })
-      : h("span", { class: "legend-swatch legend-installed", role: "img", "aria-label": t("map.legend_installed") }));
-    const rows = programs.map((p) => h("tr", null,
-      h("th", { scope: "row" }, p.name),
-      h("td", null, p.inside ? mark(p.by) : null),
-      outside ? h("td", null, p.outside ? builtToggle(p.by) : null) : null));
-    // The chosen tiles, the route's ends and the build's states: their name under the programs',
-    // their mark under the programs' marks, over both columns since X-Plane has nothing to do with
-    // them.
-    const others = marks.map(([swatch, text]) => h("tr", null,
-      h("th", { scope: "row" }, text),
-      h("td", { colspan: outside ? "2" : null }, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }))));
-    return h("table", { class: "legend-tiles" }, h("thead", null, head), h("tbody", null, rows, others));
-  }
-
-  /** The legend's box for the tiles built and not in X-Plane, OrthoStudio XP's or Ortho4XP's
-   * (`by`), in the table's column for them: a checkbox, as the airports' is, shown only when there
-   * are some (a user asked to be able to hide them, 2026-09-25; one for each program, 2026-09-26). */
-  function builtToggle(by) {
-    const theirs = by === "ortho4xp";
-    const own = theirs
-      ? { keep: "built-ortho4xp", swatch: "legend-built-ortho4xp", hint: t("map.built_ortho4xp_hint"), label: t("map.legend_ortho4xp_built") }
-      : { keep: "built", swatch: "legend-built", hint: t("map.built_hint"), label: t("map.legend_built") };
+  /** A legend line for one kind of tile, by program and by X-Plane having them or not (`kind`:
+   * installed, built, installed-ortho4xp, built-ortho4xp): its sign, its words, and the box that
+   * hides those tiles on the map, remembered, as the airports' is (a user asked to hide the tiles
+   * built, 2026-09-25, then for a box on each line, the tiles in X-Plane too, 2026-09-26). */
+  function tileToggle(kind) {
+    const own = {
+      installed: { swatch: "legend-installed", label: t("map.legend_installed"), hint: t("map.installed_hint"), checked: zs.installedWanted },
+      built: { swatch: "legend-built", label: t("map.legend_built"), hint: t("map.built_hint"), checked: zs.builtWanted },
+      "installed-ortho4xp": { swatch: "legend-ortho4xp", label: t("map.legend_ortho4xp"), hint: t("map.installed_ortho4xp_hint"), checked: zs.installedOrtho4xpWanted },
+      "built-ortho4xp": { swatch: "legend-built-ortho4xp", label: t("map.legend_ortho4xp_built"), hint: t("map.built_ortho4xp_hint"), checked: zs.builtOrtho4xpWanted },
+    }[kind];
     const input = h("input", {
       type: "checkbox",
-      checked: theirs ? zs.builtOrtho4xpWanted : zs.builtWanted,
-      "data-keep": own.keep,
-      "aria-label": own.label,
-      onchange: (ev) => setBuiltWanted(by, ev.target.checked),
+      checked: own.checked,
+      "data-keep": kind,
+      onchange: (ev) => setTileWanted(kind, ev.target.checked),
     });
-    return h("label", { class: "legend-check", title: own.hint },
-      input, h("span", { class: `legend-swatch ${own.swatch}`, "aria-hidden": "true" }));
+    return h("li", { class: "legend-toggle" },
+      h("label", { title: own.hint },
+        input, h("span", { class: `legend-swatch ${own.swatch}`, "aria-hidden": "true" }), own.label));
   }
 
-  function setBuiltWanted(by, wanted) {
-    if (by === "ortho4xp") {
-      zs.builtOrtho4xpWanted = wanted;
-      storageSet(BUILT_ORTHO4XP_KEY, wanted ? "1" : "0");
-    } else {
-      zs.builtWanted = wanted;
-      storageSet(BUILT_KEY, wanted ? "1" : "0");
-    }
+  function setTileWanted(kind, wanted) {
+    const stored = {
+      installed: ["installedWanted", INSTALLED_KEY],
+      built: ["builtWanted", BUILT_KEY],
+      "installed-ortho4xp": ["installedOrtho4xpWanted", INSTALLED_ORTHO4XP_KEY],
+      "built-ortho4xp": ["builtOrtho4xpWanted", BUILT_ORTHO4XP_KEY],
+    }[kind];
+    zs[stored[0]] = wanted;
+    storageSet(stored[1], wanted ? "1" : "0");
     renderGrid();
     renderLegend();
   }

@@ -528,9 +528,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .map-legend li { display: flex; align-items: center; gap: 6px; }
 /* Every mark is as wide as the others, so the labels after them line up (they started at three
-   places, a user saw, 2026-09-25). A line without a checkbox kept the checkbox's room until the
-   tile marks went to their table; the zones', the only such lines left, start at the legend's
-   edge as the rest does (the same user, 2026-09-26). */
+   places, a user saw, 2026-09-25). Among the tiles' marks, a line without a checkbox keeps the
+   checkbox's room, so the signs line up and so do the words; the zones' lines, which have none,
+   start at the legend's edge (the same user, 2026-09-26). */
+.map-legend .legend-marks li:not(.legend-toggle)::before { content: ""; width: 13px; flex: none; }
 .map-legend .legend-head { display: flex; align-items: flex-start; gap: var(--label-gap); margin-bottom: var(--title-gap); }
 .map-legend .legend-view { flex: 1; margin: 0; color: var(--fg-2); }
 .map-legend .legend-title { margin: 6px 0 2px; font-weight: 600; color: var(--fg-2); }
@@ -567,9 +568,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-legend .legend-fold:hover { color: var(--fg); border-color: var(--line); }
 /* Folded, a chevron pointing at the words it would bring back. */
 .map-legend .legend-fold.is-closed::before { margin: 0 0 0 -3px; transform: rotate(-45deg); }
-/* The zones' title and its chevron (a user, 2026-09-26): one line, the chevron at its end. */
-.map-legend .legend-zones-head { align-items: center; margin: 6px 0 2px; }
-.map-legend .legend-zones-head .legend-title { flex: 1; margin: 0; }
+/* A group's title and its chevron, "Show" and the zones' (a user, 2026-09-26): one line, the
+   chevron at its end. */
+.map-legend .legend-group-head { align-items: center; margin: 6px 0 2px; }
+.map-legend .legend-group-head .legend-title { flex: 1; margin: 0; }
 /* Folded, only the button is left, an ordinary small button like the others set on the map. */
 .map-legend.is-folded { padding: 0; background: none; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -577,15 +579,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* Ticked but not drawn at this zoom (borders too close, airports too far): the label dimmed, the
    reason on hover, where it was in brackets after the name (a user, 2026-09-26). */
 .map-legend .legend-toggle.is-idle label { color: var(--fg-2); }
-/* The tiles' marks: a row for each program, a column for X-Plane having them or not (a user,
-   2026-09-26); a cell not in X-Plane is the box that hides them. */
-.map-legend .legend-tiles { border-collapse: collapse; margin-bottom: 2px; }
-.map-legend .legend-tiles th, .map-legend .legend-tiles td { padding: 1px 10px 1px 0; text-align: left; vertical-align: middle; font-weight: 400; }
-.map-legend .legend-tiles thead th { color: var(--fg-2); }
-.map-legend .legend-tiles tbody th { white-space: nowrap; }
-.map-legend .legend-tiles .legend-swatch { display: inline-block; vertical-align: middle; }
-.map-legend .legend-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; pointer-events: auto; vertical-align: middle; }
-.map-legend .legend-check input { margin: 0; width: 13px; height: 13px; flex: none; }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }
 /* Airports on the map: a small ring and its code, readable over a photo (a user asked to see
    whether a square holds the airport he wants, 2026-09-19). */

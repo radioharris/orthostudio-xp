@@ -1039,20 +1039,20 @@ dashes over one edge as a solid line; the frames inside (below) ended that.
 solid frame is a tile in X-Plane, a dashed one a tile kept on the disk only; green is OrthoStudio
 XP's, violet (`--map-ortho4xp`, `is-ortho4xp`) Ortho4XP's, imported into the Library. The frame
 stands for the pack in X-Plane, or, none being there, the one on the disk (`ortho4xpTiles`); a
-tile with a pack of OrthoStudio XP's there keeps its green. The legend shows the four marks as a
-table (`tilesTable`, the same user): a row for each program, *OrthoStudio XP* always and
-*Ortho4XP* when the map has its tiles, and a column for *In XP* and one for *Not in XP* (the
-whole words on hover: *Not in X-Plane* made the legend wider than its view line), the latter
-only when there are such tiles. Each cell of that column is the box that
-hides them, each program its own (`builtShown`: `osxp.mapBuilt`, `osxp.mapBuiltOrtho4xp`),
-named for a screen reader by the line it stands for (*Ortho4XP, not in X-Plane*); its checkbox
-sits on its row's line (`vertical-align: middle`: it stood 3 to 4 px above the name). The other
-marks of a tile follow as rows of the same table, their mark over both columns since X-Plane
-has nothing to do with them: the chosen tiles, the route's ends and the build's states (on a
-line of the list, the chosen tiles' blue stood aside from the rows above, the same user). Chosen
-is blue, the flight plan's ends orange (`--route`), and the zones keep the colours of their
-levels; their levels fold away under their title with a chevron of their own, remembered
-(`osxp.mapLegendZones`, open unless folded).
+tile with a pack of OrthoStudio XP's there keeps its green. The legend gives each kind of tile a
+line, its sign first and its words after: *OrthoStudio, in XP*, *OrthoStudio, not in XP*,
+*Ortho4XP, in XP*, *Ortho4XP, not in XP*, each only when the map has such tiles (the same user,
+2026-09-26, after a table whose columns had to be decoded; *XP* short for X-Plane, and
+*OrthoStudio* alone beside it, where *OrthoStudio XP* gave "XP" two meanings). Each line
+carries the box that hides its tiles on the map, the tiles in X-Plane too, each program and
+each state its own, remembered (`tileToggle`, `installedShown`, `builtShown`:
+`osxp.mapInstalled`, `osxp.mapBuilt`, `osxp.mapInstalledOrtho4xp`, `osxp.mapBuiltOrtho4xp`);
+hidden, tiles in X-Plane stay in X-Plane, as the box's hover says. The chosen tiles (blue), the
+flight plan's ends (orange, `--route`) and the build's states follow with no box, their lines
+keeping its room so that the signs line up and the words too (`legend-marks`). Under them,
+*Show* holds the map's own options, country borders, airports and the street map, and folds
+away under its title (`osxp.mapLegendShow`); the zones keep the colours of their levels, which
+fold away the same way (`osxp.mapLegendZones`), both open unless folded (`groupHead`).
 
 **Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
 so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
@@ -1067,22 +1067,22 @@ Far out, where a square is too small for the inset, the frame goes back onto its
 
 Its box in the legend is a checkbox, as the airports' is, shown when there is such a tile, on
 unless unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the
-hover.
+hover. Every kind of tile has had one since 2026-09-26 (above).
 
 **The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
 a line without a checkbox kept the checkbox's room (13 px) and every mark is 14 px wide (the
-airport's 10 px ring gets 2 px each side), so they all started at 71. Since the tile marks went to
-their table (2026-09-26, below), the zones' levels were the only lines without a box; they start
-at the legend's edge as the rest does (the same user). A chevron at the end of its first line folds it away to see the map under it, one *Legend*
+airport's 10 px ring gets 2 px each side), so they all started at 71. Since 2026-09-26 the rule
+holds among the tiles' marks (`legend-marks`), and the zones' levels, which have no box, start
+at the legend's edge (the same user). A chevron at the end of its first line folds it away to see the map under it, one *Legend*
 button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
 `aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
 is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
 ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
 are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
 (`data-keep`): it went to the first checkbox, whichever had it. With the four marks of the tiles
-it took twelve lines over the map (the same user, 2026-09-26): the tiles are a table (above) and
-the rest keeps a line for each mark; set side by side, the map's three boxes went on over two
-lines and read as a jumble.
+it took twelve lines over the map (the same user, 2026-09-26): *Show* and the zones fold away,
+and each line says less (above). Set side by side, the map's three boxes had gone on over two
+lines and read as a jumble; they keep a line each.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it

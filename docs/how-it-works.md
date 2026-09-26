@@ -303,8 +303,10 @@ rivers never have one.
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken
 out of X-Plane with its files kept) is outlined in dashed green; its line in the legend is a box
 to tick, to hide them. A square Ortho4XP built, imported into the Library, is outlined in violet
-the same way: solid in X-Plane, dashed when not, with its own two lines in the legend and its
-own box. The colour says who built a square, the line whether X-Plane has it. The legend folds away with the chevron in its corner, and comes back with its
+the same way: solid in X-Plane, dashed when not. The colour says who built a square, the line
+whether X-Plane has it; each of the four kinds has its line in the legend and its own box, the
+squares in X-Plane too (hidden on the map, they stay in X-Plane). The map's own options, borders,
+airports and the street map, are under *Show*, which folds away like the zones. The legend folds away with the chevron in its corner, and comes back with its
 *Legend* button. Each square is framed just inside its own edges, so two neighbours in
 different states each keep their own colour. A square both built and chosen, to build it again, keeps its green outline with the
 blue one just inside it, and a thin line between them sets both off from the photo. Zoomed out on
