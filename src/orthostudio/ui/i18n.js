@@ -897,7 +897,7 @@ const STRINGS = {
     "settings.x.decal_sea": "Grain du sol aussi sur la mer",
     "settings.x.decal_sea_hint": "Les decals ne sont posés que sur la terre. Activez ceci pour les avoir aussi sur la mer, comme Ortho4XP ; les lacs et les rivières n'en ont jamais.",
     "settings.x.decal_name": "Decal du sol",
-    "settings.x.decal_name_hint": "Lequel des decals d'X-Plane 12 le sol reçoit quand le grain est activé : maquify_2_green_key est celui d'Ortho4XP, grass_and_stony_dirt_1 met de l'herbe rase sur le vert et de la terre caillouteuse ailleurs. Une tuile déjà construite prend le nouveau à sa prochaine construction, qui ne réécrit que ses fichiers de terrain.",
+    "settings.x.decal_name_hint": "Lequel des decals d'X-Plane 12 le sol reçoit quand le grain est activé : maquify_2_green_key est celui d'Ortho4XP, grass_and_stony_dirt_1 met de l'herbe folle sur le vert et de la terre caillouteuse ailleurs. Une tuile déjà construite prend le nouveau à sa prochaine construction, qui ne réécrit que ses fichiers de terrain.",
     "settings.x.decal_ortho4xp": "maquify_2_green_key.dcl (Ortho4XP)",
     "settings.x.patches": "Dossier des retouches du maillage",
     "settings.x.patches_hint": "Un dossier à vous, avec un sous-dossier par tuile : +46+006/mon-relief.patch.osm, des fichiers écrits avec JOSM. Les retouches publiées pour Ortho4XP conviennent telles quelles, avec leur dossier Patches. Une tuile sans sous-dossier est construite sans retouche.",
