@@ -12,13 +12,15 @@
       "zl": 16,
       "status": "pending",
       "stages": {
-        "data": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+        "osm": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
           {"node": "+43+005/osm", "role": "osm", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 26.0},
-          {"node": "+43+005/dem", "role": "dem", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 6.2},
-          {"node": "+43+005/coastline", "role": "coastline", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.05},
-          {"node": "+43+005/vectors", "role": "vectors", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 11.1}
+          {"node": "+43+005/coastline", "role": "coastline", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 0.05}
+        ]},
+        "relief": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/dem", "role": "dem", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 6.2}
         ]},
         "terrain": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [
+          {"node": "+43+005/vectors", "role": "vectors", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 11.1},
           {"node": "+43+005/mesh", "role": "mesh", "status": "pending", "key": null, "hit": null, "wall_s": 0.0, "fraction": 0.0, "weight_s": 8.4}
         ]},
         "coast": {"status": "pending", "fraction": 0.0, "wall_s": 0.0, "nodes": [

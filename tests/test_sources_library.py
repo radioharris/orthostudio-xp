@@ -800,3 +800,23 @@ def test_the_connections_are_kept_and_the_validator_travels() -> None:
     assert first == (200, body, '"abc"')
     assert second[0] == 304 and second[1] == b""
     assert len(ports) == 2 and ports[0] == ports[1], "the second request reused the connection"
+
+
+def test_the_last_osm_line_says_the_layers_arrived() -> None:
+    """A tile the library answers ends its step on one line of the Works log: "4 OSM layers from
+    library" did not say whether they were there or still coming (a user, 2026-09-26)."""
+    from orthostudio.pipeline.native import OsmJob
+    from orthostudio.sources.chain import ChainResult
+
+    class Answering:
+        def layers(self, tile: TileRef, specs: Sequence[object]) -> ChainResult:
+            got = {spec.name: object() for spec in SPECS}  # type: ignore[attr-defined]
+            return ChainResult(got, "library (2026-09-13 #27a5d866778b)")  # type: ignore[arg-type]
+
+    lines: list[tuple[float, str]] = []
+    job = OsmJob(chain=Answering(), progress=lambda f, text: lines.append((f, text)))  # type: ignore[arg-type]
+    assert job.run(TileRef(47, 11), SPECS)
+    assert lines[-1] == (
+        1.0,
+        "+47+011: 4 OSM layers received from library (2026-09-13 #27a5d866778b)",
+    )

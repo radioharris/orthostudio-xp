@@ -892,14 +892,21 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .tile-rows { display: flex; flex-direction: column; gap: 6px; }
 .tile-row {
-  display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: center;
+  display: grid; grid-template-columns: 60px 1fr; gap: 8px; align-items: center;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: 6px 10px;
 }
 .tile-row .tile-name { font-family: var(--mono); font-weight: 600; }
-.steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 10px; }
-@media (max-width: 720px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* one line of seven steps, the Data step split into OSM and Relief on 2026-09-26: at six columns
+   the seventh went under the others. A user asked for one line again, names whole in the smallest
+   window (1024 px): the tile's name keeps 60 px of its 80 (it needs 57), the steps 5 px between
+   them instead of 10, and each step's dot 3 px from its name instead of 5 */
+.steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px 5px; }
+@media (max-width: 720px) { .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .step { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.step-label { display: flex; align-items: center; gap: 5px; font-size: var(--fs-2); color: var(--fg-2); white-space: nowrap; }
+.step-label { display: flex; align-items: center; gap: 3px; font-size: var(--fs-2); color: var(--fg-2); white-space: nowrap; min-width: 0; }
+/* in the narrowest window (1024 px) a long name ends in an ellipsis rather than under its neighbour;
+   the cell's tooltip names the step whole */
+.step-name { overflow: hidden; text-overflow: ellipsis; }
 .dot {
   width: 10px; height: 10px; border-radius: 50%; flex: none;
   border: 1.5px solid var(--line-2); background: transparent;

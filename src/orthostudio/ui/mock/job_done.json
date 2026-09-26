@@ -12,10 +12,10 @@
       "zl": 16,
       "status": "done",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 15.517,
+          "wall_s": 0.011,
           "nodes": [
             {
               "node": "+46+006/osm",
@@ -26,26 +26,6 @@
               "wall_s": 0.0,
               "fraction": 1.0,
               "weight_s": 0.0
-            },
-            {
-              "node": "+46+006/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "6e0bd039f540",
-              "hit": false,
-              "wall_s": 4.035,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+006/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "3fe9380ac6ec",
-              "hit": false,
-              "wall_s": 11.471,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+006/coastline",
@@ -59,11 +39,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 4.035,
+          "nodes": [
+            {
+              "node": "+46+006/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "6e0bd039f540",
+              "hit": false,
+              "wall_s": 4.035,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 6.686,
+          "wall_s": 18.157,
           "nodes": [
+            {
+              "node": "+46+006/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "3fe9380ac6ec",
+              "hit": false,
+              "wall_s": 11.471,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+006/mesh",
               "role": "mesh",
@@ -183,10 +190,10 @@
       "zl": 16,
       "status": "done",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 37.874,
+          "wall_s": 25.195,
           "nodes": [
             {
               "node": "+46+007/osm",
@@ -197,26 +204,6 @@
               "wall_s": 25.184,
               "fraction": 1.0,
               "weight_s": 26.0
-            },
-            {
-              "node": "+46+007/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "20f848f992a0",
-              "hit": false,
-              "wall_s": 5.056,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+007/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "d1dc83fa7077",
-              "hit": false,
-              "wall_s": 7.623,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+007/coastline",
@@ -230,11 +217,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 5.056,
+          "nodes": [
+            {
+              "node": "+46+007/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "20f848f992a0",
+              "hit": false,
+              "wall_s": 5.056,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 8.549,
+          "wall_s": 16.172,
           "nodes": [
+            {
+              "node": "+46+007/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "d1dc83fa7077",
+              "hit": false,
+              "wall_s": 7.623,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+007/mesh",
               "role": "mesh",
@@ -354,10 +368,10 @@
       "zl": 16,
       "status": "failed",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 44.61,
+          "wall_s": 26.849,
           "nodes": [
             {
               "node": "+46+008/osm",
@@ -368,26 +382,6 @@
               "wall_s": 26.844,
               "fraction": 1.0,
               "weight_s": 26.0
-            },
-            {
-              "node": "+46+008/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "afe457cd3433",
-              "hit": false,
-              "wall_s": 8.56,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+008/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "17e3405cd972",
-              "hit": false,
-              "wall_s": 9.201,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+008/coastline",
@@ -401,11 +395,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 8.56,
+          "nodes": [
+            {
+              "node": "+46+008/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "afe457cd3433",
+              "hit": false,
+              "wall_s": 8.56,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 8.576,
+          "wall_s": 17.777,
           "nodes": [
+            {
+              "node": "+46+008/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "17e3405cd972",
+              "hit": false,
+              "wall_s": 9.201,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+008/mesh",
               "role": "mesh",
@@ -437,7 +458,7 @@
         },
         "imagery": {
           "status": "failed",
-          "fraction": 1.0,
+          "fraction": 0.9977,
           "wall_s": 90.022,
           "nodes": [
             {
@@ -501,7 +522,7 @@
         },
         "install": {
           "status": "skipped",
-          "fraction": 1.0,
+          "fraction": 0.0,
           "wall_s": 0.0,
           "nodes": [
             {
@@ -550,10 +571,10 @@
       "zl": 16,
       "status": "failed",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 38.999,
+          "wall_s": 25.267,
           "nodes": [
             {
               "node": "+46+009/osm",
@@ -564,26 +585,6 @@
               "wall_s": 25.265,
               "fraction": 1.0,
               "weight_s": 26.0
-            },
-            {
-              "node": "+46+009/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "17f7de7b72d8",
-              "hit": false,
-              "wall_s": 6.597,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+009/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "8f5bb31503ff",
-              "hit": false,
-              "wall_s": 7.135,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+009/coastline",
@@ -597,11 +598,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 6.597,
+          "nodes": [
+            {
+              "node": "+46+009/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "17f7de7b72d8",
+              "hit": false,
+              "wall_s": 6.597,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 12.432,
+          "wall_s": 19.567,
           "nodes": [
+            {
+              "node": "+46+009/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "8f5bb31503ff",
+              "hit": false,
+              "wall_s": 7.135,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+009/mesh",
               "role": "mesh",
@@ -633,7 +661,7 @@
         },
         "imagery": {
           "status": "failed",
-          "fraction": 1.0,
+          "fraction": 0.9977,
           "wall_s": 110.287,
           "nodes": [
             {
@@ -697,7 +725,7 @@
         },
         "install": {
           "status": "skipped",
-          "fraction": 1.0,
+          "fraction": 0.0,
           "wall_s": 0.0,
           "nodes": [
             {
@@ -747,10 +775,10 @@
       "zl": 16,
       "status": "done",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 20.702,
+          "wall_s": 0.005,
           "nodes": [
             {
               "node": "+46+005/osm",
@@ -761,26 +789,6 @@
               "wall_s": 0.0,
               "fraction": 1.0,
               "weight_s": 0.0
-            },
-            {
-              "node": "+46+005/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "70ad95bd8939",
-              "hit": false,
-              "wall_s": 5.625,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+005/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "32caa8570db2",
-              "hit": false,
-              "wall_s": 15.072,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+005/coastline",
@@ -794,11 +802,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 5.625,
+          "nodes": [
+            {
+              "node": "+46+005/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "70ad95bd8939",
+              "hit": false,
+              "wall_s": 5.625,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 4.976,
+          "wall_s": 20.048,
           "nodes": [
+            {
+              "node": "+46+005/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "32caa8570db2",
+              "hit": false,
+              "wall_s": 15.072,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+005/mesh",
               "role": "mesh",
@@ -918,10 +953,10 @@
       "zl": 16,
       "status": "failed",
       "stages": {
-        "data": {
+        "osm": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 50.389,
+          "wall_s": 28.08,
           "nodes": [
             {
               "node": "+46+010/osm",
@@ -932,26 +967,6 @@
               "wall_s": 28.079,
               "fraction": 1.0,
               "weight_s": 26.0
-            },
-            {
-              "node": "+46+010/dem",
-              "role": "dem",
-              "status": "done",
-              "key": "d5d889dd4644",
-              "hit": false,
-              "wall_s": 6.636,
-              "fraction": 1.0,
-              "weight_s": 6.2
-            },
-            {
-              "node": "+46+010/vectors",
-              "role": "vectors",
-              "status": "done",
-              "key": "e96a7e07b0bc",
-              "hit": false,
-              "wall_s": 15.673,
-              "fraction": 1.0,
-              "weight_s": 11.1
             },
             {
               "node": "+46+010/coastline",
@@ -965,11 +980,38 @@
             }
           ]
         },
+        "relief": {
+          "status": "done",
+          "fraction": 1.0,
+          "wall_s": 6.636,
+          "nodes": [
+            {
+              "node": "+46+010/dem",
+              "role": "dem",
+              "status": "done",
+              "key": "d5d889dd4644",
+              "hit": false,
+              "wall_s": 6.636,
+              "fraction": 1.0,
+              "weight_s": 6.2
+            }
+          ]
+        },
         "terrain": {
           "status": "done",
           "fraction": 1.0,
-          "wall_s": 9.746,
+          "wall_s": 25.419,
           "nodes": [
+            {
+              "node": "+46+010/vectors",
+              "role": "vectors",
+              "status": "done",
+              "key": "e96a7e07b0bc",
+              "hit": false,
+              "wall_s": 15.673,
+              "fraction": 1.0,
+              "weight_s": 11.1
+            },
             {
               "node": "+46+010/mesh",
               "role": "mesh",
@@ -1001,7 +1043,7 @@
         },
         "imagery": {
           "status": "failed",
-          "fraction": 1.0,
+          "fraction": 0.9979,
           "wall_s": 92.737,
           "nodes": [
             {
@@ -1065,7 +1107,7 @@
         },
         "install": {
           "status": "skipped",
-          "fraction": 1.0,
+          "fraction": 0.0,
           "wall_s": 0.0,
           "nodes": [
             {
@@ -2181,8 +2223,9 @@
       "tile": "+46+006",
       "kind": "stage_time",
       "seconds": {
-        "data": 15.52,
-        "terrain": 6.69,
+        "osm": 0.01,
+        "relief": 4.04,
+        "terrain": 18.16,
         "coast": 1.45,
         "imagery": 14.62,
         "assembly": 8.78,
@@ -2214,8 +2257,9 @@
       "tile": "+46+007",
       "kind": "stage_time",
       "seconds": {
-        "data": 37.87,
-        "terrain": 8.55,
+        "osm": 25.2,
+        "relief": 5.06,
+        "terrain": 16.17,
         "coast": 4.04,
         "imagery": 65.8,
         "assembly": 13.25,
@@ -2247,11 +2291,12 @@
       "tile": "+46+008",
       "kind": "stage_time",
       "seconds": {
-        "data": 44.61,
-        "terrain": 8.58,
+        "osm": 26.85,
+        "relief": 8.56,
+        "terrain": 17.78,
         "coast": 2.08,
         "imagery": 90.02,
-        "assembly": 10.57,
+        "assembly": 10.58,
         "install": 0.0
       }
     },
@@ -2287,8 +2332,9 @@
       "tile": "+46+009",
       "kind": "stage_time",
       "seconds": {
-        "data": 39.0,
-        "terrain": 12.43,
+        "osm": 25.27,
+        "relief": 6.6,
+        "terrain": 19.57,
         "coast": 1.65,
         "imagery": 110.29,
         "assembly": 7.84,
@@ -2327,8 +2373,9 @@
       "tile": "+46+005",
       "kind": "stage_time",
       "seconds": {
-        "data": 20.7,
-        "terrain": 4.98,
+        "osm": 0.01,
+        "relief": 5.62,
+        "terrain": 20.05,
         "coast": 0.81,
         "imagery": 11.22,
         "assembly": 6.18,
@@ -2360,11 +2407,12 @@
       "tile": "+46+010",
       "kind": "stage_time",
       "seconds": {
-        "data": 50.39,
-        "terrain": 9.75,
+        "osm": 28.08,
+        "relief": 6.64,
+        "terrain": 25.42,
         "coast": 0.21,
         "imagery": 92.74,
-        "assembly": 8.31,
+        "assembly": 8.3,
         "install": 0.0
       }
     },

@@ -217,10 +217,12 @@ sibling, was the only mirror left to ask. Never the 2^n back-off of Ortho4XP (wh
 OSM_MIRROR_UNREACHABLE).
 
 **Progress.** `fetch_tile(progress=...)` reports each layer received, and every second while
-layers are in flight: `+46+006: 2/4 OSM layers (1.4 MB/s)` (`osm_progress_message`), the fraction
-being the layers received, the rate the bytes received so far (as sent, gzip included,
+layers are in flight: `+46+006: 2 of 4 back: airports, water (1.4 MB/s)` (`osm_progress_message`),
+the fraction being the layers received, the rate the bytes received so far (as sent, gzip included,
 `HttpReply.wire_bytes`) over the time since the tile started. The build's OSM node forwards it
-to the Works page.
+to the Works page. A tile a prepared source answers ends on one line that says the step is over:
+`+47+011: 4 OSM layers received from library (2026-09-13 #27a5d866778b)` (a user could not tell
+from "4 OSM layers from library" whether they had arrived, 2026-09-26).
 
 **Health check.** `GET <status_url>` with a 5 s timeout, or a minimal query
 `[out:json][timeout:10];node(id:1);out ids;` when the mirror declares no status URL. No

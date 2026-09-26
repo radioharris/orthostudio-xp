@@ -226,7 +226,10 @@ class OsmJob:
         if not got.snapshots:
             return None
         if self.progress is not None:
-            self.progress(1.0, f"{tile.name}: {len(got.snapshots)} OSM layers from {got.source}")
+            # "received": the line is the step's last, and "4 OSM layers from library" did not
+            # say whether they were there or still coming (a user, 2026-09-26)
+            count = len(got.snapshots)
+            self.progress(1.0, f"{tile.name}: {count} OSM layers received from {got.source}")
         log.info("%s: OSM layers read from %s", tile.name, got.source)
         return got.snapshots
 

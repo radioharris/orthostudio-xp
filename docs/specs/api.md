@@ -350,7 +350,7 @@ the row's `weight_s` in the state: a page that draws a step from its rows weighs
 |---|---|---|
 | `started` | `Started` | tile, stage, node, role, key, weight_s |
 | `progress` | `Progress` | tile, stage, node, role, fraction (0-1), message, weight_s |
-| `log` | any `Progress` that has something to say | message, tile, stage; at most one per second per node, and one every ten seconds in `serve.log` too (`FILE_LOG_PERIOD_S`). The images alone wrote lines until 0.1.14: a build that stopped on the Data stage left a bar going nowhere and an empty log (a user on Linux, 2026-09-22) |
+| `log` | any `Progress` that has something to say | message, tile, stage; at most one per second per node, and one every ten seconds in `serve.log` too (`FILE_LOG_PERIOD_S`); the line a node ended on is written when it ends if that rule held it back (`_say_the_last_line`: a library answering within the second left "waiting for the map data server" as a tile's only line, 2026-09-26). The images alone wrote lines until 0.1.14: a build that stopped on the Data stage left a bar going nowhere and an empty log (a user on Linux, 2026-09-22) |
 | `done` | `Done`; also a row that will not run because what it produces is there (`Phase.reused`, section 5.6) | tile, stage, node, role, key (`null` when nothing is stored), hit, wall_s, weight_s |
 | `failed` | `Failed` | tile, stage, node, role, error `{code, message, remedy, severity, action, context, cause}`; `skipped: true` with `cause` = the upstream node when the node fell because of it; weight_s |
 | `stats` | the job itself (section 5.6), prompted by `Stats`, `Phase` and a one-second ticker | `stats: {running, pending, done, failed, hits, elapsed_s, progress, eta_low_s, eta_high_s, phase}` |
@@ -362,12 +362,13 @@ The first entry of every journal is a `log` line (`job <id> started`); a build t
 
 Node ids are `<tile>/<role>` or `<tile>/<provider><zl>/<role>` (`#n` suffix possible,
 `pipeline-build.md` 2). `tile` is the first segment; `role` the last one without `#n`;
-`stage` is one of the six user stages:
+`stage` is one of the seven user stages:
 
 | role (rule) | stage |
 |---|---|
-| `osm` (`orthostudio.osm`), `coastline` (`orthostudio.coastline`), `dem` (`orthostudio.dem`), `vectors` (`orthostudio.vectors`) | `data` |
-| `mesh` (`orthostudio.mesh`) | `terrain` |
+| `osm` (`orthostudio.osm`), `coastline` (`orthostudio.coastline`) | `osm` |
+| `dem` (`orthostudio.dem`) | `relief` |
+| `vectors` (`orthostudio.vectors`), `mesh` (`orthostudio.mesh`) | `terrain` |
 | `masks` (`orthostudio.masks`) | `coast` |
 | `textures` (`tile.textures`) | `imagery` |
 | `xp12`, `dsf`, `overlay`, `pack` (`xp12.rasters`, `tile.dsf`, `tile.overlay`, `tile.pack`) | `assembly` |
@@ -464,7 +465,7 @@ did on its own, per tile, for the page's end-of-build panel:
 | `kind` | Source | Fields |
 |---|---|---|
 | `nodes` | the events | `hit`, `built`, `failed`, `skipped` counts |
-| `stage_time` | the events | `seconds` per stage (`{data: 12.3, ...}`) |
+| `stage_time` | the events | `seconds` per stage (`{osm: 1.9, relief: 21.5, ...}`) |
 | `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained) |
 | `degraded` | `failed` events with severity `degraded` / `info` | `code`, `count`, `message` |
 | `pack` | `TileOutcome.pack_dir` | `bytes`, `path`, `installed` |
