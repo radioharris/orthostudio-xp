@@ -17,6 +17,7 @@ import gzip
 import itertools
 import json
 import os
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -82,6 +83,65 @@ class Clock:
 
     def __call__(self) -> float:
         return self.t
+
+
+class TickerClock(Clock):
+    """A job's clock that its ticker alone moves: a tick at a time, and only over the seconds
+    the build lets go by without a word (:meth:`quiet`). What the build sends in between takes
+    no time.
+
+    A job reads its time from its ``clock`` and its ticker waits on its ``_ticker_stop``;
+    :meth:`job` makes a :class:`Job` with this clock in both places. On the machine's clock, a
+    busy machine decided when the ticker ran: a full parallel run failed the stats test with two
+    lines 0.362 s apart, 0.35 allowed (2026-09-26).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._until = self.t
+        self._tick: float | None = None
+        """The wait the ticker is in, ``None`` while it runs."""
+        self._stopped = False
+        self._changed = threading.Condition()
+
+    def job(self, *args: Any, **kwargs: Any) -> Job:
+        """A :class:`Job` on this clock, its ticker waiting on it: what ``jobs.Job`` makes."""
+        job = Job(*args, clock=self, **kwargs)
+        job._ticker_stop = self  # type: ignore[assignment]
+        return job
+
+    def wait(self, timeout: float) -> bool:
+        """The ticker's wait: ``timeout`` passes once the build lets it; ``True`` when the ticker
+        is stopped first."""
+        with self._changed:
+            self._tick = timeout
+            self._changed.notify_all()
+            self._changed.wait_for(lambda: self._stopped or self.t + timeout <= self._until)
+            self._tick = None
+            if not self._stopped:
+                self.t += timeout
+            return self._stopped
+
+    def set(self) -> None:
+        with self._changed:
+            self._stopped = True
+            self._changed.notify_all()
+
+    def clear(self) -> None:
+        with self._changed:
+            self._stopped = False
+
+    def quiet(self, seconds: float) -> None:
+        """The build says nothing for ``seconds``: the ticker waits them away, and they are over
+        when it waits for more. A ticker that does not (it stopped ticking) lets them pass all
+        the same, after a few real seconds."""
+        with self._changed:
+            self._until = self.t + seconds
+            self._changed.notify_all()
+            self._changed.wait_for(
+                lambda: self._tick is not None and self.t + self._tick > self._until, 5.0
+            )
+            self.t = self._until
 
 
 def _spec(tile: str, *, zl: int = 16, install: bool = True, **kw: Any) -> BuildSpec:
@@ -550,31 +610,35 @@ def test_a_second_pass_runs_skipped_rows_again_and_keeps_what_it_built(tmp_path:
 def test_stats_shape_in_the_event_and_the_state_and_a_line_every_second(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Through the manager: phases, a gap without any scheduler (the declaration), the end."""
-    monkeypatch.setattr(jobs_mod, "STATS_PERIOD_S", 0.1)
-    monkeypatch.setattr(jobs_mod, "TICK_S", 0.02)
+    """Through the manager: phases, a gap without any scheduler (the declaration), a node that
+    runs without a word, the end; on a clock that only the job's ticker moves
+    (:class:`TickerClock`), so that the lines it writes are the same on a busy machine."""
+    clock = TickerClock()
+    monkeypatch.setattr(jobs_mod, "Job", clock.job)  # the job the manager makes keeps this clock
 
     def build(
         specs: list[BuildSpec], *, on_event: Callable[[Any], None], env: Any = None
     ) -> BuildReport:
         on_event(Phase("data", nodes=(), reused=(("+43+005/osm", None),)))
         on_event(Phase("build"))
-        time.sleep(0.6)  # declaring a big graph: no event at all
+        clock.quiet(3.0)  # declaring a big graph: no event at all
         nodes = [
             (node, progress.ROLE_KIND[role], RULES[role])
             for node, role in jobs_mod._expected_nodes(specs[0])
             if role != "osm"
         ]
         on_event(Phase("build", nodes=tuple(nodes)))
-        for node, kind, _rule in nodes:
+        for i, (node, kind, _rule) in enumerate(nodes):
             on_event(Started(node, kind, KEY))  # type: ignore[arg-type]
+            if i == 0:
+                clock.quiet(2.0)  # a step that reports nothing while it runs
             on_event(Done(node, KEY, False, 0.01, REF))
             on_event(Stats(running=0, pending=0, done=1, failed=0, hits=0, elapsed_s=0.0, eta_s=0))
-        return BuildReport([], 0.7, len(nodes), 0, 0, False, "/store", "/out")
+        return BuildReport([], 5.0, len(nodes), 0, 0, False, "/store", "/out")
 
     mgr = JobManager(jobs_dir=tmp_path / "jobs", build=build, env_factory=None)
     job = mgr.start([_spec("+43+005", zl=14, install=False)])
-    assert job.wait(10.0) and job.status == "done"
+    assert job.wait(30.0) and job.status == "done"
     events = job.events()
     stats = [e for e in events if e["event"] == "stats"]
     assert all(set(e["stats"]) == STATS_KEYS for e in stats)
@@ -582,14 +646,14 @@ def test_stats_shape_in_the_event_and_the_state_and_a_line_every_second(
     assert set(state["stats"]) == STATS_KEYS and state["stats"] == stats[-1]["stats"]
     assert stats[-1]["stats"]["progress"] == 1.0 and stats[-1]["stats"]["eta_high_s"] == 0.0
     assert events[-1]["event"] == "finished" and events[-2]["event"] == "stats"
-    phases = [e["stats"]["phase"] for e in stats]
-    assert phases[0] == "data" and phases[-1] == "build"
-    # the gap of 0.6 s was covered by the ticker, one line per (patched) period
-    gap = [e for e in stats if e["stats"]["phase"] == "build" and e["stats"]["pending"] > 0]
-    assert len(gap) >= 4
-    ts = [e["ts"] for e in stats]
-    assert max(b - a for a, b in itertools.pairwise(ts)) < 0.35
+    # a line at each phase; the ticker's, one a second, over the declaration (1, 2 and 3 s) and
+    # while the first node runs (4 and 5 s); none for the scheduler's Stats, which all come less
+    # than 0.5 s after a line; the last one at the end
+    assert [e["ts"] for e in stats] == [0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 4.0, 5.0, 5.0]
+    assert [e["stats"]["phase"] for e in stats] == ["data"] + ["build"] * 8
+    assert [e["stats"]["running"] for e in stats] == [0, 0, 0, 0, 0, 0, 1, 1, 0]
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
+    assert [e["ts"] for e in events] == sorted(e["ts"] for e in events)
 
 
 def test_a_job_saved_with_the_data_stage_reads_back_in_the_new_ones(tmp_path: Path) -> None:

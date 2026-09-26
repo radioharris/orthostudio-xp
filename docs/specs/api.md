@@ -693,9 +693,10 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   the declared graph replacing the predicted rows; a second pass; the line's recent speed read
   from texture reports (provider, cancelled, warm and short reports skipped, in-flight scaling,
   recency) and the first estimate of the six-tile batch started from it; the `stats` shape in the
-  event and the state, a line at least every (patched) second across a gap without events; the
-  weights (batch interpolation, texture counts, cached chunks, zones); a past job read back with the
-  rows it saved; the second pass in plain words; `run_osm_phase`
+  event and the state, a line every second across a gap without events and a node that says
+  nothing, on a clock that only the job's ticker moves (a busy machine cannot change the lines);
+  the weights (batch interpolation, texture counts, cached chunks, zones); a past job read back
+  with the rows it saved; the second pass in plain words; `run_osm_phase`
   and `build_tiles` announcing their phases before any node event, and a real failing batch
   through the manager.
 
