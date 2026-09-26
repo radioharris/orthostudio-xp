@@ -1071,7 +1071,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .settings-form { max-width: 1100px; }
 .settings-search { margin: 0 0 var(--block-gap); }
 .works-search { margin: 0 0 var(--help-gap); }
-.library-search { margin: 0 0 var(--help-gap); }
+/* a little air above the table, the Settings field's (a user asked, 2026-09-26) */
+.library-search { margin: 0 0 var(--block-gap); }
 .settings-search-input, .works-search-input, .library-search-input {
   width: 100%; max-width: 420px; min-height: 30px; padding: 0 8px;
   font: inherit; color: var(--fg);
