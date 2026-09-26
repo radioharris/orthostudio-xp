@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The Plan's flight plan, read from SimBrief and turned into squares (``flight-plan.md``).
 
 The user of the page asked for a button that draws his last plan and chooses the squares it flies

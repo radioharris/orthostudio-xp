@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Jobs: one build at a time in a dedicated thread, a resumable journal, an aggregated state.
 
 Spec: ``docs/specs/api.md`` section 5. A :class:`Job` wraps one ``build_tiles`` call; its

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Review-6 fixes: the incremental noding pass is the full one, to the bit.
 
 Spec: ``docs/specs/vectors-pslg.md`` 2.13. ``noding._insert`` re-processes only the new segments and

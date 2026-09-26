@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Dette D4: a pack without a zoom level shows an em dash, not "ZL 0".
 
 A ``yOrthoStudio_Overlays`` pack has no imagery and no zoom level; the library row carried 0 and

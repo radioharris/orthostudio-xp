@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Texture (zoom level, provider) of every mesh cell of a tile.
 
 Port of ``zone_list_to_ortho_dico`` (``O4_DSF_Utils.py:110-257``): a 4096² priority image of

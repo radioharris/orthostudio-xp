@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The typed settings: 14 essential / 14 advanced / 19 expert leaves (``docs/specs/settings.md``).
 
 Frozen pydantic models. Defaults are the Ortho4XP defaults (``O4_Config_Utils.py`` ``cfg_vars``)

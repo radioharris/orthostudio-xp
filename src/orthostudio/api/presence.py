@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The app started from its icon stops once no page of it has been open for a while.
 
 Closing the page leaves the engine running, so that a build goes on; but nothing shows the engine

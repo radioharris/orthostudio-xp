@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The app in a window of its own, when the system has one to give.
 
 The interface is a page, and a page in a browser is not a window. Its icon leaves the Dock while

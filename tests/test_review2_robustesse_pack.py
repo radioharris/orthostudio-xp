@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """P2a adversarial review, robustness lens: the pack effect and the installation.
 
 No network, no Ortho4XP. The first four tests were ``xfail(strict=True)`` findings of the review

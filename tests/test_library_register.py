@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The library stores absolute paths (review finding 9 of the library delete).
 
 ``osxp build --out tiles --install`` registered ``tiles/zOrthoStudio_<tile>`` as given, and

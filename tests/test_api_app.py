@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Endpoints of the API (spec ``docs/specs/api.md`` sections 2-4, 6): status, providers,
 settings, airports, validation, security guards, plan offline, library on a temporary home
 and a copied ``Custom Scenery``. ``httpx.ASGITransport``: no server, no network, no Ortho4XP."""

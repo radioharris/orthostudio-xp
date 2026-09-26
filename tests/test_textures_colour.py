@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The colours of the photo (``textures/colour.py``, docs/specs/pipeline-textures.md 6).
 
 A user of the X-Plane.Org page found aerial imagery too bright and too saturated (2026-09-18).

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Link (or copy) a built scenery pack into ``Custom Scenery`` and undo it.
 
 Spec: ``docs/specs/install.md`` section 4. Origin: Ortho4XP ``O4_GUI_Utils.py:1713-1780``

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The data folder (``essential.data_dir``, ``orthostudio.home``): the tiles, the downloaded imagery
 and the caches on another disk than OrthoStudio XP's own folder (a user asked, 2026-09-15).
 Temporary folders and a fake X-Plane only; nothing of the machine's is read or written."""

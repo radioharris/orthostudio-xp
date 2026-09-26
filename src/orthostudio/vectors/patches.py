@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Patches: a folder of ``*.patch.osm`` files and OBJ8 objects, read as Ortho4XP reads them.
 
 Specification: ``docs/specs/vectors-water-roads.md`` section 4. Origin:

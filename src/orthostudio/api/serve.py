@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``osxp serve``: the API and the page on ``127.0.0.1`` (spec ``api.md`` section 6).
 
 ``main`` is what ``cli.py`` wires; it never binds another address than the loopback.

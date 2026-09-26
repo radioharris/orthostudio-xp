@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Web-mercator tile grid and texture naming, ported bit for bit from Ortho4XP.
 
 Origin: ``src/O4_Geo_Utils.py:66-150`` (``gtile_to_wgs84``, ``wgs84_to_gtile``,

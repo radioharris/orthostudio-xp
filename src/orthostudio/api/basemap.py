@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The street map of the page: ``GET /api/basemap/...``, a caching proxy in front of OpenFreeMap.
 
 A user of the X-Plane.Org page asked for an OSM map beside the aerial imagery, as Ortho4XP offers

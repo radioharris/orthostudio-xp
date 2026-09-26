@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The graph rule ``orthostudio.mesh@1``: stage 2 of Ortho4XP, natively.
 
 Spec: ``docs/specs/mesh-build.md`` section 9. The artefact is a directory holding

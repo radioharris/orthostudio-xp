@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The scenery pack and its installation (spec ``pipeline-build.md`` 2.3, 3): layout, manifest
 round trip, ``.bak``, stale files, intact checks, install receipt on a temporary Custom Scenery."""
 

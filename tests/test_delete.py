@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Deleting a tile for good: ``delete_receipt`` (``docs/specs/install.md`` section 4.2).
 
 Found on the user's Library screen: a tile could be taken out of X-Plane, not deleted.

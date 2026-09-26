@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The app stops a while after its last page closed, unless a build runs or waits
 (``orthostudio.api.presence``, ``POST /api/presence``, ``GET /api/engine``, ``osxp serve
 --quit-when-closed``).

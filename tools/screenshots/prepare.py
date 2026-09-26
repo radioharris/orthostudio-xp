@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Turn a capture of the page into the pictures the README and the store listing show.
 
 A capture is the whole screen: the menu bar, the browser's tabs and address bar, the page, and the

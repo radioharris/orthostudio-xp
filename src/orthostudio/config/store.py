@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Read and write ``config.toml`` (``docs/specs/settings.md`` section 4.2).
 
 ``tomllib`` reads; :func:`toml_dumps` is a small emitter for what the settings need (scalars,

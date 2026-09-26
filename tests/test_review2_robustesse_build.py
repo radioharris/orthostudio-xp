@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """P2a adversarial review, robustness lens: ``build_tiles`` on a batch where nothing can build.
 
 No network, no Ortho4XP: the OSM download fails, there is no DSFTool, and the Global Scenery

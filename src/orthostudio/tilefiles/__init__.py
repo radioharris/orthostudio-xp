@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The files of a tile, in the formats Ortho4XP defined and OrthoStudio XP keeps.
 
 The 44 tile variables and the text of their settings file (``tile_settings.cfg`` in an

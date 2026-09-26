@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Assembly of the vector layers and the rule ``orthostudio.vectors@1``.
 
 Spec: ``docs/specs/vectors-assembly.md`` sections 2, 5, 6. The layers are synthetic and the

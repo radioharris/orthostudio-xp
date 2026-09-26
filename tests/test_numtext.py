@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Numbers read from text the same way on every system (``orthostudio.numtext``).
 
 ``np.fromstring`` parses with the C library, slow on Windows: a ZL16 mesh took 8 s to read there

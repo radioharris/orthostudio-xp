@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``osxp plan``: what a build will cost before it runs (spec ``pipeline-build.md`` section 5).
 
 Nothing is built. The node statuses come from ``Scheduler.plan`` (keys computed as far as

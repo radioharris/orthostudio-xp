@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Real-network checks of ``orthostudio.net.fetch`` against the Bing imagery CDN (``-m network``).
 
 Never run in CI. The tile set is the texture-aligned ZL16 grid of the +43+005 cell used by the

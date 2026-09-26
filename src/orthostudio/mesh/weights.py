@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The 1001 x 1001 curvature-tolerance weight map Triangle4XP reads (`.weight`).
 
 Spec: ``docs/specs/mesh-build.md`` section 3. Origin: ``O4_Mesh_Utils.py:132-228``

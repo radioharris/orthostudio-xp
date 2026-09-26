@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Where OrthoStudio XP finds the two programs it runs: Triangle4XP and DSFTool.
 
 An installer puts both in ``orthostudio/bin``, next to this module (``docs/specs/packaging.md``).

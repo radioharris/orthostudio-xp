@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Distances: the ``_dist`` masks and the reach of Pillow's Gaussian blur.
 
 Spec: ``docs/specs/masks-build.md`` section 4. Origin: ``O4_Mask_Utils.py:181-198`` (the

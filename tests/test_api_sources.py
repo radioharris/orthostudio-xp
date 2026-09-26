@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The imagery sources: what each covers, and the sources a user adds (``docs/specs/api.md`` 2,
 ``docs/specs/imagery-providers.md`` 6). No request leaves the machine: the tile of a source that
 is tried comes from a stub."""

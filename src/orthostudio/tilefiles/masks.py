@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Index of the mask PNGs of a tile (``O4_Mask_Utils.py:23-60``, ``O4_File_Names.py:334-345``).
 
 Spec: ``docs/specs/tile-files.md`` section 3.3. The masks artefact holds them at ``mask_zl``

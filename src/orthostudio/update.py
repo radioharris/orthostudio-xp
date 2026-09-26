@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Whether a newer OrthoStudio XP has been published: GitHub is asked at most once a day.
 
 Nothing is downloaded or installed here. The page says that a version exists and links to its

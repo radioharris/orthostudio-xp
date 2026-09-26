@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // i18n for the OrthoStudio XP web page (docs/specs/ui.md section 1).
 // Every visible string is looked up with t(key); keys are literal in app.js so that
 // tests/test_ui_static.py can check that both languages define each of them.

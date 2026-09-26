@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The reader of OpenStreetMap layers in the shape Ortho4XP caches them (``sources/prepared.py``).
 
 OSM 0.6 XML, bzip2 or plain, one file a layer: what a folder of the user's own may hold. The

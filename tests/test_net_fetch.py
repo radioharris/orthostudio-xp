@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Tests of ``orthostudio.net.fetch`` against a local HTTP/1.1 server (no real network).
 
 Spec: ``docs/specs/net-download.md`` section 3. The server (a thread) simulates the cases the

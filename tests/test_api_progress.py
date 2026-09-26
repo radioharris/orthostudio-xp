@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Progress and time remaining of a whole job (spec ``docs/specs/api.md`` 5.6).
 
 The replay feeds the events of a real six-tile job -- the journal of the build the Works screen

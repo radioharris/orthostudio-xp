@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Tests of the P1 review fixes (spec sections named in each test).
 
 Covers what the reviewers' own tests (``test_review_*.py``) do not: the atomic-write helper,

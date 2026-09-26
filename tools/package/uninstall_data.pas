@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // What the uninstaller says about what it leaves, read by tools/package/build.py into [Code].
 //
 // It removes the program and nothing else. The settings and the data OrthoStudio XP downloaded

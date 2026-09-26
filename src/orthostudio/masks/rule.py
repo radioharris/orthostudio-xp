@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The native masks rule ``orthostudio.masks@1``.
 
 Spec: ``docs/specs/masks-build.md`` section 3.

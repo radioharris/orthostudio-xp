@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Least-squares endpoint refinement of BC1 colour blocks (what nvtt's fast mode does).
 
 Optional, pure numpy: each pass solves the 2x2 normal equations for the two endpoints given

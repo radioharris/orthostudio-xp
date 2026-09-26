@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Scheduler nodes and the context a node run receives.
 
 Spec: ``docs/specs/scheduler.md`` sections 2.1 and 2.2. A :class:`Node` is a P0 ``Rule``

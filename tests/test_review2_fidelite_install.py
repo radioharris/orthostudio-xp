@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Adversarial fidelity review (P2a): ``scenery_packs.ini`` ordering on realistic lists
 (airport packs above and below ``*GLOBAL_AIRPORTS*``, absolute paths with spaces, CRLF,
 HD-mesh packs at the bottom, X-Plane 12 putting a new pack at the top of the list).

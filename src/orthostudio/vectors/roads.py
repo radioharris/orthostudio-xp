@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Road and railway levelling layers: the successor of ``include_roads`` in Ortho4XP.
 
 Specification: ``docs/specs/vectors-water-roads.md`` sections 3 and 5. Origin:

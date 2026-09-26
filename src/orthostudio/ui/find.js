@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // Find on the page (Cmd+F, Ctrl+F), because the window does not have one.
 //
 // Since 0.1.8 the app opens in a window of its own (``window.py``). Neither WKWebView nor

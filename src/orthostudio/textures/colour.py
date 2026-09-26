@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Colours of the photo: brightness, contrast and saturation, before the DDS encoding.
 
 A user of the X-Plane.Org page edited his screenshots by hand because "most of the sat images
