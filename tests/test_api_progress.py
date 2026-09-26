@@ -1488,6 +1488,41 @@ def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path)
     assert len(lines()) == 2, "and a line that says something new is written"
 
 
+def test_a_steps_last_line_reaches_the_log_even_within_the_second(tmp_path: Path) -> None:
+    """Two tiles read from the library, and the log said "4 OSM layers received" for one: the
+    other's came 0.8 s after its "waiting for the map data server", and the rule of one line a
+    second held it back for good (a user, 2026-09-26). A node's last line is written when it
+    ends; a line already written is not written again."""
+    from orthostudio.sched.events import Done, Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+49+009")], lambda: at[0], tmp_path)
+    waiting = "+49+009: waiting for the map data server (airports, roads, coastline, water)"
+    received = "+49+009: 4 OSM layers received from library (2026-09-13 #27a5d866778b)"
+
+    def lines(node: str) -> list[str]:
+        return [e["message"] for e in job.events() if e["event"] == "log" and e.get("node") == node]
+
+    osm = "+49+009/osm"
+    job.on_event(Started(osm, "net", KEY))
+    job.on_event(Progress(osm, 0.0, waiting))
+    at[0] = 0.8
+    job.on_event(Progress(osm, 1.0, received))
+    assert lines(osm) == [waiting]  # held back while the node runs
+    at[0] = 1.3
+    job.on_event(Done(osm, KEY, False, 1.3, REF))
+    assert lines(osm) == [waiting, received]  # and written when it ends
+    events = [e["event"] for e in job.events() if e.get("node") == osm]
+    assert events[-2:] == ["log", "done"]
+
+    dem = "+49+009/dem"
+    job.on_event(Started(dem, "net", KEY))
+    at[0] = 5.0
+    job.on_event(Progress(dem, 0.5, "+49+009: elevation, 2 file(s) (6.5 MB/s)"))
+    job.on_event(Done(dem, KEY, False, 3.7, REF))
+    assert lines(dem) == ["+49+009: elevation, 2 file(s) (6.5 MB/s)"]  # written once
+
+
 def test_only_a_source_that_really_pushed_back_is_reported_as_slowing_us_down() -> None:
     """The page said "the source is asking us to slow down" beside 1 269 requests a second and
     18.4 MB/s, because it read ``throttled`` -- which is mostly our **own** window being lowered

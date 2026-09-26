@@ -357,6 +357,8 @@ class Job:
         self._file: Any = None
         self._last_log: dict[str, float] = {}
         self._last_said: dict[str, str] = {}
+        self._last_heard: dict[str, str] = {}
+        """The last line each node sent, written or held back (``_say_the_last_line``)."""
         self._last_file_log: dict[str, float] = {}
         self._stats: dict[str, Any] | None = None
         self._clock: Callable[[], float] = clock if clock is not None else time.perf_counter
@@ -542,6 +544,8 @@ class Job:
             # is alive wrote that same second a line into the log, for minutes (a user watching
             # his first build, 2026-09-23)
             said_before = self._last_said.get(st.node)
+            if event.message:
+                self._last_heard[st.node] = event.message
             if event.message and event.message != said_before and now - last_log >= LOG_PERIOD_S:
                 self._last_log[st.node] = now
                 self._last_said[st.node] = event.message
@@ -558,6 +562,7 @@ class Job:
                 st.wall_s = event.wall_s
                 st.ended_at = now
             st.fraction = 1.0
+            self._say_the_last_line(st, base)
             # the file says which node ended and when: what a build that stops leaves behind is
             # then the stage it never finished (2026-09-22)
             log.info(
@@ -580,6 +585,7 @@ class Job:
             st.ended_at = now
             if st.started_at is not None:
                 st.wall_s = now - st.started_at
+            self._say_the_last_line(st, base)
             self._append(
                 "failed",
                 **base,
@@ -588,6 +594,19 @@ class Job:
                 cause=event.cause,
                 weight_s=_weight_json(st),
             )
+
+    def _say_the_last_line(self, st: _NodeState, base: dict[str, Any]) -> None:
+        """Write the line a node ended on when the once-a-second rule held it back.
+
+        A library answering within the second of "waiting for the map data server" left that as
+        the tile's only line: its "4 OSM layers received" was held back and never written, so a
+        build of two tiles said it for one (a user, 2026-09-26). The rule still keeps a node's
+        lines a second apart while it runs; its last one is written when it ends.
+        """
+        last = self._last_heard.get(st.node)
+        if last and last != self._last_said.get(st.node):
+            self._last_said[st.node] = last
+            self._append("log", **base, message=last)
 
     # -- phases (api.md 5.6) -----------------------------------------------------------------
 

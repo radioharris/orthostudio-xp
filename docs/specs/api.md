@@ -350,7 +350,7 @@ the row's `weight_s` in the state: a page that draws a step from its rows weighs
 |---|---|---|
 | `started` | `Started` | tile, stage, node, role, key, weight_s |
 | `progress` | `Progress` | tile, stage, node, role, fraction (0-1), message, weight_s |
-| `log` | any `Progress` that has something to say | message, tile, stage; at most one per second per node, and one every ten seconds in `serve.log` too (`FILE_LOG_PERIOD_S`). The images alone wrote lines until 0.1.14: a build that stopped on the Data stage left a bar going nowhere and an empty log (a user on Linux, 2026-09-22) |
+| `log` | any `Progress` that has something to say | message, tile, stage; at most one per second per node, and one every ten seconds in `serve.log` too (`FILE_LOG_PERIOD_S`); the line a node ended on is written when it ends if that rule held it back (`_say_the_last_line`: a library answering within the second left "waiting for the map data server" as a tile's only line, 2026-09-26). The images alone wrote lines until 0.1.14: a build that stopped on the Data stage left a bar going nowhere and an empty log (a user on Linux, 2026-09-22) |
 | `done` | `Done`; also a row that will not run because what it produces is there (`Phase.reused`, section 5.6) | tile, stage, node, role, key (`null` when nothing is stored), hit, wall_s, weight_s |
 | `failed` | `Failed` | tile, stage, node, role, error `{code, message, remedy, severity, action, context, cause}`; `skipped: true` with `cause` = the upstream node when the node fell because of it; weight_s |
 | `stats` | the job itself (section 5.6), prompted by `Stats`, `Phase` and a one-second ticker | `stats: {running, pending, done, failed, hits, elapsed_s, progress, eta_low_s, eta_high_s, phase}` |
