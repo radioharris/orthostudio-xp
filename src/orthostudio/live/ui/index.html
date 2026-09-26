@@ -3,9 +3,8 @@
      Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
 <!-- The Live window's page. Its parts are OrthoStudio XP's (styles.css): the cards and fields of its
      Settings (.question, .sub-question, .question-help, .with-unit, .path-row), its dialogs and its
-     buttons, so that the spacing is the same. A field's title is a span tied to it by
-     aria-labelledby, not a label: pressing a label's text pressed its field, and the title could
-     not be selected (a user, 2026-09-27). -->
+     buttons, so that the spacing is the same. A click on a field's title is left to its text, as
+     OrthoStudio XP does it (live.js isTitleClick): the title can be selected. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -28,8 +27,8 @@
   </div>
   <div class="nav"></div>
   <div class="topbar-tools">
-    <span class="sr-only" id="lang-title" data-i18n="app.language">Language</span>
-    <select id="lang-select" class="tool-select" aria-labelledby="lang-title">
+    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
+    <select id="lang-select" class="tool-select">
       <option value="en">EN</option>
       <option value="fr">FR</option>
     </select>
@@ -98,15 +97,15 @@
         <legend class="question-title" data-i18n="disk.title">Disk space</legend>
         <p class="question-help" data-i18n="disk.help"></p>
         <div class="sub-question">
-          <span class="sub-question-title" id="t-disk" data-i18n="disk.textures">Built textures</span>
-          <div class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1" aria-labelledby="t-disk">
+          <label class="sub-question-title" for="set-disk" data-i18n="disk.textures">Built textures</label>
+          <div class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1">
             <span class="unit" data-i18n="unit.gb">GB</span></div>
           <p class="question-help" data-i18n="disk.textures_help"></p>
           <p class="question-detected" id="disk-now"></p>
         </div>
         <div class="sub-question">
-          <span class="sub-question-title" id="t-cache" data-i18n="disk.imagery">Downloaded imagery</span>
-          <div class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1" aria-labelledby="t-cache">
+          <label class="sub-question-title" for="set-cache" data-i18n="disk.imagery">Downloaded imagery</label>
+          <div class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1">
             <span class="unit" data-i18n="unit.gb">GB</span></div>
           <p class="question-help" data-i18n="disk.imagery_help"></p>
           <p class="question-detected" id="cache-now"></p>
@@ -122,9 +121,9 @@
         <p class="question-help" data-i18n="folder.help"></p>
         <p class="question-detected" id="folder-now"></p>
         <div class="sub-question">
-          <span class="sub-question-title" id="t-folder" data-i18n="folder.other">Another folder</span>
+          <label class="sub-question-title" for="set-folder" data-i18n="folder.other">Another folder</label>
           <div class="path-row">
-            <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off" aria-labelledby="t-folder">
+            <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off">
             <button type="button" class="btn btn-small" id="folder-choose" data-i18n="folder.choose">Choose…</button>
           </div>
         </div>

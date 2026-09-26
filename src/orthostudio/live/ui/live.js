@@ -411,6 +411,18 @@ async function readLog() {
 
 // --- the loop and the buttons ------------------------------------------------------------------
 
+/**
+ * Whether a click lands on a field's title: a label naming a field outside it. OrthoStudio XP's own
+ * (app.js isTitleClick): a label hands its clicks to its field, so a double click on a title to
+ * copy it put the caret in the field. A title is text, and such a click is left to the text. A
+ * label around its own box (a choice, a switch) is that box's target, and keeps it.
+ */
+export function isTitleClick(target) {
+  const label = target?.closest?.("label");
+  const control = label?.control;
+  return Boolean(control) && !label.contains(control);
+}
+
 async function poll() {
   try {
     const status = await api("status");
@@ -449,6 +461,10 @@ async function loadProviders() {
 }
 
 function boot() {
+  // before any other listener: the click is the text's, not the field's
+  document.addEventListener("click", (ev) => {
+    if (isTitleClick(ev.target)) ev.preventDefault();
+  }, true);
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   applyStatic(document);

@@ -485,6 +485,30 @@ def test_the_page_says_everything_in_both_languages() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_a_click_on_a_field_title_is_left_to_its_text() -> None:
+    """As OrthoStudio XP does it: a title can be selected; a label around its own box keeps it."""
+    script = (
+        f"import {{ isTitleClick }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "const field = {};"
+        "const title = { control: field, contains: () => false };"
+        "const around = { control: field, contains: () => true };"
+        "const on = (label) => ({ closest: () => label });"
+        "console.log(JSON.stringify([isTitleClick(on(title)), isTitleClick(on(around)),"
+        " isTitleClick(on(null)), isTitleClick(null)]));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == [True, False, False, False]
+    js = (UI_DIR / "live.js").read_text()
+    handler = r"addEventListener\(\"click\",[^}]*isTitleClick\(ev\.target\)[^}]*\}, true\)"
+    assert re.search(handler, js)  # in the capture phase, before any other listener
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_parses() -> None:
     for name in ("live.js", "strings.js"):
         subprocess.run([NODE or "node", "--check", str(UI_DIR / name)], check=True)
