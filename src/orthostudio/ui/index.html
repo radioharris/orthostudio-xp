@@ -279,6 +279,11 @@
             <span class="sr-only" data-i18n="works.clear">Clear the job list</span>
           </button>
         </div>
+        <div class="works-search">
+          <input type="search" id="works-search" class="works-search-input" spellcheck="false" autocomplete="off"
+                 data-i18n-placeholder="works.search_ph" data-i18n-aria-label="works.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+          <p class="help works-search-note" id="works-search-note" aria-live="polite" hidden></p>
+        </div>
         <ul id="job-list" class="job-list"></ul>
       </aside>
       <div class="col col-job">

@@ -1070,14 +1070,15 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 .settings-form { max-width: 1100px; }
 .settings-search { margin: 0 0 var(--block-gap); }
-.settings-search-input {
+.works-search { margin: 0 0 var(--help-gap); }
+.settings-search-input, .works-search-input {
   width: 100%; max-width: 420px; min-height: 30px; padding: 0 8px;
   font: inherit; color: var(--fg);
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
 }
-.settings-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.settings-search-note { margin: var(--help-gap) 0 0; }
-.settings-search-note.is-warn { color: var(--warn); }
+.settings-search-input:focus-visible, .works-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-search-note, .works-search-note { margin: var(--help-gap) 0 0; }
+.settings-search-note.is-warn, .works-search-note.is-warn { color: var(--warn); }
 .settings-presets { margin: 0 0 var(--section-gap); }
 /* Title 3 */
 .presets-title { margin: 0 0 var(--title-gap); font-size: var(--fs-title-3); font-weight: 600; line-height: 1.25; color: var(--fg); }

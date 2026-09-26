@@ -3876,21 +3876,51 @@ function jobStatusPill(status) {
   return pill(STATE_KEYS[status] ? STATE_KEYS[status]() : status, kind);
 }
 
+/** Whether a tile's name holds what the Works search asks for, case aside: "+49" finds +49+011 and
+ * +49+012, "49+011" the one. An empty search keeps everything. A user asked to find a tile among
+ * many jobs, or among the 33 of a flight plan (2026-09-26). */
+export function tileMatches(name, query) {
+  const q = String(query || "").trim().toLowerCase();
+  return !q || String(name || "").toLowerCase().includes(q);
+}
+
+/** A job's tile names, from the list's summary (strings) or a job's state (objects). */
+function jobTileNames(j) {
+  return (j.tiles || []).map((x) => (typeof x === "string" ? x : x.tile));
+}
+
+/** The jobs the list shows: every one, or those holding a tile the Works search names. The list
+ * and the removal of one job both count on it, so the keyboard lands on the row it should. */
+function listedJobs() {
+  const query = (state.worksSearch || "").trim();
+  if (!query) return state.jobs;
+  return state.jobs.filter((j) => jobTileNames(j).some((name) => tileMatches(name, query)));
+}
+
 function renderJobList() {
   const trash = $("jobs-clear");
   trash.hidden = Boolean(state.engineOutdated) || !state.jobs.some((j) => !jobActive(j));
   trash.disabled = state.jobsClearing;
   const ul = clear($("job-list"));
-  for (const j of state.jobs) {
-    const tiles = (j.tiles || []).map((x) => (typeof x === "string" ? x : x.tile));
+  const query = (state.worksSearch || "").trim();
+  const listed = listedJobs();
+  for (const j of listed) {
+    const all = jobTileNames(j);
+    // the tiles the search found come first, so the row says why it is there
+    const found = all.filter((name) => tileMatches(name, query));
+    const tiles = query ? [...found, ...all.filter((name) => !found.includes(name))] : all;
     const btn = h("button", { type: "button", class: "job-item", "aria-current": String(j.id === state.jobId), onclick: () => { history.replaceState(null, "", `#works/${j.id}`); watchJob(j.id); renderJobList(); } },
       h("span", { class: "job-tiles" }, tiles.length > 3 ? `${tiles.slice(0, 3).join(" ")} +${tiles.length - 3}` : tiles.join(" ")),
       jobStatusPill(j.status),
       h("span", { class: "job-meta num" }, `${j.provider || ""} ZL${j.zoom_level ?? j.zl ?? ""} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
     const row = h("li", null, btn);
-    if (!jobActive(j)) row.append(forgetButton(j, tiles));
+    if (!jobActive(j)) row.append(forgetButton(j, all));
     ul.append(row);
   }
+  const note = $("works-search-note");
+  note.hidden = !query;
+  note.classList.toggle("is-warn", Boolean(query) && !listed.length);
+  if (query) setText(note, listed.length ? t("works.search_found", { n: fmtInt(listed.length), total: fmtInt(state.jobs.length) }) : t("works.search_none"));
 }
 
 /** The cross in a finished row's corner: that build alone leaves the list, its progress and its
@@ -3915,7 +3945,7 @@ function forgetButton(j, tiles) {
  * job, not an empty screen, 2026-09-25), and the keyboard, on its bin or else on the row itself. */
 async function forgetJob(j) {
   if (state.jobsClearing) return;
-  const was = state.jobs.findIndex((x) => x.id === j.id);
+  const was = listedJobs().findIndex((x) => x.id === j.id);
   state.jobsClearing = true;
   renderJobList();
   try {
@@ -3927,8 +3957,9 @@ async function forgetJob(j) {
   }
   await refreshJobList();
   const gone = !state.jobs.some((x) => x.id === j.id); // refused, it is still there, and so is the hand
-  const at = Math.min(was, state.jobs.length - 1);
-  const next = at >= 0 ? state.jobs[at] : null;
+  const listed = listedJobs(); // the rows the list shows, a search on or not
+  const at = Math.min(was, listed.length - 1);
+  const next = at >= 0 ? listed[at] : null;
   if (gone && state.jobId === j.id) {
     if (next) {
       history.replaceState(null, "", `#works/${next.id}`);
@@ -4089,7 +4120,7 @@ function buildJobView(box, job, previous) {
   // The same job drawn again (another language, the job clicked again): the log stays as it was.
   const same = previous && previous.id === job.id;
   const carry = same ? { open: previous.logDetails.open, follow: previous.logFollow, top: previous.logPre.scrollTop } : null;
-  const v = { id: job.id, lang: language(), status: null, cells: new Map(), tileNames: null, errorsKey: null, report: undefined, logLines: [], logFollow: carry ? carry.follow : true, logTop: carry && !carry.follow ? carry.top : null, elapsedShown: null };
+  const v = { id: job.id, lang: language(), status: null, cells: new Map(), tileRows: new Map(), tileNames: null, errorsKey: null, report: undefined, logLines: [], logFollow: carry ? carry.follow : true, logTop: carry && !carry.follow ? carry.top : null, elapsedShown: null };
 
   v.pill = h("span", { class: "job-pill" });
   v.meta = h("span", { class: "help num" });
@@ -4116,6 +4147,7 @@ function buildJobView(box, job, previous) {
   v.bar = h("div", { class: "progress progress-total", role: "progressbar", "aria-label": t("works.progress_help"), "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, v.barFill);
   v.phase = h("p", { class: "job-phase", hidden: true });
   v.rows = h("div", { class: "tile-rows" });
+  v.rowsNote = h("p", { class: "help works-rows-note", hidden: true }, t("works.search_rows_none"));
   v.errors = h("div", { class: "job-errors" });
 
   v.logSummary = h("summary");
@@ -4129,7 +4161,7 @@ function buildJobView(box, job, previous) {
   });
   v.reportBox = h("div", { class: "job-report" });
 
-  v.root = h("div", { class: "job-view" }, head, stats, v.bar, v.phase, v.rows, v.errors, v.logDetails, v.reportBox);
+  v.root = h("div", { class: "job-view" }, head, stats, v.bar, v.phase, v.rowsNote, v.rows, v.errors, v.logDetails, v.reportBox);
   clear(box).append(v.root);
   if (carry?.open) v.logDetails.open = true;
   return v;
@@ -4230,6 +4262,7 @@ function updateTileRows(v, job) {
   if (names !== v.tileNames) {
     clear(v.rows);
     v.cells.clear();
+    v.tileRows = new Map();
     v.tileNames = names;
     for (const tile of tiles) {
       const steps = h("div", { class: "steps" });
@@ -4238,9 +4271,20 @@ function updateTileRows(v, job) {
         v.cells.set(`${tile.tile}|${s}`, cell);
         steps.append(cell.root);
       }
-      v.rows.append(h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps));
+      const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps);
+      v.tileRows.set(tile.tile, row);
+      v.rows.append(row);
     }
   }
+  // the Works search keeps the rows of the tiles it names; the job's own numbers stay whole
+  const query = state.worksSearch || "";
+  let kept = 0;
+  for (const [name, row] of v.tileRows) {
+    const keep = tileMatches(name, query);
+    if (row.hidden === keep) row.hidden = !keep;
+    if (keep) kept += 1;
+  }
+  v.rowsNote.hidden = !(query.trim() && tiles.length && !kept);
   for (const tile of tiles) {
     for (const s of STEPS) updateStepCell(v.cells.get(`${tile.tile}|${s}`), job, tile, s);
   }
@@ -5661,6 +5705,11 @@ async function boot() {
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();
+  });
+  $("works-search").addEventListener("input", (e) => {
+    state.worksSearch = e.target.value;
+    renderJobList();
+    if (state.job) renderJob();
   });
   $("settings-form").addEventListener("submit", saveSettings);
   $("settings-reset").addEventListener("click", resetSettings);

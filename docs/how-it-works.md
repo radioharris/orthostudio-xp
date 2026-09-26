@@ -110,6 +110,12 @@ wait too: the end of the build decides what X-Plane shows of it. Tiles are delet
 builds. *Remove from the queue*, on the Works screen, cancels a build that has not started, and
 *Quit* cancels the waiting builds with the one running.
 
+**Finding a tile.** Above the list, *Search for a tile* keeps the builds that hold a tile whose
+name has what you type, "+49" for every square of that band or "+49+011" for one, and shows the
+tiles it found first in each row; in the build on screen, only the rows of those tiles stay. The
+build's own numbers, its percentage and its time left, stay those of the whole build. Emptying
+the field shows everything again.
+
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
 are. If it was the build on screen, the next one in the list takes its place. The trash above the

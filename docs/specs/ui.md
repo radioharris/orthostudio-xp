@@ -451,7 +451,19 @@ build without the saved zones and leaving `zones` out would build zones the page
 
 ### 2.2 Works
 
-Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started). Beside its
+Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started).
+
+**Searching a tile** (a user, 2026-09-26: many jobs, or the 33 of a flight plan): a field above the
+list, the look of Settings' search (`#works-search`, "Search for a tile: +49+011, +49…"). A job
+stays when one of its tiles holds what is typed, spaces around it and case aside (`tileMatches`:
+"+49" keeps every square of that band, "49+011" one), and its row names the tiles found first;
+under the field, "{n} of {total} jobs." or, in orange, "No job has a tile that matches.". In the
+job shown, the rows of the other tiles are hidden, and a line says so when none is left; the job's
+progress, times and report stay the whole job's. The list and the removal of one job count on the
+same jobs shown (`listedJobs`), so the keyboard lands on the right row with a search on. The field
+empties with the page; it is not kept.
+
+Beside the list's
 title, a small trash (user request, 2026-09-13), shown when a finished job is listed: it asks
 first ("Clear the job list?", the number of finished jobs, their progress and log deleted, the
 tiles kept in the Library and in X-Plane, and "The build in progress stays in the list" when one

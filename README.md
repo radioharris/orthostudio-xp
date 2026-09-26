@@ -32,7 +32,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   what is missing. A build takes up to 500 tiles. Start more builds while one runs: they wait in a
   queue, and a tile being built cannot be chosen twice. A finished build leaves the list with the
   small cross on its corner, or all of them at once with the trash above it; the tiles they built
-  stay.
+  stay. A search above the list finds the builds of a tile, "+49+011" or "+49", and its row in
+  the build shown.
 - **Settings in plain words.** Questions about what you want to see in X-Plane (detail, airports,
   coast, water, relief, roads and forests), the recommended answer marked, three presets, and every
   Ortho4XP setting still there under "For experts" with a plain label; every number says first

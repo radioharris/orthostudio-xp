@@ -2141,6 +2141,52 @@ def test_the_job_list_empties_after_asking() -> None:
     assert got["gone"]["status"] == 404
 
 
+def test_works_finds_a_tile_among_the_jobs() -> None:
+    """A user asked to find a tile in Works, among many jobs or the 33 of a flight plan
+    (2026-09-26): a field like Settings' keeps the jobs holding a tile that matches, the tiles
+    found first in each row, and in the job shown the rows of those tiles; the job's own numbers
+    stay whole. The list and the removal of a job count on the same jobs shown."""
+    got = _node_json(
+        "app.js",
+        """[m.tileMatches("+49+011", "+49"), m.tileMatches("+49+011", "49+011"),
+          m.tileMatches("+49+011", " +49+01 "), m.tileMatches("+47+011", "+49"),
+          m.tileMatches("+49+011", ""), m.tileMatches("+49+011", null)]""",
+    )
+    assert got == [True, True, True, False, True, True]
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert html.index('<div class="jobs-head">') < html.index('id="works-search"')
+    assert html.index('id="works-search"') < html.index('id="job-list"')
+    assert 'data-i18n-placeholder="works.search_ph" data-i18n-aria-label="works.search"' in html
+    assert 'id="works-search-note" aria-live="polite" hidden' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".settings-search-input, .works-search-input {" in css  # the same field as Settings'
+
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    field = app_js[app_js.index('$("works-search").addEventListener("input"') :]
+    field = field[: field.index("});") + 3]
+    assert "state.worksSearch = e.target.value;" in field and "renderJobList();" in field
+    assert "if (state.job) renderJob();" in field
+    listing = _function_body(app_js, "renderJobList")
+    assert "const listed = listedJobs();" in listing and "for (const j of listed) {" in listing
+    assert "[...found, ...all.filter((name) => !found.includes(name))]" in listing
+    assert 't("works.search_found"' in listing and 't("works.search_none")' in listing
+    rows = _function_body(app_js, "updateTileRows")
+    assert "const keep = tileMatches(name, query);" in rows and "row.hidden = !keep" in rows
+    assert "v.rowsNote.hidden = !(query.trim() && tiles.length && !kept);" in rows
+    forget = _function_body(app_js, "forgetJob")
+    assert "const was = listedJobs().findIndex((x) => x.id === j.id);" in forget
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key in (
+        "works.search",
+        "works.search_ph",
+        "works.search_found",
+        "works.search_none",
+        "works.search_rows_none",
+    ):
+        assert i18n.count(f'"{key}":') == 2, key  # French and English
+
+
 def test_one_finished_build_can_leave_the_list_alone() -> None:
     """A user asked to remove a finished build from the Works list without emptying it (2026-09-24):
     a bin on the row, only on a row that has finished, DELETE /api/jobs/{id}. Its progress and its
@@ -2149,7 +2195,7 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     """
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     listing = _function_body(app_js, "renderJobList")
-    assert "if (!jobActive(j)) row.append(forgetButton(j, tiles));" in listing, "finished rows only"
+    assert "if (!jobActive(j)) row.append(forgetButton(j, all));" in listing, "finished rows only"
     code = _function_body(app_js, "forgetJob")
     assert code.index('api("DELETE", `/api/jobs/${encodeURIComponent(j.id)}`)') < code.index(
         "await refreshJobList();"
@@ -2158,7 +2204,7 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     # the row that takes the gone one's place, the next one down or else the one above, is the one
     # shown when the gone one was (a user expected the next job, not an empty screen, 2026-09-25)
     # and the one the keyboard lands on; a removal refused moves nothing
-    assert "const at = Math.min(was, state.jobs.length - 1);" in code
+    assert "const at = Math.min(was, listed.length - 1);" in code  # the rows shown, search or not
     assert "if (gone && state.jobId === j.id) {" in code
     assert code.index("await watchJob(next.id);") < code.index("forgetShownJob();")
     assert 'const row = at >= 0 ? $("job-list").children[at] : null;' in code
