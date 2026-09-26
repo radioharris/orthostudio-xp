@@ -1,0 +1,44 @@
+Hold test: X-Plane 12441, XPPython3's Python 3.12.1, holds of 8.0 s
+Open files looked at every 25 ms: about 214 of them, 3434.70 ms a look (at most 22761.1 ms)
+
+    +7.31  message DATAREFS_ADDED (7765) at 0.0000 0.0000
+   +30.07  message 115 (1) at 43.4382 5.2129
+   +30.07  message PLANE_UNLOADED (0) at 43.4382 5.2129
+   +30.07  message FMOD_BANK_UNLOADING (1) at 43.4382 5.2129
+   +30.08  message PLANE_LOADED (0) at 43.4382 5.2129
+   +30.08  held PLANE_LOADED 8.0 s: 0 DSF loaded (0 ours), 0 scenery files seen open (0 ours) meanwhile; X-Plane used 75.3 s of CPU in 36.2 s, 616150 page faults
+   +30.08  Freeflight.prf written: start at LFML runway 13L (runway_start)
+   +40.75  message FMOD_BANK_LOADED (0) at 43.4382 5.2129
+   +40.75  held FMOD_BANK_LOADED 8.0 s: 0 DSF loaded (0 ours), 0 scenery files seen open (0 ours) meanwhile; X-Plane used 41.9 s of CPU in 11.4 s, 115673 page faults
+   +48.97  message FMOD_BANK_LOADED (1) at 43.4382 5.2129
+   +49.12  message LIVERY_LOADED (0) at 43.4382 5.2129
+   +49.12  held LIVERY_LOADED 8.0 s: 0 DSF loaded (0 ours), 0 scenery files seen open (0 ours) meanwhile; X-Plane used 175.3 s of CPU in 23.4 s, 587613 page faults
+   +71.86  message SCENERY_LOADED (0) at 43.4382 5.2129
+   +71.86  held SCENERY_LOADED 8.0 s: 38 DSF loaded (3 ours), 0 scenery files seen open (0 ours) meanwhile; X-Plane used 312.5 s of CPU in 33.3 s, 721772 page faults
+   +71.87  Log.txt: I/FLT: Init dat_p0 type:'runway_start' apt:LFML rwy:13L final_distance:0.000000nm tow_type:none tow_plane:
+   +71.87  scenery read until +71.87: 38 DSF loaded (3 ours), 0 scenery files seen open (0 ours)
+   +89.92  message AIRPORT_LOADED (0) at 43.4489 5.1977
+   +89.92  held AIRPORT_LOADED 8.0 s: 34 DSF loaded (7 ours), 0 scenery files seen open (0 ours) meanwhile; X-Plane used 310.9 s of CPU in 44.4 s, 900982 page faults
+   +89.92  scenery read until +89.92: 34 DSF loaded (7 ours), 0 scenery files seen open (0 ours)
+   +98.17  flight running at 43.4489 5.1977
+  +101.48  message DATAREFS_ADDED (10739) at 43.4489 5.1977
+  +101.53  flight running at 43.4489 5.1977
+  +107.86  message LIVERY_LOADED (0) at 43.4489 5.1977
+  +124.08  message SCENERY_LOADED (0) at 43.4489 5.1977
+  +132.48  flight running at 43.4489 5.1977
+  +142.02  scenery read until +151.21: 72 DSF loaded (10 ours), 0 scenery files seen open (0 ours)
+  +158.19  no reload asked: X-Plane reloaded the scenery already
+  +192.50  message 115 (0) at 43.4489 5.1977
+  +192.59  flight running at 43.4489 5.1977
+  +202.23  message WILL_WRITE_PREFS (0) at 43.4489 5.1977
+  +202.25  message WILL_WRITE_PREFS (0) at 43.4489 5.1977
+  +202.29  Freeflight.prf written: start at LFML runway 13L (runway_start)
+
+In short:
+- Start LFML runway 13L (runway_start): Freeflight.prf written 41.8 s before X-Plane read the scenery; messages in between: FMOD_BANK_LOADED, FMOD_BANK_LOADED, LIVERY_LOADED, SCENERY_LOADED
+- Start LFML runway 13L (runway_start): Freeflight.prf written, no scenery read after it
+- Hold at PLANE_LOADED: 0 scenery reads before it, nothing read during the hold; position already the start's
+- Hold at FMOD_BANK_LOADED: 0 scenery reads before it, nothing read during the hold; position already the start's
+- Hold at LIVERY_LOADED: 0 scenery reads before it, nothing read during the hold; position already the start's
+- Hold at SCENERY_LOADED: 0 scenery reads before it, read on during the hold (38 DSF loaded (3 ours), 0 scenery files seen open (0 ours)); position already the start's
+- Hold at AIRPORT_LOADED: 38 scenery reads before it, read on during the hold (34 DSF loaded (7 ours), 0 scenery files seen open (0 ours)); position already the start's

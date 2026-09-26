@@ -1,0 +1,68 @@
+X-StreamOrtho probe report: lfmn-lsgg
+========================================================================
+trace: 1473679 X-Plane events kept over 35.5 min, 0 lines not understood
+track: 7296 positions over 26.5 min, 215 km flown, max 23999 ft, max 426 kt
+test textures: 3735 touched, 5025 opens, 37786 disk reads from page faults, 0 explicit reads; DSF opens: 157
+  641 failed opens of wanted files, e.g. +42+005.dsf, +42+007.dsf, +42+006.dsf
+
+1. How X-Plane loads a texture
+------------------------------------------------------------------------
+what one open reads from the disk (H = header; level 0 = 4096 px, 1 = 2048, 2 = 1024, 3 = 512, 4 = 256):
+    3691 x  H level 4
+     749 x  H level 3
+     211 x  H level 2
+     133 x  level 2
+     116 x  H level 1
+      71 x  level 1
+      44 x  level 4
+       5 x  H level 0
+finest level a texture reached: level 0: 6, level 1: 183, level 2: 180, level 3: 443, level 4: 2923
+opens per texture: median 1, max 5
+
+2. Distance to the texture centre when a level is first asked for (en route, > 100 kt)
+------------------------------------------------------------------------
+  level  textures   p10 median    p90 km   median AGL ft   median time to overhead s
+      0         6     1.6    5.8   11.9           18358                          26
+      1       177    20.3   20.7   21.0           15350                          95
+      2       325    37.4   38.0   38.5           15443                         174
+      3       627    71.0   72.2   73.2           15484                         330
+      4      2208   129.2  184.3  227.3           13146                         882
+
+3. Does X-Plane open the file again for a sharper level?
+------------------------------------------------------------------------
+  sharper level after a new open(): 1276
+  sharper level from an earlier open, > 2 s later (kept mapping): 0
+  => 100% reopen: a texture replaced with rename() before X-Plane wants it sharper is seen.
+
+4. Demand: textures asked for at full resolution per minute (level 0, or the finest seen)
+------------------------------------------------------------------------
+  level 0: 6 textures over 2 min; per minute median 3, p90 5, peak 5
+    minute 0: 5 textures at 23999 ft, 425 kt
+    minute 1: 1 textures
+  time from X-Plane's first open of a texture to its level 0 (en route): p10 617 s, median 631 s, p90 673 s
+  test texture bytes read from the disk: 1.20 GB
+
+5. DSF loads
+------------------------------------------------------------------------
+  20 tiles loaded, 157 DSF opens across all packs
+  en route, distance to the tile centre when its DSF opens: median 169 km; tiles ahead (within 60 deg of track): median 169 km
+  time from a tile's DSF load to level 0 of its textures (en route): p10 10.4 min, median 10.6 min
+
+6. Swap test: textures replaced ahead of the aircraft during the flight
+------------------------------------------------------------------------
+  554 textures swapped (rename), grouped by their distance when swapped:
+  swapped 0-50 km ahead: 163
+      143  read the new file (template B's blocks)
+       20  not opened again after the swap
+    first read of the new file: median 38 km from the aircraft, 11 s after the swap
+    finest level read from the new files: level 0: 2, level 1: 86, level 2: 42, level 3: 13
+  swapped 50-100 km ahead: 19
+       11  not opened again after the swap
+        8  read the new file (template B's blocks)
+    first read of the new file: median 71 km from the aircraft, 125 s after the swap
+    finest level read from the new files: level 3: 8
+  swapped over 100 km ahead: 372
+      225  not opened again after the swap
+      147  read the new file (template B's blocks)
+    first read of the new file: median 134 km from the aircraft, 21 s after the swap
+    finest level read from the new files: level 3: 8, level 4: 139

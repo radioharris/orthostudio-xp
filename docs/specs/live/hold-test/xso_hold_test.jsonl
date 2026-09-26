@@ -1,0 +1,340 @@
+{"t":1790453434.9167,"kind":"start","pid":76522,"python":"3.12.1","versions":[12441,440,1],"hold_s":8.0,"sample_s":0.025,"log_bytes":9563,"start":{"runway_start":{"airport_id":"LFML","runway":"13L"}}}
+{"t":1790453453.6137,"kind":"start","pid":76617,"python":"3.12.1","versions":[12441,440,1],"hold_s":8.0,"sample_s":0.025,"log_bytes":9563,"start":{"runway_start":{"airport_id":"LFML","runway":"13L"}}}
+{"t":1790453458.124,"kind":"ru","cpu":6.469,"majflt":139,"minflt":98473,"inblock":0}
+{"t":1790453458.1241,"kind":"scan","n":1,"fds":69,"mean_ms":1.017,"max_ms":1.017}
+{"t":1790453460.9279,"kind":"msg","name":"DATAREFS_ADDED","param":7765,"sender":0,"log_bytes":17033,"prefs_mtime":1790447861.2998,"lat":0.0,"lon":0.0,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453483.6794,"kind":"msg","name":"115","param":1,"sender":0,"log_bytes":17294,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453483.68,"kind":"msg","name":"PLANE_UNLOADED","param":0,"sender":0,"log_bytes":17294,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453483.6807,"kind":"msg","name":"FMOD_BANK_UNLOADING","param":1,"sender":0,"log_bytes":51712,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453483.6887,"kind":"msg","name":"PLANE_LOADED","param":0,"sender":0,"log_bytes":51968,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453483.6887,"kind":"hold","name":"PLANE_LOADED","phase":"start"}
+{"t":1790453483.6889,"kind":"log","at":34897,"line":"0:00:00.000 I/TEX: TEX_cache ready (5.00 gb used / 5.00 gb MB max)"}
+{"t":1790453483.6891,"kind":"prefs","mtime":1790453477.2427,"start":{"runway_start":{"airport_id":"LFML","runway":"13L"}}}
+{"t":1790453483.6891,"kind":"ru","cpu":68.628,"majflt":194314,"minflt":456612,"inblock":0}
+{"t":1790453483.6893,"kind":"ru","cpu":68.628,"majflt":194314,"minflt":456612,"inblock":0}
+{"t":1790453483.6893,"kind":"scan","n":2,"fds":173,"mean_ms":11380.631,"max_ms":22761.082}
+{"t":1790453484.1905,"kind":"ru","cpu":68.768,"majflt":194314,"minflt":456612,"inblock":0}
+{"t":1790453484.7019,"kind":"ru","cpu":69.057,"majflt":194314,"minflt":456612,"inblock":0}
+{"t":1790453485.2171,"kind":"ru","cpu":69.335,"majflt":194314,"minflt":456632,"inblock":0}
+{"t":1790453485.7259,"kind":"ru","cpu":69.551,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453486.2308,"kind":"ru","cpu":69.82,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453486.7462,"kind":"ru","cpu":70.068,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453487.2629,"kind":"ru","cpu":70.357,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453487.7631,"kind":"ru","cpu":70.649,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453488.2714,"kind":"ru","cpu":70.941,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453488.7966,"kind":"ru","cpu":71.262,"majflt":194314,"minflt":456684,"inblock":0}
+{"t":1790453489.304,"kind":"ru","cpu":71.558,"majflt":194314,"minflt":456685,"inblock":0}
+{"t":1790453489.8205,"kind":"ru","cpu":71.87,"majflt":194314,"minflt":456686,"inblock":0}
+{"t":1790453490.328,"kind":"ru","cpu":72.137,"majflt":194314,"minflt":456686,"inblock":0}
+{"t":1790453490.8348,"kind":"ru","cpu":72.445,"majflt":194314,"minflt":456686,"inblock":0}
+{"t":1790453491.3353,"kind":"ru","cpu":72.73,"majflt":194314,"minflt":456689,"inblock":0}
+{"t":1790453491.6892,"kind":"hold","name":"PLANE_LOADED","phase":"end","log_bytes":51968,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453494.366,"kind":"msg","name":"FMOD_BANK_LOADED","param":0,"sender":0,"log_bytes":65063,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453494.366,"kind":"hold","name":"FMOD_BANK_LOADED","phase":"start"}
+{"t":1790453494.3664,"kind":"ru","cpu":81.747,"majflt":222562,"minflt":492200,"inblock":0}
+{"t":1790453494.3664,"kind":"scan","n":283,"fds":188,"mean_ms":1.196,"max_ms":2.701}
+{"t":1790453494.8685,"kind":"ru","cpu":85.205,"majflt":225804,"minflt":497463,"inblock":0}
+{"t":1790453495.397,"kind":"ru","cpu":88.815,"majflt":228577,"minflt":503976,"inblock":0}
+{"t":1790453495.9211,"kind":"ru","cpu":92.399,"majflt":231517,"minflt":506696,"inblock":0}
+{"t":1790453496.4374,"kind":"ru","cpu":95.919,"majflt":234415,"minflt":511715,"inblock":0}
+{"t":1790453496.9487,"kind":"ru","cpu":99.441,"majflt":236153,"minflt":512544,"inblock":0}
+{"t":1790453497.4522,"kind":"ru","cpu":102.905,"majflt":237894,"minflt":513174,"inblock":0}
+{"t":1790453497.9704,"kind":"ru","cpu":106.374,"majflt":240762,"minflt":514706,"inblock":0}
+{"t":1790453498.4984,"kind":"ru","cpu":110.042,"majflt":243221,"minflt":516742,"inblock":0}
+{"t":1790453499.003,"kind":"ru","cpu":113.107,"majflt":244367,"minflt":521206,"inblock":0}
+{"t":1790453499.5216,"kind":"ru","cpu":113.264,"majflt":244367,"minflt":521223,"inblock":0}
+{"t":1790453500.0325,"kind":"ru","cpu":113.467,"majflt":244367,"minflt":521224,"inblock":0}
+{"t":1790453500.5376,"kind":"ru","cpu":113.649,"majflt":244367,"minflt":521224,"inblock":0}
+{"t":1790453501.0431,"kind":"ru","cpu":113.855,"majflt":244367,"minflt":521224,"inblock":0}
+{"t":1790453501.5508,"kind":"ru","cpu":114.044,"majflt":244367,"minflt":521273,"inblock":0}
+{"t":1790453502.0637,"kind":"ru","cpu":114.239,"majflt":244367,"minflt":521275,"inblock":0}
+{"t":1790453502.3666,"kind":"hold","name":"FMOD_BANK_LOADED","phase":"end","log_bytes":65063,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453502.5788,"kind":"msg","name":"FMOD_BANK_LOADED","param":1,"sender":0,"log_bytes":65303,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453502.7302,"kind":"msg","name":"LIVERY_LOADED","param":0,"sender":0,"log_bytes":65303,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453502.7302,"kind":"hold","name":"LIVERY_LOADED","phase":"start"}
+{"t":1790453502.7305,"kind":"ru","cpu":114.623,"majflt":244536,"minflt":522140,"inblock":0}
+{"t":1790453503.095,"kind":"ru","cpu":117.203,"majflt":244536,"minflt":529770,"inblock":0}
+{"t":1790453503.6161,"kind":"ru","cpu":120.887,"majflt":244536,"minflt":534618,"inblock":0}
+{"t":1790453504.1431,"kind":"ru","cpu":124.638,"majflt":244536,"minflt":555140,"inblock":0}
+{"t":1790453504.367,"kind":"scan","n":344,"fds":187,"mean_ms":0.991,"max_ms":151.844}
+{"t":1790453504.6545,"kind":"ru","cpu":128.223,"majflt":244536,"minflt":565420,"inblock":0}
+{"t":1790453505.1564,"kind":"ru","cpu":131.776,"majflt":244952,"minflt":572451,"inblock":0}
+{"t":1790453505.6677,"kind":"ru","cpu":135.372,"majflt":245812,"minflt":577240,"inblock":0}
+{"t":1790453506.1807,"kind":"ru","cpu":138.977,"majflt":246069,"minflt":579376,"inblock":0}
+{"t":1790453506.6896,"kind":"ru","cpu":142.591,"majflt":246069,"minflt":584579,"inblock":0}
+{"t":1790453507.1961,"kind":"ru","cpu":144.515,"majflt":246069,"minflt":587758,"inblock":0}
+{"t":1790453507.7152,"kind":"ru","cpu":144.771,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453508.2383,"kind":"ru","cpu":144.95,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453508.7508,"kind":"ru","cpu":145.14,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453509.2576,"kind":"ru","cpu":145.327,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453509.7623,"kind":"ru","cpu":145.511,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453510.2732,"kind":"ru","cpu":145.694,"majflt":246069,"minflt":587772,"inblock":0}
+{"t":1790453510.731,"kind":"hold","name":"LIVERY_LOADED","phase":"end","log_bytes":65303,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":0.0,"lon_ref":0.0,"run_s":0.0}
+{"t":1790453525.4784,"kind":"msg","name":"SCENERY_LOADED","param":0,"sender":0,"log_bytes":73951,"prefs_mtime":1790453477.2427,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.0}
+{"t":1790453525.4785,"kind":"hold","name":"SCENERY_LOADED","phase":"start"}
+{"t":1790453525.4787,"kind":"log","at":65423,"line":"0:00:21.784 I/FLT: Init dat_p0 type:'runway_start' apt:LFML rwy:13L final_distance:0.000000nm tow_type:none tow_plane:"}
+{"t":1790453525.4788,"kind":"log","at":65569,"line":"0:00:21.784 I/SCN: DSF load time: 1732 for file Global Scenery/Global Airports/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":65715,"line":"0:00:21.784 I/SCN: DSF load time: 2254 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":65861,"line":"0:00:21.784 I/SCN: DSF load time: 3613 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66009,"line":"0:00:21.784 I/SCN: DSF load time: 3066 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66182,"line":"0:00:21.784 I/SCN: DSF load time: 5432 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66356,"line":"0:00:21.784 I/SCN: DSF load time: 10865 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66530,"line":"0:00:21.784 I/SCN: DSF load time: 20008 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66701,"line":"0:00:21.784 I/SCN: DSF load time: 15818 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":66872,"line":"0:00:21.784 I/SCN: DSF load time: 53698 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":67043,"line":"0:00:21.784 I/SCN: DSF load time: 58477 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":67215,"line":"0:00:21.784 I/SCN: DSF load time: 184 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":67384,"line":"0:00:21.784 I/SCN: DSF load time: 776 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":67560,"line":"0:00:21.784 I/SCN: DSF load time: 78165 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4788,"kind":"log","at":67736,"line":"0:00:21.784 I/SCN: DSF load time: 47101 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":67912,"line":"0:00:21.784 I/SCN: DSF load time: 85982 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68087,"line":"0:00:21.784 I/SCN: DSF load time: 499211 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68235,"line":"0:00:21.784 I/SCN: DSF load time: 1483 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68410,"line":"0:00:21.784 I/SCN: DSF load time: 508556 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68559,"line":"0:00:21.784 I/SCN: DSF load time: 18480 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68734,"line":"0:00:21.784 I/SCN: DSF load time: 503684 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":68909,"line":"0:00:21.784 I/SCN: DSF load time: 535946 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69058,"line":"0:00:21.784 I/SCN: DSF load time: 113232 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+006.dsf (37521 tris, 36 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69169,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+006.dsf'"}
+{"t":1790453525.4789,"kind":"log","at":69319,"line":"0:00:21.784 I/SCN: DSF load time: 286321 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69469,"line":"0:00:21.784 I/SCN: DSF load time: 293643 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69520,"line":"0:00:21.784 I/DSF: Loading Ocean for file: +42+005"}
+{"t":1790453525.4789,"kind":"log","at":69674,"line":"0:00:21.784 I/SCN: DSF load time: 731710 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+003.dsf (483569 tris, 2351 skipped for -75.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69785,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+003.dsf'"}
+{"t":1790453525.4789,"kind":"log","at":69933,"line":"0:00:21.784 I/SCN: DSF load time: 3872 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":69984,"line":"0:00:21.784 I/DSF: Loading Ocean for file: +42+004"}
+{"t":1790453525.4789,"kind":"log","at":70138,"line":"0:00:21.784 I/SCN: DSF load time: 1410248 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+003.dsf (1260691 tris, 34 skipped for -19.3 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":70249,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+003.dsf'"}
+{"t":1790453525.4789,"kind":"log","at":70395,"line":"0:00:21.784 I/SCN: DSF load time: 3781 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.4789,"kind":"log","at":70568,"line":"0:00:21.784 I/SCN: DSF load time: 9286 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":70739,"line":"0:00:21.784 I/SCN: DSF load time: 82623 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":70914,"line":"0:00:21.784 I/SCN: DSF load time: 7259 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71089,"line":"0:00:21.784 I/SCN: DSF load time: 135784 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71235,"line":"0:00:21.784 I/SCN: DSF load time: 7163 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71401,"line":"0:00:21.784 I/SCN: DSF load time: 1122 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-03-vfr/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71575,"line":"0:00:21.784 I/SCN: DSF load time: 17447 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71725,"line":"0:00:21.784 I/SCN: DSF load time: 140334 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":71897,"line":"0:00:21.784 I/SCN: DSF load time: 178984 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":72072,"line":"0:00:21.784 I/SCN: DSF load time: 2231 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453525.479,"kind":"log","at":72811,"line":"0:00:21.784 E/SCN: Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+003.dsf:"}
+{"t":1790453525.479,"kind":"log","at":72955,"line":"0:00:21.784 E/SCN: Unable to load object file: Custom Scenery/simHeaven_X-WORLD-Pro_Europe-04-regions/germany_north/houses/house_09x15x2_02.obj"}
+{"t":1790453525.479,"kind":"ru","cpu":289.502,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453525.479,"kind":"scan","n":226,"fds":180,"mean_ms":0.736,"max_ms":3.183}
+{"t":1790453526.0001,"kind":"ru","cpu":292.639,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453526.5166,"kind":"ru","cpu":295.764,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453527.0361,"kind":"ru","cpu":298.904,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453527.5616,"kind":"ru","cpu":302.063,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453528.0814,"kind":"ru","cpu":305.189,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453528.6037,"kind":"ru","cpu":308.347,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453529.1228,"kind":"ru","cpu":311.484,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453529.6437,"kind":"ru","cpu":314.619,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453530.1617,"kind":"ru","cpu":317.73,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453530.6865,"kind":"ru","cpu":320.891,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453531.2022,"kind":"ru","cpu":324.011,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453531.7171,"kind":"ru","cpu":327.118,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453532.241,"kind":"ru","cpu":330.264,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453532.7473,"kind":"ru","cpu":333.31,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453533.2738,"kind":"ru","cpu":336.499,"majflt":381786,"minflt":971469,"inblock":0}
+{"t":1790453533.4795,"kind":"hold","name":"SCENERY_LOADED","phase":"end","log_bytes":73951,"lat":43.43821,"lon":5.212888,"elev":0.0,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.0}
+{"t":1790453543.5351,"kind":"msg","name":"AIRPORT_LOADED","param":0,"sender":0,"log_bytes":87975,"prefs_mtime":1790453477.2427,"lat":43.448873,"lon":5.197715,"elev":3.785514,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.0}
+{"t":1790453543.5352,"kind":"hold","name":"AIRPORT_LOADED","phase":"start"}
+{"t":1790453543.5355,"kind":"log","at":74153,"line":"0:00:21.784 I/SCN: DSF load time: 2505070 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+005.dsf (2247281 tris, 34 skipped for -17.1 m^2)"}
+{"t":1790453543.5355,"kind":"log","at":74264,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+005.dsf'"}
+{"t":1790453543.5355,"kind":"log","at":74506,"line":"0:00:21.784 E/DSF: The DSF Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+003.dsf has a number of problems with its road network: 1 doubled nodes, 0 direction reverses, 0 short segments, 0 roads deleted."}
+{"t":1790453543.5355,"kind":"log","at":74681,"line":"0:00:21.784 I/SCN: DSF load time: 353408 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5355,"kind":"log","at":74831,"line":"0:00:21.784 I/SCN: DSF load time: 244986 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5355,"kind":"log","at":74985,"line":"0:00:21.784 I/SCN: DSF load time: 1395192 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+003.dsf (1014375 tris, 97 skipped for -49.5 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":75096,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+003.dsf'"}
+{"t":1790453543.5356,"kind":"log","at":75251,"line":"0:00:21.784 I/SCN: DSF load time: 1378110 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+005.dsf (1150883 tris, 185 skipped for -31.6 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":75362,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+005.dsf'"}
+{"t":1790453543.5356,"kind":"log","at":75508,"line":"0:00:21.784 I/SCN: DSF load time: 8342 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":75654,"line":"0:00:21.784 I/SCN: DSF load time: 3661 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":75828,"line":"0:00:21.784 I/SCN: DSF load time: 11960 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76002,"line":"0:00:21.784 I/SCN: DSF load time: 15092 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76173,"line":"0:00:21.784 I/SCN: DSF load time: 70445 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76348,"line":"0:00:21.784 I/SCN: DSF load time: 1584 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76519,"line":"0:00:21.784 I/SCN: DSF load time: 93348 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76694,"line":"0:00:21.784 I/SCN: DSF load time: 1078 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":76869,"line":"0:00:21.784 I/SCN: DSF load time: 109240 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77044,"line":"0:00:21.784 I/SCN: DSF load time: 151092 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77194,"line":"0:00:21.784 I/SCN: DSF load time: 113279 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77344,"line":"0:00:21.784 I/SCN: DSF load time: 240692 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77490,"line":"0:00:21.784 I/SCN: DSF load time: 3656 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77655,"line":"0:00:21.784 I/SCN: DSF load time: 987 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-03-vfr/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77829,"line":"0:00:21.784 I/SCN: DSF load time: 29623 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":77983,"line":"0:00:21.784 I/SCN: DSF load time: 1824200 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+004.dsf (894395 tris, 157 skipped for -32.8 m^2)"}
+{"t":1790453543.5356,"kind":"log","at":78094,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+004.dsf'"}
+{"t":1790453543.5356,"kind":"log","at":78266,"line":"0:00:21.784 I/SCN: DSF load time: 133055 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":78441,"line":"0:00:21.784 I/SCN: DSF load time: 2991 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":78587,"line":"0:00:21.784 I/SCN: DSF load time: 1706 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":78760,"line":"0:00:21.784 I/SCN: DSF load time: 7618 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":78931,"line":"0:00:21.784 I/SCN: DSF load time: 31803 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":79106,"line":"0:00:21.784 I/SCN: DSF load time: 2020 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":79281,"line":"0:00:21.784 I/SCN: DSF load time: 279018 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":79456,"line":"0:00:21.784 I/SCN: DSF load time: 143378 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":79610,"line":"0:00:21.784 I/SCN: DSF load time: 2160861 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+006.dsf (1640390 tris, 82 skipped for -24.9 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":79721,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+006.dsf'"}
+{"t":1790453543.5357,"kind":"log","at":79871,"line":"0:00:21.784 I/SCN: DSF load time: 259521 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":80021,"line":"0:00:21.784 I/SCN: DSF load time: 219428 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":80176,"line":"0:00:21.784 I/SCN: DSF load time: 1533280 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+004.dsf (1371650 tris, 117 skipped for -34.3 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":80287,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+004.dsf'"}
+{"t":1790453543.5357,"kind":"log","at":80441,"line":"0:00:21.784 I/SCN: DSF load time: 2190376 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+006.dsf (2203282 tris, 47 skipped for -16.9 m^2)"}
+{"t":1790453543.5357,"kind":"log","at":80552,"line":"0:00:21.784 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+006.dsf'"}
+{"t":1790453543.5357,"kind":"log","at":80593,"line":"0:00:21.784 I/SCN: Preload time: 7848919"}
+{"t":1790453543.5357,"kind":"log","at":80679,"line":"0:00:21.784 I/SCN: Preload time: 2980"}
+{"t":1790453543.5357,"kind":"log","at":80877,"line":"0:00:21.784 I/SCN: Loading sim objects for airport LFTB"}
+{"t":1790453543.5357,"kind":"log","at":80933,"line":"0:00:21.784 I/SCN: Loading sim objects for airport LFML"}
+{"t":1790453543.5357,"kind":"log","at":80974,"line":"0:00:21.784 I/SCN: Preload time: 1089767"}
+{"t":1790453543.5358,"kind":"ru","cpu":458.234,"majflt":459649,"minflt":1095964,"inblock":0}
+{"t":1790453543.5358,"kind":"scan","n":278,"fds":198,"mean_ms":0.182,"max_ms":0.344}
+{"t":1790453544.0527,"kind":"ru","cpu":458.563,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453544.5699,"kind":"ru","cpu":458.792,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453545.0795,"kind":"ru","cpu":459.005,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453545.5998,"kind":"ru","cpu":459.207,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453546.1133,"kind":"ru","cpu":459.407,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453546.6182,"kind":"ru","cpu":459.619,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453547.1452,"kind":"ru","cpu":459.833,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453547.6625,"kind":"ru","cpu":460.041,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453548.1704,"kind":"ru","cpu":460.25,"majflt":465244,"minflt":1096307,"inblock":0}
+{"t":1790453548.6729,"kind":"ru","cpu":460.443,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453549.1786,"kind":"ru","cpu":460.642,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453549.6838,"kind":"ru","cpu":460.844,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453550.1903,"kind":"ru","cpu":461.043,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453550.693,"kind":"ru","cpu":461.235,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453551.1981,"kind":"ru","cpu":461.438,"majflt":465244,"minflt":1096350,"inblock":0}
+{"t":1790453551.5364,"kind":"hold","name":"AIRPORT_LOADED","phase":"end","log_bytes":87975,"lat":43.448873,"lon":5.197715,"elev":3.785514,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.0}
+{"t":1790453551.7833,"kind":"running","lat":43.448873,"lon":5.197715,"elev":3.785514,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.050251}
+{"t":1790453551.7833,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.785514,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.050251}
+{"t":1790453555.0923,"kind":"msg","name":"DATAREFS_ADDED","param":10739,"sender":0,"log_bytes":97526,"prefs_mtime":1790453477.2427,"lat":43.448873,"lon":5.197715,"elev":3.777591,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.050251}
+{"t":1790453555.145,"kind":"running","lat":43.448873,"lon":5.197715,"elev":3.777591,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.100503}
+{"t":1790453561.4754,"kind":"msg","name":"LIVERY_LOADED","param":0,"sender":0,"log_bytes":100025,"prefs_mtime":1790453477.2427,"lat":43.448873,"lon":5.197715,"elev":3.740552,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.150754}
+{"t":1790453561.4756,"kind":"log","at":97167,"line":"0:01:30.902 I/TEX: Pre-warming paging cache"}
+{"t":1790453577.6953,"kind":"log","at":97300,"line":"0:01:30.902 I/TEX: Target scale moved to 1.000000. Texture usage is 412.47 mb out of 33.21 gb available. Memory headroom is 33.66 gb"}
+{"t":1790453577.6954,"kind":"log","at":97477,"line":"0:01:30.902 I/TEX: Finished pre-warming paging cache. Time taken: 2.114s"}
+{"t":1790453577.6954,"kind":"msg","name":"SCENERY_LOADED","param":0,"sender":0,"log_bytes":106570,"prefs_mtime":1790453477.2427,"lat":43.448873,"lon":5.197715,"elev":3.740552,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.150754}
+{"t":1790453577.6955,"kind":"ru","cpu":647.357,"majflt":661656,"minflt":1592581,"inblock":0}
+{"t":1790453586.096,"kind":"running","lat":43.448873,"lon":5.197715,"elev":3.740552,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.201005}
+{"t":1790453586.0961,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.740552,"lat_ref":42.0,"lon_ref":3.0,"run_s":0.201005}
+{"t":1790453595.6358,"kind":"log","at":100171,"line":"0:01:35.170 I/SCN: DSF load time: 1088 for file Global Scenery/Global Airports/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453595.7427,"kind":"log","at":100317,"line":"0:01:35.170 I/SCN: DSF load time: 1182 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453595.8487,"kind":"log","at":100465,"line":"0:01:35.170 I/SCN: DSF load time: 1410 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453595.9563,"kind":"log","at":100611,"line":"0:01:35.170 I/SCN: DSF load time: 2350 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.0632,"kind":"log","at":100662,"line":"0:01:35.170 I/DSF: Loading Ocean for file: +42+005"}
+{"t":1790453596.1001,"kind":"log","at":100834,"line":"0:01:35.170 I/SCN: DSF load time: 137 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.1685,"kind":"log","at":101007,"line":"0:01:35.170 I/SCN: DSF load time: 3371 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.1686,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.655545,"lat_ref":42.0,"lon_ref":3.0,"run_s":10.051013}
+{"t":1790453596.1686,"kind":"log","at":101176,"line":"0:01:35.170 I/SCN: DSF load time: 781 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.3713,"kind":"log","at":101349,"line":"0:01:35.170 I/SCN: DSF load time: 9537 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.4751,"kind":"log","at":101522,"line":"0:01:35.170 I/SCN: DSF load time: 8566 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.5783,"kind":"log","at":101693,"line":"0:01:35.170 I/SCN: DSF load time: 10512 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.6787,"kind":"log","at":101867,"line":"0:01:35.170 I/SCN: DSF load time: 534 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.7809,"kind":"log","at":102041,"line":"0:01:35.170 I/SCN: DSF load time: 36475 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453596.8958,"kind":"log","at":102189,"line":"0:01:35.170 I/SCN: DSF load time: 1215 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.01,"kind":"log","at":102363,"line":"0:01:35.170 I/SCN: DSF load time: 43017 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.1219,"kind":"log","at":102534,"line":"0:01:35.170 I/SCN: DSF load time: 48830 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.2358,"kind":"log","at":102705,"line":"0:01:35.170 I/SCN: DSF load time: 50370 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.3486,"kind":"log","at":102880,"line":"0:01:35.170 I/SCN: DSF load time: 1725 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.4603,"kind":"log","at":103054,"line":"0:01:35.170 I/SCN: DSF load time: 965 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.5713,"kind":"log","at":103202,"line":"0:01:35.170 I/SCN: DSF load time: 33404 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+006.dsf (37521 tris, 36 skipped for 0.0 m^2)"}
+{"t":1790453597.6819,"kind":"log","at":103313,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+006.dsf'"}
+{"t":1790453597.7967,"kind":"log","at":103462,"line":"0:01:35.170 I/SCN: DSF load time: 18572 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453597.8995,"kind":"log","at":103636,"line":"0:01:35.170 I/SCN: DSF load time: 59520 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.006,"kind":"log","at":103810,"line":"0:01:35.170 I/SCN: DSF load time: 79345 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.1169,"kind":"log","at":103960,"line":"0:01:35.170 I/SCN: DSF load time: 277430 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.2292,"kind":"log","at":104110,"line":"0:01:35.170 I/SCN: DSF load time: 282553 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.3424,"kind":"log","at":104257,"line":"0:01:35.170 I/SCN: DSF load time: 866 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+42+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.4594,"kind":"log","at":104308,"line":"0:01:35.170 I/DSF: Loading Ocean for file: +42+004"}
+{"t":1790453598.5795,"kind":"log","at":104462,"line":"0:01:35.170 I/SCN: DSF load time: 561614 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+003.dsf (483569 tris, 2351 skipped for -75.0 m^2)"}
+{"t":1790453598.6983,"kind":"log","at":104573,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+42+003.dsf'"}
+{"t":1790453598.7987,"kind":"log","at":104719,"line":"0:01:35.170 I/SCN: DSF load time: 2395 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453598.9139,"kind":"log","at":104892,"line":"0:01:35.170 I/SCN: DSF load time: 9113 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.0271,"kind":"log","at":105063,"line":"0:01:35.170 I/SCN: DSF load time: 73517 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.1432,"kind":"log","at":105238,"line":"0:01:35.170 I/SCN: DSF load time: 1187 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.2481,"kind":"log","at":105392,"line":"0:01:35.170 I/SCN: DSF load time: 1119782 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+003.dsf (1260691 tris, 34 skipped for -19.3 m^2)"}
+{"t":1790453599.366,"kind":"log","at":105503,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+003.dsf'"}
+{"t":1790453599.483,"kind":"log","at":105678,"line":"0:01:35.170 I/SCN: DSF load time: 141298 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.6018,"kind":"log","at":105828,"line":"0:01:35.170 I/SCN: DSF load time: 148936 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+003.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.7188,"kind":"log","at":105974,"line":"0:01:35.170 I/SCN: DSF load time: 5579 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.8374,"kind":"log","at":106139,"line":"0:01:35.170 I/SCN: DSF load time: 243 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-03-vfr/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453599.9545,"kind":"log","at":106313,"line":"0:01:35.170 I/SCN: DSF load time: 17594 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453600.0568,"kind":"log","at":106426,"line":"0:01:35.170 E/SCN: Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+003.dsf:"}
+{"t":1790453600.1605,"kind":"log","at":106570,"line":"0:01:35.170 E/SCN: Unable to load object file: Custom Scenery/simHeaven_X-WORLD-Pro_Europe-04-regions/germany_north/houses/house_09x15x2_02.obj"}
+{"t":1790453600.2959,"kind":"log","at":106790,"line":"0:01:35.170 I/SCN: DSF load time: 165205 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453600.4085,"kind":"log","at":106965,"line":"0:01:35.170 I/SCN: DSF load time: 1715 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453600.5086,"kind":"log","at":107119,"line":"0:01:35.170 I/SCN: DSF load time: 2041804 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+005.dsf (2247281 tris, 34 skipped for -17.1 m^2)"}
+{"t":1790453600.6106,"kind":"log","at":107230,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+005.dsf'"}
+{"t":1790453600.7146,"kind":"log","at":107472,"line":"0:01:35.170 E/DSF: The DSF Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+003.dsf has a number of problems with its road network: 1 doubled nodes, 0 direction reverses, 0 short segments, 0 roads deleted."}
+{"t":1790453600.817,"kind":"log","at":107647,"line":"0:01:35.170 I/SCN: DSF load time: 248387 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453600.9207,"kind":"log","at":107801,"line":"0:01:35.170 I/SCN: DSF load time: 1057624 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+003.dsf (1014375 tris, 97 skipped for -49.5 m^2)"}
+{"t":1790453601.0267,"kind":"log","at":107912,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+003.dsf'"}
+{"t":1790453601.1139,"kind":"log","at":108062,"line":"0:01:35.170 I/SCN: DSF load time: 212418 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+005.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.1618,"kind":"log","at":108208,"line":"0:01:35.170 I/SCN: DSF load time: 5659 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.2754,"kind":"log","at":108354,"line":"0:01:35.170 I/SCN: DSF load time: 6171 for file Global Scenery/Global Airports/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.3822,"kind":"log","at":108528,"line":"0:01:35.170 I/SCN: DSF load time: 10295 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.4922,"kind":"log","at":108702,"line":"0:01:35.170 I/SCN: DSF load time: 14145 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.5932,"kind":"log","at":108873,"line":"0:01:35.170 I/SCN: DSF load time: 51759 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.6981,"kind":"log","at":109048,"line":"0:01:35.170 I/SCN: DSF load time: 1470 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.8067,"kind":"log","at":109219,"line":"0:01:35.170 I/SCN: DSF load time: 67716 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453601.9118,"kind":"log","at":109394,"line":"0:01:35.170 I/SCN: DSF load time: 1046 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453602.0174,"kind":"log","at":109549,"line":"0:01:35.170 I/SCN: DSF load time: 1134178 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+005.dsf (1150883 tris, 185 skipped for -31.6 m^2)"}
+{"t":1790453602.1263,"kind":"log","at":109660,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+005.dsf'"}
+{"t":1790453602.2488,"kind":"log","at":109835,"line":"0:01:35.170 I/SCN: DSF load time: 105328 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453602.3558,"kind":"log","at":110010,"line":"0:01:35.170 I/SCN: DSF load time: 144155 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453602.4799,"kind":"log","at":110159,"line":"0:01:35.170 I/SCN: DSF load time: 77471 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453602.5838,"kind":"log","at":110309,"line":"0:01:35.170 I/SCN: DSF load time: 239337 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+43+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453602.6919,"kind":"log","at":110463,"line":"0:01:35.170 I/SCN: DSF load time: 1057651 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+004.dsf (894395 tris, 157 skipped for -32.8 m^2)"}
+{"t":1790453602.8046,"kind":"log","at":110574,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+004.dsf'"}
+{"t":1790453602.9226,"kind":"log","at":110728,"line":"0:01:35.170 I/SCN: DSF load time: 1490182 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+006.dsf (1640390 tris, 82 skipped for -24.9 m^2)"}
+{"t":1790453603.0432,"kind":"log","at":110839,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+43+006.dsf'"}
+{"t":1790453603.1482,"kind":"log","at":110985,"line":"0:01:35.170 I/SCN: DSF load time: 3018 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.2532,"kind":"log","at":111131,"line":"0:01:35.170 I/SCN: DSF load time: 4839 for file Global Scenery/Global Airports/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.3561,"kind":"log","at":111296,"line":"0:01:35.170 I/SCN: DSF load time: 203 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-03-vfr/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.4578,"kind":"log","at":111469,"line":"0:01:35.170 I/SCN: DSF load time: 7145 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.5751,"kind":"log","at":111643,"line":"0:01:35.170 I/SCN: DSF load time: 29029 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-08-footprints/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.6905,"kind":"log","at":111814,"line":"0:01:35.170 I/SCN: DSF load time: 30732 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.8055,"kind":"log","at":111989,"line":"0:01:35.170 I/SCN: DSF load time: 1781 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453603.9203,"kind":"log","at":112161,"line":"0:01:35.170 I/SCN: DSF load time: 133560 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-09-scenery/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.0343,"kind":"log","at":112336,"line":"0:01:35.170 I/SCN: DSF load time: 3092 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-11-net1-aerials/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.1489,"kind":"log","at":112511,"line":"0:01:35.170 I/SCN: DSF load time: 141621 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.2632,"kind":"log","at":112661,"line":"0:01:35.170 I/SCN: DSF load time: 208870 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+006.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.3767,"kind":"log","at":112836,"line":"0:01:35.170 I/SCN: DSF load time: 287374 for file Custom Scenery/simHeaven_X-WORLD-Pro_Europe-13-net3-roads/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.4914,"kind":"log","at":112986,"line":"0:01:35.170 I/SCN: DSF load time: 271719 for file Custom Scenery/Global_Forests_v2/Earth nav data/+40+000/+44+004.dsf (0 tris, 0 skipped for 0.0 m^2)"}
+{"t":1790453604.6087,"kind":"log","at":113141,"line":"0:01:35.170 I/SCN: DSF load time: 1276088 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+004.dsf (1371650 tris, 117 skipped for -34.3 m^2)"}
+{"t":1790453604.7097,"kind":"log","at":113252,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+004.dsf'"}
+{"t":1790453604.8232,"kind":"log","at":113406,"line":"0:01:35.170 I/SCN: DSF load time: 1964520 for file Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+006.dsf (2203282 tris, 47 skipped for -16.9 m^2)"}
+{"t":1790453604.9386,"kind":"log","at":113517,"line":"0:01:35.170 D/SCN: Generating detailed DEM for 'Custom Scenery/z_xso_ortho/Earth nav data/+40+000/+44+006.dsf'"}
+{"t":1790453605.045,"kind":"log","at":113610,"line":"0:01:35.170 I/SCN: Preload time: 8393584"}
+{"t":1790453605.256,"kind":"ru","cpu":788.254,"majflt":683732,"minflt":1764814,"inblock":0}
+{"t":1790453605.3562,"kind":"scan","n":286,"fds":216,"mean_ms":96.843,"max_ms":17623.24}
+{"t":1790453606.2342,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.655553,"lat_ref":42.0,"lon_ref":3.0,"run_s":20.126535}
+{"t":1790453611.7994,"kind":"reload","sent":false,"reason":"X-Plane reloaded the scenery already"}
+{"t":1790453612.0091,"kind":"ru","cpu":799.775,"majflt":688970,"minflt":1777265,"inblock":0}
+{"t":1790453612.1116,"kind":"scan","n":1,"fds":214,"mean_ms":6328.551,"max_ms":6328.551}
+{"t":1790453616.2463,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.65556,"lat_ref":42.0,"lon_ref":3.0,"run_s":30.16428}
+{"t":1790453621.8724,"kind":"ru","cpu":810.902,"majflt":703263,"minflt":1833974,"inblock":0}
+{"t":1790453626.3249,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.655567,"lat_ref":42.0,"lon_ref":3.0,"run_s":40.24292}
+{"t":1790453631.1889,"kind":"ru","cpu":820.875,"majflt":705843,"minflt":1848457,"inblock":0}
+{"t":1790453631.2391,"kind":"scan","n":2,"fds":214,"mean_ms":9252.768,"max_ms":9455.736}
+{"t":1790453636.4237,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.655574,"lat_ref":42.0,"lon_ref":3.0,"run_s":50.341545}
+{"t":1790453636.4239,"kind":"ru","cpu":830.716,"majflt":713406,"minflt":1851213,"inblock":0}
+{"t":1790453646.1164,"kind":"msg","name":"115","param":0,"sender":0,"log_bytes":212641,"prefs_mtime":1790453477.2427,"lat":43.448873,"lon":5.197715,"elev":3.655579,"lat_ref":42.0,"lon_ref":3.0,"run_s":60.017414}
+{"t":1790453646.1165,"kind":"ru","cpu":848.63,"majflt":722723,"minflt":1859154,"inblock":0}
+{"t":1790453646.2023,"kind":"running","lat":43.448873,"lon":5.197715,"elev":3.655578,"lat_ref":42.0,"lon_ref":3.0,"run_s":60.120174}
+{"t":1790453646.2023,"kind":"scan","n":2,"fds":214,"mean_ms":7284.094,"max_ms":9488.187}
+{"t":1790453646.5084,"kind":"position","lat":43.448873,"lon":5.197715,"elev":3.65558,"lat_ref":42.0,"lon_ref":3.0,"run_s":60.426304}
+{"t":1790453655.8454,"kind":"msg","name":"WILL_WRITE_PREFS","param":0,"sender":0,"log_bytes":212641,"prefs_mtime":1790453655.8431,"lat":43.448873,"lon":5.197715,"elev":3.655585,"lat_ref":42.0,"lon_ref":3.0,"run_s":68.074417}
+{"t":1790453655.8595,"kind":"msg","name":"WILL_WRITE_PREFS","param":0,"sender":0,"log_bytes":212641,"prefs_mtime":1790453655.8431,"lat":43.448873,"lon":5.197715,"elev":3.655585,"lat_ref":42.0,"lon_ref":3.0,"run_s":68.074417}
+{"t":1790453655.886,"kind":"msg","name":"16777218","param":8,"sender":5,"log_bytes":213733,"prefs_mtime":1790453655.8431,"lat":43.448873,"lon":5.197715,"elev":3.655585,"lat_ref":42.0,"lon_ref":3.0,"run_s":68.074417}
+{"t":1790453655.8861,"kind":"msg","name":"16777218","param":4,"sender":5,"log_bytes":213733,"prefs_mtime":1790453655.8431,"lat":43.448873,"lon":5.197715,"elev":3.655585,"lat_ref":42.0,"lon_ref":3.0,"run_s":68.074417}
+{"t":1790453655.906,"kind":"log","at":212697,"line":"0:02:22.700 I/SCN: Loading sim objects for airport LFNR"}
+{"t":1790453655.906,"kind":"log","at":212753,"line":"0:02:24.665 I/SCN: Loading sim objects for airport LFMY"}
+{"t":1790453655.9061,"kind":"log","at":212809,"line":"0:02:25.379 I/SCN: Loading sim objects for airport LFNE"}
+{"t":1790453655.9061,"kind":"log","at":212865,"line":"0:02:26.259 I/SCN: Loading sim objects for airport LFNZ"}
+{"t":1790453655.9061,"kind":"log","at":212921,"line":"0:02:26.899 I/SCN: Loading sim objects for airport LFNE"}
+{"t":1790453655.9061,"kind":"log","at":212977,"line":"0:02:27.096 I/SCN: Loading sim objects for airport LFMY"}
+{"t":1790453655.9061,"kind":"log","at":213033,"line":"0:02:27.281 I/SCN: Loading sim objects for airport LFNR"}
+{"t":1790453655.9061,"kind":"log","at":213089,"line":"0:02:28.193 I/SCN: Loading sim objects for airport LFMY"}
+{"t":1790453655.9061,"kind":"log","at":213220,"line":"0:02:30.561 I/TEX: Target scale moved to 2.000000. Texture usage is 1.87 gb out of 33.01 gb available. Memory headroom is 31.99 gb"}
+{"t":1790453655.9062,"kind":"prefs","mtime":1790453655.8431,"start":{"runway_start":{"airport_id":"LFML","runway":"13L"}}}
+{"t":1790453655.9062,"kind":"ru","cpu":867.554,"majflt":728487,"minflt":1900999,"inblock":0}
+{"t":1790453656.1523,"kind":"stop"}

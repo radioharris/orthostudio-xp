@@ -1,0 +1,153 @@
+# How OrthoStudio XP Live works
+
+A guide for users: what OrthoStudio XP Live does while you fly, what you do, and why it asks for so
+few settings. For the design and the measurements behind it, see [specs/live.md](specs/live.md) and
+[specs/live/](specs/live/).
+
+Until its launch, OrthoStudio XP Live is switched off and changes nothing in the rest of OrthoStudio
+XP. It is switched on by its own file, `~/.orthostudio/live.toml`:
+
+```toml
+enabled = true
+```
+
+It runs on macOS only for now (its pack relies on APFS clones), from OrthoStudio XP's folder with
+`uv run python -m orthostudio.live <command>`.
+
+## What it is
+
+Aerial imagery under your aircraft, anywhere in the region you fly, downloaded while you fly, as
+AutoOrtho does: no tiles to build beforehand. The difference is where it sits. AutoOrtho stands
+between X-Plane and its textures: X-Plane asks for a texture and waits while AutoOrtho downloads it.
+OrthoStudio XP Live stands beside X-Plane: it downloads the textures before X-Plane asks for them and puts
+them on the disk as ordinary files. X-Plane never waits for it, so there is nothing to freeze on.
+
+## What you do
+
+Once, the first time: `uv run python -m orthostudio.live setup` (about 3 minutes). It prepares the whole region of your
+AutoOrtho scenery (Europe, for example) so that X-Plane always finds every file it looks for. It
+takes almost no disk: the files share their content with AutoOrtho's until they are filled in.
+
+Then, for every flight:
+
+1. `uv run python -m orthostudio.live stream`. It starts building around the airport of your last flight at once, while you
+   start X-Plane.
+2. Start X-Plane, choose your flight and click Start Flight. X-Plane then waits on its loading
+   screen until the ortho around your departure is built, as it does with AutoOrtho. That takes a
+   few seconds where you have flown before, and a minute or two the first time in a new area. The
+   terminal counts down the textures still to build, and so does a small OrthoStudio XP Live window over
+   X-Plane, with the seconds gone by and the download rate in MB/s. X-Plane's own window looks frozen meanwhile: it is waiting, it has not crashed.
+3. Fly, anywhere. Another flight started from X-Plane's menu waits the same way.
+4. Quit X-Plane, then press Ctrl-C.
+
+To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while it runs
+(`Resources/plugins/OrthoStudio XP Live`), and takes it out when it stops.
+- X-Plane loads a flight's aircraft before its scenery: the plugin holds it there until the streamer
+  says the textures are built.
+- OrthoStudio XP Live learns where you start the moment you click Start Flight, because X-Plane saves it
+  in its preferences, so the building starts before X-Plane even loads the aircraft.
+- The plugin never holds X-Plane in flight, lets it go after 5 minutes whatever happens, and does
+  nothing if OrthoStudio XP Live is not running.
+
+Without the plugin (`--no-plugin`), X-Plane does not wait. Where a texture is not built yet, it shows
+a plain placeholder colour (never black). Once everything it shows is built, OrthoStudio XP Live asks it
+to reload the scenery, once.
+
+## What happens while you fly
+
+Every two seconds, OrthoStudio XP Live reads where the aircraft is, where it is heading and how fast (as
+AutoOrtho does, over X-Plane's network data), and where the camera is. It looks five minutes ahead
+along the track, and for every texture within 300 km it works out how sharp X-Plane will want it
+when the aircraft, or the camera, passes closest. External views count: X-Plane measures from the
+camera, so a chase or free camera far from the aircraft gets its textures sharp too. What is
+missing is downloaded and built, the most urgent first, and replaces the file on the disk. X-Plane
+picks the new file up by itself the next time it wants that texture sharper.
+
+External views need more than that. With Shift+4 the camera can go kilometres away in a second,
+much faster than anything downloads. X-Plane reads whatever is in the files there at once, and it
+does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 25 km
+farther around the aircraft than the aircraft alone needs (`--camera-reach-km`), and an external
+view shows the right imagery as soon as you switch to it, as with AutoOrtho. A camera taken farther
+than that may find a placeholder, which X-Plane keeps until it loads that area again.
+
+X-Plane decides how sharp a texture must be from its distance, in rings. For a normal texture
+(about 7 km across):
+
+| distance to the texture | what X-Plane reads | imagery |
+|---|---|---|
+| 130-230 km, when X-Plane loads the area | 256 px | ZL12 |
+| 72 km | 512 px | ZL13 |
+| 38 km | 1024 px | ZL14 |
+| 21 km | 2048 px | ZL15 |
+| under 12 km, with texture quality at Maximum | 4096 px | ZL16 |
+
+Textures around airports (ZL18, about 1.8 km across) follow the same law four times closer, up to
+ZL18 within about 3 km. OrthoStudio XP Live downloads each texture at exactly the sharpness X-Plane will
+read, and only there: the 4096 px level is fetched only for textures you pass close to, and never
+if X-Plane's texture quality is below Maximum, because X-Plane then never reads it.
+
+## Why there are no zoom, prefetch or waiting settings
+
+AutoOrtho's settings are there to manage X-Plane's wait. Since X-Plane is blocked while AutoOrtho
+downloads, you choose how much to download (maximum zoom, zoom near airports, zoom by flight
+level), how long X-Plane may wait before it gets a blurry texture instead (maximum wait, time
+budget, fallbacks), and how far ahead to guess (prefetch radius and look-ahead). It is a trade
+between sharpness and freezes, and you set it.
+
+OrthoStudio XP Live has no wait to manage, and X-Plane itself says how sharp it wants each texture:
+
+| AutoOrtho setting | In OrthoStudio XP Live |
+|---|---|
+| Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
+| Maximum zoom, zoom near airports | Optional caps (`--max-zoom`, `--max-zoom-airports`) to save bandwidth. By default, as sharp as X-Plane will display, where it will display it. |
+| Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and OrthoStudio XP Live follows it. |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 25 km more for external views. |
+| Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. A texture that comes late is shown at the sharpness X-Plane already has and gets sharper at the next ring. |
+| Cache sizes, workers, pipelines | Internal. |
+
+What you choose: the imagery source (Bing by default), a zoom cap if you want to download less,
+and how much disk the textures and the downloaded imagery may take.
+
+## Where everything is, and the disk
+
+- `live/pack` in OrthoStudio XP's data folder: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while
+  OrthoStudio XP Live runs). Every texture of the region is there: built for real where you have flown,
+  a neutral placeholder that takes no space elsewhere.
+- `live/chunks.sqlite` in the data folder: the downloaded imagery, so that nothing is downloaded twice.
+
+Both have a budget (`--disk-budget-gb`, 20 GB by default; `--cache-budget-gb`, 10 GB). Over it,
+OrthoStudio XP Live makes the textures seen longest ago coarser, only those more than 300 km from the
+aircraft and the camera, where X-Plane reads nothing: first back to 256 px (their small levels are
+in the file, nothing to download), then to the placeholder; and it drops the imagery downloaded
+longest ago. A texture that comes back within reach is built again before X-Plane wants it.
+Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
+
+## What it costs
+
+- Setting up a region: about 3 minutes, once.
+- A new area: 30,000 to 50,000 image pieces before the first flight there, with the 25 km for
+  external views. That is one to two minutes, and a few seconds for later flights. Without the
+  external views (`--camera-reach-km 0`), it is 11,000 pieces around Marseille, about 40 seconds.
+- Download: from Marseille to past Mont Ventoux at FL240, texture quality Maximum, about 80,000
+  image pieces (1.4 GB). Downloads run at about 450 pieces a second.
+- Imagery is kept (`live/chunks.sqlite`) and never downloaded twice.
+
+## If something goes wrong
+
+- If OrthoStudio XP Live stops, X-Plane goes on flying over what is on the disk.
+- If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring. It
+  never freezes waiting for it.
+- Stop OrthoStudio XP Live after quitting X-Plane: it takes its scenery and its plugin out of X-Plane
+  when it stops, and if X-Plane is still running it waits for it to quit first.
+- The plugin is compiled on your Mac the first time, which needs Xcode's command-line tools
+  (`xcode-select --install`). Without them, OrthoStudio XP Live says so and works without the wait.
+
+## Not yet
+
+- The 25 km for external views is always kept, cockpit or not. The plugin could tell which view is
+  in use and widen it only when needed, to download less at cruise.
+
+- The look-ahead follows the current track; a flight plan (SimBrief) would let it look further.
+- Distances are measured along the ground; counting the altitude, as X-Plane probably does, would
+  download less at cruise.
+- Only the AutoOrtho region set up (Europe so far).

@@ -1,0 +1,155 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
+"""The gate: X-Plane goes on loading a flight only once the ortho around its start is built.
+
+OrthoStudio XP Live's X-Plane plugin (``native/xplane_plugin/live_gate.c``, put in X-Plane by
+``orthostudio.live.plugin``) talks to this gate while X-Plane loads a flight's aircraft, before
+X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:GATE_PORT:
+
+- ``LIVE1 LOAD lat lon``: a flight is loading there (PLANE_LOADED); no answer is expected.
+- ``LIVE1 HOLD lat lon why``: X-Plane waits for the answer. ``why`` is ``flight`` at message 115,
+  where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or livery, which a
+  livery changed in flight also sends. The gate sends ``LIVE1 GO n`` once every texture X-Plane
+  will read there is built. Otherwise it sends, for instance,
+  ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 at=LFMN runway 04R``:
+  - n is how many textures are left;
+  - p is the progress in thousandths, counted from the first moment the start was known;
+  - s is the seconds since then;
+  - mbs is the download rate, in megabytes a second;
+  - at is the start's name, the rest of the line.
+
+  The plugin's loading window shows all of it.
+
+The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
+it in ``Output/preferences/Freeflight.prf`` (``_last_start``, a JSON object), and the streamer
+starts building right then (hold test, docs/specs/live/hold-test.md).
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import socket
+import time
+from collections.abc import Callable
+from pathlib import Path
+
+GATE_PORT = 49250
+
+Airports = Callable[[str], tuple[float, float] | None]
+Start = tuple[float, float, str]  # latitude, longitude, a name for it
+
+
+def read_last_start(prefs: Path) -> dict | None:
+    """``_last_start`` of Freeflight.prf, e.g.
+    ``{"runway_start": {"airport_id": "LFML", "runway": "13L"}}``."""
+    try:
+        with open(prefs, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("_last_start "):
+                    value = json.loads(line[len("_last_start ") :])
+                    return value if isinstance(value, dict) else None
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def start_position(start: dict, airports: Airports) -> Start | None:
+    """Where a saved start is: its latitude and longitude, else its airport's."""
+    for where in start.values():
+        if not isinstance(where, dict):
+            continue
+        lat, lon = where.get("latitude"), where.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            return float(lat), float(lon), f"{lat:.3f} {lon:.3f}"
+        icao = where.get("airport_id")
+        if isinstance(icao, str) and icao:
+            icao = icao.upper()
+            pos = airports(icao)
+            if pos is not None:
+                runway = f" runway {where['runway']}" if where.get("runway") else ""
+                return pos[0], pos[1], icao + runway
+    return None
+
+
+class Gate:
+    def __init__(self, xplane: Path, airports: Airports, port: int = GATE_PORT):
+        self.prefs = xplane / "Output" / "preferences" / "Freeflight.prf"
+        self.airports = airports
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            self.sock.bind(("127.0.0.1", port))
+        except OSError:
+            self.sock.close()
+            raise
+        self.sock.setblocking(False)
+        self._mtime = self._prefs_mtime()
+
+    def _prefs_mtime(self) -> float | None:
+        try:
+            return os.stat(self.prefs).st_mtime
+        except OSError:
+            return None
+
+    def last_start(self) -> Start | None:
+        """The start X-Plane saved last time: where the next flight will likely begin."""
+        start = read_last_start(self.prefs)
+        return start_position(start, self.airports) if start else None
+
+    def new_start(self) -> Start | None:
+        """The start X-Plane has saved since the last call: the user has clicked Start Flight."""
+        mtime = self._prefs_mtime()
+        if mtime is None or mtime == self._mtime:
+            return None
+        start = read_last_start(self.prefs)
+        if start is None and time.time() - mtime < 2.0:
+            return None  # still being written: look again
+        self._mtime = mtime
+        return start_position(start, self.airports) if start else None
+
+    def requests(self) -> list[tuple[str, float, float, tuple, str]]:
+        """The plugin's lines since the last call: (LOAD or HOLD, lat, lon, where to answer,
+        why)."""
+        out: list[tuple[str, float, float, tuple, str]] = []
+        while True:
+            try:
+                data, addr = self.sock.recvfrom(512)
+            except OSError:  # nothing more (or a stray error): look again next time
+                break
+            parts = data.decode("ascii", "replace").split()
+            if len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
+                with contextlib.suppress(ValueError):
+                    out.append(
+                        (
+                            parts[1],
+                            float(parts[2]),
+                            float(parts[3]),
+                            addr,
+                            parts[4] if len(parts) == 5 else "aircraft",
+                        )
+                    )
+        return out
+
+    def answer(
+        self,
+        addr: tuple,
+        go: bool,
+        left: int,
+        name: str = "",
+        done: float = 0.0,
+        took: float = 0.0,
+        mbs: float = 0.0,
+    ) -> None:
+        if go:
+            line = f"LIVE1 GO {left}"
+        else:
+            line = (
+                f"LIVE1 WAIT n={left} p={round(max(0.0, min(1.0, done)) * 1000)} s={round(took)} "
+                f"mbs={mbs:.1f} at={name}"
+            )
+        with contextlib.suppress(OSError):
+            self.sock.sendto(line.encode("ascii", "replace")[:200], addr)
+
+    def close(self) -> None:
+        self.sock.close()

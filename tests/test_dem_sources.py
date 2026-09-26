@@ -16,8 +16,6 @@ import numpy as np
 import pytest
 
 from orthostudio.dem.sources import (
-    DEM1_BLOCKS,
-    DEM1_CELLS,
     FULL_HGT_SIZE,
     CellState,
     Download,
@@ -35,8 +33,11 @@ from orthostudio.dem.sources import (
     ned_url,
     no_download,
     round_latlon,
+    view3_urls,
     view_url,
+    view_urls,
 )
+from orthostudio.meter import counting
 
 # -- naming (spec 2) ----------------------------------------------------------------------
 
@@ -77,22 +78,39 @@ def test_base_file_name_and_suffixes(tmp_path: Path) -> None:
 # -- URLs (spec 3.1, 3.3) -----------------------------------------------------------------
 
 
-def test_view_url_dem1_cells() -> None:
-    assert len(DEM1_CELLS) == 34
-    assert view_url(44, 5) == ("http://viewfinderpanoramas.org/dem1/n44e005.zip", 1)
-    assert view_url(47, 15) == ("http://viewfinderpanoramas.org/dem1/n47e015.zip", 1)
+V = "http://viewfinderpanoramas.org"
 
 
-def test_view_url_dem3_blocks_and_resolution() -> None:
-    assert len(DEM1_BLOCKS) == 22
-    # +43+005 is not a dem1 cell: block K31, 3 arc seconds.
-    assert view_url(43, 5) == ("http://viewfinderpanoramas.org/dem3/K31.zip", 3)
-    # A block listed in DEM1_BLOCKS keeps the dem3 URL but claims 1" resolution.
-    assert view_url(60, 3) == ("http://viewfinderpanoramas.org/dem3/P31.zip", 1)
+def test_view_urls_follow_the_sites_own_list_finest_first() -> None:
+    """Only what the site's coverage maps list (``data/viewfinder.json``), 1" archives first:
+    Geneva and Paris from the 1" blocks of March 2026, not Ortho4XP's per-cell archives of 2017
+    (``dem1/n46e006.zip``, 404 since October 2026) nor its 3" names."""
+    assert view_urls(46, 6) == ([f"{V}/dem1/L32.zip", f"{V}/dem3/L32.zip"], 1)
+    assert view_urls(48, 2) == ([f"{V}/dem1/M31.zip", f"{V}/dem3/M31.zip"], 1)
+    assert view_url(46, 6) == (f"{V}/dem1/L32.zip", 1)
+
+
+def test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place() -> None:
+    """``dem3/P35.zip`` answers 404, ``dem3/P35v2.zip`` 200; Shetland is ``dem3/SHL.zip``, the block
+    P43 round Surgut ``dem3/P-143.zip``, Antarctica ``dem1/ANT-E`` (measured 2026-10-17/18)."""
+    assert view_urls(60, 24) == (
+        [f"{V}/dem1/P35.zip", f"{V}/dem3/P35v2.zip", f"{V}/dem3/P35.zip"],
+        1,
+    )
+    assert view_urls(60, -2) == ([f"{V}/dem1/P30.zip", f"{V}/dem3/SHL.zip", f"{V}/dem3/P30.zip"], 1)
+    assert view_urls(61, 74) == ([f"{V}/dem3/P-143.zip", f"{V}/dem3/P43.zip"], 3)
+    assert view_urls(-80, 100)[0][0] == f"{V}/dem1/ANT-E.zip"
+
+
+def test_view_urls_end_with_the_cells_3sec_block_under_its_grid_name() -> None:
+    """``A21`` (26 cells of the Guiana Shield) is linked at the site's root on the 3" map, which
+    the reading of the maps missed until 2026-10-18: listed now, and the grid name, always the
+    last try, is the same archive."""
+    assert view_urls(2, -56) == ([f"{V}/dem3/A21.zip"], 3)
+    assert view_urls(60, 24)[0][-1] == f"{V}/dem3/P35.zip"
     # Southern hemisphere: the letter is prefixed with S and counted from -1.
-    url, resol = view_url(-34, -59)
-    assert url.endswith("/dem3/SI21.zip")
-    assert resol == 3
+    assert view_urls(-34, -59) == ([f"{V}/dem3/SI21.zip"], 3)
+    assert view_url(-34, -59) == (f"{V}/dem3/SI21.zip", 3)
 
 
 def test_ned_url_carries_the_latitude_for_eastern_tiles() -> None:
@@ -216,14 +234,18 @@ def test_copernicus_cell_name_url_and_download(tmp_path: Path) -> None:
         return Download(asked, status=200, body=b"II*\x00 not really a tiff")
 
     opts = _opts(tmp_path, download, memo=NegativeMemo())
-    got = ensure_elevation("COP30", 46, 6, opts)
+    wrote: list[int] = []
+    with counting(wrote=wrote.append):  # what Works' report says the relief step wrote
+        got = ensure_elevation("COP30", 46, 6, opts)
+    assert wrote == [len(b"II*\x00 not really a tiff")]
     assert got.state is CellState.DOWNLOADED and got.path is not None
     assert got.path == elevation_path("COP30", tmp_path, 46, 6)
     assert got.path.name == "N46E006_COP30.tif" and got.path.read_bytes().startswith(b"II*")
     assert calls == [url]
-    # the file is there: the next build reads it without asking again
-    again = ensure_elevation("COP30", 46, 6, opts)
-    assert again.state is CellState.LOCAL and len(calls) == 1
+    # the file is there: the next build reads it without asking again, and writes nothing
+    with counting(wrote=wrote.append):
+        again = ensure_elevation("COP30", 46, 6, opts)
+    assert again.state is CellState.LOCAL and len(calls) == 1 and len(wrote) == 1
     assert not list(tmp_path.rglob("*.part"))
 
 
@@ -241,7 +263,8 @@ def test_a_copernicus_cell_all_at_sea_is_remembered_as_missing(tmp_path: Path) -
 
 
 def test_recycles_a_3sec_file_without_asking_the_network(tmp_path: Path) -> None:
-    path = elevation_path("View", tmp_path, 43, 5)
+    # -34-059: block SI21, which the site serves at 3" only
+    path = elevation_path("View", tmp_path, -34, -59)
     path.parent.mkdir(parents=True)
     path.write_bytes(b"\x00" * 2884802)
     calls: list[str] = []
@@ -250,7 +273,7 @@ def test_recycles_a_3sec_file_without_asking_the_network(tmp_path: Path) -> None
         calls.append(url)
         raise AssertionError("must not download")
 
-    result = ensure_elevation("View", 43, 5, _opts(tmp_path, download))
+    result = ensure_elevation("View", -34, -59, _opts(tmp_path, download))
     assert result.state is CellState.LOCAL
     assert calls == []
 
@@ -269,11 +292,100 @@ def test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again(tmp_path: Path) -
     opts = _opts(tmp_path, download, memo=NegativeMemo())
     first = ensure_elevation("View", 44, 5, opts)
     assert first.state is CellState.MISSING
-    assert calls == ["http://viewfinderpanoramas.org/dem1/n44e005.zip"]
-    # the 404 is remembered: the second run does not ask again (the OrthoStudio XP fix)
+    assert calls == [f"{V}/dem1/L31.zip", f"{V}/dem3/L31.zip"]
+    # the 404s are remembered: the second run does not ask again (the OrthoStudio XP fix)
     second = ensure_elevation("View", 44, 5, opts)
     assert second.state is CellState.MISSING
-    assert len(calls) == 1
+    assert len(calls) == 2
+
+
+def _view_site(served: str, calls: list[str]):  # type: ignore[no-untyped-def]
+    """A viewfinderpanoramas that serves +46+006's cell in the archive ``served`` only."""
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        if url == served:
+            return Download(url, body=_zip({"N46E006.hgt": b"\x00" * FULL_HGT_SIZE}), status=200)
+        return Download(url, status=404)
+
+    return download
+
+
+def test_a_cell_comes_from_its_1sec_block(tmp_path: Path) -> None:
+    calls: list[str] = []
+    opts = _opts(tmp_path, _view_site(f"{V}/dem1/L32.zip", calls), memo=NegativeMemo())
+    got = ensure_elevation("View", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == f"{V}/dem1/L32.zip"
+    assert calls == [f"{V}/dem1/L32.zip"]
+
+
+def test_view3_asks_the_3sec_archives_alone_and_files_them_apart(tmp_path: Path) -> None:
+    """viewfinderpanoramas at 90 m (``View3``) never asks a 1" archive, and its cell has a name
+    of its own: a 1" file ``View`` keeps for the same square is neither read nor replaced."""
+    assert view3_urls(46, 6) == [f"{V}/dem3/L32.zip"]
+    assert view3_urls(60, -2) == [f"{V}/dem3/SHL.zip", f"{V}/dem3/P30.zip"]
+    one_sec = elevation_path("View", tmp_path, 46, 6)
+    one_sec.parent.mkdir(parents=True)
+    one_sec.write_bytes(b"1" * 64)
+    calls: list[str] = []
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=NegativeMemo())
+    got = ensure_elevation("View3", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED and calls == [f"{V}/dem3/L32.zip"]
+    assert got.path == elevation_path("View3", tmp_path, 46, 6)
+    assert got.path is not None and got.path.name == "N46E006_VIEW3.hgt"
+    assert one_sec.read_bytes() == b"1" * 64
+    again = ensure_elevation("View3", 46, 6, opts)
+    assert again.state is CellState.LOCAL and len(calls) == 1
+
+
+def test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered(tmp_path: Path) -> None:
+    calls: list[str] = []
+    memo = NegativeMemo()
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=memo)
+    got = ensure_elevation("View", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == f"{V}/dem3/L32.zip"
+    assert memo.is_missing(f"{V}/dem1/L32.zip")
+
+
+def test_an_archive_remembered_as_missing_does_not_stop_the_next(tmp_path: Path) -> None:
+    """Each archive has its own memo entry; the lower-case 404s data folders of 1.1.0 and earlier
+    remember are URLs this version never asks."""
+    calls: list[str] = []
+    memo = NegativeMemo()
+    memo.record("http://viewfinderpanoramas.org/dem1/n46e006.zip")
+    memo.record(f"{V}/dem1/L32.zip")
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=memo)
+    assert ensure_elevation("View", 46, 6, opts).state is CellState.DOWNLOADED
+    assert calls == [f"{V}/dem3/L32.zip"]
+
+
+def test_a_network_failure_does_not_try_the_next_archive(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        return Download(url, error="NET_UNREACHABLE")
+
+    memo = NegativeMemo()
+    got = ensure_elevation("View", 46, 6, _opts(tmp_path, download, memo=memo))
+    assert got.state is CellState.MISSING
+    assert calls == [f"{V}/dem1/L32.zip"]
+    assert not memo.is_missing(calls[0])
+
+
+def test_a_cell_with_no_archive_at_all_asks_once_and_remembers(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        return Download(url, status=404)
+
+    opts = _opts(tmp_path, download, memo=NegativeMemo())
+    assert ensure_elevation("View", 0, -150, opts).state is CellState.MISSING
+    assert ensure_elevation("View", 0, -150, opts).state is CellState.MISSING
+    assert calls == [f"{V}/dem3/A06.zip"]
 
 
 def test_a_full_1sec_file_is_recycled(tmp_path: Path) -> None:
@@ -443,3 +555,25 @@ def test_a_square_outside_anadem_asks_nothing(tmp_path: Path) -> None:
 
     got = ensure_elevation("ANADEM", 46, 6, EnsureOptions(elevation_dir=tmp_path, ranges=ranges))
     assert got.state is CellState.MISSING and got.path is None
+
+
+def test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one(tmp_path: Path) -> None:
+    """The site's 1" archive of R36 lacks the Kola peninsula's cells, its 3" one (R36v2) has
+    them (2026-10-17): an archive without the cell sends the search to the next name."""
+    calls: list[str] = []
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        name = url.rpartition("/")[2]
+        if name == "R36.zip" and "/dem1/" in url:
+            return Download(
+                url, body=_zip({"R36/N70E030.hgt": b"\x00" * FULL_HGT_SIZE}), status=200
+            )
+        if name == "R36v2.zip":
+            return Download(url, body=_zip({"R36/N68E030.hgt": b"\x00" * 2884802}), status=200)
+        return Download(url, status=404)
+
+    got = ensure_elevation("View", 68, 30, _opts(tmp_path, download, memo=NegativeMemo()))
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == f"{V}/dem3/R36v2.zip"
+    assert calls == [f"{V}/dem1/R36.zip", f"{V}/dem3/R36v2.zip"]

@@ -13,6 +13,10 @@ of being re-issued on every run.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
+import contextlib
+import functools
 import io
 import json
 import math
@@ -21,19 +25,18 @@ import re
 import threading
 import time
 import zipfile
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, TypeVar
 
 from orthostudio.errors import OsxpError
+from orthostudio.meter import written
 
 __all__ = [
     "ALPHABET",
     "COP30_BASE_URL",
-    "DEM1_BLOCKS",
-    "DEM1_CELLS",
     "FULL_HGT_SIZE",
     "MANUAL_SOURCES",
     "SOURCES",
@@ -55,17 +58,30 @@ __all__ = [
     "generic_tif",
     "hem_latlon",
     "round_latlon",
+    "view3_urls",
     "view_url",
+    "view_urls",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
+Source = Literal["View", "View3", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM")
+SOURCES: tuple[Source, ...] = (
+    "View",
+    "View3",
+    "SRTM",
+    "ALOS",
+    "NED1",
+    "NED1/3",
+    "COP30",
+    "HRDEM",
+    "ANADEM",
+)
 """The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), plus the two
 OrthoStudio XP added for users who asked: ``COP30``, the Copernicus DEM GLO-30 (2026-09-17), and
-``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``)."""
+``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``). ``View3`` is viewfinderpanoramas
+at 3" alone, where ``View`` takes its 1" archives first (2026-10-30)."""
 
-GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
+GLOBAL_SOURCES: tuple[Source, ...] = ("View", "View3", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
 
 MANUAL_SOURCES: tuple[Source, ...] = ("SRTM", "ALOS")
@@ -125,35 +141,6 @@ def anadem_url(zone: str) -> str:
     return f"{ANADEM_BASE_URL}/anadem_v1_{zone}.tif"
 
 
-DEM1_CELLS: frozenset[tuple[int, int]] = frozenset(
-    {
-        (44, 5), (45, 5), (46, 5),
-        (43, 6), (44, 6), (45, 6), (46, 6), (47, 6),
-        (43, 7), (44, 7), (45, 7), (46, 7), (47, 7),
-        (45, 8), (46, 8), (47, 8),
-        (45, 9), (46, 9), (47, 9),
-        (45, 10), (46, 10), (47, 10),
-        (45, 11), (46, 11), (47, 11),
-        (45, 12), (46, 12), (47, 12),
-        (46, 13), (47, 13),
-        (46, 14), (47, 14),
-        (46, 15), (47, 15),
-    }
-)  # fmt: skip
-"""The 34 cells served one-per-zip under ``dem1/`` (``O4_DEM_Utils.py:599-635``)."""
-
-DEM1_BLOCKS: frozenset[str] = frozenset(
-    {
-        "O31", "P31",
-        "N32", "O32", "P32", "Q32",
-        "N33", "O33", "P33", "Q33", "R33",
-        "O34", "P34", "Q34", "R34",
-        "O35", "P35", "Q35", "R35",
-        "P36", "Q36", "R36",
-    }
-)  # fmt: skip
-"""De Ferranti blocks that are 1" although served under ``dem3/`` (``:645-667``)."""
-
 _MEMBER_RE = re.compile(r"^([NSns])(\d{2})([EWew])(\d{3})")
 
 
@@ -192,6 +179,7 @@ def base_file_name(elevation_dir: Path, lat: int, lon: int) -> Path:
 
 _SUFFIX: dict[str, str] = {
     "View": ".hgt",
+    "View3": "_VIEW3.hgt",  # its own name: ``View`` keeps a 1" file where the site has one
     "COP30": "_COP30.tif",
     "SRTM": "_SRTMv3.hgt",
     "ALOS": "_ALOS3W30.tif",
@@ -307,19 +295,72 @@ def default_memo_path() -> Path:
 # -- URLs -----------------------------------------------------------------------------------
 
 
-def view_url(lat: int, lon: int) -> tuple[str, int]:
-    """``(url, resolution)`` of the viewfinderpanoramas archive holding this cell.
-
-    ``O4_DEM_Utils.py:595-668``. The resolution is 1 or 3 and only drives the recycling test
-    of :func:`ensure_elevation`, never the URL.
-    """
-    if (lat, lon) in DEM1_CELLS:
-        return f"{VIEW_BASE_URL}/dem1/{hem_latlon(lat, lon).lower()}.zip", 1
+def _view_block(lat: int, lon: int) -> str:
+    """The 4-degree x 6-degree block of de Ferranti's grid holding a cell, as the site names it:
+    letter ``alphabet[lat // 4]`` (``"S" + alphabet[(-1 - lat) // 4]`` south of the equator),
+    number ``31 + lon // 6`` on two digits."""
     number = 31 + lon // 6
     letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
-    block = f"{letter}{number:02d}"
-    resol = 1 if block in DEM1_BLOCKS else 3
-    return f"{VIEW_BASE_URL}/dem3/{block}.zip", resol
+    return f"{letter}{number:02d}"
+
+
+@functools.lru_cache(maxsize=1)
+def site_archives() -> tuple[frozenset[str], frozenset[str], Mapping[str, str]]:
+    """The 1" blocks, the 3" ones and the cells in archives of their own that viewfinderpanoramas
+    serves (``data/viewfinder.json``, made by ``tools/dem/viewfinder_archives.py`` from the site's
+    two coverage maps)."""
+    doc = json.loads((Path(__file__).with_name("data") / "viewfinder.json").read_text())
+    return frozenset(doc["dem1"]), frozenset(doc["dem3"]), doc["special"]
+
+
+def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
+    """Every archive of viewfinderpanoramas that may hold this cell, finest first, and the
+    resolution of the first: what the site's coverage maps list (:func:`site_archives`), and
+    nothing else.
+
+    The 1" archives come first: the cell's 1" block (``dem1/L32.zip`` for Geneva, of March 2026,
+    ``dem1/M31.zip`` for Paris) or the 1" place archive it is in (Antarctica's ``dem1/ANT-E``);
+    then the 3" ones: the block, the block the site moved (``dem3/P35v2.zip``), or the place
+    archive (``dem3/SHL.zip``, ``dem3/P-143.zip``). Ortho4XP's own names are not asked: the
+    per-cell archives of the Alps it reads (``dem1/n46e006.zip``) are of 2017, answer 404 under
+    its lower-case names since October 2026, and every block it points to is in the site's
+    list under its real name. Last comes the cell's 3" block under its grid name, a net for an
+    archive the reading of the maps would miss. Resolution 1 when the first archive is a 1" one,
+    else 3.
+    """
+    dem1, dem3, special = site_archives()
+    block = _view_block(lat, lon)
+    own = special.get(hem_latlon(lat, lon).upper())
+    urls: list[str] = []
+    if block in dem1:
+        urls.append(f"{VIEW_BASE_URL}/dem1/{block}.zip")
+    if own is not None and own.startswith("dem1/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    if block in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}.zip")
+    if f"{block}v2" in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
+    if own is not None and own.startswith("dem3/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    # Last, the 3" block under its grid name, listed or not: the reading of the maps missed
+    # archives twice (names with a dash; ``A21``, which the 3" map links at the site's root). A
+    # cell with no archive at all costs one 404, remembered (3.4).
+    computed = f"{VIEW_BASE_URL}/dem3/{block}.zip"
+    if computed not in urls:
+        urls.append(computed)
+    resol = 1 if "/dem1/" in urls[0] else 3
+    return urls, resol
+
+
+def view3_urls(lat: int, lon: int) -> list[str]:
+    """The 3" archives of :func:`view_urls` alone, for ``View3``."""
+    return [url for url in view_urls(lat, lon)[0] if "/dem1/" not in url]
+
+
+def view_url(lat: int, lon: int) -> tuple[str, int]:
+    """The first archive :func:`view_urls` asks for this cell and its resolution."""
+    urls, resol = view_urls(lat, lon)
+    return urls[0], resol
 
 
 def ned_url(source: str, lat: int, lon: int) -> str:
@@ -429,21 +470,249 @@ DownloadFn = Callable[[str], Download]
 """How :func:`ensure_elevation` reaches the network; injected so tests never do."""
 
 
-def http_download(url: str, *, timeout_s: float = 30.0, max_attempts: int = 4) -> Download:
-    """Fetch one URL through :mod:`orthostudio.net.fetch` (spec section 3.5)."""
-    from orthostudio.net.fetch import FetchRequest, fetch_all
+RELIEF_SILENCE_S = 30.0
+"""Seconds a relief file may go without a byte arriving before its transfer is given up.
 
-    results = fetch_all(
-        [FetchRequest(key=url, url=url, host_group=_host_group(url))],
-        timeout_s=timeout_s,
-        max_attempts=max_attempts,
-        max_in_flight=4,
-        start_in_flight=2,
-    )
-    if not results:
-        return Download(url, error="NET_CONNECTION_FAILED")
-    r = results[0]
-    return Download(url, body=r.body, status=r.status, error=r.error)
+It was 30 s for the whole file, through the imagery's fetcher, which also started a second copy of
+it after 3 s: a USGS square of 443 MB needed some 215 Mbit/s to the USGS to arrive in time, and
+every attempt that did not was thrown away and started again from nothing. A user's +32-111 lost
+one (2026-09-26); downloading beside the images, a test's +34-118 lost all four and its tile
+failed (2026-09-27). A file still arriving, however slowly, is waited for now; a silent server is
+not."""
+RELIEF_CONNECT_S = 10.0
+"""Seconds to open a relief's connection, as the fetcher gave any transfer."""
+RELIEF_ATTEMPTS = 4
+"""Transfers of one file before its failure is final, as the fetcher counted them (a 429 obeyed
+within its budget is not one)."""
+RELIEF_PROGRESS_S = 1.0
+"""Seconds between two words of a relief file that arrives (``on_bytes``): the page showed its rate
+only once the whole file was in, then kept it over the 45 s the file took to read (a user,
+2026-09-29)."""
+BytesFn = Callable[[int, int | None], None]
+"""``on_bytes(received, expected)``: the bytes of the file in so far, and its size when the server
+says it (``Content-Length``)."""
+_RELIEF_BACKOFF_S = (0.5, 1.0, 2.0)
+"""Waits before the second, third and fourth transfers: the fetcher's, without its jitter."""
+_RELIEF_ERRORS = {
+    "server": "NET_SERVER_ERROR",
+    "pushback": "NET_RATE_LIMITED",
+    "timeout": "NET_TIMEOUT",
+    "connect": "NET_CONNECTION_FAILED",
+}
+"""The codes the fetcher gave the same failures, which the page's words and the memo read."""
+
+_T = TypeVar("_T")
+
+
+class _KeptConnections:
+    """One HTTP/1.1 session for the reliefs, on an event loop of its own, kept for the engine.
+
+    The machinery of the map data library (``sources.library._Connections``), which streams its
+    files on Windows, macOS and Linux since 0.1.18, in a session of its own: a relief of 400 MB
+    never shares a connection with the library's small files.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._session: Any = None
+
+    def run(self, work: Callable[[Any], Awaitable[_T]]) -> _T:
+        """``work(session)``, run on the kept loop, from whichever thread asks."""
+        with self._lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                self._session = None
+                threading.Thread(target=self._loop.run_forever, name=self.name, daemon=True).start()
+            loop = self._loop
+        return asyncio.run_coroutine_threadsafe(self._with_session(work), loop).result()
+
+    async def _with_session(self, work: Callable[[Any], Awaitable[_T]]) -> _T:
+        if self._session is None:  # made on its loop: nothing awaits between test and assignment
+            from curl_cffi.requests import AsyncSession
+
+            from orthostudio.net.certs import ca_bundle
+
+            # HTTP/1.1 pinned, as the library's: left to negotiate, or pinned to HTTP/2, a session
+            # stalled on large files there (``sources.library``, 2026-09-23)
+            self._session = AsyncSession(verify=ca_bundle(), http_version="v1", max_clients=4)
+        return await work(self._session)
+
+    def close(self) -> None:
+        """The session and its loop, closed: at exit, and in the tests."""
+        with self._lock:
+            loop, session = self._loop, self._session
+            self._loop, self._session = None, None
+        if loop is None or loop.is_closed():
+            return
+        if session is not None:
+            with contextlib.suppress(Exception):  # best effort: the process is going anyway
+                asyncio.run_coroutine_threadsafe(session.close(), loop).result(timeout=5)
+        loop.call_soon_threadsafe(loop.stop)
+
+
+_RELIEF_HTTP = _KeptConnections("osxp-relief-http")
+atexit.register(_RELIEF_HTTP.close)
+
+
+def _cancelled() -> OsxpError:
+    return OsxpError("SYS_CANCELLED", context={"stage": "dem"})
+
+
+def _pause(seconds: float, cancel: threading.Event | None) -> None:
+    """Wait ``seconds``, or raise ``SYS_CANCELLED`` within 0.2 s of a cancel."""
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        if cancel is not None and cancel.is_set():
+            raise _cancelled()
+        time.sleep(min(0.2, left))
+
+
+def _stop(answer: Any) -> None:
+    """Tell curl to give up a streamed answer at its next piece (curl_cffi's ``quit_now``)."""
+    quit_now = getattr(answer, "quit_now", None)
+    if quit_now is not None:
+        quit_now.set()
+
+
+async def _relief_transfer(
+    session: Any,
+    url: str,
+    silence_s: float,
+    cancel: threading.Event | None,
+    on_bytes: BytesFn | None = None,
+) -> tuple[str, int, bytes, float | None]:
+    """One transfer: ``(kind, status, body, retry_after)``. ``kind`` is ``ok`` for any answer the
+    fetcher counted as one (a 404 included), ``server`` for a 5xx, ``pushback`` for a 429,
+    ``timeout``, ``connect`` or ``cancelled``; ``retry_after`` is a 429's ``Retry-After``.
+
+    A cancel returns at once, the transfer winding down on the kept loop: closing a streamed
+    answer waits for its transfer to end, 400 MB away, so curl is told to stop at its next piece
+    (:func:`_stop`). Before the headers there is no answer to tell: the transfer is left to reach
+    them and stops there, for cancelling it then would leave curl filling its queue with the whole
+    file, read by nobody (curl_cffi 0.16).
+    """
+    from curl_cffi.requests.exceptions import Timeout
+
+    from orthostudio.net.fetch import MAX_REDIRECTS, USER_AGENT, _retry_after
+
+    held: list[Any] = []  # the answer being read, once its headers are in
+
+    async def read() -> tuple[str, int, bytes, float | None]:
+        async with session.stream(
+            "GET",
+            url,
+            headers={"User-Agent": USER_AGENT},
+            # streamed, curl_cffi turns this pair into a limit on silence (no byte for their sum),
+            # not on the whole transfer (``sources.library._http_get_many``)
+            timeout=(RELIEF_CONNECT_S, max(1.0, silence_s - RELIEF_CONNECT_S)),
+            allow_redirects=True,
+            max_redirects=MAX_REDIRECTS,
+        ) as answer:
+            if cancel is not None and cancel.is_set():  # cancelled while the headers came
+                _stop(answer)
+                return "cancelled", 0, b"", None
+            held.append(answer)
+            status = int(answer.status_code)
+            if status == 429 or status >= 500:  # a refusal's body is not the file: not kept
+                headers = {str(k).lower(): str(v) for k, v in answer.headers.items()}
+                retry_after = _retry_after(headers) if status == 429 else None
+                return ("pushback" if status == 429 else "server"), status, b"", retry_after
+            pieces: list[bytes] = []
+            received, told = 0, time.monotonic()
+            expected = _content_length(answer.headers)
+            if on_bytes is not None:
+                on_bytes(0, expected)
+            async for piece in answer.aiter_content():
+                pieces.append(piece)
+                received += len(piece)
+                if on_bytes is not None and time.monotonic() - told >= RELIEF_PROGRESS_S:
+                    told = time.monotonic()
+                    on_bytes(received, expected if expected and expected >= received else None)
+            return "ok", status, b"".join(pieces), None
+
+    task = asyncio.ensure_future(read())
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=0.2)
+            if done:
+                return task.result()
+            if cancel is not None and cancel.is_set():
+                if held:
+                    _stop(held[0])
+                    task.cancel()
+                task.add_done_callback(lambda t: t.cancelled() or t.exception())
+                return "cancelled", 0, b"", None
+    except Exception as exc:  # a transport failure is an answer here, never a crash
+        timed_out = isinstance(exc, Timeout) or getattr(exc, "code", None) == 28
+        return ("timeout" if timed_out else "connect"), 0, b"", None
+
+
+def _content_length(headers: Any) -> int | None:
+    """The size an answer announces, or ``None`` when it announces none (or nonsense)."""
+    for name, value in headers.items():
+        if str(name).lower() == "content-length":
+            with contextlib.suppress(ValueError):
+                return int(str(value).strip()) or None
+    return None
+
+
+def http_download(
+    url: str,
+    *,
+    timeout_s: float = RELIEF_SILENCE_S,
+    max_attempts: int = RELIEF_ATTEMPTS,
+    cancel: threading.Event | None = None,
+    on_bytes: BytesFn | None = None,
+) -> Download:
+    """One relief file (spec section 3.5), read as it arrives on a connection kept from one call
+    to the next, and given up only after ``timeout_s`` without a byte.
+
+    Not through the imagery's fetcher: it is built for thousands of small pieces, cut each
+    transfer at ``timeout_s`` whole and doubled any transfer still running after 3 s, which a file
+    of 400 MB always is (:data:`RELIEF_SILENCE_S`). The answers and their rules are the
+    fetcher's: a 404 and the like are the server's word, memoised by the caller
+    (:attr:`Download.final`); a 5xx, a silence or a refused connection are asked again, up to
+    ``max_attempts`` transfers, then carry the fetcher's code; a 429's pause is obeyed, and costs
+    no attempt while the pauses stay within their budget (``net-download.md`` R2). ``cancel``
+    stops the transfer within 0.2 s: ``SYS_CANCELLED`` is raised. ``on_bytes`` hears when the
+    file starts to arrive, then every :data:`RELIEF_PROGRESS_S` how much of it is in, on the
+    transfer's own thread; a transfer asked again starts again from nothing.
+    """
+    from orthostudio.net import fetch
+
+    last = Download(url, error=_RELIEF_ERRORS["connect"])
+    attempts = max(1, max_attempts)
+    failures = pushbacks = 0
+    pushback_wait, next_pause = 0.0, fetch.PAUSE_BASE_S
+    while failures < attempts:
+        if cancel is not None and cancel.is_set():
+            raise _cancelled()
+        kind, status, body, retry_after = _RELIEF_HTTP.run(
+            lambda session: _relief_transfer(session, url, timeout_s, cancel, on_bytes)
+        )
+        if kind == "cancelled":
+            raise _cancelled()
+        if kind == "ok":
+            return Download(url, body=body, status=status)
+        last = Download(url, status=status, error=_RELIEF_ERRORS[kind])
+        if kind == "pushback":
+            if retry_after is not None:
+                wait = min(max(retry_after, fetch.RETRY_AFTER_MIN_S), fetch.RETRY_AFTER_MAX_S)
+            else:
+                wait, next_pause = next_pause, min(next_pause * 2, fetch.PAUSE_MAX_S)
+            if pushbacks < fetch.MAX_PUSHBACKS and pushback_wait + wait <= fetch.PUSHBACK_BUDGET_S:
+                pushbacks += 1
+                pushback_wait += wait
+            else:
+                failures += 1
+        else:
+            failures += 1
+            wait = _RELIEF_BACKOFF_S[min(failures - 1, len(_RELIEF_BACKOFF_S) - 1)]
+        if failures < attempts:
+            _pause(wait, cancel)
+    return last
 
 
 def _host_group(url: str) -> str:
@@ -567,6 +836,7 @@ def _atomic_write_bytes(path: Path, body: bytes) -> None:
     try:
         tmp.write_bytes(body)
         os.replace(tmp, path)
+        written(len(body))  # the relief step's count of what it wrote (meter.py)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
@@ -598,6 +868,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
     """
     if source == "View":
         return _ensure_view(lat, lon, opts)
+    if source == "View3":
+        return _ensure_view3(lat, lon, opts)
     if source == "COP30":
         return _ensure_cop30(lat, lon, opts)
     if source in MANUAL_SOURCES:
@@ -617,21 +889,58 @@ def _local(source: str, lat: int, lon: int, opts: EnsureOptions) -> Path:
 
 def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     path = _local("View", lat, lon, opts)
-    url, resol = view_url(lat, lon)
+    urls, resol = view_urls(lat, lon)
+    first = urls[0]
     if path.is_file() and (resol == 3 or path.stat().st_size >= FULL_HGT_SIZE):
-        return EnsureResult(lat, lon, CellState.LOCAL, path, url)
-    if opts.memo.is_missing(url):
-        return _view_fallback(lat, lon, path, url, opts, "the archive is in the negative memo")
-    opts.check_cancelled()
-    got = opts.download(url)
-    if got.ok:
-        extract_view_zip(got.body, opts.elevation_dir)
-        if path.is_file():
-            return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
-        return _view_fallback(lat, lon, path, url, opts, "the archive did not hold this cell")
-    if got.final:
+        return EnsureResult(lat, lon, CellState.LOCAL, path, first)
+    # each name has its own memo entry: a 404 remembered for one case never skips the other
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir)
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            # the next name may hold it: a northern block's 1" archive lacks cells its 3" one
+            # has (dem1/R36.zip and the Kola peninsula, 2026-10-17)
+            detail = "the archive did not hold this cell"
+            continue
+        if not got.final:
+            # the network, not the name: the other case would fail the same way
+            return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
         opts.memo.record(url)
-    return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
+        detail = got.error or f"HTTP {got.status}"
+    return _view_fallback(lat, lon, path, first, opts, detail)
+
+
+def _ensure_view3(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """One cell of viewfinderpanoramas at 3", in a file of its own (``_VIEW3.hgt``)."""
+    path = _local("View3", lat, lon, opts)
+    urls = view3_urls(lat, lon)
+    if path.is_file():
+        return EnsureResult(lat, lon, CellState.LOCAL, path, urls[0])
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir, "View3")
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            detail = "the archive did not hold this cell"
+            continue
+        if not got.final:
+            return EnsureResult(
+                lat, lon, CellState.MISSING, None, url, got.error or f"HTTP {got.status}"
+            )
+        opts.memo.record(url)
+        detail = got.error or f"HTTP {got.status}"
+    return EnsureResult(lat, lon, CellState.MISSING, None, urls[0], detail)
 
 
 def cop30_name(lat: int, lon: int) -> str:
@@ -666,6 +975,9 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
         tmp = path.with_suffix(path.suffix + ".part")
         tmp.write_bytes(got.body)
         tmp.replace(path)
+        # the relief step's count of what it wrote (meter.py): a Copernicus cell was counted as
+        # downloaded and not as written, 46 MB of a tile's 795 (the Shadow, 2026-10-16)
+        written(len(got.body))
         return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
     if got.final:
         opts.memo.record(url)
@@ -673,7 +985,7 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
 
 
 def _view_fallback(
-    lat: int, lon: int, path: Path, url: str, opts: EnsureOptions, detail: str
+    lat: int, lon: int, path: Path, url: str | None, opts: EnsureOptions, detail: str
 ) -> EnsureResult:
     if path.is_file() and opts.dem1_local_fallback:
         return EnsureResult(lat, lon, CellState.LOCAL, path, url, detail)
@@ -801,8 +1113,9 @@ def manual_download_error(source: str, lat: int, lon: int, elevation_dir: Path) 
 # -- zip extraction -------------------------------------------------------------------------
 
 
-def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
-    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``).
+def extract_view_zip(content: bytes, elevation_dir: Path, source: str = "View") -> list[Path]:
+    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``), under the
+    names of ``source`` (``View``, or ``View3`` for a 3" archive asked alone).
 
     A member whose basename does not parse as ``[NS]dd[EW]ddd`` is skipped, and an existing
     file is kept unless it is at most as large as the archived member (a 1" file must not be
@@ -817,7 +1130,7 @@ def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
                 continue
             lat0 = int(m.group(2)) * (-1 if m.group(1) in "Ss" else 1)
             lon0 = int(m.group(4)) * (-1 if m.group(3) in "Ww" else 1)
-            out = elevation_path("View", elevation_dir, lat0, lon0)
+            out = elevation_path(source, elevation_dir, lat0, lon0)
             if out.exists() and out.stat().st_size > info.file_size:
                 continue
             with zf.open(info, "r") as src:
@@ -844,7 +1157,9 @@ def iter_urls(source: str, cells: Iterable[tuple[int, int]]) -> list[str]:
     urls: list[str] = []
     for lat, lon in cells:
         if source == "View":
-            urls.append(view_url(lat, lon)[0])
+            urls.extend(view_urls(lat, lon)[0])
+        elif source == "View3":
+            urls.extend(view3_urls(lat, lon))
         elif source in ("NED1", "NED1/3"):
             urls.append(ned_url(source, lat, lon))
     return urls
