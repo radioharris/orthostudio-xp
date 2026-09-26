@@ -134,6 +134,43 @@ async def test_a_plan_that_says_nothing_and_an_answer_that_is_not_a_plan() -> No
     assert answer.json()["error"]["code"] == "CFG_SIMBRIEF_PLAN_EMPTY"
 
 
+def test_a_busy_simbrief_is_asked_once() -> None:
+    """A 429 was asked again for up to 95 s, the fetcher's patience with imagery servers, where
+    the button promises one question and 20 s at most (review of 2026-09-26)."""
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from orthostudio.api import simbrief
+
+    asked: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            asked.append(self.path)
+            self.send_response(429)
+            self.send_header("Retry-After", "1")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        started = time.monotonic()
+        body, reason = simbrief._fetch(f"http://127.0.0.1:{httpd.server_address[1]}/api")
+        took = time.monotonic() - started
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert body is None and reason == "NET_RATE_LIMITED"
+    assert len(asked) == 1, f"asked {len(asked)} times"
+    assert took < 5.0, f"answered after {took:.1f} s"
+
+
 def test_a_name_goes_encoded_and_a_pilot_id_under_its_own_key() -> None:
     """A space or an ``&`` in the name changed the question (review of 2026-09-23); SimBrief
     takes a pilot ID as ``userid``, not as a name."""

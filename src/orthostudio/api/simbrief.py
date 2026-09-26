@@ -151,6 +151,9 @@ def _fetch(url: str) -> tuple[bytes | None, str]:
         [FetchRequest(key=url, url=url, host_group="simbrief")],
         timeout_s=DEADLINE_S,
         max_attempts=1,
+        # a 429 answered at once, not the imagery servers' patience: twelve more tries over up to
+        # two minutes kept the button waiting 95 s (review of 2026-09-26)
+        max_pushbacks=0,
         max_in_flight=1,
         start_in_flight=1,
     )
