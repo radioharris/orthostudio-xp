@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Structural reader for X-Plane DSF files (atom tree, properties, MD5 footer).
 
 Only what a byte-level comparison needs: the atom tree is walked so that a difference can be

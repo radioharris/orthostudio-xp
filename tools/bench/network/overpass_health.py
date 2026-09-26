@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Step 4: health of the public Overpass mirrors with the four Ortho4XP queries for a cell.
 
 The four layers Ortho4XP fetches for a tile (O4_Vector_Map.py: airports, big_roads, coastline,

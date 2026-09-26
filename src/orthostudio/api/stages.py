@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Node ids -> the seven user stages; error codes -> the page's action.
 
 Spec: ``docs/specs/api.md`` sections 5.2 and 5.4. Node ids come from

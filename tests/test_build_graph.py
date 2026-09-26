@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Graph declaration and node rules of ``osxp build`` (spec ``pipeline-build.md`` 2, 6): no
 network, no Ortho4XP. Sharing across zoom levels and tiles, neighbour wiring, ``#2`` suffixes,
 consumed subsets, and a synthetic DSF + pack run through the scheduler in thread mode."""

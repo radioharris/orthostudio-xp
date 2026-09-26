@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Reading elevation files, assembling the 3x3 raster, filling voids, upsampling, smoothing.
 
 Spec: ``docs/specs/dem.md`` sections 4 to 7 and 8.3.

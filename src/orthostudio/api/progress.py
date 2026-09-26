@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Progress and time remaining of a whole job, across the phases of a build.
 
 Spec: ``docs/specs/api.md`` section 5.6. ``build_tiles`` downloads OSM data in a phase 0 of its

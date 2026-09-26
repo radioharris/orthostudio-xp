@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """A zone that raises nothing says so.
 
 A zone's level is read at the centre of each mesh cell, which is Ortho4XP's rule

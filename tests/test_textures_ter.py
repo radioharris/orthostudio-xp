@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """.ter terrain definitions: every directive of Ortho4XP and the 39 files of the reference tile."""
 
 from __future__ import annotations

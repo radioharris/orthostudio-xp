@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """DDS container as written by Ortho4XP (nvcompress) and read by X-Plane.
 
 Only the subset used for orthophoto textures is modelled: 2D, block-compressed DXT1 (BC1) or

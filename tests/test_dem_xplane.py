@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """X-Plane 12's relief (``custom_dem = "XP12"``, decision 0007): reader, assembly, rule, wiring.
 
 Spec: ``docs/specs/dem.md`` section 12. Found flying ``+46+006``: the ``dem1`` archives of

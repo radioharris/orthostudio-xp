@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``build_overlay``: one overlay DSF from the Global Scenery DSF of a tile (spec section 5).
 
 Four steps in a private work directory: materialise the source (7z -> DSF), ``dsf2text``,

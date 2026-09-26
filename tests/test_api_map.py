@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The map proxy, ``GET /api/map/{provider}/{z}/{x}/{y}`` (``docs/specs/map-zones.md`` section 6).
 
 ``httpx.ASGITransport`` on a temporary ``OSXP_HOME``; the upstream is a stub ``fetch`` (no

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Triangle type remap and X-Plane 12 recut of coastal water triangles, vectorised.
 
 Port of ``O4_DSF_Utils.py:475-480`` (type remap) and ``O4_Bathymetry.py:16-183``

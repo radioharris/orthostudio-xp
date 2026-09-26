@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """What a tile was built with, written into its manifest (``PackManifest.built``).
 
 A user asked where to see which data a tile was built with (2026-09-21). Before this, a pack kept

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Scheduler overhead: 200 trivial nodes, built then hit (spec scheduler.md section 5).
 
 Prints per-node costs; the bound is loose so the test is a smoke check, the numbers are the

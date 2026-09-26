@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Rules: the typed, versioned computations whose outputs are artefacts.
 
 A rule declares a name, an integer version (bumped whenever its output may change for the

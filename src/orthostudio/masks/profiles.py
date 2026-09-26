@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The three shoreline transition profiles: ``sand``, ``rocks`` and ``3steps``.
 
 Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py:648-813``

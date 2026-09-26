@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Reader of the ``Ortho4XP_<tile>.cfg`` written by Ortho4XP (``O4_Config_Utils.py:523-604``).
 
 Spec: ``docs/specs/tile-files.md`` section 3.2. Flat ``key=value`` lines; the declared

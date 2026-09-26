@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The certificate authorities OrthoStudio XP trusts.
 
 ``curl_cffi`` verifies with libcurl's own default store when nothing is passed, and in the

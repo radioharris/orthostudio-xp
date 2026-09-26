@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Airport index: ``apt.dat`` streamed once into sqlite, then ICAO search and tiles around.
 
 Spec: ``docs/specs/airports-index.md``. Stdlib only.

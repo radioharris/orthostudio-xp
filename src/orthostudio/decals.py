@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The decals a tile may name: the fine ground detail X-Plane draws over the photo near the ground.
 
 X-Plane 12 ships them in ``Resources/default scenery/1000 decals`` and exports each as

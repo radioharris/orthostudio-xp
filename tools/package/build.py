@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Build the installer of OrthoStudio XP for the system this runs on, with Python inside.
 
     uv run python tools/package/build.py           # the installer, in dist/

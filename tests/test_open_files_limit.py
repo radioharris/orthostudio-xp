@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The limit of open files a command raises (``fsutil.raise_open_files_limit``).
 
 An app macOS starts from the Finder or the Dock gets launchd's 256 open files, where a terminal has

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Behaviour added by the review-4 fix pass of P3 (integration side).
 
 Everything here is new behaviour, not a regression guard for a finding already pinned by

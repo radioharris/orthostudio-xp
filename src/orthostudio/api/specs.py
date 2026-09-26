@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """From an API request to ``BuildSpec`` objects, and from an ``Estimate`` to the plan answer.
 
 Spec: ``docs/specs/api.md`` sections 2.2 and 4. Mirrors ``orthostudio.cli._build_specs`` with the

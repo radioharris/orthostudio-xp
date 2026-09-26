@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The whole airport chain of one tile, in Ortho4XP's order, as three calls.
 
 Origin: Ortho4XP ``src/O4_Vector_Map.include_airports`` (``:181-222``). This module owns no

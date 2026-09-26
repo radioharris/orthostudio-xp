@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``osxp doctor``: is this machine ready to build a tile?
 
 Checks (spec ``docs/specs/pipeline-textures.md`` section 9): Python, the DDS encoder, the

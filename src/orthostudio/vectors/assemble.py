@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Assembly of the vector layers into the PSLG Triangle4XP reads.
 
 This is the glue of step 1: it decides *in which order* the layers are noded (which is the

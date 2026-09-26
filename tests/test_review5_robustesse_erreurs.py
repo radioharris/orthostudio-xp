@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Adversarial review 5 of P4 wave 1: refusals, corrupt inputs, atomicity.
 
 Every failure mode a user can hit without the network: a truncated file, a corrupt snapshot,

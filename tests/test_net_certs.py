@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The certificate bundle every session verifies with (``orthostudio/net/certs.py``).
 
 2026-09-22: the packaged app could not reach ``maps.mail.ru``, the last-resort Overpass mirror,

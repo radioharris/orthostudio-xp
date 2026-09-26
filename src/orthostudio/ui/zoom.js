@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // The page's own zoom (Cmd+plus, Cmd+minus, Cmd+0), because the window has none.
 //
 // A browser gives every page these three keys; the window of 0.1.8 gives none. A WKWebView will

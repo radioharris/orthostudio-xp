@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Textures of one tile: download the missing tiles, encode what the store lacks, write ``.ter``.
 
 Spec: ``docs/specs/pipeline-textures.md``. The domain rules live in ``orthostudio.imagery``,

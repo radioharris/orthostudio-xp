@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """What one relief source changes against another, on a square already on disk.
 
 The elevation files a build keeps live side by side (``<data>/elevation/<block>/``), one per

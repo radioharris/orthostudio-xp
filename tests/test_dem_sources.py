@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Elevation file names, viewfinderpanoramas URLs, zip extraction and the negative memo.
 
 Spec: ``docs/specs/dem.md`` sections 2, 3 (acceptance A8, A9).

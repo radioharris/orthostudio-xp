@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """BC1/BC3 encoding and the ``encode_dds`` entry point.
 
 Encoder chain: ``ispc_texcomp`` in-process (preferred), then an ``nvcompress`` binary run as a

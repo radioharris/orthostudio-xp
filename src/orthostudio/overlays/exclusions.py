@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Which polygon and road types stay out of the overlay (spec ``overlays.md`` section 4).
 
 The grammar is Ortho4XP's (``O4_Overlay_Utils.py:133-149`` for polygons, ``159-165`` for networks):

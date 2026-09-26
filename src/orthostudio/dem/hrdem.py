@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Canada's lidar relief: the HRDEM mosaic of Natural Resources Canada, read cell by cell.
 
 A user of the X-Plane.Org page asked for other elevation sources, "especially for the US and

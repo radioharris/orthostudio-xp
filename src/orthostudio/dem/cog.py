@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Read the window of a tile out of a tiled GeoTIFF, from a file or over HTTP byte ranges.
 
 A relief published as one huge tiled GeoTIFF cannot be read the way the other sources are. The

@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // Geometry of tiles, textures and zones for the page (docs/specs/map-zones.md sections 3 and 7).
 // Plain functions, no DOM and no Leaflet, so that node imports this module in the tests.
 // Points are [lon, lat] pairs, the order of the zones document (GeoJSON).

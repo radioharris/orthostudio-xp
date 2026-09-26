@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Asynchronous DAG scheduler over the artefact store (spec ``docs/specs/scheduler.md``).
 
 One event loop owns the state; nodes execute in a ``ProcessPoolExecutor`` (``cpu``) or in

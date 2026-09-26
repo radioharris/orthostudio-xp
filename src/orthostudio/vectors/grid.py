@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Orthophoto grid and gluing border: the two DUMMY layers every tile gets for free.
 
 Successor of ``O4_Vector_Map.build_poly_file`` lines 96-152. Two families of constraint

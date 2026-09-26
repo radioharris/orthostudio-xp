@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // The Settings screen in plain words (docs/specs/ui.md 2.4; what each setting really does, and
 // the wording: docs/specs/settings-plain-language.md).
 //

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """DSFTool (Laminar Research's X-Plane scenery tools) as a checked subprocess.
 
 Ortho4XP read ``Popen.returncode`` without ``wait()`` (``O4_Overlay_Utils.py:98``), so

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Parent tiles for the fallback of missing chunks: cache, memo and the recipe blob.
 
 Spec: ``docs/specs/pipeline-textures.md`` section 5 and ``docs/specs/imagery-chunks.md``

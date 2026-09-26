@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Adversarial fidelity review (P2a): the overlay text filter against a statement-by-statement
 transcription of Ortho4XP ``build_overlay`` (``O4_Overlay_Utils.py:101-172``), and the wiring of
 the Ortho4XP ``ovl_exclude_pol`` / ``ovl_exclude_net`` settings into ``osxp build``.

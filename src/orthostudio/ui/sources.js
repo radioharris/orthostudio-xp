@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // Imagery sources in the page's lists (docs/specs/ui.md, Step 1): what each covers, grouped as a
 // user reads them, since the sources of several countries used to be mixed in one list (user
 // report, 2026-09-14). Plain functions of the rows of GET /api/providers: node imports this module

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Tests of the texture pipeline against a local tile server (spec pipeline-textures.md s. 10).
 
 The server (a thread) serves deterministic flat-colour PNG tiles at ``/tiles/{z}/{x}/{y}.png``

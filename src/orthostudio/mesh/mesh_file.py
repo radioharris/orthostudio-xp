@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The ``.mesh`` file of Ortho4XP: typed reader, byte-identical writer, ``.npz`` twin.
 
 Spec: ``docs/specs/mesh-file.md``. Origin: ``O4_Mesh_Utils.py:326-372`` (``write_mesh_file``)

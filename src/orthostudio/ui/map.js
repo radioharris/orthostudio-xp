@@ -1,3 +1,5 @@
+// OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+// Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // The map of the Plan screen (docs/specs/map-zones.md section 7): the engine's base layer, the
 // 1° tile grid, zones drawn from visible buttons (the Ortho4XP gestures are only shortcuts), the
 // zone list saved with PUT /api/zones, and the approximate sizes shown before any estimate.

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Unit tests of the airport encoder: the altitude field, the four surfaces and their seeds.
 
 The altitude field is checked against a **literal transcription** of

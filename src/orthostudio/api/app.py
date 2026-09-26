@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The local HTTP API of the page (spec ``docs/specs/api.md``).
 
 ``create_app`` returns a FastAPI application bound to nothing yet (``serve.py`` binds

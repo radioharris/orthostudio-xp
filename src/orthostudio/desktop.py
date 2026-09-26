@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """What the installed app starts: ``osxp serve --open``, its output in a log file.
 
 The launchers of the installers run ``python -m orthostudio.desktop`` (``docs/specs/packaging.md``).

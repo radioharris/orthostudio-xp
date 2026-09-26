@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Bounded, self-adjusting HTTP fetcher on top of curl_cffi (libcurl multi, HTTP/2).
 
 Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:

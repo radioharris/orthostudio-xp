@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """X-Plane 12's own relief as an elevation source: ``custom_dem = "XP12"`` (OrthoStudio XP only).
 
 Spec: ``docs/specs/dem.md`` section 12. Decision: ``docs/decisions/0007-relief-xplane.md``.

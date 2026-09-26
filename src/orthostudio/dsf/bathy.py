@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Per-node water depth ratio (``O4_Bathymetry.py:8-13`` and ``:187-223``).
 
 Spec: ``docs/specs/dsf-terrain-assignment.md`` 3.3. Without distance masks (the default) every

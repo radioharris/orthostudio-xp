@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The elevation part of a pre-mask (``masks_use_DEM_too``), as a pure function.
 
 Spec: ``docs/specs/masks-build.md`` sections 2 and 8. Origin: ``O4_Mask_Utils.py:330-368``

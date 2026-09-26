@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Airports in the planar graph: runways, taxiways, aprons and hangars.
 
 Origin: Ortho4XP ``src/O4_Airport_Utils.py`` -- ``encode_runways_taxiways_and_aprons``

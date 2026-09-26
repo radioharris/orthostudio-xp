@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Adversarial fidelity review (P2a): tile naming on every hemisphere, the parameters the
 imagery stage of Ortho4XP consumes versus the textures/DSF keys, ``--set`` typing without
 ``eval``, and the neighbour wrap at the antimeridian.

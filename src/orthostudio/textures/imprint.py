@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Water masks as the alpha channel of a texture.
 
 Ported from Ortho4XP ``needs_mask`` (``src/O4_Mask_Utils.py:38-60``), the mask crop of

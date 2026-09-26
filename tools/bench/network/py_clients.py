@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Step 3: Python HTTP clients on the same tiles: httpx (HTTP/2 and HTTP/1.1) versus curl_cffi.
 
 Measures wall time, requests per second and CPU per request (``resource.getrusage`` of this

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Elevation and bathymetry rasters copied from an X-Plane 12 Global Scenery DSF.
 
 Port of ``extract_elevation_and_bathymetry_data`` (``O4_DSF_Utils.py:360-453``) with ``py7zr``

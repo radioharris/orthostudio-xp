@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Quadtree partition of the tile into vertex pools, in Ortho4XP's dictionary order.
 
 Port of ``QuadTree`` and ``float2qquad`` (``O4_DSF_Utils.py:20-107``) and of the pool

@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The 2x2 solve of the noder, unit-tested against the one Ortho4XP runs.
 
 ``are_encroached`` (``O4_Vector_Utils.py:280-281``) calls ``numpy.linalg.solve`` on the 2x2

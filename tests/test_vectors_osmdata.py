@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The typed OSM store: the reader rules R1-R11 and the geometry helpers.
 
 Specification: ``docs/specs/vectors-osm-layers.md``. Every test names the rule of the spec

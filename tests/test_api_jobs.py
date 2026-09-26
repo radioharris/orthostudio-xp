@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Jobs of the API (spec ``docs/specs/api.md`` section 5): the manager alone, then over HTTP.
 
 A fake ``build_tiles`` plays synthetic scheduler events (success, failure with a code,
