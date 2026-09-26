@@ -527,12 +527,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .map-legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .map-legend li { display: flex; align-items: center; gap: 6px; }
-/* Every label starts at the same place: a line without a checkbox keeps the checkbox's room, and
-   every mark is as wide as the others (they started at three places, a user saw, 2026-09-25). */
-.map-legend li:not(.legend-toggle)::before { content: ""; width: 13px; flex: none; }
+/* Every mark is as wide as the others, so the labels after them line up (they started at three
+   places, a user saw, 2026-09-25). A line without a checkbox kept the checkbox's room until the
+   boxes went to the tiles' table and to a line of their own (2026-09-26): every line now starts
+   at the legend's edge. */
 .map-legend .legend-head { display: flex; align-items: flex-start; gap: var(--label-gap); margin-bottom: var(--title-gap); }
 .map-legend .legend-view { flex: 1; margin: 0; color: var(--fg-2); }
-.map-legend .legend-title { margin: 6px 0 2px; font-weight: 600; color: var(--fg-2); }
 .legend-swatch { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .legend-installed { border: 2px solid var(--ok); }
 .legend-built { border: 2px dashed var(--ok); }
@@ -568,6 +568,19 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-legend.is-folded { padding: 0; background: none; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .map-legend .legend-toggle input { margin: 0; width: 13px; height: 13px; flex: none; }
+/* The tiles' marks: a row for each program, a column for X-Plane having them or not (a user,
+   2026-09-26); a cell not in X-Plane is the box that hides them. */
+.map-legend .legend-tiles { border-collapse: collapse; margin-bottom: 2px; }
+.map-legend .legend-tiles th, .map-legend .legend-tiles td { padding: 1px 10px 1px 0; text-align: left; vertical-align: middle; font-weight: 400; }
+.map-legend .legend-tiles thead th { color: var(--fg-2); }
+.map-legend .legend-tiles tbody th { white-space: nowrap; }
+.map-legend .legend-tiles .legend-swatch { display: inline-block; vertical-align: middle; }
+.map-legend .legend-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; pointer-events: auto; }
+.map-legend .legend-check input { margin: 0; width: 13px; height: 13px; flex: none; }
+/* The map's own boxes, and the zones' levels after one word, each set on a line of its own that
+   goes on to the next when the legend is narrow. */
+.map-legend ul.legend-row { flex-direction: row; flex-wrap: wrap; column-gap: 10px; margin-top: 2px; }
+.map-legend .legend-lead { font-weight: 600; color: var(--fg-2); }
 .legend-border { height: 0; border-top: 2px dashed #ffd966; border-radius: 0; }
 /* Airports on the map: a small ring and its code, readable over a photo (a user asked to see
    whether a square holds the airport he wants, 2026-09-19). */

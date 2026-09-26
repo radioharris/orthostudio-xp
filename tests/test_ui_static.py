@@ -3600,9 +3600,8 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
-    assert (
-        'if (built.some((name) => !ortho4xp.has(name))) items.push(builtToggle("osxp"));' in legend
-    )
+    assert "outside: built.some((name) => !ortho4xp.has(name))" in legend
+    assert 'outside ? h("td", null, p.outside ? builtToggle(p.by) : null) : null' in legend
     assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
     assert 'builtWanted: storageGet(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
     toggle = map_js[
@@ -3666,12 +3665,16 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
-    # each program has its two lines, in X-Plane and not, the latter a box of its own
-    assert 'items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")))' in legend
-    assert (
-        'if (built.some((name) => ortho4xp.has(name))) items.push(builtToggle("ortho4xp"));'
-        in legend
-    )
+    # a row for each program and a column for X-Plane having them or not, the second column's
+    # cells the boxes that hide them, each program its own; Ortho4XP's row when it has tiles
+    assert "clear(box).append(view, tilesTable(), " in legend
+    assert "inside: installed.some((name) => ortho4xp.has(name))," in legend
+    assert "outside: built.some((name) => ortho4xp.has(name))" in legend
+    assert ".filter((p) => p.inside || p.outside);" in legend
+    assert 'h("th", { scope: "col" }, t("map.legend_in_xplane"))' in legend
+    assert 'outside ? h("th", { scope: "col" }, t("map.legend_not_in_xplane")) : null' in legend
+    assert '"aria-label": t("map.legend_ortho4xp")' in legend
+    assert '"aria-label": own.label,' in legend, "the box says what it hides"
     assert 'const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";' in map_js
     assert 'builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",' in map_js
     assert 'storageSet(BUILT_ORTHO4XP_KEY, wanted ? "1" : "0");' in map_js
@@ -3707,8 +3710,8 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     under it, and the choice is remembered. And a redraw, on every zoom, gives the focus back to
     the control that had it: it used to go to the first checkbox, whichever had it."""
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
-    spacer = rules[".map-legend li:not(.legend-toggle)::before"]
-    assert 'content: "";' in spacer and "width: 13px;" in spacer
+    # every line starts at the legend's edge since the boxes left the list (2026-09-26)
+    assert not any("::before" in selector for selector in rules if ".map-legend li" in selector)
     assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
     assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
     # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
@@ -3744,6 +3747,15 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert '{ keep: "built-ortho4xp", swatch: "legend-built-ortho4xp",' in map_js
     assert '"data-keep": own.keep,' in map_js
     assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
+    # the map's boxes side by side and the zones after one word, each set going on to the next
+    # line when the legend is narrow (a user found the legend took much room, 2026-09-26)
+    assert (
+        'h("ul", { class: "legend-row" }, bordersToggle(), airportsToggle(), streetToggle())'
+        in legend
+    )
+    assert 'h("ul", { class: "legend-row legend-zones" },' in legend
+    row_rule = rules[".map-legend ul.legend-row"]
+    assert "flex-direction: row;" in row_rule and "flex-wrap: wrap;" in row_rule
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
@@ -5103,7 +5115,7 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     code = (UI / "map.js").read_text(encoding="utf-8")
     legend = code[code.index("function renderLegend()") : code.index("function bordersToggle()")]
     assert 'h("p", { class: "legend-view" }' in legend and "viewLabel(" in legend
-    assert "clear(box).append(view, list)" in legend, "the view line first"
+    assert "clear(box).append(view, tilesTable(), " in legend, "the view line first"
     assert 'h("div", { class: "legend-head" }, h("p", { class: "legend-view" }' in legend
     for event in ("moveend", "zoomend"):
         handler = code[code.index(f'm.on("{event}"') :]

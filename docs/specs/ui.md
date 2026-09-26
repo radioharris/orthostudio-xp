@@ -1034,12 +1034,13 @@ dashes over one edge as a solid line; the frames inside (below) ended that.
 solid frame is a tile in X-Plane, a dashed one a tile kept on the disk only; green is OrthoStudio
 XP's, violet (`--map-ortho4xp`, `is-ortho4xp`) Ortho4XP's, imported into the Library. The frame
 stands for the pack in X-Plane, or, none being there, the one on the disk (`ortho4xpTiles`); a
-tile with a pack of OrthoStudio XP's there keeps its green. The legend has each program's two
-lines, *OrthoStudio XP, in X-Plane* and *not in X-Plane*, *Ortho4XP, in X-Plane* and *not in
-X-Plane* (the same user), the last three only when the map has such tiles; each line not in
-X-Plane is a box to untick of its own (`builtShown`: `osxp.mapBuilt`, `osxp.mapBuiltOrtho4xp`).
-Chosen is blue, the flight plan's ends orange (`--route`), and the zones keep the colours of
-their levels.
+tile with a pack of OrthoStudio XP's there keeps its green. The legend shows the four marks as a
+table (`tilesTable`, the same user): a row for each program, *OrthoStudio XP* always and
+*Ortho4XP* when the map has its tiles, and a column for *In X-Plane* and one for *Not in
+X-Plane*, the latter only when there are such tiles. Each cell of that column is the box that
+hides them, each program its own (`builtShown`: `osxp.mapBuilt`, `osxp.mapBuiltOrtho4xp`),
+named for a screen reader by the line it stands for (*Ortho4XP, not in X-Plane*). Chosen is
+blue, the flight plan's ends orange (`--route`), and the zones keep the colours of their levels.
 
 **Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
 so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
@@ -1052,19 +1053,25 @@ neighbours 5 or 6 px apart. A square in X-Plane or built and chosen as well keep
 its frame (`FRAME_INSET + 4`), and the running build's marks are drawn on the frame, on top.
 Far out, where a square is too small for the inset, the frame goes back onto its edge.
 
-Its legend line is a checkbox, as the airports' is, shown when there is such a tile, on unless
-unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the hover.
+Its box in the legend is a checkbox, as the airports' is, shown when there is such a tile, on
+unless unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the
+hover.
 
 **The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
-a line without a checkbox now keeps the checkbox's room (`li:not(.legend-toggle)::before`, 13 px)
-and every mark is 14 px wide (the airport's 10 px ring gets 2 px each side), and they all start at
-71. A chevron at the end of its first line folds it away to see the map under it, one *Legend*
+a line without a checkbox kept the checkbox's room (13 px) and every mark is 14 px wide (the
+airport's 10 px ring gets 2 px each side), so they all started at 71. Since the boxes went to the
+tiles' table and to a line of their own (2026-09-26, below), no line of the list has one: every
+line starts at the legend's edge. A chevron at the end of its first line folds it away to see the map under it, one *Legend*
 button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
 `aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
 is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
 ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
 are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
-(`data-keep`): it went to the first checkbox, whichever had it.
+(`data-keep`): it went to the first checkbox, whichever had it. With the four marks of the tiles
+it took twelve lines over the map (the same user, 2026-09-26): the tiles are a table (above), the
+map's three boxes stand side by side and the zones' levels follow one word, *Zones:*, each set
+on a line of its own that goes on to the next when the legend is narrow (`legend-row`); seven
+lines where there were twelve.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
