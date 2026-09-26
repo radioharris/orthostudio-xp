@@ -1945,6 +1945,24 @@ export function createPlanMap(ctx) {
       .filter((name) => !installed.has(name)); // another pack of the tile is in X-Plane: it is green
   }
 
+  /** Tiles whose frame stands for a pack Ortho4XP built, drawn in violet (a user, 2026-09-26: the
+   * colour says who built a tile, the line whether X-Plane has it). The frame is the pack's in
+   * X-Plane, or, none being there, the one kept on the disk; a tile with a pack of OrthoStudio
+   * XP's there keeps OrthoStudio XP's green. */
+  function ortho4xpTiles() {
+    const shown = new Map(); // tile: [2 in X-Plane, 1 on the disk only; every pack Ortho4XP's]
+    for (const e of ctx.library()) {
+      if (!e || !(e.kind == null || e.kind === "ortho") || !parseTile(e.tile)) continue;
+      if (!e.installed && e.present === false) continue; // gone from the disk: not drawn
+      const rank = e.installed ? 2 : 1;
+      const theirs = e.built_by === "ortho4xp";
+      const was = shown.get(e.tile);
+      if (!was || rank > was[0]) shown.set(e.tile, [rank, theirs]);
+      else if (rank === was[0]) was[1] = was[1] && theirs;
+    }
+    return new Set([...shown].filter(([, [, theirs]]) => theirs).map(([tile]) => tile));
+  }
+
   /** `box` ([[south, west], [north, east]]) drawn `px` pixels inside itself at the map's zoom, or
    * null when the tile is too small on the screen for it. */
   function insetBox(box, px) {
@@ -1977,6 +1995,7 @@ export function createPlanMap(ctx) {
     const selected = new Set(ctx.tiles());
     const installed = new Set(installedTiles());
     const built = new Set(zs.builtWanted ? builtTiles() : []);
+    const ortho4xp = ortho4xpTiles();
     const building = buildingNow();
     const busy = []; // what the running build does, drawn over everything else
     for (const name of new Set([...installed, ...built, ...selected, ...building.keys()])) {
@@ -2002,10 +2021,12 @@ export function createPlanMap(ctx) {
       }
       const both = inner ? " is-both" : "";
       if (kept) {
-        // In X-Plane, green; built and kept but not in X-Plane, dashed pink. Framed inside, two
-        // built neighbours no longer lay their dashes over one edge, out of step, as a solid line.
+        // In X-Plane, a solid line; built and kept but not in X-Plane, dashed: green for OrthoStudio
+        // XP's, violet for Ortho4XP's. The dashes were pink while two built neighbours laid them
+        // over one edge, out of step, as a solid line; framed inside, they no longer do.
         const kind = installed.has(name) ? "installed" : "built";
-        layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}`, interactive: false, fill: false, weight: 3 }));
+        const by = ortho4xp.has(name) ? " is-ortho4xp" : "";
+        layers.tiles.addLayer(L.rectangle(frame, { pane: "osxpGrid", className: `osxp-tile-${kind}${both}${by}`, interactive: false, fill: false, weight: 3 }));
       }
       if (selected.has(name) && (inner || !kept)) {
         // The route's departure and arrival in the route's own colour: on a plan across Europe
@@ -2258,6 +2279,8 @@ export function createPlanMap(ctx) {
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
     const items = [row("legend-installed", t("map.legend_installed"))];
     if (builtTiles().length) items.push(builtToggle());
+    const drawn = new Set([...installedTiles(), ...(zs.builtWanted ? builtTiles() : [])]);
+    if ([...ortho4xpTiles()].some((name) => drawn.has(name))) items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")));
     items.push(row("legend-selected", t("map.legend_selected")));
     const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
     // The chevron on the view line itself, the height of one line: it sat two pixels above it,

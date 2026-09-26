@@ -3535,7 +3535,7 @@ def test_a_chosen_installed_tile_shows_both_outlines() -> None:
     assert "for (const b of [frame, inner])" in body, "the casing under both lines"
     # the casings under both lines, then the green on the edge, then the blue inside it
     casing = body.index('className: "osxp-tile-casing"')
-    green = body.index("className: `osxp-tile-${kind}${both}`")
+    green = body.index("className: `osxp-tile-${kind}${both}${by}`")
     assert 'const kind = installed.has(name) ? "installed" : "built";' in body
     # the blue after the green, the route's ends in their own colour (2026-09-22)
     assert casing < green < body.index("className: `osxp-tile-selected${both}${end}`")
@@ -3572,7 +3572,9 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     and chosen ones the edges read as a patchwork, one colour winning each shared line. Every
     square is now framed inside itself (``FRAME_INSET``), so neighbours never share a line.
     Measured in the page on his layout: seven frames, every pair of neighbours 5 or 6 px apart. It
-    is dashed pink, the one colour no other mark uses, and the legend line is a checkbox,
+    is dashed, in the green of the tiles in X-Plane since the same user asked (2026-09-26) that
+    the colour say who built a tile and the line whether X-Plane has it (the pink it was came
+    from the shared edges the frames inside now avoid), and the legend line is a checkbox,
     remembered, as the airports' is."""
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     built = map_js[map_js.index("  function builtTiles() {") : map_js.index("  function insetBox(")]
@@ -3612,14 +3614,67 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     assert "renderLegend();" in changed[: changed.index("},")], "the legend follows the Library"
 
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
-    assert "stroke: var(--map-built);" in rules[".plan-map .osxp-tile-built"]
+    assert "stroke: var(--ok);" in rules[".plan-map .osxp-tile-built"]
     assert "stroke-dasharray: 7 5;" in rules[".plan-map .osxp-tile-built"]
-    assert "border: 2px dashed var(--map-built);" in rules[".legend-built"]
-    assert "--map-built: #ff4fc1;" in rules[":root"]
+    assert "border: 2px dashed var(--ok);" in rules[".legend-built"]
+    assert "--map-built" not in (UI / "styles.css").read_text(encoding="utf-8")
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         for key in ("map.legend_built", "map.built_hint", "map.legend_hide", "map.legend_show"):
             assert key in tables[lang], (lang, key)
+
+
+def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
+    """A user asked to tell on the map the tiles Ortho4XP built (2026-09-26): the colour of a
+    frame says who built the tile, its line whether X-Plane has it. The frame is the pack's in
+    X-Plane, or, none being there, the one kept on the disk; a tile with a pack of OrthoStudio
+    XP's there keeps its green. Runs the map's own rule under node."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    rule = map_js[map_js.index("  function ortho4xpTiles() {") :]
+    rule = rule[: rule.index("\n  }\n") + 4]
+    rows = [
+        {"tile": "+44+005", "built_by": "ortho4xp", "installed": True},
+        {"tile": "+45+005", "built_by": "osxp", "installed": True},
+        {"tile": "+45+005", "built_by": "ortho4xp", "installed": False},
+        {"tile": "+46+005", "built_by": "ortho4xp", "installed": True},
+        {"tile": "+46+005", "built_by": "osxp", "installed": False},
+        {"tile": "+47+005", "built_by": "ortho4xp", "installed": False},
+        {"tile": "+48+005", "built_by": "osxp", "installed": False},
+        {"tile": "+48+005", "built_by": "ortho4xp", "installed": False},
+        {"tile": "+49+005", "built_by": "ortho4xp", "installed": False, "present": False},
+        {"tile": "+50+005", "kind": "overlay", "built_by": "ortho4xp", "installed": True},
+    ]
+    script = "\n".join(
+        [
+            'import { parseTile } from "./geo.js";',
+            f"const ctx = {{ library: () => {json.dumps(rows)} }};",
+            rule,
+            "process.stdout.write(JSON.stringify([...ortho4xpTiles()].sort()));",
+        ]
+    )
+    # in X-Plane (+44), in X-Plane over OrthoStudio XP's kept one (+46), on the disk only (+47);
+    # not +45 (OrthoStudio XP's in X-Plane), +48 (both kept), +49 (gone), +50 (an overlay)
+    assert _run_node(script) == ["+44+005", "+46+005", "+47+005"]
+
+    grid = map_js[map_js.index("  function renderGrid() {") :]
+    grid = grid[: grid.index("    if (zoom < LABEL_MIN_ZOOM")]
+    assert "const ortho4xp = ortho4xpTiles();" in grid
+    assert 'const by = ortho4xp.has(name) ? " is-ortho4xp" : "";' in grid
+    assert "className: `osxp-tile-${kind}${both}${by}`" in grid
+    legend = map_js[
+        map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
+    ]
+    assert 'items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")))' in legend
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    violet = ".plan-map .osxp-tile-installed.is-ortho4xp, .plan-map .osxp-tile-built.is-ortho4xp"
+    assert "stroke: var(--map-ortho4xp);" in rules[violet]
+    assert "border: 2px solid var(--map-ortho4xp);" in rules[".legend-ortho4xp"]
+    assert "--map-ortho4xp: #a37bff;" in rules[":root"]
+    tables = _i18n_tables()
+    assert tables["fr"]["map.legend_ortho4xp"] == "Construite par Ortho4XP"
+    assert tables["en"]["map.legend_ortho4xp"] == "Built by Ortho4XP"
 
 
 def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:

@@ -1024,11 +1024,19 @@ The line keeps the language it was written in until the next view is drawn, as i
 2026-09-24). The map drew the installed ones only (`installedTiles`), so a tile built with *Build
 only*, or taken out of X-Plane with its files kept, was nowhere to be seen. `builtTiles` reads the
 same Library rows, the ones on the disk (`present`) and not in X-Plane (`installed` false), and
-leaves out a tile another pack of which is installed: that one is green. It is drawn dashed in
-pink (`--map-built`), the one colour no other mark of the map uses (the zones stop at ZL19, so the
-pink of ZL20 is never drawn), described on hover like an installed one (`builtSummary`), and,
-chosen as well, drawn with the blue inside it over the casing. Only the page changes: the rows
-already said it.
+leaves out a tile another pack of which is installed: that one is green. It is drawn dashed, in
+the green of the tiles in X-Plane, described on hover like an installed one (`builtSummary`),
+and, chosen as well, drawn with the blue inside it over the casing. Only the page changes: the
+rows already said it. It was dashed pink until 2026-09-26, while two built neighbours laid their
+dashes over one edge as a solid line; the frames inside (below) ended that.
+
+**The colour says who built a tile, the line whether X-Plane has it** (a user, 2026-09-26): a
+solid frame is a tile in X-Plane, a dashed one a tile kept on the disk only; green is OrthoStudio
+XP's, violet (`--map-ortho4xp`, `is-ortho4xp`) Ortho4XP's, imported into the Library. The frame
+stands for the pack in X-Plane, or, none being there, the one on the disk (`ortho4xpTiles`); a
+tile with a pack of OrthoStudio XP's there keeps its green. The legend names the violet (*Built
+by Ortho4XP*) when the map shows such a tile. Chosen is blue, the flight plan's ends orange
+(`--route`), and the zones keep the colours of their levels.
 
 **Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
 so the grid line shows between two neighbours). On the grid line itself two neighbours shared one
