@@ -316,15 +316,20 @@
     </div>
     <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
     <div class="library-overlays" id="library-overlays" role="status" hidden></div>
+    <div class="library-search">
+      <input type="search" id="library-search" class="library-search-input" spellcheck="false" autocomplete="off"
+             data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+      <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
+    </div>
     <div class="table-wrap">
       <table class="table library-table" id="library-table">
         <thead>
           <tr>
-            <th scope="col" data-i18n="library.tile">Tile</th>
-            <th scope="col" data-i18n="library.imagery">Imagery</th>
-            <th scope="col" data-i18n="library.in_xplane">In X-Plane</th>
-            <th scope="col" class="num" data-i18n="library.size" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache (Store, in the status bar): it is not on the disk twice.">Size</th>
-            <th scope="col" data-i18n="library.built_by">Built by</th>
+            <th scope="col" data-sort="tile" aria-sort="ascending"><button type="button" class="th-sort" data-i18n="library.tile" data-i18n-title="library.sort_help" title="Sort by this column">Tile</button></th>
+            <th scope="col" data-sort="imagery" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.imagery" data-i18n-title="library.sort_help" title="Sort by this column">Imagery</button></th>
+            <th scope="col" data-sort="xplane" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.in_xplane" data-i18n-title="library.sort_help" title="Sort by this column">In X-Plane</button></th>
+            <th scope="col" class="num" data-sort="size" aria-sort="none" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache (Store, in the status bar): it is not on the disk twice."><button type="button" class="th-sort" data-i18n="library.size">Size</button></th>
+            <th scope="col" data-sort="built" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.built_by" data-i18n-title="library.sort_help" title="Sort by this column">Built by</button></th>
             <th scope="col" colspan="3"><span class="sr-only" data-i18n="library.actions">Actions</span></th>
           </tr>
         </thead>

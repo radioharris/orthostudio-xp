@@ -805,9 +805,11 @@ def test_library_table_and_delete_dialog_markup() -> None:
     columns = sum(int(span.group(1)) if span else 1 for span in spans)
     keys = re.findall(r'data-i18n="([^"]+)"', table.group(0))
     assert "library.path" not in keys and "library.zl" not in keys
-    # Sizes count the cache's hard-linked textures, which Store counts too: the header says so
-    size = re.search(r'<th\b[^>]*data-i18n="library.size"[^>]*>', table.group(0))
+    # Sizes count the cache's hard-linked textures, which Store counts too: the header says so,
+    # its words on the button that sorts the column (2026-09-26)
+    size = re.search(r'<th\b[^>]*data-sort="size"[^>]*>(.*?)</th>', table.group(0), re.S)
     assert size is not None and 'data-i18n-title="library.size_help"' in size.group(0)
+    assert 'data-i18n="library.size"' in size.group(1)
     render = _function_body((UI / "app.js").read_text(encoding="utf-8"), "renderLibrary")
     assert f"colspan: {columns}" in render  # the "no tile" row spans the whole table
     assert "libraryTiles(state.library)" in render  # overlay rows are not rows of their own
@@ -1015,7 +1017,7 @@ def test_library_keys_are_all_used() -> None:
     code = "\n".join((UI / name).read_text(encoding="utf-8") for name in PAGE_MODULES)
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     used = set(re.findall(r"""\bt\(\s*["']([^"']+)["']""", code))
-    used |= set(re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', html))
+    used |= set(re.findall(r'data-i18n(?:-title|-placeholder|-aria-label)?="([^"]+)"', html))
     for lang in ("fr", "en"):
         unused = sorted(k for k in tables[lang] if k.startswith("library.") and k not in used)
         assert not unused, (lang, unused)
@@ -2160,7 +2162,7 @@ def test_works_finds_a_tile_among_the_jobs() -> None:
     assert 'data-i18n-placeholder="works.search_ph" data-i18n-aria-label="works.search"' in html
     assert 'id="works-search-note" aria-live="polite" hidden' in html
     css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert ".settings-search-input, .works-search-input {" in css  # the same field as Settings'
+    assert ".settings-search-input, .works-search-input, .library-search-input {" in css
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     field = app_js[app_js.index('$("works-search").addEventListener("input"') :]
@@ -2185,6 +2187,106 @@ def test_works_finds_a_tile_among_the_jobs() -> None:
         "works.search_rows_none",
     ):
         assert i18n.count(f'"{key}":') == 2, key  # French and English
+
+
+def test_the_library_finds_and_sorts_its_tiles() -> None:
+    """A user asked for Works' search in the Library too, and for sorts (2026-09-26): the same
+    field keeps the tiles whose name has what is typed, and each header sorts its column, first
+    in its most useful order (tiles south to north, imagery by name then level, the tiles in
+    X-Plane, the largest and OrthoStudio XP's own first), again the other way round; ties keep
+    the tile order. The sort stays from one visit to the next, in this browser only."""
+    rows = [
+        {
+            "tile": "+49+011",
+            "provider": "BI",
+            "zl": 16,
+            "installed": True,
+            "size_bytes": 5,
+            "built_by": "osxp",
+        },
+        {
+            "tile": "+47+011",
+            "provider": "GO2",
+            "zl": 17,
+            "installed": False,
+            "size_bytes": 9,
+            "built_by": "osxp",
+        },
+        {
+            "tile": "-12+045",
+            "provider": "BI",
+            "zl": 14,
+            "installed": True,
+            "size_bytes": None,
+            "built_by": "ortho4xp",
+        },
+        {
+            "tile": "+49+008",
+            "provider": "BI",
+            "zl": 16,
+            "installed": False,
+            "size_bytes": 7,
+            "built_by": "osxp",
+        },
+    ]
+    labels = {"BI": "Bing", "GO2": "Google"}
+    got = _node_json(
+        "app.js",
+        f"""(() => {{
+          const rows = {json.dumps(rows)};
+          const labels = {json.dumps(labels)};
+          const order = (key, dir) =>
+            m.sortLibrary(rows, {{key, dir}}, (c) => labels[c]).map((e) => e.tile);
+          return {{tile: order("tile", 1), tileBack: order("tile", -1),
+                   imagery: order("imagery", 1), xplane: order("xplane", 1),
+                   size: order("size", 1), sizeBack: order("size", -1), built: order("built", 1),
+                   unknown: order("what", 1), rows: rows.map((e) => e.tile)}};
+        }})()""",
+    )
+    assert got["tile"] == ["-12+045", "+47+011", "+49+008", "+49+011"]
+    assert got["tileBack"] == ["+49+011", "+49+008", "+47+011", "-12+045"]
+    assert got["imagery"] == [
+        "-12+045",
+        "+49+008",
+        "+49+011",
+        "+47+011",
+    ]  # Bing ZL14, 16, 16, Google
+    assert got["xplane"] == ["-12+045", "+49+011", "+47+011", "+49+008"]  # in X-Plane first
+    assert got["size"] == ["+47+011", "+49+008", "+49+011", "-12+045"]  # largest first, none last
+    assert got["sizeBack"] == ["-12+045", "+49+011", "+49+008", "+47+011"]
+    assert got["built"] == ["+47+011", "+49+008", "+49+011", "-12+045"]  # OrthoStudio XP's first
+    assert got["unknown"] == got["tile"] and got["rows"][0] == "+49+011"  # the rows stay as given
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert html.index('id="library-search"') < html.index('id="library-table"')
+    assert 'data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search"' in html
+    for key in ("tile", "imagery", "xplane", "size", "built"):
+        assert f'data-sort="{key}"' in html, key
+    assert html.count('class="th-sort"') == 5
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert 'th[aria-sort="ascending"] .th-sort::after' in css
+    assert ".settings-search-input, .works-search-input, .library-search-input {" in css
+
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderLibrary")
+    assert (
+        "sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort, providerLabel)" in body
+    )
+    assert 't("library.search_found"' in body and 't("library.search_none")' in body
+    assert "for (const e of shown) body.append(...libraryRow(e));" in body
+    assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
+    assert (
+        "state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };" in app_js
+    )
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key in (
+        "library.search",
+        "library.search_ph",
+        "library.search_found",
+        "library.search_none",
+        "library.sort_help",
+    ):
+        assert i18n.count(f'"{key}":') == 2, key
 
 
 def test_one_finished_build_can_leave_the_list_alone() -> None:

@@ -39,7 +39,7 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   Ortho4XP setting still there under "For experts" with a plain label; every number says first
   what it may take and what it is by default.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
-  built with: the imagery, the detail, the relief really read (a lidar asked for where it never
+  built with, found with a search and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
   flew says so), its zones and its patches; the Plan says it too, over a tile and under the
   squares chosen. Remove a tile from
   X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take

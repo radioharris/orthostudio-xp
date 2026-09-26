@@ -89,6 +89,9 @@ const STATIC = "static/";
 /** Browsers refuse a keepalive request whose body passes 64 KiB: below this, a save may use it. */
 export const KEEPALIVE_MAX_BYTES = 60000;
 
+/** Where this browser keeps the Library's sort (`{key, dir}`): a per-viewer convenience. */
+const LIBRARY_SORT_KEY = "osxp.librarySort";
+
 export const STEPS = ["osm", "relief", "terrain", "coast", "imagery", "assembly", "install"];
 
 /** Node role → user step: the engine's `ROLE_STAGE` (orthostudio.api.stages; a test keeps the two equal).
@@ -4707,6 +4710,38 @@ export function libraryTiles(rows) {
   return (Array.isArray(rows) ? rows : []).filter((e) => e && (e.kind == null || e.kind === "ortho"));
 }
 
+/** Which way round each Library column sorts at its first click: its most useful order. The
+ * tiles south to north then west to east, the imagery by name then level; the tiles X-Plane
+ * shows, the largest, and OrthoStudio XP's own first. */
+export const LIBRARY_SORT_FIRST = { tile: 1, imagery: 1, xplane: -1, size: -1, built: -1 };
+
+/** The Library's rows in the order a column's header asks for (a user, 2026-09-26): ``sort`` is
+ * ``{key, dir}``, ``dir`` 1 for the column's first-click order and -1 for its reverse. Ties, and
+ * an unknown key, keep the tile order the engine lists them in. */
+export function sortLibrary(rows, sort, labelOf = (code) => code) {
+  const at = (e) => {
+    const m = /^([+-]\d{2})([+-]\d{3})$/.exec(e.tile || "");
+    return m ? [Number(m[1]), Number(m[2])] : [999, 999];
+  };
+  const byTile = (a, b) => {
+    const [la, oa] = at(a);
+    const [lb, ob] = at(b);
+    return la - lb || oa - ob;
+  };
+  const size = (e) => (typeof e.size_bytes === "number" ? e.size_bytes : -1);
+  const values = {
+    tile: byTile,
+    imagery: (a, b) => String(labelOf(a.provider) ?? "").localeCompare(String(labelOf(b.provider) ?? "")) || (Number(a.zl) || 0) - (Number(b.zl) || 0),
+    xplane: (a, b) => Number(Boolean(a.installed)) - Number(Boolean(b.installed)),
+    size: (a, b) => size(a) - size(b),
+    built: (a, b) => Number(a.built_by === "osxp") - Number(b.built_by === "osxp"),
+  };
+  const compare = values[sort?.key];
+  if (!compare) return [...rows].sort(byTile);
+  const way = LIBRARY_SORT_FIRST[sort.key] * (sort.dir === -1 ? -1 : 1);
+  return [...rows].sort((a, b) => way * compare(a, b) || byTile(a, b));
+}
+
 /** The request of a change of a row (`install`, `uninstall`, `delete`): the pack's name, and its
  * path, since two builds of the same tile, in two output folders, share the name. */
 export function libraryRequest(e, action) {
@@ -4997,14 +5032,31 @@ function renderLibrary() {
   $("library-building").hidden = !activeJobs().length;
   const rows = libraryTiles(state.library);
   renderOverlayNotices(rows);
+  const sort = state.librarySort || { key: "tile", dir: 1 };
+  for (const th of document.querySelectorAll("#library-table th[data-sort]")) {
+    const way = LIBRARY_SORT_FIRST[th.dataset.sort] * (sort.dir === -1 ? -1 : 1);
+    setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
+  }
+  const query = (state.librarySearch || "").trim();
+  const shown = sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort, providerLabel);
+  const note = $("library-search-note");
+  note.hidden = !query || !rows.length;
+  note.classList.toggle("is-warn", Boolean(query) && !shown.length);
+  if (query && rows.length) setText(note, shown.length ? t("library.search_found", { n: fmtInt(shown.length), total: fmtInt(rows.length) }) : t("library.search_none"));
   if (!rows.length) {
     body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
-  for (const e of rows) body.append(...libraryRow(e));
+  for (const e of shown) body.append(...libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
   markWideTables();
+}
+
+/** An imagery source's name as the page shows it, or its code when the page does not know it. */
+function providerLabel(code) {
+  const p = state.providers.find((x) => x.code === code);
+  return p ? sourceLabel(p) : code;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
@@ -5711,6 +5763,30 @@ async function boot() {
     renderJobList();
     if (state.job) renderJob();
   });
+  $("library-search").addEventListener("input", (e) => {
+    state.librarySearch = e.target.value;
+    renderLibrary();
+  });
+  // The Library's sort stays from one visit to the next, a convenience of this browser only.
+  try {
+    const kept = JSON.parse(localStorage.getItem(LIBRARY_SORT_KEY) || "null");
+    if (kept && LIBRARY_SORT_FIRST[kept.key] && (kept.dir === 1 || kept.dir === -1)) state.librarySort = kept;
+  } catch {
+    // private window, blocked storage: the tile order
+  }
+  for (const th of document.querySelectorAll("#library-table th[data-sort]")) {
+    th.querySelector(".th-sort").addEventListener("click", () => {
+      const key = th.dataset.sort;
+      const now = state.librarySort || { key: "tile", dir: 1 };
+      state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };
+      try {
+        localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));
+      } catch {
+        // kept for this visit only
+      }
+      renderLibrary();
+    });
+  }
   $("settings-form").addEventListener("submit", saveSettings);
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);

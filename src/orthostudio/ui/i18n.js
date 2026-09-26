@@ -447,6 +447,11 @@ const STRINGS = {
     "sev.degraded": "dégradé",
     "sev.info": "info",
 
+    "library.search": "Chercher une tuile",
+    "library.search_ph": "Chercher une tuile : +49+011, +49…",
+    "library.search_found": "{n} tuiles sur {total}.",
+    "library.search_none": "Aucune tuile ne correspond.",
+    "library.sort_help": "Trier par cette colonne ; un second clic inverse l'ordre",
     "library.title": "Bibliothèque",
     "library.lead": "Les tuiles présentes sur cet ordinateur, et si X-Plane les affiche. Retirer une tuile de X-Plane garde ses fichiers : vous pouvez la remettre aussitôt ; la supprimer libère aussi l'espace disque (tuiles construites par OrthoStudio XP uniquement).",
     "library.xplane": "« Dans X-Plane » parle de l'X-Plane 12 de {path}, choisi dans les Réglages.",
@@ -1362,6 +1367,11 @@ const STRINGS = {
     "sev.degraded": "degraded",
     "sev.info": "info",
 
+    "library.search": "Search for a tile",
+    "library.search_ph": "Search for a tile: +49+011, +49…",
+    "library.search_found": "{n} of {total} tiles.",
+    "library.search_none": "No tile matches.",
+    "library.sort_help": "Sort by this column; a second click reverses the order",
     "library.title": "Library",
     "library.lead": "The tiles on this computer, and whether X-Plane shows them. Removing a tile from X-Plane keeps its files, so you can add it back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).",
     "library.xplane": "\"In X-Plane\" is about the X-Plane 12 in {path}, named in Settings.",

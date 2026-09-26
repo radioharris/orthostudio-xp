@@ -114,7 +114,11 @@ builds. *Remove from the queue*, on the Works screen, cancels a build that has n
 name has what you type, "+49" for every square of that band or "+49+011" for one, and shows the
 tiles it found first in each row; in the build on screen, only the rows of those tiles stay. The
 build's own numbers, its percentage and its time left, stay those of the whole build. Emptying
-the field shows everything again.
+the field shows everything again. The Library has the same field above its table, and its headers
+sort it: a click on *Tile*, *Imagery*, *In X-Plane*, *Size* or *Built by* sorts by that column in
+its most useful order (south to north, the tiles in X-Plane first, the largest first...), a
+second click reverses it, and an arrow shows the column the rows follow. The sort is kept from
+one visit to the next.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
