@@ -275,8 +275,10 @@ def _check_overlay_setting(name: str, value: Any) -> Any:
 NO_DECALS = {"use_decal_on_terrain": False, "decal_on_sea": False}
 """What the DSF and the textures are given of the decals: nothing. The pack writes them
 (``PackParams.decal``), so that turning them on or off, or choosing another, assembles the pack
-alone, as setdecal rewrites a tile already built (2026-09-26). ``False`` is what every tile built
-without decals has in its keys, so none of them moves; one built with them is built again once."""
+alone, as setdecal rewrites a tile already built (2026-09-26). ``False`` is what a tile built
+without decals holds in its keys, so it does not move, unless *on the sea too* was ticked with the
+decals off, which 0.1.17 let into them: that one, like a tile built with decals, is built again
+once (review of 2026-09-26)."""
 
 
 def _pack_decals(cfg: Mapping[str, Any]) -> tuple[str, bool]:

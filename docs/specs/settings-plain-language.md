@@ -1122,7 +1122,8 @@ No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/d
 - **Cost of a change.** The pack writes the decal (`PackParams.decal`, `with_decal`) and the
   DSF step none, so this choice, and the two switches above, leave the DSF and the textures hits
   and assemble the pack alone: a second on +43+005 at ZL14 (39 terrain files, 17 of land). A tile
-  built without decals keeps every key; one built with them before 0.1.18 is built again once.
+  built without decals keeps every key, unless *on the sea too* was ticked with the decals off;
+  that one, and one built with decals before 0.1.18, is built again once.
 - **Recommendation. Folded (list)**, under the two decal switches.
 - **Expert label.** EN *Ground decal* · FR *Decal du sol*; the default reads
   *maquify_2_green_key.dcl (Ortho4XP)*.
