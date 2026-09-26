@@ -403,13 +403,14 @@ def test_the_triangle4xp_binary_is_not_part_of_the_mesh_key(
 
 def test_the_api_knows_the_three_new_node_roles() -> None:
     """AMENDED (was ``xfail(strict)``, blocker B4): the three P3 data roles are in
-    ``ROLE_STAGE`` (stage ``data``, next to ``vectors``) and the two whose existence a spec
-    decides on its own -- ``osm`` with ``--osm-fetch``, ``dem`` always -- are listed by
-    ``api.jobs._expected_nodes``, so the page shows a row for them."""
+    ``ROLE_STAGE`` (``osm`` and ``coastline`` in ``osm``, ``dem`` in ``relief``, since
+    2026-09-26) and the two whose existence a spec decides on its own -- ``osm`` with
+    ``--osm-fetch``, ``dem`` always -- are listed by ``api.jobs._expected_nodes``, so the page
+    shows a row for them."""
     from orthostudio.api.jobs import _expected_nodes
     from orthostudio.api.stages import stage_of
 
-    assert all(stage_of(role) == "data" for role in ("osm", "coastline", "dem"))
+    assert [stage_of(role) for role in ("osm", "coastline", "dem")] == ["osm", "osm", "relief"]
     spec = _native_spec(Path("/tmp"))
     spec.osm_fetch = True
     spec.dem = "native"

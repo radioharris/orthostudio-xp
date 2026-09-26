@@ -32,14 +32,17 @@ anyio_backend = fakes.anyio_backend
 home = fakes.home
 xplane = fakes.xplane
 
-STAGES = ("data", "terrain", "coast", "imagery", "assembly", "install")
+STAGES = ("osm", "relief", "terrain", "coast", "imagery", "assembly", "install")
 
 
-def test_node_ids_map_to_the_six_stages() -> None:
+def test_node_ids_map_to_the_seven_stages() -> None:
+    """OSM and the relief have a stage each, and the tracing goes with the mesh it feeds: in one
+    Data stage, two seconds of OSM from the library hid behind twenty of relief (2026-09-26)."""
     assert parse_node_id("+43+005/vectors") == ("+43+005", "vectors")
     assert parse_node_id("+43+005/BI14/dsf#2") == ("+43+005", "dsf")
-    assert [stage_of(r) for r in ("vectors", "mesh", "masks", "textures", "install")] == [
-        "data", "terrain", "coast", "imagery", "install"
+    roles = ("osm", "coastline", "dem", "vectors", "mesh", "masks", "textures", "install")
+    assert [stage_of(r) for r in roles] == [
+        "osm", "osm", "relief", "terrain", "terrain", "coast", "imagery", "install"
     ]  # fmt: skip
     assert {stage_of(r) for r in ("xp12", "dsf", "overlay", "pack")} == {"assembly"}
     assert stage_of("repair") is None
@@ -75,7 +78,8 @@ def test_manager_runs_a_job_to_done(home: Path) -> None:
     assert st["status"] == "done" and st["report"]["ok"] and st["last_seq"] > 10
     (tile,) = st["tiles"]
     assert tile["status"] == "done" and list(tile["stages"]) == list(STAGES)
-    assert tile["stages"]["data"]["status"] == "done"
+    assert tile["stages"]["osm"]["status"] == "done"
+    assert tile["stages"]["relief"]["status"] == "done"
     assert tile["stages"]["assembly"]["status"] == "done"
     assert tile["stages"]["install"]["status"] == "skipped"  # no install requested
     assert len(tile["stages"]["assembly"]["nodes"]) == 4  # xp12, dsf, overlay, pack
@@ -142,7 +146,8 @@ def test_manager_failure_then_retry_hits(home: Path) -> None:
     assert nodes["hit"] == 8 and nodes["built"] == 3
     (tile2,) = st2["tiles"]
     assert (
-        tile2["stages"]["data"]["status"] == "hit"
+        tile2["stages"]["osm"]["status"] == "hit"
+        and tile2["stages"]["relief"]["status"] == "hit"
         and tile2["stages"]["imagery"]["status"] == "done"
     )
 
@@ -251,7 +256,7 @@ def test_manager_reloads_past_jobs(home: Path) -> None:
     assert [j.id for j in mgr2.list()] == [job.id]
     assert past.events()[-1]["event"] == "finished"
     assert past.events(after=past.last_seq - 1)[0]["seq"] == past.last_seq
-    assert past.state()["tiles"][0]["stages"]["data"]["status"] == "done"
+    assert past.state()["tiles"][0]["stages"]["osm"]["status"] == "done"
 
 
 def test_manager_clears_finished_jobs_and_their_files(home: Path) -> None:
@@ -391,15 +396,16 @@ async def test_http_409_while_running_cancel_and_retry(home: Path, xplane: Path)
         assert r.status_code == 409
         r = await c.get("/api/status")
         assert r.json()["active_job"] == job_id
-        # Wait for the first tile's data stage instead of sleeping: 0.15 s was not always enough
-        # on the Windows runner, and the retry then found nothing to hit (CI, 2026-09-18).
+        # Wait for the first tile's map and relief instead of sleeping: 0.15 s was not always
+        # enough on the Windows runner, and the retry then found nothing to hit (CI, 2026-09-18).
         for _ in range(400):
             r = await c.get(f"/api/jobs/{job_id}")
-            if r.json()["tiles"][0]["stages"]["data"]["status"] in ("done", "hit"):
+            stages = r.json()["tiles"][0]["stages"]
+            if all(stages[s]["status"] in ("done", "hit") for s in ("osm", "relief")):
                 break
             await asyncio.sleep(0.05)
         else:
-            pytest.fail("the data stage of the first tile never committed")
+            pytest.fail("the map and relief of the first tile never committed")
         r = await c.post(f"/api/jobs/{job_id}/cancel")
         assert r.status_code == 200 and r.json()["cancel_requested"]
         assert mgr.get(job_id).wait(10.0)  # type: ignore[union-attr]
@@ -415,7 +421,8 @@ async def test_http_409_while_running_cancel_and_retry(home: Path, xplane: Path)
         r = await c.get(f"/api/jobs/{new_id}")
         st = r.json()
         assert st["status"] == "done" and all(t["status"] == "done" for t in st["tiles"])
-        assert st["tiles"][0]["stages"]["data"]["status"] == "hit"
+        assert st["tiles"][0]["stages"]["osm"]["status"] == "hit"
+        assert st["tiles"][0]["stages"]["relief"]["status"] == "hit"
     mgr.close()
 
 
@@ -491,7 +498,8 @@ async def test_http_failed_job_lists_error_with_action(home: Path, xplane: Path)
         assert err["code"] == "MESH_TRIANGULATION_FAILED" and err["action"] == "none"
         assert err["stage"] == "terrain" and err["severity"] == "blocking"
         stages = st["tiles"][0]["stages"]
-        assert stages["data"]["status"] == "done" and stages["terrain"]["status"] == "failed"
+        assert stages["osm"]["status"] == "done" and stages["relief"]["status"] == "done"
+        assert stages["terrain"]["status"] == "failed"
         assert stages["coast"]["status"] == "skipped" and stages["imagery"]["status"] == "skipped"
         r = await c.get(f"/api/jobs/{job_id}/events")
         failed = [json.loads(m["data"]) for m in sse_messages(r.text) if m["event"] == "failed"]

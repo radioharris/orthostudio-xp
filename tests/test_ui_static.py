@@ -67,7 +67,7 @@ MOCK_FILES = {
     "library": None,
     "zones": ("format", "revision", "zones", "problems"),
 }
-STEPS = ("data", "terrain", "coast", "imagery", "assembly", "install")
+STEPS = ("osm", "relief", "terrain", "coast", "imagery", "assembly", "install")
 JOURNAL_EVENTS = {"started", "progress", "done", "failed", "stats", "log", "finished"}
 STATS_KEYS = {"running", "pending", "done", "failed", "hits", "elapsed_s", "progress", "eta_low_s"}
 STATS_KEYS |= {"eta_high_s", "phase"}
@@ -255,8 +255,8 @@ def test_languages_differ() -> None:
 
 
 def test_role_step_mapping_is_the_engines() -> None:
-    """The page maps node roles to the six steps as ``orthostudio.api.stages`` does; the rule names
-    of the P2b contract (older mock files and journals) and the last segment of a node id
+    """The page maps node roles to the seven steps as ``orthostudio.api.stages`` does; the rule
+    names of the P2b contract (older mock files and journals) and the last segment of a node id
     still map."""
     from orthostudio.api.stages import ROLE_STAGE, STAGES
 
@@ -272,7 +272,7 @@ def test_role_step_mapping_is_the_engines() -> None:
     assert got["roles"] == ROLE_STAGE
     assert set(got["rules"].values()) <= set(STEPS)
     # the role wins over the id; unknown names and Object's own keys map to nothing
-    assert got["of"] == ["assembly", "data", "assembly", "imagery", "assembly", None, None, None]
+    assert got["of"] == ["assembly", "osm", "assembly", "imagery", "assembly", None, None, None]
 
 
 def _mock_json(name: str) -> Any:
@@ -1059,8 +1059,9 @@ def _job_state(tiles: tuple[str, ...], *, last_seq: int = 1) -> dict[str, Any]:
                 "status": "pending",
                 "errors": [],
                 "stages": {
-                    "data": stage(f"{t}/osm", f"{t}/dem", f"{t}/coastline", f"{t}/vectors"),
-                    "terrain": stage(f"{t}/mesh"),
+                    "osm": stage(f"{t}/osm", f"{t}/coastline"),
+                    "relief": stage(f"{t}/dem"),
+                    "terrain": stage(f"{t}/vectors", f"{t}/mesh"),
                     "coast": stage(f"{t}/masks"),
                     "imagery": stage(f"{t}/BI16/textures"),
                     "assembly": stage(
@@ -1081,7 +1082,7 @@ def _job_state(tiles: tuple[str, ...], *, last_seq: int = 1) -> dict[str, Any]:
 
 TEXTURES_7 = {"tile": "+46+007", "stage": "imagery", "node": "+46+007/BI16/textures"}
 TEXTURES_7["role"] = "textures"
-OSM = {"stage": "data", "role": "osm"}
+OSM = {"stage": "osm", "role": "osm"}
 TEX_MISSING = {
     "schema": 1,
     "code": "TEX_MISSING",
@@ -1102,9 +1103,9 @@ REAL_EVENTS = [  # the journal of a real build (trimmed): phase data, then the b
     | {"key": "2bb2d1bf6c0e", "hit": True, "wall_s": 0.0},
     {"seq": 29, "ts": 25.23, "event": "done", "tile": "+46+007", "node": "+46+007/osm", **OSM}
     | {"key": "4b40c0a128bf", "hit": False, "wall_s": 25.184},
-    {"seq": 124, "ts": 113.618, "event": "started", "tile": "+46+007", "stage": "data"}
+    {"seq": 124, "ts": 113.618, "event": "started", "tile": "+46+007", "stage": "osm"}
     | {"node": "+46+007/coastline", "role": "coastline", "key": "f68065df", "kind": "io"},
-    {"seq": 128, "ts": 113.63, "event": "done", "tile": "+46+007", "stage": "data"}
+    {"seq": 128, "ts": 113.63, "event": "done", "tile": "+46+007", "stage": "osm"}
     | {"node": "+46+007/coastline", "role": "coastline", "key": "f68065df", "hit": False}
     | {"wall_s": 0.011},
     {"seq": 258, "ts": 153.308, "event": "started", **TEXTURES_7, "key": "3aba2dc1", "kind": "net"},
@@ -1172,12 +1173,13 @@ def test_the_reducer_reads_the_engine_events() -> None:
         """
     )
     assert got["applied"] == [True] * len(REAL_EVENTS)
-    # +46+006 had its map data already: a hit alone does not start its Data step (these entries
+    # +46+006 had its map data already: a hit alone does not start its Map step (these entries
     # carry no weights, as an older engine's: the fraction counts rows)
-    assert got["t6"]["data"] == ["pending", 0.25]
+    assert got["t6"]["osm"] == ["pending", 0.5]
     assert got["t6"]["imagery"] == ["pending", 0]
-    # +46+007: OSM and coastline done, two rows of four not started: waiting
-    assert got["t7"]["data"] == ["waiting", 0.5]
+    # +46+007: OSM and coastline done, its map is; its relief has not started
+    assert got["t7"]["osm"] == ["done", 1]
+    assert got["t7"]["relief"] == ["pending", 0]
     # a progress below the one before leaves the bar where it was
     assert got["slow"] == ["running", 0.5, 0.4]
     # a progress after the failure moves the row's fraction (as the engine's), not its step
@@ -1509,7 +1511,8 @@ def test_the_steps_follow_the_engine_whenever_its_state_is_read(tmp_path: Path) 
     final = {(t, s): status for t, s, status, _ in runs[0]["final"]}
     assert final[("+46+007", "imagery")] == "failed"
     assert final[("+46+007", "assembly")] == "skipped"
-    assert final[("+46+005", "data")] == "done"
+    assert final[("+46+005", "osm")] == "done"  # its OSM a hit, its coastline built
+    assert final[("+46+005", "relief")] == "hit"
 
 
 def test_a_refresh_replaces_the_steps_with_the_engines() -> None:
@@ -1520,7 +1523,7 @@ def test_a_refresh_replaces_the_steps_with_the_engines() -> None:
     stages = state["tiles"][0]["stages"]
     stages["imagery"] |= {"status": "done", "fraction": 1.0, "wall_s": 14.6}
     stages["imagery"]["nodes"][0] |= {"status": "done", "fraction": 1.0, "wall_s": 14.6}
-    stages["data"] |= {"status": "running", "fraction": 0.6}
+    stages["terrain"] |= {"status": "running", "fraction": 0.6}
     state["errors"] = [{"code": "TEX_MISSING", "stage": "imagery", "tile": "+46+006"}]
     textures = {"tile": "+46+006", "stage": "imagery", "node": "+46+006/BI16/textures"}
     got = _node_mock(
@@ -1534,19 +1537,19 @@ def test_a_refresh_replaces_the_steps_with_the_engines() -> None:
         const fresh = {json.dumps(state)};
         fresh.tiles[0].steps = job.tiles[0].steps;
         const again = m.normalizeJob(fresh, 123);
-        const data = again.tiles[0].steps.data;
-        m.applyEvent(again, "done", {{tile: "+46+006", stage: "data", node: "+46+006/dem",
-          role: "dem", hit: false, wall_s: 4}});
+        const terrain = again.tiles[0].steps.terrain;
+        m.applyEvent(again, "done", {{tile: "+46+006", stage: "terrain",
+          node: "+46+006/vectors", role: "vectors", hit: false, wall_s: 4}});
         process.stdout.write(JSON.stringify({{before, imagery: again.tiles[0].steps.imagery,
-          dataAfter: [data.status, data.fraction], zoom: again.zoom_level, seq: again.seq,
+          terrainAfter: [terrain.status, terrain.fraction], zoom: again.zoom_level, seq: again.seq,
           statsAt: again.statsAt, step: again.errors[0].step}}));
         """
     )
     assert got["before"] == ["running", 0.2]
     assert got["imagery"]["status"] == "done" and got["imagery"]["fraction"] == 1
     assert got["imagery"]["nodes"]["+46+006/BI16/textures"]["status"] == "done"
-    # the engine said 0.6; without weights one row of four done is 0.25 for the page: kept at 0.6
-    assert got["dataAfter"] == ["waiting", 0.6]
+    # the engine said 0.6; without weights one row of two done is 0.5 for the page: kept at 0.6
+    assert got["terrainAfter"] == ["waiting", 0.6]
     assert got["zoom"] == 16 and got["seq"] == 40 and got["statsAt"] is None
     assert got["step"] == "imagery"
 
@@ -1557,9 +1560,10 @@ def test_progress_elapsed_and_remaining() -> None:
     and the clock since ``started_at``; nothing to estimate yet is ``null``."""
     state = _job_state(("+46+006",))
     stages = state["tiles"][0]["stages"]
-    for node in stages["data"]["nodes"]:
-        node["status"] = "done"
-    stages["data"]["status"] = "done"
+    for name in ("osm", "relief"):
+        for node in stages[name]["nodes"]:
+            node["status"] = "done"
+        stages[name]["status"] = "done"
     stages["imagery"] |= {"status": "running", "fraction": 0.5}
     stages["install"] = {"status": "skipped", "fraction": 0.0, "wall_s": 0.0, "nodes": []}
     got = _node_mock(
@@ -1582,8 +1586,9 @@ def test_progress_elapsed_and_remaining() -> None:
         """
     )
     assert got["engine"] == 0.42 and got["done"] == 1
-    # 12 nodes: data's 4 done, imagery's 1 at a half, 7 waiting; install without nodes not counted
-    assert got["fallback"] == pytest.approx(4.5 / 11)
+    # 12 nodes: the map's 2 and the relief's 1 done, imagery's 1 at a half, 7 waiting; install
+    # without nodes not counted
+    assert got["fallback"] == pytest.approx(3.5 / 11)
     assert got["elapsed"] == [103, 60, 538.5, 12, None]
     assert got["eta"] == [[None, None], [60, 90], [80, 150], [None, None]]
 
@@ -1793,7 +1798,7 @@ def test_a_mock_build_streams_what_the_engine_would() -> None:
         t["tile"]: {s: v["status"] for s, v in t["stages"].items()} for t in got["state"]["tiles"]
     }
     assert stages["+44+005"] == dict(
-        zip(STEPS, ["done", "done", "done", "failed", "skipped", "skipped"], strict=True)
+        zip(STEPS, ["done", "done", "done", "done", "failed", "skipped", "skipped"], strict=True)
     )
     assert stages["+43+005"] == dict.fromkeys(STEPS, "done")
     assert got["state"]["report"]["tiles"][2]["ok"] is False
@@ -1884,12 +1889,12 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     )
     relief_line = build_mod.dem_download_message(TileRef(46, 6), 2, 9_300_000, 3.0)
     data = {"status": "running", "fraction": 0.3, "message": osm_line, "nodes": {}}
-    tile["steps"]["data"] = data
+    tile["steps"]["osm"] = data
     got = _node_json(
         "app.js",
         f"[m.downloadRate({json.dumps(with_rate)}), m.downloadRate({json.dumps(without)}), "
         f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'imagery'), "
-        f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'data'), "
+        f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'osm'), "
         f"m.downloadRate({json.dumps(relief_line)})]",
     )
     assert got[0] == 21.6 and got[1] is None
@@ -3114,13 +3119,13 @@ def test_the_plan_map_shows_what_the_running_build_does() -> None:
             Array.from({length: n}, (_, i) => [`n${i}`, {}]))});
           const tile = (name, status, steps) => ({tile: name, status, steps});
           const job = {status: "running", tiles: [
-            tile("+46+006", "running", {data: step("done"), terrain: step("running"),
+            tile("+46+006", "running", {osm: step("done"), terrain: step("running"),
               install: step("pending", 0)}),
-            tile("+46+007", "running", {data: step("waiting"), terrain: step("pending")}),
-            tile("+46+008", "pending", {data: step("pending")}),
-            tile("+46+009", "failed", {data: step("failed")}),
-            tile("+46+010", "done", {data: step("done")}),
-            tile("+47+006", "running", {data: step("done"), imagery: step("hit"),
+            tile("+46+007", "running", {osm: step("waiting"), terrain: step("pending")}),
+            tile("+46+008", "pending", {osm: step("pending")}),
+            tile("+46+009", "failed", {osm: step("failed")}),
+            tile("+46+010", "done", {osm: step("done")}),
+            tile("+47+006", "running", {osm: step("done"), imagery: step("hit"),
               install: step("pending", 0)}),
           ]};
           return [[...m.buildingTiles(job)], [...m.buildingTiles({...job, status: "done"})],
@@ -3250,16 +3255,24 @@ def test_a_table_wider_than_its_box_keeps_its_scrollbar() -> None:
     assert 'window.addEventListener("resize", markWideTables);' in _function_body(app_js, "boot")
 
 
-def test_the_data_step_says_it_is_more_than_a_download() -> None:
+def test_osm_has_a_step_of_its_own() -> None:
     """A user took the minutes of a tile's Data step for downloading: at road level 5 on Swiss
     tiles the library's files took 2 to 3 s, the relief 17 to 36 s and the tracing of the map for
-    the mesh 46 to 75 s (2026-09-25). The step's tooltip says what it holds, in both languages."""
+    the mesh 46 to 75 s (2026-09-25). Then "Data 28 s" hid a map read in 1.9 s behind 21.5 s of
+    relief (2026-09-26): OSM and the relief have a step each, the tracing joins Terrain, and
+    the two steps whose name says less than they hold say it in their tooltip."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
-    assert 'export const STEP_HELP = { data: () => t("step.data_help") };' in app_js
+    help_line = (
+        'export const STEP_HELP = { osm: () => t("step.osm_help"), '
+        'terrain: () => t("step.terrain_help") };'
+    )
+    assert help_line in app_js
     assert "const about = STEP_HELP[s]?.();" in _function_body(app_js, "updateStepCell")
-    assert '"step.data_help": "Données de carte et relief, puis tracé' in i18n
-    assert '"step.data_help": "Map data and relief, then the roads, water and airports' in i18n
+    assert i18n.count('"step.osm": "OSM",') == 2 and '"step.relief": "Relief",' in i18n
+    assert '"step.terrain_help": "Tracé des routes, de l\'eau et des aéroports, puis' in i18n
+    assert '"step.terrain_help": "The roads, water and airports traced, then' in i18n
+    assert "step.data" not in i18n
 
 
 def test_a_chosen_tile_a_build_would_change_is_marked_at_a_glance() -> None:

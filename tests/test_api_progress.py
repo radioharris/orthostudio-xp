@@ -279,12 +279,13 @@ def test_replay_progress_elapsed_and_phase(
     assert last["stats"]["eta_low_s"] == 0.0
     assert last["eta"] is None
     for tile in last["tiles"]:
-        data = tile["stages"]["data"]
-        assert data["status"] == "done" and data["fraction"] == 1.0
-        osm = next(n for n in data["nodes"] if n["role"] == "osm")
+        for name in ("osm", "relief"):
+            stage = tile["stages"][name]
+            assert stage["status"] in ("done", "hit") and stage["fraction"] == 1.0
+        osm = next(n for n in tile["stages"]["osm"]["nodes"] if n["role"] == "osm")
         assert osm["status"] in ("done", "hit")
     t005 = next(t for t in last["tiles"] if t["tile"] == "+46+005")
-    osm = next(n for n in t005["stages"]["data"]["nodes"] if n["role"] == "osm")
+    osm = next(n for n in t005["stages"]["osm"]["nodes"] if n["role"] == "osm")
     assert osm["status"] == "hit" and osm["hit"] is True and osm["fraction"] == 1.0
     assert osm["weight_s"] == 0.0
 
@@ -326,7 +327,7 @@ def test_every_stage_leaves_a_line_in_the_log(tmp_path: Path) -> None:
         "2 of 5 layers, 1.2 MB, 42 s",
         "3 of 5 layers, 2.0 MB, 53 s",
     ]
-    assert all(e["stage"] == "data" for e in logged)
+    assert all(e["stage"] == "osm" for e in logged)
     # the file: the two progress lines ten seconds apart, and the node's end
     assert [x for x in lines if "layers" in x] == [
         f"{node}: 2 of 5 layers, 1.2 MB, 42 s",
@@ -366,7 +367,7 @@ def test_replay_stages_read_what_their_nodes_do(
     job = _job([_spec("+46+008")], clock)
     clock.t = 0.1
     job.on_event(Phase("data", nodes=(), reused=(("+46+008/osm", None),)))
-    assert job.state()["tiles"][0]["stages"]["data"]["status"] == "pending"
+    assert job.state()["tiles"][0]["stages"]["osm"]["status"] == "pending"
     for node, t in (("+46+008/xp12", 1.0), ("+46+008/overlay", 2.0)):
         clock.t = t
         job.on_event(Started(node, "io", KEY))
@@ -386,12 +387,12 @@ def test_osm_row_reused_by_phase_0_is_a_journaled_hit(tmp_path: Path) -> None:
     job.on_event(Phase("data", nodes=(), reused=(("+46+005/osm", "b" * 64),)))
     (done,) = [e for e in job.events() if e["event"] == "done"]
     assert done["node"] == "+46+005/osm" and done["hit"] is True and done["wall_s"] == 0.0
-    assert done["stage"] == "data" and done["role"] == "osm" and done["key"] == "b" * 64
+    assert done["stage"] == "osm" and done["role"] == "osm" and done["key"] == "b" * 64
     (tile,) = job.state()["tiles"]
-    data = tile["stages"]["data"]
-    osm = next(n for n in data["nodes"] if n["role"] == "osm")
+    map_ = tile["stages"]["osm"]
+    osm = next(n for n in map_["nodes"] if n["role"] == "osm")
     assert osm["status"] == "hit" and osm["fraction"] == 1.0 and osm["weight_s"] == 0.0
-    assert data["status"] == "pending"  # a hit is not work: nothing of the stage has started
+    assert map_["status"] == "pending"  # a hit is not work: nothing of the stage has started
     assert done["weight_s"] == 0.0
     stats = [e for e in job.events() if e["event"] == "stats"][-1]["stats"]
     assert stats["hits"] == 1 and stats["phase"] == "data"
@@ -516,8 +517,10 @@ def test_declared_graph_replaces_the_predicted_rows(tmp_path: Path) -> None:
     assert rows["+43+005/osm"].status == "hit"  # phase 0 is over: its data was there
     assert rows["+43+005/vectors"].weight_s == pytest.approx(progress.ROLE_SECONDS["vectors"])
     tile = job.state()["tiles"][0]
-    assert tile["stages"]["data"]["status"] == "pending"  # a hit and rows still to run
-    assert [n["role"] for n in tile["stages"]["data"]["nodes"]] == ["osm", "dem", "vectors"]
+    assert tile["stages"]["osm"]["status"] == "hit"  # phase 0 had its data, nothing else
+    assert [n["role"] for n in tile["stages"]["osm"]["nodes"]] == ["osm"]
+    assert tile["stages"]["relief"]["status"] == "pending"  # rows still to run
+    assert [n["role"] for n in tile["stages"]["terrain"]["nodes"]] == ["vectors", "mesh"]
 
 
 def test_a_second_pass_runs_skipped_rows_again_and_keeps_what_it_built(tmp_path: Path) -> None:
@@ -589,6 +592,33 @@ def test_stats_shape_in_the_event_and_the_state_and_a_line_every_second(
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
 
 
+def test_a_job_saved_with_the_data_stage_reads_back_in_the_new_ones(tmp_path: Path) -> None:
+    """A job saved before 2026-09-26 holds one ``data`` stage (OSM, relief and tracing). Read back,
+    every row goes to its stage by its role, so the Works list shows it as a new build: the user's
+    own +47+011 then reads OSM 1.9 s, Relief 21.5 s and Terrain 11.0 s where it read Data 28 s."""
+    from orthostudio.api.stages import STAGES
+
+    spec = _spec("+43+005", zl=14, install=False)
+    job = Job([spec], install=False, request=None, journal_path=tmp_path / "old.jsonl")
+    job.status = "done"
+    doc = {**job.state(), "specs": [jobs_mod._spec_to_json(spec)]}
+    stages = doc["tiles"][0]["stages"]
+    held = [n for name in ("osm", "relief") for n in stages.pop(name)["nodes"]]
+    held += [n for n in stages["terrain"]["nodes"] if n["role"] == "vectors"]
+    stages["terrain"]["nodes"] = [n for n in stages["terrain"]["nodes"] if n["role"] != "vectors"]
+    doc["tiles"][0]["stages"] = {"data": {"status": "done", "nodes": held}, **stages}
+    for stage in doc["tiles"][0]["stages"].values():
+        for n in stage["nodes"]:
+            n |= {"status": "done", "wall_s": {"osm": 1.9, "dem": 21.5}.get(n["role"], 1.0)}
+    (tmp_path / "old.json").write_text(json.dumps(doc), encoding="utf-8")
+    tile = Job.load(tmp_path / "old.json").state()["tiles"][0]
+    assert list(tile["stages"]) == list(STAGES)
+    roles = {name: [n["role"] for n in st["nodes"]] for name, st in tile["stages"].items()}
+    assert set(roles["osm"]) == {"osm", "coastline"} and roles["relief"] == ["dem"]
+    assert set(roles["terrain"]) == {"vectors", "mesh"}
+    assert tile["stages"]["relief"]["wall_s"] == 21.5 and tile["stages"]["osm"]["status"] == "done"
+
+
 def test_a_past_job_keeps_the_rows_it_saved(tmp_path: Path) -> None:
     """A state written before ``coastline`` was predicted, and before phase 0 reported its
     reused rows (the OSM row saved ``pending``), is read back as the job ended."""
@@ -608,7 +638,8 @@ def test_a_past_job_keeps_the_rows_it_saved(tmp_path: Path) -> None:
     rows = [n for stage in tile["stages"].values() for n in stage["nodes"]]
     assert rows and all(n["status"] == ("hit" if n["role"] == "osm" else "done") for n in rows)
     assert "coastline" not in {n["role"] for n in rows}
-    assert tile["stages"]["data"]["status"] == "done"
+    assert tile["stages"]["osm"]["status"] == "hit"  # the OSM row alone, a hit
+    assert tile["stages"]["relief"]["status"] == "done"
 
 
 def test_rows_and_events_carry_the_weight_a_page_needs(tmp_path: Path) -> None:
@@ -661,9 +692,8 @@ def test_rows_and_events_carry_the_weight_a_page_needs(tmp_path: Path) -> None:
         if total > 0:
             expected = sum(w * f for w, f in parts) / total
             assert stage["fraction"] == pytest.approx(expected, abs=2e-3)
-    data = tile["stages"]["data"]
-    assert data["status"] == "running"  # the coastline runs
-    assert {n["role"]: n["weight_s"] for n in data["nodes"]}["vectors"] == 0.0
+    assert tile["stages"]["osm"]["status"] == "running"  # the coastline runs
+    assert {n["role"]: n["weight_s"] for n in tile["stages"]["terrain"]["nodes"]}["vectors"] == 0.0
 
 
 def test_prepare_publishes_the_refined_estimate_at_once(tmp_path: Path) -> None:
@@ -1252,7 +1282,7 @@ def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:
         osm = next(n for n in rows if n["role"] == "osm")
         vectors = next(n for n in rows if n["role"] == "vectors")
         assert osm["status"] == "failed" and vectors["status"] == "skipped"
-        assert tile["stages"]["data"]["status"] == "failed"
+        assert tile["stages"]["osm"]["status"] == "failed"
     assert state["stats"]["done"] + state["stats"]["failed"] == sum(
         len(stage["nodes"]) for tile in state["tiles"] for stage in tile["stages"].values()
     )

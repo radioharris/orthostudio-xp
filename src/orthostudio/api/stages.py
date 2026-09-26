@@ -1,12 +1,15 @@
-"""Node ids -> the six user stages; error codes -> the page's action.
+"""Node ids -> the seven user stages; error codes -> the page's action.
 
 Spec: ``docs/specs/api.md`` sections 5.2 and 5.4. Node ids come from
 ``docs/specs/pipeline-build.md`` section 2: ``<tile>/<role>`` or
 ``<tile>/<provider><zl>/<role>``, with an optional ``#n`` suffix.
 
-The three P3 roles that acquire data -- ``osm``, ``coastline`` and ``dem`` -- belong to the
-``data`` stage, next to ``vectors``: without them the page showed no progress at all for a
-node that takes 24 s on a cold tile (integration blocker B4, confirmed by review 4).
+The three P3 roles that acquire data have stages of their own, ``osm`` and ``coastline`` in
+``osm`` and ``dem`` in ``relief``: without them the page showed no progress at all for a node that
+takes 24 s on a cold tile (integration blocker B4, confirmed by review 4). They shared one ``data``
+stage with the tracing (``vectors``) until 2026-09-26, when the map library made the map data take
+two seconds and the relief beside it twenty: a user saw "Data 28 s" and nothing of the gain. The
+tracing, which feeds the mesh and reads both, is ``terrain`` now.
 """
 
 from __future__ import annotations
@@ -24,16 +27,16 @@ __all__ = [
     "stage_of",
 ]
 
-Stage = Literal["data", "terrain", "coast", "imagery", "assembly", "install"]
+Stage = Literal["osm", "relief", "terrain", "coast", "imagery", "assembly", "install"]
 Action = Literal["retry", "settings", "none"]
 
-STAGES: tuple[Stage, ...] = ("data", "terrain", "coast", "imagery", "assembly", "install")
+STAGES: tuple[Stage, ...] = ("osm", "relief", "terrain", "coast", "imagery", "assembly", "install")
 
 ROLE_STAGE: dict[str, Stage] = {
-    "osm": "data",
-    "coastline": "data",
-    "dem": "data",
-    "vectors": "data",
+    "osm": "osm",
+    "coastline": "osm",
+    "dem": "relief",
+    "vectors": "terrain",
     "mesh": "terrain",
     "masks": "coast",
     "textures": "imagery",

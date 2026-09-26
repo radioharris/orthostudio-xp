@@ -491,14 +491,17 @@ The selected job (default: the running one, else the newest) shows, from top to 
   - While `stats.phase` is `"data"` (an older engine, which downloaded every tile's map data
     before building), a line under the bar: "Downloading map data (airports, roads, coastline,
     water) for N tile(s) before building" (`orthostudio.sources.osm.LAYERS`), N counting the tiles
-    whose `osm` row is not a hit. The current engine downloads a tile's map data in its Data step,
+    whose `osm` row is not a hit. The current engine downloads a tile's map data in its OSM step,
     and says `build`.
-- **One row per tile**, six step cells *Data · Terrain · Coast · Imagery · Assembly · Install*.
+- **One row per tile**, seven step cells *OSM · Relief · Terrain · Coast · Imagery · Assembly ·
+  Install*.
   Each cell has a dot, its name, a thin progress bar (`role="progressbar"`, `aria-valuenow`, the
   words in `aria-valuetext`) and one line of plain words (the full text in the cell's tooltip).
-  Data's tooltip also says what the step holds (`STEP_HELP`): map data and relief, then the roads,
-  water and airports traced for the mesh, since a user took its minutes for downloading
-  (2026-09-25):
+  The tooltips of OSM and Terrain also say what the step holds (`STEP_HELP`): the airports, roads,
+  coastline and water read from the prepared library or asked of the public servers; the roads,
+  water and airports traced, then the terrain meshed. Until 2026-09-26 one Data step held the map,
+  the relief and the tracing: a user took its minutes for downloading (2026-09-25), then saw "Data
+  28 s" hide a map read in 1.9 s behind 21.5 s of relief:
 
   | Step status | Bar | Words |
   |---|---|---|
@@ -549,7 +552,7 @@ times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then.
 **Node to step mapping.** The journal gives each node entry its `stage`. Otherwise the page maps
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's
 table (`app.js` `ROLE_STEP` = `orthostudio.api.stages.ROLE_STAGE`, a test keeps them equal): `osm`,
-`coastline`, `dem`, `vectors` → data; `mesh` → terrain; `masks` → coast; `textures` → imagery;
+`coastline` → osm; `dem` → relief; `vectors`, `mesh` → terrain; `masks` → coast; `textures` → imagery;
 `xp12`, `dsf`, `overlay`, `pack` → assembly; `install` → install. The rule names of the P2b
 contract (`tile.dsf`, `tile.textures`, ...; `NODE_STEP`) still map, for older journals.
 

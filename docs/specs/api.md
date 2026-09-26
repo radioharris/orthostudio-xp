@@ -362,12 +362,13 @@ The first entry of every journal is a `log` line (`job <id> started`); a build t
 
 Node ids are `<tile>/<role>` or `<tile>/<provider><zl>/<role>` (`#n` suffix possible,
 `pipeline-build.md` 2). `tile` is the first segment; `role` the last one without `#n`;
-`stage` is one of the six user stages:
+`stage` is one of the seven user stages:
 
 | role (rule) | stage |
 |---|---|
-| `osm` (`orthostudio.osm`), `coastline` (`orthostudio.coastline`), `dem` (`orthostudio.dem`), `vectors` (`orthostudio.vectors`) | `data` |
-| `mesh` (`orthostudio.mesh`) | `terrain` |
+| `osm` (`orthostudio.osm`), `coastline` (`orthostudio.coastline`) | `osm` |
+| `dem` (`orthostudio.dem`) | `relief` |
+| `vectors` (`orthostudio.vectors`), `mesh` (`orthostudio.mesh`) | `terrain` |
 | `masks` (`orthostudio.masks`) | `coast` |
 | `textures` (`tile.textures`) | `imagery` |
 | `xp12`, `dsf`, `overlay`, `pack` (`xp12.rasters`, `tile.dsf`, `tile.overlay`, `tile.pack`) | `assembly` |
@@ -464,7 +465,7 @@ did on its own, per tile, for the page's end-of-build panel:
 | `kind` | Source | Fields |
 |---|---|---|
 | `nodes` | the events | `hit`, `built`, `failed`, `skipped` counts |
-| `stage_time` | the events | `seconds` per stage (`{data: 12.3, ...}`) |
+| `stage_time` | the events | `seconds` per stage (`{osm: 1.9, relief: 21.5, ...}`) |
 | `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained) |
 | `degraded` | `failed` events with severity `degraded` / `info` | `code`, `count`, `message` |
 | `pack` | `TileOutcome.pack_dir` | `bytes`, `path`, `installed` |

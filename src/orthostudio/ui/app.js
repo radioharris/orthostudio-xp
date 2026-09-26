@@ -89,15 +89,15 @@ const STATIC = "static/";
 /** Browsers refuse a keepalive request whose body passes 64 KiB: below this, a save may use it. */
 export const KEEPALIVE_MAX_BYTES = 60000;
 
-export const STEPS = ["data", "terrain", "coast", "imagery", "assembly", "install"];
+export const STEPS = ["osm", "relief", "terrain", "coast", "imagery", "assembly", "install"];
 
 /** Node role → user step: the engine's `ROLE_STAGE` (orthostudio.api.stages; a test keeps the two equal).
  * The journal gives each node event its `role` and `stage`; the report's nodes carry `role`. */
 export const ROLE_STEP = {
-  osm: "data",
-  coastline: "data",
-  dem: "data",
-  vectors: "data",
+  osm: "osm",
+  coastline: "osm",
+  dem: "relief",
+  vectors: "terrain",
   mesh: "terrain",
   masks: "coast",
   textures: "imagery",
@@ -121,7 +121,8 @@ export const NODE_STEP = {
 
 const TILE_RE = /^[+-]\d{2}[+-]\d{3}$/;
 const STEP_KEYS = {
-  data: () => t("step.data"),
+  osm: () => t("step.osm"),
+  relief: () => t("step.relief"),
   terrain: () => t("step.terrain"),
   coast: () => t("step.coast"),
   imagery: () => t("step.imagery"),
@@ -1841,7 +1842,7 @@ export function etaRange(stats) {
 export function dataPhaseTiles(job) {
   let n = 0;
   for (const tile of job?.tiles || []) {
-    const nodes = Object.values(tile.steps?.data?.nodes || {});
+    const nodes = Object.values(tile.steps || {}).flatMap((step) => Object.values(step?.nodes || {}));
     if (nodes.some((node) => node.role === "osm" && node.status !== "hit")) n += 1;
   }
   return n;
@@ -2144,7 +2145,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 25;
+const PAGE_API_LEVEL = 26;
 
 async function loadStatus() {
   try {
@@ -4325,9 +4326,11 @@ export function stepView(job, tile, s) {
   return { status, pct, text: text ?? word(), detail, help };
 }
 
-/** What a step holds, for the one whose name says less than it does: Data also prepares the relief
- * and traces the map for the mesh, and a user took its minutes for downloading (2026-09-25). */
-export const STEP_HELP = { data: () => t("step.data_help") };
+/** What a step holds, where its name says less than it does. Data held the map data, the relief and
+ * the tracing, and a user took its minutes for downloading (2026-09-25); split on 2026-09-26 so that
+ * OSM, two seconds from the library, is no longer hidden behind twenty of relief, the tracing
+ * joining Terrain, which it feeds. */
+export const STEP_HELP = { osm: () => t("step.osm_help"), terrain: () => t("step.terrain_help") };
 
 /** One step of a tile: a thin bar for every status, then what it is doing in plain words. */
 function updateStepCell(c, job, tile, s) {
