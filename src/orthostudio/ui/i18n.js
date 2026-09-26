@@ -339,7 +339,7 @@ const STRINGS = {
     "works.clear": "Vider la liste des lots",
     "works.search": "Chercher une tuile",
     "works.search_ph": "Chercher une tuile : +49+011, +49…",
-    "works.search_found": "{n} lots sur {total}.",
+    "works.search_found": "{n} sur {total} lots.",
     "works.search_none": "Aucun lot n'a de tuile qui corresponde.",
     "works.search_rows_none": "Aucune tuile de ce lot ne correspond à la recherche.",
     "works.forget": "Retirer ce lot de la liste. Son avancement et son journal sont effacés ; les tuiles construites restent.",
@@ -449,7 +449,7 @@ const STRINGS = {
 
     "library.search": "Chercher une tuile",
     "library.search_ph": "Chercher une tuile : +49+011, +49…",
-    "library.search_found": "{n} tuiles sur {total}.",
+    "library.search_found": "{n} sur {total} tuiles.",
     "library.search_none": "Aucune tuile ne correspond.",
     "library.sort_help": "Trier par cette colonne ; un second clic inverse l'ordre",
     "library.title": "Bibliothèque",

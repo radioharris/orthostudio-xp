@@ -2189,6 +2189,19 @@ def test_works_finds_a_tile_among_the_jobs() -> None:
         assert i18n.count(f'"{key}":') == 2, key  # French and English
 
 
+def test_a_count_of_one_reads_right_in_french() -> None:
+    """ "1 lots sur 6." is what the French note first said for one job found, which is what a
+    search mostly finds: the noun comes after the total, as in Settings' note (review of
+    2026-09-26)."""
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key, noun in (
+        ("works.search_found", "lots"),
+        ("library.search_found", "tuiles"),
+        ("settings.search_found", "réglages"),
+    ):
+        assert f'"{key}": "{{n}} sur {{total}} {noun}.",' in i18n, key
+
+
 def test_the_library_finds_and_sorts_its_tiles() -> None:
     """A user asked for Works' search in the Library too, and for sorts (2026-09-26): the same
     field keeps the tiles whose name has what is typed, and each header sorts its column, first
