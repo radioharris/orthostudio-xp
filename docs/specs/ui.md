@@ -1034,9 +1034,12 @@ dashes over one edge as a solid line; the frames inside (below) ended that.
 solid frame is a tile in X-Plane, a dashed one a tile kept on the disk only; green is OrthoStudio
 XP's, violet (`--map-ortho4xp`, `is-ortho4xp`) Ortho4XP's, imported into the Library. The frame
 stands for the pack in X-Plane, or, none being there, the one on the disk (`ortho4xpTiles`); a
-tile with a pack of OrthoStudio XP's there keeps its green. The legend names the violet (*Built
-by Ortho4XP*) when the map shows such a tile. Chosen is blue, the flight plan's ends orange
-(`--route`), and the zones keep the colours of their levels.
+tile with a pack of OrthoStudio XP's there keeps its green. The legend has each program's two
+lines, *OrthoStudio XP, in X-Plane* and *not in X-Plane*, *Ortho4XP, in X-Plane* and *not in
+X-Plane* (the same user), the last three only when the map has such tiles; each line not in
+X-Plane is a box to untick of its own (`builtShown`: `osxp.mapBuilt`, `osxp.mapBuiltOrtho4xp`).
+Chosen is blue, the flight plan's ends orange (`--route`), and the zones keep the colours of
+their levels.
 
 **Every square is framed inside itself** (`FRAME_INSET`, 2.5 px: half the 3 px line and a pixel,
 so the grid line shows between two neighbours). On the grid line itself two neighbours shared one

@@ -3586,9 +3586,7 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     grid = map_js[
         map_js.index("  function renderGrid() {") : map_js.index("    if (zoom < LABEL_MIN_ZOOM")
     ]
-    assert "const built = new Set(zs.builtWanted ? builtTiles() : []);" in grid, (
-        "hidden when unticked"
-    )
+    assert "const built = new Set(builtShown());" in grid, "hidden when unticked"
     assert "new Set([...installed, ...built, ...selected, ...building.keys()])" in grid
     assert "const frame = insetBox(box, FRAME_INSET) || box;" in grid, "inside its own square"
     assert "L.rectangle(frame, " in grid and "L.rectangle(box, " not in grid, (
@@ -3596,17 +3594,19 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     )
     assert "const FRAME_INSET = 2.5;" in map_js, "half the 3 px line and a pixel: the grid between"
     hover = map_js[map_js.index("  function showTip(ev) {") :]
-    assert "(zs.builtWanted && builtTiles().includes(name))" in hover[: hover.index("\n  }\n")]
+    assert "builtShown().includes(name)" in hover[: hover.index("\n  }\n")]
 
     # the legend line is a checkbox, remembered, and shown when there are such tiles
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
-    assert "if (builtTiles().length) items.push(builtToggle());" in legend
+    assert (
+        'if (built.some((name) => !ortho4xp.has(name))) items.push(builtToggle("osxp"));' in legend
+    )
     assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
     assert 'builtWanted: storageGet(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
     toggle = map_js[
-        map_js.index("  function builtToggle() {") : map_js.index("  function setLegendOpen(")
+        map_js.index("  function builtToggle(by) {") : map_js.index("  function setLegendOpen(")
     ]
     assert 'storageSet(BUILT_KEY, wanted ? "1" : "0");' in toggle
     assert "renderGrid();" in toggle and "renderLegend();" in toggle
@@ -3666,15 +3666,38 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
+    # each program has its two lines, in X-Plane and not, the latter a box of its own
     assert 'items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")))' in legend
+    assert (
+        'if (built.some((name) => ortho4xp.has(name))) items.push(builtToggle("ortho4xp"));'
+        in legend
+    )
+    assert 'const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";' in map_js
+    assert 'builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",' in map_js
+    assert 'storageSet(BUILT_ORTHO4XP_KEY, wanted ? "1" : "0");' in map_js
+    shown = map_js[map_js.index("  function builtShown() {") :]
+    assert "(ortho4xp.has(name) ? zs.builtOrtho4xpWanted : zs.builtWanted)" in shown[:400]
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     violet = ".plan-map .osxp-tile-installed.is-ortho4xp, .plan-map .osxp-tile-built.is-ortho4xp"
     assert "stroke: var(--map-ortho4xp);" in rules[violet]
     assert "border: 2px solid var(--map-ortho4xp);" in rules[".legend-ortho4xp"]
+    assert "border: 2px dashed var(--map-ortho4xp);" in rules[".legend-built-ortho4xp"]
     assert "--map-ortho4xp: #a37bff;" in rules[":root"]
     tables = _i18n_tables()
-    assert tables["fr"]["map.legend_ortho4xp"] == "Construite par Ortho4XP"
-    assert tables["en"]["map.legend_ortho4xp"] == "Built by Ortho4XP"
+    lines = ("legend_installed", "legend_built", "legend_ortho4xp", "legend_ortho4xp_built")
+    assert [tables["fr"][f"map.{k}"] for k in lines] == [
+        "OrthoStudio XP, dans X-Plane",
+        "OrthoStudio XP, pas dans X-Plane",
+        "Ortho4XP, dans X-Plane",
+        "Ortho4XP, pas dans X-Plane",
+    ]
+    assert [tables["en"][f"map.{k}"] for k in lines] == [
+        "OrthoStudio XP, in X-Plane",
+        "OrthoStudio XP, not in X-Plane",
+        "Ortho4XP, in X-Plane",
+        "Ortho4XP, not in X-Plane",
+    ]
+    assert "map.built_ortho4xp_hint" in tables["fr"] and "map.built_ortho4xp_hint" in tables["en"]
 
 
 def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
@@ -3714,8 +3737,12 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
 
     # the focus comes back to the control that had it, each named
     assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in legend
-    for key in ("built", "airports", "street", "borders"):
+    for key in ("airports", "street", "borders"):
         assert f'"data-keep": "{key}",' in map_js, key
+    # the tiles not in X-Plane: a box for each program (2026-09-26)
+    assert '{ keep: "built", swatch: "legend-built",' in map_js
+    assert '{ keep: "built-ortho4xp", swatch: "legend-built-ortho4xp",' in map_js
+    assert '"data-keep": own.keep,' in map_js
     assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
 
 

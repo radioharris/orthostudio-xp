@@ -537,6 +537,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .legend-installed { border: 2px solid var(--ok); }
 .legend-built { border: 2px dashed var(--ok); }
 .legend-ortho4xp { border: 2px solid var(--map-ortho4xp); }
+.legend-built-ortho4xp { border: 2px dashed var(--map-ortho4xp); }
 .legend-selected { border: 2px solid var(--accent); }
 /* The route's own colour, the line's, for the squares of its departure and arrival. */
 .legend-route-end { border: 2px solid var(--route); }

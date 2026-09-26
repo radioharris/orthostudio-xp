@@ -104,6 +104,9 @@ const FRAME_INSET = 2.5;
 /** The tiles built and not in X-Plane on the map: shown unless the user unticked them. */
 const BUILT_KEY = "osxp.mapBuilt";
 
+/** The same for the tiles Ortho4XP built, a line of the legend of their own (2026-09-26). */
+const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";
+
 /** The legend folded away, to see the map under it (a user, 2026-09-25): open unless folded. */
 const LEGEND_KEY = "osxp.mapLegend";
 const MAPLIBRE_CSS = "static/vendor/maplibre/maplibre-gl.css";
@@ -304,6 +307,7 @@ export function createPlanMap(ctx) {
     marks: new Map(),
     hintDone: storageGet(HINT_KEY) === "1",
     builtWanted: storageGet(BUILT_KEY) !== "0",
+    builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",
     legendOpen: storageGet(LEGEND_KEY) !== "0",
     street: {
       wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
@@ -1096,7 +1100,7 @@ export function createPlanMap(ctx) {
     const lat = Math.floor(clampLat(ev.latlng.lat));
     const lon = Math.floor(wrapLon(ev.latlng.lng));
     const name = tileName(lat, lon);
-    const text = installedTiles().includes(name) || (zs.builtWanted && builtTiles().includes(name)) ? ctx.builtSummary?.(name) : null;
+    const text = installedTiles().includes(name) || builtShown().includes(name) ? ctx.builtSummary?.(name) : null;
     if (!text) return hideTip();
     if (!tip) {
       tip = document.createElement("div");
@@ -1963,6 +1967,13 @@ export function createPlanMap(ctx) {
     return new Set([...shown].filter(([, [, theirs]]) => theirs).map(([tile]) => tile));
   }
 
+  /** The tiles built and not in X-Plane the map shows: OrthoStudio XP's and Ortho4XP's, each
+   * unless the user unticked their own line of the legend. */
+  function builtShown() {
+    const ortho4xp = ortho4xpTiles();
+    return builtTiles().filter((name) => (ortho4xp.has(name) ? zs.builtOrtho4xpWanted : zs.builtWanted));
+  }
+
   /** `box` ([[south, west], [north, east]]) drawn `px` pixels inside itself at the map's zoom, or
    * null when the tile is too small on the screen for it. */
   function insetBox(box, px) {
@@ -1994,7 +2005,7 @@ export function createPlanMap(ctx) {
     }
     const selected = new Set(ctx.tiles());
     const installed = new Set(installedTiles());
-    const built = new Set(zs.builtWanted ? builtTiles() : []);
+    const built = new Set(builtShown());
     const ortho4xp = ortho4xpTiles();
     const building = buildingNow();
     const busy = []; // what the running build does, drawn over everything else
@@ -2277,10 +2288,14 @@ export function createPlanMap(ctx) {
       return;
     }
     const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
+    // Each program's two lines, in X-Plane and not (a user, 2026-09-26), the last three only
+    // when the map has such tiles; a line not in X-Plane is a box to untick, each its own.
+    const ortho4xp = ortho4xpTiles();
+    const built = builtTiles();
     const items = [row("legend-installed", t("map.legend_installed"))];
-    if (builtTiles().length) items.push(builtToggle());
-    const drawn = new Set([...installedTiles(), ...(zs.builtWanted ? builtTiles() : [])]);
-    if ([...ortho4xpTiles()].some((name) => drawn.has(name))) items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")));
+    if (built.some((name) => !ortho4xp.has(name))) items.push(builtToggle("osxp"));
+    if (installedTiles().some((name) => ortho4xp.has(name))) items.push(row("legend-ortho4xp", t("map.legend_ortho4xp")));
+    if (built.some((name) => ortho4xp.has(name))) items.push(builtToggle("ortho4xp"));
     items.push(row("legend-selected", t("map.legend_selected")));
     const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
     // The chevron on the view line itself, the height of one line: it sat two pixels above it,
@@ -2305,23 +2320,33 @@ export function createPlanMap(ctx) {
     );
   }
 
-  /** The legend's line for the tiles built and not in X-Plane: a checkbox, as the airports' is,
-   * shown only when there are some (a user asked to be able to hide them, 2026-09-25). */
-  function builtToggle() {
+  /** The legend's line for the tiles built and not in X-Plane, OrthoStudio XP's or Ortho4XP's
+   * (`by`): a checkbox, as the airports' is, shown only when there are some (a user asked to be
+   * able to hide them, 2026-09-25; a line for each program, 2026-09-26). */
+  function builtToggle(by) {
+    const theirs = by === "ortho4xp";
+    const own = theirs
+      ? { keep: "built-ortho4xp", swatch: "legend-built-ortho4xp", hint: t("map.built_ortho4xp_hint"), label: t("map.legend_ortho4xp_built") }
+      : { keep: "built", swatch: "legend-built", hint: t("map.built_hint"), label: t("map.legend_built") };
     const input = h("input", {
       type: "checkbox",
-      checked: zs.builtWanted,
-      "data-keep": "built",
-      onchange: (ev) => setBuiltWanted(ev.target.checked),
+      checked: theirs ? zs.builtOrtho4xpWanted : zs.builtWanted,
+      "data-keep": own.keep,
+      onchange: (ev) => setBuiltWanted(by, ev.target.checked),
     });
     return h("li", { class: "legend-toggle" },
-      h("label", { title: t("map.built_hint") },
-        input, h("span", { class: "legend-swatch legend-built", "aria-hidden": "true" }), t("map.legend_built")));
+      h("label", { title: own.hint },
+        input, h("span", { class: `legend-swatch ${own.swatch}`, "aria-hidden": "true" }), own.label));
   }
 
-  function setBuiltWanted(wanted) {
-    zs.builtWanted = wanted;
-    storageSet(BUILT_KEY, wanted ? "1" : "0");
+  function setBuiltWanted(by, wanted) {
+    if (by === "ortho4xp") {
+      zs.builtOrtho4xpWanted = wanted;
+      storageSet(BUILT_ORTHO4XP_KEY, wanted ? "1" : "0");
+    } else {
+      zs.builtWanted = wanted;
+      storageSet(BUILT_KEY, wanted ? "1" : "0");
+    }
     renderGrid();
     renderLegend();
   }
