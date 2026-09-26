@@ -222,6 +222,20 @@ _CONNECTIONS = _Connections()
 atexit.register(_CONNECTIONS.close)
 
 
+def _why(exc: BaseException) -> str:
+    """What stopped a request, for the log: the kind of error and curl's code, never its text.
+
+    curl's words name the server ("Failed to connect to <host>", "Could not resolve host:
+    <host>"), and ``serve.log`` is the file a user attaches to a public report: written as they
+    were, they put the library's address there whenever a build ran without a network (review of
+    2026-09-26; 0.1.17 wrote them).
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and code:
+        return f"{type(exc).__name__}, curl {getattr(code, 'name', code)}"
+    return type(exc).__name__
+
+
 def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[Answer]:
     """Plain requests, on connections kept from one call to the next, nothing adaptive.
 
@@ -254,7 +268,7 @@ def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[Answ
                     etag = str(answer.headers.get("etag") or "")
                     return int(answer.status_code), b"".join(pieces), etag
             except Exception as exc:  # unreachable, refused, cut, silent: the chain moves on
-                log.info("library: %s could not be read (%s)", name, exc)
+                log.info("library: %s could not be read (%s)", name, _why(exc))
                 return 0, b"", ""
 
         return list(await asyncio.gather(*(one(url) for url in urls)))
@@ -423,7 +437,9 @@ class LibrarySource:
         try:
             (answer,) = self.fetch([f"{self.base}/{MANIFEST_NAME}"], headers)
         except Exception as exc:  # a library must never stop a build
-            log.info("OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, exc)
+            log.info(
+                "OSM_LIBRARY_UNREACHABLE: the %s could not be asked (%s)", self.name, _why(exc)
+            )
             return None
         return int(answer[0]), bytes(answer[1]), _validator(answer)
 

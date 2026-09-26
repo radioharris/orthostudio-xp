@@ -224,7 +224,10 @@ is precisely the kind of silence this whole chain exists to end.
 | `expert.osm_library_token` | empty | the key of that library, sent with every request, manifest included; the key this version carries goes to its own library only, never to an address typed here |
 
 Neither the address nor the key this version carries is ever shown: an empty field stands for
-them, so the address stays out of the page as it stays out of the README and the log. The hints
+them, so the address stays out of the page as it stays out of the README and the log. A request
+that fails is logged by the kind of error and curl's code, never by curl's own words, which name
+the server: 0.1.17 wrote them, so a build without a network put the address in `serve.log`, the
+file a report asks for (review of 2026-09-26). The hints
 said until 2026-09-25 that an empty address switched the library off, which is the opposite of
 what a build does. There is no switch to turn the library off, and none is needed: a library that
 fails is set aside by itself (section 4), and fresh data skips it (section 1).

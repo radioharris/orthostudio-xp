@@ -802,6 +802,28 @@ def test_the_connections_are_kept_and_the_validator_travels() -> None:
     assert len(ports) == 2 and ports[0] == ports[1], "the second request reused the connection"
 
 
+def test_a_library_out_of_reach_is_not_named_in_the_log(caplog) -> None:  # type: ignore[no-untyped-def]
+    """curl's own words name the server ("Failed to connect to <host>"), and serve.log is the file
+    a user attaches to a public report: the line says what went wrong, never where (review of
+    2026-09-26; 0.1.17 wrote the host whenever a build ran without a network)."""
+    import logging
+    import socket
+
+    from orthostudio.sources import library as lib
+
+    with socket.socket() as probe:  # a port nothing listens on
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    caplog.set_level(logging.INFO, logger=lib.log.name)
+    # a name under .localhost is the loopback to curl itself, whatever the resolver says
+    (answer,) = lib._http_get_many([f"http://secret-host.localhost:{port}/manifest.json"], {})
+    assert answer[0] == 0 and answer[1] == b""
+    said = [r.getMessage() for r in caplog.records if "could not be read" in r.getMessage()]
+    assert said, "the failure is still in the log"
+    assert all("secret-host" not in line for line in said), said
+    assert all("manifest.json" in line for line in said), "the file is still named"
+
+
 def test_the_last_osm_line_says_the_layers_arrived() -> None:
     """A tile the library answers ends its step on one line of the Works log: "4 OSM layers from
     library" did not say whether they were there or still coming (a user, 2026-09-26)."""
