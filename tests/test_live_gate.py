@@ -283,6 +283,26 @@ class PluginTest(unittest.TestCase):
         self.assertLess(took["108:0"], 3.0)
         self.assertIn("stopped answering", logged[-1])
 
+    def test_a_streamer_that_stops_while_xplane_waits(self):
+        """Its port closes (it stopped on an error, or Ctrl-C): X-Plane goes on at once, and
+        Log.txt says why."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", self.port))
+
+        def streamer():
+            sock.recvfrom(100)  # LOAD
+            _, addr = sock.recvfrom(100)
+            sock.sendto(b"LIVE1 WAIT 50", addr)
+            sock.close()  # then gone
+
+        threading.Thread(target=streamer, daemon=True).start()
+        try:
+            took, logged = self.xplane(45.0, 6.0, "102:0", "108:0")
+        finally:
+            sock.close()
+        self.assertLess(took["108:0"], 0.9)  # not SILENT_S later
+        self.assertIn("the streamer stopped: X-Plane goes on", logged[-1])
+
     def test_no_position_while_xplane_starts(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.bind(("127.0.0.1", self.port))

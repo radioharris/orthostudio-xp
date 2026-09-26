@@ -4,7 +4,10 @@
 
 import os
 import tempfile
+import threading
+import time
 import unittest
+from concurrent.futures import Future
 from pathlib import Path
 
 from live_helpers import file_extents, make_source
@@ -172,6 +175,33 @@ class StreamerTest(unittest.TestCase):
             Fix(*away, gs_ms=200.0, trk_deg=180.0, cam_lat=lat, cam_lon=lon), x_plane_there=False
         )
         self.assertEqual(with_cam[f"{NAMES[1]}.dds"][1], 0)
+
+    def test_the_status_line_while_textures_are_finished(self):
+        """The status line and the save read every texture built while the builder adds more: a
+        loop over the live map fails when it grows ("dictionary changed size during iteration"),
+        which stopped the streamer at LFLL, 17 s into a start, and X-Plane went on half-built."""
+        s = self.streamer()
+        s.built = {f"old{i}.dds": 4 for i in range(5000)}
+        done: Future = Future()
+        done.set_result(None)
+        stop = threading.Event()
+
+        def builder():
+            i = 0
+            while not stop.is_set():
+                s._finished(done, f"new{i}.dds", 4)
+                i += 1
+                time.sleep(0.001)
+
+        thread = threading.Thread(target=builder)
+        thread.start()
+        try:
+            for _ in range(20):
+                s.status()
+                s.save()
+        finally:
+            stop.set()
+            thread.join()
 
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:

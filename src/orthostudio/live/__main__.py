@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import time
+import traceback
 from pathlib import Path
 from typing import Annotated
 
@@ -272,6 +273,9 @@ def stream(
     )
     try:
         run(streamer, xp, fix, gate=gate, start_name=start, guess_last=not fresh, log=typer.echo)
+    except Exception as e:  # said now, not once X-Plane has quit and the pack could go
+        typer.echo("the streamer stopped:\n" + "".join(traceback.format_exception(e)), err=True)
+        raise typer.Exit(1) from e
     finally:
         xp.close()
         if gate is not None:

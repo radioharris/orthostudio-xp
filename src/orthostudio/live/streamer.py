@@ -327,8 +327,9 @@ class Streamer:
     def _finished(self, fut: Future, name: str, level: int) -> None:
         try:
             fut.result()
-            self.built[name] = level
-            self.done[level] += 1
+            with self.lock:  # the status line and the save copy them whole, from the main thread
+                self.built[name] = level
+                self.done[level] += 1
         except Exception as e:  # the planner queues it again
             self.errors += 1
             self.log(f"  failed to build {name} at level {level}: {e}")
@@ -493,11 +494,12 @@ class Streamer:
             except OSError as e:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
-            if level >= NEUTRAL_LEVEL:
-                self.built.pop(name, None)
-                self.seen.pop(name, None)
-            else:
-                self.built[name] = level
+            with self.lock:
+                if level >= NEUTRAL_LEVEL:
+                    self.built.pop(name, None)
+                    self.seen.pop(name, None)
+                else:
+                    self.built[name] = level
             self.evicted += 1
         if picks:
             self.log(
@@ -520,9 +522,12 @@ class Streamer:
         self.save()
 
     def save(self) -> None:
+        with self.lock:  # the builder changes both meanwhile
+            textures = dict(self.built)
+            seen = {n: round(t) for n, t in self.seen.items() if n in textures}
         meta = load_built(self.pack_dir)
-        meta["textures"] = dict(self.built)
-        meta["seen"] = {n: round(t) for n, t in self.seen.items() if n in self.built}
+        meta["textures"] = textures
+        meta["seen"] = seen
         meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
@@ -533,8 +538,10 @@ class Streamer:
             queued = Counter(level for _, level in self.queue.values())
             urgent = sum(1 for u, _ in self.queue.values() if u <= 0)
             flying = len(self.in_flight)
+            built = dict(self.built)  # a copy: the builder adds to it meanwhile
+            done = sorted(self.done.items())
         q = " ".join(f"L{k}:{v}" for k, v in sorted(queued.items())) or "empty"
-        d = " ".join(f"L{k}:{v}" for k, v in sorted(self.done.items())) or "nothing yet"
+        d = " ".join(f"L{k}:{v}" for k, v in done) or "nothing yet"
         dl = self.downloader
         failed = getattr(dl, "failed", 0)
         return (
@@ -544,7 +551,7 @@ class Streamer:
             f"({getattr(dl, 'bytes', 0) / 1e6:.0f} MB), "
             f"{self.from_cache} from cache"
             + (f", {failed} failed" if failed else "")
-            + f" | disk {usage(self.built) / 1e9:.1f}/{self.disk_budget / 1e9:.0f} GB"
+            + f" | disk {usage(built) / 1e9:.1f}/{self.disk_budget / 1e9:.0f} GB"
             + (" | reload pending" if self.reload_pending else "")
         )
 

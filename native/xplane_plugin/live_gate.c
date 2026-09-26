@@ -29,6 +29,8 @@
  *
  * It never holds X-Plane for nothing:
  * - no streamer: nothing answers and X-Plane goes on;
+ * - the streamer stops while X-Plane waits (an error, Ctrl-C): its port closes, X-Plane goes on at
+ *   once, and Log.txt says so;
  * - a livery change in flight: the streamer says go at once;
  * - after MAX_HOLD_S: X-Plane goes on anyway.
  *
@@ -219,7 +221,10 @@ static void hold(const char *at) {
             }
             return;
         }
-        if (r == -2) break; /* no streamer */
+        if (r == -2) { /* nothing listens: no streamer, or it stopped */
+            if (answered > 0) say("the streamer stopped: X-Plane goes on");
+            break;
+        }
         if (r == 0) {
             answered = t;
             if (!told) {

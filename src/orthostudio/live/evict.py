@@ -14,6 +14,7 @@ nothing to download), and if that is not enough, 256 px ones back to the neutral
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import cache
 
 from . import dds
 from .region import NEUTRAL_LEVEL
@@ -22,6 +23,7 @@ EVICT_SAFE_KM = 300.0
 TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction at every step
 
 
+@cache
 def texture_bytes(level: int) -> int:
     """Disk a texture built from ``level`` takes (a neutral clone shares the template's blocks)."""
     if level >= NEUTRAL_LEVEL:
