@@ -2300,25 +2300,25 @@ export function createPlanMap(ctx) {
     if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
     if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
     if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
+    if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
-    // The map's own boxes side by side, and the zones' levels after one word: each set on a line
-    // of its own, going on to the next when the legend is narrow (a user found it took much room,
-    // 2026-09-26).
-    const boxes = map ? h("ul", { class: "legend-row" }, bordersToggle(), airportsToggle(), streetToggle()) : null;
-    const zones = levels.length
-      ? h("ul", { class: "legend-row legend-zones" },
-        h("li", { class: "legend-lead", title: t("map.legend_zones") }, t("map.legend_zones_short")),
-        levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl))))
-      : null;
-    clear(box).append(view, tilesTable(), h("ul", null, items), ...[boxes, zones].filter(Boolean));
+    // Under the tiles' table, a line for each mark, as before it came (the same user, 2026-09-26:
+    // set side by side, the map's boxes went on over two lines and read as a jumble).
+    clear(box).append(view, tilesTable(), h("ul", null, items));
     refocus();
+    if (!levels.length) return;
+    box.append(
+      h("p", { class: "legend-title" }, t("map.legend_zones")),
+      h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))),
+    );
   }
 
   /**
    * The tiles' four marks as a table (a user, 2026-09-26): a row for each program, a column for
    * X-Plane having its tiles or not. OrthoStudio XP's row is always there, Ortho4XP's when the map
    * has its tiles; the second column only when there are tiles not in X-Plane, each cell there the
-   * box that hides them, each program its own. Four lines of the list took the room of two more.
+   * box that hides them, each program its own. Four lines of the list took the room of two more,
+   * and the words over the columns are short ("In XP", "Not in XP"), the whole ones on hover.
    */
   function tilesTable() {
     const ortho4xp = ortho4xpTiles();
@@ -2329,7 +2329,11 @@ export function createPlanMap(ctx) {
       { by: "ortho4xp", name: t("map.legend_o4"), inside: installed.some((name) => ortho4xp.has(name)), outside: built.some((name) => ortho4xp.has(name)) },
     ].filter((p) => p.inside || p.outside);
     const outside = programs.some((p) => p.outside);
-    const head = h("tr", null, h("td", null), h("th", { scope: "col" }, t("map.legend_in_xplane")), outside ? h("th", { scope: "col" }, t("map.legend_not_in_xplane")) : null);
+    // Short words over the columns, the whole ones on hover: "Pas dans X-Plane" made the legend
+    // wider than the view line above it (the same user, 2026-09-26).
+    const head = h("tr", null, h("td", null),
+      h("th", { scope: "col", title: t("map.legend_in_xplane") }, t("map.legend_in_xp")),
+      outside ? h("th", { scope: "col", title: t("map.legend_not_in_xplane") }, t("map.legend_not_in_xp")) : null);
     const mark = (by) => (by === "ortho4xp"
       ? h("span", { class: "legend-swatch legend-ortho4xp", role: "img", "aria-label": t("map.legend_ortho4xp") })
       : h("span", { class: "legend-swatch legend-installed", role: "img", "aria-label": t("map.legend_installed") }));

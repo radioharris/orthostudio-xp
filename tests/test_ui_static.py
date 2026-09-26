@@ -3671,8 +3671,9 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     assert "inside: installed.some((name) => ortho4xp.has(name))," in legend
     assert "outside: built.some((name) => ortho4xp.has(name))" in legend
     assert ".filter((p) => p.inside || p.outside);" in legend
-    assert 'h("th", { scope: "col" }, t("map.legend_in_xplane"))' in legend
-    assert 'outside ? h("th", { scope: "col" }, t("map.legend_not_in_xplane")) : null' in legend
+    # short words over the columns, the whole ones on hover (the same user, 2026-09-26)
+    assert 'title: t("map.legend_in_xplane") }, t("map.legend_in_xp"))' in legend
+    assert 'title: t("map.legend_not_in_xplane") }, t("map.legend_not_in_xp"))' in legend
     assert '"aria-label": t("map.legend_ortho4xp")' in legend
     assert '"aria-label": own.label,' in legend, "the box says what it hides"
     assert 'const BUILT_ORTHO4XP_KEY = "osxp.mapBuiltOrtho4xp";' in map_js
@@ -3701,6 +3702,14 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
         "Ortho4XP, not in X-Plane",
     ]
     assert "map.built_ortho4xp_hint" in tables["fr"] and "map.built_ortho4xp_hint" in tables["en"]
+    assert [tables["fr"]["map.legend_in_xp"], tables["fr"]["map.legend_not_in_xp"]] == [
+        "Dans XP",
+        "Hors XP",
+    ]
+    assert [tables["en"]["map.legend_in_xp"], tables["en"]["map.legend_not_in_xp"]] == [
+        "In XP",
+        "Not in XP",
+    ]
 
 
 def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
@@ -3710,8 +3719,8 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     under it, and the choice is remembered. And a redraw, on every zoom, gives the focus back to
     the control that had it: it used to go to the first checkbox, whichever had it."""
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
-    # every line starts at the legend's edge since the boxes left the list (2026-09-26)
-    assert not any("::before" in selector for selector in rules if ".map-legend li" in selector)
+    spacer = rules[".map-legend li:not(.legend-toggle)::before"]
+    assert 'content: "";' in spacer and "width: 13px;" in spacer
     assert "width: 13px; height: 13px;" in rules[".map-legend .legend-toggle input"]
     assert "margin: 0 2px;" in rules[".legend-airport"], "a 10 px ring in a 14 px place"
     # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
@@ -3747,15 +3756,10 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert '{ keep: "built-ortho4xp", swatch: "legend-built-ortho4xp",' in map_js
     assert '"data-keep": own.keep,' in map_js
     assert legend.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
-    # the map's boxes side by side and the zones after one word, each set going on to the next
-    # line when the legend is narrow (a user found the legend took much room, 2026-09-26)
-    assert (
-        'h("ul", { class: "legend-row" }, bordersToggle(), airportsToggle(), streetToggle())'
-        in legend
-    )
-    assert 'h("ul", { class: "legend-row legend-zones" },' in legend
-    row_rule = rules[".map-legend ul.legend-row"]
-    assert "flex-direction: row;" in row_rule and "flex-wrap: wrap;" in row_rule
+    # under the tiles' table a line for each mark: set side by side, the map's boxes went on
+    # over two lines and read as a jumble (the same user, 2026-09-26)
+    assert "if (map) items.push(bordersToggle(), airportsToggle(), streetToggle());" in legend
+    assert "legend-row" not in map_js
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
