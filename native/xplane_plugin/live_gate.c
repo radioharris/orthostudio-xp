@@ -275,8 +275,30 @@ static void hold(const char *at) {
     live_panel_hide();
 }
 
+#define FRAME_GAP_S 5.0 /* longer between two frames: X-Plane loaded or was held, no stutter */
+static double frame_last = 0.0, frame_max = 0.0; /* the longest frame of the second */
+static int frames = 0;
+
+/* Every frame (it returns -1): the time since the one before, the longest of each second kept for
+   the ask, which tells the streamer: X-Plane's stutters, next to what Live was doing (a user saw
+   some while Live built, 2026-09-28). */
+static float every_frame(float since_call, float since_loop, int counter, void *refcon) {
+    double t = now(), gap = frame_last > 0.0 ? t - frame_last : 0.0;
+    (void)since_call;
+    (void)since_loop;
+    (void)counter;
+    (void)refcon;
+    frame_last = t;
+    if (gap > 0.0 && gap < FRAME_GAP_S) {
+        if (gap > frame_max) frame_max = gap;
+        frames++;
+    }
+    return -1.0f;
+}
+
 /* Every second of a flight: whether the streamer has a notice ("LIVE1 NOTE id text"), and whether
-   its cross was clicked. The answers to the last ask are read without waiting. */
+   its cross was clicked. The answers to the last ask are read without waiting. The ask says the
+   second's frames: "LIVE1 ASK max=123 n=45", the longest in ms and how many. */
 static float every_second(float since_call, float since_loop, int counter, void *refcon) {
     char buf[256];
     ssize_t n;
@@ -304,7 +326,10 @@ static float every_second(float since_call, float since_loop, int counter, void 
         live_note_show(note, french);
     else
         live_note_hide();
-    send(sock, "LIVE1 ASK", 9, 0);
+    snprintf(buf, sizeof buf, "LIVE1 ASK max=%d n=%d", (int)(frame_max * 1000.0 + 0.5), frames);
+    frame_max = 0.0;
+    frames = 0;
+    send(sock, buf, strlen(buf), 0);
     return NOTE_EVERY_S;
 }
 
@@ -323,11 +348,13 @@ PLUGIN_API int XPluginEnable(void) {
     sock = open_socket();
     if (sock < 0) say("no UDP socket: X-Plane will not wait for the ortho");
     XPLMRegisterFlightLoopCallback(every_second, NOTE_EVERY_S, NULL);
+    XPLMRegisterFlightLoopCallback(every_frame, -1.0f, NULL);
     return 1;
 }
 
 PLUGIN_API void XPluginDisable(void) {
     XPLMUnregisterFlightLoopCallback(every_second, NULL);
+    XPLMUnregisterFlightLoopCallback(every_frame, NULL);
     live_note_hide();
     if (sock >= 0) close(sock);
     sock = -1;

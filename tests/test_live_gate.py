@@ -8,6 +8,7 @@ gate over UDP as it does in X-Plane.
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -150,11 +151,14 @@ class GateTest(unittest.TestCase):
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
                 p.connect(("127.0.0.1", self.port))
                 p.settimeout(2)
-                p.send(b"LIVE1 ASK")
+                p.send(b"LIVE1 ASK max=150 n=40")  # the longest frame of the second, 150 ms
                 p.send(b"LIVE1 RELOAD")  # an old plugin's button: nothing now
                 time.sleep(0.1)
                 got = gate.requests()
                 self.assertEqual([k for k, *_ in got], ["ASK"])
+                self.assertEqual(got[0][4], "max=150 n=40")
+                self.assertEqual(streamer_module.longest_frame(got[0][4]), 150)
+                self.assertIsNone(streamer_module.longest_frame(""))  # an older plugin
                 addr = got[0][3]
                 gate.note(addr)
                 self.assertEqual(p.recv(100), b"LIVE1 NONE lang=en")
@@ -349,7 +353,7 @@ class PluginTest(unittest.TestCase):
                 except OSError:
                     return
                 heard.append(data.decode())
-                if data == b"LIVE1 ASK":
+                if data.startswith(b"LIVE1 ASK"):
                     sock.sendto(note, addr)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -370,7 +374,10 @@ class PluginTest(unittest.TestCase):
                 "loop",
             )
             sock.close()
-        self.assertGreaterEqual(heard.count("LIVE1 ASK"), 3)
+        asks = [line for line in heard if line.startswith("LIVE1 ASK")]
+        self.assertGreaterEqual(len(asks), 3)
+        # each ask says the second's frames, the longest in ms: what Live logs as a stutter
+        self.assertTrue(all(re.fullmatch(r"LIVE1 ASK max=\d+ n=\d+", a) for a in asks), asks)
         said = [line for line in logged if "no mesh here" in line]
         self.assertEqual(
             said,
@@ -539,6 +546,23 @@ class BuildTest(unittest.TestCase):
                 self.assertFalse(plugin.install(Path(tmp), log=said.append))
             self.assertIn("will not wait", said[0])
             self.assertFalse(plugin.installed(Path(tmp)))
+
+
+class EncodersTest(unittest.TestCase):
+    def test_in_flight_the_encoders_leave_xplane_its_cores(self):
+        """All the workers while X-Plane waits on its loading screen; four while it flies."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            s = Streamer(
+                pack, cache, lambda on_piece: None, finest_quality=0, workers=12, log=lambda _: None
+            )
+            self.assertEqual(s.encode_cap(), 12)  # waiting: all of them
+            s.flying = True
+            self.assertEqual(s.encode_cap(), streamer_module.FLIGHT_ENCODES)
+            cache.close()
 
 
 class ReachTest(unittest.TestCase):

@@ -32,6 +32,7 @@ up: those distances are in three dimensions. At a start, X-Plane has read nothin
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -87,6 +88,8 @@ RELOAD_COMMAND = "sim/operation/reload_scenery"
 # reload does not read again the textures it holds (2026-09-27).
 START_MODES = ("full", "around", "normal")
 EVICT_EVERY_S = 30.0
+FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers while it waits
+STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
 EVICT_BATCH = 500  # textures made coarser per round, so that the builder is never held up long
 FRESH_S = (
     2.0  # X-Plane's position is live if it came this recently: X-Plane is running, not loading
@@ -226,6 +229,9 @@ class Streamer:
             raise ValueError(f"start_mode {start_mode!r}: one of {', '.join(START_MODES)}")
         self.start_mode = start_mode
         self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
+        # X-Plane flies (not waiting on a start, not away): the encoders leave it its cores
+        self.flying = False
+        self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # the textures whose file is 8192 px: each built from its 8192 px level
@@ -350,6 +356,11 @@ class Streamer:
         """The sharpest level of a texture's file as the pack lays it out (0: 4096 px, 1: 2048)."""
         tex = parse_texture_name(name)
         return self.zooms.start_top(tex.zoom) if tex is not None else 0
+
+    def encode_cap(self) -> int:
+        """Textures encoded at once: all the workers while X-Plane waits on a start or is away,
+        FLIGHT_ENCODES while it flies, its cores left to it."""
+        return min(self.workers, FLIGHT_ENCODES) if self.flying else self.workers
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file now: its start size, -1 (8192 px) once grown."""
@@ -621,6 +632,7 @@ class Streamer:
         requested: set[Key] = set()
         asked_at: dict[Key, float] = {}  # when each piece awaited was asked for
         encoding: dict[Future, _Job] = {}
+        ready: list[_Job] = []  # pieces all in, waiting for an encoder (submit_ready)
         to_cache: list[tuple[Key, int, bytes | None]] = []
 
         def known(keys: list[Key]) -> dict[Key, bytes | None]:
@@ -647,6 +659,17 @@ class Streamer:
                 job.stage = "parents"
                 ask(job, job.parents_missing)
             if job.stage == "parents" and not job.parents_missing:
+                job.stage = "ready"
+                ready.append(job)
+                submit_ready(pool)
+
+        def submit_ready(pool) -> None:
+            """The most urgent textures ready to encode, as many as the encoders may take now:
+            all while X-Plane waits, FLIGHT_ENCODES while it flies."""
+            cap = self.encode_cap()
+            while ready and len(encoding) < cap:
+                job = min(ready, key=lambda j: j.urgency)
+                ready.remove(job)
                 job.stage = "encoding"
                 top = min(job.level, self.top_of(job.name))  # 8192 px for its level -1: it grows
                 fut = pool.submit(
@@ -717,7 +740,7 @@ class Streamer:
         ) as pool:
             try:
                 while not self.stop.is_set() or encoding:
-                    if not self.stop.is_set() and len(encoding) < self.workers * 4:
+                    if not self.stop.is_set() and len(encoding) + len(ready) < self.workers * 4:
                         room = WINDOW_PIECES - len(requested)
                         if room > 0:
                             for name, level, urgency in self.take_batch(room):
@@ -740,6 +763,8 @@ class Streamer:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)
                         self._finished(fut, job.name, job.level, bool(job.patched))
+                    submit_ready(pool)
+                    self.encoding_now = len(encoding)
                     self.pieces_pending = len(requested)
                     if not requested:  # nothing awaited: nothing stalled
                         self.last_progress = time.monotonic()
@@ -950,6 +975,16 @@ class Arrival:
         return self.how == "from" or (self.how == "click" and now - self.since < LOADING_S)
 
 
+def longest_frame(said: str) -> int | None:
+    """The longest frame of the second the plugin's ask says (``max=123 n=45``: 123 ms, 45 frames),
+    None when it says none (an older plugin)."""
+    for word in said.split():
+        if word.startswith("max="):
+            with contextlib.suppress(ValueError):
+                return int(word[4:])
+    return None
+
+
 def needs_reload(arrival: Arrival, xplane_started: float | None) -> bool:
     """Whether X-Plane, now there, may have read textures of the start before they were built."""
     if arrival.released:
@@ -1128,6 +1163,8 @@ def run(
                 raise SystemExit(f"the streamer stopped: {streamer.crashed!r}")
             now = time.time()
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
+            # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)
+            streamer.flying = "lat" in values and now - last_packet < FRESH_S and arrival is None
             if gate is not None:
                 clicked = gate.new_start()
                 if clicked is not None:
@@ -1135,6 +1172,12 @@ def run(
                 running = "lat" in values and now - last_packet < FRESH_S
                 for kind, lat, lon, addr, why in gate.requests():
                     if kind == "ASK":  # the plugin, every second of a flight: a notice for it?
+                        frame = longest_frame(why)  # and its longest frame that second
+                        if frame is not None and frame >= STUTTER_MS:
+                            log(
+                                f"  X-Plane stuttered: a frame of {frame} ms; Live was encoding "
+                                f"{streamer.encoding_now} textures, downloading {mbs:.1f} MB/s"
+                            )
                         notice, lang = streamer.notice, language()
                         note = plugin_note(notice, lang) if notice else None
                         gate.note(addr, note, notice, lang=lang)

@@ -27,16 +27,27 @@ void XPLMDebugString(const char *s) {
 }
 
 typedef float (*XPLMFlightLoop_f)(float, float, int, void *);
-static XPLMFlightLoop_f loop_cb;
-static void *loop_ref;
+#define LOOPS 4 /* the plugin's flight loops: every second, every frame */
+static XPLMFlightLoop_f loop_cbs[LOOPS];
+static void *loop_refs[LOOPS];
 
 void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f f, float interval, void *ref) {
-    loop_cb = f;
-    loop_ref = ref;
+    int i;
+    (void)interval;
+    for (i = 0; i < LOOPS; i++) {
+        if (!loop_cbs[i]) {
+            loop_cbs[i] = f;
+            loop_refs[i] = ref;
+            return;
+        }
+    }
 }
 
 void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f f, void *ref) {
-    if (loop_cb == f) loop_cb = NULL;
+    int i;
+    (void)ref;
+    for (i = 0; i < LOOPS; i++)
+        if (loop_cbs[i] == f) loop_cbs[i] = NULL;
 }
 
 #ifndef NO_MAIN
@@ -62,8 +73,14 @@ int main(int argc, char **argv) {
         int msg, param;
         struct timespec a, b;
         if (strcmp(argv[i], "loop") == 0) {
-            if (loop_cb) loop_cb(1.0f, 1.0f, i, loop_ref);
-            printf("LOOP %s\n", loop_cb ? "called" : "none");
+            int j, called = 0;
+            for (j = 0; j < LOOPS; j++) {
+                if (loop_cbs[j]) {
+                    loop_cbs[j](1.0f, 1.0f, i, loop_refs[j]);
+                    called = 1;
+                }
+            }
+            printf("LOOP %s\n", called ? "called" : "none");
             fflush(stdout);
             continue;
         }

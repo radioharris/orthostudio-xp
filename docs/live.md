@@ -231,6 +231,10 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
   shows the neutral colour where nothing was built, and gets its scenery reloaded once it is.
 - In flight, the plugin asks the streamer every second whether it has a notice for you (no mesh
   under the aircraft: the region to install), and shows it in a small panel with its cross.
+- While X-Plane flies, Live encodes at most four textures at once, at a low priority: X-Plane's
+  threads always go first (a user saw stutters while Live built). While X-Plane waits on its
+  loading screen, every encoder works. The plugin measures X-Plane's frames and says the longest
+  of each second; Live logs a frame of 100 ms or more as a stutter, with what it was doing then.
 - Live asks the imagery source for as many pieces at once as its servers take, as OrthoStudio XP
   measured them: 128 for Bing Maps. A piece that has not come within 10 s is replaced meanwhile by
   the imagery of the zoom below (a slightly blurrier square), so that X-Plane never waits longer

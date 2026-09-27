@@ -41,7 +41,10 @@ TINT_ALPHA = 0.35
 
 def worker_ignores_ctrl_c() -> None:
     """Initializer of the encoding pools: Ctrl-C is for the main process, which winds the pool
-    down."""
+    down. And a lower priority: X-Plane's threads go first, the encoders take the cores left (a
+    user saw stutters in flight while Live built, 2026-09-28)."""
+    with contextlib.suppress(OSError):
+        os.nice(10)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 

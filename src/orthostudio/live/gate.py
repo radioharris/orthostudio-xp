@@ -153,7 +153,7 @@ class Gate:
 
     def requests(self) -> list[tuple[str, float, float, tuple, str]]:
         """The plugin's lines since the last call: (LOAD, HOLD or ASK, lat, lon, where to answer,
-        why); ASK has no position (0, 0)."""
+        why); ASK has no position (0, 0), and its why is what it measured of X-Plane's frames."""
         out: list[tuple[str, float, float, tuple, str]] = []
         while True:
             try:
@@ -161,8 +161,8 @@ class Gate:
             except OSError:  # nothing more (or a stray error): look again next time
                 break
             parts = data.decode("ascii", "replace").split()
-            if parts == ["LIVE1", "ASK"]:
-                out.append((parts[1], 0.0, 0.0, addr, ""))
+            if parts[:2] == ["LIVE1", "ASK"]:  # its frames of the second after: "max=123 n=45"
+                out.append(("ASK", 0.0, 0.0, addr, " ".join(parts[2:])))
             elif len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
                 with contextlib.suppress(ValueError):
                     out.append(
