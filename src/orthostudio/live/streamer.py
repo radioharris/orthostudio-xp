@@ -39,7 +39,7 @@ import queue
 import threading
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -196,6 +196,7 @@ class Streamer:
         reach_km: float = 0.0,
         log: Callable[[str], None] = print,
         start_mode: str = "full",
+        covered: Collection[tuple[int, int]] = (),
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -247,6 +248,9 @@ class Streamer:
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
         self.offer: Offer | None = None  # the reload offered after a start (start_mode "reload")
+        # squares whose ground X-Plane takes from the user's own tiles (orthostudio.live.covered):
+        # a texture only there is never read, and never built
+        self.theirs = self._theirs(set(covered))
         self.lock = threading.Lock()
         self.queue: dict[str, tuple[float, int]] = {}  # name -> (urgency km, level)
         self.in_flight: dict[str, tuple[float, int]] = {}
@@ -260,6 +264,23 @@ class Streamer:
         self._thread: threading.Thread | None = None
 
     # --- planning -----------------------------------------------------------------------------
+
+    def _theirs(self, covered: set[tuple[int, int]]) -> set[str]:
+        """The textures whose every square is in ``covered``: X-Plane draws another pack there. A
+        texture reaching into another square is built, for that square's sake."""
+        out = set()
+        for square in covered:
+            for name, *_ in self.index.by_tile.get(square, ()):
+                tex = parse_texture_name(name)
+                south, west, north, east = tex.bounds
+                squares = {
+                    (lat, lon)
+                    for lat in range(math.floor(south), math.ceil(north))
+                    for lon in range(math.floor(west), math.ceil(east))
+                }
+                if squares <= covered:
+                    out.add(name)
+        return out
 
     def level_of(self, name: str) -> int:
         return self.built.get(name, NEUTRAL_LEVEL)
@@ -324,6 +345,8 @@ class Streamer:
         offer_left = 0
         jobs: dict[str, tuple[float, int]] = {}
         for name, lat, lon, zoom in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
+            if name in self.theirs:  # X-Plane shows the user's own tile there
+                continue
             d_now = haversine_m(fix.lat, fix.lon, lat, lon) / 1000.0
             if d_now > PLACEHOLDER_KM:
                 continue

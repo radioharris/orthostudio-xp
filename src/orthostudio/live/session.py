@@ -86,6 +86,8 @@ class Prepared:
     gate: Any  # orthostudio.live.gate.Gate, or None: X-Plane will not wait
     fix: Any  # orthostudio.live.streamer.Fix to build around at once, or None
     finest: int  # the sharpest level X-Plane reads (0: 4096 px)
+    # {(lat, lon): pack}: squares whose ground X-Plane takes from the user's own tiles
+    covered: dict = field(default_factory=dict)
 
 
 def xplane_dir(explicit: Path | None) -> Path:
@@ -155,6 +157,7 @@ def prepare(options: Options, log: Log) -> Prepared:
 
     Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
     from orthostudio.live import plugin
+    from orthostudio.live.covered import covered_squares
     from orthostudio.live.gate import Gate
     from orthostudio.live.region import (
         LAYOUT_GROWING,
@@ -211,6 +214,14 @@ def prepare(options: Options, log: Log) -> Prepared:
     if options.fresh:
         reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)
+    covered = covered_squares(xp_dir, LINK_NAME)
+    if covered:
+        packs = sorted(set(covered.values()))
+        log(
+            f"your own scenery covers {len(covered)} squares ({', '.join(packs[:3])}"
+            + (f" and {len(packs) - 3} more" if len(packs) > 3 else "")
+            + "): X-Plane shows it there, and Live downloads nothing there"
+        )
     gate = None
     # X-Plane loads plugins at start-up: if it is running, only one already there counts
     if not options.no_plugin and (
@@ -233,7 +244,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         f"X-Plane texture quality: finest level {finest} ({4096 >> finest} px); "
         f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
     )
-    return Prepared(xp_dir, pack_dir, gate, fix, finest)
+    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered)
 
 
 def follow(
@@ -278,6 +289,7 @@ def follow(
                     reach_km=options.camera_reach_km,
                     log=log,
                     start_mode=options.start_mode,
+                    covered=prepared.covered,
                 )
                 log(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "

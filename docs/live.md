@@ -77,6 +77,12 @@ the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. A
 has nothing past its border: there, and wherever it has no imagery, Live takes Bing Maps. Textures
 already built keep their imagery; delete them to build them again from another source.
 
+Your own tiles come first. Where you have built a tile with OrthoStudio XP (or imported one from
+Ortho4XP, or installed another ortho scenery above Live's pack), X-Plane shows it, and Live
+downloads nothing there: at a start from your home airport, X-Plane waits for none of it. Live
+reads X-Plane's list of scenery packs at each start and says in its log which squares it leaves to
+your own; OrthoStudio XP lists the tiles it builds above Live's pack by itself.
+
 The first start prepares the whole region of your AutoOrtho scenery (Europe, for example), once,
 in about 2 minutes, so that X-Plane always finds every file it looks for. It takes almost no disk:
 the files share their content with AutoOrtho's until they are filled in.
