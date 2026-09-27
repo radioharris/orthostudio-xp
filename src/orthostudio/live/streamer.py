@@ -63,6 +63,12 @@ JUMP_KM = 20.0  # a position this far from the last one is a new start: a telepo
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
 STALL_S = 60.0  # pieces awaited this long and none arriving: no internet, X-Plane is let go
+# A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
+# without it, from the zoom below, as a piece that failed, and built again later with it. At a
+# start at LSGG, one piece Bing never sent held X-Plane 20 s, the downloader's four tries.
+STUCK_S = 10.0
+PATCH_RETRY_S = 60.0  # a texture built without such pieces is built again after this, doubled
+PATCH_RETRY_MAX_S = 1800.0  # each time they still do not come, up to this
 LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
@@ -147,6 +153,7 @@ class _Job:
     parents: dict[Key, bytes | None] = field(default_factory=dict)
     parents_missing: set[Key] = field(default_factory=set)
     stage: str = "pieces"
+    patched: set[Key] = field(default_factory=set)  # pieces that did not come: the zoom below's
 
 
 class TextureIndex:
@@ -215,6 +222,10 @@ class Streamer:
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # the textures whose file is 8192 px: each built from its 8192 px level
         self.grown = {n for n in self.meta.get("grown", []) if self.built.get(n) == MIN_LEVEL}
+        # built without pieces that did not come: when to build them again, and how many times
+        self.patchy: dict[str, tuple[float, int]] = {
+            n: (0.0, 0) for n in self.meta.get("patchy", []) if n in self.built
+        }
         self.seen: dict[str, float] = dict(
             self.meta.get("seen", {})
         )  # when a built texture was last in reach
@@ -346,7 +357,11 @@ class Streamer:
                     if offer is not None and self.level_of(name) > level:
                         offer_left += 1
             if self.level_of(name) <= level:
-                continue
+                patch = self.patchy.get(name)
+                if patch is None or patch[0] > now:
+                    continue
+                # built without pieces that did not come: again, as sharp, never waited for
+                level, urgency = self.level_of(name), max(urgency, 1.0)
             jobs[name] = (urgency, level)
         if offer is not None:
             offer.counted(offer_left, sum(1 for u, _ in jobs.values() if u <= 0), self.log)
@@ -489,7 +504,7 @@ class Streamer:
 
     # --- building -----------------------------------------------------------------------------
 
-    def _finished(self, fut: Future, name: str, level: int) -> None:
+    def _finished(self, fut: Future, name: str, level: int, patched: bool = False) -> None:
         try:
             fut.result()
             with self.lock:  # the status line and the save copy them whole, from the main thread
@@ -497,6 +512,12 @@ class Streamer:
                 self.done[level] += 1
                 if level < 0:  # its file is 8192 px now
                     self.grown.add(name)
+                if patched:  # built again later, a little later each time
+                    tries = self.patchy.get(name, (0.0, 0))[1]
+                    wait = min(PATCH_RETRY_MAX_S, PATCH_RETRY_S * 2**tries)
+                    self.patchy[name] = (time.time() + wait, tries + 1)
+                else:
+                    self.patchy.pop(name, None)
         except Exception as e:  # the planner queues it again
             self.errors += 1
             self.log(f"  failed to build {name} at level {level}: {e}")
@@ -526,6 +547,7 @@ class Streamer:
         jobs: dict[str, _Job] = {}
         waiting: dict[Key, set[str]] = defaultdict(set)
         requested: set[Key] = set()
+        asked_at: dict[Key, float] = {}  # when each piece awaited was asked for
         encoding: dict[Future, _Job] = {}
         to_cache: list[tuple[Key, int, bytes | None]] = []
 
@@ -541,6 +563,7 @@ class Streamer:
                 waiting[k].add(job.name)
                 if k not in requested:
                     requested.add(k)
+                    asked_at[k] = time.monotonic()
                     self.downloader.submit(k, job.urgency)
 
         def advance(job: _Job, pool) -> None:
@@ -570,21 +593,50 @@ class Streamer:
 
         def answer(key: Key, status: int, body: bytes | None, pool) -> None:
             requested.discard(key)
+            asked_at.pop(key, None)
             value = body if status == IMAGE else None
-            if status in (IMAGE, NO_IMAGERY):
+            failed = status not in (IMAGE, NO_IMAGERY)  # every try failed: not "no imagery here"
+            if not failed:
                 to_cache.append((key, status, value))
                 self.last_progress = time.monotonic()
             for name in waiting.pop(key, ()):
                 job = jobs.get(name)
-                if job is None:
-                    continue
-                if key in job.missing:
-                    job.missing.discard(key)
-                    job.pieces[key] = value
-                if key in job.parents_missing:
-                    job.parents_missing.discard(key)
-                    job.parents[key] = value
-                advance(job, pool)
+                if job is not None:
+                    without(job, key, value, failed, pool)
+
+        def without(job: _Job, key: Key, value: bytes | None, failed: bool, pool) -> None:
+            """The piece's answer to the job, or its absence (``failed``: built again later)."""
+            if key in job.missing:
+                job.missing.discard(key)
+                job.pieces[key] = value
+            if key in job.parents_missing:
+                job.parents_missing.discard(key)
+                job.parents[key] = value
+            if failed:
+                job.patched.add(key)
+            advance(job, pool)
+
+        def give_up_stuck(pool) -> None:
+            """Pieces awaited more than STUCK_S by a texture X-Plane waits for: it is built without
+            them, from the zoom below. The downloader goes on, and what it brings is cached for
+            the texture's next build."""
+            now = time.monotonic()
+            stuck = [k for k, t in asked_at.items() if now - t > STUCK_S]
+            if not stuck:
+                return
+            with self.lock:
+                urgent = {n for n, (u, _) in self.in_flight.items() if u <= 0}
+            for key in stuck:
+                for name in [n for n in waiting.get(key, ()) if n in urgent]:
+                    waiting[key].discard(name)
+                    job = jobs.get(name)
+                    if job is not None and not job.patched:
+                        self.log(
+                            f"  a piece of {name} has not come for {STUCK_S:.0f} s: built from "
+                            f"the zoom below meanwhile, and again once it comes"
+                        )
+                    if job is not None:
+                        without(job, key, None, True, pool)
 
         last_flush = last_evict = time.monotonic()
         with ProcessPoolExecutor(
@@ -610,10 +662,11 @@ class Streamer:
                             answer(*answers.get_nowait(), pool)
                     except queue.Empty:
                         pass
+                    give_up_stuck(pool)
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)
-                        self._finished(fut, job.name, job.level)
+                        self._finished(fut, job.name, job.level, bool(job.patched))
                     self.pieces_pending = len(requested)
                     if not requested:  # nothing awaited: nothing stalled
                         self.last_progress = time.monotonic()
@@ -678,6 +731,7 @@ class Streamer:
                 continue
             with self.lock:
                 self.grown.discard(name)
+                self.patchy.pop(name, None)
                 if level >= NEUTRAL_LEVEL:
                     self.built.pop(name, None)
                     self.seen.pop(name, None)
@@ -709,10 +763,12 @@ class Streamer:
             textures = dict(self.built)
             seen = {n: round(t) for n, t in self.seen.items() if n in textures}
             grown = sorted(self.grown)
+            patchy = sorted(n for n in self.patchy if n in textures)
         meta = load_built(self.pack_dir)
         meta["textures"] = textures
         meta["seen"] = seen
         meta["grown"] = grown
+        meta["patchy"] = patchy
         meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))

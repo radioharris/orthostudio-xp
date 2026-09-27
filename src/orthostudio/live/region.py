@@ -331,7 +331,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         if path.exists():
             replace_with_clone(str(ensure_neutral(pack_dir, top)), str(path))
     if meta:
-        meta["textures"], meta["seen"], meta["grown"] = {}, {}, []
+        meta["textures"], meta["seen"], meta["grown"], meta["patchy"] = {}, {}, [], []
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
         os.replace(tmp, pack_dir / MARKER)

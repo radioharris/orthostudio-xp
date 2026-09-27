@@ -238,6 +238,111 @@ class NoHeadOfLineTest(unittest.TestCase):
         self.assertEqual(made[0].asked.count(slow_piece), 1)
 
 
+class FailingDownloader(FakeDownloader):
+    """Pieces in ``fail`` fail every try, once each (FAILED), then come as any."""
+
+    def __init__(self, on_piece, fail=()):
+        super().__init__(on_piece)
+        self.fail = set(fail)
+
+    def submit(self, key, priority):
+        if key in self.fail:
+            self.fail.discard(key)
+            self.asked.append(key)
+            self.on_piece(key, 3, None)  # orthostudio.live.downloader.FAILED
+            return
+        super().submit(key, priority)
+
+
+@unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
+class MissingPieceTest(unittest.TestCase):
+    """A piece that does not come: the texture is built without it, from the zoom below, and
+    built again later with it. X-Plane waits for no piece more than STUCK_S (a start at LSGG waited
+    20 s for one)."""
+
+    def streamer(self, root: Path, factory) -> Streamer:
+        pack = root / "stream_pack"
+        setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+        return Streamer(
+            pack,
+            ChunkCache(root / "c.sqlite"),
+            factory,
+            finest_quality=1,
+            workers=2,
+            log=lambda _: None,
+        )
+
+    def wait(self, test, timeout=30.0):
+        end = time.time() + timeout
+        while not test() and time.time() < end:
+            time.sleep(0.05)
+        return test()
+
+    def test_a_stuck_piece_while_xplane_waits(self):
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        tex = parse_texture_name(f"{NAMES[0]}.dds")
+        stuck = piece_keys(tex, 1)[0]
+        name = f"{NAMES[0]}.dds"
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(streamer_module, "STUCK_S", 0.5),
+            mock.patch.object(streamer_module, "PATCH_RETRY_S", 1.0),
+        ):
+            s = self.streamer(Path(tmp), lambda on: FakeDownloader(on, slow=[stuck], delay=3.0))
+            jobs = s.plan(Fix(*tex.center), x_plane_there=False, starting=True)
+            self.assertLessEqual(jobs[name][0], 0)  # what X-Plane waits for
+            t0 = time.time()
+            s.start()
+            self.assertTrue(self.wait(lambda: name in s.built))
+            self.assertLess(time.time() - t0, 2.5)  # not the 3 s the piece takes
+            self.assertIn(name, s.patchy)
+            self.assertEqual(s.urgent_left(), 0)  # X-Plane goes on
+            time.sleep(3.0 - (time.time() - t0) + 0.2)  # the piece comes, into the cache
+            self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
+            again = s.plan(Fix(*tex.center), x_plane_there=False)
+            self.assertEqual(again[name], (1.0, 1))  # the same level, never waited for
+            self.assertTrue(self.wait(lambda: name not in s.patchy))
+            s.close()
+            s.cache.close()
+            meta = json.loads((s.pack_dir / "_live" / "ortho.json").read_text())
+            self.assertEqual(meta["patchy"], [])
+
+    def test_a_piece_that_failed_is_asked_again_later(self):
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        tex = parse_texture_name(f"{NAMES[0]}.dds")
+        failing = piece_keys(tex, 1)[0]
+        name = f"{NAMES[0]}.dds"
+        made = []
+
+        def factory(on_piece):
+            made.append(FailingDownloader(on_piece, fail=[failing]))
+            return made[-1]
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(streamer_module, "PATCH_RETRY_S", 0.5),
+        ):
+            s = self.streamer(Path(tmp), factory)
+            s.plan(Fix(*tex.center), x_plane_there=False, starting=True)
+            s.start()
+            self.assertTrue(self.wait(lambda: name in s.patchy))
+            s.save()
+            meta = json.loads((s.pack_dir / "_live" / "ortho.json").read_text())
+            self.assertEqual(meta["patchy"], [name])  # remembered, should Live stop now
+            self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
+            s.plan(Fix(*tex.center), x_plane_there=False)
+            self.assertTrue(self.wait(lambda: name not in s.patchy))
+            self.assertEqual(made[0].asked.count(failing), 2)  # failed, then asked again
+            s.close()
+            s.cache.close()
+
+
 class _Server:
     """A local tile server: an image, no imagery (404), a 429 then an image, a slow image."""
 

@@ -115,7 +115,9 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
 - In flight, the plugin asks the streamer every second whether a reload of the scenery is offered
   (the "then reload" start), and shows its panel when it is.
 - Live asks the imagery source for as many pieces at once as its servers take, as OrthoStudio XP
-  measured them: 128 for Bing Maps.
+  measured them: 128 for Bing Maps. A piece that has not come within 10 s is replaced meanwhile by
+  the imagery of the zoom below (a slightly blurrier square), so that X-Plane never waits longer
+  for it; Live asks for it again later and builds the texture again once it comes.
 
 Without the plugin (`--no-plugin`), X-Plane does not wait. Where a texture is not built yet, it shows
 a plain placeholder colour (never black). Once everything it shows is built, OrthoStudio XP Live asks it
