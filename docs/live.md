@@ -46,29 +46,35 @@ near the ground only (within about 6 km at ZL17, 1.5 km at ZL19); a lower one is
 start of Live, X-Plane closed: Live puts every texture at its new size, about a minute, keeping
 what it built and downloading nothing.
 
-When a flight starts, with ZL17 or ZL19, a setting says at which size X-Plane waits for the
-textures of the start on its loading screen. X-Plane reads a texture's size each time it wants it
-sharper, but never reads again what it already has: what it loads at 4096 px while the flight
-loads, within about 10 km of the start (where it reads a texture's 4096 px), stays 4096 px during
-the flight, unless the scenery is reloaded. So the choice is between waiting longer and a sharper
-start:
+When a flight starts, with ZL17 or ZL19, a setting says what X-Plane waits for in 8192 px on its
+loading screen. It matters because X-Plane keeps the size of a texture it has read, and reads it
+again only to take a larger one:
 
-- **Full resolution**: X-Plane waits until the start is in 8192 px, as far as an external view
-  goes (25 km). Sharp from the first second, and the longest wait: about two and a half times
-  Normal's (at Lyon, 141,000 pieces of imagery against 54,000).
-- **Normal, and 8192 px around the aircraft** (recommended): the start in 4096 px, and 8192 px for
-  the few textures right around the aircraft (8 at Lyon): about 15 % longer than Normal. The rest
-  of the start, within about 10 km, stays 4096 px during this flight.
-- **Normal resolution**: the start in 4096 px only, the shortest wait. The start, within about
-  10 km, stays 4096 px during this flight.
+- a texture it reads at 4096 px while the flight loads, near the aircraft, stays 4096 px for the
+  whole flight, even if its file becomes 8192 px afterwards: X-Plane does not look again, like a
+  picture on a web page you do not reload;
+- a texture it reads small, farther away, is read again as you come closer, and by then Live has
+  made it 8192 px.
+
+The four choices:
+
+- **Full resolution**: the whole start in 8192 px, even far from the aircraft, wherever an
+  external view can go (25 km). The longest wait: about two and a half times Normal's (at Lyon,
+  141,000 pieces of imagery against 54,000).
+- **Normal, and 8192 px around the aircraft** (recommended): everything X-Plane would read at
+  4096 px while the flight loads is 8192 px instead, about 10 km around the aircraft and 3 km for
+  the airport's textures (26 textures at Lyon), so nothing around you stays 4096 px. About 40 to
+  50 % longer than Normal (74,000 pieces at Lyon).
+- **Normal resolution**: 4096 px only, the shortest wait. Around the start, over about 10 km, the
+  textures stay 4096 px for this flight.
 - **Normal, then reload in 8192 px**, as XPME's "load in normal resolution, then high": as Normal;
   then Live builds the start in 8192 px, as Full resolution does, and once it is built, a panel
   over X-Plane (and a button in the Live window) offers to reload the scenery. X-Plane shows
   "reload objects & textures" for a few seconds, then the start in 8192 px. The offer lasts while
   the aircraft stays within 10 km of its start.
 
-Beyond the start, all four are the same: the textures ahead of the aircraft become 8192 px before
-you come near them, with nothing to reload.
+Beyond the start, all four do the same: Live makes the textures ahead of the aircraft 8192 px
+before X-Plane reads them up close, with nothing to reload.
 
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
 the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. A country's source

@@ -68,7 +68,8 @@ WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
 # What X-Plane waits for at a start, where textures grow to 8192 px:
 # - full: every 8192 px texture of the start, as far as the camera may go (the longest wait);
-# - around: 4096 px, and 8192 px right around the aircraft;
+# - around: 8192 px wherever X-Plane reads 4096 px while the flight loads (ring 0: about 12 km,
+#   3 km for the airports' textures), so that nothing around the aircraft is left at 4096 px;
 # - normal: 4096 px only;
 # - reload: 4096 px only; then the 8192 px textures of "full" are built, and a reload of the
 #   scenery is offered (Offer) to show them.
@@ -271,8 +272,9 @@ class Streamer:
         if starting:  # X-Plane reads nothing here before the start's textures are built
             if self.start_mode == "full" and d - self.reach_km <= r8:
                 return d_now - r8 - self.reach_km  # X-Plane waits for it
-            if self.start_mode == "around" and d <= r8:
-                return d_now - r8
+            r4 = ring_km(0, zoom) * self.margin  # where X-Plane reads its 4096 px while it loads
+            if self.start_mode == "around" and d <= r4:
+                return d_now - r4
             return None
         if offer is not None and d - self.reach_km <= r8:  # X-Plane reads it again at the reload
             return OFFER_URGENCY + d_now / 1000.0

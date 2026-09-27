@@ -261,11 +261,12 @@ def sharp(jobs: dict) -> list[int]:
 
 @pytest.mark.parametrize(
     ("mode", "waits_for"),
-    [("full", [0, 1, 2, 3, 4]), ("around", [0, 1]), ("normal", []), ("reload", [])],
+    [("full", [0, 1, 2, 3, 4]), ("around", [0, 1, 2]), ("normal", []), ("reload", [])],
 )
 def test_what_a_start_waits_for(tmp_path: Path, mode: str, waits_for: list[int]) -> None:
-    """At a start: 8192 px as far as the camera may go (25 km more), right around the aircraft,
-    or none; X-Plane waits for them (urgency <= 0)."""
+    """At a start: 8192 px as far as the camera may go (25 km more), wherever X-Plane reads 4096
+    px while the flight loads (15 km with the margin), or none; X-Plane waits for them (urgency
+    <= 0)."""
     s = row_streamer(tmp_path, mode)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
     assert sharp(jobs) == waits_for
