@@ -234,8 +234,9 @@ export const STRINGS = {
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
-    "start.help":
-      "With zoom 17 (19 near airports), the sharpest textures are 8192 px. What X-Plane waits for on its loading screen:",
+    "start.help": "Your zooms make 8192 px textures, the sharpest. What X-Plane waits for on its loading screen:",
+    "start.plain":
+      "X-Plane waits on its loading screen for the textures around the aircraft; then Live builds them ahead of you. Nothing to choose with your zooms: the choices for 8192 px textures appear with zoom 17, or 19 near airports.",
     "start.why":
       "Once and for all: X-Plane does not read again a texture it already has in full, until a new flight, a reload of the scenery, or until you are more than about 200 km away.",
     "start.full": "Full resolution",
@@ -250,7 +251,6 @@ export const STRINGS = {
     "start.reload_note":
       "As Normal. Once the 12 km around the aircraft are ready in 8192 px, a button (in X-Plane and in this window) reloads the scenery: a few seconds of “reload objects & textures”.",
     "start.flight": "Live: the textures ahead of the aircraft become 8192 px before you come near them.",
-    "start.none": "Your zooms make no 8192 px texture: the four start the same.",
     "settings.recommended": "Recommended",
 
     "disk.title": "Disk space",
@@ -529,7 +529,9 @@ export const STRINGS = {
 
     "start.title": "Au démarrage d'un vol",
     "start.help":
-      "Avec le zoom 17 (19 près des aéroports), les textures les plus nettes font 8192 px. Ce qu'X-Plane attend sur son écran de chargement :",
+      "Vos zooms font des textures 8192 px, les plus nettes. Ce qu'X-Plane attend sur son écran de chargement :",
+    "start.plain":
+      "X-Plane attend sur son écran de chargement les textures autour de l'avion ; ensuite, Live les construit devant vous. Rien à choisir avec vos zooms : les choix pour les textures 8192 px apparaissent avec le zoom 17, ou 19 près des aéroports.",
     "start.why":
       "Une fois pour toutes : X-Plane ne relit pas une texture qu'il a déjà en entier, jusqu'à un nouveau vol, un rechargement de la scène, ou jusqu'à ce que vous soyez à plus de 200 km environ.",
     "start.full": "Pleine résolution",
@@ -545,7 +547,6 @@ export const STRINGS = {
     "start.reload_note":
       "Comme Normale. Quand les 12 km autour de l'avion sont prêts en 8192 px, un bouton (dans X-Plane et dans cette fenêtre) recharge la scène : quelques secondes de « reload objects & textures ».",
     "start.flight": "Du live : les textures devant l'avion passent en 8192 px avant que vous en approchiez.",
-    "start.none": "Vos zooms ne font aucune texture 8192 px : les quatre démarrent pareil.",
     "settings.recommended": "Recommandé",
 
     "disk.title": "Place sur le disque",

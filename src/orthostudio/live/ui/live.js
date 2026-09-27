@@ -558,14 +558,16 @@ function renderStartModes() {
     choice.append(input, text);
     return choice;
   }));
-  drawStartNone();
+  drawStartChoices();
 }
 
-/** Without a zoom above the package's, no texture is 8192 px: the four start the same. */
-function drawStartNone() {
+/** Without a zoom above the package's, no texture is 8192 px and the four would start the same:
+ * one line says what a start does instead (a user found the four, then a warning, confusing). */
+function drawStartChoices() {
   const sharp = Number($("set-max-zoom").value) > ZOOMS.max_zoom[0]
     || Number($("set-max-zoom-airports").value) > ZOOMS.max_zoom_airports[0];
-  $("start-none").hidden = sharp;
+  $("start-options").hidden = !sharp;
+  $("start-plain").hidden = sharp;
 }
 
 function startMode() {
@@ -589,7 +591,7 @@ function fillSettings(settings) {
   for (const input of $("start-choices").querySelectorAll("input")) {
     input.checked = input.value === settings.start_mode;
   }
-  drawStartNone();
+  drawStartChoices();
   if (providers.length) renderProviders(settings.provider);
 }
 
@@ -801,8 +803,8 @@ function boot() {
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("reload-btn").addEventListener("click", () => act("reload"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));
-  $("set-max-zoom").addEventListener("change", drawStartNone);
-  $("set-max-zoom-airports").addEventListener("change", drawStartNone);
+  $("set-max-zoom").addEventListener("change", drawStartChoices);
+  $("set-max-zoom-airports").addEventListener("change", drawStartChoices);
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));

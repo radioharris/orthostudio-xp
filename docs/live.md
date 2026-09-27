@@ -149,6 +149,10 @@ until a new flight, a reload of the scenery, or until you are more than about 20
 X-Plane unloads the area (coming back, it reads it again, and by then it is live). For the
 airport's own textures, the 12 km are 3 km.
 
+With the package's zooms, 16 and 18, no texture is 8192 px: the four would start the same, so the
+window shows one line in their place, which says what a start does and that the choices come with
+ZL17 or ZL19.
+
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
 the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. Live adds two that
 AutoOrtho offers: Esri's Firefly (the same photos as Esri, softer colours) and NAIP (the United
