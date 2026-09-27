@@ -58,10 +58,17 @@ class StartTest(unittest.TestCase):
 
     def test_kinds_of_start(self):
         airports = {"LFMN": (43.6654, 7.215)}.get
-        self.assertEqual(
-            start_position({"ramp_start": {"airport_id": "lfmn", "ramp": "A12"}}, airports),
-            (43.6654, 7.215, "LFMN"),
-        )
+        for ramp, name in (
+            ("A12", "LFMN parking A12"),
+            ("44", "LFMN parking 44"),
+            ("Gate  12", "LFMN Gate 12"),  # the airport's name says it already
+            ("GA Parking", "LFMN GA Parking"),
+            (" ", "LFMN"),
+        ):
+            self.assertEqual(
+                start_position({"ramp_start": {"airport_id": "lfmn", "ramp": ramp}}, airports),
+                (43.6654, 7.215, name),
+            )
         self.assertEqual(
             start_position(
                 {
@@ -127,6 +134,8 @@ class GateTest(unittest.TestCase):
                 self.assertEqual(
                     p.recv(100), b"LIVE1 WAIT n=12 p=457 s=23 mbs=15.2 at=LFML runway 13L"
                 )
+                gate.answer(got[1][3], False, 3, "LFPG Aérogare 2 機")
+                self.assertTrue(p.recv(100).endswith(b"at=LFPG Aerogare 2 ?"))  # ASCII, readable
                 gate.answer(got[1][3], True, 0)
                 self.assertEqual(p.recv(100), b"LIVE1 GO 0")
         finally:

@@ -39,6 +39,7 @@ import json
 import os
 import socket
 import time
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 
@@ -62,8 +63,23 @@ def read_last_start(prefs: Path) -> dict | None:
     return None
 
 
+def _spot(where: dict) -> str:
+    """Where on its airport a saved start is: `` runway 13L``, `` parking 44``, or nothing. A
+    parking's name is the airport's own; "parking" goes before a number or a code (``44``,
+    ``A12``), not before a name that says it already (``Gate 12``, ``GA Parking``)."""
+    runway, ramp = where.get("runway"), where.get("ramp")
+    if isinstance(runway, str) and runway.strip():
+        return f" runway {runway.strip()}"
+    if isinstance(ramp, str) and ramp.strip():
+        name = " ".join(ramp.split())
+        code = " " not in name and any(c.isdigit() for c in name)
+        return f" parking {name}" if code else f" {name}"
+    return ""
+
+
 def start_position(start: dict, airports: Airports) -> Start | None:
-    """Where a saved start is: its latitude and longitude, else its airport's."""
+    """Where a saved start is: its latitude and longitude, else its airport's (named with its
+    runway or its parking)."""
     for where in start.values():
         if not isinstance(where, dict):
             continue
@@ -75,9 +91,15 @@ def start_position(start: dict, airports: Airports) -> Start | None:
             icao = icao.upper()
             pos = airports(icao)
             if pos is not None:
-                runway = f" runway {where['runway']}" if where.get("runway") else ""
-                return pos[0], pos[1], icao + runway
+                return pos[0], pos[1], icao + _spot(where)
     return None
+
+
+def _ascii(text: str) -> bytes:
+    """The protocol's ASCII: a parking's accents dropped (Aérogare: Aerogare), anything else
+    beyond ASCII a question mark."""
+    bare = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+    return bare.encode("ascii", "replace")
 
 
 class Gate:
@@ -158,7 +180,7 @@ class Gate:
                 f"mbs={mbs:.1f} at={name}"
             )
         with contextlib.suppress(OSError):
-            self.sock.sendto(line.encode("ascii", "replace")[:200], addr)
+            self.sock.sendto(_ascii(line)[:200], addr)
 
     def offer(self, addr: tuple, offer: dict | None) -> None:
         """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it."""
