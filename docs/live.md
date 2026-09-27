@@ -73,6 +73,16 @@ They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author p
 AutoOrtho downloads them. Live downloads them from there, and never publishes them anywhere else:
 that repository names no licence.
 
+### The map
+
+The window has a map: the photos of your imagery source, the borders and airports as in
+OrthoStudio XP's Plan, and over them what Live has done. The aircraft moves on it while you fly,
+pointing along its track, with the camera's place in external views; the map follows it until
+you drag it away ("Follow the aircraft" brings it back). Your SimBrief route is drawn while Live
+follows it, and before a flight the "Show my SimBrief route" button asks SimBrief for it. The
+regions installed are shaded, and the textures already built are coloured by how sharp they are:
+8192 px, 4096 px, 2048 px, smaller. Zoomed out, one square per degree says the sharpest there.
+
 ### Roads, forests and buildings
 
 Where Live shows its photos, X-Plane no longer draws its own roads, trees, buildings and beaches:

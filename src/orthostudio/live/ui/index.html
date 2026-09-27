@@ -14,6 +14,7 @@
 <title>OrthoStudio XP Live</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="static/vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="live/live.css">
 </head>
 <body>
@@ -77,6 +78,27 @@
       <div class="progress live-disk" id="disk" hidden><span id="disk-bar"></span></div>
     </section>
   </div>
+
+  <section class="question live-map-card">
+    <div class="live-map-head">
+      <h2 class="question-title live-card-title" data-i18n="map.title">Map</h2>
+      <div class="live-map-tools">
+        <label class="live-map-toggle"><input type="checkbox" id="map-follow" checked>
+          <span data-i18n="map.follow">Follow the aircraft</span></label>
+        <button type="button" class="btn btn-small" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
+      </div>
+    </div>
+    <div class="live-map" id="live-map"></div>
+    <div class="live-map-legend">
+      <span><i class="swatch is-8k"></i><span data-i18n="map.legend_8k">8192 px</span></span>
+      <span><i class="swatch is-4k"></i><span data-i18n="map.legend_4k">4096 px</span></span>
+      <span><i class="swatch is-2k"></i><span data-i18n="map.legend_2k">2048 px</span></span>
+      <span><i class="swatch is-less"></i><span data-i18n="map.legend_less">Smaller</span></span>
+      <span><i class="swatch is-region"></i><span data-i18n="map.legend_region">Region installed</span></span>
+      <span><i class="swatch is-route"></i><span data-i18n="map.legend_route">Route</span></span>
+    </div>
+    <p class="question-help is-warn" id="map-error" hidden></p>
+  </section>
 
   <section class="question">
     <h2 class="question-title live-card-title" data-i18n="checks.title">Checks</h2>
@@ -243,6 +265,7 @@
   </form>
 </dialog>
 
+<script src="static/vendor/leaflet/leaflet.js"></script>
 <script type="module" src="live/live.js"></script>
 </body>
 </html>

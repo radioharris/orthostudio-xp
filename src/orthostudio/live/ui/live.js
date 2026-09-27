@@ -16,6 +16,7 @@ let last = null; // the last status
 let logSeq = 0;
 let providers = []; // GET /api/live/providers
 let saved = null; // the settings as saved: what "Undo my changes" goes back to
+let liveMap = null; // the map (livemap.js), when Leaflet has loaded
 
 // --- talking to the engine ---------------------------------------------------------------------
 
@@ -335,6 +336,7 @@ async function regionAct(path, method = "POST") {
   try {
     const regions = await api(path, { method });
     if (last) draw({ ...last, regions });
+    liveMap?.regionsChanged();
   } catch (error) {
     $("regions-error").hidden = false;
     $("regions-error").textContent = error.message;
@@ -448,6 +450,7 @@ function draw(status) {
   drawDisk(status);
   drawFolder(status);
   drawRegions(status);
+  liveMap?.update({ ...status, providers });
   if (saved === null) {
     saved = status.settings;
     fillSettings(saved);
@@ -701,6 +704,36 @@ async function act(path, body) {
   }
 }
 
+async function showSimbriefRoute() {
+  $("map-error").hidden = true;
+  try {
+    const route = await api("map/route", { method: "POST" });
+    liveMap?.showRoute(route.points);
+  } catch (error) {
+    $("map-error").hidden = false;
+    $("map-error").textContent = error.status === 409
+      ? t("map.route_no_name") // no SimBrief name in Live's settings
+      : t("map.route_error", { error: error.message });
+  }
+}
+
+async function startMap() {
+  if (typeof L === "undefined") return; // Leaflet did not load: the rest of the page works
+  try {
+    // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
+    const { createLiveMap } = await import("./livemap.js");
+    liveMap = createLiveMap($("live-map"), { api });
+  } catch (_e) {
+    liveMap = null;
+    return;
+  }
+  $("map-follow").addEventListener("change", (event) => liveMap.setFollow(event.target.checked));
+  $("live-map").addEventListener("live-map-follow", (event) => {
+    $("map-follow").checked = event.detail;
+  });
+  $("map-route").addEventListener("click", showSimbriefRoute);
+}
+
 function tellLanguage() {
   // the plugin's words in X-Plane follow the window's language
   api("language", { method: "POST", body: { language: language() } }).catch(() => {});
@@ -769,6 +802,7 @@ function boot() {
     $("settings-status").textContent = "";
     $("settings-error").hidden = true;
   });
+  startMap();
   loadProviders();
   tellLanguage();
   askRegions();

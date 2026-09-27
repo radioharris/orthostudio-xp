@@ -50,6 +50,7 @@ from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import haversine_m, parse_texture_name
+from .mapdata import route_points
 from .pack import MARKER, load_built
 from .region import NEUTRAL_LEVEL, Zooms, ensure_neutral, neutral_file
 from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
@@ -925,7 +926,11 @@ class Streamer:
             "offer": self.offer_state(),
             "flight_plan": None
             if self.flight_plan is None
-            else {"name": self.flight_plan.name, "following": self.on_route},
+            else {
+                "name": self.flight_plan.name,
+                "following": self.on_route,
+                "points": route_points(self.flight_plan.points),  # the window's map draws it
+            },
             # X-Plane's image, and how far it reads 4096 px of a ZL16 texture there
             "screen": None
             if self.screen is None
@@ -1101,11 +1106,14 @@ def progress_report(
             "lon": values.get("lon", 0.0),
             "alt_ft": values.get("alt_m", 0.0) * 3.28084,
             "gs_kt": values.get("gs_ms", 0.0) * 1.94384,
+            "trk": values.get("trk_deg", 0.0),
         }
     fix = streamer.last_fix
     camera_km = None
+    camera = None
     if fix is not None and fix.cam_lat is not None and fix.cam_lon is not None:
         camera_km = haversine_m(fix.lat, fix.lon, fix.cam_lat, fix.cam_lon) / 1000.0
+        camera = {"lat": fix.cam_lat, "lon": fix.cam_lon}
     start = None
     if arrival is not None:
         left, work = streamer.urgent_work()
@@ -1128,6 +1136,7 @@ def progress_report(
         "data": "none" if aircraft is None else "fresh" if fresh else "stale",
         "aircraft": aircraft,
         "camera_km": camera_km,
+        "camera": camera,
         "start": start,
         "mbs": mbs,
         "notice": streamer.notice_at(*here),

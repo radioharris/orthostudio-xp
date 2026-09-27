@@ -116,7 +116,13 @@ def test_the_route_after_a_turn_is_prepared(
     jobs = s.plan(fix, x_plane_there=False)
     assert s.on_route
     assert sharp(jobs) == list(range(2, 12))  # past 12 km, along the route east
-    assert s.snapshot()["flight_plan"] == {"name": "LFXX-LFYY", "following": True}
+    plan = s.snapshot()["flight_plan"]
+    assert (plan["name"], plan["following"]) == ("LFXX-LFYY", True)
+    first = north_then_east().points[0]
+    assert plan["points"][0] == [
+        round(first[0], 5),
+        round(first[1], 5),
+    ]  # the window's map draws it
     s.plan(Fix(center(0)[0] - 1.0, center(0)[1], gs_ms=200.0, trk_deg=0.0), x_plane_there=False)
     assert not s.on_route  # 111 km south: off the route, straight on again
     s.cache.close()

@@ -34,8 +34,46 @@ CLOSE_WHILE_STREAMING = (
 )
 
 
-def create_live_app(control: LiveControl) -> Any:
-    """The page, its API, and OrthoStudio XP's style sheet under ``/static``."""
+def _map_router(fetch: Any = None) -> Any:
+    """OrthoStudio XP's base map, ``GET /api/map/{provider}/{z}/{x}/{y}``, as its own page reads
+    it (the same cache), over Live's sources."""
+    from orthostudio.api.map_api import map_router
+    from orthostudio.live.providers import registry
+
+    return map_router(registry=registry(), fetch=fetch)
+
+
+def _airports_router() -> Any:
+    """``GET /api/airports/in``, as OrthoStudio XP's engine answers it, for the map's airports:
+    from the index OrthoStudio XP keeps, only if it is there (building it takes minutes)."""
+    from fastapi import APIRouter, HTTPException
+
+    from orthostudio.airports import AirportIndex, default_index_path
+
+    router = APIRouter()
+    index: dict[str, Any] = {}
+
+    @router.get("/api/airports/in")
+    def airports_in(
+        west: float, south: float, east: float, north: float, limit: int = 400
+    ) -> list[dict[str, Any]]:
+        path = default_index_path()
+        if "index" not in index:
+            index["index"] = AirportIndex(path) if path.exists() else None
+        if index["index"] is None:
+            raise HTTPException(404, "no airport index: OrthoStudio XP builds it")
+        rows = index["index"].in_bounds(west, south, east, north, limit=max(1, min(2000, limit)))
+        return [
+            {"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon, "kind": a.kind}
+            for a in rows
+        ]
+
+    return router
+
+
+def create_live_app(control: LiveControl, map_fetch: Any = None) -> Any:
+    """The page, its API, OrthoStudio XP's base map and airports, and its style sheet under
+    ``/static``. ``map_fetch`` replaces the base map's upstream fetch, for the tests."""
     from fastapi import FastAPI
     from fastapi.responses import FileResponse
 
@@ -51,6 +89,8 @@ def create_live_app(control: LiveControl) -> Any:
     app = FastAPI(title=TITLE, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(_GuardMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS)
     app.include_router(live_router(control))
+    app.include_router(_map_router(map_fetch))
+    app.include_router(_airports_router())
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
 

@@ -61,3 +61,31 @@
 .region-actions { display: flex; gap: 6px; margin-left: auto; }
 .region-progress { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
 .region .progress { height: 8px; border-radius: 4px; margin-top: 4px; }
+
+/* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
+.live-map-card { margin-top: var(--block-gap); }
+.live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.live-map-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.live-map-toggle { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2); cursor: pointer; }
+.live-map { height: 380px; border-radius: var(--radius); border: 1px solid var(--line); margin-top: var(--gap); background: #1e2a33; }
+.live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: var(--fs-2); color: var(--fg-2); }
+.live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.swatch.is-8k { background: #2e9e4f; }
+.swatch.is-4k { background: #8cc63f; }
+.swatch.is-2k { background: #f2b134; }
+.swatch.is-less { background: #9aa0a6; }
+.swatch.is-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
+.swatch.is-route { height: 3px; background: #e0572f; border-radius: 0; }
+.live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
+.live-plane svg { display: block; }
+/* as the Plan map draws them (styles.css .plan-map .osxp-border, .osxp-airport-label) */
+.live-map .base-border { stroke: #ffd966; stroke-opacity: 0.85; stroke-width: 1.5; stroke-dasharray: 6 4; fill: none; }
+.live-map .base-border.is-disputed { stroke-opacity: 0.55; stroke-dasharray: 2 4; }
+.base-airport-label {
+  font: 600 11px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #ffd166;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  white-space: nowrap;
+  pointer-events: none;
+}

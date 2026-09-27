@@ -182,6 +182,36 @@ def live_router(control: LiveControl) -> APIRouter:
             raise HTTPException(409, str(e)) from e
         return control.regions()
 
+    @router.get("/map/built")
+    def map_built(west: float, south: float, east: float, north: float) -> dict[str, Any]:
+        """The textures built in the map's view (orthostudio.live.mapdata)."""
+        from orthostudio.live.mapdata import built_in
+        from orthostudio.live.pack import default_pack_dir
+
+        return built_in(default_pack_dir(), west, south, east, north)
+
+    @router.get("/map/regions")
+    def map_regions() -> dict[str, Any]:
+        """The one-degree squares of the regions installed."""
+        from orthostudio.live.mapdata import regions_installed
+
+        installed = {r["id"] for r in control.regions()["list"] if r["installed_by"]}
+        return regions_installed(installed)
+
+    @router.post("/map/route")
+    def map_route() -> dict[str, Any]:
+        """The pilot's last SimBrief plan, asked of simbrief.com on the map's button only."""
+        from orthostudio.live.flightplan import last_plan
+        from orthostudio.live.mapdata import route_points
+
+        user = load_settings().simbrief_user
+        if not user:
+            raise HTTPException(409, "no SimBrief name in Live's settings (Flight plan)")
+        plan, why = last_plan(user)
+        if plan is None:
+            raise HTTPException(502, f"SimBrief: {why}")
+        return {"name": plan.name, "points": route_points(plan.points)}
+
     @router.get("/providers")
     def providers() -> list[dict[str, Any]]:
         from orthostudio.live.providers import listing

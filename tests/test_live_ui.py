@@ -567,7 +567,11 @@ def test_the_page_parses() -> None:
 
 def test_the_page_uses_osxp_parts_and_no_outside_script() -> None:
     html = (UI_DIR / "index.html").read_text()
-    assert re.findall(r"<script[^>]*src=\"([^\"]+)\"", html) == ["live/live.js"]
+    # the map's Leaflet is OrthoStudio XP's vendored copy, served from the engine like the rest
+    assert re.findall(r"<script[^>]*src=\"([^\"]+)\"", html) == [
+        "static/vendor/leaflet/leaflet.js",
+        "live/live.js",
+    ]
     assert 'href="static/styles.css"' in html  # OrthoStudio XP's own style sheet
     assert "http" not in re.sub(r"<!--.*?-->", "", html, flags=re.S).replace("http-equiv", "")
 
