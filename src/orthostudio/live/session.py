@@ -166,6 +166,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live import plugin
     from orthostudio.live.covered import covered_squares
     from orthostudio.live.gate import Gate
+    from orthostudio.live.geo import dsf_tile_of
     from orthostudio.live.region import (
         LAYOUT_GROWING,
         Zooms,
@@ -226,7 +227,13 @@ def prepare(options: Options, log: Log) -> Prepared:
     if options.fresh:
         reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)
-    covered = covered_squares(xp_dir, LINK_NAME)
+    # only the squares Live's pack has: another pack's elsewhere does not matter to it
+    region = {
+        square
+        for dsf in (pack_dir / "Earth nav data").glob("*/*.dsf")
+        if (square := dsf_tile_of(str(dsf))) is not None
+    }
+    covered = covered_squares(xp_dir, LINK_NAME, region)
     if covered:
         packs = sorted(set(covered.values()))
         log(

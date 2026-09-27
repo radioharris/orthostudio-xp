@@ -102,6 +102,38 @@ def test_the_squares_the_users_own_tiles_cover(tmp_path: Path) -> None:
         (45, 5): f"{ORTHO_PREFIX}+45+005",
         (44, 5): "Photo Lyon",
     }
+    assert covered_squares(xp, LINK_NAME, region={(44, 5)}) == {(44, 5): "Photo Lyon"}
+
+
+def test_one_dsf_read_a_pack_and_only_its_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """simHeaven X-World and Global Forests: thousands of zipped DSFs, overlays all; the first
+    version unpacked every one of them, for minutes, before a start."""
+    import os
+
+    from orthostudio.live import covered
+
+    xp = tmp_path / "X-Plane 12"
+    scenery = xp / "Custom Scenery"
+    scenery.mkdir(parents=True)
+    (scenery / "scenery_packs.ini").write_text(
+        "I\n1000 Version\nSCENERY\n\nSCENERY_PACK Custom Scenery/Global_Forests_v2/\n"
+        "SCENERY_PACK Custom Scenery/Broken/\n"
+        f"SCENERY_PACK Custom Scenery/{LINK_NAME}/\n"
+    )
+    forests = scenery / "Global_Forests_v2"
+    big = dsf({"sim/overlay": "1"}) + os.urandom(3_000_000)  # a DSF of some weight, zipped
+    for lat in range(40, 46):
+        put_dsf(forests, (lat, 5), big, zipped=True)
+    put_dsf(scenery / "Broken", (46, 5), b"7z\xbc\xaf\x27\x1c broken")  # unreadable
+    read = []
+    real = covered.dsf_properties
+    monkeypatch.setattr(covered, "dsf_properties", lambda p: read.append(p) or real(p))
+    assert covered_squares(xp, LINK_NAME) == {}  # overlays; unreadable is not taken for ground
+    assert len(read) == 2  # one DSF a pack
+    head = covered._head(read[0])
+    assert head.startswith(b"XPLNEDSF") and len(head) < 1_100_000  # its start, not 3 MB
 
 
 def test_live_leaves_the_users_squares_alone(tmp_path: Path) -> None:
