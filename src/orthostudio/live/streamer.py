@@ -622,6 +622,11 @@ class Streamer:
                 return self.built_version, None, None
             return self.built_version, dict(self.built), set(self.grown)
 
+    def facts_now(self) -> tuple[dict[str, int], set[str], set[str], dict[str, float]]:
+        """(built, grown, patchy, seen), copied under the lock: the map's tooltip."""
+        with self.lock:
+            return dict(self.built), set(self.grown), set(self.patchy), dict(self.seen)
+
     def offer_state(self) -> dict | None:
         """The offer as the Live window and the plugin show it: ``building`` (``left`` textures to
         go), ``ready``, or ``asked``; ``id`` tells one offer from the next."""

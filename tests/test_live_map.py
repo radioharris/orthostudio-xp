@@ -36,7 +36,8 @@ def texture_at(lat: float, lon: float, zoom: int) -> str:
 
 LYON = [texture_at(45.76, 4.84, 16), texture_at(45.76, 4.97, 16), texture_at(45.90, 4.84, 16)]
 GENEVA = texture_at(46.24, 6.11, 18)
-BUILT = {LYON[0]: 0, LYON[1]: -1, LYON[2]: 2, GENEVA: 0}
+FAR = texture_at(44.0, 2.0, 16)  # 256 px, as every texture within 300 km of a flight
+BUILT = {LYON[0]: 0, LYON[1]: -1, LYON[2]: 2, GENEVA: 0, FAR: 4}
 
 
 @pytest.fixture
@@ -58,17 +59,16 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
     write_pack(pack)
     near = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5)  # a small view: each texture
-    levels = sorted(row[4] for row in near["textures"])
-    assert levels == [-1, 0, 0, 2] and near["more"] is False
+    assert [row[4] for row in near["textures"]] == [-1, 0, 0, 2]  # the sharpest first
+    assert near["squares"] == [] and near["more"] is False
     south, west, north, east, _ = near["textures"][0]
     assert south < north and west < east
-    wide = mapdata.built_in(pack, -10.0, 35.0, 20.0, 55.0)  # a wide view: squares
-    assert "textures" not in wide
-    assert sorted((lat, lon, count, best) for lat, lon, count, best in wide["squares"]) == [
-        (45, 4, 3, -1),  # three textures near Lyon, the sharpest 8192 px
-        (46, 6, 1, 0),  # Geneva's
-    ]
-    assert mapdata.built_in(pack, 100.0, 10.0, 101.0, 11.0) == {"textures": [], "more": False}
+    # a wide view: every texture of 1024 px or more on its own still, the 4096 px ones among the
+    # 8192 px ones (a square of one colour hid them), the small ones grouped by square
+    wide = mapdata.built_in(pack, -10.0, 35.0, 20.0, 55.0)
+    assert [row[4] for row in wide["textures"]] == [-1, 0, 0, 2]
+    assert wide["squares"] == [[43, 1, 1, 4]]  # the square of the texture's middle, 43.99 1.98
+    assert mapdata.built_in(pack, 100.0, 10.0, 101.0, 11.0)["textures"] == []
     assert mapdata.built_in(tmp_path / "nothing", 4.5, 45.3, 6.5, 46.5)["textures"] == []
 
 
@@ -103,6 +103,10 @@ async def test_the_map_s_api(home: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     async with client_for(create_live_app(control, map_fetch=fetch)) as client:
         got = await client.get("/api/live/map/built?west=4.5&south=45.3&east=6.5&north=46.5")
         assert len(got.json()["textures"]) == 4
+        # the tooltip's facts: the texture under a point, the airport's ZL18 before the ZL16
+        at = (await client.get("/api/live/map/texture?lat=46.24&lon=6.11")).json()["textures"]
+        assert [t["zoom"] for t in at] == [18]
+        assert at[0]["px"] == 4096 and at[0]["photos_zoom"] == 18 and at[0]["bytes"] > 10**7
         assert (await client.get("/api/live/map/regions")).json() == {}  # none installed
         # the SimBrief route: only on the button, and only with a name in Live's settings
         assert (await client.post("/api/live/map/route")).status_code == 409
@@ -135,11 +139,14 @@ def test_the_map_s_scripts_parse() -> None:
 
 
 class FakeStreamer:
-    """What the map reads of a running streamer: its textures built, versioned."""
+    """What the map reads of a running streamer: its textures built, versioned, and their facts."""
 
     def __init__(self) -> None:
         self.version, self.built, self.grown = 1, dict(BUILT), {LYON[1]}
         self.copied = 0
+
+    def facts_now(self):
+        return dict(self.built), set(self.grown), set(), {}
 
     def built_now(self, known: int = -1):
         if known == self.version:
@@ -157,11 +164,13 @@ def test_the_map_reads_the_running_streamer(home: Path) -> None:
     view = (4.5, 45.3, 6.5, 46.5)
     got = control.built_in(*view)
     assert got["version"] == 1 and len(got["textures"]) == 4  # nothing on the disk: its memory
+    under = control.textures_at(45.74, 4.95)  # the texture grown to 8192 px, from its memory
+    assert [(t["px"], t["photos_zoom"], t["grown"]) for t in under] == [(8192, 17, True)]
     assert control.built_in(*view, known=1) == {"version": 1, "same": True}  # nothing new
     assert streamer.copied == 1  # "same" copies nothing
     streamer.built[LYON[2]], streamer.version = 0, 2  # one more built sharper
     got = control.built_in(*view, known=1)
-    assert got["version"] == 2 and sorted(r[4] for r in got["textures"]) == [-1, 0, 0, 0]
+    assert got["version"] == 2 and [r[4] for r in got["textures"]] == [-1, 0, 0, 0]
     control._attach(None)  # stopped: the record on the disk again
     assert "version" not in control.built_in(*view)
 

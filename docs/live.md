@@ -81,8 +81,10 @@ pointing along its track, with the camera's place in external views; the map fol
 you drag it away ("Follow the aircraft" brings it back). Your SimBrief route is drawn while Live
 follows it, and before a flight the "Show my SimBrief route" button asks SimBrief for it. The
 regions installed are shaded, and the textures already built are coloured by how sharp they are:
-8192 px, 4096 px, 2048 px, smaller, within 3 seconds of being built while Live runs. Zoomed out,
-one square per degree says the sharpest there.
+8192 px, 4096 px, 2048 px, smaller, within 3 seconds of being built while Live runs; zoomed out,
+the many small ones are grouped by square. Point at a texture to see what it is: its zoom, the
+size it is built at and the photos that makes, the disk it takes, and when Live last had it in
+reach.
 
 ### Roads, forests and buildings
 

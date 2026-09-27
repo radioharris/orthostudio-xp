@@ -98,3 +98,7 @@
   white-space: nowrap;
   pointer-events: none;
 }
+/* the tooltip over a texture built */
+.live-texture-tip { font-size: var(--fs-2); line-height: 1.45; white-space: nowrap; }
+.live-texture-tip b { font-family: var(--mono); font-weight: 600; }
+.live-texture-tip .tip-warn { color: var(--warn); }

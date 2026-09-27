@@ -6,7 +6,8 @@
 // every second moves the aircraft; the textures are asked for again when the view moves, and
 // every few seconds while Live streams.
 
-import { createBaseMap } from "./basemap.js";
+import { createBaseMap, escapeHtml } from "./basemap.js";
+import { language, t } from "./strings.js";
 
 export const LEVEL_COLOURS = { "-1": "#2e9e4f", 0: "#8cc63f", 1: "#f2b134", coarser: "#9aa0a6" };
 const REGION_COLOUR = "#5a8dd6";
@@ -15,6 +16,32 @@ const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" wh
 
 export function levelColour(level) {
   return LEVEL_COLOURS[String(level)] || LEVEL_COLOURS.coarser;
+}
+
+function fmt(value, digits = 0) {
+  return new Intl.NumberFormat(language() === "fr" ? "fr-FR" : "en-GB", {
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function ago(seconds) {
+  if (seconds < 60) return t("map.tip_now");
+  if (seconds < 3600) return t("map.tip_min", { n: fmt(seconds / 60) });
+  if (seconds < 86400) return t("map.tip_hours", { n: fmt(seconds / 3600) });
+  return t("map.tip_days", { n: fmt(seconds / 86400) });
+}
+
+/** What the tooltip says of a texture built (orthostudio/live/mapdata.py textures_at). */
+export function textureTip(x) {
+  const lines = [`<b>${escapeHtml(x.name)}</b>`];
+  lines.push(t(x.zoom >= 18 ? "map.tip_airport" : "map.tip_zoom", { zoom: x.zoom }));
+  lines.push(t("map.tip_px", { px: fmt(x.px), photos: x.photos_zoom }));
+  lines.push(t("map.tip_size", {
+    mb: fmt(x.bytes / 1e6, x.bytes < 1e7 ? 1 : 0), w: fmt(x.km[0], 1), h: fmt(x.km[1], 1),
+  }));
+  if (x.seen_s != null) lines.push(t("map.tip_seen", { ago: ago(x.seen_s) }));
+  if (x.patchy) lines.push(`<span class="tip-warn">${escapeHtml(t("map.tip_patchy"))}</span>`);
+  return lines.join("<br>");
 }
 
 /** The aircraft, pointing along its track. */
@@ -41,6 +68,8 @@ export function createLiveMap(el, { api }) {
   let builtTimer = 0;
 
   let builtVersion = -1; // what the map shows, as the engine counts its changes
+  let shownTextures = []; // [s, w, n, e, level] drawn: what the pointer is over, without asking
+  let shownSquares = []; // [lat, lon, count, sharpest] drawn when zoomed out
 
   /** The textures built in the view: all again when the view moved (`fresh`), else only if the
    * engine has built or made coarser any since. */
@@ -57,15 +86,19 @@ export function createLiveMap(el, { api }) {
     }
     if (got && !got.same) {
       builtVersion = got.version ?? -1;
+      shownTextures = got.textures || [];
+      shownSquares = got.squares || [];
+      hovered = null; // its facts may have changed
       built.clearLayers();
       const style = (level) => ({
         renderer: canvas, weight: 0, fillColor: levelColour(level), fillOpacity: 0.45, interactive: false,
       });
-      for (const [s, w, n, e, level] of got.textures || []) {
-        L.rectangle([[s, w], [n, e]], style(level)).addTo(built);
-      }
+      // the small ones grouped by square first, fainter, under the ones drawn one by one
       for (const [lat, lon, , best] of got.squares || []) {
-        L.rectangle([[lat, lon], [lat + 1, lon + 1]], style(best)).addTo(built);
+        L.rectangle([[lat, lon], [lat + 1, lon + 1]], { ...style(best), fillOpacity: 0.25 }).addTo(built);
+      }
+      for (const [s, w, n, e, level] of (got.textures || []).slice().reverse()) {
+        L.rectangle([[s, w], [n, e]], style(level)).addTo(built); // the sharpest drawn last, on top
       }
     }
     if (streaming) builtTimer = setTimeout(() => drawBuilt(false), BUILT_EVERY_MS);
@@ -99,6 +132,68 @@ export function createLiveMap(el, { api }) {
       L.circleMarker(end, { radius: 5, weight: 2, color: ROUTE_COLOUR, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(route);
     }
   }
+
+  // the tooltip over a texture built: found in what is drawn, its facts asked of the engine once
+  // the pointer rests on another one
+  const tip = L.tooltip({ direction: "top", offset: [0, -10], className: "live-texture-tip", opacity: 1 });
+  let hovered = null; // the texture or square under the pointer, as a key
+  let pointer = null;
+  let asking = 0;
+  function under(latlng) {
+    const { lat, lng } = latlng;
+    let best = null;
+    for (const r of shownTextures) {
+      if (lat >= r[0] && lat < r[2] && lng >= r[1] && lng < r[3]) {
+        const area = (r[2] - r[0]) * (r[3] - r[1]);
+        if (!best || area < best.area) best = { key: `t:${r[0]},${r[1]},${r[4]}`, area };
+      }
+    }
+    if (best) return best;
+    const square = shownSquares.find((q) => lat >= q[0] && lat < q[0] + 1 && lng >= q[1] && lng < q[1] + 1);
+    return square ? { key: `s:${square[0]},${square[1]},${square[2]},${square[3]}`, square } : null;
+  }
+  function showTip(html) {
+    // above the pointer, or below it in the map's upper half: never cut by the map's edge
+    const below = map.latLngToContainerPoint(pointer).y < map.getSize().y / 2;
+    tip.options.direction = below ? "bottom" : "top";
+    tip.options.offset = below ? [0, 14] : [0, -10];
+    tip.setContent(html);
+    tip.setLatLng(pointer);
+    if (!map.hasLayer(tip)) tip.addTo(map);
+    else tip.update();
+  }
+  function hideTip() {
+    hovered = null;
+    clearTimeout(asking);
+    if (map.hasLayer(tip)) map.removeLayer(tip);
+  }
+  map.on("mousemove", (ev) => {
+    pointer = ev.latlng;
+    const found = under(ev.latlng);
+    if (!found) return hideTip();
+    if (map.hasLayer(tip)) tip.setLatLng(pointer);
+    if (found.key === hovered) return;
+    hovered = found.key;
+    clearTimeout(asking);
+    if (found.square) {
+      const [, , count, best] = found.square;
+      const px = best < 0 ? 8192 : 4096 >> best;
+      showTip(t("map.tip_square", { n: fmt(count), px: fmt(px) }));
+      return;
+    }
+    const key = found.key;
+    asking = setTimeout(async () => {
+      let got;
+      try {
+        got = await api(`map/texture?lat=${pointer.lat}&lon=${pointer.lng}`);
+      } catch (_e) {
+        return;
+      }
+      if (hovered !== key || !got.textures?.length) return;
+      showTip(textureTip(got.textures[0])); // the one drawn on top: the smallest, an airport's
+    }, 120);
+  });
+  map.on("mouseout", hideTip);
 
   // the map takes the height of the blocks beside it: Leaflet is told when its box changes
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => map.invalidateSize()).observe(el);

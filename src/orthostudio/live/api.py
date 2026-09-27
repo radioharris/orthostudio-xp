@@ -190,6 +190,11 @@ def live_router(control: LiveControl) -> APIRouter:
         the map has, answered with ``same`` while nothing changed."""
         return control.built_in(west, south, east, north, known)
 
+    @router.get("/map/texture")
+    def map_texture(lat: float, lon: float) -> dict[str, Any]:
+        """The textures built under a point of the map, with their facts: its tooltip."""
+        return {"textures": control.textures_at(lat, lon)}
+
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
         """The one-degree squares of the regions installed."""

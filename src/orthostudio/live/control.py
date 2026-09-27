@@ -341,6 +341,20 @@ class LiveControl:
         out = built_in(default_pack_dir(), west, south, east, north, rows=self._map_rows[1])
         return {**out, "version": version}
 
+    def textures_at(self, lat: float, lon: float) -> list[dict]:
+        """The textures built under a point of the map, with their facts (its tooltip)."""
+        from orthostudio.live.mapdata import record, textures_at
+
+        streamer = self.streamer
+        if streamer is not None:
+            built, grown, patchy, seen = streamer.facts_now()
+        else:
+            meta = record(default_pack_dir())
+            built = meta.get("textures", {})
+            grown, patchy = set(meta.get("grown", [])), set(meta.get("patchy", []))
+            seen = meta.get("seen", {})
+        return textures_at(lat, lon, built, grown, patchy, seen, time.time())
+
     def set_language(self, language: str, *, save: Any = None) -> None:
         """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take
         it at once, and it is kept for the next starts."""
