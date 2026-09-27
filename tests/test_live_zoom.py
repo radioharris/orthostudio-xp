@@ -291,6 +291,23 @@ def test_in_flight_textures_grow_before_xplane_reads_them(tmp_path: Path, mode: 
     s.cache.close()
 
 
+def test_no_8192_px_from_high_up(tmp_path: Path) -> None:
+    """X-Plane measures from the camera in three dimensions: at cruise, a texture right under the
+    aircraft is 10 km away, and X-Plane never reads its 8192 px level there; low, the textures
+    ahead grow as they do on the ground."""
+    s = row_streamer(tmp_path, "around")
+    east = {"gs_ms": 200.0, "trk_deg": 90.0}
+    assert sharp(s.plan(at(0, agl_m=10_700.0, **east), x_plane_there=False)) == []  # FL350
+    assert sharp(s.plan(at(0, agl_m=8_000.0, **east), x_plane_there=False)) == []
+    assert sharp(s.plan(at(0, agl_m=900.0, **east), x_plane_there=False)) == list(range(2, 10))
+    # an external view's camera counts at its own height: down low, while the aircraft is high
+    low_camera = at(0, agl_m=10_700.0, **east)
+    low_camera.cam_lat, low_camera.cam_lon = at(5).lat, at(5).lon
+    low_camera.cam_agl_m = 300.0
+    assert sharp(s.plan(low_camera, x_plane_there=False)) == []  # 4096 px read there already
+    s.cache.close()
+
+
 def built_as_planned(s: Streamer, jobs: dict) -> None:
     """Every job done, as the builder records it."""
     for name, (_, level) in jobs.items():

@@ -25,8 +25,9 @@ at 4096 px and grows to 8192 px, its 8192 px level built in the same rename (``o
 never reads again a level it has: a texture grows before X-Plane reads its 4096 px level, else it
 stays 4096 px until X-Plane loads it again. A 4096 px file is never a placeholder, so growing needs
 no camera reach: in flight, the textures on the path ahead grow while they are still farther than
-X-Plane reads 4096 px. At a start, X-Plane has read nothing yet, and ``start_mode`` says which
-textures it waits for at 8192 px (:data:`START_MODES`).
+X-Plane reads 4096 px, and only where X-Plane will read them at 8192 px, which it does not from high
+up: those distances are in three dimensions. At a start, X-Plane has read nothing yet, and
+``start_mode`` says which textures it waits for at 8192 px (:data:`START_MODES`).
 """
 
 from __future__ import annotations
@@ -97,6 +98,7 @@ DATAREFS = [
     ("vx", "sim/graphics/view/view_x"),
     ("vy", "sim/graphics/view/view_y"),
     ("vz", "sim/graphics/view/view_z"),
+    ("agl_m", "sim/flightmodel/position/y_agl"),
 ]
 
 
@@ -109,6 +111,8 @@ class Fix:
     trk_deg: float = 0.0
     cam_lat: float | None = None  # the camera, which external views take away from the aircraft
     cam_lon: float | None = None
+    agl_m: float = 0.0  # the aircraft's height above the ground
+    cam_agl_m: float | None = None  # the camera's
 
 
 def camera_position(lat: float, lon: float, plane_xyz, view_xyz) -> tuple[float, float]:
@@ -267,7 +271,10 @@ class Streamer:
         """Whether a 4096 px texture of a zoom that goes to 8192 px grows now, and then how urgent
         it is (as :meth:`plan` counts it); None: it stays 4096 px for now.
 
-        ``d``: from the path ahead and the camera; ``d_now``: from the aircraft and the camera."""
+        ``d``: from the path ahead and the camera; ``d_now``: from the aircraft and the camera; both
+        in three dimensions, from their heights above the ground, as X-Plane measures. The other
+        levels keep the distances on the ground: one built too few would show the neutral colour,
+        where a texture that does not grow stays 4096 px."""
         r8 = ring_km(MIN_LEVEL, zoom) * self.margin
         if starting:  # X-Plane reads nothing here before the start's textures are built
             if self.start_mode == "full" and d - self.reach_km <= r8:
@@ -298,6 +305,10 @@ class Streamer:
         path = Route(["now", "ahead"], [(fix.lat, fix.lon), ahead(fix, LOOKAHEAD_MIN)])
         camera = (fix.cam_lat, fix.cam_lon) if fix.cam_lat is not None else None
         now = time.time()
+        # heights above the ground: X-Plane measures from the camera in three dimensions, and
+        # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
+        h = max(0.0, fix.agl_m) / 1000.0
+        h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
         offer = None if starting else self._offer_near(fix)
         offer_left = 0
         jobs: dict[str, tuple[float, int]] = {}
@@ -308,10 +319,13 @@ class Streamer:
             if name in self.built:
                 self.seen[name] = now
             d = path.distance_km(lat, lon)
+            s, s_now = math.hypot(d, h), math.hypot(d_now, h)  # the same in three dimensions
             if camera is not None:
                 d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
                 if d_cam < d:
                     d, d_now = d_cam, min(d_now, d_cam)
+                s_cam = math.hypot(d_cam, h_cam)
+                s, s_now = min(s, s_cam), min(s_now, s_cam)
             top = self.top_of(name)
             level = top_level_for(
                 max(0.0, d - self.reach_km),
@@ -326,7 +340,7 @@ class Streamer:
             )
             urgency = d_now - ring
             if level == 0 and top == 0 and zoom in self.growing:
-                grow = self._growth(zoom, d, d_now, starting, offer)
+                grow = self._growth(zoom, s, s_now, starting, offer)
                 if grow is not None:
                     level, urgency = MIN_LEVEL, grow
                     if offer is not None and self.level_of(name) > level:
@@ -1051,6 +1065,7 @@ def run(
                         values.get("alt_m", 0.0),
                         values.get("gs_ms", 0.0),
                         values.get("trk_deg", 0.0),
+                        agl_m=values.get("agl_m", 0.0),
                     )
                     if all(k in values for k in ("px", "pz", "vx", "vz")):
                         fix.cam_lat, fix.cam_lon = camera_position(
@@ -1059,6 +1074,8 @@ def run(
                             (values["px"], values.get("py", 0.0), values["pz"]),
                             (values["vx"], values.get("vy", 0.0), values["vz"]),
                         )
+                        # the camera's height: the aircraft's, and how far above it the camera is
+                        fix.cam_agl_m = fix.agl_m + values.get("vy", 0.0) - values.get("py", 0.0)
                 running = fix is not None and now - last_packet < FRESH_S
                 if arrival is not None and not running:
                     arrival.loading = True  # X-Plane stopped sending its position: it is loading
