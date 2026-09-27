@@ -70,7 +70,10 @@ def test_the_question_the_first_time(home: Path, monkeypatch: pytest.MonkeyPatch
     assert app_start.app_start(home / "log")  # Live's window, the question first
     assert shown == [(app_start.LIVE_PORT, "welcome")]
     shown = windows(monkeypatch, answer="build")
-    assert not app_start.app_start(home / "log")  # answered "build": OrthoStudio XP's opens
+    opened = []
+    monkeypatch.setattr(app_start, "open_osxp", lambda: opened.append(1))
+    assert app_start.app_start(home / "log")  # answered "build": OrthoStudio XP's opens, apart
+    assert opened == [1]
     save_settings(LiveSettings(app_home="live"))
     shown = windows(monkeypatch)
     assert app_start.app_start(home / "log")

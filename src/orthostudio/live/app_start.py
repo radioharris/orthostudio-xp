@@ -92,8 +92,9 @@ def open_osxp() -> None:
 
 def app_start(log: Path) -> bool:
     """At the app's start, before OrthoStudio XP's window: ``True`` when Live's window was shown
-    instead (chosen, or the welcome page the first time), ``False`` for OrthoStudio XP's: Live
-    switched off, building chosen, now or before, or asked for by Live's own button."""
+    instead (chosen, or the welcome page the first time: its answer "build" opens OrthoStudio
+    XP's window then, apart), ``False`` for OrthoStudio XP's in this process: Live switched off,
+    building chosen before, or asked for by Live's own button."""
     from orthostudio.live.settings import load_settings
 
     if os.environ.get(START_ENV) == "build" or not enabled():
@@ -106,7 +107,11 @@ def app_start(log: Path) -> bool:
         return True
     from orthostudio.live.web import open_window
 
-    return open_window(LIVE_PORT, start="welcome" if home == "ask" else None) != "build"
+    if open_window(LIVE_PORT, start="welcome" if home == "ask" else None) == "build":
+        # OrthoStudio XP's window in a process of its own, as Live's button opens it: the window
+        # library's loop starts once a process, and Live's has just ended
+        open_osxp()
+    return True
 
 
 def osxp_router() -> Any:
