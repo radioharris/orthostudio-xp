@@ -115,7 +115,7 @@ export const STRINGS = {
 
     "zoom.title": "Zoom",
     "zoom.help":
-      "X-Plane picks by itself, by distance, how much of each texture to show: the zoom sets the sharpest it can show, up close. At cruise, it changes nothing.",
+      "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only (within 6 km at ZL17); a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
     "zoom.max": "Maximum zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
     "zoom.airports": "Zoom near airports",
@@ -280,7 +280,7 @@ export const STRINGS = {
 
     "zoom.title": "Zoom",
     "zoom.help":
-      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette qu'il peut montrer, de près. En croisière, il ne change rien.",
+      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol (à moins de 6 km en ZL17) ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
     "zoom.max": "Zoom maximum",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
     "zoom.airports": "Zoom près des aéroports",

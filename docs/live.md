@@ -40,7 +40,9 @@ X-Plane picks by itself, by distance, which version of a texture it shows; the z
 sharpest version there is, the one seen up close. Below the package's zoom a texture is smaller
 (1024 px at ZL14): less sharp near the ground, far less to download, shorter waits at a start. One
 zoom above, it is 8192 px: sharper near the ground, four times more to download for the textures
-nearest the aircraft and the camera. At cruise it changes nothing. A new zoom applies at the next
+nearest the aircraft and the camera. A higher zoom is sharper near the ground only (within about
+6 km at ZL17, 1.5 km at ZL19); a lower one is blurrier within 38 km, the ground under the aircraft
+at cruise too. A new zoom applies at the next
 start of Live, X-Plane closed: Live puts every texture at its new size, about a minute, keeping
 what it built and downloading nothing.
 
