@@ -293,13 +293,15 @@ def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
 # -- job ------------------------------------------------------------------------------------------
 
 
-_RELIEF_NAMES = {"COP30": "copernicus", "NED1/3": "usgs", "XP12": "xplane"}
+_RELIEF_NAMES = {"COP30": "copernicus", "NED1/3": "usgs", "NED1": "usgs1", "XP12": "xplane"}
 
 
 def _relief_of(spec: Any) -> str:
     """Where the tiles of ``spec`` take their heights: ``xplane`` (X-Plane 12's own relief, or
-    ``view`` in the test suite), ``copernicus`` (``COP30``), ``usgs`` (``NED1/3``), ``canada``
-    (``COP30;HRDEM``), or ``file`` (the user's own).
+    ``view`` in the test suite), ``copernicus`` (``COP30``), ``usgs`` (``NED1/3``), ``usgs1``
+    (``NED1``), ``canada`` (``COP30;HRDEM``), ``south_america`` (``COP30;ANADEM``), or ``file``
+    (the user's own). The USGS at 1" was missing from 0.1.9 to 0.1.18: Works called it the
+    user's own relief file, which the page had its words for all along (``works.relief_usgs1``).
 
     The base is what comes before the first ``;``: a folder of one's own laid over a source must
     not make the line read *own relief file* when the relief is the source (a user chose the USGS
@@ -310,9 +312,10 @@ def _relief_of(spec: Any) -> str:
         return str(spec.relief)
     base, _, rest = custom.partition(";")
     overlays = [p for p in rest.split(";") if p]
-    if base == "COP30" and overlays == ["HRDEM"]:
+    # a folder of one's own laid over them is one more overlay, which ``_own_files_of`` tells
+    if base == "COP30" and "HRDEM" in overlays:
         return "canada"
-    if base == "COP30" and overlays == ["ANADEM"]:
+    if base == "COP30" and "ANADEM" in overlays:
         return "south_america"
     if not base:
         return str(spec.relief)
