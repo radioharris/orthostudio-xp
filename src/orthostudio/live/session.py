@@ -66,6 +66,7 @@ class Options:
     max_zoom: int = 16
     max_zoom_airports: int = 18
     start_mode: str = "around"  # what X-Plane waits for at a start: streamer.START_MODES
+    simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
     margin: float = 1.25
     camera_reach_km: float = 25.0
     workers: int = field(default_factory=default_workers)
@@ -290,6 +291,7 @@ def follow(
                     log=log,
                     start_mode=options.start_mode,
                     covered=prepared.covered,
+                    simbrief_user=options.simbrief_user,
                 )
                 log(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "

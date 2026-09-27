@@ -119,6 +119,19 @@
         <p class="question-help" data-i18n="zoom.change"></p>
       </fieldset>
 
+      <fieldset class="question" id="q-plan">
+        <legend class="question-title" data-i18n="plan.title">Flight plan</legend>
+        <p class="question-help" data-i18n="plan.help"></p>
+        <div class="sub-question">
+          <label class="sub-question-title" for="set-simbrief" data-i18n="plan.name">SimBrief name or pilot ID</label>
+          <div class="path-row">
+            <input type="text" id="set-simbrief" name="simbrief_user" class="question-path" spellcheck="false" autocomplete="off" maxlength="64">
+            <button type="button" class="btn btn-small" id="simbrief-osxp" hidden></button>
+          </div>
+          <p class="question-help" data-i18n="plan.privacy"></p>
+        </div>
+      </fieldset>
+
       <fieldset class="question" id="q-disk">
         <legend class="question-title" data-i18n="disk.title">Disk space</legend>
         <p class="question-help" data-i18n="disk.help"></p>

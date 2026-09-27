@@ -181,6 +181,12 @@ function drawFlight(status) {
     rows.push([t("flight.altitude"), `${number(a.alt_ft)} ft`]);
     rows.push([t("flight.speed"), `${number(a.gs_kt)} kt`]);
   }
+  const plan = stream.streamer?.flight_plan;
+  if (plan) {
+    rows.push([t("flight.plan"), t(plan.following ? "flight.plan_following" : "flight.plan_off", {
+      name: plan.name,
+    })]);
+  }
   const screen = stream.streamer?.screen;
   if (screen) {
     rows.push([t("flight.screen"), t("flight.screen_value", {
@@ -293,8 +299,17 @@ function drawFolder(status) {
   $("set-folder").placeholder = status.checks.folder_default;
 }
 
+/** OrthoStudio XP's SimBrief name, offered to take: never asked of SimBrief until it is. */
+function drawSimbrief() {
+  const name = last?.checks?.osxp_simbrief;
+  const button = $("simbrief-osxp");
+  button.hidden = !name || $("set-simbrief").value.trim() === name;
+  if (name) button.textContent = t("plan.take", { name });
+}
+
 function draw(status) {
   last = status;
+  drawSimbrief();
   drawState(status);
   drawFlight(status);
   drawBuild(status);
@@ -427,6 +442,8 @@ function fillSettings(settings) {
   $("set-disk").value = String(settings.disk_budget_gb);
   $("set-cache").value = String(settings.cache_budget_gb);
   $("set-folder").value = settings.folder || "";
+  $("set-simbrief").value = settings.simbrief_user || "";
+  drawSimbrief();
   for (const input of $("start-choices").querySelectorAll("input")) {
     input.checked = input.value === settings.start_mode;
   }
@@ -444,6 +461,7 @@ async function saveSettings(event) {
     provider: $("set-provider").value || saved?.provider || "BI",
     folder: $("set-folder").value.trim(),
     start_mode: startMode(),
+    simbrief_user: $("set-simbrief").value.trim(),
   };
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
@@ -580,6 +598,11 @@ function boot() {
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));
   $("set-provider").addEventListener("change", drawSource);
+  $("set-simbrief").addEventListener("input", drawSimbrief);
+  $("simbrief-osxp").addEventListener("click", () => {
+    $("set-simbrief").value = last?.checks?.osxp_simbrief || "";
+    drawSimbrief();
+  });
   $("folder-choose").addEventListener("click", chooseFolder);
   $("delete-btn").addEventListener("click", openDelete);
   $("delete-dialog").addEventListener("close", deleteClosed);

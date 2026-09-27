@@ -130,6 +130,13 @@ def stream(
             "(default 18)"
         ),
     ] = None,
+    simbrief: Annotated[
+        str | None,
+        typer.Option(
+            help="your SimBrief name or pilot ID: the path ahead follows your last plan while the "
+            "aircraft is on it; only this name goes to simbrief.com (default: the window's)"
+        ),
+    ] = None,
     start_mode: Annotated[
         str | None,
         typer.Option(
@@ -204,6 +211,7 @@ def stream(
             saved.max_zoom_airports if max_zoom_airports is None else max_zoom_airports
         ),
         start_mode=start_mode or saved.start_mode,
+        simbrief_user=saved.simbrief_user if simbrief is None else simbrief,
         margin=margin,
         camera_reach_km=camera_reach_km,
         workers=workers,

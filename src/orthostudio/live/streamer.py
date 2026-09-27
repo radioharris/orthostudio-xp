@@ -47,6 +47,7 @@ from pathlib import Path
 from . import dds
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
+from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import haversine_m, parse_texture_name
 from .pack import MARKER, load_built
 from .region import NEUTRAL_LEVEL, Zooms, ensure_neutral, neutral_file
@@ -59,6 +60,7 @@ LOAD_KM = (
     230.0  # X-Plane loads a tile's DSF, reading 256 px, from about this far (probe: 130-230 km)
 )
 LOOKAHEAD_MIN = 5.0  # the path ahead the planner looks along
+PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most this often
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
@@ -199,6 +201,7 @@ class Streamer:
         log: Callable[[str], None] = print,
         start_mode: str = "full",
         covered: Collection[tuple[int, int]] = (),
+        simbrief_user: str = "",
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -250,6 +253,11 @@ class Streamer:
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
         self.offer: Offer | None = None  # the reload offered after a start (start_mode "reload")
+        # the pilot's last SimBrief plan, the path ahead while the aircraft is on it
+        self.simbrief_user = simbrief_user.strip()
+        self.flight_plan: FlightPlan | None = None
+        self.on_route = False
+        self._plan_asked = -math.inf
         # X-Plane's image, the last it said, from one run to the next: every ring scales with it
         self.screen: dict | None = None
         self.scale = 1.0
@@ -272,6 +280,30 @@ class Streamer:
         self._thread: threading.Thread | None = None
 
     # --- planning -----------------------------------------------------------------------------
+
+    def refresh_flight_plan(self) -> None:
+        """Ask SimBrief for the pilot's last plan, in a thread of its own, at most once a minute:
+        when Live starts, and when a flight does (a new plan may have been made meanwhile)."""
+        if not self.simbrief_user or time.monotonic() - self._plan_asked < PLAN_ASK_EVERY_S:
+            return
+        self._plan_asked = time.monotonic()
+
+        def fetch() -> None:
+            plan, why = last_plan(self.simbrief_user)
+            if plan is None:
+                self.log(
+                    f"  SimBrief: {why}; Live looks {LOOKAHEAD_MIN:.0f} minutes straight ahead"
+                )
+                return
+            known = self.flight_plan
+            self.flight_plan = plan
+            if known is None or known.points != plan.points:
+                self.log(
+                    f"  SimBrief: your last plan, {plan.name}: Live follows it while the aircraft "
+                    f"is on it"
+                )
+
+        threading.Thread(target=fetch, name="live-simbrief", daemon=True).start()
 
     def set_screen(self, width: float | None, fov: float | None, quiet: bool = False) -> None:
         """X-Plane's image, as it says it (``window_width``, ``field_of_view_deg``): the rings grow
@@ -359,6 +391,15 @@ class Streamer:
             or haversine_m(fix.lat, fix.lon, self.last_fix.lat, self.last_fix.lon) > JUMP_KM * 1000
         )
         path = Route(["now", "ahead"], [(fix.lat, fix.lon), ahead(fix, LOOKAHEAD_MIN)])
+        route = None  # the flight plan ahead, when the aircraft follows it, beside the track
+        plan = self.flight_plan
+        if plan is not None and not starting:
+            km = max(fix.gs_ms, 0.0) * ROUTE_LOOKAHEAD_MIN * 60.0 / 1000.0
+            track = fix.trk_deg if fix.gs_ms > MOVING_MS else None
+            along = plan.ahead(fix.lat, fix.lon, km, track)
+            if along is not None:
+                route = Route(["route"] * (len(along) + 1), [(fix.lat, fix.lon), *along])
+        self.on_route = route is not None
         camera = (fix.cam_lat, fix.cam_lon) if fix.cam_lat is not None else None
         now = time.time()
         # heights above the ground: X-Plane measures from the camera in three dimensions, and
@@ -377,6 +418,8 @@ class Streamer:
             if name in self.built:
                 self.seen[name] = now
             d = path.distance_km(lat, lon)
+            if route is not None:
+                d = min(d, route.distance_km(lat, lon))
             s, s_now = math.hypot(d, h), math.hypot(d_now, h)  # the same in three dimensions
             if camera is not None:
                 d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
@@ -851,6 +894,9 @@ class Streamer:
             "grown": grown,  # textures at 8192 px
             "start_mode": self.start_mode,
             "offer": self.offer_state(),
+            "flight_plan": None
+            if self.flight_plan is None
+            else {"name": self.flight_plan.name, "following": self.on_route},
             # X-Plane's image, and how far it reads 4096 px of a ZL16 texture there
             "screen": None
             if self.screen is None
@@ -1078,6 +1124,7 @@ def run(
         )
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
+        streamer.refresh_flight_plan()  # a new flight may have a new plan
         if streamer.covers(lat, lon):
             said = "click_running" if how == "click" and not arrival.loading else how
             log(_EXPECTED[said].format(name))
@@ -1088,6 +1135,7 @@ def run(
             )
 
     streamer.start()
+    streamer.refresh_flight_plan()
     if start is not None:
         expect(start.lat, start.lon, start_name or f"{start.lat:.3f} {start.lon:.3f}", "from")
     elif gate is not None and guess_last:

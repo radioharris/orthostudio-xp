@@ -66,8 +66,18 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         max_zoom=settings.max_zoom,
         max_zoom_airports=settings.max_zoom_airports,
         start_mode=settings.start_mode,
+        simbrief_user=settings.simbrief_user,
         fresh=fresh,
     )
+
+
+def _osxp_simbrief() -> str | None:
+    try:
+        from orthostudio.config.store import load_settings as osxp_settings
+
+        return (osxp_settings().essential.simbrief_user or "").strip() or None
+    except Exception:  # OrthoStudio XP's settings unreadable: nothing to offer
+        return None
 
 
 def gather_checks() -> dict[str, Any]:
@@ -89,6 +99,9 @@ def gather_checks() -> dict[str, Any]:
         "folder_default": str(default_live_root()),
         "folder_problem": None,
         "textures_bytes": usage(load_built(default_pack_dir()).get("textures", {})),
+        # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
+        # simbrief.com unless the pilot takes it into Live's settings
+        "osxp_simbrief": _osxp_simbrief(),
         "imagery_bytes": session.imagery_bytes(),
     }
     try:

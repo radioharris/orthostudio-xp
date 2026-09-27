@@ -47,6 +47,9 @@ class LiveSettings(BaseModel):
     folder: str = ""
     """Live's folder, for its pack and its imagery: empty for ``$OSXP_HOME/live``
     (:func:`orthostudio.live.pack.live_root`)."""
+    simbrief_user: str = Field("", max_length=64)
+    """The SimBrief name or pilot ID whose last plan the path ahead follows
+    (:mod:`orthostudio.live.flightplan`); empty: nothing is asked of simbrief.com."""
 
     @field_validator("folder")
     @classmethod
@@ -58,6 +61,11 @@ class LiveSettings(BaseModel):
         if not path.is_absolute():
             raise ValueError("a full path is needed, such as /Volumes/Disk/Live")
         return str(path)
+
+    @field_validator("simbrief_user")
+    @classmethod
+    def _stripped(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("provider")
     @classmethod

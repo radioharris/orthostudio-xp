@@ -138,7 +138,13 @@ when the aircraft, or the camera, passes closest. External views count: X-Plane 
 camera, so a chase or free camera far from the aircraft gets its textures sharp too. The distances
 follow X-Plane's image: on a wider screen, or zoomed in (a narrower field of view), X-Plane reads
 sharp textures farther, and Live builds them farther too. The Flight card shows your image and how
-far X-Plane reads 4096 px there. What is
+far X-Plane reads 4096 px there.
+
+With your SimBrief name in the settings (Flight plan), Live follows your last SimBrief plan while
+you fly it, ten minutes of route ahead, turns and approach included, beside the five minutes
+straight on; off the route, or flying it the other way, it looks straight on only. Only that name
+goes to simbrief.com, when Live starts and when a flight starts. The window offers the name
+OrthoStudio XP has, and asks SimBrief nothing until you take it. What is
 missing is downloaded and built, the most urgent first, and replaces the file on the disk. X-Plane
 picks the new file up by itself the next time it wants that texture sharper.
 

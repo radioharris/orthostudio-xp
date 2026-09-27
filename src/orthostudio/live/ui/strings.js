@@ -61,6 +61,9 @@ export const STRINGS = {
     "flight.position": "Position",
     "flight.altitude": "Altitude",
     "flight.speed": "Ground speed",
+    "flight.plan": "Flight plan",
+    "flight.plan_following": "{name} (SimBrief), followed",
+    "flight.plan_off": "{name} (SimBrief), off the route: 5 minutes straight ahead",
     "flight.screen": "X-Plane's image",
     "flight.screen_value": "{width} px, field of view {fov}°: sharp (4096 px) up to {km} km",
     "flight.camera": "Camera",
@@ -134,6 +137,14 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl}: sharper up close, 4 times more to download (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed: Live puts its textures at their new size, about a minute, with nothing to download.",
+
+    "plan.title": "Flight plan",
+    "plan.help":
+      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 5 minutes straight ahead.",
+    "plan.name": "SimBrief name or pilot ID",
+    "plan.privacy":
+      "Only this name goes to simbrief.com, when Live starts and when a flight starts. Empty: nothing is asked.",
+    "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
     "start.help":
@@ -254,6 +265,9 @@ export const STRINGS = {
     "flight.position": "Position",
     "flight.altitude": "Altitude",
     "flight.speed": "Vitesse sol",
+    "flight.plan": "Plan de vol",
+    "flight.plan_following": "{name} (SimBrief), suivi",
+    "flight.plan_off": "{name} (SimBrief), hors de la route : 5 minutes tout droit",
     "flight.screen": "Image d'X-Plane",
     "flight.screen_value": "{width} px, champ de vision {fov}° : net (4096 px) jusqu'à {km} km",
     "flight.camera": "Caméra",
@@ -328,6 +342,14 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl} : plus net de près, 4 fois plus à télécharger (textures 8192 px)",
     "zoom.change":
       "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met ses textures à leur nouvelle taille, une minute environ, sans rien télécharger.",
+
+    "plan.title": "Plan de vol",
+    "plan.help":
+      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 5 minutes tout droit devant.",
+    "plan.name": "Nom SimBrief ou ID pilote",
+    "plan.privacy":
+      "Seul ce nom est envoyé à simbrief.com, au démarrage de Live et de chaque vol. Vide : rien n'est demandé.",
+    "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "start.title": "Au démarrage d'un vol",
     "start.help":
