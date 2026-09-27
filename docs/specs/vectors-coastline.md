@@ -329,7 +329,9 @@ here and none is claimed**: step 1's 23 s were in `insert_way`, which is the nod
 **Wanted differences (implemented):**
 
 1. bad coastline data raises a typed `OsxpError` instead of silently producing a sea-free tile
-   (4.1, 4.3); `on_bad_coastline="record"` restores Ortho4XP.
+   (4.1, 4.3); `on_bad_coastline="record"` restores Ortho4XP. `coastline_fault` runs the stage in
+   that mode to tell whether a coastline would be refused, without raising: the prepared sources
+   are checked with it before a tile is taken from them (`osm-prepared.md` 1, issue 3).
 2. degenerate rings are dropped instead of raising (4.4), and the `ValueError` Ortho4XP lets
    escape when two chains share an init arclength becomes `OSM_COAST_TRIPLE_JUNCTION` (4.3).
 3. `bd_coord` / `bd_point` are vectorised (`shapely.line_locate_point` /

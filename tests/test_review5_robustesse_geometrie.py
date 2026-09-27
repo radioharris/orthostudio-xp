@@ -19,7 +19,7 @@ from shapely import geometry
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.vectors.assemble import AssemblyParams, VectorLayer, VectorLayers, assemble_vectors
-from orthostudio.vectors.coast import CoastParams, build_sea_layers
+from orthostudio.vectors.coast import CoastParams, build_sea_layers, coastline_fault
 from orthostudio.vectors.grid import gluing_border, grid_and_border, ortho_grid_abscissae
 from orthostudio.vectors.noding import MARKERS
 from orthostudio.vectors.osmdata import OsmData
@@ -259,6 +259,20 @@ def test_the_record_mode_of_the_coastline_keeps_the_error_instead_of_raising() -
     result = build_sea_layers([chain], MARSEILLE, CoastParams(on_bad_coastline="record"))
     assert [e.code for e in result.errors] == ["OSM_COAST_OPEN_END"]
     assert result.sea_polygons.is_empty and result.seeds.shape == (0, 2)
+
+
+def test_the_coastline_fault_is_the_one_the_build_raises() -> None:
+    """Issue 3 (2026-09-27): what a prepared library holds is checked before it is taken, with
+    the very function the vector stage runs, so the check and the build cannot disagree."""
+    chain = np.array([[5.2, 43.2], [5.3, 43.3], [5.4, 43.25]])
+    fault = coastline_fault([chain], MARSEILLE)
+    assert fault is not None and fault.code == "OSM_COAST_OPEN_END"
+    with pytest.raises(OsxpError) as err:
+        build_sea_layers([chain], MARSEILLE, CoastParams())
+    assert (err.value.code, err.value.context) == (fault.code, fault.context)
+    island = np.array([[5.4, 43.4], [5.6, 43.4], [5.6, 43.6], [5.4, 43.6], [5.4, 43.4]])
+    assert coastline_fault([island], MARSEILLE) is None
+    assert coastline_fault([], MARSEILLE) is None
 
 
 def test_an_empty_coastline_layer_gives_an_empty_result_not_a_sea_tile() -> None:

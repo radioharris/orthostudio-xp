@@ -513,3 +513,70 @@ def test_a_library_nobody_answers_at_costs_a_tile_nothing(monkeypatch: pytest.Mo
     got = OsmJob(chain=Chain([library])).run(TILE, SPECS)
     assert {s.mirror for s in got.values()} == {"overpass:test"} and live == [TILE.name]
     assert time.monotonic() - started < 5.0
+
+
+# -- a coastline the build would refuse (issue 3) --------------------------------------------------
+
+
+def _coast(*, closed: bool) -> OsmSnapshot:
+    """A coastline of the tile: an island, or a chain that stops in the middle of the tile."""
+    if closed:  # land on the left: an island
+        at = [(43.4, 5.4), (43.4, 5.6), (43.6, 5.6), (43.6, 5.4)]
+        order: tuple[int, ...] = (1, 2, 3, 4, 1)
+    else:
+        at = [(43.2, 5.2), (43.3, 5.3), (43.25, 5.4)]
+        order = (1, 2, 3)
+    return OsmSnapshot(
+        tile=TILE,
+        layer="coastline",
+        selectors=tuple(LAYERS["coastline"].selectors),
+        query="",
+        mirror="baked:test",
+        fetched_at="2026-09-13T23:59:59Z",
+        generator="test",
+        osm_base="",
+        nodes=tuple(OsmNode(i, lat, lon, {}) for i, (lat, lon) in enumerate(at, 1)),
+        ways=(OsmWay(10, order, {"natural": "coastline"}),),
+        relations=(),
+        digest=("c" if closed else "o") * 64,
+    )
+
+
+def _tile(*, closed: bool) -> dict[str, OsmSnapshot]:
+    return {**{s.name: _snapshot(s.name) for s in SPECS}, "coastline": _coast(closed=closed)}
+
+
+def test_a_source_whose_coastline_would_stop_the_build_is_passed_over() -> None:
+    """Issue 3 (2026-09-27): Lolland's coastline lost its tag for 18 hours, the planet was cut in
+    between, and the library gave +54+010 and +54+011 a coastline no build can close. Such an
+    answer is no answer: the next source is asked, and the live servers last of all."""
+    from orthostudio.pipeline.native import unusable_coastline
+
+    broken, mended = _Fake("library", _tile(closed=False)), _Fake("folder", _tile(closed=True))
+    got = Chain([broken, mended], unusable=unusable_coastline).layers(TILE, SPECS)
+    assert got and got.source == "folder"
+    (note,) = got.notes
+    assert note.startswith("library: its coastline would stop the build (OSM_COAST_OPEN_END at 43.")
+    # a coastline that closes, and a tile with none, are taken as they always were
+    assert Chain([mended], unusable=unusable_coastline).layers(TILE, SPECS).source == "folder"
+    whole = {s.name: _snapshot(s.name) for s in SPECS}
+    assert Chain([_Fake("library", whole)], unusable=unusable_coastline).layers(TILE, SPECS)
+
+
+def test_a_check_that_breaks_never_refuses_a_source() -> None:
+    def broken(tile: TileRef, got: object) -> str | None:
+        raise RuntimeError("a bug in the check")
+
+    got = Chain([_Fake("library", _tile(closed=False))], unusable=broken).layers(TILE, SPECS)
+    assert got and got.source == "library"  # taken as every build before it took it
+
+
+def test_a_library_coastline_the_build_would_refuse_comes_from_the_live_servers(
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    from orthostudio.pipeline.native import OsmJob, unusable_coastline
+
+    live = _live(monkeypatch)
+    chain = Chain([_Fake("library", _tile(closed=False))], unusable=unusable_coastline)
+    got = OsmJob(chain=chain).run(TILE, SPECS)
+    assert {s.mirror for s in got.values()} == {"overpass:test"} and live == [TILE.name]

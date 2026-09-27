@@ -94,6 +94,7 @@ from orthostudio.pipeline.native import (
     osm_job,
     resolve_stages,
     snapshot_label_of,
+    unusable_coastline,
 )
 from orthostudio.pipeline.pack import (
     TILE_INSTALL,
@@ -130,7 +131,7 @@ from orthostudio.sched import (
     Scheduler,
     run_p0_rule,
 )
-from orthostudio.sources.osm import layers_for
+from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
 from orthostudio.vectors.layers import build_layers
@@ -426,7 +427,7 @@ def _prepared_chain(spec: BuildSpec, workdir: Path) -> Any:
     except Exception:  # a setting nobody can read is not a reason to fail a build
         log.warning("prepared sources could not be read from the settings; Overpass alone")
         return None
-    return Chain(sources) if sources else None
+    return Chain(sources, unusable=unusable_coastline) if sources else None
 
 
 @dataclass(slots=True)
@@ -2478,6 +2479,18 @@ def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> 
     info = env.store.info(key)
     if info is None:
         return None
+    built_on = _vectors_built_on(env.store, key)
+    why = None if built_on else _kept_coastline_trouble(tile, info.path, info.digest)
+    if why:
+        # Taken again rather than used again: the key would stay the same and so would the
+        # failure, whatever the library or OpenStreetMap mended since. No tile was ever built on
+        # such a coastline (the vector stage refuses it), so nothing built depends on it.
+        log.info("%s: the map data kept for this tile is set aside, %s; it is asked again",
+                 tile.name, why)  # fmt: skip
+        with contextlib.suppress(Exception):
+            env.store.delete(key, force=True)
+        if not env.store.has(key):
+            return None
     env.store.touch(key, [])
     ref = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
     return OsmOutcome(
@@ -2488,6 +2501,46 @@ def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> 
         hit=True,
         skipped="stored snapshot reused",
     )
+
+
+def _vectors_built_on(store: Store, key: str) -> bool:
+    """Whether the vector stage already ran on the snapshot of ``key``. It refuses a coastline that
+    does not close, so a snapshot it was built on needs no check: a colour or a decal changed on a
+    tile already built costs nothing more. A store that cannot tell says no, and the check runs.
+    """
+    try:
+        for child, name in store.dependents(key):
+            info = store.info(child) if name == "osm" else None
+            if info is not None and info.rule == OSXP_VECTORS.name:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+_KEPT_COASTLINES: dict[str, str | None] = {}
+"""The verdict on the coastline of each snapshot the store kept, by the snapshot's digest: a tile
+built again in the same session, a colour or a decal changed, is not checked twice."""
+
+
+def _kept_coastline_trouble(tile: TileRef, path: Path, digest: str) -> str | None:
+    """Why the vector stage would refuse the coastline of a snapshot the store kept, or ``None``.
+
+    A library of 0.1.17 or 0.1.18 could leave a coastline the build refuses (issue 3,
+    2026-09-27), and so can OpenStreetMap itself on a bad night: kept, it failed the tile at every
+    build after the mend. A check that cannot run never sets the snapshot aside.
+    """
+    if digest in _KEPT_COASTLINES:
+        return _KEPT_COASTLINES[digest]
+    try:
+        snap = SnapshotStore(path).load(tile, "coastline")
+        why = unusable_coastline(tile, {"coastline": snap}) if snap is not None else None
+    except Exception as exc:
+        log.info("%s: the kept coastline could not be checked (%s); used as it is",
+                 tile.name, type(exc).__name__)  # fmt: skip
+        return None
+    _KEPT_COASTLINES[digest] = why
+    return why
 
 
 def osm_artefact_refs(outcomes: Mapping[TileRef, OsmOutcome]) -> dict[TileRef, ArtifactRef]:

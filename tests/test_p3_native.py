@@ -9,6 +9,7 @@ Ortho4XP.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -216,7 +217,14 @@ def test_a_stored_snapshot_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyP
     """Second run of a tile OrthoStudio XP fetched: no download, and the same content label (A4)."""
     spec = _spec(tmp_path, osm_fetch=True)
     env = BuildEnv.create([spec])
-    with native.osm_job(native.OsmJob(fetch=lambda t, ss: {s.name: _snapshot(s.name) for s in ss})):
+
+    def inland(tile: TileRef, specs: Any) -> dict[str, OsmSnapshot]:
+        # a tile a build can use: ``_snapshot`` draws a coastline that stops inside the tile,
+        # which a kept snapshot is asked for again for (issue 3), so this one has none
+        got = {s.name: _snapshot(s.name) for s in specs}
+        return {**got, "coastline": replace(got["coastline"], nodes=(), ways=())}
+
+    with native.osm_job(native.OsmJob(fetch=inland)):
         first = run_osm_phase([spec], env)
 
     def refuse(tile: TileRef, specs: Any) -> dict[str, OsmSnapshot]:
