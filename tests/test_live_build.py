@@ -53,5 +53,21 @@ class BuildTest(unittest.TestCase):
         self.assertGreater(bc1_texel(level1, 2048, 100, 100)[2], 150)  # blue, from the parent
 
 
+@unittest.skipIf(np is None, "needs numpy, Pillow and ispc_texcomp")
+class TintTest(unittest.TestCase):
+    """The test of the 8192 px: the top level pink, the smaller ones as the photos are."""
+
+    def test_only_the_top_level_is_pink(self):
+        from orthostudio.live.texture import encode_levels, tinted
+
+        img = np.random.default_rng(1).integers(0, 255, (64, 64, 3), dtype=np.uint8)
+        plain = encode_levels(img)
+        pink = encode_levels(img, tint_top=True)
+        self.assertNotEqual(pink[0], plain[0])
+        self.assertEqual(pink[1:], plain[1:])
+        black = np.zeros((1, 1, 3), dtype=np.uint8)
+        self.assertEqual(tinted(black)[0, 0].tolist(), [89, 22, 70])  # 35 % of the pink
+
+
 if __name__ == "__main__":
     unittest.main()

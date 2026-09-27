@@ -147,6 +147,11 @@ function drawState(status) {
 
   const { state, checks } = status;
   const idle = state === "idle";
+  // the test of the 8192 px: said while it is on, the stream's own, else the next start's
+  const running = status.stream?.streamer;
+  const tint = running ? Boolean(running.tint_8192) : Boolean(status.settings?.tint_8192);
+  $("tint-note").hidden = !tint;
+  $("tint-note").textContent = tint ? t(running ? "state.tint_on" : "state.tint_next") : "";
   // the photos: chosen before Start, and kept until Live stops
   $("set-provider").disabled = !idle;
   $("set-provider").title = idle ? "" : t("source.running");
@@ -645,6 +650,7 @@ function fillSettings(settings) {
   $("set-max-zoom").value = String(settings.max_zoom);
   $("set-max-zoom-airports").value = String(settings.max_zoom_airports);
   $("set-disk").value = String(settings.disk_gb);
+  $("set-tint").checked = Boolean(settings.tint_8192);
   $("set-folder").value = settings.folder || "";
   $("set-simbrief").value = settings.simbrief_user || "";
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
@@ -668,6 +674,7 @@ function formSettings() {
     max_zoom: Number($("set-max-zoom").value),
     max_zoom_airports: Number($("set-max-zoom-airports").value),
     disk_gb: Number($("set-disk").value),
+    tint_8192: $("set-tint").checked,
     folder: $("set-folder").value.trim(),
     start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),

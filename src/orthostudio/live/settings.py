@@ -61,6 +61,9 @@ class LiveSettings(BaseModel):
     overlays: Literal["auto", "off"] = "auto"
     """AutoOrtho's roads, forests and buildings on Live's squares where no other scenery draws
     them (:mod:`orthostudio.live.overlays`); "off": nowhere."""
+    tint_8192: bool = False
+    """A test: the 8192 px level of every texture built pink, the smaller ones as they are, so that
+    a pilot sees where X-Plane shows the 8192 px, which the eye hardly tells from 4096 px."""
 
     @property
     def textures_gb(self) -> float:

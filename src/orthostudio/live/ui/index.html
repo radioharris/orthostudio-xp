@@ -53,6 +53,7 @@
       <p class="question-help num" id="hold-text"></p>
     </div>
     <p class="error-inline" id="state-error" role="alert" hidden></p>
+    <p class="question-help is-warn" id="tint-note" hidden></p>
     <!-- the photos, chosen first, before Start: saved as soon as chosen -->
     <div class="live-source">
       <label class="sub-question-title live-source-title" for="set-provider" data-i18n="source.title">Imagery source</label>
@@ -194,6 +195,10 @@
             <div class="choices" id="start-choices"></div>
             <p class="question-help" data-i18n="start.flight"></p>
             <p class="question-help" data-i18n="start.why"></p>
+            <!-- a test: the 8192 px level pink, to see where X-Plane shows it -->
+            <label class="switch live-tint"><input type="checkbox" id="set-tint" name="tint_8192">
+              <span data-i18n="start.tint">Test: show the 8192 px textures in pink</span></label>
+            <p class="question-help" data-i18n="start.tint_help"></p>
           </div>
         </fieldset>
       </fieldset>

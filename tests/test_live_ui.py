@@ -64,6 +64,12 @@ def test_a_wrong_value_costs_itself_only(home: Path) -> None:
     assert got.provider == "Arc"
 
 
+def test_the_test_of_the_8192_px_is_off_until_ticked(home: Path) -> None:
+    assert LiveSettings().tint_8192 is False
+    assert not control_module.options_for(LiveSettings(), fresh=False).tint_8192
+    assert control_module.options_for(LiveSettings(tint_8192=True), fresh=False).tint_8192
+
+
 def test_one_disk_space_shared_and_the_two_of_before(home: Path) -> None:
     """One space, as AutoOrtho's cache: half for the textures built, half for the downloaded
     imagery. A file from before, with two spaces, keeps as much as it gave: their sum."""

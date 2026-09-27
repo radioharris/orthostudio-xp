@@ -171,6 +171,14 @@ With the package's zooms, 16 and 18, no texture is 8192 px: the four would start
 window shows one line in their place, which says what a start does and that the choices come with
 ZL17 or ZL19.
 
+The eye hardly tells ZL17 from ZL16, so a test shows where X-Plane really shows the 8192 px: with
+"Test: show the 8192 px textures in pink" ticked (or `--tint-8192`), Live builds the 8192 px level
+of every texture washed with pink, the 4096 px and smaller levels as they are. Where the ground
+turns pink, X-Plane shows the 8192 px: around the aircraft after the reload in "Normal, then reload
+in 8192 px", ahead of it in flight, from the start with the two other choices. Live's tab says the
+test is on. After it, untick the box and delete the textures (the photos kept): they are built
+again normally, with nothing to download.
+
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
 the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. Live adds two that
 AutoOrtho offers: Esri's Firefly (the same photos as Esri, softer colours) and NAIP (the United

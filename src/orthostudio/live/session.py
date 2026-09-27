@@ -79,6 +79,7 @@ class Options:
     fresh: bool = False  # as the first time: every texture and all imagery forgotten
     disk_budget_gb: float = 20.0
     cache_budget_gb: float = 10.0
+    tint_8192: bool = False  # the test: the 8192 px levels built pink, where X-Plane shows them
 
 
 @dataclass
@@ -349,6 +350,7 @@ def follow(
                     start_mode=options.start_mode,
                     covered=prepared.covered,
                     simbrief_user=options.simbrief_user,
+                    tint_8192=options.tint_8192,
                     installed_regions=lambda: {
                         s.name.removeprefix("z_ao_") for s in default_sources(prepared.xplane)
                     },
@@ -357,6 +359,8 @@ def follow(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "
                     f"start X-Plane, {stop_hint}"
                 )
+                if options.tint_8192:
+                    log("test: the 8192 px textures are built pink, where X-Plane shows them")
                 if attach is not None:
                     attach(streamer)
                 run(

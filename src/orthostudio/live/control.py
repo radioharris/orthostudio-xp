@@ -73,6 +73,7 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         simbrief_user=settings.simbrief_user,
         overlays=settings.overlays,
         language=settings.language,
+        tint_8192=settings.tint_8192,
         fresh=fresh,
     )
 

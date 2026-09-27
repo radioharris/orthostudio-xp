@@ -273,6 +273,11 @@ export const STRINGS = {
     "start.reload_note":
       "As Normal. Once the 12 km around the aircraft are ready in 8192 px, a button (in X-Plane and in this window) reloads the scenery: a few seconds of “reload objects & textures”.",
     "start.flight": "Live: the textures ahead of the aircraft become 8192 px before you come near them.",
+    "start.tint": "Test: show the 8192 px textures in pink",
+    "start.tint_help":
+      "Only their 8192 px version is tinted: where the ground turns pink in X-Plane, X-Plane shows the 8192 px. After the test, untick it and delete the textures (Disk space, the photos kept): they are built again normally.",
+    "state.tint_on": "Test on: the 8192 px textures are pink where X-Plane shows them.",
+    "state.tint_next": "Test on from the next start: the 8192 px textures will be pink where X-Plane shows them.",
     "settings.recommended": "Recommended",
 
     "disk.title": "Disk space",
@@ -587,6 +592,11 @@ export const STRINGS = {
     "start.reload_note":
       "Comme Normale. Quand les 12 km autour de l'avion sont prêts en 8192 px, un bouton (dans X-Plane et dans cette fenêtre) recharge la scène : quelques secondes de « reload objects & textures ».",
     "start.flight": "Du live : les textures devant l'avion passent en 8192 px avant que vous en approchiez.",
+    "start.tint": "Test : montrer les textures 8192 px en rose",
+    "start.tint_help":
+      "Seule leur version 8192 px est teintée : là où le sol rosit dans X-Plane, X-Plane affiche le 8192 px. Après le test, décochez et supprimez les textures (Place sur le disque, en gardant les photos) : elles sont refaites normalement.",
+    "state.tint_on": "Test en cours : les textures 8192 px sont roses là où X-Plane les affiche.",
+    "state.tint_next": "Test au prochain démarrage : les textures 8192 px seront roses là où X-Plane les affiche.",
     "settings.recommended": "Recommandé",
 
     "disk.title": "Place sur le disque",

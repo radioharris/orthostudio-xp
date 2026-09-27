@@ -205,6 +205,7 @@ class Streamer:
         covered: Collection[tuple[int, int]] = (),
         simbrief_user: str = "",
         installed_regions: Callable[[], Collection[str]] = frozenset,
+        tint_8192: bool = False,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -227,6 +228,7 @@ class Streamer:
         if start_mode not in START_MODES:
             raise ValueError(f"start_mode {start_mode!r}: one of {', '.join(START_MODES)}")
         self.start_mode = start_mode
+        self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # the textures whose file is 8192 px: each built from its 8192 px level
@@ -722,6 +724,7 @@ class Streamer:
                         str(self.pack_dir / "textures" / job.name),
                         self.neutral_for(top),
                         top,
+                        self.tint_8192,
                     ),
                 )
                 encoding[fut] = job
@@ -939,6 +942,7 @@ class Streamer:
             "reload_pending": self.reload_pending,
             "grown": grown,  # textures at 8192 px
             "start_mode": self.start_mode,
+            "tint_8192": self.tint_8192,
             "offer": self.offer_state(),
             "flight_plan": None
             if self.flight_plan is None

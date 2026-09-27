@@ -33,6 +33,10 @@ BLOCK = 4096
 F_PUNCHHOLE = 99
 MAX_PARENT_DEPTH = 4
 MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
+# The test of the 8192 px (settings tint_8192): that level only, washed with pink, so that a pilot
+# sees where X-Plane shows it; the 4096 px and smaller levels are the photos as they are.
+TINT_RGB = (255, 64, 200)
+TINT_ALPHA = 0.35
 
 
 def worker_ignores_ctrl_c() -> None:
@@ -234,21 +238,36 @@ def assemble(
     return img, from_parent, blank
 
 
-def encode_levels(img) -> list[bytes]:
-    """BC1 blocks of ``img`` and of every smaller level down to 1 x 1."""
-    from .imaging import encode_levels as encode
+def tinted(img):
+    """``img`` washed with the test's pink (:data:`TINT_RGB`), its photo still seen under it."""
+    import numpy as np
 
-    return encode(img)
+    pink = np.array(TINT_RGB, dtype=np.float32)
+    return (img.astype(np.float32) * (1.0 - TINT_ALPHA) + pink * TINT_ALPHA).astype(np.uint8)
+
+
+def encode_levels(img, tint_top: bool = False) -> list[bytes]:
+    """BC1 blocks of ``img`` and of every smaller level down to 1 x 1; ``tint_top``: ``img``'s own
+    level pink, the smaller ones made from it untinted before."""
+    from .imaging import encode_bc1, mip_chain
+
+    levels = mip_chain(img)
+    if tint_top:
+        levels[0] = tinted(levels[0])
+    return [encode_bc1(level) for level in levels]
 
 
 def build_job(job) -> tuple[str, int, int, int]:
-    """Worker: (name, top level, pieces, parents, path[, base[, file top]]) -> (name, top level,
-    from parent, blank). ``base``: the neutral texture the file starts from, of the file's size;
-    ``file top``: the file's sharpest level (see ``write_sparse``)."""
+    """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint]]]) -> (name, top
+    level, from parent, blank). ``base``: the neutral texture the file starts from, of the file's
+    size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``: the test of the
+    8192 px, their level pink (:func:`encode_levels`)."""
     name, level, pieces, parents, path = job[:5]
     base = Path(job[5]) if len(job) > 5 and job[5] else None
     file_top = job[6] if len(job) > 6 else 0
+    tint = bool(job[7]) if len(job) > 7 else False
     tex = parse_texture_name(name)
     img, from_parent, blank = assemble(tex, level, pieces, parents)
-    write_sparse(Path(path), level, encode_levels(img), base=base, file_top=file_top)
+    levels = encode_levels(img, tint_top=tint and level < 0)
+    write_sparse(Path(path), level, levels, base=base, file_top=file_top)
     return name, level, from_parent, blank

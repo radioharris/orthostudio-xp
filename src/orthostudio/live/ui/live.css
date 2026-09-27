@@ -132,3 +132,6 @@
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* the test of the 8192 px, under the start choices */
+.live-tint { margin-top: var(--gap); }

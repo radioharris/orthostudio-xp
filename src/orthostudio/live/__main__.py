@@ -178,6 +178,14 @@ def stream(
             help="start as the first time: forget every texture built and all imagery downloaded"
         ),
     ] = False,
+    tint_8192: Annotated[
+        bool | None,
+        typer.Option(
+            "--tint-8192/--no-tint-8192",
+            help="a test: the 8192 px textures built pink, to see where X-Plane shows them "
+            "(default: the window's)",
+        ),
+    ] = None,
     disk_gb: Annotated[
         float | None,
         typer.Option(
@@ -223,6 +231,7 @@ def stream(
         fresh=fresh,
         disk_budget_gb=space.textures_gb,
         cache_budget_gb=space.imagery_gb,
+        tint_8192=saved.tint_8192 if tint_8192 is None else tint_8192,
     )
     try:
         prepared = session.prepare(options, typer.echo)
