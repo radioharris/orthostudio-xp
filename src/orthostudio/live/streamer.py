@@ -81,14 +81,11 @@ RELOAD_COMMAND = "sim/operation/reload_scenery"
 # - full: every 8192 px texture of the start, as far as the camera may go (the longest wait);
 # - around: 8192 px wherever X-Plane reads 4096 px while the flight loads (ring 0: about 12 km,
 #   3 km for the airports' textures), so that nothing around the aircraft is left at 4096 px;
-# - normal: 4096 px only;
-# - reload: 4096 px only; then the 8192 px textures of "around" are built, and a reload of the
-#   scenery is offered (Offer) to show them.
-# Beyond the start, all four grow the textures ahead alike.
-START_MODES = ("full", "around", "normal", "reload")
-OFFER_KM = 10.0  # the reload is offered while the aircraft stays this near its start
-OFFER_URGENCY = 0.5  # just after what X-Plane may be showing: the user waits for the button
-RELOADED_S = 300.0  # a start this soon after a reload asked, at the same place, is that reload
+# - normal: 4096 px only.
+# Beyond the start, all three grow the textures ahead alike. A fourth, "reload" (4096 px, then the
+# 8192 px of "around" and a reload of the scenery offered), went once a test showed that X-Plane's
+# reload does not read again the textures it holds (2026-09-27).
+START_MODES = ("full", "around", "normal")
 EVICT_EVERY_S = 30.0
 EVICT_BATCH = 500  # textures made coarser per round, so that the builder is never held up long
 FRESH_S = (
@@ -258,7 +255,6 @@ class Streamer:
         tops = {self.zooms.start_top(z) for z in zooms} | ({MIN_LEVEL} if self.growing else set())
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
-        self.offer: Offer | None = None  # the reload offered after a start (start_mode "reload")
         # the pilot's last SimBrief plan, the path ahead while the aircraft is on it
         self.simbrief_user = simbrief_user.strip()
         self.flight_plan: FlightPlan | None = None
@@ -364,7 +360,7 @@ class Streamer:
         path = self.pack_dir / neutral_file(top)
         return str(path) if path.exists() else None
 
-    def _growth(self, zoom: int, d: float, d_now: float, starting: bool, offer) -> float | None:
+    def _growth(self, zoom: int, d: float, d_now: float, starting: bool) -> float | None:
         """Whether a 4096 px texture of a zoom that goes to 8192 px grows now, and then how urgent
         it is (as :meth:`plan` counts it); None: it stays 4096 px for now.
 
@@ -382,8 +378,6 @@ class Streamer:
             if self.start_mode == "around" and d <= r4:
                 return d_now - r4
             return None
-        if offer is not None and d <= r4:  # X-Plane reads it again at the reload
-            return OFFER_URGENCY + d_now / 1000.0
         if d <= r8 and d_now > r0:  # ahead, before X-Plane reads its 4096 px level
             return d_now - r0
         return None
@@ -417,8 +411,6 @@ class Streamer:
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
         h = max(0.0, fix.agl_m) / 1000.0
         h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
-        offer = None if starting else self._offer_near(fix)
-        offer_left = 0
         jobs: dict[str, tuple[float, int]] = {}
         for name, lat, lon, zoom in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
             if name in self.theirs:  # X-Plane shows the user's own tile there
@@ -452,11 +444,9 @@ class Streamer:
             )
             urgency = d_now - ring
             if level == 0 and top == 0 and zoom in self.growing:
-                grow = self._growth(zoom, s, s_now, starting, offer)
+                grow = self._growth(zoom, s, s_now, starting)
                 if grow is not None:
                     level, urgency = MIN_LEVEL, grow
-                    if offer is not None and self.level_of(name) > level:
-                        offer_left += 1
             if self.level_of(name) <= level:
                 patch = self.patchy.get(name)
                 if patch is None or patch[0] > now:
@@ -464,8 +454,6 @@ class Streamer:
                 # built without pieces that did not come: again, as sharp, never waited for
                 level, urgency = self.level_of(name), max(urgency, 1.0)
             jobs[name] = (urgency, level)
-        if offer is not None:
-            offer.counted(offer_left, sum(1 for u, _ in jobs.values() if u <= 0), self.log)
         with (
             self.lock
         ):  # the queue and the reload flag together: the builder must not see one without the other
@@ -572,52 +560,6 @@ class Streamer:
             self.log("everything X-Plane may show is built: asked it to reload the scenery")
         return due
 
-    # --- the reload offered after a start (start_mode "reload") ------------------------------
-
-    def offer_reload(self, lat: float, lon: float) -> None:
-        """X-Plane has started there at 4096 px: build the 8192 px textures around the aircraft,
-        as a start in "around" would have waited for, and offer a reload once they are built."""
-        if self.start_mode != "reload" or not self.growing:
-            return
-        o = self.offer
-        if (
-            o is not None
-            and o.asked is not None
-            and time.time() - o.asked < RELOADED_S
-            and haversine_m(o.lat, o.lon, lat, lon) <= OFFER_KM * 1000
-        ):
-            return  # the start X-Plane went through was the reload itself
-        self.offer = Offer(lat, lon, time.time())
-        self.log(
-            "  X-Plane started at 4096 px: building the 8192 px textures around the aircraft, "
-            "then a reload of the scenery is offered"
-        )
-
-    def _offer_near(self, fix: Fix) -> Offer | None:
-        """The offer, while the aircraft is still at its start and the reload not asked."""
-        o = self.offer
-        if o is None or o.asked is not None:
-            return None
-        if haversine_m(o.lat, o.lon, fix.lat, fix.lon) > OFFER_KM * 1000:
-            self.offer = None
-            self.log(
-                "  the aircraft has left its start: no reload offered any more (in flight, the "
-                "textures ahead grow to 8192 px with none)"
-            )
-            return None
-        return o
-
-    def reload_now(self) -> bool:
-        """The reload offered, asked for: the Live window's button, or the plugin's in X-Plane."""
-        o = self.offer
-        if o is None or not o.ready or o.asked is not None:
-            return False
-        o.asked = time.time()
-        if self.xp is not None:
-            self.xp.command(RELOAD_COMMAND)
-        self.log("  reloading the scenery: X-Plane reads the 8192 px textures around the aircraft")
-        return True
-
     def built_now(self, known: int = -1) -> tuple[int, dict[str, int] | None, set[str] | None]:
         """(version, textures built, grown), copied under the lock for the window's map; nothing
         copied when ``known`` is the version already: the map asks every few seconds."""
@@ -630,15 +572,6 @@ class Streamer:
         """(built, grown, patchy, seen), copied under the lock: the map's tooltip."""
         with self.lock:
             return dict(self.built), set(self.grown), set(self.patchy), dict(self.seen)
-
-    def offer_state(self) -> dict | None:
-        """The offer as the Live window and the plugin show it: ``building`` (``left`` textures to
-        go), ``ready``, or ``asked``; ``id`` tells one offer from the next."""
-        o = self.offer
-        if o is None:
-            return None
-        state = "asked" if o.asked is not None else "ready" if o.ready else "building"
-        return {"state": state, "left": max(0, o.left), "id": int(o.since)}
 
     # --- building -----------------------------------------------------------------------------
 
@@ -945,7 +878,6 @@ class Streamer:
             "grown": grown,  # textures at 8192 px
             "start_mode": self.start_mode,
             "tint_8192": self.tint_8192,
-            "offer": self.offer_state(),
             "flight_plan": None
             if self.flight_plan is None
             else {
@@ -975,48 +907,13 @@ class Streamer:
             + (f", {s['failed']} failed" if s["failed"] else "")
             + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
             + (" | reload pending" if s["reload_pending"] else "")
-            + _offer_status(s["offer"])
         )
-
-
-def _offer_status(offer: dict | None) -> str:
-    if offer is None or offer["state"] == "asked":
-        return ""
-    if offer["state"] == "ready":
-        return " | 8192 px ready around the aircraft: reload offered"
-    return f" | 8192 px around the aircraft: {offer['left']} to build before the reload"
 
 
 def reload_after_prepared_start(ready_at: float | None, xplane_started: float | None) -> bool:
     """With ``--from``, whether X-Plane may have read textures before they were built: it started
     before the area was ready (or we cannot tell). Then it gets a reload once everything is."""
     return ready_at is None or xplane_started is None or xplane_started < ready_at
-
-
-@dataclass
-class Offer:
-    """A reload of the scenery offered after a start, in the "reload" start mode: X-Plane started
-    with 4096 px textures, and once the 8192 px ones around the aircraft are built, a reload shows
-    them (X-Plane reads a texture's levels again only when it loads it again)."""
-
-    lat: float
-    lon: float
-    since: float
-    left: int = -1  # 8192 px textures still to build around the aircraft (-1: not counted yet)
-    ready: bool = False
-    asked: float | None = None  # when the reload was asked
-
-    def counted(self, left: int, urgent: int, log: Callable[[str], None]) -> None:
-        """What the planner found: ready once every 8192 px texture is built, and nothing X-Plane
-        may be showing is left (the reload reads everything again)."""
-        was = self.ready
-        self.left = left
-        self.ready = left == 0 and urgent == 0
-        if self.ready and not was:
-            log(
-                "  the 8192 px textures around the aircraft are built: reload the scenery to see "
-                "them (the button in X-Plane, or in the Live window)"
-            )
 
 
 @dataclass
@@ -1174,7 +1071,6 @@ def run(
     gate=None,
     start_name: str | None = None,
     report: Callable[[dict], None] | None = None,
-    reload_asked: Callable[[], bool] = lambda: False,
     language: Callable[[], str] = lambda: "en",
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
@@ -1182,8 +1078,7 @@ def run(
     ``gate`` (``orthostudio.live.gate.Gate``) hears of a flight's start from Freeflight.prf and
     from the plugin,
     and holds X-Plane until everything it will read there is built. ``report`` is given every
-    second what the Live window shows (:func:`progress_report`). ``reload_asked`` says, once, that
-    the Live window's button asked for the reload offered (:meth:`Streamer.reload_now`)."""
+    second what the Live window shows (:func:`progress_report`)."""
     from .scenery import xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
@@ -1239,13 +1134,10 @@ def run(
                     expect(*clicked, "click")
                 running = "lat" in values and now - last_packet < FRESH_S
                 for kind, lat, lon, addr, why in gate.requests():
-                    if kind == "ASK":  # the plugin, every second of a flight: a reload offered?
+                    if kind == "ASK":  # the plugin, every second of a flight: a notice for it?
                         notice, lang = streamer.notice, language()
                         note = plugin_note(notice, lang) if notice else None
-                        gate.offer(addr, streamer.offer_state(), note, notice, lang=lang)
-                        continue
-                    if kind == "RELOAD":  # its button, in X-Plane
-                        streamer.reload_now()
+                        gate.note(addr, note, notice, lang=lang)
                         continue
                     if (
                         running
@@ -1298,8 +1190,6 @@ def run(
                                 f"around {arrival.name} "
                                 f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
                             )
-            if reload_asked():
-                streamer.reload_now()
             if arrival is not None and arrival.ready_at is None and streamer.urgent_left() == 0:
                 arrival.ready_at = now
                 log(f"  everything X-Plane will read around {arrival.name} is built")
@@ -1351,7 +1241,6 @@ def run(
                             True  # (never loading: X-Plane was there all along)
                         )
                     streamer.plan(fix, x_plane_there=False)
-                    streamer.offer_reload(fix.lat, fix.lon)
                     arrival = None
                 elif running:  # X-Plane runs somewhere else
                     if arrival.elsewhere_since is None:

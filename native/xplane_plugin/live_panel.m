@@ -14,10 +14,11 @@
  * stayed empty: it needs the run loop to draw a new value. Outside an application (the tests'
  * stand-in for X-Plane), NSApp is nil and nothing is shown.
  *
- * In flight, a second panel, small in the top right corner, offers the reload of the scenery once
- * the 8192 px textures around the aircraft are built (the "reload" start mode): Reload scenery, or
- * close it. X-Plane runs then, so its buttons work as any. They take a click at once, and the panel
- * never takes the keyboard from X-Plane.
+ * In flight, a second panel, small in the top right corner, shows the streamer's notice (no mesh
+ * here, the region to install) with its cross. X-Plane runs then, so the cross works as any button:
+ * it takes a click at once, and the panel never takes the keyboard from X-Plane. (It offered a
+ * reload of the scenery too, for the 8192 px textures built after a start, until a test showed
+ * that X-Plane's reload does not read again the textures it holds, 2026-09-27.)
  */
 
 #import <Cocoa/Cocoa.h>
@@ -103,27 +104,24 @@ void live_panel_show(const char *what, const char *progress, double fraction) {
     }
 }
 
-/* --- the reload offered ------------------------------------------------------------------------ */
+/* --- the notice ------------------------------------------------------------------------------ */
 
-static NSPanel *offer_panel;
-static int offer_click; /* 1: reload, 2: not now */
+static NSPanel *note_panel;
+static int note_closed; /* its cross clicked */
 
-void live_offer_press(int which) { offer_click = which; } /* the buttons; the tests call it too */
+void live_note_press(void) { note_closed = 1; } /* its cross; the tests call it too */
 
-int live_offer_clicked(void) {
-    int c = offer_click;
-    offer_click = 0;
+int live_note_closed(void) {
+    int c = note_closed;
+    note_closed = 0;
     return c;
 }
 
-@interface LiveOfferTarget : NSObject
+@interface LiveNoteTarget : NSObject
 @end
-@implementation LiveOfferTarget
-- (void)reload:(id)sender {
-    live_offer_press(1);
-}
-- (void)later:(id)sender {
-    live_offer_press(2);
+@implementation LiveNoteTarget
+- (void)close:(id)sender {
+    live_note_press();
 }
 @end
 
@@ -136,29 +134,19 @@ int live_offer_clicked(void) {
 }
 @end
 
-static LiveOfferTarget *offer_target;
+static LiveNoteTarget *note_target;
 
-static NSButton *offer_button(NSString *title, SEL action, NSRect frame) {
-    LiveFirstClickButton *b = [[LiveFirstClickButton alloc] initWithFrame:frame];
-    b.title = title;
-    b.bezelStyle = NSBezelStyleRounded;
-    b.target = offer_target;
-    b.action = action;
-    return b;
-}
+void live_note_hide(void);
 
-void live_offer_hide(void);
+static char note_text[160]; /* what the panel shows now, in French or not */
+static int note_french;
 
-static char offer_text[160]; /* what the panel shows now, with the reload button or not, in French or not */
-static int offer_reload, offer_french;
-
-void live_offer_show(const char *what, int reload, int french) {
+void live_note_show(const char *what, int french) {
     if (NSApp == nil) return;
-    if (offer_panel != nil && offer_reload == reload && offer_french == french && strcmp(offer_text, what) == 0) return;
-    live_offer_hide();
-    snprintf(offer_text, sizeof offer_text, "%s", what);
-    offer_reload = reload;
-    offer_french = french;
+    if (note_panel != nil && note_french == french && strcmp(note_text, what) == 0) return;
+    live_note_hide();
+    snprintf(note_text, sizeof note_text, "%s", what);
+    note_french = french;
     @autoreleasepool {
         /* small, in the top right corner of X-Plane's window, below its menu bar's band; as wide as
            its words */
@@ -166,41 +154,36 @@ void live_offer_show(const char *what, int reload, int french) {
         NSFont *font = [NSFont systemFontOfSize:13];
         CGFloat text_w = MIN(560, MAX(270, ceil([words sizeWithAttributes:@{NSFontAttributeName : font}].width) + 8));
         const CGFloat h = 44;
-        const CGFloat button_w = french ? 140 : 120; /* "Recharger la scène" is longer */
-        CGFloat w = 14 + text_w + (reload ? button_w + 4 : 0) + 34;
+        CGFloat w = 14 + text_w + 34;
         NSWindow *xp = xplane_window();
         NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
         NSRect r = NSMakeRect(NSMaxX(around) - w - 16, NSMaxY(around) - h - 48, w, h);
-        offer_panel = [[NSPanel alloc] initWithContentRect:r
+        note_panel = [[NSPanel alloc] initWithContentRect:r
                                                  styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                    backing:NSBackingStoreBuffered
                                                      defer:NO];
-        offer_panel.level = MAX(NSStatusWindowLevel, (xp ? xp.level : 0) + 1);
-        offer_panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
-        offer_panel.opaque = NO;
-        offer_panel.backgroundColor = [NSColor clearColor];
-        offer_panel.hasShadow = YES;
-        offer_panel.releasedWhenClosed = NO;
-        offer_panel.becomesKeyOnlyIfNeeded = YES;
+        note_panel.level = MAX(NSStatusWindowLevel, (xp ? xp.level : 0) + 1);
+        note_panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+        note_panel.opaque = NO;
+        note_panel.backgroundColor = [NSColor clearColor];
+        note_panel.hasShadow = YES;
+        note_panel.releasedWhenClosed = NO;
+        note_panel.becomesKeyOnlyIfNeeded = YES;
 
         NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
         box.wantsLayer = YES;
         box.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:0.92].CGColor;
         box.layer.cornerRadius = 10;
-        offer_panel.contentView = box;
+        note_panel.contentView = box;
 
         NSTextField *text = label(NSMakeRect(14, 12, text_w, 20), 13, [NSColor whiteColor]);
         text.alignment = NSTextAlignmentLeft;
         text.stringValue = words;
-        offer_target = [LiveOfferTarget new];
+        note_target = [LiveNoteTarget new];
         [box addSubview:text];
-        if (reload) {
-            NSButton *button = offer_button(french ? @"Recharger la scène" : @"Reload scenery", @selector(reload:),
-                                            NSMakeRect(14 + text_w, 7, button_w, 30));
-            button.keyEquivalent = @"";
-            [box addSubview:button];
-        }
-        NSButton *close = offer_button(@"", @selector(later:), NSMakeRect(w - 32, 9, 26, 26));
+        LiveFirstClickButton *close = [[LiveFirstClickButton alloc] initWithFrame:NSMakeRect(w - 32, 9, 26, 26)];
+        close.target = note_target;
+        close.action = @selector(close:);
         close.bordered = NO;
         close.attributedTitle = [[NSAttributedString alloc]
             initWithString:@"\u00d7"
@@ -211,16 +194,16 @@ void live_offer_show(const char *what, int reload, int french) {
         close.toolTip = french ? @"Fermer" : @"Close";
         close.accessibilityLabel = close.toolTip;
         [box addSubview:close];
-        [offer_panel orderFrontRegardless];
+        [note_panel orderFrontRegardless];
     }
 }
 
-void live_offer_hide(void) {
-    if (offer_panel == nil) return;
+void live_note_hide(void) {
+    if (note_panel == nil) return;
     @autoreleasepool {
-        [offer_panel orderOut:nil];
-        offer_panel = nil;
-        offer_target = nil;
+        [note_panel orderOut:nil];
+        note_panel = nil;
+        note_target = nil;
     }
 }
 

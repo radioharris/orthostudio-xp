@@ -2,7 +2,7 @@
    unless built with -DNO_MAIN, a main() that does what the command line says, in order:
    - "102:0": send it a message (PLANE_LOADED for the user's aircraft), and say how long it took;
    - "loop": call its flight loop, as X-Plane does every second of a flight;
-   - "click:1": click its reload panel's button (1: reload, 2: not now);
+   - "click": click the cross of its notice's panel;
    - "sleep:100": wait 100 ms. */
 
 #include <stdint.h>
@@ -41,7 +41,7 @@ void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f f, void *ref) {
 
 #ifndef NO_MAIN
 #include <unistd.h>
-void live_offer_press(int);
+void live_note_press(void);
 int XPluginStart(char *, char *, char *);
 int XPluginEnable(void);
 void XPluginDisable(void);
@@ -67,8 +67,8 @@ int main(int argc, char **argv) {
             fflush(stdout);
             continue;
         }
-        if (sscanf(argv[i], "click:%d", &param) == 1) {
-            live_offer_press(param);
+        if (strcmp(argv[i], "click") == 0) {
+            live_note_press();
             continue;
         }
         if (sscanf(argv[i], "sleep:%d", &param) == 1) {

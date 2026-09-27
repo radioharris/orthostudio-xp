@@ -32,7 +32,7 @@ from orthostudio.live.region import (
     relayout,
     setup_region,
 )
-from orthostudio.live.streamer import RELOAD_COMMAND, START_MODES, Fix, Streamer
+from orthostudio.live.streamer import START_MODES, Fix, Streamer
 from orthostudio.live.texture import downgrade, write_sparse
 
 AIRPORT = "93184_132608_BI18"  # a ZL18 texture inside NAMES[0]: the mesh's airports
@@ -224,14 +224,6 @@ def test_no_new_zoom_under_a_running_xplane(
 # --- growing to 8192 px -------------------------------------------------------------------------
 
 
-class Xp:
-    def __init__(self) -> None:
-        self.commands: list[str] = []
-
-    def command(self, name: str) -> None:
-        self.commands.append(name)
-
-
 def row_streamer(tmp_path: Path, mode: str, reach_km: float = 25.0, **kw) -> Streamer:
     pack = region(tmp_path, Zooms(17, 18), textures=ROW)
     cache = ChunkCache(tmp_path / "c.sqlite")
@@ -261,7 +253,7 @@ def sharp(jobs: dict) -> list[int]:
 
 @pytest.mark.parametrize(
     ("mode", "waits_for"),
-    [("full", [0, 1, 2, 3, 4]), ("around", [0, 1, 2]), ("normal", []), ("reload", [])],
+    [("full", [0, 1, 2, 3, 4]), ("around", [0, 1, 2]), ("normal", [])],
 )
 def test_what_a_start_waits_for(tmp_path: Path, mode: str, waits_for: list[int]) -> None:
     """At a start: 8192 px as far as the camera may go (25 km more), wherever X-Plane reads 4096
@@ -348,50 +340,12 @@ def built_as_planned(s: Streamer, jobs: dict) -> None:
             s.grown.add(name)
 
 
-def test_the_reload_offered_after_a_start(tmp_path: Path) -> None:
-    """The start mode "reload": X-Plane starts at 4096 px; the 8192 px textures of "around" (where
-    X-Plane read 4096 px) are built afterwards, not urgent, and once they all are, with nothing
-    X-Plane may show left, the reload is offered; asked, X-Plane gets it once."""
-    xp = Xp()
-    s = row_streamer(tmp_path, "reload", xplane=xp)
-    start = at(0)
-    assert sharp(s.plan(start, x_plane_there=False, starting=True)) == []  # the start: 4096 px
-    assert s.offer_state() is None
-    s.offer_reload(start.lat, start.lon)  # X-Plane is there
-    jobs = s.plan(start, x_plane_there=False)
-    assert sharp(jobs) == [0, 1, 2]
-    assert all(jobs[f"{ROW[k]}.dds"][0] > 0 for k in range(3))  # after what X-Plane shows
-    assert s.offer_state() == {"state": "building", "left": 3, "id": int(s.offer.since)}
-    assert not s.reload_now()  # not ready
-    built_as_planned(s, jobs)
-    s.plan(start, x_plane_there=False)
-    assert s.offer_state()["state"] == "ready"
-    assert s.reload_now()
-    assert xp.commands == [RELOAD_COMMAND]
-    assert s.offer_state()["state"] == "asked"
-    assert not s.reload_now()  # once
-    s.offer_reload(start.lat, start.lon)  # the reload itself, seen as a start: no new offer
-    assert s.offer_state()["state"] == "asked"
-    s.cache.close()
-
-
-def test_no_reload_offered_once_the_aircraft_has_left(tmp_path: Path) -> None:
-    s = row_streamer(tmp_path, "reload")
-    start = at(0)
-    s.offer_reload(start.lat, start.lon)
-    s.plan(start, x_plane_there=False)
-    assert s.offer_state()["state"] == "building"
-    s.plan(at(2), x_plane_there=False)  # 13.8 km on: taken off
-    assert s.offer_state() is None
-    s.cache.close()
-
-
-def test_no_reload_offered_in_the_other_modes(tmp_path: Path) -> None:
-    s = row_streamer(tmp_path, "around")
-    start = at(0)
-    s.offer_reload(start.lat, start.lon)
-    assert s.offer_state() is None
-    s.cache.close()
+def test_no_reload_mode_any_more(tmp_path: Path) -> None:
+    """The start mode "reload" (4096 px, then a reload of the scenery offered) went: X-Plane's
+    reload does not read again the textures it holds (the pink test, 2026-09-27)."""
+    assert START_MODES == ("full", "around", "normal")
+    with pytest.raises(ValueError, match="start_mode"):
+        row_streamer(tmp_path, "reload")
 
 
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:

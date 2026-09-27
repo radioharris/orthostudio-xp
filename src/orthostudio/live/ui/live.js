@@ -163,12 +163,6 @@ function drawState(status) {
   // X-Plane sees the pack and loads the plugin only if they are there when it starts
   $("xplane-btn").disabled = !(state === "streaming" && !checks.xplane_running);
   $("xplane-btn").hidden = checks.xplane_running || !["idle", "starting", "streaming"].includes(state);
-  // the reload offered after a start, in the "reload" start mode
-  const offer = (state === "streaming" && status.stream?.streamer?.offer) || null;
-  $("reload-btn").hidden = !offer || offer.state === "asked";
-  $("reload-btn").disabled = !offer || offer.state !== "ready";
-  $("offer-text").hidden = !offer;
-  $("offer-text").textContent = offer ? t(`offer.${offer.state}`, { n: number(offer.left) }) : "";
   $("leave-btn").hidden = state !== "leaving";
   $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
   let help = "";
@@ -596,7 +590,7 @@ function renderZooms() {
 }
 
 /** What X-Plane waits for at a start, as OrthoStudio XP's own choices: the label, then a note. */
-const START_MODES = ["full", "around", "normal", "reload"];
+const START_MODES = ["full", "around", "normal"];
 const START_RECOMMENDED = "around";
 
 function renderStartModes() {
@@ -1044,7 +1038,6 @@ function boot() {
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
-  $("reload-btn").addEventListener("click", () => act("reload"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));
   $("set-max-zoom").addEventListener("change", drawStartChoices);
   $("set-max-zoom-airports").addEventListener("change", drawStartChoices);

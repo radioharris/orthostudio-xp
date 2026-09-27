@@ -142,36 +142,26 @@ class GateTest(unittest.TestCase):
         finally:
             gate.close()
 
-    def test_the_reload_offered(self):
-        """In flight, the plugin asks every second whether a reload is offered, and says when its
-        button was clicked."""
+    def test_a_notice_asked_in_flight(self):
+        """In flight, the plugin asks every second whether the streamer has a notice for it: none,
+        or no mesh under the aircraft, in the window's language. A reload is no longer offered."""
         gate = Gate(self.xplane, lambda icao: None, port=self.port)
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
                 p.connect(("127.0.0.1", self.port))
                 p.settimeout(2)
                 p.send(b"LIVE1 ASK")
-                p.send(b"LIVE1 RELOAD")
+                p.send(b"LIVE1 RELOAD")  # an old plugin's button: nothing now
                 time.sleep(0.1)
                 got = gate.requests()
-                self.assertEqual([k for k, *_ in got], ["ASK", "RELOAD"])
+                self.assertEqual([k for k, *_ in got], ["ASK"])
                 addr = got[0][3]
-                for offer, line in [
-                    (None, b"LIVE1 OFFER NONE lang=en"),
-                    ({"state": "building", "left": 3, "id": 7}, b"LIVE1 OFFER BUILD 7 3 lang=en"),
-                    ({"state": "ready", "left": 0, "id": 7}, b"LIVE1 OFFER READY 7 lang=en"),
-                    ({"state": "asked", "left": 0, "id": 7}, b"LIVE1 OFFER NONE lang=en"),
-                ]:
-                    gate.offer(addr, offer)
-                    self.assertEqual(p.recv(100), line)
-                # no offer, no mesh under the aircraft: the notice, with its words
+                gate.note(addr)
+                self.assertEqual(p.recv(100), b"LIVE1 NONE lang=en")
                 notice = {"id": 12, "region": "na", "installed": False}
                 note = "Live : pas de mesh ici, installez Amérique du Nord dans la fenêtre de Live"
-                gate.offer(addr, None, note, notice, lang="fr")
+                gate.note(addr, note, notice, lang="fr")
                 self.assertEqual(p.recv(200), f"LIVE1 NOTE 12 lang=fr {note}".encode())
-                ready = {"state": "ready", "left": 0, "id": 7}
-                gate.offer(addr, ready, note, notice, lang="fr")
-                self.assertEqual(p.recv(100), b"LIVE1 OFFER READY 7 lang=fr")  # the offer first
         finally:
             gate.close()
 
@@ -346,58 +336,9 @@ class PluginTest(unittest.TestCase):
         self.assertLess(took["108:0"], 0.9)  # not SILENT_S later
         self.assertIn("the streamer stopped: X-Plane goes on", logged[-1])
 
-    def test_the_reload_offered_in_xplane(self):
-        """Every second of a flight, the plugin asks; once the offer is ready, its panel shows, and
-        a click on its button asks the streamer for the reload."""
-        heard = []
-
-        def streamer(sock):
-            reloaded = False
-            while True:
-                try:
-                    data, addr = sock.recvfrom(100)
-                except OSError:
-                    return
-                heard.append(data.decode())
-                if data == b"LIVE1 RELOAD":
-                    reloaded = True
-                elif data == b"LIVE1 ASK":
-                    sock.sendto(b"LIVE1 OFFER NONE" if reloaded else b"LIVE1 OFFER READY 7", addr)
-
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
-            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
-            self.xplane(43.4382, 5.2129, "loop", "sleep:100")  # no flight yet: nothing asked
-            self.assertEqual(heard, [])
-            _, logged = self.xplane(
-                43.4382,
-                5.2129,
-                "102:0",
-                "loop",
-                "sleep:150",
-                "loop",
-                "click:1",
-                "loop",
-                "sleep:150",
-                "loop",
-                "sleep:100",
-            )
-            sock.close()
-        self.assertEqual(heard.count("LIVE1 RELOAD"), 1)
-        self.assertLess(heard.index("LIVE1 ASK"), heard.index("LIVE1 RELOAD"))
-        self.assertEqual(
-            [line for line in logged if "reload" in line],
-            [
-                "OrthoStudio XP Live: the 8192 px textures around the aircraft are built: a reload "
-                "is offered",
-                "OrthoStudio XP Live: reload of the scenery asked, for the 8192 px textures around "
-                "the aircraft",
-            ],
-        )
-
     def test_a_notice_where_there_is_no_mesh(self):
-        """Without an offer, the streamer's notice shows in the same panel, said once in Log.txt;
-        its cross closes it for good, and nothing is asked of the streamer."""
+        """The streamer's notice shows in a small panel, said once in Log.txt; its cross closes it
+        for good, and the plugin keeps asking."""
         heard = []
         note = b"LIVE1 NOTE 9 Live: no mesh here: install North America in the Live window"
 
@@ -423,51 +364,18 @@ class PluginTest(unittest.TestCase):
                 "loop",
                 "sleep:150",
                 "loop",
-                "click:2",
+                "click",
                 "loop",
                 "sleep:150",
                 "loop",
             )
             sock.close()
-        self.assertNotIn("LIVE1 RELOAD", heard)
+        self.assertGreaterEqual(heard.count("LIVE1 ASK"), 3)
         said = [line for line in logged if "no mesh here" in line]
         self.assertEqual(
             said,
             ["OrthoStudio XP Live: Live: no mesh here: install North America in the Live window"],
         )
-
-    def test_not_now(self):
-        """The panel's other button: it goes, and nothing is asked."""
-        heard = []
-
-        def streamer(sock):
-            while True:
-                try:
-                    data, addr = sock.recvfrom(100)
-                except OSError:
-                    return
-                heard.append(data.decode())
-                if data == b"LIVE1 ASK":
-                    sock.sendto(b"LIVE1 OFFER READY 7", addr)
-
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
-            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
-            _, logged = self.xplane(
-                43.4382,
-                5.2129,
-                "102:0",
-                "loop",
-                "sleep:150",
-                "loop",
-                "click:2",
-                "loop",
-                "sleep:150",
-                "loop",
-            )
-            sock.close()
-        self.assertNotIn("LIVE1 RELOAD", heard)
-        self.assertEqual(sum("a reload is offered" in line for line in logged), 1)
 
     def test_no_position_while_xplane_starts(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -480,9 +388,10 @@ class PluginTest(unittest.TestCase):
 
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
-class ReloadOfferTest(unittest.TestCase):
-    """run() in the "reload" start mode: X-Plane goes on at 4096 px, the 8192 px textures around
-    the aircraft are built afterwards, and the plugin's button reloads the scenery."""
+class NormalStartTest(unittest.TestCase):
+    """run() in the "normal" start mode: X-Plane goes on at 4096 px, and in flight the plugin's
+    ask gets nothing to show; no reload of the scenery, which X-Plane would not read the textures
+    again for (the "reload" start mode went, 2026-09-27)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -504,7 +413,7 @@ class ReloadOfferTest(unittest.TestCase):
             workers=2,
             xplane=self.xp,
             log=self.log.append,
-            start_mode="reload",
+            start_mode="normal",
         )
         self.stop = threading.Event()
         self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
@@ -542,7 +451,7 @@ class ReloadOfferTest(unittest.TestCase):
             except TimeoutError:
                 self.assertLess(time.time(), end, f"no answer to {line!r}")
 
-    def test_from_the_start_to_the_reload(self):
+    def test_from_the_start_into_the_flight(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
             p.connect(("127.0.0.1", self.port))
             p.settimeout(2)
@@ -553,21 +462,12 @@ class ReloadOfferTest(unittest.TestCase):
                 time.sleep(0.1)
             # 4096 px: no 8192 px texture waited for
             self.assertEqual(set(self.streamer.built.values()), {0})
-            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE lang=en")  # not there yet
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 NONE lang=en")
             self.xp.position = (self.lat, self.lon)  # the flight runs
-            answers = []
-            while not answers or not answers[-1].startswith("LIVE1 OFFER READY"):
-                self.assertLess(time.time(), end)
-                answers.append(self.ask(p, b"LIVE1 ASK"))
-                time.sleep(0.1)
-            self.assertTrue(any(a.startswith("LIVE1 OFFER BUILD") for a in answers), answers)
-            self.assertEqual(set(self.streamer.built.values()), {-1})
-            self.assertEqual(self.streamer.grown, {f"{n}.dds" for n in NAMES})
-            p.send(b"LIVE1 RELOAD")
-            while self.xp.commands != ["sim/operation/reload_scenery"]:
-                self.assertLess(time.time(), end)
-                time.sleep(0.05)
-            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE lang=en")
+            time.sleep(0.6)  # a few plans
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 NONE lang=en")
+            self.assertEqual(set(self.streamer.built.values()), {0})  # read at 4096 px: kept
+            self.assertEqual(self.xp.commands, [])  # never a reload
 
 
 @unittest.skipIf(CLANG is None, "needs clang")

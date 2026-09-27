@@ -21,17 +21,15 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
 
   The plugin's loading window shows all of it.
 
-- ``LIVE1 ASK``, every second of a flight: whether a reload of the scenery is offered (the "reload"
-  start mode: X-Plane started at 4096 px, and the 8192 px textures around the aircraft are built
-  afterwards). The gate answers ``LIVE1 OFFER READY id lang=en``, ``LIVE1 OFFER BUILD id n
-  lang=en`` (n textures to go) or ``LIVE1 OFFER NONE lang=en``; ``id`` tells one offer from the
-  next. Without an offer, where the aircraft has no mesh under it but a region has one, it answers
-  ``LIVE1 NOTE id lang=fr text`` instead ("Live : pas de mesh ici, installez Amérique du Nord dans
-  la fenêtre de Live"), which the plugin shows in the same small panel, with only its cross.
+- ``LIVE1 ASK``, every second of a flight: whether the streamer has a notice for the pilot. Where
+  the aircraft has no mesh under it but a region has one, the gate answers ``LIVE1 NOTE id lang=fr
+  text`` ("Live : pas de mesh ici, installez Amérique du Nord dans la fenêtre de Live"), which the
+  plugin shows in a small panel with its cross; ``id`` tells one notice from the next. Else
+  ``LIVE1 NONE lang=en``. (It offered a reload of the scenery too, for the 8192 px textures built
+  after a start, until a test showed X-Plane's reload does not read again the textures it holds,
+  2026-09-27.)
 
 Lines go out in UTF-8, never cut inside a character: the plugin shows French with its accents.
-- ``LIVE1 RELOAD``: the user clicked the plugin's button in X-Plane; the streamer reloads the
-  scenery over X-Plane's UDP, as the Live window's button does.
 
 The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
 it in ``Output/preferences/Freeflight.prf`` (``_last_start``, a JSON object), and the streamer
@@ -154,8 +152,8 @@ class Gate:
         return start_position(start, self.airports) if start else None
 
     def requests(self) -> list[tuple[str, float, float, tuple, str]]:
-        """The plugin's lines since the last call: (LOAD, HOLD, ASK or RELOAD, lat, lon, where to
-        answer, why); ASK and RELOAD have no position (0, 0)."""
+        """The plugin's lines since the last call: (LOAD, HOLD or ASK, lat, lon, where to answer,
+        why); ASK has no position (0, 0)."""
         out: list[tuple[str, float, float, tuple, str]] = []
         while True:
             try:
@@ -163,7 +161,7 @@ class Gate:
             except OSError:  # nothing more (or a stray error): look again next time
                 break
             parts = data.decode("ascii", "replace").split()
-            if parts in (["LIVE1", "ASK"], ["LIVE1", "RELOAD"]):
+            if parts == ["LIVE1", "ASK"]:
                 out.append((parts[1], 0.0, 0.0, addr, ""))
             elif len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
                 with contextlib.suppress(ValueError):
@@ -199,25 +197,20 @@ class Gate:
         with contextlib.suppress(OSError):
             self.sock.sendto(_encoded(line), addr)
 
-    def offer(
+    def note(
         self,
         addr: tuple,
-        offer: dict | None,
         note: str | None = None,
         notice: dict | None = None,
         lang: str = "en",
     ) -> None:
-        """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it;
-        else the notice of a place with no mesh (``LIVE1 NOTE id lang=xx text``, its words in the
-        window's language); else nothing. Each says the language the plugin's own words take."""
-        if (offer is None or offer["state"] == "asked") and note and notice:
+        """The answer to ``LIVE1 ASK``: the notice of a place with no mesh (``LIVE1 NOTE id lang=xx
+        text``, its words in the window's language), else ``LIVE1 NONE``. Each says the language
+        the plugin's own words take."""
+        if note and notice:
             line = f"LIVE1 NOTE {notice['id']} lang={lang} {note}"
-        elif offer is None or offer["state"] == "asked":
-            line = f"LIVE1 OFFER NONE lang={lang}"
-        elif offer["state"] == "ready":
-            line = f"LIVE1 OFFER READY {offer['id']} lang={lang}"
         else:
-            line = f"LIVE1 OFFER BUILD {offer['id']} {offer['left']} lang={lang}"
+            line = f"LIVE1 NONE lang={lang}"
         with contextlib.suppress(OSError):
             self.sock.sendto(_encoded(line), addr)
 

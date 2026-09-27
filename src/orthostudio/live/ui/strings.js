@@ -43,12 +43,6 @@ export const STRINGS = {
     "action.stop": "Stop",
     "action.xplane": "Start X-Plane",
     "action.osxp": "Build tiles",
-    "action.reload": "Reload the scenery in X-Plane",
-    "offer.building":
-      "8192 px around the aircraft: {n} textures to build, then the scenery can be reloaded to show them.",
-    "offer.ready":
-      "The 8192 px textures around the aircraft are built: reload the scenery to see them, here or with the button in X-Plane. X-Plane shows “reload objects & textures” for a few seconds.",
-    "offer.asked": "Scenery reloaded: X-Plane shows the 8192 px textures around the aircraft.",
     "action.xplane_wait":
       "Start X-Plane once Live is ready: X-Plane sees Live's pack only if it is there when X-Plane starts.",
     "action.leave": "Leave it installed",
@@ -259,7 +253,7 @@ export const STRINGS = {
     "start.plain":
       "X-Plane waits on its loading screen for the textures around the aircraft; then Live builds them ahead of you. Nothing to choose with your zooms: the choices for 8192 px textures appear with zoom 17, or 19 near airports.",
     "start.why":
-      "Once and for all: X-Plane does not read again a texture it already has in full, until a new flight, a reload of the scenery, or until you are more than about 200 km away.",
+      "Once and for all: X-Plane does not read again a texture it already has in full, until a new flight, or until you are more than about 200 km away: even a reload of the scenery keeps it.",
     "start.full": "Full resolution",
     "start.full_note":
       "8192 px from the start, up to about 30 km around (for external views). The longest wait: about 2.5 times Normal's.",
@@ -268,9 +262,6 @@ export const STRINGS = {
       "8192 px from the start within 12 km. Beyond, it is live. About 40 to 50 % longer than Normal.",
     "start.normal": "Normal resolution",
     "start.normal_note": "4096 px once and for all within 12 km. Beyond, it is live. The shortest wait.",
-    "start.reload": "Normal, then reload in 8192 px",
-    "start.reload_note":
-      "As Normal. Once the 12 km around the aircraft are ready in 8192 px, a button (in X-Plane and in this window) reloads the scenery: a few seconds of “reload objects & textures”.",
     "start.flight": "Live: the textures ahead of the aircraft become 8192 px before you come near them.",
     "start.tint": "Test: show the 8192 px textures in pink",
     "start.tint_help":
@@ -355,12 +346,6 @@ export const STRINGS = {
     "action.stop": "Arrêter",
     "action.xplane": "Lancer X-Plane",
     "action.osxp": "Construire des tuiles",
-    "action.reload": "Recharger la scène dans X-Plane",
-    "offer.building":
-      "8192 px autour de l'avion : {n} textures à construire, puis la scène pourra être rechargée pour les montrer.",
-    "offer.ready":
-      "Les textures 8192 px autour de l'avion sont construites : rechargez la scène pour les voir, ici ou avec le bouton dans X-Plane. X-Plane affiche « reload objects & textures » quelques secondes.",
-    "offer.asked": "Scène rechargée : X-Plane montre les textures 8192 px autour de l'avion.",
     "action.xplane_wait":
       "Lancez X-Plane quand Live est prêt : X-Plane ne voit le pack de Live que s'il est là quand X-Plane démarre.",
     "action.leave": "Le laisser installé",
@@ -576,7 +561,7 @@ export const STRINGS = {
     "start.plain":
       "X-Plane attend sur son écran de chargement les textures autour de l'avion ; ensuite, Live les construit devant vous. Rien à choisir avec vos zooms : les choix pour les textures 8192 px apparaissent avec le zoom 17, ou 19 près des aéroports.",
     "start.why":
-      "Une fois pour toutes : X-Plane ne relit pas une texture qu'il a déjà en entier, jusqu'à un nouveau vol, un rechargement de la scène, ou jusqu'à ce que vous soyez à plus de 200 km environ.",
+      "Une fois pour toutes : X-Plane ne relit pas une texture qu'il a déjà en entier, jusqu'à un nouveau vol, ou jusqu'à ce que vous soyez à plus de 200 km environ : même un rechargement de la scène la garde.",
     "start.full": "Pleine résolution",
     "start.full_note":
       "8192 px dès le départ, jusqu'à 30 km environ (pour les vues extérieures). L'attente la plus longue : environ 2,5 fois celle de Normale.",
@@ -586,9 +571,6 @@ export const STRINGS = {
     "start.normal": "Résolution normale",
     "start.normal_note":
       "4096 px une fois pour toutes dans un rayon de 12 km. Au-delà, c'est du live. L'attente la plus courte.",
-    "start.reload": "Normale, puis recharger en 8192 px",
-    "start.reload_note":
-      "Comme Normale. Quand les 12 km autour de l'avion sont prêts en 8192 px, un bouton (dans X-Plane et dans cette fenêtre) recharge la scène : quelques secondes de « reload objects & textures ».",
     "start.flight": "Du live : les textures devant l'avion passent en 8192 px avant que vous en approchiez.",
     "start.tint": "Test : montrer les textures 8192 px en rose",
     "start.tint_help":

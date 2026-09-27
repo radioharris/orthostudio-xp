@@ -211,7 +211,6 @@ class LiveControl:
         self._seq = 0
         self._stop = threading.Event()
         self._leave = threading.Event()
-        self._reload = threading.Event()  # the reload offered, asked for from the page
         # the welcome page's answer: "build" closes this window for OrthoStudio XP's
         self.leaving_for: str | None = None
         self._thread: threading.Thread | None = None
@@ -284,7 +283,6 @@ class LiveControl:
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()
-            self._reload.clear()
         options = options_for(self._settings(), fresh=fresh)
         self._thread = threading.Thread(
             target=self._run, args=(options,), name="live-stream", daemon=True
@@ -341,23 +339,6 @@ class LiveControl:
         self._launch(Path(checks["xplane"]))
         self.log("X-Plane is starting")
         self._checked = (0.0, None)
-
-    def reload(self) -> None:
-        """Reload the scenery in X-Plane, once the 8192 px textures offered after a start are built
-        (``start_mode`` "reload"): the streamer asks X-Plane over its UDP."""
-        with self._lock:
-            offer = ((self._report or {}).get("streamer") or {}).get("offer")
-            streaming = self._state == STREAMING
-        if not streaming or not offer or offer.get("state") != "ready":
-            raise session.RefusedError("no reload is offered now")
-        self._reload.set()
-
-    def _reload_asked(self) -> bool:
-        """Once per click: what the streamer's loop asks each turn."""
-        if not self._reload.is_set():
-            return False
-        self._reload.clear()
-        return True
 
     def _attach(self, streamer: Any) -> None:
         self.streamer = streamer
@@ -573,7 +554,6 @@ class LiveControl:
                     should_stop=self._stop.is_set,
                     report=self._reported,
                     stop_hint=STOP_HINT,
-                    reload_asked=self._reload_asked,
                     language=lambda: self.language,
                     attach=self._attach,
                 )

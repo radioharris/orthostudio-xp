@@ -142,8 +142,7 @@ def stream(
         str | None,
         typer.Option(
             help="what X-Plane waits for at a start where the zoom makes 8192 px textures: full "
-            "(all of them), around (those right around the aircraft), normal (4096 px only), "
-            "reload (4096 px, then a reload of the scenery offered once 8192 px is built) "
+            "(all of them), around (those right around the aircraft), normal (4096 px only) "
             "(default: around)"
         ),
     ] = None,

@@ -309,14 +309,12 @@ def follow(
     should_stop: Callable[[], bool] = lambda: False,
     report: Callable[[dict], None] | None = None,
     stop_hint: str = "Ctrl-C here to stop",
-    reload_asked: Callable[[], bool] = lambda: False,
     language: Callable[[], str] | None = None,
     attach: Callable[[Any], None] | None = None,
 ) -> None:
     """Follow X-Plane and keep the textures ahead of the aircraft built, until ``should_stop``
-    (or Ctrl-C). The pack stays installed: :func:`finish` takes it out. ``reload_asked``: the Live
-    window's button, for the reload offered after a start (``start_mode`` "reload"). ``language``:
-    the Live window's, asked each time the plugin is answered (``options.language`` by default).
+    (or Ctrl-C). The pack stays installed: :func:`finish` takes it out. ``language``: the Live
+    window's, asked each time the plugin is answered (``options.language`` by default).
     ``attach``: told of the streamer once it runs, and of None once it stops (the window's map
     reads what it builds from its memory)."""
     from orthostudio.live.cache import ChunkCache
@@ -372,7 +370,6 @@ def follow(
                     start_name=options.start,
                     log=log,
                     report=report,
-                    reload_asked=reload_asked,
                     language=language or (lambda: options.language),
                 )
             finally:

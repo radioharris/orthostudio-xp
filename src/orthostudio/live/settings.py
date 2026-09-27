@@ -40,9 +40,10 @@ class LiveSettings(BaseModel):
     max_zoom_airports: int = Field(18, ge=16, le=19)
     """AutoOrtho's max_zoom_near_airports: the zoom of the mesh's ZL18 textures, around airports;
     19, an 8192 px one."""
-    start_mode: Literal["full", "around", "normal", "reload"] = "around"
+    start_mode: Literal["full", "around", "normal"] = "around"
     """What X-Plane waits for at a flight's start where the zoom makes 8192 px textures
-    (:data:`orthostudio.live.streamer.START_MODES`)."""
+    (:data:`orthostudio.live.streamer.START_MODES`). A file's "reload", a choice gone, reads as
+    "normal", which it started as (:func:`_gone_choices`)."""
     provider: str = "BI"
     """The imagery source: a code of OrthoStudio XP's sources
     (:func:`orthostudio.live.providers.registry`)."""
@@ -130,6 +131,14 @@ def _one_space(table: dict) -> dict:
     return {**table, "disk_gb": total}
 
 
+def _gone_choices(table: dict) -> dict:
+    """A file from before a choice went: the start mode "reload" (4096 px, then a reload of the
+    scenery offered, which X-Plane's reload could not show) reads as "normal", as it started."""
+    if table.get("start_mode") == "reload":
+        return {**table, "start_mode": "normal"}
+    return table
+
+
 def load_settings() -> LiveSettings:
     """The saved settings, the defaults for what is missing or cannot be read."""
     try:
@@ -138,7 +147,7 @@ def load_settings() -> LiveSettings:
         return LiveSettings()
     if not isinstance(table, dict):
         return LiveSettings()
-    table = _one_space(table)
+    table = _gone_choices(_one_space(table))
     defaults = LiveSettings().model_dump()
     kept = {}
     for key, value in table.items():  # one wrong value costs itself, not its neighbours

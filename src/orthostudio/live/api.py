@@ -12,8 +12,6 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``POST /api/live/delete`` ``{"textures": bool, "imagery": bool}``: forget them (409 while a
   stream runs, or X-Plane for the textures);
 - ``POST /api/live/launch-xplane``: start X-Plane (409 until Live is ready for it);
-- ``POST /api/live/reload``: reload the scenery in X-Plane, to show the 8192 px textures built
-  after a start (409 unless that reload is offered);
 - ``POST /api/live/home`` ``{"home": "live" | "build", "remember": bool}``: the welcome page's
   answer; ``POST /api/live/osxp``: OrthoStudio XP's window; ``POST /api/live/front``: this window
   to the front (``orthostudio.live.app_start``);
@@ -123,14 +121,6 @@ def live_router(control: LiveControl) -> APIRouter:
             raise HTTPException(409, str(e)) from e
         except OSError as e:
             raise HTTPException(500, f"X-Plane could not be started: {e}") from e
-        return {"state": control.state}
-
-    @router.post("/reload")
-    def reload() -> dict[str, Any]:
-        try:
-            control.reload()
-        except session.RefusedError as e:
-            raise HTTPException(409, str(e)) from e
         return {"state": control.state}
 
     @router.post("/language")

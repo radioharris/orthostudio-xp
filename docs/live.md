@@ -151,10 +151,10 @@ screen:
   live. About 40 to 50 % longer than Normal (74,000 pieces at Lyon).
 - **Normal resolution**: 4096 px once and for all within 12 km. Beyond, it is live. The shortest
   wait.
-- **Normal, then reload in 8192 px**, as XPME's "load in normal resolution, then high": as Normal;
-  once the 12 km around the aircraft are ready in 8192 px, a panel over X-Plane (and a button in
-  the Live window) offers to reload the scenery, a few seconds of "reload objects & textures". The
-  offer lasts while the aircraft stays within 10 km of its start.
+
+A fourth choice, "Normal, then reload in 8192 px" (as XPME's "load in normal resolution, then
+high"), went on 2026-09-27: the pink test below showed that X-Plane's reload of the scenery, which
+is also what its SDK offers (`XPLMReloadScenery`), does not read again the textures it holds.
 
 Live: the textures ahead of the aircraft become 8192 px before you come near them. High up, Live
 makes none: from there X-Plane would never show them (above about 25,000 ft above the ground away
@@ -163,20 +163,22 @@ from airports, 6,000 ft around them).
 Once and for all: X-Plane keeps the size of a texture it has read, and reads it again only to take
 a larger one, so what it has read in full at 4096 px while the flight loads stays 4096 px, even if
 its file becomes 8192 px afterwards, like a picture on a web page you do not reload. That lasts
-until a new flight, a reload of the scenery, or until you are more than about 200 km away, where
+until a new flight, or until you are more than about 200 km away (a reload of the scenery keeps
+it), where
 X-Plane unloads the area (coming back, it reads it again, and by then it is live). For the
 airport's own textures, the 12 km are 3 km.
 
-With the package's zooms, 16 and 18, no texture is 8192 px: the four would start the same, so the
+With the package's zooms, 16 and 18, no texture is 8192 px: the three would start the same, so the
 window shows one line in their place, which says what a start does and that the choices come with
 ZL17 or ZL19.
 
 The eye hardly tells ZL17 from ZL16, so a test shows where X-Plane really shows the 8192 px: with
 "Test: show the 8192 px textures in pink" ticked (or `--tint-8192`), Live builds the 8192 px level
 of every texture washed with pink, the 4096 px and smaller levels as they are. Where the ground
-turns pink, X-Plane shows the 8192 px: around the aircraft after the reload in "Normal, then reload
-in 8192 px", ahead of it in flight, from the start with the two other choices. Live's tab says the
-test is on. After it, untick the box and delete the textures (the photos kept): they are built
+turns pink, X-Plane shows the 8192 px: around the aircraft from the start with "Full resolution"
+and "8192 px around the aircraft", and ahead of it in flight. It showed that X-Plane shows the
+8192 px of the files it loads, and that its reload of the scenery does not read again the textures
+it holds. Live's tab says the test is on. After it, untick the box and delete the textures (the photos kept): they are built
 again normally, with nothing to download.
 
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
@@ -210,9 +212,7 @@ Then, for every flight:
    Live window counts down the textures still to build, and so does a small panel over X-Plane,
    with the seconds gone by and the download rate in MB/s. X-Plane's own window looks frozen
    meanwhile: it is waiting, it has not crashed.
-3. Fly, anywhere. Another flight started from X-Plane's menu waits the same way. With "Normal,
-   then reload in 8192 px", a small panel appears in the top right corner of X-Plane once the
-   8192 px textures around you are built: Reload scenery, or close it (x).
+3. Fly, anywhere. Another flight started from X-Plane's menu waits the same way.
 4. Quit X-Plane, then click Stop (Ctrl-C in a terminal). Stopped or closed while X-Plane still
    runs, Live waits for X-Plane to quit before it takes its pack out: X-Plane reads its textures
    from it. "Leave it installed" stops waiting; the window then offers to take the pack out once
@@ -229,8 +229,8 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
   sharp zooms can take more than five minutes in a new area. It lets X-Plane go when nothing has
   downloaded for a minute (no internet), or when you click Stop in the Live window; X-Plane then
   shows the neutral colour where nothing was built, and gets its scenery reloaded once it is.
-- In flight, the plugin asks the streamer every second whether a reload of the scenery is offered
-  (the "then reload" start), and shows its panel when it is.
+- In flight, the plugin asks the streamer every second whether it has a notice for you (no mesh
+  under the aircraft: the region to install), and shows it in a small panel with its cross.
 - Live asks the imagery source for as many pieces at once as its servers take, as OrthoStudio XP
   measured them: 128 for Bing Maps. A piece that has not come within 10 s is replaced meanwhile by
   the imagery of the zoom below (a slightly blurrier square), so that X-Plane never waits longer
@@ -354,6 +354,10 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
   (`xcode-select --install`). Without them, OrthoStudio XP Live says so and works without the wait.
 
 ## Not yet
+
+- When X-Plane is let go before its textures are built (no internet for a minute, Stop, or no
+  plugin), Live asks it to reload the scenery once they are. The pink test showed that the reload
+  does not read again the textures X-Plane holds: what that reload still brings is to check.
 
 - The 25 km for external views is always kept, cockpit or not. The plugin could tell which view is
   in use and widen it only when needed, to download less at cruise.
