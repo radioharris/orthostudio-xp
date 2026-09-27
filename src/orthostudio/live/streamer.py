@@ -72,7 +72,7 @@ RELOAD_COMMAND = "sim/operation/reload_scenery"
 # - normal: 4096 px only;
 # - reload: 4096 px only; then the 8192 px textures of "full" are built, and a reload of the
 #   scenery is offered (Offer) to show them.
-# In flight, all four grow the textures ahead alike.
+# Beyond the start, all four grow the textures ahead alike.
 START_MODES = ("full", "around", "normal", "reload")
 OFFER_KM = 10.0  # the reload is offered while the aircraft stays this near its start
 OFFER_URGENCY = 0.5  # just after what X-Plane may be showing: the user waits for the button

@@ -135,21 +135,21 @@ export const STRINGS = {
 
     "start.title": "When a flight starts",
     "start.help":
-      "With zoom 17, or 19 near airports, the sharpest textures are 8192 px. While a flight loads, X-Plane waits on its loading screen until the textures of the start are built: this choice says which.",
+      "With zoom 17, or 19 near airports, the sharpest textures are 8192 px. While a flight loads, X-Plane waits on its loading screen until the textures of the start are built: this choice says at which size. X-Plane never reads a texture again once it has it: what it loads at 4096 px stays 4096 px during the flight, unless the scenery is reloaded.",
     "start.full": "Full resolution",
     "start.full_note":
-      "X-Plane waits until the whole start is in 8192 px, as far as an external view goes (25 km). The sharpest from the first second, but the longest wait: about two and a half times Normal's.",
+      "X-Plane waits until the start is in 8192 px, as far as an external view goes (25 km). Sharp from the first second, but the longest wait: about two and a half times Normal's.",
     "start.around": "Normal, and 8192 px around the aircraft",
     "start.around_note":
-      "X-Plane waits for the textures in 4096 px, and in 8192 px for the few right around the aircraft: about 15 % longer than Normal. Farther around the start, the textures stay 4096 px during this flight.",
+      "X-Plane waits for the start in 4096 px, and in 8192 px for the few textures right around the aircraft: about 15 % longer than Normal. The rest of the start, within about 10 km, stays 4096 px during this flight.",
     "start.normal": "Normal resolution",
     "start.normal_note":
-      "X-Plane waits for the textures in 4096 px only: the shortest wait. Around the start, the textures stay 4096 px during this flight.",
+      "X-Plane waits for the start in 4096 px only: the shortest wait. The start, within about 10 km, stays 4096 px during this flight.",
     "start.reload": "Normal, then reload in 8192 px",
     "start.reload_note":
-      "As Normal. Then Live builds the start in 8192 px, as Full resolution does, and once it is built, a button in X-Plane (and in this window) reloads the scenery: X-Plane shows “reload objects & textures” for a few seconds, then the 8192 px textures.",
+      "As Normal. Then Live builds the start in 8192 px, as Full resolution does, and once it is built, a button in X-Plane (and in this window) reloads the scenery: X-Plane shows “reload objects & textures” for a few seconds, then the start in 8192 px.",
     "start.flight":
-      "In flight, all four do the same: the textures ahead of the aircraft become 8192 px before you come near them, with nothing to reload.",
+      "Beyond the start, all four are the same: the textures ahead of the aircraft become 8192 px before you come near them, with nothing to reload.",
     "start.none": "Your zooms make no 8192 px texture: the four start the same.",
     "settings.recommended": "Recommended",
 
@@ -327,21 +327,21 @@ export const STRINGS = {
 
     "start.title": "Au démarrage d'un vol",
     "start.help":
-      "Avec le zoom 17, ou 19 près des aéroports, les textures les plus nettes font 8192 px. Pendant le chargement d'un vol, X-Plane attend sur son écran de chargement que les textures du départ soient construites : ce choix dit lesquelles.",
+      "Avec le zoom 17, ou 19 près des aéroports, les textures les plus nettes font 8192 px. Pendant le chargement d'un vol, X-Plane attend sur son écran de chargement que les textures du départ soient construites : ce choix dit à quelle taille. X-Plane ne relit jamais une texture qu'il a déjà : ce qu'il charge en 4096 px reste en 4096 px pendant le vol, sauf si la scène est rechargée.",
     "start.full": "Pleine résolution",
     "start.full_note":
-      "X-Plane attend que tout le départ soit en 8192 px, aussi loin qu'une vue extérieure peut aller (25 km). Le plus net dès la première seconde, mais l'attente la plus longue : environ deux fois et demie celle de Normale.",
+      "X-Plane attend que le départ soit en 8192 px, aussi loin qu'une vue extérieure peut aller (25 km). Net dès la première seconde, mais l'attente la plus longue : environ deux fois et demie celle de Normale.",
     "start.around": "Normale, et 8192 px autour de l'avion",
     "start.around_note":
-      "X-Plane attend les textures en 4096 px, et en 8192 px pour les quelques-unes juste autour de l'avion : environ 15 % de plus que Normale. Plus loin autour du départ, les textures restent en 4096 px pendant ce vol.",
+      "X-Plane attend le départ en 4096 px, et en 8192 px pour les quelques textures juste autour de l'avion : environ 15 % de plus que Normale. Le reste du départ, dans un rayon d'environ 10 km, reste en 4096 px pendant ce vol.",
     "start.normal": "Résolution normale",
     "start.normal_note":
-      "X-Plane n'attend que les textures en 4096 px : l'attente la plus courte. Autour du départ, les textures restent en 4096 px pendant ce vol.",
+      "X-Plane n'attend le départ qu'en 4096 px : l'attente la plus courte. Le départ, dans un rayon d'environ 10 km, reste en 4096 px pendant ce vol.",
     "start.reload": "Normale, puis recharger en 8192 px",
     "start.reload_note":
-      "Comme Normale. Ensuite, Live construit le départ en 8192 px, comme Pleine résolution, et une fois prêt, un bouton dans X-Plane (et dans cette fenêtre) recharge la scène : X-Plane affiche « reload objects & textures » quelques secondes, puis les textures 8192 px.",
+      "Comme Normale. Ensuite, Live construit le départ en 8192 px, comme Pleine résolution, et une fois prêt, un bouton dans X-Plane (et dans cette fenêtre) recharge la scène : X-Plane affiche « reload objects & textures » quelques secondes, puis le départ en 8192 px.",
     "start.flight":
-      "En vol, les quatre font pareil : les textures devant l'avion passent en 8192 px avant que vous en approchiez, sans rien recharger.",
+      "Au-delà du départ, les quatre font pareil : les textures devant l'avion passent en 8192 px avant que vous en approchiez, sans rien recharger.",
     "start.none": "Vos zooms ne font aucune texture 8192 px : les quatre démarrent pareil.",
     "settings.recommended": "Recommandé",
 
