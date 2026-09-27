@@ -80,11 +80,11 @@ OrthoStudio XP's Plan, and over them what Live has done. The aircraft moves on i
 pointing along its track, with the camera's place in external views; the map follows it until
 you drag it away ("Follow the aircraft" brings it back). Your SimBrief route is drawn while Live
 follows it, and before a flight the "Show my SimBrief route" button asks SimBrief for it. The
-regions installed are shaded, and the textures already built are coloured by how sharp they are:
-8192 px, 4096 px, 2048 px, smaller, within 3 seconds of being built while Live runs; zoomed out,
-the many small ones are grouped by square. Point at a texture to see what it is: its zoom, the
-size it is built at and the photos that makes, the disk it takes, and when Live last had it in
-reach.
+regions installed are shaded while zoomed out, and the textures already built are coloured by how
+sharp they are: blue 8192 px, green 4096 px, amber 2048 px, grey smaller, within 3 seconds of
+being built while Live runs; zoomed out, the many small ones are grouped by square. Point at a
+texture and the line below the map says what it is: its zoom, the size it is built at and the
+photos that makes, the disk it takes, and when Live last had it in reach.
 
 ### Roads, forests and buildings
 

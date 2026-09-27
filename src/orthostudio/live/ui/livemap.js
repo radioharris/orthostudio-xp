@@ -4,13 +4,19 @@
 // X-Plane sends them, the route of the SimBrief plan, the regions installed, and the textures
 // built, coloured by how sharp they are (orthostudio/live/mapdata.py). The status the page polls
 // every second moves the aircraft; the textures are asked for again when the view moves, and
-// every few seconds while Live streams.
+// every few seconds while Live streams. The texture under the pointer is told in a line below
+// the map, which covers nothing (a tooltip over the map was too present, a user said).
+//
+// Each layer is drawn opaque in a pane of its own, the pane made see-through as a whole: an
+// airport's textures over the ZL16 ones do not add their colours up and look darker than they are.
 
 import { createBaseMap, escapeHtml } from "./basemap.js";
 import { language, t } from "./strings.js";
 
-export const LEVEL_COLOURS = { "-1": "#2e9e4f", 0: "#8cc63f", 1: "#f2b134", coarser: "#9aa0a6" };
+// four hues told apart at a glance: blue the sharpest, then green, amber, grey
+export const LEVEL_COLOURS = { "-1": "#2f6fd6", 0: "#35a852", 1: "#f2b134", coarser: "#9aa0a6" };
 const REGION_COLOUR = "#5a8dd6";
+const REGIONS_MAX_ZOOM = 6; // closer, the view is inside a region: its shade would only tint it
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 
@@ -31,17 +37,20 @@ function ago(seconds) {
   return t("map.tip_days", { n: fmt(seconds / 86400) });
 }
 
-/** What the tooltip says of a texture built (orthostudio/live/mapdata.py textures_at). */
-export function textureTip(x) {
-  const lines = [`<b>${escapeHtml(x.name)}</b>`];
-  lines.push(t(x.zoom >= 18 ? "map.tip_airport" : "map.tip_zoom", { zoom: x.zoom }));
-  lines.push(t("map.tip_px", { px: fmt(x.px), photos: x.photos_zoom }));
-  lines.push(t("map.tip_size", {
-    mb: fmt(x.bytes / 1e6, x.bytes < 1e7 ? 1 : 0), w: fmt(x.km[0], 1), h: fmt(x.km[1], 1),
-  }));
-  if (x.seen_s != null) lines.push(t("map.tip_seen", { ago: ago(x.seen_s) }));
-  if (x.patchy) lines.push(`<span class="tip-warn">${escapeHtml(t("map.tip_patchy"))}</span>`);
-  return lines.join("<br>");
+/** What the line below the map says of a texture built (orthostudio/live/mapdata.py
+ * textures_at). */
+export function textureInfo(x) {
+  const parts = [
+    `<b>${escapeHtml(x.name)}</b>`,
+    escapeHtml(t(x.zoom >= 18 ? "map.tip_airport" : "map.tip_zoom", { zoom: x.zoom })),
+    escapeHtml(t("map.tip_px", { px: fmt(x.px), photos: x.photos_zoom })),
+    escapeHtml(t("map.tip_size", {
+      mb: fmt(x.bytes / 1e6, x.bytes < 1e7 ? 1 : 0), w: fmt(x.km[0], 1), h: fmt(x.km[1], 1),
+    })),
+  ];
+  if (x.seen_s != null) parts.push(escapeHtml(t("map.tip_seen", { ago: ago(x.seen_s) })));
+  if (x.patchy) parts.push(`<span class="info-warn">${escapeHtml(t("map.tip_patchy"))}</span>`);
+  return parts.join(" · ");
 }
 
 /** The aircraft, pointing along its track. */
@@ -52,10 +61,20 @@ function planeIcon(track) {
   return L.divIcon({ className: "live-plane", html: svg, iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 
-export function createLiveMap(el, { api }) {
+export function createLiveMap(el, { api, info = null }) {
   const base = createBaseMap(el);
   const { map } = base;
-  const canvas = L.canvas({ padding: 0.2 });
+  function pane(name, zIndex, opacity) {
+    const p = map.createPane(name);
+    p.style.zIndex = String(zIndex);
+    p.style.opacity = String(opacity);
+    p.style.pointerEvents = "none";
+    return L.canvas({ padding: 0.2, pane: name });
+  }
+  // under the borders (340): the regions, the grouped small textures, the textures one by one
+  const regionsCanvas = pane("liveRegions", 300, 0.14);
+  const squaresCanvas = pane("liveSquares", 310, 0.3);
+  const texturesCanvas = pane("liveTextures", 320, 0.5);
   const regions = L.layerGroup().addTo(map);
   const built = L.layerGroup().addTo(map);
   const route = L.layerGroup().addTo(map);
@@ -90,15 +109,16 @@ export function createLiveMap(el, { api }) {
       shownSquares = got.squares || [];
       hovered = null; // its facts may have changed
       built.clearLayers();
-      const style = (level) => ({
-        renderer: canvas, weight: 0, fillColor: levelColour(level), fillOpacity: 0.45, interactive: false,
+      const style = (level, renderer) => ({
+        renderer, weight: 0, fillColor: levelColour(level), fillOpacity: 1, interactive: false,
       });
-      // the small ones grouped by square first, fainter, under the ones drawn one by one
+      // opaque in their panes, which are see-through as a whole: overlaps never darken
       for (const [lat, lon, , best] of got.squares || []) {
-        L.rectangle([[lat, lon], [lat + 1, lon + 1]], { ...style(best), fillOpacity: 0.25 }).addTo(built);
+        L.rectangle([[lat, lon], [lat + 1, lon + 1]], style(best, squaresCanvas)).addTo(built);
       }
       for (const [s, w, n, e, level] of (got.textures || []).slice().reverse()) {
-        L.rectangle([[s, w], [n, e]], style(level)).addTo(built); // the sharpest drawn last, on top
+        // the sharpest drawn last, on top
+        L.rectangle([[s, w], [n, e]], style(level, texturesCanvas)).addTo(built);
       }
     }
     if (streaming) builtTimer = setTimeout(() => drawBuilt(false), BUILT_EVERY_MS);
@@ -115,7 +135,7 @@ export function createLiveMap(el, { api }) {
     for (const squares of Object.values(got)) {
       for (const [lat, lon] of squares) {
         L.rectangle([[lat, lon], [lat + 1, lon + 1]], {
-          renderer: canvas, weight: 0, fillColor: REGION_COLOUR, fillOpacity: 0.12, interactive: false,
+          renderer: regionsCanvas, weight: 0, fillColor: REGION_COLOUR, fillOpacity: 1, interactive: false,
         }).addTo(regions);
       }
     }
@@ -133,9 +153,16 @@ export function createLiveMap(el, { api }) {
     }
   }
 
-  // the tooltip over a texture built: found in what is drawn, its facts asked of the engine once
-  // the pointer rests on another one
-  const tip = L.tooltip({ direction: "top", offset: [0, -10], className: "live-texture-tip", opacity: 1 });
+  // the regions' shade only while zoomed out: closer, the view is inside one
+  function showRegions() {
+    const wanted = map.getZoom() <= REGIONS_MAX_ZOOM;
+    if (wanted && !map.hasLayer(regions)) regions.addTo(map);
+    if (!wanted && map.hasLayer(regions)) map.removeLayer(regions);
+  }
+  map.on("zoomend", showRegions);
+
+  // the line below the map: the texture under the pointer, found in what is drawn, its facts
+  // asked of the engine once the pointer rests on another one
   let hovered = null; // the texture or square under the pointer, as a key
   let pointer = null;
   let asking = 0;
@@ -152,33 +179,27 @@ export function createLiveMap(el, { api }) {
     const square = shownSquares.find((q) => lat >= q[0] && lat < q[0] + 1 && lng >= q[1] && lng < q[1] + 1);
     return square ? { key: `s:${square[0]},${square[1]},${square[2]},${square[3]}`, square } : null;
   }
-  function showTip(html) {
-    // above the pointer, or below it in the map's upper half: never cut by the map's edge
-    const below = map.latLngToContainerPoint(pointer).y < map.getSize().y / 2;
-    tip.options.direction = below ? "bottom" : "top";
-    tip.options.offset = below ? [0, 14] : [0, -10];
-    tip.setContent(html);
-    tip.setLatLng(pointer);
-    if (!map.hasLayer(tip)) tip.addTo(map);
-    else tip.update();
+  function say(html) {
+    if (!info) return;
+    info.innerHTML = html || escapeHtml(t("map.info_hint"));
+    info.classList.toggle("is-hint", !html);
   }
-  function hideTip() {
+  function nothing() {
     hovered = null;
     clearTimeout(asking);
-    if (map.hasLayer(tip)) map.removeLayer(tip);
+    say("");
   }
   map.on("mousemove", (ev) => {
     pointer = ev.latlng;
     const found = under(ev.latlng);
-    if (!found) return hideTip();
-    if (map.hasLayer(tip)) tip.setLatLng(pointer);
+    if (!found) return nothing();
     if (found.key === hovered) return;
     hovered = found.key;
     clearTimeout(asking);
     if (found.square) {
       const [, , count, best] = found.square;
       const px = best < 0 ? 8192 : 4096 >> best;
-      showTip(t("map.tip_square", { n: fmt(count), px: fmt(px) }));
+      say(escapeHtml(t("map.tip_square", { n: fmt(count), px: fmt(px) })));
       return;
     }
     const key = found.key;
@@ -190,10 +211,11 @@ export function createLiveMap(el, { api }) {
         return;
       }
       if (hovered !== key || !got.textures?.length) return;
-      showTip(textureTip(got.textures[0])); // the one drawn on top: the smallest, an airport's
+      say(textureInfo(got.textures[0])); // the one drawn on top: the smallest, an airport's
     }, 120);
   });
-  map.on("mouseout", hideTip);
+  map.on("mouseout", nothing);
+  say("");
 
   // the map takes the height of the blocks beside it: Leaflet is told when its box changes
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => map.invalidateSize()).observe(el);
@@ -204,6 +226,7 @@ export function createLiveMap(el, { api }) {
   });
 
   drawRegions();
+  showRegions();
   drawBuilt();
 
   return {
@@ -253,6 +276,10 @@ export function createLiveMap(el, { api }) {
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
     regionsChanged: drawRegions,
+    languageChanged() {
+      hovered = null;
+      say("");
+    },
     setFollow(on) {
       follow = on;
       if (on && plane) map.panTo(plane.getLatLng(), { animate: false });

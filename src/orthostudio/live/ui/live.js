@@ -722,7 +722,7 @@ async function startMap() {
   try {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
     const { createLiveMap } = await import("./livemap.js");
-    liveMap = createLiveMap($("live-map"), { api });
+    liveMap = createLiveMap($("live-map"), { api, info: $("map-info") });
   } catch (_e) {
     liveMap = null;
     return;
@@ -771,6 +771,7 @@ function boot() {
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     tellLanguage();
+    liveMap?.languageChanged();
     applyStatic(document);
     renderZooms();
     renderStartModes();
