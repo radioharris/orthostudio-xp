@@ -181,6 +181,14 @@ function drawFlight(status) {
     rows.push([t("flight.altitude"), `${number(a.alt_ft)} ft`]);
     rows.push([t("flight.speed"), `${number(a.gs_kt)} kt`]);
   }
+  const screen = stream.streamer?.screen;
+  if (screen) {
+    rows.push([t("flight.screen"), t("flight.screen_value", {
+      width: number(screen.width),
+      fov: number(screen.fov),
+      km: number(screen.km_4096),
+    })]);
+  }
   if (stream.camera_km != null && stream.camera_km > 0.5) {
     rows.push([t("flight.camera"), t("flight.camera_value", { km: number(stream.camera_km, 1) })]);
   }

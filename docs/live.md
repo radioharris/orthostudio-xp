@@ -135,7 +135,10 @@ Every two seconds, OrthoStudio XP Live reads where the aircraft is, where it is 
 AutoOrtho does, over X-Plane's network data), and where the camera is. It looks five minutes ahead
 along the track, and for every texture within 300 km it works out how sharp X-Plane will want it
 when the aircraft, or the camera, passes closest. External views count: X-Plane measures from the
-camera, so a chase or free camera far from the aircraft gets its textures sharp too. What is
+camera, so a chase or free camera far from the aircraft gets its textures sharp too. The distances
+follow X-Plane's image: on a wider screen, or zoomed in (a narrower field of view), X-Plane reads
+sharp textures farther, and Live builds them farther too. The Flight card shows your image and how
+far X-Plane reads 4096 px there. What is
 missing is downloaded and built, the most urgent first, and replaces the file on the disk. X-Plane
 picks the new file up by itself the next time it wants that texture sharper.
 

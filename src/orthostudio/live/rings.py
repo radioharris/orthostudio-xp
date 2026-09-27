@@ -12,19 +12,42 @@ A level is the same ground resolution whatever the file's size (level 1 is 2048 
 area), so the rings hold for a texture made smaller or larger by the zoom set, which only moves the
 sharpest level there is to read (:func:`file_top`). Level -1, 8192 px, is read under 6 km: the law
 carried one level on, not measured.
+
+The rings were measured on one image, 2704 px wide with a 65° field of view. Probe flight 2
+(``docs/findings/2026-09-27-probe-flight-2.md`` in X-StreamOrtho) found X-Plane reading each level
+farther on a wider image and with a narrower field of view, as the width of a pixel on the ground
+goes: :func:`screen_scale`.
 """
 
 from __future__ import annotations
+
+import math
 
 LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
 MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
 RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0, -1: 6.0}
 DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
+REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
+REFERENCE_FOV_DEG = 65.0
+MAX_SCALE = 4.0  # a field of view under about 17° (binoculars): its far rings are left to chance
 
 
 def ring_km(level: int, zoom: int) -> float:
     """Distance within which X-Plane reads ``level`` of a texture of ``zoom``."""
     return RINGS_ZL16_KM[level] * 2.0 ** (16 - zoom)
+
+
+def screen_scale(width_px: float | None, fov_deg: float | None) -> float:
+    """How much farther than the rings X-Plane reads each level on an image ``width_px`` wide with
+    a horizontal field of view of ``fov_deg``: as the ground a pixel covers shrinks (probe flight 2:
+    x1.35 to x1.67 for an image 1.71 times wider, x1.83 to x2.09 from 65° to 33.5°, whose
+    tangents' ratio is 2.11). Never under 1: a smaller image reads the levels nearer than
+    measured, and building them farther costs a little, where building them nearer would show the
+    neutral colour. At most MAX_SCALE. 1 when X-Plane has not said."""
+    if not width_px or not fov_deg or not 1.0 <= fov_deg <= 170.0:
+        return 1.0
+    ratio = math.tan(math.radians(REFERENCE_FOV_DEG / 2)) / math.tan(math.radians(fov_deg / 2))
+    return min(MAX_SCALE, max(1.0, width_px / REFERENCE_WIDTH_PX * ratio))
 
 
 def top_level_for(

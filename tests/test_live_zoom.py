@@ -308,6 +308,38 @@ def test_no_8192_px_from_high_up(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_the_rings_grow_with_xplanes_image() -> None:
+    """Probe flight 2: X-Plane reads each level farther on a wider image and with a narrower field
+    of view, as the ground a pixel covers shrinks; never nearer than measured, whatever the
+    image."""
+    from orthostudio.live.rings import MAX_SCALE, screen_scale
+
+    assert screen_scale(2704, 65.0) == pytest.approx(1.0)  # where the rings were measured
+    assert screen_scale(3840, 65.0) == pytest.approx(3840 / 2704)  # a 4K image: about 17 km
+    assert screen_scale(2704, 33.5) == pytest.approx(2.117, abs=0.01)  # zoomed in: 20.5 km measured
+    assert screen_scale(1579, 65.0) == 1.0  # a small window reads nearer: the rings as measured
+    assert screen_scale(2704, 5.0) == MAX_SCALE
+    assert screen_scale(None, None) == screen_scale(2704, 0.0) == 1.0  # not said
+
+
+def test_a_wider_image_reads_sharper_farther(tmp_path: Path) -> None:
+    s = row_streamer(tmp_path, "normal", reach_km=0.0)
+    fix = at(0)
+    assert s.plan(fix, x_plane_there=False)[f"{ROW[3]}.dds"][1] == 1  # 20.8 km: 2048 px
+    s.set_screen(2704, 33.5)  # zoomed in: X-Plane reads 4096 px up to 25 km
+    assert s.plan(fix, x_plane_there=False)[f"{ROW[3]}.dds"][1] == 0
+    assert s.snapshot()["screen"] == {
+        "width": 2704,
+        "fov": 33.5,
+        "scale": pytest.approx(2.117, abs=0.01),
+        "km_4096": pytest.approx(25.4, abs=0.2),
+    }
+    s.save()  # remembered for the next start, before X-Plane says it again
+    again = Streamer(s.pack_dir, s.cache, FakeDownloader, finest_quality=0, max_zoom=17, log=quiet)
+    assert again.scale == pytest.approx(s.scale)
+    s.cache.close()
+
+
 def built_as_planned(s: Streamer, jobs: dict) -> None:
     """Every job done, as the builder records it."""
     for name, (_, level) in jobs.items():

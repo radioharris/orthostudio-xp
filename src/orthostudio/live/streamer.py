@@ -50,7 +50,7 @@ from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .geo import haversine_m, parse_texture_name
 from .pack import MARKER, load_built
 from .region import NEUTRAL_LEVEL, Zooms, ensure_neutral, neutral_file
-from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, top_level_for
+from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
 from .route import KM_PER_DEG, Route
 from .texture import parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
 
@@ -105,6 +105,8 @@ DATAREFS = [
     ("vy", "sim/graphics/view/view_y"),
     ("vz", "sim/graphics/view/view_z"),
     ("agl_m", "sim/flightmodel/position/y_agl"),
+    ("win_w", "sim/graphics/view/window_width"),  # X-Plane's image: what the rings scale with
+    ("fov", "sim/graphics/view/field_of_view_deg"),
 ]
 
 
@@ -248,6 +250,12 @@ class Streamer:
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
         self.offer: Offer | None = None  # the reload offered after a start (start_mode "reload")
+        # X-Plane's image, the last it said, from one run to the next: every ring scales with it
+        self.screen: dict | None = None
+        self.scale = 1.0
+        screen = self.meta.get("screen")
+        if isinstance(screen, dict):
+            self.set_screen(screen.get("width"), screen.get("fov"), quiet=True)
         # squares whose ground X-Plane takes from the user's own tiles (orthostudio.live.covered):
         # a texture only there is never read, and never built
         self.theirs = self._theirs(set(covered))
@@ -264,6 +272,20 @@ class Streamer:
         self._thread: threading.Thread | None = None
 
     # --- planning -----------------------------------------------------------------------------
+
+    def set_screen(self, width: float | None, fov: float | None, quiet: bool = False) -> None:
+        """X-Plane's image, as it says it (``window_width``, ``field_of_view_deg``): the rings grow
+        with it (:func:`orthostudio.live.rings.screen_scale`)."""
+        if not width or not fov:
+            return
+        scale = screen_scale(width, fov)
+        before, self.scale = self.scale, scale
+        self.screen = {"width": round(width), "fov": round(fov, 1)}
+        if not quiet and abs(scale - before) > 0.05:
+            self.log(
+                f"  X-Plane's image: {round(width)} px, field of view {fov:.0f} deg: X-Plane reads "
+                f"4096 px up to {ring_km(0, 16) * scale:.0f} km (distances x{scale:.2f})"
+            )
 
     def _theirs(self, covered: set[tuple[int, int]]) -> set[str]:
         """The textures whose every square is in ``covered``: X-Plane draws another pack there. A
@@ -307,8 +329,10 @@ class Streamer:
         in three dimensions, from their heights above the ground, as X-Plane measures. The other
         levels keep the distances on the ground: one built too few would show the neutral colour,
         where a texture that does not grow stays 4096 px."""
-        r8 = ring_km(MIN_LEVEL, zoom) * self.margin
-        r4 = ring_km(0, zoom) * self.margin  # where X-Plane reads 4096 px while a flight loads
+        k = self.scale  # X-Plane's image: the rings grow with it
+        r8 = ring_km(MIN_LEVEL, zoom) * self.margin * k
+        r4 = ring_km(0, zoom) * self.margin * k  # where X-Plane reads 4096 px while a flight loads
+        r0 = ring_km(0, zoom) * k
         if starting:  # X-Plane reads nothing here before the start's textures are built
             if self.start_mode == "full" and d - self.reach_km <= r8:
                 return d_now - r8 - self.reach_km  # X-Plane waits for it
@@ -317,8 +341,8 @@ class Streamer:
             return None
         if offer is not None and d <= r4:  # X-Plane reads it again at the reload
             return OFFER_URGENCY + d_now / 1000.0
-        if d <= r8 and d_now > ring_km(0, zoom):  # ahead, before X-Plane reads its 4096 px level
-            return d_now - ring_km(0, zoom)
+        if d <= r8 and d_now > r0:  # ahead, before X-Plane reads its 4096 px level
+            return d_now - r0
         return None
 
     def plan(
@@ -362,7 +386,7 @@ class Streamer:
                 s, s_now = min(s, s_cam), min(s_now, s_cam)
             top = self.top_of(name)
             level = top_level_for(
-                max(0.0, d - self.reach_km),
+                max(0.0, d - self.reach_km) / self.scale,  # the rings grow with X-Plane's image
                 zoom,
                 finest_readable(top, self.finest_quality),
                 self.margin,
@@ -370,7 +394,7 @@ class Streamer:
             ring = (
                 LOAD_KM
                 if level == LOAD_LEVEL
-                else ring_km(level, zoom) * self.margin + self.reach_km
+                else ring_km(level, zoom) * self.margin * self.scale + self.reach_km
             )
             urgency = d_now - ring
             if level == 0 and top == 0 and zoom in self.growing:
@@ -788,6 +812,8 @@ class Streamer:
             grown = sorted(self.grown)
             patchy = sorted(n for n in self.patchy if n in textures)
         meta = load_built(self.pack_dir)
+        if self.screen is not None:
+            meta["screen"] = self.screen
         meta["textures"] = textures
         meta["seen"] = seen
         meta["grown"] = grown
@@ -825,6 +851,10 @@ class Streamer:
             "grown": grown,  # textures at 8192 px
             "start_mode": self.start_mode,
             "offer": self.offer_state(),
+            # X-Plane's image, and how far it reads 4096 px of a ZL16 texture there
+            "screen": None
+            if self.screen is None
+            else {**self.screen, "scale": self.scale, "km_4096": ring_km(0, 16) * self.scale},
         }
 
     def status(self) -> str:
@@ -1141,6 +1171,7 @@ def run(
                         values[fields[idx]] = v
             if now - last_plan >= PLAN_EVERY_S and (values.get("lat") or arrival is not None):
                 last_plan = now
+                streamer.set_screen(values.get("win_w"), values.get("fov"))
                 fix = None
                 if values.get("lat") and values.get("lon"):
                     fix = Fix(
