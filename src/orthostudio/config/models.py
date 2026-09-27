@@ -208,8 +208,8 @@ class Essential(BaseModel):
             "The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its "
             "caches, several GB per tile: on an external disk, for instance. Empty: OrthoStudio "
             "XP's own folder (~/.orthostudio). Its disk must hard-link files (APFS, Mac OS "
-            "Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where "
-            "it is."
+            "Extended, NTFS, ext4; not exFAT or FAT32, and not a folder shared over a network or "
+            "with a virtual machine). What was downloaded before stays where it is."
         ),
     )
 

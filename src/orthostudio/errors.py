@@ -818,8 +818,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "The data folder {path} cannot be used: {reason}.",
-        "Choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or "
-        "ext4 (Linux).",
+        "Choose a folder on a disk of this computer formatted APFS or Mac OS Extended (Mac), "
+        "NTFS (Windows) or ext4 (Linux); a folder shared over a network or with a virtual machine "
+        "will not do, whatever its disk's format.",
     ),
     _spec(
         "CFG_DATA_DIR_MISSING",

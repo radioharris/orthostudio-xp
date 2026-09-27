@@ -65,7 +65,8 @@ default roots are those of `orthostudio.home`: `<data folder>/chunks`, `/store`,
 else the setting `essential.data_dir`, else `$OSXP_HOME`. The settings, the library, the jobs, the
 zones, the user's sources and the airport index stay in `$OSXP_HOME`. The store and the tiles share
 their textures through hard links (`link` above), so a folder is accepted only on a disk that makes
-them (`check_data_dir`: exFAT and FAT32 would write each texture three times) and all these roots
+them (`check_data_dir`: exFAT, FAT32 and folders shared over a network or with a virtual machine
+would write each texture three times) and all these roots
 live on the same disk; nothing is moved when the setting changes. A data folder that is not there
 (its disk unplugged) is never created: `require_data_root` refuses a plan, a job and `BuildEnv`'s
 default work folder with `CFG_DATA_DIR_MISSING`, and the map proxy serves without its cache. The

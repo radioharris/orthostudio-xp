@@ -194,7 +194,15 @@ def test_a_folder_is_accepted_only_where_the_data_can_live(
         return info.value.code, info.value.context.get("why")
 
     assert refused("OrthoStudio") == ("CFG_DATA_DIR_INVALID", "relative")
-    assert refused(tmp_path / "nowhere") == ("CFG_DATA_DIR_MISSING", None)
+    # a drive letter alone is no full path, and says so: a user typed E: in a Windows VM and
+    # read only that it was not a full path (2026-09-27)
+    assert refused("E:") == ("CFG_DATA_DIR_INVALID", "drive")
+    assert refused(" e: ") == ("CFG_DATA_DIR_INVALID", "drive")
+    # a folder not made yet on a disk that is there is not an unplugged disk: the same user read
+    # "Plug in the disk it is on" for E:\OrthoStudio, with E: in place (2026-09-27)
+    assert refused(tmp_path / "nowhere") == ("CFG_DATA_DIR_INVALID", "absent")
+    assert refused(tmp_path / "Volumes" / "T7" / "OrthoStudio") == ("CFG_DATA_DIR_MISSING", None)
+    assert not (tmp_path / "nowhere").exists() and not (tmp_path / "Volumes").exists()
     (tmp_path / "notes.txt").write_text("mine")
     assert refused(tmp_path / "notes.txt") == ("CFG_DATA_DIR_INVALID", "file")
     cs = tmp_path / "X-Plane 12" / "Custom Scenery"
@@ -232,9 +240,19 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
         settings = (await c.get("/api/settings")).json()
         assert settings["essential"]["data_dir"] is None
 
-        settings["essential"]["data_dir"] = str(tmp_path / "nowhere")
+        settings["essential"]["data_dir"] = str(tmp_path / "Volumes" / "T7" / "OrthoStudio")
         r = await c.put("/api/settings", json=settings)
         assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_DATA_DIR_MISSING"
+        settings["essential"]["data_dir"] = str(tmp_path / "nowhere")  # its disk is there
+        r = await c.put("/api/settings", json=settings)
+        err = r.json()["error"]
+        assert r.status_code == 422 and err["code"] == "CFG_DATA_DIR_INVALID"
+        assert err["context"]["why"] == "absent" and "Create it first" in err["remedy"]
+        settings["essential"]["data_dir"] = "E:"
+        r = await c.put("/api/settings", json=settings)
+        err = r.json()["error"]
+        assert r.status_code == 422 and err["context"]["why"] == "drive", r.text
+        assert "E:\\OrthoStudio" in err["remedy"]
         settings["essential"]["data_dir"] = str(disk)
         with monkeypatch.context() as m:
             m.setattr(os, "link", _no_links)
@@ -242,6 +260,10 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
         err = r.json()["error"]
         assert r.status_code == 422 and err["code"] == "CFG_DATA_DIR_INVALID"
         assert err["context"]["why"] == "links" and "exFAT" in err["message"]
+        # the other cause, and the one a user met: a folder shared with a virtual machine
+        # (his APFS disk, reached from a Windows VM through Parallels, 2026-09-27)
+        assert "shared over a network or with a virtual machine" in err["message"]
+        assert "whatever its disk's format" in err["remedy"]
         assert data_root() == home
 
         job = mgr.start([make_spec("+46+006", home=home)])
