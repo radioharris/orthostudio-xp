@@ -95,6 +95,53 @@ class PlanningTest(unittest.TestCase):
         self.assertEqual(len(list(idx.around(c[0] + 5, c[1], 50))), 0)
 
 
+class NoticeTest(unittest.TestCase):
+    """Where the pack has no mesh but one of the regions has: the region to install, for the
+    window and X-Plane; nothing over the pack's mesh, nor where no region has any."""
+
+    def test_the_region_to_install(self):
+        from orthostudio.live.streamer import notice_text, progress_report
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            installed = set()
+            s = Streamer(
+                pack,
+                ChunkCache(root / "c.sqlite"),
+                FakeDownloader,
+                finest_quality=1,
+                workers=1,
+                log=lambda _: None,
+                installed_regions=lambda: installed,
+            )
+            try:
+                here = parse_texture_name(f"{NAMES[0]}.dds").center
+                self.assertIsNone(s.notice_at(*here))  # the pack's mesh
+                self.assertIsNone(s.notice_at(40.0, -40.0))  # the open Atlantic: nothing to install
+                notice = s.notice_at(40.64, -73.78)  # New York
+                self.assertEqual((notice["region"], notice["installed"]), ("na", False))
+                self.assertEqual(
+                    notice_text(notice), "no mesh here: install North America in the Live window"
+                )
+                self.assertIs(s.notice_at(40.7, -73.9), notice)  # the same square: the same notice
+                installed.add("asi")
+                tokyo = s.notice_at(35.55, 139.78)  # another region: another notice
+                self.assertNotEqual(tokyo["id"], None)
+                self.assertEqual((tokyo["region"], tokyo["installed"]), ("asi", True))
+                self.assertEqual(
+                    notice_text(tokyo), "Asia is installed: used from Live's next start"
+                )
+                report = progress_report(
+                    s, {"lat": 35.55, "lon": 139.78}, None, time.time(), time.time(), 0.0
+                )
+                self.assertEqual(report["notice"]["region"], "asi")  # the aircraft's, to the window
+                self.assertIsNone(s.notice_at(None, None))
+            finally:
+                s.cache.close()
+
+
 class FakeXPlane:
     def __init__(self):
         self.commands = []

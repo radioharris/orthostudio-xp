@@ -169,6 +169,13 @@ function drawState(status) {
 
 function drawFlight(status) {
   const stream = status.state === "streaming" ? status.stream : null;
+  // where the aircraft (or the start) has no mesh under it: the region to install
+  const notice = stream?.notice;
+  $("flight-notice").hidden = !notice;
+  if (notice) {
+    $("flight-notice").textContent = t(notice.installed ? "flight.notice_installed" : "flight.notice",
+      { region: t(`region.${notice.region}`) });
+  }
   if (!stream) {
     const running = status.checks.xplane_running;
     kv($("flight"), [[t("flight.xplane"), t(running ? "flight.xplane_running" : "flight.xplane_stopped")]]);

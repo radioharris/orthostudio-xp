@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import dds
+from .aoregions import REGION_NAMES, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
@@ -202,6 +203,7 @@ class Streamer:
         start_mode: str = "full",
         covered: Collection[tuple[int, int]] = (),
         simbrief_user: str = "",
+        installed_regions: Callable[[], Collection[str]] = frozenset,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -267,6 +269,10 @@ class Streamer:
         # squares whose ground X-Plane takes from the user's own tiles (orthostudio.live.covered):
         # a texture only there is never read, and never built
         self.theirs = self._theirs(set(covered))
+        # where no region installed has a mesh: the region to install, for the window and X-Plane
+        self.installed_regions = installed_regions
+        self.notice: dict | None = None
+        self._notice_square: tuple[int, int] | None = None
         self.lock = threading.Lock()
         self.queue: dict[str, tuple[float, int]] = {}  # name -> (urgency km, level)
         self.in_flight: dict[str, tuple[float, int]] = {}
@@ -513,6 +519,29 @@ class Streamer:
             haversine_m(lat, lon, tlat, tlon) < 100_000
             for _, tlat, tlon, _ in self.index.around(lat, lon, 100.0)
         )
+
+    def notice_at(self, lat: float | None, lon: float | None) -> dict | None:
+        """Where the pack has no mesh but a region has one: {"id", "region", "installed"}, the
+        region to install (or installed since Live started: used from its next start). None over
+        the pack's mesh, and where no region has any (the open sea). Looked at again when the
+        position enters another square."""
+        if lat is None or lon is None:
+            self.notice, self._notice_square = None, None
+            return None
+        square = (math.floor(lat), math.floor(lon))
+        if square == self._notice_square:
+            return self.notice
+        self._notice_square = square
+        region = None if self.covers(lat, lon) else region_of(lat, lon)
+        if region is None:
+            self.notice = None
+        elif self.notice is None or self.notice["region"] != region:
+            self.notice = {
+                "id": int(time.time()) % 1_000_000_000,
+                "region": region,
+                "installed": region in set(self.installed_regions()),
+            }
+        return self.notice
 
     def urgent_work(self) -> tuple[int, int]:
         """The urgent textures, and the image pieces they take (256 for a 4096 px level, 1 for 256
@@ -1008,6 +1037,14 @@ def needs_reload(arrival: Arrival, xplane_started: float | None) -> bool:
     return True
 
 
+def notice_text(notice: dict) -> str:
+    """The notice as the plugin shows it in X-Plane and the log says it (the window has its own)."""
+    name = REGION_NAMES.get(notice["region"], notice["region"])
+    if notice.get("installed"):
+        return f"{name} is installed: used from Live's next start"
+    return f"no mesh here: install {name} in the Live window"
+
+
 _EXPECTED = {
     "from": "building around {} before X-Plane loads it",
     "last": "the last flight started at {}: building there while X-Plane starts",
@@ -1071,12 +1108,19 @@ def progress_report(
             "seconds": now - arrival.since,
         }
     fresh = now - last_packet < FRESH_S
+    if aircraft is not None and fresh:
+        here = (aircraft["lat"], aircraft["lon"])
+    elif arrival is not None:
+        here = (arrival.lat, arrival.lon)
+    else:
+        here = (None, None)
     return {
         "data": "none" if aircraft is None else "fresh" if fresh else "stale",
         "aircraft": aircraft,
         "camera_km": camera_km,
         "start": start,
         "mbs": mbs,
+        "notice": streamer.notice_at(*here),
         "streamer": streamer.snapshot(),
     }
 
@@ -1129,10 +1173,9 @@ def run(
             said = "click_running" if how == "click" and not arrival.loading else how
             log(_EXPECTED[said].format(name))
         else:
-            log(
-                f"{name} is outside the region set up: no ortho there, X-Plane shows its own "
-                f"scenery"
-            )
+            notice = streamer.notice_at(lat, lon)
+            what = notice_text(notice) if notice else "no region has a mesh there"
+            log(f"{name}: no mesh there, X-Plane shows its own scenery ({what})")
 
     from .cameralog import CameraLog
 
@@ -1158,7 +1201,9 @@ def run(
                 running = "lat" in values and now - last_packet < FRESH_S
                 for kind, lat, lon, addr, why in gate.requests():
                     if kind == "ASK":  # the plugin, every second of a flight: a reload offered?
-                        gate.offer(addr, streamer.offer_state())
+                        notice = streamer.notice
+                        note = notice_text(notice) if notice else None
+                        gate.offer(addr, streamer.offer_state(), note, notice)
                         continue
                     if kind == "RELOAD":  # its button, in X-Plane
                         streamer.reload_now()

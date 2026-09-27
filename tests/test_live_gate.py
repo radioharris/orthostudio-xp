@@ -163,6 +163,15 @@ class GateTest(unittest.TestCase):
                 ]:
                     gate.offer(addr, offer)
                     self.assertEqual(p.recv(100), line)
+                # no offer, no mesh under the aircraft: the notice, with its words
+                notice = {"id": 12, "region": "na", "installed": False}
+                gate.offer(addr, None, "no mesh here: install North America", notice)
+                self.assertEqual(
+                    p.recv(100), b"LIVE1 NOTE 12 Live: no mesh here: install North America"
+                )
+                ready = {"state": "ready", "left": 0, "id": 7}
+                gate.offer(addr, ready, "no mesh here: install North America", notice)
+                self.assertEqual(p.recv(100), b"LIVE1 OFFER READY 7")  # the offer first
         finally:
             gate.close()
 
@@ -384,6 +393,47 @@ class PluginTest(unittest.TestCase):
                 "OrthoStudio XP Live: reload of the scenery asked, for the 8192 px textures around "
                 "the aircraft",
             ],
+        )
+
+    def test_a_notice_where_there_is_no_mesh(self):
+        """Without an offer, the streamer's notice shows in the same panel, said once in Log.txt;
+        its cross closes it for good, and nothing is asked of the streamer."""
+        heard = []
+        note = b"LIVE1 NOTE 9 Live: no mesh here: install North America in the Live window"
+
+        def streamer(sock):
+            while True:
+                try:
+                    data, addr = sock.recvfrom(100)
+                except OSError:
+                    return
+                heard.append(data.decode())
+                if data == b"LIVE1 ASK":
+                    sock.sendto(note, addr)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("127.0.0.1", self.port))
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            _, logged = self.xplane(
+                40.64,
+                -73.78,
+                "102:0",
+                "loop",
+                "sleep:150",
+                "loop",
+                "sleep:150",
+                "loop",
+                "click:2",
+                "loop",
+                "sleep:150",
+                "loop",
+            )
+            sock.close()
+        self.assertNotIn("LIVE1 RELOAD", heard)
+        said = [line for line in logged if "no mesh here" in line]
+        self.assertEqual(
+            said,
+            ["OrthoStudio XP Live: Live: no mesh here: install North America in the Live window"],
         )
 
     def test_not_now(self):

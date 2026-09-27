@@ -103,6 +103,8 @@ export const STRINGS = {
     "checks.mesh_missing": "No mesh yet: install the region you fly over (Settings, first question).",
     "checks.region": "Region set up",
     "checks.region_todo": "The region is set up at the first start (about two minutes)",
+    "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region} (Settings, first question).",
+    "flight.notice_installed": "No mesh here yet: {region} is installed, and used from Live's next start.",
     "regions.title": "The mesh, by region",
     "regions.help":
       "The sceneries Live lays its photos on. Install the regions you fly over, delete them whenever you like.",
@@ -363,6 +365,8 @@ export const STRINGS = {
     "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez (Réglages, première question).",
     "checks.region": "Région préparée",
     "checks.region_todo": "La région sera préparée au premier démarrage (deux minutes environ)",
+    "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region} (Réglages, première question).",
+    "flight.notice_installed": "Pas encore de mesh ici : {region} est installée, et servira dès le prochain démarrage de Live.",
     "regions.title": "Le mesh, par région",
     "regions.help":
       "Les sceneries sur lesquelles Live pose ses photos. Installez les régions que vous survolez, supprimez-les quand vous voulez.",

@@ -221,3 +221,22 @@ def test_remove(github: FakeGitHub, tmp_path: Path) -> None:
 def test_a_region_round_trips_through_its_json() -> None:
     region = AoRegion("eur", "0.0.51", (Asset("z_eur_00.zip", HOST + "z", 3),), ())
     assert AoRegion.of(json.loads(json.dumps(aoregions.asdict(region)))) == region
+
+
+def test_the_region_of_a_place() -> None:
+    """The map made from every zip's list of files (tools/live/aoregions_map.py)."""
+    places = {
+        (45.72, 5.08): "eur",  # Lyon
+        (40.64, -73.78): "na",  # New York
+        (-22.81, -43.25): "sa",  # Rio
+        (-1.32, 36.93): "afr",  # Nairobi
+        (35.55, 139.78): "asi",  # Tokyo
+        (-33.95, 151.18): "aus_pac",  # Sydney
+        (40.0, -40.0): None,  # the open Atlantic
+        (95.0, 0.0): None,  # not on the planet
+    }
+    for (lat, lon), region in places.items():
+        assert aoregions.region_of(lat, lon) == region, (lat, lon)
+    doc = json.loads(aoregions.MAP_FILE.read_text())
+    assert doc["regions"] == list(aoregions.REGION_IDS)
+    assert doc["squares"]["eur"] == 1981  # as many DSFs as z_ao_eur has

@@ -22,6 +22,8 @@
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#include <stdio.h>
+#include <string.h>
 
 static NSPanel *panel;
 static NSTextField *headline, *detail;
@@ -145,11 +147,25 @@ static NSButton *offer_button(NSString *title, SEL action, NSRect frame) {
     return b;
 }
 
-void live_offer_show(void) {
-    if (NSApp == nil || offer_panel != nil) return;
+void live_offer_hide(void);
+
+static char offer_text[160]; /* what the panel shows now, and whether with the reload button */
+static int offer_reload;
+
+void live_offer_show(const char *what, int reload) {
+    if (NSApp == nil) return;
+    if (offer_panel != nil && offer_reload == reload && strcmp(offer_text, what) == 0) return;
+    live_offer_hide();
+    snprintf(offer_text, sizeof offer_text, "%s", what);
+    offer_reload = reload;
     @autoreleasepool {
-        /* small, in the top right corner of X-Plane's window, below its menu bar's band */
-        const CGFloat w = 440, h = 44;
+        /* small, in the top right corner of X-Plane's window, below its menu bar's band; as wide as
+           its words */
+        NSString *words = [NSString stringWithUTF8String:what] ?: @"";
+        NSFont *font = [NSFont systemFontOfSize:13];
+        CGFloat text_w = MIN(560, MAX(270, ceil([words sizeWithAttributes:@{NSFontAttributeName : font}].width) + 8));
+        const CGFloat h = 44;
+        CGFloat w = 14 + text_w + (reload ? 124 : 0) + 34;
         NSWindow *xp = xplane_window();
         NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
         NSRect r = NSMakeRect(NSMaxX(around) - w - 16, NSMaxY(around) - h - 48, w, h);
@@ -171,13 +187,17 @@ void live_offer_show(void) {
         box.layer.cornerRadius = 10;
         offer_panel.contentView = box;
 
-        NSTextField *text = label(NSMakeRect(14, 12, 270, 20), 13, [NSColor whiteColor]);
+        NSTextField *text = label(NSMakeRect(14, 12, text_w, 20), 13, [NSColor whiteColor]);
         text.alignment = NSTextAlignmentLeft;
-        text.stringValue = @"Live: 8K ready around the aircraft";
+        text.stringValue = words;
         offer_target = [LiveOfferTarget new];
-        NSButton *reload = offer_button(@"Reload scenery", @selector(reload:), NSMakeRect(284, 7, 120, 30));
-        reload.keyEquivalent = @"";
-        NSButton *close = offer_button(@"", @selector(later:), NSMakeRect(408, 9, 26, 26));
+        [box addSubview:text];
+        if (reload) {
+            NSButton *button = offer_button(@"Reload scenery", @selector(reload:), NSMakeRect(14 + text_w, 7, 120, 30));
+            button.keyEquivalent = @"";
+            [box addSubview:button];
+        }
+        NSButton *close = offer_button(@"", @selector(later:), NSMakeRect(w - 32, 9, 26, 26));
         close.bordered = NO;
         close.attributedTitle = [[NSAttributedString alloc]
             initWithString:@"\u00d7"
@@ -187,7 +207,7 @@ void live_offer_show(void) {
                 }];
         close.toolTip = @"Close";
         close.accessibilityLabel = @"Close";
-        for (NSView *v in @[ text, reload, close ]) [box addSubview:v];
+        [box addSubview:close];
         [offer_panel orderFrontRegardless];
     }
 }

@@ -23,10 +23,12 @@ then deleted. The region moves into place, with its marker, only once every zip 
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import io
 import json
+import math
 import os
 import queue
 import re
@@ -34,8 +36,10 @@ import shutil
 import threading
 import time
 import zipfile
+import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +47,15 @@ REPO = "kubilus1/autoortho-scenery"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
 CATALOG_MAX_AGE_S = 3600.0  # AutoOrtho asks GitHub again at most every hour too
 REGION_IDS = ("eur", "na", "sa", "afr", "asi", "aus_pac")  # the order the Live window lists them
+REGION_NAMES = {  # as the plugin says them in X-Plane (the window says them in its own words)
+    "eur": "Europe",
+    "na": "North America",
+    "sa": "South America",
+    "afr": "Africa",
+    "asi": "Asia",
+    "aus_pac": "Australia and the Pacific",
+}
+MAP_FILE = Path(__file__).with_name("aoregions_map.json")  # tools/live/aoregions_map.py
 MARKER = ".live-region.json"
 # AutoOrtho's rule (downloader.py, Release.parse), anchored: z_ the mesh, y_ the overlays
 _ASSET = re.compile(r"(?P<kind>[yz])_(?P<name>.+)\.zip(?:\.(?P<part>\d+))?$")
@@ -139,6 +152,23 @@ def parse_releases(releases: Sequence[dict]) -> dict[str, AoRegion]:
                 tuple(sorted(overlays, key=lambda a: a.name)),
             )
     return regions
+
+
+@cache
+def _map() -> tuple[tuple[str, ...], bytes]:
+    doc = json.loads(MAP_FILE.read_text())
+    return tuple(doc["regions"]), zlib.decompress(base64.b64decode(doc["map"]))
+
+
+def region_of(lat: float, lon: float) -> str | None:
+    """The region whose mesh has the square of (lat, lon); None where no region has one, the open
+    sea for instance (``aoregions_map.json``, made from every zip's list of files)."""
+    regions, cells = _map()
+    south, west = math.floor(lat), math.floor(lon)
+    if not (-90 <= south < 90 and -180 <= west < 180):
+        return None
+    index = cells[(south + 90) * 360 + (west + 180)]
+    return regions[index - 1] if index else None
 
 
 def regions_dir(root: Path) -> Path:

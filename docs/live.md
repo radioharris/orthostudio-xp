@@ -63,6 +63,11 @@ ones in X-Plane's Custom Scenery) is listed as installed, used as it is, and can
 same way. In a terminal: `python -m orthostudio.live regions list`, `regions install eur`,
 `regions remove eur`.
 
+Where no region installed has a mesh, X-Plane shows its own scenery there, without photos: Live
+says so, in its window and in a small panel in X-Plane ("no mesh here: install North America"),
+from the start of a flight there or once the aircraft flies there. Over the open sea, where no
+region has any mesh, it says nothing.
+
 They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author publishes them and
 AutoOrtho downloads them. Live downloads them from there, and never publishes them anywhere else:
 that repository names no licence.

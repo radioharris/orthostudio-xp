@@ -23,7 +23,10 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
 - ``LIVE1 ASK``, every second of a flight: whether a reload of the scenery is offered (the "reload"
   start mode: X-Plane started at 4096 px, and the 8192 px textures around the aircraft are built
   afterwards). The gate answers ``LIVE1 OFFER READY id``, ``LIVE1 OFFER BUILD id n`` (n textures
-  to go) or ``LIVE1 OFFER NONE``; ``id`` tells one offer from the next.
+  to go) or ``LIVE1 OFFER NONE``; ``id`` tells one offer from the next. Without an offer, where the
+  aircraft has no mesh under it but a region has one, it answers ``LIVE1 NOTE id text`` instead
+  ("Live: no mesh here: install North America in the Live window"), which the plugin shows in the
+  same small panel, with only its cross.
 - ``LIVE1 RELOAD``: the user clicked the plugin's button in X-Plane; the streamer reloads the
   scenery over X-Plane's UDP, as the Live window's button does.
 
@@ -182,16 +185,21 @@ class Gate:
         with contextlib.suppress(OSError):
             self.sock.sendto(_ascii(line)[:200], addr)
 
-    def offer(self, addr: tuple, offer: dict | None) -> None:
-        """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it."""
-        if offer is None or offer["state"] == "asked":
+    def offer(
+        self, addr: tuple, offer: dict | None, note: str | None = None, notice: dict | None = None
+    ) -> None:
+        """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it;
+        else the notice of a place with no mesh (``LIVE1 NOTE id text``); else nothing."""
+        if (offer is None or offer["state"] == "asked") and note and notice:
+            line = f"LIVE1 NOTE {notice['id']} Live: {note}"
+        elif offer is None or offer["state"] == "asked":
             line = "LIVE1 OFFER NONE"
         elif offer["state"] == "ready":
             line = f"LIVE1 OFFER READY {offer['id']}"
         else:
             line = f"LIVE1 OFFER BUILD {offer['id']} {offer['left']}"
         with contextlib.suppress(OSError):
-            self.sock.sendto(line.encode("ascii"), addr)
+            self.sock.sendto(_ascii(line)[:200], addr)
 
     def close(self) -> None:
         self.sock.close()

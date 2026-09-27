@@ -6,4 +6,6 @@ Earth (`src/orthostudio/ui/vendor/borders/`). `screenshots/`: turns a capture of
 into a picture of the page alone, for the README and the store listing. `package/`: builds the
 installers, Python inside (`docs/specs/packaging.md`), and the macOS app that runs a checkout.
 `relief/`: says how far apart two relief sources are over one square, from the files a build
-keeps (ANADEM against Copernicus, a folder of one's own against either).
+keeps (ANADEM against Copernicus, a folder of one's own against either). `live/`: writes
+OrthoStudio XP Live's map of which of AutoOrtho's regions has the mesh of each square
+(`src/orthostudio/live/aoregions_map.json`), from the regions' zips' lists of files.
