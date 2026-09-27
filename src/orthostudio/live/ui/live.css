@@ -90,9 +90,12 @@
 .live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: var(--fs-2); color: var(--fg-2); }
 .live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
-.swatch.is-8k { background: #2f6fd6; }
-.swatch.is-4k { background: #35a852; }
-.swatch.is-2k { background: #f2b134; }
+.live-map-legend .legend-title { color: var(--fg); }
+.swatch.is-zl19 { background: #8e44d9; }
+.swatch.is-zl18 { background: #2f6fd6; }
+.swatch.is-zl17 { background: #35a852; }
+.swatch.is-zl16 { background: #f2b134; }
+.swatch.is-zl15 { background: #e8743b; }
 .swatch.is-less { background: #9aa0a6; }
 .swatch.is-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
 .swatch.is-route { height: 3px; background: #e0572f; border-radius: 0; }

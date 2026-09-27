@@ -14,15 +14,23 @@
 import { createBaseMap, escapeHtml } from "./basemap.js";
 import { language, t } from "./strings.js";
 
-// four hues told apart at a glance: blue the sharpest, then green, amber, grey
-export const LEVEL_COLOURS = { "-1": "#2f6fd6", 0: "#35a852", 1: "#f2b134", coarser: "#9aa0a6" };
+// by the zoom of its photos, how sharp a texture is on the ground whatever its size (an airport's
+// ZL18 texture at 4096 px is sharper than a ZL16 one at 8192): hues told apart at a glance
+export const PHOTO_COLOURS = {
+  19: "#8e44d9", // about 20 cm a pixel
+  18: "#2f6fd6", // 40 cm
+  17: "#35a852", // 85 cm
+  16: "#f2b134", // 1.7 m
+  15: "#e8743b", // 3.4 m
+  coarser: "#9aa0a6",
+};
 const REGION_COLOUR = "#5a8dd6";
 const REGIONS_MAX_ZOOM = 6; // closer, the view is inside a region: its shade would only tint it
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 
-export function levelColour(level) {
-  return LEVEL_COLOURS[String(level)] || LEVEL_COLOURS.coarser;
+export function photoColour(zoom) {
+  return PHOTO_COLOURS[Math.min(19, zoom)] || PHOTO_COLOURS.coarser;
 }
 
 function fmt(value, digits = 0) {
@@ -38,16 +46,20 @@ function ago(seconds) {
   return t("map.tip_days", { n: fmt(seconds / 86400) });
 }
 
-/** What the bar over the map says of a texture built (orthostudio/live/mapdata.py
- * textures_at). */
+/** The ground a pixel shows: "85 cm", "1.7 m". */
+function groundPerPixel(metres) {
+  return metres < 1 ? t("map.tip_cm", { n: fmt(metres * 100) }) : t("map.tip_m", { n: fmt(metres, 1) });
+}
+
+/** What the bar over the map says of a texture built (orthostudio/live/mapdata.py textures_at):
+ * how sharp it is on the ground first, the zoom of its photos; then the tile of the mesh it
+ * fills, whose own number says only how big it is (16: 6.8 km, 18 around airports: 1.7 km); then
+ * the pixels that takes. "A ZL16 at 8192 px" meant nothing to a pilot (a user, 2026-09-27). */
 export function textureInfo(x) {
   const parts = [
-    `<b>${escapeHtml(x.name)}</b>`,
-    escapeHtml(t(x.zoom >= 18 ? "map.tip_airport" : "map.tip_zoom", { zoom: x.zoom })),
-    escapeHtml(t("map.tip_px", { px: fmt(x.px), photos: x.photos_zoom })),
-    escapeHtml(t("map.tip_size", {
-      mb: fmt(x.bytes / 1e6, x.bytes < 1e7 ? 1 : 0), w: fmt(x.km[0], 1), h: fmt(x.km[1], 1),
-    })),
+    `<b>${escapeHtml(t("map.tip_photos", { zoom: x.photos_zoom, ground: groundPerPixel((x.km[0] * 1000) / x.px) }))}</b>`,
+    escapeHtml(t(x.zoom >= 18 ? "map.tip_tile_airport" : "map.tip_tile", { zoom: x.zoom, km: fmt(x.km[0], 1) })),
+    escapeHtml(t("map.tip_file", { px: fmt(x.px), mb: fmt(x.bytes / 1e6, x.bytes < 1e7 ? 1 : 0) })),
   ];
   if (x.seen_s != null) parts.push(escapeHtml(t("map.tip_seen", { ago: ago(x.seen_s) })));
   if (x.patchy) parts.push(`<span class="info-warn">${escapeHtml(t("map.tip_patchy"))}</span>`);
@@ -113,16 +125,16 @@ export function createLiveMap(el, { api, info = null }) {
         pointAt(pointer);
       }
       built.clearLayers();
-      const style = (level, renderer) => ({
-        renderer, weight: 0, fillColor: levelColour(level), fillOpacity: 1, interactive: false,
+      const style = (photos, renderer) => ({
+        renderer, weight: 0, fillColor: photoColour(photos), fillOpacity: 1, interactive: false,
       });
       // opaque in their panes, which are see-through as a whole: overlaps never darken
       for (const [lat, lon, , best] of got.squares || []) {
         L.rectangle([[lat, lon], [lat + 1, lon + 1]], style(best, squaresCanvas)).addTo(built);
       }
-      for (const [s, w, n, e, level] of (got.textures || []).slice().reverse()) {
+      for (const [s, w, n, e, photos] of (got.textures || []).slice().reverse()) {
         // the sharpest drawn last, on top
-        L.rectangle([[s, w], [n, e]], style(level, texturesCanvas)).addTo(built);
+        L.rectangle([[s, w], [n, e]], style(photos, texturesCanvas)).addTo(built);
       }
     }
     if (streaming) builtTimer = setTimeout(() => drawBuilt(false), BUILT_EVERY_MS);
@@ -203,8 +215,7 @@ export function createLiveMap(el, { api, info = null }) {
     clearTimeout(asking);
     if (found.square) {
       const [, , count, best] = found.square;
-      const px = best < 0 ? 8192 : 4096 >> best;
-      say(escapeHtml(t("map.tip_square", { n: fmt(count), px: fmt(px) })));
+      say(escapeHtml(t("map.tip_square", { n: fmt(count), zoom: best })));
       return;
     }
     const key = found.key;

@@ -21,36 +21,42 @@ from . import aoregions
 from .geo import parse_texture_name
 from .pack import load_built
 
-DETAIL_DEG = 3.0  # a view wider than this, in latitude or longitude, groups the small textures
-WIDE_SHARPEST = 2  # ...those coarser than 1024 px (level 2): the many at 256 px around the flight
+DETAIL_DEG = 3.0  # a view wider than this, in latitude or longitude, groups the blurry textures
+WIDE_BLURRIEST = (
+    15  # ...those whose photos are coarser than ZL15: the many at 256 px around a flight
+)
 MAX_TEXTURES = 15_000  # the most rectangles one answer holds, the sharpest first
 ROUTE_POINTS = 400  # a route's points, at most, as the map draws it
 
-Row = tuple[float, float, float, float, int, str]  # south, west, north, east, level, name
+# south, west, north, east, the zoom of its photos, name
+Row = tuple[float, float, float, float, int, str]
 
 _lock = threading.Lock()
 _cache: dict[Path, tuple[float, list[Row]]] = {}
-_bounds: dict[str, tuple[float, float, float, float] | None] = {}  # a name's rectangle, once
+_bounds: dict[str, tuple[float, float, float, float, int] | None] = {}  # a name's, once
 
 
-def _rectangle(name: str) -> tuple[float, float, float, float] | None:
+def _rectangle(name: str) -> tuple[float, float, float, float, int] | None:
+    """A texture's rectangle and its zoom."""
     got = _bounds.get(name, False)
     if got is False:
         tex = parse_texture_name(name)
-        got = None if tex is None else tex.bounds
+        got = None if tex is None else (*tex.bounds, tex.zoom)
         _bounds[name] = got
     return got
 
 
 def rows_of(textures: dict[str, int], grown: set[str]) -> list[Row]:
-    """(south, west, north, east, level) of every texture built: level -1 is 8192 px, 0 is 4096
-    px, 1 is 2048..."""
+    """Every texture built: its rectangle and the zoom of its photos, which says how sharp it is
+    on the ground whatever its size (an airport's ZL18 texture at 4096 px has photos of ZL18, a
+    ZL16 one grown to 8192 px photos of ZL17: the first is the sharper, with fewer pixels)."""
     rows = []
     for name, level in textures.items():
         box = _rectangle(name)
         if box is None or not isinstance(level, int) or level > 4:
             continue
-        rows.append((*box, -1 if name in grown else level, name))
+        south, west, north, east, zoom = box
+        rows.append((south, west, north, east, zoom - (-1 if name in grown else level), name))
     return rows
 
 
@@ -80,31 +86,34 @@ def built_in(
     north: float,
     rows: list[Row] | None = None,
 ) -> dict[str, Any]:
-    """The textures built in a view: ``{"textures": [[s, w, n, e, level], ...], "squares": [[lat,
-    lon, count, sharpest], ...], "more": bool}``. Each texture is drawn on its own, the sharpest
-    first, but in a view wider than :data:`DETAIL_DEG` those coarser than 1024 px are grouped by
-    one-degree square: 256 px ones are thousands around a flight, and one colour for a whole
-    square hid the 4096 px textures near the aircraft behind its 8192 px ones (a user,
-    2026-09-27). Beyond :data:`MAX_TEXTURES`, the coarsest go to the squares too (``more``).
-    ``rows``: the running streamer's, from its memory; else the pack's record."""
+    """The textures built in a view, each by the zoom of its photos, how sharp it is on the
+    ground: ``{"textures": [[s, w, n, e, photos zoom], ...], "squares": [[lat, lon, count,
+    sharpest photos zoom], ...], "more": bool}``. Each texture is drawn on its own, the sharpest
+    first; in a view wider than :data:`DETAIL_DEG`, those whose photos are coarser than ZL15 are
+    grouped by one-degree square: the 256 px ones are thousands around a flight, and one colour
+    for a whole square hid the sharp textures near the aircraft (a user, 2026-09-27). Beyond
+    :data:`MAX_TEXTURES`, the blurriest go to the squares too (``more``). ``rows``: the running
+    streamer's, from its memory; else the pack's record."""
     rows = [
         r
         for r in (_built(pack) if rows is None else rows)
         if r[0] < north and r[2] > south and r[1] < east and r[3] > west
     ]
     wide = north - south > DETAIL_DEG or east - west > DETAIL_DEG
-    one_by_one = sorted((r for r in rows if not wide or r[4] <= WIDE_SHARPEST), key=lambda r: r[4])
-    grouped = [r for r in rows if wide and r[4] > WIDE_SHARPEST]
+    one_by_one = sorted(
+        (r for r in rows if not wide or r[4] >= WIDE_BLURRIEST), key=lambda r: -r[4]
+    )
+    grouped = [r for r in rows if wide and r[4] < WIDE_BLURRIEST]
     more = len(one_by_one) > MAX_TEXTURES
     if more:
         grouped += one_by_one[MAX_TEXTURES:]
         one_by_one = one_by_one[:MAX_TEXTURES]
     squares: dict[tuple[int, int], list[int]] = {}
-    for s, w, n, e, level, _ in grouped:
+    for s, w, n, e, photos, _ in grouped:
         key = (math.floor((s + n) / 2), math.floor((w + e) / 2))
-        got = squares.setdefault(key, [0, level])
+        got = squares.setdefault(key, [0, photos])
         got[0] += 1
-        got[1] = min(got[1], level)
+        got[1] = max(got[1], photos)
     return {
         "textures": [[round(v, 5) for v in r[:4]] + [r[4]] for r in one_by_one],
         "squares": [[lat, lon, c, best] for (lat, lon), (c, best) in squares.items()],
@@ -138,7 +147,7 @@ def textures_at(
         box = _rectangle(name)
         if box is None or not isinstance(level, int) or level > 4:
             continue
-        south, west, north, east = box
+        south, west, north, east, _ = box
         if not (south <= lat < north and west <= lon < east):
             continue
         tex = parse_texture_name(name)

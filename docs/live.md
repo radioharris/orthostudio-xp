@@ -81,11 +81,15 @@ pointing along its track, with the camera's place in external views; the map fol
 you drag it away ("Follow the aircraft" brings it back). Your SimBrief route is drawn while Live
 follows it, and before a flight the "Show my SimBrief route" button asks SimBrief for it. The
 regions installed are shaded while zoomed out, and the textures already built are coloured by how
-sharp they are: blue 8192 px, green 4096 px, amber 2048 px, grey smaller, within 3 seconds of
-being built while Live runs; zoomed out, the many small ones are grouped by square. Point at a
-texture and a bar over the top of the map says what it is, live: its zoom, the size it is built
-at and the photos that makes, the disk it takes, and when Live last had it in reach. The
-"Details" box hides the bar.
+sharp they are on the ground, which is the zoom of their photos: ZL19 violet (about 20 cm a
+pixel), ZL18 blue (40 cm), ZL17 green (85 cm), ZL16 amber (1.7 m), ZL15 orange, grey blurrier,
+within 3 seconds of being built while Live runs; zoomed out, the many blurry ones are grouped by
+square. The mesh's own tiles have a zoom too, which says only how big they are: a ZL16 tile is
+6.8 km wide, an airport's ZL18 tile 1.7 km. Filled with ZL17 photos, a ZL16 tile takes 8192
+pixels; filled with ZL18 photos, an airport's tile takes 4096, and is the sharper. Point at a
+texture and a bar over the top of the map says what it is, live: its photos and how much ground
+a pixel shows, its tile, its pixels and the disk it takes, and when Live last had it in reach.
+The "Details" box hides the bar.
 
 ### Roads, forests and buildings
 

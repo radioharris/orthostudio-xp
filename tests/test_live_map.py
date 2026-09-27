@@ -59,15 +59,17 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
     write_pack(pack)
     near = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5)  # a small view: each texture
-    assert [row[4] for row in near["textures"]] == [-1, 0, 0, 2]  # the sharpest first
+    # by the zoom of its photos, the sharpest first: Geneva's ZL18 at 4096 px (ZL18 photos)
+    # before Lyon's ZL16 grown to 8192 px (ZL17), then 4096 (ZL16), then 1024 px (ZL14)
+    assert [row[4] for row in near["textures"]] == [18, 17, 16, 14]
     assert near["squares"] == [] and near["more"] is False
     south, west, north, east, _ = near["textures"][0]
     assert south < north and west < east
-    # a wide view: every texture of 1024 px or more on its own still, the 4096 px ones among the
-    # 8192 px ones (a square of one colour hid them), the small ones grouped by square
+    # a wide view: every texture of ZL15 photos or sharper on its own still (a square of one
+    # colour hid the sharp ones), the blurrier grouped by square
     wide = mapdata.built_in(pack, -10.0, 35.0, 20.0, 55.0)
-    assert [row[4] for row in wide["textures"]] == [-1, 0, 0, 2]
-    assert wide["squares"] == [[43, 1, 1, 4]]  # the square of the texture's middle, 43.99 1.98
+    assert [row[4] for row in wide["textures"]] == [18, 17, 16]
+    assert sorted(wide["squares"]) == [[43, 1, 1, 12], [45, 4, 1, 14]]  # squares of their middles
     assert mapdata.built_in(pack, 100.0, 10.0, 101.0, 11.0)["textures"] == []
     assert mapdata.built_in(tmp_path / "nothing", 4.5, 45.3, 6.5, 46.5)["textures"] == []
 
@@ -170,7 +172,7 @@ def test_the_map_reads_the_running_streamer(home: Path) -> None:
     assert streamer.copied == 1  # "same" copies nothing
     streamer.built[LYON[2]], streamer.version = 0, 2  # one more built sharper
     got = control.built_in(*view, known=1)
-    assert got["version"] == 2 and [r[4] for r in got["textures"]] == [-1, 0, 0, 0]
+    assert got["version"] == 2 and [r[4] for r in got["textures"]] == [18, 17, 16, 16]
     control._attach(None)  # stopped: the record on the disk again
     assert "version" not in control.built_in(*view)
 
