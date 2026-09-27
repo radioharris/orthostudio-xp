@@ -126,7 +126,8 @@ _DATA_DIR_REFUSALS: dict[str, tuple[str, str | None]] = {
         "Choose a folder you can write to: a disk may be read-only.",
     ),
     "links": (
-        "its disk cannot hard-link files (exFAT or FAT32): each texture would be written three "
+        "its disk cannot hard-link files (a folder shared over a network or with a virtual "
+        "machine, or a disk formatted exFAT or FAT32): each texture would be written three "
         "times",
         None,  # the registry's remedy: a disk formatted APFS, Mac OS Extended, NTFS or ext4
     ),
@@ -146,7 +147,9 @@ def check_data_dir(value: str | Path, *, custom_scenery: Path | None = None) -> 
     ``custom_scenery``), ``unwritable`` or ``links``.
 
     The disk must hard-link files: a texture is one file linked into the store and into its pack
-    (``orthostudio.clean``). exFAT and FAT32, the format many external disks come in, cannot, and
+    (``orthostudio.clean``). exFAT and FAT32, the format many external disks come in, cannot, nor
+    can a folder shared over a network or with a virtual machine, whatever its disk (a user's APFS
+    disk, reached from a Windows VM through Parallels, 2026-09-27), and
     each texture would take three times its size: such a folder is refused (a user agreed,
     2026-09-15). Two empty probe files are written, linked and removed to find out.
     """

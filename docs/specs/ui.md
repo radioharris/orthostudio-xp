@@ -792,9 +792,13 @@ my changes* goes back to the saved settings, *Default values* to the schema's de
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder and the data folder kept,
 since they are this computer's and no look of the tiles; a draft that differs from the saved settings says
 "Changes not saved yet". The action bar sticks to the bottom, and a save the engine refuses says
-why in it, in the page's words for the code: "Not saved: The disk of /Volumes/… will not do (exFAT
-or FAT32, for instance)…", which also says where a disk's format is read (Disk Utility, the disk's
-Properties). The refusal used to show at the foot of the form, under every question, where a user
+why in it, in the page's words for the code: "Not saved: /Volumes/… will not do: files cannot be
+linked there, as in a folder shared over a network or with a virtual machine, and on a disk
+formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and tells
+not to format that disk, whose format is not the cause: the old words blamed exFAT or FAT32 and
+advised formatting to a user whose APFS disk the Windows VM reached through Parallels (2026-09-27).
+It also says where a disk's format is read (Disk Utility, the disk's Properties). The refusal used
+to show at the foot of the form, under every question, where a user
 saving from the data folder's question never saw it, and began "Settings rejected by the engine"
 (a French tester, 2026-09-22).
 Under the form, the credits line begins with the notices GPL v3 asks an interactive program to
@@ -820,7 +824,8 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    folder for the tiles…*, and two notes, that the tiles already built stay where they are and keep working
    (a user did not understand the first wording, which asked to delete them before building into
    the new folder, 2026-09-15: that step is gone), and which disk formats can hold the data on the
-   engine's platform (exFAT and FAT32 are refused), and that the folder must be outside X-Plane's
+   engine's platform (exFAT, FAT32 and folders shared over a network or with a virtual machine are
+   refused), and that the folder must be outside X-Plane's
    Custom Scenery, where OrthoStudio XP puts its own links (a user typed his Custom Scenery there
    and was only refused once he had saved, 2026-09-17), then roads,
    forests and buildings (X-Plane's / none,

@@ -1118,8 +1118,8 @@ export async function mockApi(method, path, body, options = {}) {
       if (wanted && wanted !== mockDataDir()) {
         if (mockActiveRun()) throw mockError(409, "SYS_BUSY", "A build is running or waiting, and the data folder changes between builds.", "Wait for the builds to finish, or cancel them, then save again.");
         if (/exfat|fat32/i.test(wanted)) {
-          const reason = "its disk cannot hard-link files (exFAT or FAT32): each texture would be written three times";
-          throw new ApiError(422, { error: { code: "CFG_DATA_DIR_INVALID", severity: "blocking", action: "stop", message: `The data folder ${wanted} cannot be used: ${reason}.`, remedy: "Choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux).", context: { path: wanted, reason, why: "links" } } });
+          const reason = "its disk cannot hard-link files (a folder shared over a network or with a virtual machine, or a disk formatted exFAT or FAT32): each texture would be written three times";
+          throw new ApiError(422, { error: { code: "CFG_DATA_DIR_INVALID", severity: "blocking", action: "stop", message: `The data folder ${wanted} cannot be used: ${reason}.`, remedy: "Choose a folder on a disk of this computer formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux); a folder shared over a network or with a virtual machine will not do, whatever its disk's format.", context: { path: wanted, reason, why: "links" } } });
         }
       }
       const saved = structuredClone(body);

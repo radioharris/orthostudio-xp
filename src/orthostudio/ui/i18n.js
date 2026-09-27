@@ -798,7 +798,7 @@ const STRINGS = {
     "settings.q.data_choose": "Choisir le dossier des tuiles…",
     "settings.q.data_prompt": "Choisissez le dossier où ranger les tuiles et les images téléchargées",
     "settings.q.data_kept": "Les tuiles déjà construites restent où elles sont et continuent de marcher dans X-Plane. Les prochaines iront dans le dossier choisi.",
-    "settings.q.data_disk": "Le disque doit être formaté en {formats}. exFAT et FAT32 sont refusés : chaque tuile y prendrait trois fois plus de place.",
+    "settings.q.data_disk": "Le disque doit être formaté en {formats}, et le dossier ne doit pas être partagé en réseau ou avec une machine virtuelle : exFAT, FAT32 et les dossiers partagés sont refusés, chaque tuile y prendrait trois fois plus de place.",
     "settings.q.data_outside": "Ce dossier doit être en dehors du Custom Scenery d'X-Plane, où OrthoStudio XP place lui-même ses liens.",
 
     "settings.q.simbrief": "Votre nom SimBrief",
@@ -1730,7 +1730,7 @@ const STRINGS = {
     "settings.q.data_choose": "Choose the folder for the tiles…",
     "settings.q.data_prompt": "Choose the folder for the tiles and the downloaded imagery",
     "settings.q.data_kept": "Tiles already built stay where they are and keep working in X-Plane. The next ones go to the folder chosen.",
-    "settings.q.data_disk": "The disk must be formatted {formats}. exFAT and FAT32 are refused: each tile would take three times the space there.",
+    "settings.q.data_disk": "The disk must be formatted {formats}, and the folder must not be shared over a network or with a virtual machine: exFAT, FAT32 and shared folders are refused, each tile would take three times the space there.",
     "settings.q.data_outside": "This folder must be outside X-Plane's Custom Scenery, where OrthoStudio XP puts its own links.",
 
     "settings.q.simbrief": "Your SimBrief name",
@@ -1879,14 +1879,14 @@ const DATA_DIR_WHY = {
     file: ["{path} est un fichier, pas un dossier.", "Choisissez un dossier."],
     xplane: ["{path} est dans le dossier Custom Scenery d'X-Plane, dont X-Plane lit chaque dossier comme un décor.", "Choisissez un dossier en dehors de Custom Scenery."],
     unwritable: ["OrthoStudio XP ne peut pas écrire dans {path}.", "Choisissez un dossier où vous pouvez écrire : un disque peut être en lecture seule."],
-    links: ["Le disque de {path} ne convient pas (exFAT ou FAT32, par exemple) : chaque tuile y prendrait trois fois plus de place.", "Choisissez un dossier sur un disque formaté en APFS ou Mac OS Extended (Mac), NTFS (Windows) ou ext4 (Linux) ; l'Utilitaire de disque (Mac) ou les Propriétés du disque (Windows) disent son format. Reformater un disque efface son contenu."],
+    links: ["{path} ne convient pas : on ne peut pas y lier des fichiers, ce qui est le cas d'un dossier partagé en réseau ou avec une machine virtuelle, et d'un disque formaté en exFAT ou FAT32. Chaque tuile y prendrait trois fois plus de place.", "Si ce dossier est partagé en réseau ou avec une machine virtuelle, choisissez-en un sur le disque de cet ordinateur : son format n'y est pour rien, ne le formatez pas. Sinon, choisissez un dossier sur un disque formaté en APFS ou Mac OS Extended (Mac), NTFS (Windows) ou ext4 (Linux) ; l'Utilitaire de disque (Mac) ou les Propriétés du disque (Windows) disent son format. Reformater un disque efface son contenu."],
   },
   en: {
     relative: ["“{path}” is not a full path.", "Choose the folder with “Choose the folder for the tiles…”, or type its full path."],
     file: ["{path} is a file, not a folder.", "Choose a folder."],
     xplane: ["{path} is inside X-Plane's Custom Scenery, where X-Plane reads every folder as scenery.", "Choose a folder outside Custom Scenery."],
     unwritable: ["OrthoStudio XP cannot write to {path}.", "Choose a folder you can write to: a disk may be read-only."],
-    links: ["The disk of {path} will not do (exFAT or FAT32, for instance): each tile would take three times the space there.", "Choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux); Disk Utility (Mac) or the disk's Properties (Windows) tell its format. Formatting a disk erases it."],
+    links: ["{path} will not do: files cannot be linked there, as in a folder shared over a network or with a virtual machine, and on a disk formatted exFAT or FAT32. Each tile would take three times the space there.", "If this folder is shared over a network or with a virtual machine, choose one on this computer's own disk: its format is not the cause, so do not format it. Otherwise choose a folder on a disk formatted APFS or Mac OS Extended (Mac), NTFS (Windows) or ext4 (Linux); Disk Utility (Mac) or the disk's Properties (Windows) tell its format. Formatting a disk erases it."],
   },
 };
 

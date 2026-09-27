@@ -3187,6 +3187,13 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
             assert message and remedy and "{" not in message + remedy, (lang, message, remedy)
         assert all("/Volumes/T7" in message for message, _ in [*words["why"].values()])
         assert "exFAT" in words["why"]["links"][0] and "/Volumes/T7" in words["missing"][0]
+        # a shared folder is named, and its remedy says not to format a disk that is not the
+        # cause: the old words advised formatting a user's APFS disk (2026-09-27)
+        shared, dont = {
+            "fr": ("partagé", "ne le formatez pas"),
+            "en": ("shared", "do not format"),
+        }[lang]
+        assert shared in words["why"]["links"][0] and dont in words["why"]["links"][1]
         # nothing to delete first: the tiles of the folder before keep working (user, 2026-09-15)
         assert "X-Plane" in words["kept"] and "Library" not in words["kept"]
         assert "Bibliothèque" not in words["kept"]

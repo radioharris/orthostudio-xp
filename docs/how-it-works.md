@@ -247,7 +247,9 @@ Nothing takes its space twice. The files in a tile's folder are the same files a
 **Another data folder.** Choose it in Settings, with *Choose the folder for the tiles…*; its disk must be able
 to link one file into two places, as the store and the tiles share their textures: APFS or Mac OS
 Extended on a Mac, NTFS on Windows, ext4 on Linux. exFAT and FAT32, the format many external disks
-come in, cannot, and each tile would take three times its space, so such a folder is refused.
+come in, cannot, nor can a folder shared over a network or with a virtual machine, whatever its
+disk's format; each tile would take three times its space there, so such a folder is refused. For
+a shared folder, the answer is a folder on the computer's own disk, never formatting the disk.
 Nothing is moved: the tiles built before stay where they are and keep working in X-Plane, and the
 next ones go to the new folder. Each folder has its own `yOrthoStudio_Overlays`, which Custom
 Scenery lists as `yOrthoStudio_Overlays_2` (then `_3`...) when X-Plane shows the tiles of two

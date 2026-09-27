@@ -242,6 +242,10 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
         err = r.json()["error"]
         assert r.status_code == 422 and err["code"] == "CFG_DATA_DIR_INVALID"
         assert err["context"]["why"] == "links" and "exFAT" in err["message"]
+        # the other cause, and the one a user met: a folder shared with a virtual machine
+        # (his APFS disk, reached from a Windows VM through Parallels, 2026-09-27)
+        assert "shared over a network or with a virtual machine" in err["message"]
+        assert "whatever its disk's format" in err["remedy"]
         assert data_root() == home
 
         job = mgr.start([make_spec("+46+006", home=home)])
