@@ -50,31 +50,33 @@ regions of the mesh, the roads, forests and buildings, the imagery source, the d
 textures and for the downloaded imagery (with what each takes now, and a button to delete either),
 and Live's folder. Its log is at the bottom.
 
-### The mesh: AutoOrtho's regions
+### The mesh, by region
 
-Live draws its photos on AutoOrtho's mesh, the ground's shape and the textures' outlines, which
-AutoOrtho's author publishes for the whole planet on GitHub (github.com/kubilus1/autoortho-scenery).
-It comes in six regions, and you install once the ones you fly over, as in AutoOrtho: Europe
+Live lays its photos on sceneries: the mesh, the ground's shape and the textures' outlines. It comes
+in six regions, which you install once, the ones you fly over, and delete whenever you like: Europe
 (17 GB), North America (26 GB), South America (9 GB), Africa (12 GB), Asia (33 GB), Australia and
-the Pacific (6 GB). The settings' first question lists them, each with an Install button. Once
-unpacked a region takes about 1.7 times its size on the disk. An install goes on where it stopped
-(a dropped connection, the Stop button, the Mac put to sleep), and a region is used from the next
-start once it is whole. A region AutoOrtho installed is used as it is, never downloaded again. In
-a terminal: `python -m orthostudio.live regions list`, `regions install eur`, `regions remove eur`.
+the Pacific (6 GB). The settings' first question lists them: Install, or Installed and Delete.
+Once unpacked a region takes about 1.7 times its size on the disk. An install goes on where it
+stopped (a dropped connection, the Stop button, the Mac put to sleep), and a region is used from
+the next start once it is whole. A region already on the disk (AutoOrtho's installer put the same
+ones in X-Plane's Custom Scenery) is listed as installed, used as it is, and can be deleted the
+same way. In a terminal: `python -m orthostudio.live regions list`, `regions install eur`,
+`regions remove eur`.
 
-Live downloads the regions from AutoOrtho's GitHub, as AutoOrtho itself does, and never publishes
-them anywhere else: that repository names no licence.
+They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author publishes them and
+AutoOrtho downloads them. Live downloads them from there, and never publishes them anywhere else:
+that repository names no licence.
 
 ### Roads, forests and buildings
 
 Where Live shows its photos, X-Plane no longer draws its own roads, trees, buildings and beaches:
-it reads one ground per square, and its own scenery carries them. AutoOrtho's regions bring them
-back as "overlays", which Live puts on its squares, in a pack of its own listed just above the
-ortho (`y_osxp_live_overlays`), except:
+it reads one ground per square, and its own scenery carries them. Each region brings them back as
+"overlays", which Live puts on its squares, in a pack of its own listed just above the ortho
+(`y_osxp_live_overlays`), except:
 
 - where simHeaven X-World is: it brings its own roads and buildings, and its manual asks to leave
   out what is not needed, since X-Plane loads a pack even when another hides it. Looked at square
-  by square: simHeaven X-World Europe has nothing over North Africa, which gets AutoOrtho's;
+  by square: simHeaven X-World Europe has nothing over North Africa, which gets the region's;
 - on your own tiles, which have their own overlays, and where another overlay pack is on
   (AutoOrtho's `yAutoOrtho_Overlays`, Ortho4XP's): they would be drawn twice.
 

@@ -226,6 +226,21 @@ def remove(root: Path, region: str, log: Log = print) -> None:
     log(f"AutoOrtho's region {region} deleted from Live's folder")
 
 
+def remove_autoortho(xplane: Path, region: str, log: Log = print) -> None:
+    """A region AutoOrtho installed deleted as AutoOrtho's own uninstall deletes it
+    (``Release.uninstall``): its folder, ``z_autoortho/scenery/z_ao_<id>``, and its record,
+    ``z_autoortho/<id>_info.json``, so that AutoOrtho no longer takes it for installed. Its
+    overlays, merged with the other regions' in ``yAutoOrtho_Overlays``, stay, as AutoOrtho
+    leaves them."""
+    base = xplane / "Custom Scenery" / "z_autoortho"
+    folder = base / "scenery" / f"z_ao_{region}"
+    if folder.exists():
+        shutil.rmtree(folder)
+    with contextlib.suppress(FileNotFoundError):
+        (base / f"{region}_info.json").unlink()
+    log(f"AutoOrtho's region {region} deleted from {base}: AutoOrtho no longer has it either")
+
+
 # --- one install ------------------------------------------------------------------------------
 
 

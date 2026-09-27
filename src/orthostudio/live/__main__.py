@@ -378,14 +378,22 @@ def regions_install(region: str) -> None:
 
 
 @regions_app.command("remove")
-def regions_remove(region: str) -> None:
-    """Delete a region Live installed (AutoOrtho's own stay AutoOrtho's)."""
+def regions_remove(region: str, xplane: XPlaneOpt = None) -> None:
+    """Delete a region from the disk. One AutoOrtho installed goes as AutoOrtho's own uninstall
+    takes it out: AutoOrtho no longer has it either."""
     from orthostudio.live import aoregions
     from orthostudio.live.pack import live_root
+    from orthostudio.live.scenery import autoortho_regions
 
-    if region not in aoregions.installed(live_root()):
-        raise typer.Exit(_fail(f"Live has not installed the region {region!r}"))
-    aoregions.remove(live_root(), region, log=typer.echo)
+    xp_dir = _xplane(xplane)
+    if region in {p.name.removeprefix("z_ao_") for p in autoortho_regions(xp_dir)}:
+        if autoortho_mounted(xp_dir) or xplane_running():
+            raise typer.Exit(_fail("AutoOrtho or X-Plane is running: quit them first"))
+        aoregions.remove_autoortho(xp_dir, region, log=typer.echo)
+    elif region in aoregions.installed(live_root()):
+        aoregions.remove(live_root(), region, log=typer.echo)
+    else:
+        raise typer.Exit(_fail(f"the region {region!r} is not installed"))
 
 
 if __name__ == "__main__":

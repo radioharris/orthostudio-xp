@@ -250,8 +250,9 @@ function drawChecks(status) {
     add("done", t("checks.xplane_stopped"));
   }
   if (c.mesh) {
+    const names = (c.mesh_regions || []).map((id) => t(`region.${id}`)).join(", ") || c.mesh;
     add(c.mesh_found || c.region_ready ? "done" : "failed",
-      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: c.mesh }));
+      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }));
   }
   add(c.region_ready ? "done" : "info", t(c.region_ready ? "checks.region" : "checks.region_todo"));
   add(c.autoortho_mounted ? "failed" : "done", t(c.autoortho_mounted ? "checks.ao_mounted" : "checks.ao"));
@@ -366,23 +367,20 @@ function drawRegions(status) {
       const actions = document.createElement("span");
       actions.className = "region-actions";
       const mine = install && install.region === r.id;
-      if (r.installed_by === "autoortho") {
-        state.textContent = t("regions.by_autoortho");
-      } else if (mine && running) {
+      if (mine && running) {
         actions.append(regionButton(t("regions.cancel"), () => regionAct("regions/cancel")));
-      } else if (r.installed_by === "live") {
-        const newer = r.release && r.installed_release && r.release !== r.installed_release;
-        state.textContent = newer
-          ? t("regions.newer", { release: r.release })
-          : t("regions.by_live", { release: r.installed_release || "" });
+      } else if (r.installed_by) {
+        const newer = r.installed_by === "live" && r.release && r.installed_release
+          && r.release !== r.installed_release;
+        state.textContent = newer ? t("regions.newer", { release: r.release }) : t("regions.installed");
         if (newer) {
           actions.append(regionButton(t("regions.update"), () => regionAct(`regions/${r.id}/install`),
             { disabled: running }));
         }
         const armed = removeArmed === r.id;
-        actions.append(regionButton(
-          armed ? t("regions.confirm_remove", { name: t(`region.${r.id}`), gb: gb(r.size || 0) })
-            : t("regions.remove"),
+        const name = t(`region.${r.id}`);
+        const remove = regionButton(
+          armed ? t("regions.confirm_remove", { name }) : t("regions.remove"),
           () => {
             if (armed) {
               removeArmed = null;
@@ -392,7 +390,8 @@ function drawRegions(status) {
               if (last) draw(last);
             }
           },
-          { danger: true, disabled: !idle || running }));
+          { danger: true, disabled: !idle || running });
+        actions.append(remove);
       } else if (r.size) {
         actions.append(regionButton(t("regions.install"), () => regionAct(`regions/${r.id}/install`),
           { disabled: running }));

@@ -658,9 +658,29 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
     c.remove_region("eur")
     assert not mine.exists()
     with pytest.raises(session.RefusedError):
-        c.remove_region("eur")  # Live has not installed it (any more)
+        c.remove_region("eur")  # not installed (any more)
     with pytest.raises(session.RefusedError):
         c.install_region("atlantis")
+
+
+def test_a_region_autoortho_installed_can_go_too(home: Path, tmp_path: Path) -> None:
+    """Deleted as AutoOrtho's own uninstall deletes it: its folder and its record, its overlays
+    left, so that AutoOrtho does not take it for installed any more."""
+    xp = tmp_path / "X-Plane 12"
+    base = xp / "Custom Scenery" / "z_autoortho"
+    (base / "scenery" / "z_ao_na" / "terrain").mkdir(parents=True)
+    (base / "na_info.json").write_text("{}")
+    overlays = xp / "Custom Scenery" / "yAutoOrtho_Overlays" / "Earth nav data"
+    overlays.mkdir(parents=True)
+    for running in ({"xplane_running": True}, {"autoortho_mounted": True}):
+        c = LiveControl(checks=checks(xplane=str(xp), **running), echo=lambda _: None)
+        with pytest.raises(session.RefusedError):
+            c.remove_region("na")
+    c = LiveControl(checks=checks(xplane=str(xp)), echo=lambda _: None)
+    c.remove_region("na")
+    assert not (base / "scenery" / "z_ao_na").exists()
+    assert not (base / "na_info.json").exists()
+    assert overlays.exists()  # AutoOrtho's uninstall leaves them too
 
 
 @pytest.mark.anyio
@@ -676,7 +696,7 @@ async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
         assert (await client.post("/api/live/regions/na/install")).status_code == 409
         await client.post("/api/live/regions/cancel")
         wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
-        assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not Live's
+        assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not installed
 
 
 def test_the_overlays_setting(home: Path) -> None:

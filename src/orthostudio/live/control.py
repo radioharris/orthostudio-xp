@@ -120,8 +120,9 @@ def gather_checks() -> dict[str, Any]:
     sources = default_sources(xp)
     out.update(
         xplane=str(xp),
-        # AutoOrtho's regions, by name, or where they would be
+        # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
+        mesh_regions=[s.name.removeprefix("z_ao_") for s in sources],
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
@@ -398,7 +399,10 @@ class LiveControl:
             installer.cancel()
 
     def remove_region(self, region_id: str) -> None:
-        """Delete a region Live installed; not while Live streams, nor while it is installed."""
+        """Delete a region from the disk: the one the page shows, AutoOrtho's when AutoOrtho
+        installed it (as AutoOrtho's own uninstall does: AutoOrtho no longer has it either), else
+        Live's. Not while Live streams, nor while the region is installed, nor for AutoOrtho's while
+        AutoOrtho or X-Plane runs."""
         with self._lock:
             installing = (
                 self._install_thread is not None
@@ -410,9 +414,19 @@ class LiveControl:
             raise session.RefusedError("Live is streaming: stop it first")
         if installing:
             raise session.RefusedError("this region is being installed: stop that first")
-        if region_id not in aoregions.installed(live_root()):
-            raise session.RefusedError(f"Live has not installed the region {region_id!r}")
-        aoregions.remove(live_root(), region_id, log=self.log)
+        checks = self.checks(fresh=True)
+        xp = Path(checks["xplane"]) if checks.get("xplane") else None
+        theirs = {p.name.removeprefix("z_ao_") for p in autoortho_regions(xp)} if xp else set()
+        if xp is not None and region_id in theirs:
+            if checks.get("autoortho_mounted"):
+                raise session.RefusedError("AutoOrtho is running and uses it: quit AutoOrtho first")
+            if checks.get("xplane_running"):
+                raise session.RefusedError("X-Plane is running: quit it first")
+            aoregions.remove_autoortho(xp, region_id, log=self.log)
+        elif region_id in aoregions.installed(live_root()):
+            aoregions.remove(live_root(), region_id, log=self.log)
+        else:
+            raise session.RefusedError(f"the region {region_id!r} is not installed")
         self._checked = (0.0, None)
 
     def wait_idle(self, timeout: float | None = None) -> bool:
