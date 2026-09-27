@@ -246,6 +246,21 @@ def test_a_lane_has_its_own_limit_beside_the_kinds_slots(store: Store) -> None:
         _node("y", SRC, kind="cpu", lane="overpass", seconds=0.01, tag="y")
 
 
+def test_a_relief_downloads_beside_the_images(store: Store) -> None:
+    """A downloaded relief on its lane runs while the images hold the network slot, one relief
+    at a time: the first tile's images no longer wait for the batch's last relief (2026-09-26)."""
+    sched = _sched(store, net_slots=1, lanes={"overpass": 1, "relief": 1})
+    for i in range(2):
+        sched.add(_node(f"img{i}", SRC, kind="net", seconds=0.12, tag=f"img{i}"))
+    for i in range(3):
+        sched.add(_node(f"dem{i}", SRC, kind="net", lane="relief", seconds=0.08, tag=f"d{i}"))
+    refs, _ = _run(sched, list(sched.nodes))
+    assert len(refs) == 5 and not sched.failed
+    assert _max_concurrent(_spans(ids={"img0", "img1"})) == 1
+    assert _max_concurrent(_spans(ids={"dem0", "dem1", "dem2"})) == 1
+    assert _max_concurrent(_spans()) == 2  # a relief and the images at once
+
+
 @pytest.mark.parametrize(("budget", "expected"), [(1000, 1), (1300, 2), (None, 4)])
 def test_ram_budget(store: Store, budget: int | None, expected: int) -> None:
     sched = _sched(store, cpu_workers=4, ram_budget_mb=budget)

@@ -100,7 +100,9 @@ A running node may **lend its slot while it waits** (`NodeContext.idle()`, a con
 against that lane's limit (`Scheduler(lanes={"overpass": 1})`) instead of its kind's slots. The
 OSM downloads of a build share the Overpass mirrors' quota, not the imagery's network pipeline:
 on one `net` slot with the images, a tile's download waited for another tile's images
-(`pipeline-build.md` 4). A lane the scheduler has no limit for is refused when the node is added.
+(`pipeline-build.md` 4). A downloaded relief has the `relief` lane for the same reason, since
+0.1.19. A lane keeps the RAM budget of every node. A lane the scheduler has no limit for is
+refused when the node is added.
 
 `cpu_workers=0` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
 tracebacks). A node is **admitted** when a slot of its kind (or its lane) is free and

@@ -184,6 +184,7 @@ def _replay() -> tuple[Job, list[tuple[float, dict[str, Any]]], float]:
     predicted with that kind (the current engine reads X-Plane's relief in a subprocess slot)."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setitem(progress.ROLE_KIND, "dem", "net")
+        mp.setattr(progress, "RELIEF_LANE", None)  # and on that slot, before 0.1.19
         return _replay_journal()
 
 
@@ -887,6 +888,7 @@ def test_the_first_estimate_starts_from_the_line_of_recent_builds(
     own six reports show (0.73 of the weight), the same estimate is 315 s, and the range holds
     the end. That engine queued the elevations on the network slot, and so does this estimate."""
     monkeypatch.setitem(progress.ROLE_KIND, "dem", "net")
+    monkeypatch.setattr(progress, "RELIEF_LANE", None)  # on the images' slot, before 0.1.19
     tiles = [f"+46+{lon:03d}" for lon in range(5, 11)]
     specs = [_spec(t, zl=16) for t in tiles]
     now = time.time()
@@ -1319,6 +1321,33 @@ def test_the_estimate_queues_a_builds_downloads_on_their_lane(tmp_path: Path) ->
     in_graph, phase_0 = estimate_in("build"), estimate_in("data")
     osm_s = 3 * progress.ROLE_SECONDS["osm"]
     assert in_graph >= osm_s and in_graph < phase_0
+
+
+def test_a_downloaded_relief_is_estimated_on_its_own_lane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reliefs of a batch download beside its images since 0.1.19: their time left no longer
+    queues behind the images' on the network slot, and the estimate says so."""
+    from orthostudio.api.jobs import _NodeState
+
+    rows = []
+    for tile in ("+46+005", "+46+006", "+46+007"):
+        dem = _NodeState(node=f"{tile}/dem", role="dem", stage="relief", kind="net")
+        dem.weight_s = 60.0
+        images = _NodeState(
+            node=f"{tile}/BI14/textures", role="textures", stage="imagery", kind="net"
+        )
+        images.weight_s = 120.0
+        rows += [dem, images]
+    slots = {"overpass": 1, "relief": 1, "net": 1}
+
+    def eta() -> float:
+        est = progress.estimate(rows, now=0.0, phase="build", declared=True, slots=slots)
+        assert est.eta_s is not None
+        return est.eta_s
+
+    beside = eta()
+    monkeypatch.setattr(progress, "RELIEF_LANE", None)  # as engines before 0.1.19 ran them
+    behind = eta()
+    assert beside < behind
 
 
 def test_a_real_batch_through_the_manager(tmp_path: Path) -> None:

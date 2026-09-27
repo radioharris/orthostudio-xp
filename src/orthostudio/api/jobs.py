@@ -380,6 +380,7 @@ class Job:
         self._last_stats_at: float | None = None
         self._slots: dict[str, int] = {
             "overpass": 1,
+            "relief": 1,
             "net": 1,
             "io": 2,
             "subprocess": default_subprocess_slots(),

@@ -1845,6 +1845,7 @@ def declare(
             # queueing on the imagery's network slot, where a batch's elevations ran one after
             # the other and the vector stages waited for them
             kind="subprocess" if dem_cfg.get("custom_dem") == XP12_SOURCE else "net",
+            lane=None if dem_cfg.get("custom_dem") == XP12_SOURCE else RELIEF_LANE,
             run=_dem_run(env, spec),
         )
         osm_ref = osm_refs.get(spec.tile)
@@ -2240,6 +2241,13 @@ OVERPASS_LANE = "overpass"
 already takes its mirrors' quota (two requests a cluster), and apart from the imagery's network
 slot, so that a tile's download never waits for another tile's images."""
 
+RELIEF_LANE = "relief"
+"""The lane of a downloaded relief (``Node.lane``): one tile at a time, apart from the imagery's
+network slot. On that slot the batch's reliefs ran one after the other before any image, and
+held it while their files were read: a user's first tile, ready at 4:01, had its images wait until
+8:51 behind the batch's last three USGS reliefs, about 400 MB each (a build of 2026-09-26).
+X-Plane 12's relief, read from its own DSFs, takes a subprocess slot and no lane."""
+
 
 def make_scheduler(
     store: Store,
@@ -2264,7 +2272,7 @@ def make_scheduler(
         ram_budget_mb=None if mem is None else int(mem * 0.6),
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
-        lanes={OVERPASS_LANE: 1},
+        lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1},
     )
 
 
