@@ -79,15 +79,25 @@ def _built(pack: Path) -> list[Row]:
     return rows
 
 
-def _theirs(row: Row, covered: Collection[tuple[int, int]]) -> bool:
-    """Whether every square a texture reaches is the user's own tile's: X-Plane shows the tile
-    there, never this texture (as the streamer leaves it, orthostudio.live.streamer)."""
-    south, west, north, east = row[:4]
-    return all(
-        (lat, lon) in covered
+def outside(row: Row, covered: Collection[tuple[int, int]]) -> list[Row]:
+    """What X-Plane may show of a texture beside the user's own tiles: its part in each square it
+    reaches that is not theirs, the whole texture when it reaches none of theirs, nothing when it
+    lies in theirs only (X-Plane shows the tiles there). A texture over a tile's edge counted, and
+    grouped when zoomed out, in the tile's square painted the whole tile grey (a user,
+    2026-09-27)."""
+    south, west, north, east, photos, name = row
+    squares = [
+        (lat, lon)
         for lat in range(math.floor(south), math.ceil(north))
         for lon in range(math.floor(west), math.ceil(east))
-    )
+    ]
+    if not any(square in covered for square in squares):
+        return [row]
+    return [
+        (max(south, lat), max(west, lon), min(north, lat + 1), min(east, lon + 1), photos, name)
+        for lat, lon in squares
+        if (lat, lon) not in covered
+    ]
 
 
 def built_in(
@@ -107,14 +117,14 @@ def built_in(
     for a whole square hid the sharp textures near the aircraft (a user, 2026-09-27). Beyond
     :data:`MAX_TEXTURES`, the blurriest go to the squares too (``more``). ``rows``: the running
     streamer's, from its memory; else the pack's record. ``covered``: the squares of the user's
-    own tiles, where the textures are left out (X-Plane shows the tiles)."""
+    own tiles, where the textures are left out, cut at their edges (:func:`outside`)."""
     rows = [
         r
         for r in (_built(pack) if rows is None else rows)
         if r[0] < north and r[2] > south and r[1] < east and r[3] > west
     ]
     if covered:
-        rows = [r for r in rows if not _theirs(r, covered)]
+        rows = [part for r in rows for part in outside(r, covered)]
     wide = north - south > DETAIL_DEG or east - west > DETAIL_DEG
     one_by_one = sorted(
         (r for r in rows if not wide or r[4] >= WIDE_BLURRIEST), key=lambda r: -r[4]

@@ -77,6 +77,25 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     assert mapdata.built_in(tmp_path / "nothing", 4.5, 45.3, 6.5, 46.5)["textures"] == []
 
 
+def test_a_texture_over_the_edge_of_the_users_tile() -> None:
+    """Cut at the tile's edge: only its part beside the tile is drawn, and grouped when zoomed
+    out; the tile's square never gets the grey of the blurry ones (a user, 2026-09-27)."""
+    theirs = {(46, 6)}
+    west_edge = (46.2, 5.95, 46.26, 6.04, 16, "w")  # over the tile's western edge
+    corner = (46.95, 5.95, 47.05, 6.05, 16, "c")  # over its north-western corner
+    inside = (46.3, 6.3, 46.36, 6.39, 16, "i")
+    assert mapdata.outside(west_edge, theirs) == [(46.2, 5.95, 46.26, 6.0, 16, "w")]
+    assert [part[:4] for part in mapdata.outside(corner, theirs)] == [
+        (46.95, 5.95, 47.0, 6.0),
+        (47.0, 5.95, 47.05, 6.0),
+        (47.0, 6.0, 47.05, 6.05),
+    ]
+    assert mapdata.outside(inside, theirs) == []
+    coarse = [(46.5, 6.98, 46.52, 7.01, 12, "e"), (46.4, 6.98, 46.42, 7.01, 12, "f")]
+    wide = mapdata.built_in(Path("unused"), 3.0, 44.0, 9.0, 48.0, rows=coarse, covered=theirs)
+    assert wide["squares"] == [[46, 7, 2, 12]]  # their parts east of the tile only
+
+
 def test_the_regions_installed_and_a_route() -> None:
     squares = mapdata.regions_installed({"eur"})
     assert list(squares) == ["eur"] and len(squares["eur"]) == 1981
