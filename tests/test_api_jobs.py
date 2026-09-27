@@ -50,6 +50,43 @@ def test_node_ids_map_to_the_seven_stages() -> None:
     assert stage_of("repair") is None
 
 
+def test_every_relief_settings_offers_reaches_works_with_its_words() -> None:
+    """Works names what a build takes its heights from with the name the engine sends
+    (``_relief_of``), and the page has words for some of them only (``reliefWords``). The USGS
+    at 1" had words from 0.1.9 and no name until 0.1.19: its builds were announced as the user's
+    own relief file, "fichier de relief" in French. Every relief Settings offers, alone or under a
+    folder of one's own, must reach a name the page words, and only one's own file says *file*.
+    """
+    import re
+    import typing
+    from types import SimpleNamespace
+
+    from orthostudio.api.jobs import _relief_of
+    from orthostudio.config.models import Relief, Settings
+    from orthostudio.config.overrides import to_build_overrides
+    from orthostudio.ui import ui_dir
+
+    code = (ui_dir() / "app.js").read_text(encoding="utf-8")
+    body = code.split("function reliefWords(relief) {", 1)[1].split("\n}", 1)[0]
+    worded = set(re.findall(r'relief === "(\w+)"', body))
+    choices = typing.get_args(Relief.model_fields["source"].annotation)
+    assert "usgs1" in choices and "usgs1" in worded
+
+    def works_name(relief: dict[str, str]) -> str:
+        settings = Settings.model_validate({"essential": {"relief": relief}})
+        return _relief_of(SimpleNamespace(config=to_build_overrides(settings), relief="xplane"))
+
+    for source in choices:
+        own = {"file": "/nowhere/mine.tif"} if source == "file" else {}
+        name = works_name({"source": source, **own})
+        assert name in worded, f"{source} reaches Works as {name!r}, a name without words"
+        assert (name == "file") == (source == "file"), f"{source} reaches Works as {name!r}"
+        if source != "file":
+            laid = works_name({"source": source, "folder": "/nowhere/lidar"})
+            assert laid == name, f"{source} under a folder reaches Works as {laid!r}"
+    assert works_name({"source": "usgs1"}) == "usgs1"
+
+
 def test_action_for_codes() -> None:
     assert action_for("TEX_MISSING") == "retry"
     assert action_for("IMG_TILE_MISSING") == "retry" and action_for("NET_TIMEOUT") == "retry"
