@@ -51,8 +51,11 @@ loading screen. In flight, whatever it says, the textures you fly towards become
 come near them. The setting is only about the departure: the about 10 km around the aircraft (3 km
 for the airport's textures) that X-Plane reads in full while the flight loads. The departure is
 apart because X-Plane keeps the size of a texture it has read, and reads it again only to take a
-larger one: what it has read at 4096 px while the flight loads stays 4096 px for the whole flight,
-even if its file becomes 8192 px afterwards, like a picture on a web page you do not reload.
+larger one: what it has read at 4096 px while the flight loads stays 4096 px as long as X-Plane
+keeps it loaded, even if its file becomes 8192 px afterwards, like a picture on a web page you do
+not reload. That lasts until a new flight, a reload of the scenery, or until you are more than
+about 200 km away, where X-Plane unloads the area (coming back, it reads it again, and Live will
+have made it 8192 px): on a flight to another airport, until you land.
 Farther away, X-Plane reads a texture small, reads it again as you come closer, and by then Live
 has made it 8192 px. High up, Live makes no 8192 px texture: from there X-Plane would never show
 it (above about 25,000 ft above the ground away from airports, 6,000 ft around them).
@@ -65,8 +68,8 @@ The four choices:
 - **Normal, and 8192 px around the aircraft** (recommended): the departure in 8192 px, over about
   10 km around the aircraft, 3 km for the airport's textures (26 textures at Lyon). About 40 to
   50 % longer than Normal (74,000 pieces at Lyon).
-- **Normal resolution**: the departure in 4096 px, the shortest wait. It stays 4096 px for this
-  flight, over about 10 km around where you start.
+- **Normal resolution**: the departure in 4096 px, the shortest wait. It stays so, over about
+  10 km around where you start, as long as X-Plane keeps it loaded.
 - **Normal, then reload in 8192 px**, as XPME's "load in normal resolution, then high": the same
   wait as Normal; then Live builds the departure in 8192 px, as Full resolution does, and once it
   is built, a panel over X-Plane (and a button in the Live window) offers to reload the scenery.
