@@ -4,8 +4,9 @@
 // X-Plane sends them, the route of the SimBrief plan, the regions installed, and the textures
 // built, coloured by how sharp they are (orthostudio/live/mapdata.py). The status the page polls
 // every second moves the aircraft; the textures are asked for again when the view moves, and
-// every few seconds while Live streams. The texture under the pointer is told in a line below
-// the map, which covers nothing (a tooltip over the map was too present, a user said).
+// every few seconds while Live streams. The texture under the pointer is told in a bar over the
+// map's top, one line or two, which can be hidden (a tooltip was too present, a user said), and
+// told again as it changes while the pointer rests on it.
 //
 // Each layer is drawn opaque in a pane of its own, the pane made see-through as a whole: an
 // airport's textures over the ZL16 ones do not add their colours up and look darker than they are.
@@ -37,7 +38,7 @@ function ago(seconds) {
   return t("map.tip_days", { n: fmt(seconds / 86400) });
 }
 
-/** What the line below the map says of a texture built (orthostudio/live/mapdata.py
+/** What the bar over the map says of a texture built (orthostudio/live/mapdata.py
  * textures_at). */
 export function textureInfo(x) {
   const parts = [
@@ -107,7 +108,10 @@ export function createLiveMap(el, { api, info = null }) {
       builtVersion = got.version ?? -1;
       shownTextures = got.textures || [];
       shownSquares = got.squares || [];
-      hovered = null; // its facts may have changed
+      if (hovered && pointer) { // what the pointer rests on may have changed: told again
+        hovered = null;
+        pointAt(pointer);
+      }
       built.clearLayers();
       const style = (level, renderer) => ({
         renderer, weight: 0, fillColor: levelColour(level), fillOpacity: 1, interactive: false,
@@ -161,8 +165,8 @@ export function createLiveMap(el, { api, info = null }) {
   }
   map.on("zoomend", showRegions);
 
-  // the line below the map: the texture under the pointer, found in what is drawn, its facts
-  // asked of the engine once the pointer rests on another one
+  // the bar over the map: the texture under the pointer, found in what is drawn, its facts asked
+  // of the engine once the pointer rests on another one, and again when it is built anew
   let hovered = null; // the texture or square under the pointer, as a key
   let pointer = null;
   let asking = 0;
@@ -189,9 +193,10 @@ export function createLiveMap(el, { api, info = null }) {
     clearTimeout(asking);
     say("");
   }
-  map.on("mousemove", (ev) => {
-    pointer = ev.latlng;
-    const found = under(ev.latlng);
+  map.on("mousemove", (ev) => pointAt(ev.latlng));
+  function pointAt(latlng) {
+    pointer = latlng;
+    const found = under(latlng);
     if (!found) return nothing();
     if (found.key === hovered) return;
     hovered = found.key;
@@ -213,8 +218,11 @@ export function createLiveMap(el, { api, info = null }) {
       if (hovered !== key || !got.textures?.length) return;
       say(textureInfo(got.textures[0])); // the one drawn on top: the smallest, an airport's
     }, 120);
+  }
+  map.on("mouseout", () => {
+    pointer = null;
+    nothing();
   });
-  map.on("mouseout", nothing);
   say("");
 
   // the map takes the height of the blocks beside it: Leaflet is told when its box changes
@@ -276,6 +284,10 @@ export function createLiveMap(el, { api, info = null }) {
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
     regionsChanged: drawRegions,
+    /** The bar over the map, shown or hidden (the header's box). */
+    setDetails(on) {
+      if (info) info.hidden = !on;
+    },
     languageChanged() {
       hovered = null;
       say("");

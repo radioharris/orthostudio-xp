@@ -7,6 +7,7 @@
 import { applyStatic, countryName, detectLanguage, language, setLanguage, t } from "./strings.js";
 
 const POLL_MS = 1000;
+const MAP_DETAILS_KEY = "osxp.live.mapDetails"; // the bar over the map, shown or hidden
 const API_LEVEL = 1; // orthostudio/live/control.py API
 const SHARP_ZOOM = 16; // a source stopping below it shows blurrier ortho up close
 
@@ -728,6 +729,23 @@ async function startMap() {
     return;
   }
   $("map-follow").addEventListener("change", (event) => liveMap.setFollow(event.target.checked));
+  // the bar over the map: shown unless hidden once, as remembered in this window
+  let details = true;
+  try {
+    details = localStorage.getItem(MAP_DETAILS_KEY) !== "0";
+  } catch (_e) {
+    // storage may be unavailable: shown
+  }
+  $("map-details").checked = details;
+  liveMap.setDetails(details);
+  $("map-details").addEventListener("change", (event) => {
+    liveMap.setDetails(event.target.checked);
+    try {
+      localStorage.setItem(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");
+    } catch (_e) {
+      // not remembered: shown again next time
+    }
+  });
   $("live-map").addEventListener("live-map-follow", (event) => {
     $("map-follow").checked = event.detail;
   });

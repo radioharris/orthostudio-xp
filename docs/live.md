@@ -83,8 +83,9 @@ follows it, and before a flight the "Show my SimBrief route" button asks SimBrie
 regions installed are shaded while zoomed out, and the textures already built are coloured by how
 sharp they are: blue 8192 px, green 4096 px, amber 2048 px, grey smaller, within 3 seconds of
 being built while Live runs; zoomed out, the many small ones are grouped by square. Point at a
-texture and the line below the map says what it is: its zoom, the size it is built at and the
-photos that makes, the disk it takes, and when Live last had it in reach.
+texture and a bar over the top of the map says what it is, live: its zoom, the size it is built
+at and the photos that makes, the disk it takes, and when Live last had it in reach. The
+"Details" box hides the bar.
 
 ### Roads, forests and buildings
 

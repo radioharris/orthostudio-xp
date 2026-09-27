@@ -71,13 +71,18 @@
       <div class="live-map-head">
         <h2 class="question-title live-card-title" data-i18n="map.title">Map</h2>
         <div class="live-map-tools">
+          <label class="live-map-toggle"><input type="checkbox" id="map-details" checked>
+            <span data-i18n="map.details">Details</span></label>
           <label class="live-map-toggle"><input type="checkbox" id="map-follow" checked>
             <span data-i18n="map.follow">Follow the aircraft</span></label>
           <button type="button" class="btn btn-small" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
         </div>
       </div>
-      <div class="live-map" id="live-map"></div>
-      <p class="live-map-info is-hint" id="map-info" aria-live="polite"></p>
+      <div class="live-map-wrap">
+        <div class="live-map" id="live-map"></div>
+        <!-- over the map's top: the texture under the pointer, told as it changes -->
+        <div class="live-map-bar is-hint" id="map-info" aria-live="polite"></div>
+      </div>
       <div class="live-map-legend">
         <span><i class="swatch is-8k"></i><span data-i18n="map.legend_8k">8192 px</span></span>
         <span><i class="swatch is-4k"></i><span data-i18n="map.legend_4k">4096 px</span></span>

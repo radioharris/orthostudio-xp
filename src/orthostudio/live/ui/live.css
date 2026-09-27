@@ -76,7 +76,17 @@
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .live-map-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .live-map-toggle { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2); cursor: pointer; }
-.live-map { flex: 1 1 auto; min-height: 420px; border-radius: var(--radius); border: 1px solid var(--line); margin-top: var(--gap); background: #1e2a33; }
+.live-map-wrap { position: relative; flex: 1 1 auto; min-height: 420px; margin-top: var(--gap); }
+.live-map { position: absolute; inset: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
+/* over the map's top, right of the zoom buttons: one line, two at most, the map still usable under */
+.live-map-bar {
+  position: absolute; top: 8px; left: 52px; right: 8px; z-index: 1000; pointer-events: none;
+  padding: 4px 10px; border-radius: 6px; background: rgba(18, 20, 24, 0.82); color: #f2f2f2;
+  font-size: var(--fs-2); line-height: 1.4; max-height: calc(2 * 1.4em + 8px); overflow: hidden;
+}
+.live-map-bar.is-hint { color: rgba(242, 242, 242, 0.7); }
+.live-map-bar b { font-family: var(--mono); font-weight: 600; }
+.live-map-bar .info-warn { color: #ffb347; }
 .live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: var(--fs-2); color: var(--fg-2); }
 .live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
@@ -98,9 +108,3 @@
   white-space: nowrap;
   pointer-events: none;
 }
-/* the line below the map: the texture under the pointer */
-/* two lines kept for it, so that the legend below never jumps */
-.live-map-info { margin: 6px 0 0; min-height: 2.9em; font-size: var(--fs-2); line-height: 1.45; color: var(--fg); }
-.live-map-info.is-hint { color: var(--fg-2); }
-.live-map-info b { font-family: var(--mono); font-weight: 600; }
-.live-map-info .info-warn { color: var(--warn); }
