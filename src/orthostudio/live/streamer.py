@@ -1139,6 +1139,8 @@ def progress_report(
         left, work = streamer.urgent_work()
         start = {
             "name": arrival.name,
+            # "last": a guess, X-Plane's last start while it is not there yet; "click", "from", ...
+            "how": arrival.how,
             "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
             "ready": arrival.ready_at is not None,
             "left": left,

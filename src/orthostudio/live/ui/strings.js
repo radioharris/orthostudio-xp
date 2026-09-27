@@ -23,6 +23,9 @@ export const STRINGS = {
     "state.held_lead": "X-Plane stays on its loading screen until everything it will show there is built.",
     "state.building_start": "Building the ortho around {name}",
     "state.building_start_lead": "X-Plane is about to load this flight.",
+    "state.building_last": "Preparing your last start: {name}",
+    "state.building_last_lead":
+      "X-Plane remembers where your last flight started, and Live prepares it in advance. Start elsewhere, and Live goes there as soon as you click Start Flight.",
     "state.start_ready": "The ortho around {name} is ready",
     "state.start_ready_lead": "X-Plane shows it as soon as it gets there.",
     "state.following": "Following the aircraft",
@@ -336,6 +339,9 @@ export const STRINGS = {
       "X-Plane reste sur son écran de chargement jusqu'à ce que tout ce qu'il affichera là soit construit.",
     "state.building_start": "Construction de l'ortho autour de {name}",
     "state.building_start_lead": "X-Plane va charger ce vol.",
+    "state.building_last": "Préparation de votre dernier départ : {name}",
+    "state.building_last_lead":
+      "X-Plane retient où votre dernier vol a commencé, et Live le prépare d'avance. Partez d'ailleurs, et Live y passe dès que vous cliquez « Start Flight ».",
     "state.start_ready": "L'ortho autour de {name} est prête",
     "state.start_ready_lead": "X-Plane l'affiche dès qu'il y arrive.",
     "state.following": "Suit l'avion",

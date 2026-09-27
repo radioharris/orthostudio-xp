@@ -92,7 +92,14 @@ function headline(status) {
       return [t("state.held", { name: start.name }), t("state.held_lead"), "running"];
     }
     if (start && !start.ready) {
-      return [t("state.building_start", { name: start.name }), t("state.building_start_lead"), "running"];
+      // X-Plane's last start, prepared before X-Plane is there: a guess, said as one (a user
+      // read "X-Plane is about to load this flight" with X-Plane not even started, 2026-09-27)
+      const guess = start.how === "last";
+      return [
+        t(guess ? "state.building_last" : "state.building_start", { name: start.name }),
+        t(guess ? "state.building_last_lead" : "state.building_start_lead"),
+        "running",
+      ];
     }
     if (start && start.ready && stream.data !== "fresh") {
       return [t("state.start_ready", { name: start.name }), t("state.start_ready_lead"), "done"];
