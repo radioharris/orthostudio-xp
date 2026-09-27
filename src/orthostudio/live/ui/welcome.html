@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+     Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
+<!-- The app's question at its first start, once OrthoStudio XP Live is switched on
+     (orthostudio/live/app_start.py): fly now with Live, or build tiles with OrthoStudio XP. Made
+     of OrthoStudio XP's parts (styles.css), as the Live window is. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OrthoStudio XP</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="live/live.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M3 12h6l3-4 3 6 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">OrthoStudio XP</span>
+  </div>
+  <div class="nav"></div>
+  <div class="topbar-tools">
+    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
+    <select id="lang-select" class="tool-select">
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+    </select>
+  </div>
+</header>
+
+<main id="main" class="main welcome">
+  <div class="welcome-head">
+    <h1 data-i18n="welcome.title">What would you like to do?</h1>
+    <p class="lead" data-i18n="welcome.lead"></p>
+  </div>
+  <div class="welcome-cards">
+    <section class="question welcome-card" aria-labelledby="live-title">
+      <div class="welcome-card-head">
+        <span class="welcome-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5l1.2 6.3 7.3 3.9v1.8l-7.4-2.2-.4 5.3 2.3 1.8v1.5l-3-.8-3 .8v-1.5l2.3-1.8-.4-5.3-7.4 2.2v-1.8l7.3-3.9z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </span>
+        <div>
+          <h2 id="live-title" data-i18n="welcome.live_title">Fly now</h2>
+          <span class="welcome-product">OrthoStudio XP Live</span>
+        </div>
+      </div>
+      <ul class="welcome-points">
+        <li class="yes" data-i18n="welcome.live_1"></li>
+        <li class="yes" data-i18n="welcome.live_2"></li>
+        <li class="note" data-i18n="welcome.live_3"></li>
+      </ul>
+      <button type="button" class="btn btn-primary welcome-choose" id="choose-live" data-i18n="welcome.live_choose">Choose Live</button>
+    </section>
+    <section class="question welcome-card" aria-labelledby="build-title">
+      <div class="welcome-card-head">
+        <span class="welcome-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3.5 3.5h17v17h-17zM3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </span>
+        <div>
+          <h2 id="build-title" data-i18n="welcome.build_title">Build my tiles</h2>
+          <span class="welcome-product">OrthoStudio XP</span>
+        </div>
+      </div>
+      <ul class="welcome-points">
+        <li class="yes" data-i18n="welcome.build_1"></li>
+        <li class="yes" data-i18n="welcome.build_2"></li>
+        <li class="note" data-i18n="welcome.build_3"></li>
+      </ul>
+      <button type="button" class="btn btn-primary welcome-choose" id="choose-build" data-i18n="welcome.build_choose">Choose Build</button>
+    </section>
+  </div>
+  <p class="question welcome-both" data-i18n="welcome.both"></p>
+  <label class="switch welcome-remember">
+    <input type="checkbox" id="remember" checked>
+    <span data-i18n="welcome.remember">Open it directly next time</span>
+  </label>
+  <p class="lead" id="leaving" data-i18n="welcome.leaving" hidden>OrthoStudio XP opens…</p>
+</main>
+
+<script type="module" src="live/welcome.js"></script>
+</body>
+</html>

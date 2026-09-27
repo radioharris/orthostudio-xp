@@ -40,6 +40,7 @@ export const STRINGS = {
     "action.start": "Start",
     "action.stop": "Stop",
     "action.xplane": "Start X-Plane",
+    "action.osxp": "Build tiles",
     "action.reload": "Reload the scenery in X-Plane",
     "offer.building":
       "8192 px around the aircraft: {n} textures to build, then the scenery can be reloaded to show them.",
@@ -137,6 +138,28 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl}: sharper up close, 4 times more to download (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed: Live puts its textures at their new size, about a minute, with nothing to download.",
+    "home.title": "When the app starts",
+    "home.help":
+      "What OrthoStudio XP opens: Live's window, or OrthoStudio XP's, to build tiles. Each window has a button to the other.",
+    "home.ask": "Ask me",
+    "home.live": "Live's window",
+    "home.build": "OrthoStudio XP, to build tiles",
+    "welcome.title": "What would you like to do?",
+    "welcome.lead": "Two ways to have ortho in X-Plane. You can go from one to the other at any time.",
+    "welcome.live_title": "Fly now",
+    "welcome.live_1": "The ortho is built as you fly, ahead of the aircraft.",
+    "welcome.live_2": "Nothing to prepare: choose your departure in X-Plane, and take off.",
+    "welcome.live_3": "Needs the internet in flight, and AutoOrtho's mesh for now (Europe, North America…).",
+    "welcome.live_choose": "Choose Live",
+    "welcome.build_title": "Build my tiles",
+    "welcome.build_1": "Prepare the regions you fly over in advance, at the best quality.",
+    "welcome.build_2": "Nothing to download in flight: your tiles stay on your disk.",
+    "welcome.build_3": "Takes computing time and disk space.",
+    "welcome.build_choose": "Choose Build",
+    "welcome.both":
+      "Both at once? Build your tiles where you want them (your airport, your region), and Live takes care of the rest: X-Plane shows your tiles first.",
+    "welcome.remember": "Open it directly next time (Live's settings change it)",
+    "welcome.leaving": "OrthoStudio XP opens…",
 
     "plan.title": "Flight plan",
     "plan.help":
@@ -243,6 +266,7 @@ export const STRINGS = {
     "action.start": "Démarrer",
     "action.stop": "Arrêter",
     "action.xplane": "Lancer X-Plane",
+    "action.osxp": "Construire des tuiles",
     "action.reload": "Recharger la scène dans X-Plane",
     "offer.building":
       "8192 px autour de l'avion : {n} textures à construire, puis la scène pourra être rechargée pour les montrer.",
@@ -342,6 +366,30 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl} : plus net de près, 4 fois plus à télécharger (textures 8192 px)",
     "zoom.change":
       "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met ses textures à leur nouvelle taille, une minute environ, sans rien télécharger.",
+    "home.title": "Au lancement de l'application",
+    "home.help":
+      "Ce qu'OrthoStudio XP ouvre : la fenêtre Live, ou celle d'OrthoStudio XP pour construire des tuiles. Chaque fenêtre a un bouton vers l'autre.",
+    "home.ask": "Me demander",
+    "home.live": "La fenêtre Live",
+    "home.build": "OrthoStudio XP, pour construire des tuiles",
+    "welcome.title": "Que voulez-vous faire ?",
+    "welcome.lead":
+      "Deux façons d'avoir de l'ortho dans X-Plane. Vous pourrez passer de l'une à l'autre à tout moment.",
+    "welcome.live_title": "Voler tout de suite",
+    "welcome.live_1": "L'ortho se construit pendant que vous volez, devant l'avion.",
+    "welcome.live_2": "Rien à préparer : choisissez votre départ dans X-Plane, et décollez.",
+    "welcome.live_3":
+      "Il faut internet pendant le vol, et le maillage d'AutoOrtho pour l'instant (Europe, Amérique du Nord…).",
+    "welcome.live_choose": "Choisir Live",
+    "welcome.build_title": "Construire mes tuiles",
+    "welcome.build_1": "Préparez à l'avance les régions que vous survolez, à la qualité maximale.",
+    "welcome.build_2": "Rien à télécharger en vol : vos tuiles restent sur votre disque.",
+    "welcome.build_3": "Demande du temps de calcul et de la place sur le disque.",
+    "welcome.build_choose": "Choisir Construire",
+    "welcome.both":
+      "Les deux à la fois ? Construisez vos tuiles là où vous les voulez (votre aéroport, votre région), et Live s'occupe du reste : X-Plane affiche vos tuiles en priorité.",
+    "welcome.remember": "L'ouvrir directement la prochaine fois (les réglages de Live le changent)",
+    "welcome.leaving": "OrthoStudio XP s'ouvre…",
 
     "plan.title": "Plan de vol",
     "plan.help":

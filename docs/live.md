@@ -15,6 +15,25 @@ It runs on macOS only for now (its pack relies on APFS clones), from OrthoStudio
 `uv run python -m orthostudio.live <command>`. `ui` opens its window; the other commands do the
 same from the terminal.
 
+## One app with OrthoStudio XP
+
+Switched on, Live and OrthoStudio XP are one app. At its first start the app asks what you want to
+do: fly now, with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless
+you untick the box, and opens that window at each start after; Live's settings (When the app
+starts) change it. Each window has a button to the other: Live in OrthoStudio XP's top bar, its dot
+saying whether Live streams, and Build tiles in Live's.
+
+To try it all as a user would, a checkout of the branch `live` makes its own app, beside the usual
+checkout's:
+
+```bash
+uv run python tools/package/live_preview_app.py
+```
+
+Drag `dist/OrthoStudio XP (aperçu Live).app` to the Dock. Its engine takes a port of its own (8651)
+and a log of its own (`serve-live-preview.log`), so that it never stops the usual app's, but both
+share your settings and your tiles: use one at a time.
+
 ## What it is
 
 Aerial imagery under your aircraft, anywhere in the region you fly, downloaded while you fly, as

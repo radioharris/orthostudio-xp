@@ -47,6 +47,9 @@ class LiveSettings(BaseModel):
     folder: str = ""
     """Live's folder, for its pack and its imagery: empty for ``$OSXP_HOME/live``
     (:func:`orthostudio.live.pack.live_root`)."""
+    app_home: Literal["ask", "live", "build"] = "ask"
+    """What the app opens at its start (orthostudio.live.app_start): the question the first time,
+    then Live's window or OrthoStudio XP's, as chosen."""
     simbrief_user: str = Field("", max_length=64)
     """The SimBrief name or pilot ID whose last plan the path ahead follows
     (:mod:`orthostudio.live.flightplan`); empty: nothing is asked of simbrief.com."""

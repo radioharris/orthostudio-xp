@@ -27,6 +27,7 @@
   </div>
   <div class="nav"></div>
   <div class="topbar-tools">
+    <button type="button" class="tool-btn live-osxp" id="osxp-btn" data-i18n="action.osxp">Build tiles</button>
     <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
     <select id="lang-select" class="tool-select">
       <option value="en">EN</option>
@@ -152,6 +153,19 @@
         <div class="actions live-delete">
           <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>
           <span class="help" id="delete-help"></span>
+        </div>
+      </fieldset>
+
+      <fieldset class="question" id="q-home">
+        <legend class="question-title" data-i18n="home.title">When the app starts</legend>
+        <p class="question-help" data-i18n="home.help"></p>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="app_home" value="ask">
+            <span class="choice-text"><span class="choice-label" data-i18n="home.ask">Ask me</span></span></label>
+          <label class="choice"><input type="radio" name="app_home" value="live">
+            <span class="choice-text"><span class="choice-label" data-i18n="home.live">Live's window</span></span></label>
+          <label class="choice"><input type="radio" name="app_home" value="build">
+            <span class="choice-text"><span class="choice-label" data-i18n="home.build">OrthoStudio XP, to build tiles</span></span></label>
         </div>
       </fieldset>
 

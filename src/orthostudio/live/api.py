@@ -14,6 +14,9 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``POST /api/live/launch-xplane``: start X-Plane (409 until Live is ready for it);
 - ``POST /api/live/reload``: reload the scenery in X-Plane, to show the 8192 px textures built
   after a start (409 unless that reload is offered);
+- ``POST /api/live/home`` ``{"home": "live" | "build", "remember": bool}``: the welcome page's
+  answer; ``POST /api/live/osxp``: OrthoStudio XP's window; ``POST /api/live/front``: this window
+  to the front (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
@@ -26,7 +29,7 @@ from __future__ import annotations
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, ValidationError
@@ -40,6 +43,11 @@ from orthostudio.live.settings import (
     load_settings,
     save_settings,
 )
+
+
+class HomeBody(BaseModel):
+    home: Literal["live", "build"]
+    remember: bool = True
 
 
 class StartBody(BaseModel):
@@ -120,6 +128,25 @@ def live_router(control: LiveControl) -> APIRouter:
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return {"state": control.state}
+
+    @router.post("/home")
+    def home(body: HomeBody) -> dict[str, Any]:
+        control.choose_home(body.home, remember=body.remember)
+        return {"home": body.home}
+
+    @router.post("/osxp")
+    def osxp() -> dict[str, Any]:
+        from orthostudio.live.app_start import open_osxp
+
+        open_osxp()
+        return {"opened": True}
+
+    @router.post("/front")
+    def front() -> dict[str, Any]:
+        from orthostudio import window
+
+        window.to_the_front()
+        return {"front": True}
 
     @router.get("/providers")
     def providers() -> list[dict[str, Any]]:

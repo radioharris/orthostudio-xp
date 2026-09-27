@@ -30,3 +30,24 @@
 .live-settings-head { margin-top: var(--section-gap); }
 
 .live .log pre { max-height: 360px; }
+
+/* the app's question at its first start (welcome.html): two cards of the same weight */
+.welcome { max-width: 1000px; display: flex; flex-direction: column; align-items: center; gap: var(--section-gap); padding-top: 48px; }
+.welcome-head { text-align: center; max-width: 720px; }
+.welcome-head h1 { font-size: 22px; }
+.welcome-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--section-gap); width: 100%; }
+@media (max-width: 720px) { .welcome-cards { grid-template-columns: minmax(0, 1fr); } }
+.welcome-card { display: flex; flex-direction: column; gap: var(--block-gap); padding: 20px; margin: 0; }
+.welcome-card-head { display: flex; align-items: center; gap: 12px; }
+.welcome-card-head h2 { margin: 0; font-size: var(--fs-title-1); }
+.welcome-product { font-size: var(--fs-2); color: var(--fg-2); }
+.welcome-icon { width: 42px; height: 42px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 21px; background: var(--accent-soft); color: var(--accent); }
+.welcome-icon svg { width: 22px; height: 22px; }
+.welcome-points { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.welcome-points .yes::marker { color: var(--ok); }
+.welcome-points .note { color: var(--fg-2); }
+.welcome-choose { min-height: 40px; font-size: 14px; }
+.welcome-both { margin: 0; width: 100%; box-sizing: border-box; }
+.welcome-remember { font-size: var(--fs-2); color: var(--fg-2); }
+
+.topbar-tools .live-osxp { width: auto; padding: 0 8px; white-space: nowrap; }

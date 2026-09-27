@@ -58,6 +58,11 @@ def create_live_app(control: LiveControl) -> Any:
     def index() -> FileResponse:
         return FileResponse(UI_DIR / "index.html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
 
+    @app.get("/welcome", include_in_schema=False)
+    def welcome() -> FileResponse:
+        """The app's question at its first start (orthostudio.live.app_start)."""
+        return FileResponse(UI_DIR / "welcome.html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
+
     return app
 
 
@@ -78,14 +83,15 @@ def _serve(app: Any, port: int) -> tuple[Any, threading.Thread]:
     return server, thread
 
 
-def open_window(port: int, *, browser: bool = False) -> None:
+def open_window(port: int, *, browser: bool = False, start: str | None = None) -> str | None:
     """Serve the page on ``port`` and show it; return once the window is closed and no stream is
-    left behind."""
+    left behind. ``start="welcome"``: the app's question first. Returns ``"build"`` when its
+    answer was OrthoStudio XP's window, for the app to open it."""
     from orthostudio import window
 
     control = LiveControl()
     server, thread = _serve(create_live_app(control), port)
-    url = f"http://127.0.0.1:{port}/"
+    url = f"http://127.0.0.1:{port}/" + ("welcome" if start == "welcome" else "")
     try:
         if browser or not window.possible():
             _in_the_browser(url, control)
@@ -94,6 +100,7 @@ def open_window(port: int, *, browser: bool = False) -> None:
     finally:
         server.should_exit = True
         thread.join(5)
+    return control.leaving_for
 
 
 def _in_the_browser(url: str, control: LiveControl) -> None:
@@ -120,7 +127,7 @@ def _in_a_window(url: str, control: LiveControl) -> None:
     closing = [False]  # asked, and the answer was yes: the window goes once the stream is out
 
     def may_close() -> bool:
-        if control.state == IDLE:
+        if control.state == IDLE or control.leaving_for:
             return True
         if closing[0]:
             return False  # already asked: it closes by itself, once the pack is out
@@ -139,7 +146,9 @@ def _in_a_window(url: str, control: LiveControl) -> None:
         title=TITLE,
         on_close=may_close,
         may_quit=may_close,
-        closes_when=lambda: closing[0] and control.state == IDLE,
+        closes_when=lambda: (
+            (closing[0] and control.state == IDLE) or control.leaving_for == "build"
+        ),
         size=SIZE,
         storage=default_live_root() / "window",  # where the page keeps its language
     )

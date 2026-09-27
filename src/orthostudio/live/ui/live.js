@@ -443,6 +443,9 @@ function fillSettings(settings) {
   $("set-cache").value = String(settings.cache_budget_gb);
   $("set-folder").value = settings.folder || "";
   $("set-simbrief").value = settings.simbrief_user || "";
+  for (const input of document.querySelectorAll('input[name="app_home"]')) {
+    input.checked = input.value === (settings.app_home || "ask");
+  }
   drawSimbrief();
   for (const input of $("start-choices").querySelectorAll("input")) {
     input.checked = input.value === settings.start_mode;
@@ -462,6 +465,7 @@ async function saveSettings(event) {
     folder: $("set-folder").value.trim(),
     start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),
+    app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
   };
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
@@ -592,6 +596,7 @@ function boot() {
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("reload-btn").addEventListener("click", () => act("reload"));
+  $("osxp-btn").addEventListener("click", () => act("osxp"));
   $("set-max-zoom").addEventListener("change", drawStartNone);
   $("set-max-zoom-airports").addEventListener("change", drawStartNone);
   $("leave-btn").addEventListener("click", () => act("leave"));

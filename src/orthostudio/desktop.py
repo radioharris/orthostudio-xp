@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import http.server
 import json
+import os
 import socket
 import sys
 import threading
@@ -57,19 +58,23 @@ __all__ = [
 ]
 
 APP_NAME = "OrthoStudio XP"
-LOG_NAME = "serve.log"
+LOG_NAME = os.environ.get("OSXP_LOG_NAME") or "serve.log"
+"""``OSXP_LOG_NAME``: another log, for an app running another checkout beside this one (OrthoStudio
+XP Live's preview, ``tools/package/live_preview_app.py``)."""
 LOG_MAX_BYTES = 8 * 1024 * 1024
 """How large ``serve.log`` may grow before the run before it is set aside as ``serve.log.1``.
 
 It is appended to for ever, and since it holds every stage of every build a user asked to
 send it was being asked for a file without an end (found in review, 2026-09-23). One previous
 log is kept, which is what a report needs: the run that went wrong, and the one before it."""
-DEFAULT_ARGS = ("serve", "--open", "--quit-when-closed")
-ENGINE_ARGS = ("serve", "--no-open", "--quit-when-closed")
-"""What the engine of a window is started with: the window shows the page, not the browser."""
-ENGINE_PORT = 8641
+ENGINE_PORT = int(os.environ.get("OSXP_PORT") or 8641)
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
-two equal)."""
+two equal). ``OSXP_PORT``: another, for an app running another checkout beside this one without
+either stopping the other (OrthoStudio XP Live's preview)."""
+_PORT_ARGS = ("--port", str(ENGINE_PORT)) if ENGINE_PORT != 8641 else ()
+DEFAULT_ARGS = ("serve", "--open", "--quit-when-closed", *_PORT_ARGS)
+ENGINE_ARGS = ("serve", "--no-open", "--quit-when-closed", *_PORT_ARGS)
+"""What the engine of a window is started with: the window shows the page, not the browser."""
 OPENING_SERVED_S = 120.0
 """How long the opening page stays served: once loaded, it waits for the engine on its own."""
 
@@ -478,6 +483,21 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
     return True
 
 
+def _live_first(log: Path) -> bool:
+    """OrthoStudio XP Live, when it is switched on (``enabled`` in ``live.toml``): its window
+    rather than this one when the pilot chose it, and the choice itself the first time
+    (:func:`orthostudio.live.app_start.app_start`). ``False`` without it: this app, as ever."""
+    try:
+        from orthostudio.live.app_start import app_start
+    except ImportError:
+        return False
+    try:
+        return app_start(log)
+    except Exception as exc:  # never in the way of the app itself
+        _note(log, f"OrthoStudio XP Live could not open ({type(exc).__name__}: {exc})")
+        return False
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -497,6 +517,9 @@ def main(
     path.parent.mkdir(parents=True, exist_ok=True)
     roll_log(path)
     starting = not argv
+    # the app's own start only: never a test's, which hands in its log and its doubles
+    if starting and log is None and window is None and running is None and _live_first(path):
+        return 0
     if (
         starting
         and window is not False
@@ -513,7 +536,7 @@ def main(
     args = list(argv) if argv else list(DEFAULT_ARGS)
     if starting and (open_while_starting if opening is None else opening)(ENGINE_PORT, log=path):
         # the opening page goes to the engine's page by itself
-        args = ["serve", "--no-open", "--quit-when-closed"]
+        args = ["serve", "--no-open", "--quit-when-closed", *_PORT_ARGS]
 
     from orthostudio.cli import app  # after the opening page: the imports are the long part
 

@@ -784,6 +784,13 @@ def create_app(
         )
     )
 
+    # OrthoStudio XP Live's button in the top bar, where Live is (switched on in live.toml): whether
+    # it streams, and a click opening its window (orthostudio/live/app_start.py).
+    with contextlib.suppress(ImportError):
+        from orthostudio.live.app_start import osxp_router
+
+        app.include_router(osxp_router())
+
     def airport_index() -> Any:
         if state["airports"] is None and not state["airports_tried"]:
             state["airports_tried"] = True

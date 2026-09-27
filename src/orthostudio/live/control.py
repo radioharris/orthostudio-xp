@@ -164,6 +164,8 @@ class LiveControl:
         self._stop = threading.Event()
         self._leave = threading.Event()
         self._reload = threading.Event()  # the reload offered, asked for from the page
+        # the welcome page's answer: "build" closes this window for OrthoStudio XP's
+        self.leaving_for: str | None = None
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
 
@@ -290,6 +292,17 @@ class LiveControl:
             return False
         self._reload.clear()
         return True
+
+    def choose_home(self, home: str, *, remember: bool, save: Any = None) -> None:
+        """The welcome page's answer: Live's window, or OrthoStudio XP's (this window then closes
+        and the app opens that one). Kept for the next starts when ``remember``."""
+        if remember:
+            from orthostudio.live.settings import save_settings
+
+            settings = self._settings().model_copy(update={"app_home": home})
+            (save or save_settings)(settings)
+        if home == "build":
+            self.leaving_for = "build"
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         thread = self._thread
