@@ -1339,7 +1339,9 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
         got = [0, 0]  # files, bytes
 
         def download(url: str) -> Download:
-            answer = dem_sources.http_download(url)
+            # the build's Cancel reaches the transfer: a file of 400 MB is no longer cut at 30 s,
+            # so a cancel must not wait for its end
+            answer = dem_sources.http_download(url, cancel=cast(Any, ctx.cancel_event))
             if answer.body:
                 got[0] += 1
                 got[1] += len(answer.body)

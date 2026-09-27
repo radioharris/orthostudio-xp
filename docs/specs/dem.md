@@ -280,12 +280,31 @@ merely unavailable).
 `test_dem_oracle.py::test_the_memo_does_not_change_the_raster` rebuilds them with the three
 URLs already in the memo and a download hook that fails the test if it is ever called.
 
-### 3.5 What is *not* ported
+### 3.5 What is *not* ported, and how a relief file is downloaded
 
 `http_request` (lines 830-866): six attempts, `2**n` seconds of sleep, `"[20" in str(r)` for status
-detection, no connection reuse across calls. OrthoStudio XP uses `orthostudio.net.fetch.Fetcher`
-(HTTP/2, AIMD, polite 429, cancellation). The retry ladder is the Fetcher's; the "4xx and 3xx are
-final, 5xx are retried" decision of Ortho4XP is preserved by `sources.py` on top of it.
+detection, no connection reuse across calls. OrthoStudio XP reads every relief file (Copernicus,
+the USGS, the View archives, the lidar's blocks) with `sources.http_download`: one HTTP/1.1
+session kept on a loop of its own (the map data library's machinery, `sources.library`), the file
+read as it arrives and given up only after `RELIEF_SILENCE_S` (30 s) without a byte, one transfer
+at a time, four at most, 0.5, 1 and 2 s apart. The rules are the imagery's fetcher's: the answers
+keep its codes (`NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_SERVER_ERROR`, `NET_RATE_LIMITED`); a
+429's pause (its `Retry-After`, or 5 s doubling to 30) is obeyed and costs no attempt while the
+pauses stay within twelve and 120 s (`net-download.md` R2); and the "4xx and 3xx are final, 5xx
+are retried" decision of Ortho4XP is kept: a 404 is the server's word and goes to the memo (3.4).
+The build's Cancel is checked every 0.2 s and tells curl to stop at the file's next piece; one
+that comes before the headers lets the transfer reach them and stops it there, since cancelling
+the wait for them leaves curl reading the whole file for nobody (curl_cffi 0.16).
+
+Until 0.1.19 a relief went through that fetcher (`orthostudio.net.fetch.Fetcher`), built for
+thousands of small pieces: each transfer was cut at 30 s whole, and a second copy of it started
+after 3 s. A USGS square of 443 MB then needed some 215 Mbit/s to the USGS; every attempt that
+did not make it was thrown away and started again from nothing, a user's +32-111 lost one
+(2026-09-26), and downloading beside the images a test's +34-118 lost all four and failed
+(2026-09-27). curl averages the speed over some six seconds, so a transfer that stops midway is
+declared silent about 36 s after its last byte. The four transfers now follow one another where
+the fetcher ran two pairs: a server that sends nothing at all is given up after some two minutes
+instead of one. ANADEM's ranges (`http_ranges`) still go through the fetcher: they are small.
 
 ## 4. The combined raster (`build_combined_raster`, lines 350-441)
 

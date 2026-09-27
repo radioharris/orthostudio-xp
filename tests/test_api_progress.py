@@ -1056,7 +1056,8 @@ def test_a_downloaded_relief_reports_what_it_received_and_its_rate(
         def progress(self, fraction: float, message: str) -> None:
             seen.append((fraction, message))
 
-    def fetched(url: str) -> Download:
+    def fetched(url: str, **kw: Any) -> Download:
+        assert "cancel" in kw  # the build's Cancel reaches the transfer
         return Download(url, body=b"x" * 3_000_000, status=200)
 
     def rule(ctx: Any) -> None:

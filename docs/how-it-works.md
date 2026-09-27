@@ -74,7 +74,7 @@ tile fails for want of map data.
 | Step | What it does | Typical time (ZL16, one tile, M4 Pro) |
 |---|---|---|
 | **OSM** | Reads the OpenStreetMap airports, roads, coastline and water of the tile: from the prepared library, or from the public Overpass servers. | 1-4 s from the library, 8-15 s from Overpass when it answers |
-| **Relief** | Reads the elevation: X-Plane 12's own scenery from the disk, or the files Settings asks for (Copernicus, USGS, Canada's lidar), downloaded the first time and kept. | 5-30 s when Copernicus files are downloaded (measured 2026-09-26) |
+| **Relief** | Reads the elevation: X-Plane 12's own scenery from the disk, or the files Settings asks for (Copernicus, USGS, Canada's lidar), downloaded the first time, however long a big one takes, and kept. | 5-30 s when Copernicus files are downloaded (measured 2026-09-26) |
 | **Terrain** | Traces the lines the relief must follow (shores, flat runways, rivers, roads), then cuts the relief into triangles, finer where it matters: mountains, shores, airports. | 10-30 s: the tracing 5-20 s, up to a minute at road level 5, the mesh 4-10 s |
 | **Coast** | Builds the water masks: soft transitions between the photo and X-Plane's water. | 1-4 s |
 | **Imagery** | Downloads the image pieces, assembles them into textures, compresses them to DDS. | 40 s to 2 min if nothing is cached (the provider's speed decides), 10-15 s if the pieces are |

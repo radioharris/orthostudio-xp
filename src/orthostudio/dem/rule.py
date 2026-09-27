@@ -13,6 +13,7 @@ bound with :func:`dem_job`, the same pattern as the masks and OSM rules.
 from __future__ import annotations
 
 import contextlib
+import functools
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextvars import ContextVar
@@ -98,7 +99,11 @@ class DemJob:
         """The :class:`EnsureOptions` this job implies."""
         return EnsureOptions(
             elevation_dir=self.elevation_dir,
-            download=self.download if self.download is not None else http_download,
+            download=(
+                self.download
+                if self.download is not None
+                else functools.partial(http_download, cancel=self.cancel)
+            ),
             ranges=self.ranges if self.ranges is not None else http_ranges,
             memo=NegativeMemo(self.memo_path, ttl_s=self.memo_ttl_s),
             dem1_local_fallback=dem1_local_fallback,

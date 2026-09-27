@@ -287,8 +287,9 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
 ## 4. Inputs, outputs, non-goals
 
 - Input: a sequence of `FetchRequest`; output: one `FetchResult` per request. Bodies stay in
-  memory (16-30 KB typical, s. 1); large downloads (DEM archives, Global Scenery) will use a
-  streaming variant of this module, not `fetch_many`.
+  memory (16-30 KB typical, s. 1); large downloads do not come here: a relief file is streamed
+  on a session of its own by `dem.sources.http_download`, under this module's rules for the
+  answers (`dem.md` 3.5, since 0.1.19), and the map data library's files by `sources.library`.
 - Not here: placeholder detection (header, hash, size), parent-404 memo, Overpass mirror
   policy, AutoOrtho co-existence (Bing ceiling shared at 64), 403 ban probing. They are
   specified in section 5 for the layers that own them.

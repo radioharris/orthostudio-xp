@@ -13,6 +13,9 @@ of being re-issued on every run.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
+import contextlib
 import io
 import json
 import math
@@ -21,11 +24,11 @@ import re
 import threading
 import time
 import zipfile
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, TypeVar
 
 from orthostudio.errors import OsxpError
 
@@ -429,21 +432,218 @@ DownloadFn = Callable[[str], Download]
 """How :func:`ensure_elevation` reaches the network; injected so tests never do."""
 
 
-def http_download(url: str, *, timeout_s: float = 30.0, max_attempts: int = 4) -> Download:
-    """Fetch one URL through :mod:`orthostudio.net.fetch` (spec section 3.5)."""
-    from orthostudio.net.fetch import FetchRequest, fetch_all
+RELIEF_SILENCE_S = 30.0
+"""Seconds a relief file may go without a byte arriving before its transfer is given up.
 
-    results = fetch_all(
-        [FetchRequest(key=url, url=url, host_group=_host_group(url))],
-        timeout_s=timeout_s,
-        max_attempts=max_attempts,
-        max_in_flight=4,
-        start_in_flight=2,
-    )
-    if not results:
-        return Download(url, error="NET_CONNECTION_FAILED")
-    r = results[0]
-    return Download(url, body=r.body, status=r.status, error=r.error)
+It was 30 s for the whole file, through the imagery's fetcher, which also started a second copy of
+it after 3 s: a USGS square of 443 MB needed some 215 Mbit/s to the USGS to arrive in time, and
+every attempt that did not was thrown away and started again from nothing. A user's +32-111 lost
+one (2026-09-26); downloading beside the images, a test's +34-118 lost all four and its tile
+failed (2026-09-27). A file still arriving, however slowly, is waited for now; a silent server is
+not."""
+RELIEF_CONNECT_S = 10.0
+"""Seconds to open a relief's connection, as the fetcher gave any transfer."""
+RELIEF_ATTEMPTS = 4
+"""Transfers of one file before its failure is final, as the fetcher counted them (a 429 obeyed
+within its budget is not one)."""
+_RELIEF_BACKOFF_S = (0.5, 1.0, 2.0)
+"""Waits before the second, third and fourth transfers: the fetcher's, without its jitter."""
+_RELIEF_ERRORS = {
+    "server": "NET_SERVER_ERROR",
+    "pushback": "NET_RATE_LIMITED",
+    "timeout": "NET_TIMEOUT",
+    "connect": "NET_CONNECTION_FAILED",
+}
+"""The codes the fetcher gave the same failures, which the page's words and the memo read."""
+
+_T = TypeVar("_T")
+
+
+class _KeptConnections:
+    """One HTTP/1.1 session for the reliefs, on an event loop of its own, kept for the engine.
+
+    The machinery of the map data library (``sources.library._Connections``), which streams its
+    files on Windows, macOS and Linux since 0.1.18, in a session of its own: a relief of 400 MB
+    never shares a connection with the library's small files.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._session: Any = None
+
+    def run(self, work: Callable[[Any], Awaitable[_T]]) -> _T:
+        """``work(session)``, run on the kept loop, from whichever thread asks."""
+        with self._lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                self._session = None
+                threading.Thread(target=self._loop.run_forever, name=self.name, daemon=True).start()
+            loop = self._loop
+        return asyncio.run_coroutine_threadsafe(self._with_session(work), loop).result()
+
+    async def _with_session(self, work: Callable[[Any], Awaitable[_T]]) -> _T:
+        if self._session is None:  # made on its loop: nothing awaits between test and assignment
+            from curl_cffi.requests import AsyncSession
+
+            from orthostudio.net.certs import ca_bundle
+
+            # HTTP/1.1 pinned, as the library's: left to negotiate, or pinned to HTTP/2, a session
+            # stalled on large files there (``sources.library``, 2026-09-23)
+            self._session = AsyncSession(verify=ca_bundle(), http_version="v1", max_clients=4)
+        return await work(self._session)
+
+    def close(self) -> None:
+        """The session and its loop, closed: at exit, and in the tests."""
+        with self._lock:
+            loop, session = self._loop, self._session
+            self._loop, self._session = None, None
+        if loop is None or loop.is_closed():
+            return
+        if session is not None:
+            with contextlib.suppress(Exception):  # best effort: the process is going anyway
+                asyncio.run_coroutine_threadsafe(session.close(), loop).result(timeout=5)
+        loop.call_soon_threadsafe(loop.stop)
+
+
+_RELIEF_HTTP = _KeptConnections("osxp-relief-http")
+atexit.register(_RELIEF_HTTP.close)
+
+
+def _cancelled() -> OsxpError:
+    return OsxpError("SYS_CANCELLED", context={"stage": "dem"})
+
+
+def _pause(seconds: float, cancel: threading.Event | None) -> None:
+    """Wait ``seconds``, or raise ``SYS_CANCELLED`` within 0.2 s of a cancel."""
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        if cancel is not None and cancel.is_set():
+            raise _cancelled()
+        time.sleep(min(0.2, left))
+
+
+def _stop(answer: Any) -> None:
+    """Tell curl to give up a streamed answer at its next piece (curl_cffi's ``quit_now``)."""
+    quit_now = getattr(answer, "quit_now", None)
+    if quit_now is not None:
+        quit_now.set()
+
+
+async def _relief_transfer(
+    session: Any, url: str, silence_s: float, cancel: threading.Event | None
+) -> tuple[str, int, bytes, float | None]:
+    """One transfer: ``(kind, status, body, retry_after)``. ``kind`` is ``ok`` for any answer the
+    fetcher counted as one (a 404 included), ``server`` for a 5xx, ``pushback`` for a 429,
+    ``timeout``, ``connect`` or ``cancelled``; ``retry_after`` is a 429's ``Retry-After``.
+
+    A cancel returns at once, the transfer winding down on the kept loop: closing a streamed
+    answer waits for its transfer to end, 400 MB away, so curl is told to stop at its next piece
+    (:func:`_stop`). Before the headers there is no answer to tell: the transfer is left to reach
+    them and stops there, for cancelling it then would leave curl filling its queue with the whole
+    file, read by nobody (curl_cffi 0.16).
+    """
+    from curl_cffi.requests.exceptions import Timeout
+
+    from orthostudio.net.fetch import MAX_REDIRECTS, USER_AGENT, _retry_after
+
+    held: list[Any] = []  # the answer being read, once its headers are in
+
+    async def read() -> tuple[str, int, bytes, float | None]:
+        async with session.stream(
+            "GET",
+            url,
+            headers={"User-Agent": USER_AGENT},
+            # streamed, curl_cffi turns this pair into a limit on silence (no byte for their sum),
+            # not on the whole transfer (``sources.library._http_get_many``)
+            timeout=(RELIEF_CONNECT_S, max(1.0, silence_s - RELIEF_CONNECT_S)),
+            allow_redirects=True,
+            max_redirects=MAX_REDIRECTS,
+        ) as answer:
+            if cancel is not None and cancel.is_set():  # cancelled while the headers came
+                _stop(answer)
+                return "cancelled", 0, b"", None
+            held.append(answer)
+            status = int(answer.status_code)
+            if status == 429 or status >= 500:  # a refusal's body is not the file: not kept
+                headers = {str(k).lower(): str(v) for k, v in answer.headers.items()}
+                retry_after = _retry_after(headers) if status == 429 else None
+                return ("pushback" if status == 429 else "server"), status, b"", retry_after
+            pieces: list[bytes] = []
+            async for piece in answer.aiter_content():
+                pieces.append(piece)
+            return "ok", status, b"".join(pieces), None
+
+    task = asyncio.ensure_future(read())
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=0.2)
+            if done:
+                return task.result()
+            if cancel is not None and cancel.is_set():
+                if held:
+                    _stop(held[0])
+                    task.cancel()
+                task.add_done_callback(lambda t: t.cancelled() or t.exception())
+                return "cancelled", 0, b"", None
+    except Exception as exc:  # a transport failure is an answer here, never a crash
+        timed_out = isinstance(exc, Timeout) or getattr(exc, "code", None) == 28
+        return ("timeout" if timed_out else "connect"), 0, b"", None
+
+
+def http_download(
+    url: str,
+    *,
+    timeout_s: float = RELIEF_SILENCE_S,
+    max_attempts: int = RELIEF_ATTEMPTS,
+    cancel: threading.Event | None = None,
+) -> Download:
+    """One relief file (spec section 3.5), read as it arrives on a connection kept from one call
+    to the next, and given up only after ``timeout_s`` without a byte.
+
+    Not through the imagery's fetcher: it is built for thousands of small pieces, cut each
+    transfer at ``timeout_s`` whole and doubled any transfer still running after 3 s, which a file
+    of 400 MB always is (:data:`RELIEF_SILENCE_S`). The answers and their rules are the
+    fetcher's: a 404 and the like are the server's word, memoised by the caller
+    (:attr:`Download.final`); a 5xx, a silence or a refused connection are asked again, up to
+    ``max_attempts`` transfers, then carry the fetcher's code; a 429's pause is obeyed, and costs
+    no attempt while the pauses stay within their budget (``net-download.md`` R2). ``cancel``
+    stops the transfer within 0.2 s: ``SYS_CANCELLED`` is raised.
+    """
+    from orthostudio.net import fetch
+
+    last = Download(url, error=_RELIEF_ERRORS["connect"])
+    attempts = max(1, max_attempts)
+    failures = pushbacks = 0
+    pushback_wait, next_pause = 0.0, fetch.PAUSE_BASE_S
+    while failures < attempts:
+        if cancel is not None and cancel.is_set():
+            raise _cancelled()
+        kind, status, body, retry_after = _RELIEF_HTTP.run(
+            lambda session: _relief_transfer(session, url, timeout_s, cancel)
+        )
+        if kind == "cancelled":
+            raise _cancelled()
+        if kind == "ok":
+            return Download(url, body=body, status=status)
+        last = Download(url, status=status, error=_RELIEF_ERRORS[kind])
+        if kind == "pushback":
+            if retry_after is not None:
+                wait = min(max(retry_after, fetch.RETRY_AFTER_MIN_S), fetch.RETRY_AFTER_MAX_S)
+            else:
+                wait, next_pause = next_pause, min(next_pause * 2, fetch.PAUSE_MAX_S)
+            if pushbacks < fetch.MAX_PUSHBACKS and pushback_wait + wait <= fetch.PUSHBACK_BUDGET_S:
+                pushbacks += 1
+                pushback_wait += wait
+            else:
+                failures += 1
+        else:
+            failures += 1
+            wait = _RELIEF_BACKOFF_S[min(failures - 1, len(_RELIEF_BACKOFF_S) - 1)]
+        if failures < attempts:
+            _pause(wait, cancel)
+    return last
 
 
 def _host_group(url: str) -> str:
