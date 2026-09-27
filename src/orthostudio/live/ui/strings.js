@@ -78,7 +78,7 @@ export const STRINGS = {
     "build.downloaded": "Downloaded",
     "build.downloaded_value": "{n} pieces ({mb} MB), {cache} from the cache",
     "build.failed": "{n} failed",
-    "build.grown": "At 8192 px",
+    "build.at_8192": "At 8192 px",
     "build.rate": "Rate",
     "build.disk": "Disk",
     "build.disk_value": "{used} of {budget} GB",
@@ -207,16 +207,16 @@ export const STRINGS = {
 
     "zoom.title": "Zoom",
     "zoom.help":
-      "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only (within 6 km at ZL17); a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
+      "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only, around you; a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
     "zoom.max": "Maximum zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
     "zoom.airports": "Zoom near airports",
     "zoom.airports_help": "Around airports, where the package's zoom is 18.",
     "zoom.lower": "ZL{zl}: less sharp up close, {times} times less to download",
     "zoom.same": "ZL{zl}: the package's",
-    "zoom.higher": "ZL{zl}: sharper up close, 4 times more to download (8192 px textures)",
+    "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
-      "A new zoom applies at the next start of Live, X-Plane closed: Live puts its textures at their new size, about a minute, with nothing to download.",
+      "A new zoom applies at the next start of Live, X-Plane closed: Live puts every texture at its new size, a couple of minutes, with nothing to download.",
     "home.title": "When the app starts",
     "home.help":
       "What OrthoStudio XP opens: Live's window, or OrthoStudio XP's, to build tiles. Each window has a button to the other.",
@@ -249,20 +249,10 @@ export const STRINGS = {
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
-    "start.help": "Your zooms make 8192 px textures, the sharpest. What X-Plane waits for on its loading screen:",
     "start.plain":
-      "X-Plane waits on its loading screen for the textures around the aircraft; then Live builds them ahead of you. Nothing to choose with your zooms: the choices for 8192 px textures appear with zoom 17, or 19 near airports.",
-    "start.why":
-      "Once and for all: X-Plane does not read again a texture it already has in full, until a new flight, or until you are more than about 200 km away: even a reload of the scenery keeps it.",
-    "start.full": "Full resolution",
-    "start.full_note":
-      "8192 px from the start, up to about 30 km around (for external views). The longest wait: about 2.5 times Normal's.",
-    "start.around": "8192 px around the aircraft",
-    "start.around_note":
-      "8192 px from the start within 12 km. Beyond, it is live. About 40 to 50 % longer than Normal.",
-    "start.normal": "Normal resolution",
-    "start.normal_note": "4096 px once and for all within 12 km. Beyond, it is live. The shortest wait.",
-    "start.flight": "Live: the textures ahead of the aircraft become 8192 px before you come near them.",
+      "X-Plane waits on its loading screen for the textures around the aircraft; then Live builds them ahead of you.",
+    "start.sharp":
+      "X-Plane waits on its loading screen for the textures around the aircraft, 8192 px within 15 km. In flight, Live makes the 8192 px within 15 km of you and of your path ahead, before X-Plane reads it at 12 km. Farther, a texture shows its 4096 px there, never anything blank.",
     "start.tint": "Test: show the 8192 px textures in pink",
     "start.tint_help":
       "Only their 8192 px version is tinted: where the ground turns pink in X-Plane, X-Plane shows the 8192 px. After the test, untick it and delete the textures (Disk space, the photos kept): they are built again normally.",
@@ -270,7 +260,6 @@ export const STRINGS = {
       "Test on: the 8192 px textures are pink where X-Plane shows them; on the map, green (ZL17) away from airports, violet (ZL19) around them.",
     "state.tint_next":
       "Test on from the next start: the 8192 px textures will be pink where X-Plane shows them; on the map, green (ZL17) away from airports, violet (ZL19) around them.",
-    "settings.recommended": "Recommended",
 
     "disk.title": "Disk space",
     "disk.help":
@@ -384,7 +373,7 @@ export const STRINGS = {
     "build.downloaded": "Téléchargé",
     "build.downloaded_value": "{n} morceaux ({mb} Mo), {cache} du cache",
     "build.failed": "{n} en échec",
-    "build.grown": "En 8192 px",
+    "build.at_8192": "En 8192 px",
     "build.rate": "Débit",
     "build.disk": "Disque",
     "build.disk_value": "{used} sur {budget} Go",
@@ -514,16 +503,17 @@ export const STRINGS = {
 
     "zoom.title": "Zoom",
     "zoom.help":
-      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol (à moins de 6 km en ZL17) ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
+      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol, autour de vous ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
     "zoom.max": "Zoom maximum",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
     "zoom.airports": "Zoom près des aéroports",
     "zoom.airports_help": "Autour des aéroports, où le zoom du package est 18.",
     "zoom.lower": "ZL{zl} : moins net de près, {times} fois moins à télécharger",
     "zoom.same": "ZL{zl} : celui du package",
-    "zoom.higher": "ZL{zl} : plus net de près, 4 fois plus à télécharger (textures 8192 px)",
+    "zoom.higher":
+      "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":
-      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met ses textures à leur nouvelle taille, une minute environ, sans rien télécharger.",
+      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met chaque texture à sa nouvelle taille, deux minutes environ, sans rien télécharger.",
     "home.title": "Au lancement de l'application",
     "home.help":
       "Ce qu'OrthoStudio XP ouvre : la fenêtre Live, ou celle d'OrthoStudio XP pour construire des tuiles. Chaque fenêtre a un bouton vers l'autre.",
@@ -558,22 +548,10 @@ export const STRINGS = {
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "start.title": "Au démarrage d'un vol",
-    "start.help":
-      "Vos zooms font des textures 8192 px, les plus nettes. Ce qu'X-Plane attend sur son écran de chargement :",
     "start.plain":
-      "X-Plane attend sur son écran de chargement les textures autour de l'avion ; ensuite, Live les construit devant vous. Rien à choisir avec vos zooms : les choix pour les textures 8192 px apparaissent avec le zoom 17, ou 19 près des aéroports.",
-    "start.why":
-      "Une fois pour toutes : X-Plane ne relit pas une texture qu'il a déjà en entier, jusqu'à un nouveau vol, ou jusqu'à ce que vous soyez à plus de 200 km environ : même un rechargement de la scène la garde.",
-    "start.full": "Pleine résolution",
-    "start.full_note":
-      "8192 px dès le départ, jusqu'à 30 km environ (pour les vues extérieures). L'attente la plus longue : environ 2,5 fois celle de Normale.",
-    "start.around": "8192 px autour de l'avion",
-    "start.around_note":
-      "8192 px dès le départ dans un rayon de 12 km. Au-delà, c'est du live. Environ 40 à 50 % d'attente de plus que Normale.",
-    "start.normal": "Résolution normale",
-    "start.normal_note":
-      "4096 px une fois pour toutes dans un rayon de 12 km. Au-delà, c'est du live. L'attente la plus courte.",
-    "start.flight": "Du live : les textures devant l'avion passent en 8192 px avant que vous en approchiez.",
+      "X-Plane attend sur son écran de chargement les textures autour de l'avion ; ensuite, Live les construit devant vous.",
+    "start.sharp":
+      "X-Plane attend sur son écran de chargement les textures autour de l'avion, en 8192 px à moins de 15 km. En vol, Live fait le 8192 px à moins de 15 km de vous et de votre route, avant qu'X-Plane le lise à 12 km. Plus loin, une texture y montre son 4096 px, jamais rien de vide.",
     "start.tint": "Test : montrer les textures 8192 px en rose",
     "start.tint_help":
       "Seule leur version 8192 px est teintée : là où le sol rosit dans X-Plane, X-Plane affiche le 8192 px. Après le test, décochez et supprimez les textures (Place sur le disque, en gardant les photos) : elles sont refaites normalement.",
@@ -581,7 +559,6 @@ export const STRINGS = {
       "Test en cours : les textures 8192 px sont roses là où X-Plane les affiche ; sur la carte, vertes (ZL17) hors des aéroports, violettes (ZL19) autour.",
     "state.tint_next":
       "Test au prochain démarrage : les textures 8192 px seront roses là où X-Plane les affiche ; sur la carte, vertes (ZL17) hors des aéroports, violettes (ZL19) autour.",
-    "settings.recommended": "Recommandé",
 
     "disk.title": "Place sur le disque",
     "disk.help":

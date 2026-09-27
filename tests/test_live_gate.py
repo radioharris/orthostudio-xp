@@ -395,17 +395,17 @@ class PluginTest(unittest.TestCase):
 
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
-class NormalStartTest(unittest.TestCase):
-    """run() in the "normal" start mode: X-Plane goes on at 4096 px, and in flight the plugin's
-    ask gets nothing to show; no reload of the scenery, which X-Plane would not read the textures
-    again for (the "reload" start mode went, 2026-09-27)."""
+class FlightStartTest(unittest.TestCase):
+    """run() from a start into the flight, at the package's zoom: X-Plane goes on at 4096 px, and
+    in flight the plugin's ask gets nothing to show; no reload of the scenery, which X-Plane would
+    not read the textures again for (the "reload" start mode went, 2026-09-27)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         pack = root / "stream_pack"
         source = make_source(root, tile=(45, 6), textures=NAMES)
-        setup_region(source, pack, log=lambda _: None, zooms=Zooms(17, 18))
+        setup_region(source, pack, log=lambda _: None, zooms=Zooms(16, 18))
         self.cache = ChunkCache(root / "c.sqlite")
         self.port = free_port()
         self.gate = Gate(root / "X-Plane 12", lambda icao: None, port=self.port)
@@ -416,11 +416,9 @@ class NormalStartTest(unittest.TestCase):
             self.cache,
             FakeDownloader,
             finest_quality=0,
-            max_zoom=17,
             workers=2,
             xplane=self.xp,
             log=self.log.append,
-            start_mode="normal",
         )
         self.stop = threading.Event()
         self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
@@ -467,8 +465,7 @@ class NormalStartTest(unittest.TestCase):
             while not self.ask(p, hold).startswith("LIVE1 GO"):
                 self.assertLess(time.time(), end)
                 time.sleep(0.1)
-            # 4096 px: no 8192 px texture waited for
-            self.assertEqual(set(self.streamer.built.values()), {0})
+            self.assertEqual(set(self.streamer.built.values()), {0})  # 4096 px around
             self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 NONE lang=en")
             self.xp.position = (self.lat, self.lon)  # the flight runs
             time.sleep(0.6)  # a few plans

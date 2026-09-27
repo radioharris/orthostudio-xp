@@ -19,15 +19,15 @@ built, the streamer asks it to reload the scenery.
 External views take the camera away from the aircraft, and X-Plane reads what is in the files at
 once. So every ring is widened by ``reach_km``, the distance the camera may go.
 
-One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file starts
-at 4096 px and grows to 8192 px, its 8192 px level built in the same rename (``orthostudio.live
-.region``). X-Plane reads a texture's size again whenever it opens it for a sharper level, but
-never reads again a level it has: a texture grows before X-Plane reads its 4096 px level, else it
-stays 4096 px until X-Plane loads it again. A 4096 px file is never a placeholder, so growing needs
-no camera reach: in flight, the textures on the path ahead grow while they are still farther than
-X-Plane reads 4096 px, and only where X-Plane will read them at 8192 px, which it does not from high
-up: those distances are in three dimensions. At a start, X-Plane has read nothing yet, and
-``start_mode`` says which textures it waits for at 8192 px (:data:`START_MODES`).
+One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file is
+8192 px from the pack's layout on (``orthostudio.live.region``), and X-Plane reads it as such from
+the start. Its photos are built as those of a 4096 px file, at the same distances: X-Plane, which
+counts a file's levels from its top, reads each level a ring earlier and finds there the copy of the
+level below (``orthostudio.live.texture``). The 8192 px level itself gets its photos, one zoom
+above the mesh's, a quarter farther than X-Plane reads it (12 km at ZL16), all around the aircraft,
+its path ahead and the camera, in three dimensions as X-Plane measures, so not from high up. It
+needs no camera reach: a camera that goes farther finds the copy of the 4096 px level, the ortho
+without its finest detail, never the neutral colour. At a start, X-Plane waits for all of them.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from pathlib import Path
 from . import dds
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
-from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
+from .evict import EVICT_SAFE_KM, TARGET, pick, usage
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import haversine_m, parse_texture_name
 from .mapdata import route_points
@@ -78,15 +78,6 @@ LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
-# What X-Plane waits for at a start, where textures grow to 8192 px:
-# - full: every 8192 px texture of the start, as far as the camera may go (the longest wait);
-# - around: 8192 px wherever X-Plane reads 4096 px while the flight loads (ring 0: about 12 km,
-#   3 km for the airports' textures), so that nothing around the aircraft is left at 4096 px;
-# - normal: 4096 px only.
-# Beyond the start, all three grow the textures ahead alike. A fourth, "reload" (4096 px, then the
-# 8192 px of "around" and a reload of the scenery offered), went once a test showed that X-Plane's
-# reload does not read again the textures it holds (2026-09-27).
-START_MODES = ("full", "around", "normal")
 EVICT_EVERY_S = 30.0
 FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers while it waits
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
@@ -201,7 +192,6 @@ class Streamer:
         cache_budget: int = 10 * 10**9,
         reach_km: float = 0.0,
         log: Callable[[str], None] = print,
-        start_mode: str = "full",
         covered: Collection[tuple[int, int]] = (),
         simbrief_user: str = "",
         installed_regions: Callable[[], Collection[str]] = frozenset,
@@ -225,18 +215,13 @@ class Streamer:
         self.workers = workers
         self.xp = xplane  # anything with .command(name): the UDP link, or a test's stand-in
         self.log = log
-        if start_mode not in START_MODES:
-            raise ValueError(f"start_mode {start_mode!r}: one of {', '.join(START_MODES)}")
-        self.start_mode = start_mode
         self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
         # X-Plane flies (not waiting on a start, not away): the encoders leave it its cores
         self.flying = False
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
-        # the textures whose file is 8192 px: each built from its 8192 px level
-        self.grown = {n for n in self.meta.get("grown", []) if self.built.get(n) == MIN_LEVEL}
-        self.built_version = 0  # one more at each change of built or grown: the window's map
+        self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
             n: (0.0, 0) for n in self.meta.get("patchy", []) if n in self.built
@@ -252,13 +237,14 @@ class Streamer:
             e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
         )
         # the zoom set: each texture's file is laid out for it (region.relayout), smaller below the
-        # mesh's zoom; one zoom above, 4096 px files that grow to 8192 px where X-Plane reads that
+        # mesh's zoom, 8192 px one zoom above
         self.zooms = Zooms(max_zoom, max_zoom_airports)
+        self._tops: dict[str, int] = {}  # each texture's file size, once known (top_of)
         zooms = {z for textures in self.index.by_tile.values() for *_, z in textures}
-        self.growing = {  # at X-Plane's texture quality, whether it reads 8192 px at all
+        self.reads_8192 = {  # the zooms whose 8192 px level X-Plane reads, at its texture quality
             z for z in zooms if finest_readable(self.zooms.top(z), finest_quality) == MIN_LEVEL
         }
-        tops = {self.zooms.start_top(z) for z in zooms} | ({MIN_LEVEL} if self.growing else set())
+        tops = {self.zooms.top(z) for z in zooms}
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
         # the pilot's last SimBrief plan, the path ahead while the aircraft is on it
@@ -352,46 +338,40 @@ class Streamer:
     def level_of(self, name: str) -> int:
         return self.built.get(name, NEUTRAL_LEVEL)
 
-    def start_top_of(self, name: str) -> int:
-        """The sharpest level of a texture's file as the pack lays it out (0: 4096 px, 1: 2048)."""
-        tex = parse_texture_name(name)
-        return self.zooms.start_top(tex.zoom) if tex is not None else 0
-
     def encode_cap(self) -> int:
         """Textures encoded at once: all the workers while X-Plane waits on a start or is away,
         FLIGHT_ENCODES while it flies, its cores left to it."""
         return min(self.workers, FLIGHT_ENCODES) if self.flying else self.workers
 
     def top_of(self, name: str) -> int:
-        """The sharpest level of a texture's file now: its start size, -1 (8192 px) once grown."""
-        return MIN_LEVEL if name in self.grown else self.start_top_of(name)
+        """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
+        1: 2048, -1: 8192)."""
+        top = self._tops.get(name)
+        if top is None:
+            tex = parse_texture_name(name)
+            top = self._tops[name] = self.zooms.top(tex.zoom) if tex is not None else 0
+        return top
 
     def neutral_for(self, top: int) -> str | None:
         """The neutral texture of a file whose sharpest level is ``top``: what it is built over."""
         path = self.pack_dir / neutral_file(top)
         return str(path) if path.exists() else None
 
-    def _growth(self, zoom: int, d: float, d_now: float, starting: bool) -> float | None:
-        """Whether a 4096 px texture of a zoom that goes to 8192 px grows now, and then how urgent
-        it is (as :meth:`plan` counts it); None: it stays 4096 px for now.
+    def _sharpest(self, zoom: int, s: float, s_now: float, starting: bool) -> float | None:
+        """Whether an 8192 px file gets the photos of its 8192 px level now, and how urgent they
+        are (as :meth:`plan` counts it); None: the copy of its 4096 px level stays there for now.
 
-        ``d``: from the path ahead and the camera; ``d_now``: from the aircraft and the camera; both
-        in three dimensions, from their heights above the ground, as X-Plane measures. The other
-        levels keep the distances on the ground: one built too few would show the neutral colour,
-        where a texture that does not grow stays 4096 px."""
-        k = self.scale  # X-Plane's image: the rings grow with it
-        r8 = ring_km(MIN_LEVEL, zoom) * self.margin * k
-        r4 = ring_km(0, zoom) * self.margin * k  # where X-Plane reads 4096 px while a flight loads
-        r0 = ring_km(0, zoom) * k
-        if starting:  # X-Plane reads nothing here before the start's textures are built
-            if self.start_mode == "full" and d - self.reach_km <= r8:
-                return d_now - r8 - self.reach_km  # X-Plane waits for it
-            if self.start_mode == "around" and d <= r4:
-                return d_now - r4
+        X-Plane reads that level where it reads a 4096 px file's 4096 px one (12 km at ZL16, 3 km
+        at ZL18). The photos come within a quarter more of the path ahead, the aircraft or the
+        camera (``s``), urgent once X-Plane reads them (``s_now``: from the aircraft and the
+        camera). Both are in three dimensions, from the heights above the ground, as X-Plane
+        measures: none from high up. No camera reach: a camera that goes farther finds the copy,
+        never the neutral colour. At a start, X-Plane waits for all of them."""
+        read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
+        built = read * self.margin
+        if s > built:
             return None
-        if d <= r8 and d_now > r0:  # ahead, before X-Plane reads its 4096 px level
-            return d_now - r0
-        return None
+        return s_now - (built if starting else read)
 
     def plan(
         self, fix: Fix, x_plane_there: bool = True, starting: bool = False
@@ -399,8 +379,8 @@ class Streamer:
         """Queue every texture within reach built coarser than X-Plane will read it.
 
         ``x_plane_there`` False: a place prepared before X-Plane loads it (``--from``), which a new
-        start there must not reload. ``starting``: a start X-Plane has read nothing of yet, whose
-        8192 px textures ``start_mode`` chooses.
+        start there must not reload. ``starting``: a start X-Plane has read nothing of yet: it
+        waits for every 8192 px level around (:meth:`_sharpest`).
         """
         jumped = x_plane_there and (
             self.last_fix is None
@@ -454,10 +434,10 @@ class Streamer:
                 else ring_km(level, zoom) * self.margin * self.scale + self.reach_km
             )
             urgency = d_now - ring
-            if level == 0 and top == 0 and zoom in self.growing:
-                grow = self._growth(zoom, s, s_now, starting)
-                if grow is not None:
-                    level, urgency = MIN_LEVEL, grow
+            if level == 0 and zoom in self.reads_8192:
+                sharp = self._sharpest(zoom, s, s_now, starting)
+                if sharp is not None:
+                    level, urgency = MIN_LEVEL, sharp
             if self.level_of(name) <= level:
                 patch = self.patchy.get(name)
                 if patch is None or patch[0] > now:
@@ -571,18 +551,18 @@ class Streamer:
             self.log("everything X-Plane may show is built: asked it to reload the scenery")
         return due
 
-    def built_now(self, known: int = -1) -> tuple[int, dict[str, int] | None, set[str] | None]:
-        """(version, textures built, grown), copied under the lock for the window's map; nothing
-        copied when ``known`` is the version already: the map asks every few seconds."""
+    def built_now(self, known: int = -1) -> tuple[int, dict[str, int] | None]:
+        """(version, textures built), copied under the lock for the window's map; nothing copied
+        when ``known`` is the version already: the map asks every few seconds."""
         with self.lock:
             if known == self.built_version:
-                return self.built_version, None, None
-            return self.built_version, dict(self.built), set(self.grown)
+                return self.built_version, None
+            return self.built_version, dict(self.built)
 
-    def facts_now(self) -> tuple[dict[str, int], set[str], set[str], dict[str, float]]:
-        """(built, grown, patchy, seen), copied under the lock: the map's tooltip."""
+    def facts_now(self) -> tuple[dict[str, int], set[str], dict[str, float]]:
+        """(built, patchy, seen), copied under the lock: the map's tooltip."""
         with self.lock:
-            return dict(self.built), set(self.grown), set(self.patchy), dict(self.seen)
+            return dict(self.built), set(self.patchy), dict(self.seen)
 
     # --- building -----------------------------------------------------------------------------
 
@@ -593,8 +573,6 @@ class Streamer:
                 self.built[name] = level
                 self.built_version += 1
                 self.done[level] += 1
-                if level < 0:  # its file is 8192 px now
-                    self.grown.add(name)
                 if patched:  # built again later, a little later each time
                     tries = self.patchy.get(name, (0.0, 0))[1]
                     wait = min(PATCH_RETRY_MAX_S, PATCH_RETRY_S * 2**tries)
@@ -671,7 +649,7 @@ class Streamer:
                 job = min(ready, key=lambda j: j.urgency)
                 ready.remove(job)
                 job.stage = "encoding"
-                top = min(job.level, self.top_of(job.name))  # 8192 px for its level -1: it grows
+                top = self.top_of(job.name)
                 fut = pool.submit(
                     build_job,
                     (
@@ -811,25 +789,22 @@ class Streamer:
         with self.lock:
             busy = set(self.in_flight) | set(self.queue)
         picks = pick(
-            self.built, self.seen, lambda n: n not in busy and self.far(n), self.disk_budget
+            self.built,
+            self.seen,
+            lambda n: n not in busy and self.far(n),
+            self.disk_budget,
+            self.top_of,
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
-            start = self.start_top_of(name)  # a grown texture goes back to its start size
             try:
-                downgrade(
-                    path,
-                    level,
-                    self.pack_dir / neutral_file(start),
-                    file_top=dds.read_top(path),
-                    to_top=start,
-                )
+                top = dds.read_top(path)  # the file's size from its header: it keeps it
+                downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
             except OSError as e:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
             with self.lock:
                 self.built_version += 1
-                self.grown.discard(name)
                 self.patchy.pop(name, None)
                 if level >= NEUTRAL_LEVEL:
                     self.built.pop(name, None)
@@ -840,7 +815,8 @@ class Streamer:
         if picks:
             self.log(
                 f"  disk budget: {min(len(picks), EVICT_BATCH)} textures made coarser, "
-                f"{usage(self.built) / 1e9:.1f} GB of {self.disk_budget / 1e9:.0f} GB now"
+                f"{usage(self.built, self.top_of) / 1e9:.1f} GB of "
+                f"{self.disk_budget / 1e9:.0f} GB now"
             )
         size = self.cache.size_bytes()
         if size > self.cache_budget:
@@ -861,14 +837,13 @@ class Streamer:
         with self.lock:  # the builder changes them meanwhile
             textures = dict(self.built)
             seen = {n: round(t) for n, t in self.seen.items() if n in textures}
-            grown = sorted(self.grown)
             patchy = sorted(n for n in self.patchy if n in textures)
         meta = load_built(self.pack_dir)
         if self.screen is not None:
             meta["screen"] = self.screen
         meta["textures"] = textures
         meta["seen"] = seen
-        meta["grown"] = grown
+        meta.pop("grown", None)  # a pack's record from when textures grew
         meta["patchy"] = patchy
         meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
@@ -882,9 +857,8 @@ class Streamer:
             queued = Counter(level for _, level in self.queue.values())
             urgent = sum(1 for u, _ in self.queue.values() if u <= 0)
             flying = len(self.in_flight)
-            levels = Counter(self.built.values())
+            built = dict(self.built)
             done = dict(self.done)
-            grown = len(self.grown)
         dl = self.downloader
         return {
             "first_level": MIN_LEVEL,  # the lists below: levels -1 (8192 px) to 4 (256 px)
@@ -897,11 +871,10 @@ class Streamer:
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
-            "disk_bytes": levels_usage(levels),
+            "disk_bytes": usage(built, self.top_of),
             "disk_budget": self.disk_budget,
             "reload_pending": self.reload_pending,
-            "grown": grown,  # textures at 8192 px
-            "start_mode": self.start_mode,
+            "at_8192": sum(1 for level in built.values() if level < 0),  # their 8192 px photos
             "tint_8192": self.tint_8192,
             "flight_plan": None
             if self.flight_plan is None

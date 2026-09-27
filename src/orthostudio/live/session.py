@@ -66,12 +66,11 @@ class Options:
     quality: str = "auto"  # X-Plane's texture quality: auto (from its preferences), maximum, high
     max_zoom: int = 16
     max_zoom_airports: int = 18
-    start_mode: str = "around"  # what X-Plane waits for at a start: streamer.START_MODES
     simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
     overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
     language: str = "en"  # the Live window's: the plugin's words in X-Plane
     margin: float = 1.25
-    camera_reach_km: float = 25.0
+    camera_reach_km: float = 20.0
     workers: int = field(default_factory=default_workers)
     port: int = 49000  # X-Plane's UDP port
     source: Path | None = None  # None: every AutoOrtho region installed, AutoOrtho's or Live's
@@ -171,7 +170,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.gate import Gate
     from orthostudio.live.geo import dsf_tile_of
     from orthostudio.live.region import (
-        LAYOUT_GROWING,
+        LAYOUT_FIXED,
         Zooms,
         needs_relayout,
         region_layout,
@@ -219,7 +218,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
     setup_region(sources, pack_dir, log=log, zooms=zooms)
-    if region_layout(pack_dir) != (zooms, LAYOUT_GROWING):  # each texture at its new size
+    if region_layout(pack_dir) != (zooms, LAYOUT_FIXED):  # each texture at its new size
         if xplane_running() and needs_relayout(pack_dir, zooms):
             raise RefusedError(
                 "the zoom changed and X-Plane is running: it keeps a texture at the size it first "
@@ -345,7 +344,6 @@ def follow(
                     cache_budget=int(options.cache_budget_gb * 1e9),
                     reach_km=options.camera_reach_km,
                     log=log,
-                    start_mode=options.start_mode,
                     covered=prepared.covered,
                     simbrief_user=options.simbrief_user,
                     tint_8192=options.tint_8192,

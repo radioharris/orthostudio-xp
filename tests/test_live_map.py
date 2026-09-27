@@ -17,6 +17,7 @@ import pytest
 import test_api_fakes as fakes
 from orthostudio.live import mapdata
 from orthostudio.live.control import LiveControl
+from orthostudio.live.evict import texture_bytes
 from orthostudio.live.flightplan import FlightPlan
 from orthostudio.live.web import UI_DIR, create_live_app
 from orthostudio.net.fetch import FetchRequest, FetchResult
@@ -49,10 +50,9 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def write_pack(pack: Path) -> None:
-    """The record of a pack where these were built: one grown to 8192 px (its level -1)."""
+    """The record of a pack where these were built: one at 8192 px (its level -1)."""
     (pack / "_live").mkdir(parents=True)
-    grown = [n for n, level in BUILT.items() if level == -1]
-    (pack / "_live" / "ortho.json").write_text(json.dumps({"textures": BUILT, "grown": grown}))
+    (pack / "_live" / "ortho.json").write_text(json.dumps({"textures": BUILT}))
 
 
 def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
@@ -60,7 +60,7 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     write_pack(pack)
     near = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5)  # a small view: each texture
     # by the zoom of its photos, the sharpest first: Geneva's ZL18 at 4096 px (ZL18 photos)
-    # before Lyon's ZL16 grown to 8192 px (ZL17), then 4096 (ZL16), then 1024 px (ZL14)
+    # before Lyon's ZL16 at 8192 px (ZL17), then 4096 (ZL16), then 1024 px (ZL14)
     assert [row[4] for row in near["textures"]] == [18, 17, 16, 14]
     assert near["squares"] == [] and near["more"] is False
     south, west, north, east, _ = near["textures"][0]
@@ -167,17 +167,20 @@ class FakeStreamer:
     """What the map reads of a running streamer: its textures built, versioned, and their facts."""
 
     def __init__(self) -> None:
-        self.version, self.built, self.grown = 1, dict(BUILT), {LYON[1]}
+        self.version, self.built = 1, dict(BUILT)
         self.copied = 0
 
     def facts_now(self):
-        return dict(self.built), set(self.grown), set(), {}
+        return dict(self.built), set(), {}
+
+    def top_of(self, name: str) -> int:
+        return -1 if name == LYON[1] else 0  # its file 8192 px, the others 4096
 
     def built_now(self, known: int = -1):
         if known == self.version:
-            return self.version, None, None
+            return self.version, None
         self.copied += 1
-        return self.version, dict(self.built), set(self.grown)
+        return self.version, dict(self.built)
 
 
 def test_the_map_reads_the_running_streamer(home: Path) -> None:
@@ -189,8 +192,9 @@ def test_the_map_reads_the_running_streamer(home: Path) -> None:
     view = (4.5, 45.3, 6.5, 46.5)
     got = control.built_in(*view)
     assert got["version"] == 1 and len(got["textures"]) == 4  # nothing on the disk: its memory
-    under = control.textures_at(45.74, 4.95)  # the texture grown to 8192 px, from its memory
-    assert [(t["px"], t["photos_zoom"], t["grown"]) for t in under] == [(8192, 17, True)]
+    under = control.textures_at(45.74, 4.95)  # the texture at 8192 px, from its memory
+    assert [(t["px"], t["photos_zoom"]) for t in under] == [(8192, 17)]
+    assert under[0]["bytes"] == texture_bytes(-1, -1)
     assert control.built_in(*view, known=1) == {"version": 1, "same": True}  # nothing new
     assert streamer.copied == 1  # "same" copies nothing
     streamer.built[LYON[2]], streamer.version = 0, 2  # one more built sharper
@@ -216,16 +220,16 @@ def test_the_streamer_counts_its_changes(tmp_path: Path) -> None:
         log=lambda _: None,
     )
     try:
-        version, built, grown = s.built_now()
-        assert built == {} and grown == set()
-        assert s.built_now(version) == (version, None, None)
+        version, built = s.built_now()
+        assert built == {}
+        assert s.built_now(version) == (version, None)
 
         class Done:
             def result(self):
                 return None
 
         s._finished(Done(), f"{NAMES[0]}.dds", 0)  # a texture built
-        after, built, _ = s.built_now(version)
+        after, built = s.built_now(version)
         assert after == version + 1 and built == {f"{NAMES[0]}.dds": 0}
     finally:
         s.cache.close()

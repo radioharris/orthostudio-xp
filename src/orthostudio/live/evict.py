@@ -25,16 +25,22 @@ TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction
 
 
 @cache
-def texture_bytes(level: int) -> int:
-    """Disk a texture built from ``level`` takes: its levels from that one down, whatever the size
-    of its file (a neutral clone, and the neutral larger levels, share the template's blocks)."""
+def texture_bytes(level: int, top: int = 0) -> int:
+    """Disk a texture built from ``level`` takes in a file whose sharpest level is ``top``: its
+    levels from that one down, and in an 8192 px file the copy of that level above it
+    (orthostudio.live.texture.write_sparse). The rest shares the neutral template's blocks."""
     if level >= NEUTRAL_LEVEL:
         return 0
-    return 4096 + sum(length for _, length in dds.level_layout(level))
+    copy = dds.level_layout(level - 1)[0][1] if top < level and top < 0 else 0
+    return 4096 + copy + sum(length for _, length in dds.level_layout(level))
 
 
-def usage(built: dict[str, int]) -> int:
-    return levels_usage(Counter(built.values()))
+def usage(built: dict[str, int], top_of: Callable[[str], int] | None = None) -> int:
+    """The disk of the textures built; ``top_of``: each one's file size (its sharpest level), 4096
+    px for all when not given."""
+    if top_of is None:
+        return levels_usage(Counter(built.values()))
+    return sum(texture_bytes(level, top_of(name)) for name, level in built.items())
 
 
 def levels_usage(levels: Mapping[int, int]) -> int:
@@ -47,9 +53,11 @@ def pick(
     seen: dict[str, float],
     far: Callable[[str], bool],
     budget: int,
+    top_of: Callable[[str], int] = lambda _: 0,
 ) -> list[tuple[str, int]]:
-    """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can."""
-    total = usage(built)
+    """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can;
+    ``top_of``: each texture's file size, as :func:`usage` takes it."""
+    total = usage(built, top_of)
     if total <= budget:
         return []
     target = budget * TARGET
@@ -58,7 +66,8 @@ def pick(
         (n for n, lv in built.items() if lv < 4 and far(n)), key=lambda n: seen.get(n, 0.0)
     )
     for name in sharp:
-        total -= texture_bytes(built[name]) - texture_bytes(4)
+        top = top_of(name)
+        total -= texture_bytes(built[name], top) - texture_bytes(4, top)
         out.append((name, 4))
         if total <= target:
             return out
@@ -66,7 +75,7 @@ def pick(
         (n for n, lv in built.items() if lv == 4 and far(n)), key=lambda n: seen.get(n, 0.0)
     )
     for name in small:
-        total -= texture_bytes(4)
+        total -= texture_bytes(4, top_of(name))
         out.append((name, NEUTRAL_LEVEL))
         if total <= target:
             break

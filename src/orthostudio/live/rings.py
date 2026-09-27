@@ -8,10 +8,12 @@ across, is read at level 3 (512 px) from 72 km, level 2 from 38 km, level 1 from
 (4096 px) under 12 km, the last only with texture quality at Maximum; a ZL18 texture follows the
 same law four times closer. At DSF load, 130-230 km away, X-Plane reads level 4 (256 px) only.
 
-A level is the same ground resolution whatever the file's size (level 1 is 2048 px of the texture's
-area), so the rings hold for a texture made smaller or larger by the zoom set, which only moves the
-sharpest level there is to read (:func:`file_top`). Level -1, 8192 px, is read under 6 km: the law
-carried one level on, not measured.
+X-Plane counts a file's levels from its top, whatever the file's size (an fs_usage trace in flight,
+2026-09-28): an 8192 px file read whole at 12 km, its 4096 px level from 21 km. So the rings are
+those of a 4096 px file's levels. The photos of each level are built by them, whatever the zoom set
+(:func:`file_top`): a smaller file is read later than that, which is safe, and an 8192 px one a ring
+earlier, where it finds a copy of the level below (orthostudio.live.texture). Its 8192 px level,
+read where a 4096 px file's 4096 px one is, is the streamer's own rule.
 
 The rings were measured on one image, 2704 px wide with a 65° field of view. Probe flight 2
 (``docs/findings/2026-09-27-probe-flight-2.md`` in X-StreamOrtho) found X-Plane reading each level
@@ -25,7 +27,7 @@ import math
 
 LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
 MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
-RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0, -1: 6.0}
+RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0}
 DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
 REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
 REFERENCE_FOV_DEG = 65.0
@@ -53,9 +55,10 @@ def screen_scale(width_px: float | None, fov_deg: float | None) -> float:
 def top_level_for(
     distance_km: float, zoom: int, finest: int, margin: float = DEFAULT_MARGIN
 ) -> int:
-    """The sharpest level X-Plane will read of a texture of ``zoom`` whose centre comes within
-    ``distance_km`` of the camera, never sharper than ``finest``."""
-    for level in range(max(finest, MIN_LEVEL), LOAD_LEVEL):
+    """The sharpest level whose photos a texture of ``zoom`` needs once its centre comes within
+    ``distance_km`` of the camera, never sharper than ``finest``, nor than 4096 px: an 8192 px
+    level is the streamer's own rule (the module's docstring)."""
+    for level in range(max(finest, 0), LOAD_LEVEL):
         if distance_km <= ring_km(level, zoom) * margin:
             return level
     return LOAD_LEVEL

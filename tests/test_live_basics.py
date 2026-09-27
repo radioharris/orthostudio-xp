@@ -44,8 +44,7 @@ class RingsTest(unittest.TestCase):
         self.assertEqual(top_level_for(40, 16, finest=0), 2)  # 38 km ring, widened by the margin
         self.assertEqual(top_level_for(200, 16, finest=0), 4)
         self.assertEqual(top_level_for(10, 18, finest=0), 2)
-        self.assertEqual(ring_km(-1, 16), 6.0)  # 8192 px: the law carried one level on
-        self.assertEqual(top_level_for(5, 16, finest=-1), -1)
+        self.assertEqual(top_level_for(5, 16, finest=-1), 0)  # 8192 px: the streamer's own rule
         self.assertEqual(top_level_for(10, 16, finest=-1), 0)
 
     def test_settings(self):

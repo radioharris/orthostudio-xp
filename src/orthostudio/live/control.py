@@ -40,6 +40,7 @@ from orthostudio.live.pack import (
     live_root,
     load_built,
 )
+from orthostudio.live.region import file_tops
 from orthostudio.live.scenery import (
     autoortho_mounted,
     autoortho_regions,
@@ -69,7 +70,6 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         cache_budget_gb=settings.imagery_gb,
         max_zoom=settings.max_zoom,
         max_zoom_airports=settings.max_zoom_airports,
-        start_mode=settings.start_mode,
         simbrief_user=settings.simbrief_user,
         overlays=settings.overlays,
         language=settings.language,
@@ -142,7 +142,9 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         "folder_problem": None,
-        "textures_bytes": usage(load_built(default_pack_dir()).get("textures", {})),
+        "textures_bytes": usage(
+            load_built(default_pack_dir()).get("textures", {}), file_tops(default_pack_dir())
+        ),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
         # simbrief.com unless the pilot takes it into Live's settings
         "osxp_simbrief": _osxp_simbrief(),
@@ -357,11 +359,11 @@ class LiveControl:
         streamer = self.streamer
         if streamer is None:
             return built_in(default_pack_dir(), west, south, east, north, covered=theirs)
-        version, textures, grown = streamer.built_now(known)
+        version, textures = streamer.built_now(known)
         if textures is None:
             return {"version": version, "same": True}
         if self._map_rows[0] != version:  # the rectangles of this version, once
-            self._map_rows = (version, rows_of(textures, grown or set()))
+            self._map_rows = (version, rows_of(textures))
         out = built_in(
             default_pack_dir(), west, south, east, north, rows=self._map_rows[1], covered=theirs
         )
@@ -384,13 +386,14 @@ class LiveControl:
 
         streamer = self.streamer
         if streamer is not None:
-            built, grown, patchy, seen = streamer.facts_now()
+            built, patchy, seen = streamer.facts_now()
+            top_of = streamer.top_of
         else:
             meta = record(default_pack_dir())
-            built = meta.get("textures", {})
-            grown, patchy = set(meta.get("grown", [])), set(meta.get("patchy", []))
+            built, patchy = meta.get("textures", {}), set(meta.get("patchy", []))
             seen = meta.get("seen", {})
-        return textures_at(lat, lon, built, grown, patchy, seen, time.time())
+            top_of = file_tops(default_pack_dir())
+        return textures_at(lat, lon, built, patchy, seen, time.time(), top_of)
 
     def set_language(self, language: str, *, save: Any = None) -> None:
         """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take

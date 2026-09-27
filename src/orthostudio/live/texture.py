@@ -8,6 +8,11 @@ levels from the one built down are written; the larger ones are the neutral text
 the disk, which X-Plane, reading by distance, never reaches. Level ``k`` of a texture of zoom ``z``
 is imagery at zoom ``z - k``: ``(16 >> k)²`` pieces of 256 px, 1,024 at level -1 (8192 px).
 
+An 8192 px file has one level more written: the one above the level built holds a copy of it, twice
+as wide (:func:`double_bc1`). X-Plane counts a file's levels from its top (an fs_usage trace in
+flight, 2026-09-28), so it reads each level of an 8192 px file one ring before the photos of that
+level are built: it finds that copy there, the same image, never the neutral colour.
+
 The pieces are assembled, mip-mapped in linear light and encoded to BC1 by
 ``orthostudio.live.imaging``, imported where it is used so that the layout functions here need
 nothing beyond the standard library.
@@ -90,6 +95,27 @@ def punch_hole(fd: int, start: int, end: int) -> bool:
         return False
 
 
+def double_bc1(blob: bytes, side: int) -> bytes:
+    """The BC1 blocks of a level ``side`` px wide, as a level twice as wide: each pixel four times,
+    the nearest, straight from the blocks (each block's two colours kept, its sixteen indices spread
+    over four blocks), nothing decoded or encoded. The same image, no sharper: what X-Plane would
+    show of the level itself."""
+    import numpy as np
+
+    n = side // 4
+    words = np.frombuffer(blob, dtype="<u4").reshape(n, n, 2)  # per block: colours, indices
+    shifts = (2 * np.arange(16, dtype=np.uint32)).reshape(4, 4)  # pixel (x, y): bits 2(4y + x)
+    grid = (words[..., 1, None, None] >> shifts) & 3  # each block's indices, 4 x 4
+    out = np.empty((n, 2, n, 2, 2), dtype="<u4")  # block row, its half, block column, its half
+    out[..., 0] = words[:, None, :, None, 0]
+    for qy in (0, 1):
+        for qx in (0, 1):
+            quarter = grid[:, :, 2 * qy : 2 * qy + 2, 2 * qx : 2 * qx + 2]
+            spread = quarter.repeat(2, axis=2).repeat(2, axis=3)
+            out[:, qy, :, qx, 1] = (spread << shifts).sum(axis=(2, 3), dtype=np.uint32)
+    return out.reshape(2 * n, 2 * n, 2).tobytes()
+
+
 def write_sparse(
     path: Path,
     top_level: int,
@@ -103,9 +129,13 @@ def write_sparse(
     ``base`` (the region's neutral texture of that size, complete at every level), the file starts
     as a clone of it and only the levels given are written: the larger ones stay the base's, shared
     on the disk at no cost, so a level read sharper than it was built shows the neutral colour,
-    never black. Without, they are a hole of a sparse file, which reads as zeros.
+    never black. Without, they are a hole of a sparse file, which reads as zeros. In an 8192 px
+    file, the level above ``top_level`` is written too, as its copy (the module's docstring).
     """
     layout = dds.level_layout(file_top)
+    if file_top < 0 and top_level > file_top and levels:
+        levels = [double_bc1(levels[0], dds.size_of(top_level)), *levels]
+        top_level -= 1
     first = top_level - file_top
     if first < 0 or len(levels) != len(layout) - first:
         raise ValueError(f"{len(levels)} levels given for level {top_level} of a top {file_top}")
@@ -150,26 +180,17 @@ def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
     return levels
 
 
-def downgrade(
-    path: Path, level: int, neutral: Path, file_top: int = 0, to_top: int | None = None
-) -> None:
+def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
     """Make a built texture coarser in place of downloading: keep its levels from ``level`` down
-    (they are in the file already) over a clone of the neutral texture of its size; past level 4,
-    the neutral clone. ``to_top``: the file's size after, when it changes (a texture grown to 8192
-    px back to 4096), ``neutral`` then of that size."""
+    (they are in the file already) over a clone of the neutral texture of its size, the file's
+    size unchanged; past level 4, the neutral clone."""
     if level > 4:
         from .clone import replace_with_clone
 
         replace_with_clone(str(neutral), str(path))
         return
     levels = _levels_from(path, level, file_top)
-    write_sparse(
-        path,
-        level,
-        levels,
-        base=neutral if neutral.exists() else None,
-        file_top=file_top if to_top is None else to_top,
-    )
+    write_sparse(path, level, levels, base=neutral if neutral.exists() else None, file_top=file_top)
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:

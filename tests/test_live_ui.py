@@ -86,17 +86,15 @@ def test_one_disk_space_shared_and_the_two_of_before(home: Path) -> None:
     assert written["disk_gb"] == 60 and "disk_budget_gb" not in written
 
 
-def test_what_a_start_waits_for(home: Path) -> None:
-    """The start mode: normal, and 8192 px around the aircraft, unless the user chose otherwise."""
-    assert LiveSettings().start_mode == "around"
-    save_settings(LiveSettings(start_mode="normal"))
-    assert load_settings().start_mode == "normal"
-    # "reload", a choice gone (X-Plane's reload does not read its textures again): read as normal
-    settings_file().write_text('[stream]\nstart_mode = "reload"\n')
-    assert load_settings().start_mode == "normal"
-    settings_file().write_text('[stream]\nstart_mode = "fastest"\nmax_zoom = 17\n')
-    assert load_settings().start_mode == "around"  # not a mode: the default, the rest kept
-    assert load_settings().max_zoom == 17
+def test_the_start_choice_gone(home: Path) -> None:
+    """The start modes went once every file had its size from the start: X-Plane waits for the
+    8192 px around the aircraft at every start. A file's start mode is left out, the rest kept,
+    and it is gone from the file once saved."""
+    settings_file().write_text('[stream]\nstart_mode = "normal"\nmax_zoom = 17\n')
+    settings = load_settings()
+    assert settings.max_zoom == 17 and "start_mode" not in settings.model_dump()
+    save_settings(settings)
+    assert "start_mode" not in tomllib.loads(settings_file().read_text())["stream"]
 
 
 def test_an_unknown_source_is_bing(home: Path) -> None:
@@ -283,7 +281,7 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert stream.options is not None
     assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
     assert stream.options.cache_budget_gb == 33
-    assert stream.options.start_mode == "around"
+    assert stream.options.camera_reach_km == 20.0  # sharp that much farther for external views
     c.stop()
     assert c.wait_idle(5)
     assert stream.finished == [Path("/X-Plane 12")]  # the pack comes out
@@ -545,8 +543,6 @@ def test_the_page_says_everything_in_both_languages() -> None:
     used = set(re.findall(r'\bt\("([\w.]+)"', js))
     used |= set(re.findall(r'data-i18n(?:-title|-placeholder|-aria-label)?="([\w.]+)"', html))
     used |= {f"flight.data_{d}" for d in ("none", "fresh", "stale")}  # t(`flight.data_${...}`)
-    modes = ("full", "around", "normal")
-    used |= {f"start.{m}" for m in modes} | {f"start.{m}_note" for m in modes}
     assert used, "no key found"
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
 

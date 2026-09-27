@@ -255,7 +255,7 @@ function drawBuild(status) {
     [t("build.queued"), queued && `${queued} (${t("build.urgent", { n: number(s.urgent) })})`],
     [t("build.building"), building],
     [t("build.built"), byLevel(s.built, s.first_level)],
-    ...(s.grown ? [[t("build.grown"), number(s.grown)]] : []),
+    ...(s.at_8192 ? [[t("build.at_8192"), number(s.at_8192)]] : []),
     [t("build.downloaded"), downloaded],
     [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
     [t("build.disk"), t("build.disk_value", { used: gb(space.total), budget: number(budget / 1e9) })],
@@ -589,53 +589,13 @@ function renderZooms() {
   }
 }
 
-/** What X-Plane waits for at a start, as OrthoStudio XP's own choices: the label, then a note. */
-const START_MODES = ["full", "around", "normal"];
-const START_RECOMMENDED = "around";
-
-function renderStartModes() {
-  const box = $("start-choices");
-  const current = box.querySelector("input:checked")?.value || saved?.start_mode || START_RECOMMENDED;
-  box.replaceChildren(...START_MODES.map((mode) => {
-    const input = document.createElement("input");
-    input.type = "radio";
-    input.name = "start_mode";
-    input.value = mode;
-    input.checked = mode === current;
-    const label = document.createElement("span");
-    label.className = "choice-label";
-    label.textContent = t(`start.${mode}`);
-    if (mode === START_RECOMMENDED) {
-      const tag = document.createElement("span");
-      tag.className = "choice-tag";
-      tag.textContent = t("settings.recommended");
-      label.append(tag);
-    }
-    const note = document.createElement("span");
-    note.className = "choice-note";
-    note.textContent = t(`start.${mode}_note`);
-    const text = document.createElement("span");
-    text.className = "choice-text";
-    text.append(label, note);
-    const choice = document.createElement("label");
-    choice.className = "choice";
-    choice.append(input, text);
-    return choice;
-  }));
-  drawStartChoices();
-}
-
-/** Without a zoom above the package's, no texture is 8192 px and the four would start the same:
- * one line says what a start does instead (a user found the four, then a warning, confusing). */
-function drawStartChoices() {
+/** What a start does: with a zoom above the package's, the 8192 px around the aircraft too, and
+ * the pink test of them. Nothing to choose: every file has its size from the start. */
+function drawStart() {
   const sharp = Number($("set-max-zoom").value) > ZOOMS.max_zoom[0]
     || Number($("set-max-zoom-airports").value) > ZOOMS.max_zoom_airports[0];
   $("start-options").hidden = !sharp;
   $("start-plain").hidden = sharp;
-}
-
-function startMode() {
-  return $("start-choices").querySelector("input:checked")?.value || saved?.start_mode || START_RECOMMENDED;
 }
 
 function fillSettings(settings) {
@@ -652,10 +612,7 @@ function fillSettings(settings) {
     input.checked = input.value === (settings.overlays || "auto");
   }
   drawSimbrief();
-  for (const input of $("start-choices").querySelectorAll("input")) {
-    input.checked = input.value === settings.start_mode;
-  }
-  drawStartChoices();
+  drawStart();
   if (providers.length) renderProviders(settings.provider);
 }
 
@@ -668,7 +625,6 @@ function formSettings() {
     disk_gb: Number($("set-disk").value),
     tint_8192: $("set-tint").checked,
     folder: $("set-folder").value.trim(),
-    start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
@@ -1021,7 +977,7 @@ function boot() {
   $("lang-select").value = language();
   applyStatic(document);
   renderZooms();
-  renderStartModes();
+  drawStart();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     osxpWords?.setLanguage(language());
@@ -1029,7 +985,6 @@ function boot() {
     liveMap?.languageChanged();
     applyStatic(document);
     renderZooms();
-    renderStartModes();
     renderProviders($("set-provider").value);
     drawSearch();
     if (!$("source-saved").hidden) $("source-saved").textContent = t("source.saved");
@@ -1039,8 +994,8 @@ function boot() {
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));
-  $("set-max-zoom").addEventListener("change", drawStartChoices);
-  $("set-max-zoom-airports").addEventListener("change", drawStartChoices);
+  $("set-max-zoom").addEventListener("change", drawStart);
+  $("set-max-zoom-airports").addEventListener("change", drawStart);
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));

@@ -126,59 +126,54 @@ Global Forests needs nothing: it hides the forests of every pack below it, Live'
 keeps their roads and buildings. The setting "Never" leaves the overlays out altogether.
 
 There is no setting for the texture quality or for how far outside views reach: Live reads the
-texture quality X-Plane is set to, and builds sharp 25 km beyond the aircraft for outside views.
-Less, and X-Plane would show the neutral colour, green-grey, up close or around a distant camera.
+texture quality X-Plane is set to, and builds sharp 20 km beyond the aircraft for outside views
+(25 km until 2026-09-28). Less, and X-Plane could show the neutral colour, green-grey, around a
+distant camera.
 
 The zoom is set as in AutoOrtho: a maximum zoom (14 to 17, 16 by default) and a zoom near airports
 (16 to 19, 18 by default, for the package's ZL18 textures, which are its airports' surroundings).
 X-Plane picks by itself, by distance, which version of a texture it shows; the zoom sets the
 sharpest version there is, the one seen up close. Below the package's zoom a texture is smaller
 (1024 px at ZL14): less sharp near the ground, far less to download, shorter waits at a start. One
-zoom above, a texture starts at 4096 px and grows to 8192 px where X-Plane will show it that sharp:
-sharper near the ground, four times more to download for those textures. A higher zoom is sharper
-near the ground only (within about 6 km at ZL17, 1.5 km at ZL19); a lower one is blurrier within
-38 km, the ground under the aircraft at cruise too. A new zoom applies at the next
-start of Live, X-Plane closed: Live puts every texture at its new size, about a minute, keeping
-what it built and downloading nothing.
+zoom above, a texture is 8192 px: sharper near the ground only, around you. A lower zoom is blurrier
+within 38 km, the ground under the aircraft at cruise too. A new zoom applies at the next start of
+Live, X-Plane closed: Live puts every texture at its new size, about two minutes for a whole
+region, keeping what it built and downloading nothing.
 
-When a flight starts, with ZL17 or ZL19, a setting says what X-Plane waits for on its loading
-screen:
+How the 8192 px work, with ZL17 or ZL19. Each texture is a file holding the same photo at several
+sizes, stacked like floors: 8192, 4096, 2048, 1024 px and so on. Its label, at the top, says the
+size of the largest floor. X-Plane reads the label when it loads the area, about 200 km away, and
+keeps it: a label changed afterwards is often not read. Until 2026-09-28 Live made its textures
+4096 px and changed them to 8192 px ahead of the aircraft, and X-Plane showed their 8192 px only
+now and then. So every file's label says 8192 px from the start, and never changes.
 
-- **Full resolution**: 8192 px from the start, up to about 30 km around (for external views). The
-  longest wait: about two and a half times Normal's (at Lyon, 141,000 pieces of imagery against
-  54,000).
-- **8192 px around the aircraft** (recommended): 8192 px from the start within 12 km. Beyond, it is
-  live. About 40 to 50 % longer than Normal (74,000 pieces at Lyon).
-- **Normal resolution**: 4096 px once and for all within 12 km. Beyond, it is live. The shortest
-  wait.
+Coming nearer, X-Plane reads the floors counting from the top: the fifth at load, the fourth at
+72 km, the third at 38 km, the second at 21 km, the top one at 12 km. Live puts the photos in each
+floor at the same distances as for a 4096 px file, so nothing more is downloaded there. With an
+8192 px label X-Plane reads each floor a ring earlier, and finds there the photos of the floor
+below, copied at its size: the same image, which the screen could not show sharper at that
+distance anyway. The top floor gets its own photos, one zoom above the package's, within 15 km of
+the aircraft, of its path ahead and of the camera, in every direction, before X-Plane reads it at
+12 km: a turn or a go-around needs nothing guessed. High up there are fewer, since X-Plane measures
+in three dimensions. Where the camera goes farther (external views), the top floor holds the copy
+of the 4096 px floor: the ortho as with ZL16, never blank. For an airport's textures, the 12 and
+15 km are 3 and 3.75 km.
 
-A fourth choice, "Normal, then reload in 8192 px" (as XPME's "load in normal resolution, then
-high"), went on 2026-09-27: the pink test below showed that X-Plane's reload of the scenery, which
-is also what its SDK offers (`XPLMReloadScenery`), does not read again the textures it holds.
+When a flight starts, X-Plane waits on its loading screen for the textures around the aircraft,
+and with ZL17 or ZL19 for their 8192 px within 15 km. Nothing to choose: the three start choices
+of before (full, 8192 px around the aircraft, normal) went with the textures that grew.
 
-Live: the textures ahead of the aircraft become 8192 px before you come near them. High up, Live
-makes none: from there X-Plane would never show them (above about 25,000 ft above the ground away
-from airports, 6,000 ft around them).
-
-Once and for all: X-Plane keeps the size of a texture it has read, and reads it again only to take
-a larger one, so what it has read in full at 4096 px while the flight loads stays 4096 px, even if
-its file becomes 8192 px afterwards, like a picture on a web page you do not reload. That lasts
-until a new flight, or until you are more than about 200 km away (a reload of the scenery keeps
-it), where
-X-Plane unloads the area (coming back, it reads it again, and by then it is live). For the
-airport's own textures, the 12 km are 3 km.
-
-With the package's zooms, 16 and 18, no texture is 8192 px: the three would start the same, so the
-window shows one line in their place, which says what a start does and that the choices come with
-ZL17 or ZL19.
+What that downloads, estimated on the real textures around Lyon, flying at 250 kt (about 20 KB a
+piece of imagery): with ZL16 and 18, about 1 GB at the start and 7 GB an hour; with ZL17 and 19,
+about 1.4 GB at the start and 13 GB an hour.
 
 The eye hardly tells ZL17 from ZL16, so a test shows where X-Plane really shows the 8192 px: with
 "Test: show the 8192 px textures in pink" ticked (or `--tint-8192`), Live builds the 8192 px level
-of every texture washed with pink, the 4096 px and smaller levels as they are. Where the ground
-turns pink, X-Plane shows the 8192 px: around the aircraft from the start with "Full resolution"
-and "8192 px around the aircraft", and ahead of it in flight. It showed that X-Plane shows the
-8192 px of the files it loads, and that its reload of the scenery does not read again the textures
-it holds. Live's tab says the test is on. After it, untick the box and delete the textures (the photos kept): they are built
+of every texture washed with pink, the copies and the 4096 px and smaller levels as they are.
+Where the ground turns pink, X-Plane shows the 8192 px: around the aircraft from the start, and
+within 15 km of it in flight. It showed that X-Plane shows the 8192 px of the files it loads, and
+that its reload of the scenery does not read again the textures it holds. Live's tab says the
+test is on. After it, untick the box and delete the textures (the photos kept): they are built
 again normally, with nothing to download.
 
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
@@ -266,10 +261,11 @@ picks the new file up by itself the next time it wants that texture sharper.
 
 External views need more than that. With Shift+4 the camera can go kilometres away in a second,
 much faster than anything downloads. X-Plane reads whatever is in the files there at once, and it
-does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 25 km
+does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 20 km
 farther around the aircraft than the aircraft alone needs (`--camera-reach-km`), and an external
 view shows the right imagery as soon as you switch to it, as with AutoOrtho. A camera taken farther
-than that may find a placeholder, which X-Plane keeps until it loads that area again.
+than that may find a placeholder, which X-Plane keeps until it loads that area again; the 8192 px
+level needs no reach, since its copy of the 4096 px one is always there.
 
 X-Plane decides how sharp a texture must be from its distance, in rings. For a normal texture
 (about 7 km across):
@@ -302,7 +298,7 @@ OrthoStudio XP Live has no wait to manage, and X-Plane itself says how sharp it 
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | Optional caps (`--max-zoom`, `--max-zoom-airports`) to save bandwidth. By default, as sharp as X-Plane will display, where it will display it. |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and OrthoStudio XP Live follows it. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 25 km more for external views. |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 20 km more for external views. |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. A texture that comes late is shown at the sharpness X-Plane already has and gets sharper at the next ring. |
 | Cache sizes, workers, pipelines | Internal. |
 
@@ -339,7 +335,7 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
 
 - Setting up a region: about 3 minutes, once.
 - A new area: 30,000 to 50,000 image pieces before the first flight there, with the 25 km for
-  external views. That is one to two minutes, and a few seconds for later flights. Without the
+  external views of then (20 km since 2026-09-28). That is one to two minutes, and a few seconds for later flights. Without the
   external views (`--camera-reach-km 0`), it is 11,000 pieces around Marseille, about 40 seconds.
 - Download: from Marseille to past Mont Ventoux at FL240, texture quality Maximum, about 80,000
   image pieces (1.4 GB). Downloads run at about 450 pieces a second.
@@ -363,11 +359,11 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
   plugin), Live asks it to reload the scenery once they are. The pink test showed that the reload
   does not read again the textures X-Plane holds: what that reload still brings is to check.
 
-- The 25 km for external views is always kept, cockpit or not. The plugin could tell which view is
-  in use and widen it only when needed, to download less at cruise.
+- The 20 km for external views are always kept, cockpit or not. The plugin could tell which view
+  is in use and widen it only when needed, to download less at cruise.
 
-- Distances are measured along the ground, but for the 8192 px textures: counting the altitude
-  at every level would download little less at cruise, where most is for external views (25 km
+- Distances are measured along the ground, but for the 8192 px level: counting the altitude
+  at every level would download little less at cruise, where most is for external views (20 km
   around), which a shorter reach at cruise would save. To set it on how pilots really fly, Live
   notes how far and how low external views take the camera, at cruise and below, says it in its
   log when it stops, and keeps the last 20 flights in `pack/_live/camera.json`.

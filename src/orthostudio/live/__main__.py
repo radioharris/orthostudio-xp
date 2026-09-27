@@ -138,14 +138,6 @@ def stream(
             "aircraft is on it; only this name goes to simbrief.com (default: the window's)"
         ),
     ] = None,
-    start_mode: Annotated[
-        str | None,
-        typer.Option(
-            help="what X-Plane waits for at a start where the zoom makes 8192 px textures: full "
-            "(all of them), around (those right around the aircraft), normal (4096 px only) "
-            "(default: around)"
-        ),
-    ] = None,
     margin: Annotated[
         float, typer.Option(help="build for rings this much wider than measured")
     ] = 1.25,
@@ -155,7 +147,7 @@ def stream(
             help="how far external views may take the camera: built sharp that much farther "
             "(less shows the neutral colour, green-grey, to a camera that goes farther)"
         ),
-    ] = 25.0,
+    ] = session.Options.camera_reach_km,
     workers: Annotated[int, typer.Option(help="encoding processes")] = session.default_workers(),
     port: Annotated[int, typer.Option(help="X-Plane's UDP port")] = 49000,
     source: Annotated[
@@ -198,7 +190,6 @@ def stream(
 
     The options left out are the Live window's settings."""
     from orthostudio.live.settings import LiveSettings, load_settings
-    from orthostudio.live.streamer import START_MODES
 
     saved = load_settings()
     space = saved
@@ -207,8 +198,6 @@ def stream(
             space = LiveSettings.model_validate({**saved.model_dump(), "disk_gb": disk_gb})
         except ValueError as e:
             raise typer.Exit(_fail(f"--disk-gb: {e}")) from e
-    if start_mode is not None and start_mode not in START_MODES:
-        raise typer.Exit(_fail(f"--start-mode: one of {', '.join(START_MODES)}"))
     options = session.Options(
         xplane=xplane,
         pack=pack,
@@ -219,7 +208,6 @@ def stream(
         max_zoom_airports=(
             saved.max_zoom_airports if max_zoom_airports is None else max_zoom_airports
         ),
-        start_mode=start_mode or saved.start_mode,
         simbrief_user=saved.simbrief_user if simbrief is None else simbrief,
         margin=margin,
         camera_reach_km=camera_reach_km,

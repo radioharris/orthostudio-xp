@@ -2,13 +2,14 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Where external views take the camera, flight after flight: what the camera's reach should be.
 
-Every ring is widened by the camera's reach, 25 km, so that an external view zoomed far out never
-finds a texture unbuilt. At cruise that is three quarters of what Live downloads (about 14 GB an
-hour at FL350 and 450 kt, 2026-09-27), and a pilot who flies external views at cruise could not
-say how far or how low the camera goes. So Live notes it, as the probe flights did: in the views
-where the camera leaves the aircraft, how far from it and how low above the ground it goes, at
-cruise (the aircraft above HIGH_M above the ground) and below. It says so in its log when it
-stops, and keeps the last flights in ``_live/camera.json``, for the reach to be set on them.
+Every ring is widened by the camera's reach, 20 km (25 km until 2026-09-28), so that an external
+view zoomed far out never finds a texture unbuilt. At cruise, with 25 km, that was three quarters
+of what Live downloaded (about 14 GB an hour at FL350 and 450 kt, 2026-09-27), and a pilot who
+flies external views at cruise could not say how far or how low the camera goes. So Live notes
+it, as the probe flights did: in the views where the camera leaves the aircraft, how far from it
+and how low above the ground it goes, at cruise (the aircraft above HIGH_M above the ground) and
+below. It says so in its log when it stops, and keeps the last flights in ``_live/camera.json``,
+for the reach to be set on them.
 """
 
 from __future__ import annotations

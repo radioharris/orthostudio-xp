@@ -3,8 +3,8 @@
 """What the Live window's map draws over the base map: the textures built, by sharpness; the
 regions installed; a route's points.
 
-The textures built are the pack's record (``_live/ortho.json``: each texture's level, and those
-grown to 8192 px), read again only when the streamer has saved it since. Over a small view the map
+The textures built are the pack's record (``_live/ortho.json``: each texture's level), read again
+only when the streamer has saved it since. Over a small view the map
 gets each texture's rectangle. Over a wide one, more than :data:`DETAIL_DEG` a side, it gets one
 entry per one-degree square instead: how many textures are built there and the sharpest. Tens of
 thousands of rectangles would be too many for the page.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 import threading
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import Any
 
@@ -47,17 +47,17 @@ def _rectangle(name: str) -> tuple[float, float, float, float, int] | None:
     return got
 
 
-def rows_of(textures: dict[str, int], grown: set[str]) -> list[Row]:
+def rows_of(textures: dict[str, int]) -> list[Row]:
     """Every texture built: its rectangle and the zoom of its photos, which says how sharp it is
     on the ground whatever its size (an airport's ZL18 texture at 4096 px has photos of ZL18, a
-    ZL16 one grown to 8192 px photos of ZL17: the first is the sharper, with fewer pixels)."""
+    ZL16 one at 8192 px photos of ZL17: the first is the sharper, with fewer pixels)."""
     rows = []
     for name, level in textures.items():
         box = _rectangle(name)
         if box is None or not isinstance(level, int) or level > 4:
             continue
         south, west, north, east, zoom = box
-        rows.append((south, west, north, east, zoom - (-1 if name in grown else level), name))
+        rows.append((south, west, north, east, zoom - level, name))
     return rows
 
 
@@ -73,7 +73,7 @@ def _built(pack: Path) -> list[Row]:
         if hit is not None and hit[0] == mtime:
             return hit[1]
     meta = load_built(pack)
-    rows = rows_of(meta.get("textures", {}), set(meta.get("grown", [])))
+    rows = rows_of(meta.get("textures", {}))
     with _lock:
         _cache[pack] = (mtime, rows)
     return rows
@@ -148,7 +148,7 @@ def built_in(
 
 
 def record(pack: Path) -> dict[str, Any]:
-    """The pack's record: what was built, grown, left patchy, and when each was last in reach."""
+    """The pack's record: what was built, left patchy, and when each was last in reach."""
     return load_built(pack)
 
 
@@ -156,15 +156,16 @@ def textures_at(
     lat: float,
     lon: float,
     textures: dict[str, int],
-    grown: set[str],
     patchy: set[str],
     seen: dict[str, float],
     now: float,
+    top_of: Callable[[str], int] = lambda _: 0,
 ) -> list[dict[str, Any]]:
     """The textures built under (lat, lon), the smallest first (an airport's ZL18 over the
     ZL16 around it), each as the map's tooltip tells it: its zoom and source, the size built and
-    the zoom of the photos that makes, the disk it takes, its ground, when it was last in reach,
-    and whether it waits to be built again for pieces that did not come."""
+    the zoom of the photos that makes, the disk it takes (``top_of``: its file's size), its
+    ground, when it was last in reach, and whether it waits to be built again for pieces that did
+    not come."""
     from .evict import texture_bytes
     from .geo import haversine_m
 
@@ -177,7 +178,6 @@ def textures_at(
         if not (south <= lat < north and west <= lon < east):
             continue
         tex = parse_texture_name(name)
-        level = -1 if name in grown else level
         width = haversine_m((south + north) / 2, west, (south + north) / 2, east) / 1000
         height = haversine_m(south, west, north, west) / 1000
         found.append(
@@ -187,9 +187,8 @@ def textures_at(
                 "provider": tex.provider,
                 "px": 8192 if level < 0 else 4096 >> level,
                 "photos_zoom": tex.zoom - level,
-                "grown": level < 0,
                 "patchy": name in patchy,
-                "bytes": texture_bytes(level),
+                "bytes": texture_bytes(level, top_of(name)),
                 "km": [round(width, 2), round(height, 2)],
                 "seen_s": round(now - seen[name]) if name in seen else None,
                 "area": width * height,

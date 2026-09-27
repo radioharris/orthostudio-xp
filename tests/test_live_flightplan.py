@@ -86,8 +86,9 @@ def test_asking_simbrief(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_route_after_a_turn_is_prepared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Heading north, a straight line misses the row of textures east of the turn; the plan
-    reaches it, and its textures grow to 8192 px before X-Plane reads them."""
+    """Heading north, a straight line misses the row of textures east of the turn: only those
+    around the aircraft get their 8192 px. The plan reaches the row, and every texture along it
+    gets its 8192 px before X-Plane reads it."""
     pack = tmp_path / "pack"
     setup_region(make_source(tmp_path, textures=ROW), pack, log=lambda _: None, zooms=Zooms(17, 18))
     s = Streamer(
@@ -98,7 +99,6 @@ def test_the_route_after_a_turn_is_prepared(
         max_zoom=17,
         reach_km=0.0,
         log=lambda _: None,
-        start_mode="normal",
         simbrief_user="radioharris",
     )
     fix = Fix(*center(0), gs_ms=200.0, trk_deg=0.0)
@@ -106,7 +106,7 @@ def test_the_route_after_a_turn_is_prepared(
     def sharp(jobs: dict) -> list[int]:
         return [k for k, name in enumerate(ROW) if jobs.get(f"{name}.dds", (0, 0))[1] == -1]
 
-    assert sharp(s.plan(fix, x_plane_there=False)) == []  # north: the row is behind the turn
+    assert sharp(s.plan(fix, x_plane_there=False)) == [0, 1, 2]  # north: within 15 km only
     monkeypatch.setattr(flightplan, "last_plan", lambda user: (north_then_east(), ""))
     monkeypatch.setattr("orthostudio.live.streamer.last_plan", lambda user: (north_then_east(), ""))
     s.refresh_flight_plan()
@@ -115,7 +115,7 @@ def test_the_route_after_a_turn_is_prepared(
         time.sleep(0.02)
     jobs = s.plan(fix, x_plane_there=False)
     assert s.on_route
-    assert sharp(jobs) == list(range(2, 12))  # past 12 km, along the route east
+    assert sharp(jobs) == list(range(12))  # along the route east, 5 km from it
     plan = s.snapshot()["flight_plan"]
     assert (plan["name"], plan["following"]) == ("LFXX-LFYY", True)
     first = north_then_east().points[0]
