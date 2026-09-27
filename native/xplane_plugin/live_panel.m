@@ -13,6 +13,10 @@
  * server. The progress bar is two plain layers, sized without animation. NSProgressIndicator
  * stayed empty: it needs the run loop to draw a new value. Outside an application (the tests'
  * stand-in for X-Plane), NSApp is nil and nothing is shown.
+ *
+ * In flight, a second panel offers the reload of the scenery once the 8192 px textures around the
+ * aircraft are built (the "reload" start mode): X-Plane runs then, so its buttons work as any. They
+ * take a click at once, and the panel never takes the keyboard from X-Plane.
  */
 
 #import <Cocoa/Cocoa.h>
@@ -93,6 +97,99 @@ void live_panel_show(const char *what, const char *progress, double fraction) {
         [CATransaction commit];
         [panel display];
         [CATransaction flush];
+    }
+}
+
+/* --- the reload offered ------------------------------------------------------------------------ */
+
+static NSPanel *offer_panel;
+static int offer_click; /* 1: reload, 2: not now */
+
+void live_offer_press(int which) { offer_click = which; } /* the buttons; the tests call it too */
+
+int live_offer_clicked(void) {
+    int c = offer_click;
+    offer_click = 0;
+    return c;
+}
+
+@interface LiveOfferTarget : NSObject
+@end
+@implementation LiveOfferTarget
+- (void)reload:(id)sender {
+    live_offer_press(1);
+}
+- (void)later:(id)sender {
+    live_offer_press(2);
+}
+@end
+
+/* A click goes through at once, though the panel is not the key window: X-Plane keeps the keyboard. */
+@interface LiveFirstClickButton : NSButton
+@end
+@implementation LiveFirstClickButton
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    return YES;
+}
+@end
+
+static LiveOfferTarget *offer_target;
+
+static NSButton *offer_button(NSString *title, SEL action, NSRect frame) {
+    LiveFirstClickButton *b = [[LiveFirstClickButton alloc] initWithFrame:frame];
+    b.title = title;
+    b.bezelStyle = NSBezelStyleRounded;
+    b.target = offer_target;
+    b.action = action;
+    return b;
+}
+
+void live_offer_show(void) {
+    if (NSApp == nil || offer_panel != nil) return;
+    @autoreleasepool {
+        NSWindow *xp = xplane_window();
+        NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
+        NSRect r = NSMakeRect(NSMidX(around) - 300, NSMaxY(around) - 130, 600, 96);
+        offer_panel = [[NSPanel alloc] initWithContentRect:r
+                                                 styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+                                                   backing:NSBackingStoreBuffered
+                                                     defer:NO];
+        offer_panel.level = MAX(NSStatusWindowLevel, (xp ? xp.level : 0) + 1);
+        offer_panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+        offer_panel.opaque = NO;
+        offer_panel.backgroundColor = [NSColor clearColor];
+        offer_panel.hasShadow = YES;
+        offer_panel.releasedWhenClosed = NO;
+        offer_panel.becomesKeyOnlyIfNeeded = YES;
+
+        NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, r.size.width, r.size.height)];
+        box.wantsLayer = YES;
+        box.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:0.92].CGColor;
+        box.layer.cornerRadius = 12;
+        offer_panel.contentView = box;
+
+        NSTextField *title = label(NSMakeRect(20, 70, 560, 18), 12, [NSColor colorWithCalibratedWhite:0.6 alpha:1]);
+        title.stringValue = @"OrthoStudio XP Live";
+        NSTextField *headline = label(NSMakeRect(20, 46, 560, 22), 15, [NSColor whiteColor]);
+        headline.stringValue = @"The 8192 px textures around the aircraft are ready";
+        NSTextField *detail = label(NSMakeRect(20, 14, 330, 18), 12, [NSColor colorWithCalibratedWhite:0.8 alpha:1]);
+        detail.alignment = NSTextAlignmentLeft;
+        detail.stringValue = @"Reloading takes X-Plane a few seconds.";
+        offer_target = [LiveOfferTarget new];
+        NSButton *later = offer_button(@"Not now", @selector(later:), NSMakeRect(356, 8, 90, 30));
+        NSButton *reload = offer_button(@"Reload the scenery", @selector(reload:), NSMakeRect(446, 8, 140, 30));
+        reload.keyEquivalent = @"";
+        for (NSView *v in @[ title, headline, detail, later, reload ]) [box addSubview:v];
+        [offer_panel orderFrontRegardless];
+    }
+}
+
+void live_offer_hide(void) {
+    if (offer_panel == nil) return;
+    @autoreleasepool {
+        [offer_panel orderOut:nil];
+        offer_panel = nil;
+        offer_target = nil;
     }
 }
 

@@ -143,17 +143,26 @@ def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
     return levels
 
 
-def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
+def downgrade(
+    path: Path, level: int, neutral: Path, file_top: int = 0, to_top: int | None = None
+) -> None:
     """Make a built texture coarser in place of downloading: keep its levels from ``level`` down
     (they are in the file already) over a clone of the neutral texture of its size; past level 4,
-    the neutral clone."""
+    the neutral clone. ``to_top``: the file's size after, when it changes (a texture grown to 8192
+    px back to 4096), ``neutral`` then of that size."""
     if level > 4:
         from .clone import replace_with_clone
 
         replace_with_clone(str(neutral), str(path))
         return
     levels = _levels_from(path, level, file_top)
-    write_sparse(path, level, levels, base=neutral if neutral.exists() else None, file_top=file_top)
+    write_sparse(
+        path,
+        level,
+        levels,
+        base=neutral if neutral.exists() else None,
+        file_top=file_top if to_top is None else to_top,
+    )
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:

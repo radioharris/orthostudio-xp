@@ -65,6 +65,7 @@ class Options:
     quality: str = "auto"  # X-Plane's texture quality: auto (from its preferences), maximum, high
     max_zoom: int = 16
     max_zoom_airports: int = 18
+    start_mode: str = "around"  # what X-Plane waits for at a start: streamer.START_MODES
     margin: float = 1.25
     camera_reach_km: float = 25.0
     workers: int = field(default_factory=default_workers)
@@ -155,7 +156,14 @@ def prepare(options: Options, log: Log) -> Prepared:
     Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
     from orthostudio.live import plugin
     from orthostudio.live.gate import Gate
-    from orthostudio.live.region import Zooms, needs_relayout, relayout, setup_region
+    from orthostudio.live.region import (
+        LAYOUT_GROWING,
+        Zooms,
+        needs_relayout,
+        region_layout,
+        relayout,
+        setup_region,
+    )
     from orthostudio.live.route import Route, airport_positions, apt_dat
     from orthostudio.live.streamer import Fix
 
@@ -193,8 +201,8 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
     setup_region(source, pack_dir, log=log, zooms=zooms)
-    if needs_relayout(pack_dir, zooms):  # another zoom: each texture at its new size
-        if xplane_running():
+    if region_layout(pack_dir) != (zooms, LAYOUT_GROWING):  # each texture at its new size
+        if xplane_running() and needs_relayout(pack_dir, zooms):
             raise RefusedError(
                 "the zoom changed and X-Plane is running: it keeps a texture at the size it first "
                 "read. Quit X-Plane, then start again"
@@ -236,9 +244,11 @@ def follow(
     should_stop: Callable[[], bool] = lambda: False,
     report: Callable[[dict], None] | None = None,
     stop_hint: str = "Ctrl-C here to stop",
+    reload_asked: Callable[[], bool] = lambda: False,
 ) -> None:
     """Follow X-Plane and keep the textures ahead of the aircraft built, until ``should_stop``
-    (or Ctrl-C). The pack stays installed: :func:`finish` takes it out."""
+    (or Ctrl-C). The pack stays installed: :func:`finish` takes it out. ``reload_asked``: the Live
+    window's button, for the reload offered after a start (``start_mode`` "reload")."""
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
     from orthostudio.live.providers import cache_key
@@ -267,6 +277,7 @@ def follow(
                     cache_budget=int(options.cache_budget_gb * 1e9),
                     reach_km=options.camera_reach_km,
                     log=log,
+                    start_mode=options.start_mode,
                 )
                 log(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "
@@ -282,6 +293,7 @@ def follow(
                     guess_last=not options.fresh,
                     log=log,
                     report=report,
+                    reload_asked=reload_asked,
                 )
             finally:
                 cache.close()

@@ -130,6 +130,15 @@ def stream(
             "(default 18)"
         ),
     ] = None,
+    start_mode: Annotated[
+        str | None,
+        typer.Option(
+            help="what X-Plane waits for at a start where the zoom makes 8192 px textures: full "
+            "(all of them), around (those right around the aircraft), normal (4096 px only), "
+            "reload (4096 px, then a reload of the scenery offered once 8192 px is built) "
+            "(default: around)"
+        ),
+    ] = None,
     margin: Annotated[
         float, typer.Option(help="build for rings this much wider than measured")
     ] = 1.25,
@@ -179,8 +188,11 @@ def stream(
 
     The options left out are the Live window's settings."""
     from orthostudio.live.settings import load_settings
+    from orthostudio.live.streamer import START_MODES
 
     saved = load_settings()
+    if start_mode is not None and start_mode not in START_MODES:
+        raise typer.Exit(_fail(f"--start-mode: one of {', '.join(START_MODES)}"))
     options = session.Options(
         xplane=xplane,
         pack=pack,
@@ -191,6 +203,7 @@ def stream(
         max_zoom_airports=(
             saved.max_zoom_airports if max_zoom_airports is None else max_zoom_airports
         ),
+        start_mode=start_mode or saved.start_mode,
         margin=margin,
         camera_reach_km=camera_reach_km,
         workers=workers,

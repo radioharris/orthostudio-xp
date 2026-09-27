@@ -11,9 +11,14 @@ as the aircraft comes, each written over a clone of the neutral texture: whateve
 reads, it finds imagery or the neutral colour, never black.
 
 Each texture's file is laid out for the zoom set (:class:`Zooms`, AutoOrtho's max_zoom and
-max_zoom_near_airports): 4096 px at the mesh's zoom, smaller below it, 8192 px one zoom above, with
-a neutral texture of each size. X-Plane must find a texture at the size it will keep: a new zoom
-lays the pack out again (:func:`relayout`), with X-Plane not running, before it loads any.
+max_zoom_near_airports): 4096 px at the mesh's zoom, smaller below it, with a neutral texture of
+each size. One zoom above the mesh's, a texture starts at 4096 px as well and grows to 8192 px
+where X-Plane will read it that sharp, as XPME's "normal resolution, then high resolution": X-Plane
+reads a texture's size again each time it opens it for a sharper level (probe flight 2), so a start
+waits only for the 8192 px textures it asks for (``start_mode``, orthostudio.live.streamer). The
+pack records the textures grown (``grown`` in ``_live/ortho.json``), each with its 8192 px level
+built. A smaller size, though, is set before X-Plane loads anything: a new zoom lays the pack out
+again (:func:`relayout`), with X-Plane not running.
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ import os
 import shutil
 import struct
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -39,6 +44,7 @@ NEUTRAL_LEVEL = 5  # the "built level" of a neutral texture: coarser than any re
 REGION_MARKER = Path("_live") / "region.json"
 NEUTRAL_FILE = Path("_live") / "neutral.dds"
 REGION_VERSION = 2  # 2: the neutral texture complete at every level (1 had holes: black up close)
+LAYOUT_GROWING = 2  # region.json "layout": above the mesh's zoom, 4096 px files that grow (1: 8192)
 
 
 @dataclass(frozen=True)
@@ -50,9 +56,18 @@ class Zooms:
     max_zoom_airports: int | None = None
 
     def top(self, zoom: int) -> int:
-        """The sharpest level of a texture of ``zoom``: its file is ``dds.size_of(top)`` px."""
+        """The sharpest level a texture of ``zoom`` gets: -1 (8192 px) one zoom above the mesh's."""
         cap = zoom_for(zoom, self.max_zoom, self.max_zoom_airports)  # type: ignore[arg-type]
         return 0 if cap is None else file_top(zoom, cap)
+
+    def start_top(self, zoom: int) -> int:
+        """The sharpest level of a texture's file as the pack lays it out: 4096 px (0) for a zoom
+        above the mesh's, whose textures grow to 8192 px later, where X-Plane will read that."""
+        return max(0, self.top(zoom))
+
+    def grows(self, zoom: int) -> bool:
+        """Whether textures of ``zoom`` grow to 8192 px."""
+        return self.top(zoom) < 0
 
 
 def neutral_file(top: int = 0) -> Path:
@@ -82,13 +97,20 @@ def ensure_neutral(pack_dir: Path, top: int) -> Path:
     return path if path.exists() else write_neutral(pack_dir, top)
 
 
-def region_zooms(pack_dir: Path) -> Zooms:
-    """The zoom the pack's textures are laid out for."""
+def region_layout(pack_dir: Path) -> tuple[Zooms, int]:
+    """The zoom the pack's textures are laid out for, and how: :data:`LAYOUT_GROWING`, or 1 for a
+    pack laid out before textures grew, each file at its zoom's full size (8192 px above the
+    mesh's zoom)."""
     try:
         meta = json.loads((pack_dir / REGION_MARKER).read_text())
     except (OSError, ValueError):
-        return Zooms()
-    return Zooms(**meta.get("zooms", {}))
+        return Zooms(), LAYOUT_GROWING
+    return Zooms(**meta.get("zooms", {})), meta.get("layout", 1)
+
+
+def region_zooms(pack_dir: Path) -> Zooms:
+    """The zoom the pack's textures are laid out for."""
+    return region_layout(pack_dir)[0]
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
@@ -101,55 +123,81 @@ def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
     return out
 
 
+def _layout_plan(pack_dir: Path, zooms: Zooms) -> tuple[dict[int, list[tuple[str, int]]], set[str]]:
+    """What laying the pack out for ``zooms`` changes: by zoom, the textures whose file gets another
+    size, with the size it gets (its sharpest level); and the textures grown to 8192 px after it.
+    A texture built at 8192 px keeps its size while its zoom still goes that far; any other file
+    gets its zoom's start size."""
+    from .pack import load_built
+
+    old, layout = region_layout(pack_dir)
+    meta = load_built(pack_dir)
+    built = meta.get("textures", {})
+    grown = set(meta.get("grown", []))
+    changes: dict[int, list[tuple[str, int]]] = {}
+    kept: set[str] = set()
+    for zoom, names in _textures_by_zoom(pack_dir).items():
+        was = old.start_top(zoom) if layout >= LAYOUT_GROWING else old.top(zoom)
+        start, grows = zooms.start_top(zoom), zooms.grows(zoom)
+        change = []
+        for name in names:
+            now = -1 if name in grown else was
+            if now == -1 and grows and built.get(name) == -1:
+                kept.add(name)
+            elif now != start:
+                change.append((name, start))
+        if change:
+            changes[zoom] = change
+    return changes, kept
+
+
 def needs_relayout(pack_dir: Path, zooms: Zooms) -> bool:
-    """Whether some textures of the pack are laid out for another zoom than ``zooms``."""
-    old = region_zooms(pack_dir)
-    return any(old.top(z) != zooms.top(z) for z in _textures_by_zoom(pack_dir))
+    """Whether some textures of the pack are laid out for another zoom than ``zooms``: X-Plane must
+    not be running while they change size."""
+    return bool(_layout_plan(pack_dir, zooms)[0])
 
 
 def relayout(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) -> int:
-    """Lay the pack out for ``zooms``: every texture of a zoom whose size changes, in a file of the
-    new size. A neutral one becomes a clone of the neutral texture of that size; a built one keeps
-    its levels from the one built down (those sharper than the new file are dropped), nothing
+    """Lay the pack out for ``zooms``: every texture whose file changes size, in a file of the new
+    size. A neutral one becomes a clone of the neutral texture of that size; a built one keeps its
+    levels from the one built down (those sharper than the new file are dropped), nothing
     downloaded. Only while X-Plane does not run: it keeps a texture at the size it first read.
-    Returns how many textures changed."""
+    Records the zoom and the layout even when no file changes. Returns how many textures changed."""
     from .clone import replace_with_clone
     from .pack import MARKER, load_built
     from .texture import resize
 
     marker = pack_dir / REGION_MARKER
     meta = json.loads(marker.read_text())
-    old = Zooms(**meta.get("zooms", {}))
-    by_zoom = _textures_by_zoom(pack_dir)
-    changed = [z for z in sorted(by_zoom) if old.top(z) != zooms.top(z)]
+    changes, kept = _layout_plan(pack_dir, zooms)
     built_meta = load_built(pack_dir)
     built = built_meta.get("textures", {})
     t0 = time.monotonic()
     done = 0
-    for zoom in changed:
-        old_top, new_top = old.top(zoom), zooms.top(zoom)
-        log(
-            f"ZL{zoom} textures: {dds.size_of(old_top)} px -> {dds.size_of(new_top)} px "
-            f"({len(by_zoom[zoom])} textures, nothing to download)"
-        )
-        neutral = ensure_neutral(pack_dir, new_top)
-        for name in by_zoom[zoom]:
+    for zoom in sorted(changes):
+        tops = Counter(top for _, top in changes[zoom])
+        after = ", ".join(f"{dds.size_of(top)} px" for top in sorted(tops))
+        log(f"ZL{zoom} textures: {len(changes[zoom])} to {after} (nothing to download)")
+        for name, new_top in changes[zoom]:
             path = pack_dir / "textures" / name
+            neutral = ensure_neutral(pack_dir, new_top)
             level = built.get(name)
             if level is None:
                 replace_with_clone(str(neutral), str(path))
-            else:
-                built[name] = resize(path, level, old_top, new_top, neutral)
+            else:  # the file's size from its header: what it is, whatever was recorded
+                built[name] = resize(path, level, dds.read_top(path), new_top, neutral)
             done += 1
             if done % 50_000 == 0:
                 log(f"  {done} textures...")
-    if changed and built_meta:
+    if built_meta:
+        built_meta["grown"] = sorted(kept)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(built_meta))
         os.replace(tmp, pack_dir / MARKER)
     meta["zooms"] = asdict(zooms)
+    meta["layout"] = LAYOUT_GROWING
     marker.write_text(json.dumps(meta))
-    if changed:
+    if done:
         log(f"textures laid out for the zoom in {time.monotonic() - t0:.0f} s")
     return done
 
@@ -243,7 +291,7 @@ def setup_region(
     added = 0
     for _i, name in enumerate(sorted(names - have)):
         tex = parse_texture_name(name)
-        top = zooms.top(tex.zoom) if tex is not None else 0
+        top = zooms.start_top(tex.zoom) if tex is not None else 0
         clone(str(ensure_neutral(pack_dir, top)), str(textures / name))
         added += 1
         if added % 50_000 == 0:
@@ -256,6 +304,7 @@ def setup_region(
         "textures": len(names),
         "version": REGION_VERSION,
         "zooms": asdict(zooms),
+        "layout": LAYOUT_GROWING,
     }
     marker.write_text(json.dumps(meta))
     log(f"region ready in {time.monotonic() - t0:.0f} s")
@@ -272,15 +321,17 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
 
     meta = load_built(pack_dir)
     built = meta.get("textures", {})
-    zooms = region_zooms(pack_dir)
+    zooms, layout = region_layout(pack_dir)
     for name in built:
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
-        top = zooms.top(tex.zoom) if tex is not None else 0
+        top = 0
+        if tex is not None:
+            top = zooms.start_top(tex.zoom) if layout >= LAYOUT_GROWING else zooms.top(tex.zoom)
         if path.exists():
             replace_with_clone(str(ensure_neutral(pack_dir, top)), str(path))
     if meta:
-        meta["textures"], meta["seen"] = {}, {}
+        meta["textures"], meta["seen"], meta["grown"] = {}, {}, []
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
         os.replace(tmp, pack_dir / MARKER)

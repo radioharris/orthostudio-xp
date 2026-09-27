@@ -24,7 +24,7 @@ from orthostudio.live import streamer as streamer_module
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.gate import Gate, read_last_start, start_position
 from orthostudio.live.geo import parse_texture_name
-from orthostudio.live.region import setup_region
+from orthostudio.live.region import Zooms, setup_region
 from orthostudio.live.streamer import Fix, Streamer, run
 
 HERE = Path(__file__).resolve().parent
@@ -129,6 +129,31 @@ class GateTest(unittest.TestCase):
                 )
                 gate.answer(got[1][3], True, 0)
                 self.assertEqual(p.recv(100), b"LIVE1 GO 0")
+        finally:
+            gate.close()
+
+    def test_the_reload_offered(self):
+        """In flight, the plugin asks every second whether a reload is offered, and says when its
+        button was clicked."""
+        gate = Gate(self.xplane, lambda icao: None, port=self.port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+                p.connect(("127.0.0.1", self.port))
+                p.settimeout(2)
+                p.send(b"LIVE1 ASK")
+                p.send(b"LIVE1 RELOAD")
+                time.sleep(0.1)
+                got = gate.requests()
+                self.assertEqual([k for k, *_ in got], ["ASK", "RELOAD"])
+                addr = got[0][3]
+                for offer, line in [
+                    (None, b"LIVE1 OFFER NONE"),
+                    ({"state": "building", "left": 3, "id": 7}, b"LIVE1 OFFER BUILD 7 3"),
+                    ({"state": "ready", "left": 0, "id": 7}, b"LIVE1 OFFER READY 7"),
+                    ({"state": "asked", "left": 0, "id": 7}, b"LIVE1 OFFER NONE"),
+                ]:
+                    gate.offer(addr, offer)
+                    self.assertEqual(p.recv(100), line)
         finally:
             gate.close()
 
@@ -303,6 +328,88 @@ class PluginTest(unittest.TestCase):
         self.assertLess(took["108:0"], 0.9)  # not SILENT_S later
         self.assertIn("the streamer stopped: X-Plane goes on", logged[-1])
 
+    def test_the_reload_offered_in_xplane(self):
+        """Every second of a flight, the plugin asks; once the offer is ready, its panel shows, and
+        a click on its button asks the streamer for the reload."""
+        heard = []
+
+        def streamer(sock):
+            reloaded = False
+            while True:
+                try:
+                    data, addr = sock.recvfrom(100)
+                except OSError:
+                    return
+                heard.append(data.decode())
+                if data == b"LIVE1 RELOAD":
+                    reloaded = True
+                elif data == b"LIVE1 ASK":
+                    sock.sendto(b"LIVE1 OFFER NONE" if reloaded else b"LIVE1 OFFER READY 7", addr)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("127.0.0.1", self.port))
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            self.xplane(43.4382, 5.2129, "loop", "sleep:100")  # no flight yet: nothing asked
+            self.assertEqual(heard, [])
+            _, logged = self.xplane(
+                43.4382,
+                5.2129,
+                "102:0",
+                "loop",
+                "sleep:150",
+                "loop",
+                "click:1",
+                "loop",
+                "sleep:150",
+                "loop",
+                "sleep:100",
+            )
+            sock.close()
+        self.assertEqual(heard.count("LIVE1 RELOAD"), 1)
+        self.assertLess(heard.index("LIVE1 ASK"), heard.index("LIVE1 RELOAD"))
+        self.assertEqual(
+            [line for line in logged if "reload" in line],
+            [
+                "OrthoStudio XP Live: the 8192 px textures around the aircraft are built: a reload "
+                "is offered",
+                "OrthoStudio XP Live: reload of the scenery asked, for the 8192 px textures around "
+                "the aircraft",
+            ],
+        )
+
+    def test_not_now(self):
+        """The panel's other button: it goes, and nothing is asked."""
+        heard = []
+
+        def streamer(sock):
+            while True:
+                try:
+                    data, addr = sock.recvfrom(100)
+                except OSError:
+                    return
+                heard.append(data.decode())
+                if data == b"LIVE1 ASK":
+                    sock.sendto(b"LIVE1 OFFER READY 7", addr)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("127.0.0.1", self.port))
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            _, logged = self.xplane(
+                43.4382,
+                5.2129,
+                "102:0",
+                "loop",
+                "sleep:150",
+                "loop",
+                "click:2",
+                "loop",
+                "sleep:150",
+                "loop",
+            )
+            sock.close()
+        self.assertNotIn("LIVE1 RELOAD", heard)
+        self.assertEqual(sum("a reload is offered" in line for line in logged), 1)
+
     def test_no_position_while_xplane_starts(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.bind(("127.0.0.1", self.port))
@@ -311,6 +418,90 @@ class PluginTest(unittest.TestCase):
             with self.assertRaises(socket.timeout):
                 sock.recvfrom(100)
         self.assertLess(max(took.values()), 0.3)
+
+
+@unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
+class ReloadOfferTest(unittest.TestCase):
+    """run() in the "reload" start mode: X-Plane goes on at 4096 px, the 8192 px textures around
+    the aircraft are built afterwards, and the plugin's button reloads the scenery."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        pack = root / "stream_pack"
+        source = make_source(root, tile=(45, 6), textures=NAMES)
+        setup_region(source, pack, log=lambda _: None, zooms=Zooms(17, 18))
+        self.cache = ChunkCache(root / "c.sqlite")
+        self.port = free_port()
+        self.gate = Gate(root / "X-Plane 12", lambda icao: None, port=self.port)
+        self.xp = ScriptedXPlane()
+        self.log = []
+        self.streamer = Streamer(
+            pack,
+            self.cache,
+            FakeDownloader,
+            finest_quality=0,
+            max_zoom=17,
+            workers=2,
+            xplane=self.xp,
+            log=self.log.append,
+            start_mode="reload",
+        )
+        self.stop = threading.Event()
+        self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
+        patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.thread = threading.Thread(
+            target=run,
+            daemon=True,
+            kwargs=dict(
+                streamer=self.streamer,
+                xp=self.xp,
+                gate=self.gate,
+                should_stop=self.stop.is_set,
+                log=self.log.append,
+            ),
+        )
+        self.thread.start()
+
+    def tearDown(self):
+        self.stop.set()
+        self.thread.join(30)
+        self.gate.close()
+        self.cache.close()
+        self.tmp.cleanup()
+
+    def ask(self, p, line: bytes) -> str:
+        p.send(line)
+        return p.recv(100).decode()
+
+    def test_from_the_start_to_the_reload(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+            p.connect(("127.0.0.1", self.port))
+            p.settimeout(2)
+            end = time.time() + 60
+            hold = f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} flight".encode()
+            while not self.ask(p, hold).startswith("LIVE1 GO"):
+                self.assertLess(time.time(), end)
+                time.sleep(0.1)
+            # 4096 px: no 8192 px texture waited for
+            self.assertEqual(set(self.streamer.built.values()), {0})
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE")  # not there yet
+            self.xp.position = (self.lat, self.lon)  # the flight runs
+            answers = []
+            while not answers or not answers[-1].startswith("LIVE1 OFFER READY"):
+                self.assertLess(time.time(), end)
+                answers.append(self.ask(p, b"LIVE1 ASK"))
+                time.sleep(0.1)
+            self.assertTrue(any(a.startswith("LIVE1 OFFER BUILD") for a in answers), answers)
+            self.assertEqual(set(self.streamer.built.values()), {-1})
+            self.assertEqual(self.streamer.grown, {f"{n}.dds" for n in NAMES})
+            p.send(b"LIVE1 RELOAD")
+            while self.xp.commands != ["sim/operation/reload_scenery"]:
+                self.assertLess(time.time(), end)
+                time.sleep(0.05)
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE")
 
 
 @unittest.skipIf(CLANG is None, "needs clang")

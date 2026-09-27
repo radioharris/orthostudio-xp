@@ -152,6 +152,12 @@ function drawState(status) {
   // X-Plane sees the pack and loads the plugin only if they are there when it starts
   $("xplane-btn").disabled = !(state === "streaming" && !checks.xplane_running);
   $("xplane-btn").hidden = checks.xplane_running || !["idle", "starting", "streaming"].includes(state);
+  // the reload offered after a start, in the "reload" start mode
+  const offer = (state === "streaming" && status.stream?.streamer?.offer) || null;
+  $("reload-btn").hidden = !offer || offer.state === "asked";
+  $("reload-btn").disabled = !offer || offer.state !== "ready";
+  $("offer-text").hidden = !offer;
+  $("offer-text").textContent = offer ? t(`offer.${offer.state}`, { n: number(offer.left) }) : "";
   $("leave-btn").hidden = state !== "leaving";
   $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
   let help = "";
@@ -204,6 +210,7 @@ function drawBuild(status) {
     [t("build.queued"), queued && `${queued} (${t("build.urgent", { n: number(s.urgent) })})`],
     [t("build.building"), building],
     [t("build.built"), byLevel(s.built, s.first_level)],
+    ...(s.grown ? [[t("build.grown"), number(s.grown)]] : []),
     [t("build.downloaded"), downloaded],
     [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
     [t("build.disk"), t("build.disk_value", { used: gb(s.disk_bytes), budget: number(s.disk_budget / 1e9) })],
@@ -359,12 +366,63 @@ function renderZooms() {
   }
 }
 
+/** What X-Plane waits for at a start, as OrthoStudio XP's own choices: the label, then a note. */
+const START_MODES = ["full", "around", "normal", "reload"];
+const START_RECOMMENDED = "around";
+
+function renderStartModes() {
+  const box = $("start-choices");
+  const current = box.querySelector("input:checked")?.value || saved?.start_mode || START_RECOMMENDED;
+  box.replaceChildren(...START_MODES.map((mode) => {
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "start_mode";
+    input.value = mode;
+    input.checked = mode === current;
+    const label = document.createElement("span");
+    label.className = "choice-label";
+    label.textContent = t(`start.${mode}`);
+    if (mode === START_RECOMMENDED) {
+      const tag = document.createElement("span");
+      tag.className = "choice-tag";
+      tag.textContent = t("settings.recommended");
+      label.append(tag);
+    }
+    const note = document.createElement("span");
+    note.className = "choice-note";
+    note.textContent = t(`start.${mode}_note`);
+    const text = document.createElement("span");
+    text.className = "choice-text";
+    text.append(label, note);
+    const choice = document.createElement("label");
+    choice.className = "choice";
+    choice.append(input, text);
+    return choice;
+  }));
+  drawStartNone();
+}
+
+/** Without a zoom above the package's, no texture is 8192 px: the four start the same. */
+function drawStartNone() {
+  const sharp = Number($("set-max-zoom").value) > ZOOMS.max_zoom[0]
+    || Number($("set-max-zoom-airports").value) > ZOOMS.max_zoom_airports[0];
+  $("start-none").hidden = sharp;
+}
+
+function startMode() {
+  return $("start-choices").querySelector("input:checked")?.value || saved?.start_mode || START_RECOMMENDED;
+}
+
 function fillSettings(settings) {
   $("set-max-zoom").value = String(settings.max_zoom);
   $("set-max-zoom-airports").value = String(settings.max_zoom_airports);
   $("set-disk").value = String(settings.disk_budget_gb);
   $("set-cache").value = String(settings.cache_budget_gb);
   $("set-folder").value = settings.folder || "";
+  for (const input of $("start-choices").querySelectorAll("input")) {
+    input.checked = input.value === settings.start_mode;
+  }
+  drawStartNone();
   if (providers.length) renderProviders(settings.provider);
 }
 
@@ -377,6 +435,7 @@ async function saveSettings(event) {
     cache_budget_gb: Number($("set-cache").value),
     provider: $("set-provider").value || saved?.provider || "BI",
     folder: $("set-folder").value.trim(),
+    start_mode: startMode(),
   };
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
@@ -494,16 +553,21 @@ function boot() {
   $("lang-select").value = language();
   applyStatic(document);
   renderZooms();
+  renderStartModes();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     applyStatic(document);
     renderZooms();
+    renderStartModes();
     renderProviders($("set-provider").value);
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
+  $("reload-btn").addEventListener("click", () => act("reload"));
+  $("set-max-zoom").addEventListener("change", drawStartNone);
+  $("set-max-zoom-airports").addEventListener("change", drawStartNone);
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));

@@ -40,6 +40,12 @@ export const STRINGS = {
     "action.start": "Start",
     "action.stop": "Stop",
     "action.xplane": "Start X-Plane",
+    "action.reload": "Reload the scenery in X-Plane",
+    "offer.building":
+      "8192 px around the aircraft: {n} textures to build, then the scenery can be reloaded to show them.",
+    "offer.ready":
+      "The 8192 px textures around the aircraft are built: reload the scenery to see them, here or with the button in X-Plane. X-Plane shows “reload objects & textures” for a few seconds.",
+    "offer.asked": "Scenery reloaded: X-Plane shows the 8192 px textures around the aircraft.",
     "action.xplane_wait":
       "Start X-Plane once Live is ready: X-Plane sees Live's pack only if it is there when X-Plane starts.",
     "action.leave": "Leave it installed",
@@ -71,6 +77,7 @@ export const STRINGS = {
     "build.downloaded": "Downloaded",
     "build.downloaded_value": "{n} pieces ({mb} MB), {cache} from the cache",
     "build.failed": "{n} failed",
+    "build.grown": "At 8192 px",
     "build.rate": "Rate",
     "build.disk": "Disk",
     "build.disk_value": "{used} of {budget} GB",
@@ -125,6 +132,26 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl}: sharper up close, 4 times more to download (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed: Live puts its textures at their new size, about a minute, with nothing to download.",
+
+    "start.title": "When a flight starts",
+    "start.help":
+      "With zoom 17, or 19 near airports, the sharpest textures are 8192 px. While a flight loads, X-Plane waits on its loading screen until the textures of the start are built: this choice says which.",
+    "start.full": "Full resolution",
+    "start.full_note":
+      "X-Plane waits until the whole start is in 8192 px, as far as an external view goes (25 km). The sharpest from the first second, but the longest wait: about two and a half times Normal's.",
+    "start.around": "Normal, and 8192 px around the aircraft",
+    "start.around_note":
+      "X-Plane waits for the textures in 4096 px, and in 8192 px for the few right around the aircraft: about 15 % longer than Normal. Farther around the start, the textures stay 4096 px during this flight.",
+    "start.normal": "Normal resolution",
+    "start.normal_note":
+      "X-Plane waits for the textures in 4096 px only: the shortest wait. Around the start, the textures stay 4096 px during this flight.",
+    "start.reload": "Normal, then reload in 8192 px",
+    "start.reload_note":
+      "As Normal. Then Live builds the start in 8192 px, as Full resolution does, and once it is built, a button in X-Plane (and in this window) reloads the scenery: X-Plane shows “reload objects & textures” for a few seconds, then the 8192 px textures.",
+    "start.flight":
+      "In flight, all four do the same: the textures ahead of the aircraft become 8192 px before you come near them, with nothing to reload.",
+    "start.none": "Your zooms make no 8192 px texture: the four start the same.",
+    "settings.recommended": "Recommended",
 
     "disk.title": "Disk space",
     "disk.help": "Live keeps two things on the disk, each within the space set here.",
@@ -203,6 +230,12 @@ export const STRINGS = {
     "action.start": "Démarrer",
     "action.stop": "Arrêter",
     "action.xplane": "Lancer X-Plane",
+    "action.reload": "Recharger la scène dans X-Plane",
+    "offer.building":
+      "8192 px autour de l'avion : {n} textures à construire, puis la scène pourra être rechargée pour les montrer.",
+    "offer.ready":
+      "Les textures 8192 px autour de l'avion sont construites : rechargez la scène pour les voir, ici ou avec le bouton dans X-Plane. X-Plane affiche « reload objects & textures » quelques secondes.",
+    "offer.asked": "Scène rechargée : X-Plane montre les textures 8192 px autour de l'avion.",
     "action.xplane_wait":
       "Lancez X-Plane quand Live est prêt : X-Plane ne voit le pack de Live que s'il est là quand X-Plane démarre.",
     "action.leave": "Le laisser installé",
@@ -235,6 +268,7 @@ export const STRINGS = {
     "build.downloaded": "Téléchargé",
     "build.downloaded_value": "{n} morceaux ({mb} Mo), {cache} du cache",
     "build.failed": "{n} en échec",
+    "build.grown": "En 8192 px",
     "build.rate": "Débit",
     "build.disk": "Disque",
     "build.disk_value": "{used} sur {budget} Go",
@@ -290,6 +324,26 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl} : plus net de près, 4 fois plus à télécharger (textures 8192 px)",
     "zoom.change":
       "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met ses textures à leur nouvelle taille, une minute environ, sans rien télécharger.",
+
+    "start.title": "Au démarrage d'un vol",
+    "start.help":
+      "Avec le zoom 17, ou 19 près des aéroports, les textures les plus nettes font 8192 px. Pendant le chargement d'un vol, X-Plane attend sur son écran de chargement que les textures du départ soient construites : ce choix dit lesquelles.",
+    "start.full": "Pleine résolution",
+    "start.full_note":
+      "X-Plane attend que tout le départ soit en 8192 px, aussi loin qu'une vue extérieure peut aller (25 km). Le plus net dès la première seconde, mais l'attente la plus longue : environ deux fois et demie celle de Normale.",
+    "start.around": "Normale, et 8192 px autour de l'avion",
+    "start.around_note":
+      "X-Plane attend les textures en 4096 px, et en 8192 px pour les quelques-unes juste autour de l'avion : environ 15 % de plus que Normale. Plus loin autour du départ, les textures restent en 4096 px pendant ce vol.",
+    "start.normal": "Résolution normale",
+    "start.normal_note":
+      "X-Plane n'attend que les textures en 4096 px : l'attente la plus courte. Autour du départ, les textures restent en 4096 px pendant ce vol.",
+    "start.reload": "Normale, puis recharger en 8192 px",
+    "start.reload_note":
+      "Comme Normale. Ensuite, Live construit le départ en 8192 px, comme Pleine résolution, et une fois prêt, un bouton dans X-Plane (et dans cette fenêtre) recharge la scène : X-Plane affiche « reload objects & textures » quelques secondes, puis les textures 8192 px.",
+    "start.flight":
+      "En vol, les quatre font pareil : les textures devant l'avion passent en 8192 px avant que vous en approchiez, sans rien recharger.",
+    "start.none": "Vos zooms ne font aucune texture 8192 px : les quatre démarrent pareil.",
+    "settings.recommended": "Recommandé",
 
     "disk.title": "Place sur le disque",
     "disk.help": "Live garde deux choses sur le disque, chacune dans la place réglée ici.",

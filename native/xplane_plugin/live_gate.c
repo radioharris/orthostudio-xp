@@ -36,6 +36,12 @@
  *   than the five minutes it once allowed (a user, 2026-09-27). The streamer itself lets X-Plane go
  *   when nothing has downloaded for a minute (no internet), and Stop in the Live window does too.
  *
+ * In flight, every second, it asks whether a reload of the scenery is offered: in the "reload" start
+ * mode, X-Plane starts with 4096 px textures, and the streamer builds the 8192 px ones around the
+ * aircraft afterwards. Once they are built, the plugin shows a panel with a button (live_panel.m);
+ * a click asks the streamer, which reloads the scenery over X-Plane's UDP, as the Live window's own
+ * button does. X-Plane reads a texture's levels again only when it loads it again.
+ *
  * orthostudio/live/plugin.py builds it against X-Plane's own XPLM framework. It declares the few XPLM functions
  * it uses itself, so the SDK is not needed.
  */
@@ -57,9 +63,13 @@
 
 typedef void *XPLMDataRef;
 typedef int XPLMPluginID;
+typedef float (*XPLMFlightLoop_f)(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop,
+                                  int inCounter, void *inRefcon);
 extern XPLMDataRef XPLMFindDataRef(const char *inDataRefName);
 extern double XPLMGetDatad(XPLMDataRef inDataRef);
 extern void XPLMDebugString(const char *inString);
+extern void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, float inInterval, void *inRefcon);
+extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void *inRefcon);
 
 #define XPLM_PLUGIN_XPLANE 0
 #define XPLM_MSG_PLANE_LOADED 102
@@ -81,13 +91,18 @@ extern void XPLMDebugString(const char *inString);
 #ifndef SILENT_S
 #define SILENT_S 5.0 /* it answered, then stopped */
 #endif
+#define OFFER_EVERY_S 1.0f
 
 void live_panel_show(const char *what, const char *progress, double fraction); /* live_panel.m */
 void live_panel_hide(void);
+void live_offer_show(void); /* the reload offered, with its two buttons */
+void live_offer_hide(void);
+int live_offer_clicked(void); /* 1: reload, 2: not now, 0: no click since the last call */
 
 static int sock = -1;
 static int flights = 0; /* flights whose aircraft has loaded */
 static XPLMDataRef lat_ref, lon_ref;
+static int offered = 0, closed = 0; /* the offer ready (its id), and the last one whose panel went */
 
 static double now(void) {
     struct timespec ts;
@@ -242,6 +257,41 @@ static void hold(const char *at) {
     live_panel_hide();
 }
 
+/* Every second of a flight: whether the streamer offers a reload ("LIVE1 OFFER READY id"), and what
+   the panel's buttons were clicked for. The answers to the last ask are read without waiting. */
+static float every_second(float since_call, float since_loop, int counter, void *refcon) {
+    char buf[256];
+    ssize_t n;
+    int id, left, click;
+    (void)since_call;
+    (void)since_loop;
+    (void)counter;
+    (void)refcon;
+    if (sock < 0 || flights == 0) return OFFER_EVERY_S;
+    click = live_offer_clicked();
+    if (click && offered) {
+        if (click == 1) {
+            send(sock, "LIVE1 RELOAD", 12, 0);
+            say("reload of the scenery asked, for the 8192 px textures around the aircraft");
+        }
+        closed = offered;
+    }
+    while ((n = recv(sock, buf, sizeof buf - 1, MSG_DONTWAIT)) >= 0) {
+        buf[n] = 0;
+        if (sscanf(buf, "LIVE1 OFFER READY %d", &id) == 1) {
+            if (id != offered && id != closed) say("the 8192 px textures around the aircraft are built: a reload is offered");
+            offered = id;
+        } else if (sscanf(buf, "LIVE1 OFFER BUILD %d %d", &id, &left) == 2 || strncmp(buf, "LIVE1 OFFER NONE", 16) == 0)
+            offered = 0;
+    }
+    if (offered && offered != closed)
+        live_offer_show();
+    else
+        live_offer_hide();
+    send(sock, "LIVE1 ASK", 9, 0);
+    return OFFER_EVERY_S;
+}
+
 PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outName, "OrthoStudio XP Live");
     strcpy(outSig, "orthostudio.live");
@@ -256,10 +306,13 @@ PLUGIN_API void XPluginStop(void) {}
 PLUGIN_API int XPluginEnable(void) {
     sock = open_socket();
     if (sock < 0) say("no UDP socket: X-Plane will not wait for the ortho");
+    XPLMRegisterFlightLoopCallback(every_second, OFFER_EVERY_S, NULL);
     return 1;
 }
 
 PLUGIN_API void XPluginDisable(void) {
+    XPLMUnregisterFlightLoopCallback(every_second, NULL);
+    live_offer_hide();
     if (sock >= 0) close(sock);
     sock = -1;
 }

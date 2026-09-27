@@ -20,6 +20,13 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
 
   The plugin's loading window shows all of it.
 
+- ``LIVE1 ASK``, every second of a flight: whether a reload of the scenery is offered (the "reload"
+  start mode: X-Plane started at 4096 px, and the 8192 px textures around the aircraft are built
+  afterwards). The gate answers ``LIVE1 OFFER READY id``, ``LIVE1 OFFER BUILD id n`` (n textures
+  to go) or ``LIVE1 OFFER NONE``; ``id`` tells one offer from the next.
+- ``LIVE1 RELOAD``: the user clicked the plugin's button in X-Plane; the streamer reloads the
+  scenery over X-Plane's UDP, as the Live window's button does.
+
 The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
 it in ``Output/preferences/Freeflight.prf`` (``_last_start``, a JSON object), and the streamer
 starts building right then (hold test, docs/specs/live/hold-test.md).
@@ -109,8 +116,8 @@ class Gate:
         return start_position(start, self.airports) if start else None
 
     def requests(self) -> list[tuple[str, float, float, tuple, str]]:
-        """The plugin's lines since the last call: (LOAD or HOLD, lat, lon, where to answer,
-        why)."""
+        """The plugin's lines since the last call: (LOAD, HOLD, ASK or RELOAD, lat, lon, where to
+        answer, why); ASK and RELOAD have no position (0, 0)."""
         out: list[tuple[str, float, float, tuple, str]] = []
         while True:
             try:
@@ -118,7 +125,9 @@ class Gate:
             except OSError:  # nothing more (or a stray error): look again next time
                 break
             parts = data.decode("ascii", "replace").split()
-            if len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
+            if parts in (["LIVE1", "ASK"], ["LIVE1", "RELOAD"]):
+                out.append((parts[1], 0.0, 0.0, addr, ""))
+            elif len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
                 with contextlib.suppress(ValueError):
                     out.append(
                         (
@@ -150,6 +159,17 @@ class Gate:
             )
         with contextlib.suppress(OSError):
             self.sock.sendto(line.encode("ascii", "replace")[:200], addr)
+
+    def offer(self, addr: tuple, offer: dict | None) -> None:
+        """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it."""
+        if offer is None or offer["state"] == "asked":
+            line = "LIVE1 OFFER NONE"
+        elif offer["state"] == "ready":
+            line = f"LIVE1 OFFER READY {offer['id']}"
+        else:
+            line = f"LIVE1 OFFER BUILD {offer['id']} {offer['left']}"
+        with contextlib.suppress(OSError):
+            self.sock.sendto(line.encode("ascii"), addr)
 
     def close(self) -> None:
         self.sock.close()

@@ -14,6 +14,7 @@ file's sharpest level is its ``top`` (:func:`size_of`, :func:`level_layout`).
 
 from __future__ import annotations
 
+import math
 import struct
 from collections.abc import Sequence
 
@@ -41,6 +42,18 @@ def size_of(top: int) -> int:
     """The side of a texture whose sharpest level is ``top``: 4096 px at 0, 2048 at 1, 8192 at
     -1."""
     return TEXTURE_SIZE >> top if top >= 0 else TEXTURE_SIZE << -top
+
+
+def top_of_side(side: int) -> int:
+    """The sharpest level of a texture ``side`` px wide: 0 at 4096 px, 1 at 2048, -1 at 8192."""
+    return round(math.log2(TEXTURE_SIZE / side))
+
+
+def read_top(path) -> int:
+    """The sharpest level of a DDS file, from the width its header gives."""
+    with open(path, "rb") as f:
+        head = f.read(20)
+    return top_of_side(int.from_bytes(head[16:20], "little"))
 
 
 def level_layout(top: int) -> list[tuple[int, int]]:

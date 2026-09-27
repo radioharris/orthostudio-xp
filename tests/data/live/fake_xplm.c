@@ -1,6 +1,9 @@
-/* A stand-in for X-Plane around plugin/xso_gate.c: the three XPLM functions it uses and, unless
-   built with -DNO_MAIN, a main() that sends it the messages given on the command line
-   ("102:0" is PLANE_LOADED for the user's aircraft) and says how long each call took. */
+/* A stand-in for X-Plane around native/xplane_plugin/live_gate.c: the XPLM functions it uses and,
+   unless built with -DNO_MAIN, a main() that does what the command line says, in order:
+   - "102:0": send it a message (PLANE_LOADED for the user's aircraft), and say how long it took;
+   - "loop": call its flight loop, as X-Plane does every second of a flight;
+   - "click:1": click its reload panel's button (1: reload, 2: not now);
+   - "sleep:100": wait 100 ms. */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +26,22 @@ void XPLMDebugString(const char *s) {
     fflush(stdout);
 }
 
+typedef float (*XPLMFlightLoop_f)(float, float, int, void *);
+static XPLMFlightLoop_f loop_cb;
+static void *loop_ref;
+
+void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f f, float interval, void *ref) {
+    loop_cb = f;
+    loop_ref = ref;
+}
+
+void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f f, void *ref) {
+    if (loop_cb == f) loop_cb = NULL;
+}
+
 #ifndef NO_MAIN
+#include <unistd.h>
+void live_offer_press(int);
 int XPluginStart(char *, char *, char *);
 int XPluginEnable(void);
 void XPluginDisable(void);
@@ -43,6 +61,20 @@ int main(int argc, char **argv) {
     for (i = 3; i < argc; i++) {
         int msg, param;
         struct timespec a, b;
+        if (strcmp(argv[i], "loop") == 0) {
+            if (loop_cb) loop_cb(1.0f, 1.0f, i, loop_ref);
+            printf("LOOP %s\n", loop_cb ? "called" : "none");
+            fflush(stdout);
+            continue;
+        }
+        if (sscanf(argv[i], "click:%d", &param) == 1) {
+            live_offer_press(param);
+            continue;
+        }
+        if (sscanf(argv[i], "sleep:%d", &param) == 1) {
+            usleep(param * 1000);
+            continue;
+        }
         if (sscanf(argv[i], "%d:%d", &msg, &param) != 2) return 2;
         clock_gettime(CLOCK_MONOTONIC, &a);
         XPluginReceiveMessage(0, msg, (void *)(intptr_t)param);

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -37,6 +38,9 @@ class LiveSettings(BaseModel):
     max_zoom_airports: int = Field(18, ge=16, le=19)
     """AutoOrtho's max_zoom_near_airports: the zoom of the mesh's ZL18 textures, around airports;
     19, an 8192 px one."""
+    start_mode: Literal["full", "around", "normal", "reload"] = "around"
+    """What X-Plane waits for at a flight's start where the zoom makes 8192 px textures
+    (:data:`orthostudio.live.streamer.START_MODES`)."""
     provider: str = "BI"
     """The imagery source: a code of OrthoStudio XP's sources
     (:func:`orthostudio.live.providers.registry`)."""

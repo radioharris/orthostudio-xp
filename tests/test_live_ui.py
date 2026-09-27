@@ -64,6 +64,16 @@ def test_a_wrong_value_costs_itself_only(home: Path) -> None:
     assert got.cache_budget_gb == 40
 
 
+def test_what_a_start_waits_for(home: Path) -> None:
+    """The start mode: normal, and 8192 px around the aircraft, unless the user chose otherwise."""
+    assert LiveSettings().start_mode == "around"
+    save_settings(LiveSettings(start_mode="reload"))
+    assert load_settings().start_mode == "reload"
+    settings_file().write_text('[stream]\nstart_mode = "fastest"\nmax_zoom = 17\n')
+    assert load_settings().start_mode == "around"  # not a mode: the default, the rest kept
+    assert load_settings().max_zoom == 17
+
+
 def test_an_unknown_source_is_bing(home: Path) -> None:
     """A source of the user's removed from OrthoStudio XP since: Live goes back to Bing Maps."""
     settings_file().write_text('[stream]\nprovider = "Gone"\n')
@@ -167,8 +177,11 @@ REPORT = {
 class FakeStream:
     """The session's steps, without X-Plane: prepare, follow until stopped, finish."""
 
-    def __init__(self, *, refuse: str | None = None, crash: str | None = None) -> None:
-        self.refuse, self.crash = refuse, crash
+    def __init__(
+        self, *, refuse: str | None = None, crash: str | None = None, report: dict = REPORT
+    ) -> None:
+        self.refuse, self.crash, self.report = refuse, crash, report
+        self.reloads = 0  # the reloads the page asked for
         self.options: session.Options | None = None
         self.finished: list[Path] = []
         self.gave_up: bool | None = None
@@ -181,11 +194,15 @@ class FakeStream:
         log("prepared")
         return session.Prepared(Path("/X-Plane 12"), Path("/pack"), None, None, 0)
 
-    def follow(self, prepared, options, log, *, should_stop, report, stop_hint) -> None:
-        report(REPORT)
+    def follow(
+        self, prepared, options, log, *, should_stop, report, stop_hint, reload_asked
+    ) -> None:
+        report(self.report)
         if self.crash:
             raise RuntimeError(self.crash)
         while not should_stop():
+            if reload_asked():
+                self.reloads += 1
             time.sleep(0.01)
 
     def finish(self, xplane: Path, log, *, hint: str, give_up) -> bool:
@@ -232,6 +249,7 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert status["api"] == control_module.API
     assert stream.options is not None
     assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's settings
+    assert stream.options.start_mode == "around"
     c.stop()
     assert c.wait_idle(5)
     assert stream.finished == [Path("/X-Plane 12")]  # the pack comes out
@@ -319,6 +337,31 @@ def test_xplane_starts_only_once_live_is_ready(home: Path, monkeypatch: pytest.M
     running._state = STREAMING
     with pytest.raises(session.RefusedError, match="running already"):
         running.launch_xplane()
+
+
+def offered(state: str) -> dict:
+    return {**REPORT, "streamer": {"offer": {"state": state, "left": 3, "id": 1}}}
+
+
+def test_the_reload_offered_after_a_start(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The start mode "reload": the page's button reloads the scenery once the 8192 px textures
+    around the aircraft are built, and only then."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream(report=offered("building"))
+    c = control_for(stream)
+    with pytest.raises(session.RefusedError, match="no reload"):
+        c.reload()  # nothing streams
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    with pytest.raises(session.RefusedError, match="no reload"):
+        c.reload()  # still building
+    c._reported(offered("ready"))
+    c.reload()
+    wait_for(lambda: stream.reloads == 1)
+    time.sleep(0.05)
+    assert stream.reloads == 1  # once per click
+    c.stop()
+    assert c.wait_idle(5)
 
 
 def test_the_log_after_a_line(home: Path) -> None:
@@ -425,6 +468,8 @@ async def test_the_buttons_of_the_page(
         assert deleted.status_code == 200 and stream.done == ["textures", "imagery"]
         early = await client.post("/api/live/launch-xplane")
         assert early.status_code == 409 and "not ready" in early.json()["detail"]
+        reload = await client.post("/api/live/reload")
+        assert reload.status_code == 409 and "no reload" in reload.json()["detail"]
         sources = (await client.get("/api/live/providers")).json()
         assert sources[0]["code"] == "BI" and any(p["extent"] == "Spain" for p in sources)
         chosen = await client.post("/api/live/choose-folder", json={"prompt": "Live's folder"})
@@ -481,6 +526,9 @@ def test_the_page_says_everything_in_both_languages() -> None:
     used = set(re.findall(r'\bt\("([\w.]+)"', js))
     used |= set(re.findall(r'data-i18n(?:-title)?="([\w.]+)"', html))
     used |= {f"flight.data_{d}" for d in ("none", "fresh", "stale")}  # t(`flight.data_${...}`)
+    modes = ("full", "around", "normal", "reload")
+    used |= {f"start.{m}" for m in modes} | {f"start.{m}_note" for m in modes}
+    used |= {f"offer.{state}" for state in ("building", "ready", "asked")}
     assert used, "no key found"
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
 
