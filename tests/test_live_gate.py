@@ -473,8 +473,15 @@ class ReloadOfferTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def ask(self, p, line: bytes) -> str:
-        p.send(line)
-        return p.recv(100).decode()
+        """The streamer's answer, asked again as the plugin would if it comes late (a machine
+        busy with the other tests)."""
+        end = time.time() + 30
+        while True:
+            p.send(line)
+            try:
+                return p.recv(100).decode()
+            except TimeoutError:
+                self.assertLess(time.time(), end, f"no answer to {line!r}")
 
     def test_from_the_start_to_the_reload(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
@@ -776,8 +783,8 @@ class RunTest(unittest.TestCase):
         before = len(
             self.xp.commands
         )  # the streamer came after X-Plane: it may have reloaded there
-        self.click()
-        self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
+        self.click()  # X-Plane runs: a flight change, or X-Plane quitting, as far as anyone knows
+        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
         old = self.xp.position
         answers = self.hold(*old)  # the plugin still reads the old position
         self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers)
@@ -820,7 +827,8 @@ class RunTest(unittest.TestCase):
         )
         before = len(self.xp.commands)
         self.click()  # the same start, written again, X-Plane never stopping
-        self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
+        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
+        self.assertFalse(any("starting a flight" in m for m in self.log))  # not said, as it was
         time.sleep(1.0)
         self.assertEqual(self.xp.commands[before:], [])  # no reload
 

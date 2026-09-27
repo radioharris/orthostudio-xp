@@ -936,6 +936,10 @@ _EXPECTED = {
     "from": "building around {} before X-Plane loads it",
     "last": "the last flight started at {}: building there while X-Plane starts",
     "click": "X-Plane is starting a flight at {}: building there",
+    # X-Plane also saves its start when it quits, and nothing tells the two apart yet
+    "click_running": (
+        "X-Plane's next start is {} (a new flight, or X-Plane quitting): building there"
+    ),
     "plugin": "X-Plane is loading a flight at {}: building there",
 }
 
@@ -1045,7 +1049,8 @@ def run(
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         if streamer.covers(lat, lon):
-            log(_EXPECTED[how].format(name))
+            said = "click_running" if how == "click" and not arrival.loading else how
+            log(_EXPECTED[said].format(name))
         else:
             log(
                 f"{name} is outside the region set up: no ortho there, X-Plane shows its own "
