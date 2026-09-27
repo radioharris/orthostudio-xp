@@ -223,8 +223,11 @@ static void tell_start(void) {
 static void show(const struct state *st) {
     char what[200], progress[100];
     if (french) {
+        char rate[32], *dot;
+        snprintf(rate, sizeof rate, "%.1f", st->mbs);
+        if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */
         snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
-        snprintf(progress, sizeof progress, "%d textures à construire  -  %d s  -  %.1f Mo/s", st->left, st->secs, st->mbs);
+        snprintf(progress, sizeof progress, "%d textures à construire  -  %d s  -  %s Mo/s", st->left, st->secs, rate);
     } else {
         snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
         snprintf(progress, sizeof progress, "%d textures to build  -  %d s  -  %.1f MB/s", st->left, st->secs, st->mbs);
