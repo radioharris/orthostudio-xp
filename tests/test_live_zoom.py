@@ -317,9 +317,9 @@ def built_as_planned(s: Streamer, jobs: dict) -> None:
 
 
 def test_the_reload_offered_after_a_start(tmp_path: Path) -> None:
-    """The start mode "reload": X-Plane starts at 4096 px; the 8192 px textures of "full" are built
-    afterwards, not urgent, and once they all are, with nothing X-Plane may show left, the reload is
-    offered; asked, X-Plane gets it once."""
+    """The start mode "reload": X-Plane starts at 4096 px; the 8192 px textures of "around" (where
+    X-Plane read 4096 px) are built afterwards, not urgent, and once they all are, with nothing
+    X-Plane may show left, the reload is offered; asked, X-Plane gets it once."""
     xp = Xp()
     s = row_streamer(tmp_path, "reload", xplane=xp)
     start = at(0)
@@ -327,9 +327,9 @@ def test_the_reload_offered_after_a_start(tmp_path: Path) -> None:
     assert s.offer_state() is None
     s.offer_reload(start.lat, start.lon)  # X-Plane is there
     jobs = s.plan(start, x_plane_there=False)
-    assert sharp(jobs) == [0, 1, 2, 3, 4]
-    assert all(jobs[f"{ROW[k]}.dds"][0] > 0 for k in range(5))  # after what X-Plane shows
-    assert s.offer_state() == {"state": "building", "left": 5, "id": int(s.offer.since)}
+    assert sharp(jobs) == [0, 1, 2]
+    assert all(jobs[f"{ROW[k]}.dds"][0] > 0 for k in range(3))  # after what X-Plane shows
+    assert s.offer_state() == {"state": "building", "left": 3, "id": int(s.offer.since)}
     assert not s.reload_now()  # not ready
     built_as_planned(s, jobs)
     s.plan(start, x_plane_there=False)

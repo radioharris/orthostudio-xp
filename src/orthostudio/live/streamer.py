@@ -72,7 +72,7 @@ RELOAD_COMMAND = "sim/operation/reload_scenery"
 # - around: 8192 px wherever X-Plane reads 4096 px while the flight loads (ring 0: about 12 km,
 #   3 km for the airports' textures), so that nothing around the aircraft is left at 4096 px;
 # - normal: 4096 px only;
-# - reload: 4096 px only; then the 8192 px textures of "full" are built, and a reload of the
+# - reload: 4096 px only; then the 8192 px textures of "around" are built, and a reload of the
 #   scenery is offered (Offer) to show them.
 # Beyond the start, all four grow the textures ahead alike.
 START_MODES = ("full", "around", "normal", "reload")
@@ -276,14 +276,14 @@ class Streamer:
         levels keep the distances on the ground: one built too few would show the neutral colour,
         where a texture that does not grow stays 4096 px."""
         r8 = ring_km(MIN_LEVEL, zoom) * self.margin
+        r4 = ring_km(0, zoom) * self.margin  # where X-Plane reads 4096 px while a flight loads
         if starting:  # X-Plane reads nothing here before the start's textures are built
             if self.start_mode == "full" and d - self.reach_km <= r8:
                 return d_now - r8 - self.reach_km  # X-Plane waits for it
-            r4 = ring_km(0, zoom) * self.margin  # where X-Plane reads its 4096 px while it loads
             if self.start_mode == "around" and d <= r4:
                 return d_now - r4
             return None
-        if offer is not None and d - self.reach_km <= r8:  # X-Plane reads it again at the reload
+        if offer is not None and d <= r4:  # X-Plane reads it again at the reload
             return OFFER_URGENCY + d_now / 1000.0
         if d <= r8 and d_now > ring_km(0, zoom):  # ahead, before X-Plane reads its 4096 px level
             return d_now - ring_km(0, zoom)
@@ -436,7 +436,7 @@ class Streamer:
 
     def offer_reload(self, lat: float, lon: float) -> None:
         """X-Plane has started there at 4096 px: build the 8192 px textures around the aircraft,
-        as a start in "full" would have waited for, and offer a reload once they are built."""
+        as a start in "around" would have waited for, and offer a reload once they are built."""
         if self.start_mode != "reload" or not self.growing:
             return
         o = self.offer
