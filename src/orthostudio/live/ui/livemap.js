@@ -94,6 +94,8 @@ export function createLiveMap(el, { api }) {
     }
   }
 
+  // the map takes the height of the blocks beside it: Leaflet is told when its box changes
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => map.invalidateSize()).observe(el);
   map.on("moveend", () => drawBuilt());
   map.on("dragstart", () => {
     follow = false; // the pilot looks elsewhere: the map stays there until asked back
