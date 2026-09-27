@@ -178,27 +178,28 @@ def stream(
             help="start as the first time: forget every texture built and all imagery downloaded"
         ),
     ] = False,
-    disk_budget_gb: Annotated[
+    disk_gb: Annotated[
         float | None,
         typer.Option(
-            help="disk the built textures may take; beyond it, the farthest are made coarser "
-            "(default: 20)"
-        ),
-    ] = None,
-    cache_budget_gb: Annotated[
-        float | None,
-        typer.Option(
-            help="disk the downloaded imagery may take; beyond it, the oldest goes (default: 10)"
+            help="disk Live may take: half for the textures built (beyond it, the farthest are "
+            "made coarser), half for the downloaded imagery (beyond it, the oldest goes) "
+            "(default: the window's, 40)"
         ),
     ] = None,
 ) -> None:
     """Follow X-Plane and keep the textures ahead of the aircraft built. Start it before X-Plane.
 
     The options left out are the Live window's settings."""
-    from orthostudio.live.settings import load_settings
+    from orthostudio.live.settings import LiveSettings, load_settings
     from orthostudio.live.streamer import START_MODES
 
     saved = load_settings()
+    space = saved
+    if disk_gb is not None:
+        try:  # checked as the window checks it
+            space = LiveSettings.model_validate({**saved.model_dump(), "disk_gb": disk_gb})
+        except ValueError as e:
+            raise typer.Exit(_fail(f"--disk-gb: {e}")) from e
     if start_mode is not None and start_mode not in START_MODES:
         raise typer.Exit(_fail(f"--start-mode: one of {', '.join(START_MODES)}"))
     options = session.Options(
@@ -220,8 +221,8 @@ def stream(
         source=source,
         no_plugin=no_plugin,
         fresh=fresh,
-        disk_budget_gb=saved.disk_budget_gb if disk_budget_gb is None else disk_budget_gb,
-        cache_budget_gb=saved.cache_budget_gb if cache_budget_gb is None else cache_budget_gb,
+        disk_budget_gb=space.textures_gb,
+        cache_budget_gb=space.imagery_gb,
     )
     try:
         prepared = session.prepare(options, typer.echo)

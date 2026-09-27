@@ -65,8 +65,8 @@ STOP_HINT = "Stop in the window to end"
 def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
     return session.Options(
         provider=settings.provider,
-        disk_budget_gb=settings.disk_budget_gb,
-        cache_budget_gb=settings.cache_budget_gb,
+        disk_budget_gb=settings.textures_gb,  # Live's one disk space, shared
+        cache_budget_gb=settings.imagery_gb,
         max_zoom=settings.max_zoom,
         max_zoom_airports=settings.max_zoom_airports,
         start_mode=settings.start_mode,

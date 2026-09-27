@@ -276,14 +276,10 @@ export const STRINGS = {
     "settings.recommended": "Recommended",
 
     "disk.title": "Disk space",
-    "disk.help": "Live keeps two things on the disk, each within the space set here.",
-    "disk.textures": "Built textures",
-    "disk.textures_help":
-      "The ortho made for X-Plane around where you fly: what X-Plane shows. Beyond this space, the textures farthest from the aircraft become coarser, and Live builds them again if you fly back there.",
-    "disk.imagery": "Downloaded imagery",
-    "disk.imagery_help":
-      "The photos as the source sent them, kept so that a texture can be built again without downloading them twice. Beyond this space, the oldest are deleted.",
-    "disk.now": "Now: {gb} GB.",
+    "disk.help":
+      "The space Live may take on the disk: half for the ortho made for X-Plane, half for the downloaded photos, kept to make it again without downloading them twice. Beyond it, what is farthest and oldest goes, and Live makes it again if you fly back there.",
+    "disk.space": "Space for Live",
+    "disk.now": "Now: {gb} GB ({textures} GB of ortho, {imagery} GB of photos).",
     "disk.delete": "Delete…",
     "disk.delete_streaming": "Stop Live to delete.",
 
@@ -594,14 +590,10 @@ export const STRINGS = {
     "settings.recommended": "Recommandé",
 
     "disk.title": "Place sur le disque",
-    "disk.help": "Live garde deux choses sur le disque, chacune dans la place réglée ici.",
-    "disk.textures": "Textures construites",
-    "disk.textures_help":
-      "L'ortho préparée pour X-Plane autour de là où vous volez : ce que X-Plane affiche. Au-delà de cette place, les textures les plus loin de l'avion redeviennent plus grossières, et Live les reconstruit si vous y revenez.",
-    "disk.imagery": "Images téléchargées",
-    "disk.imagery_help":
-      "Les photos telles que la source les envoie, gardées pour reconstruire une texture sans les télécharger deux fois. Au-delà de cette place, les plus anciennes sont effacées.",
-    "disk.now": "En ce moment : {gb} Go.",
+    "disk.help":
+      "La place que Live peut prendre sur le disque : moitié pour l'ortho préparée pour X-Plane, moitié pour les photos téléchargées, gardées pour la refaire sans les retélécharger. Au-delà, ce qui est le plus loin et le plus ancien s'en va, et Live le refait si vous y revenez.",
+    "disk.space": "Place pour Live",
+    "disk.now": "En ce moment : {gb} Go ({textures} Go d'ortho, {imagery} Go de photos).",
     "disk.delete": "Supprimer…",
     "disk.delete_streaming": "Arrêtez Live pour supprimer.",
 

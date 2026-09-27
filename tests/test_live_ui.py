@@ -48,20 +48,36 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_the_settings_go_beside_the_switch(home: Path) -> None:
     settings_file().write_text("enabled = true\n")
     assert load_settings() == LiveSettings()
-    save_settings(LiveSettings(disk_budget_gb=50, provider="Arc"))
+    save_settings(LiveSettings(disk_gb=50, provider="Arc"))
     saved = tomllib.loads(settings_file().read_text())
     assert saved["enabled"] is True  # the switch, as it was
-    assert saved["stream"]["disk_budget_gb"] == 50
+    assert saved["stream"]["disk_gb"] == 50
     assert enabled()
-    assert load_settings().disk_budget_gb == 50
+    assert load_settings().disk_gb == 50
     assert load_settings().provider == "Arc"
 
 
 def test_a_wrong_value_costs_itself_only(home: Path) -> None:
-    settings_file().write_text("[stream]\ndisk_budget_gb = -3\ncache_budget_gb = 40\n")
+    settings_file().write_text('[stream]\ndisk_gb = -3\nprovider = "Arc"\n')
     got = load_settings()
-    assert got.disk_budget_gb == LiveSettings().disk_budget_gb
-    assert got.cache_budget_gb == 40
+    assert got.disk_gb == LiveSettings().disk_gb
+    assert got.provider == "Arc"
+
+
+def test_one_disk_space_shared_and_the_two_of_before(home: Path) -> None:
+    """One space, as AutoOrtho's cache: half for the textures built, half for the downloaded
+    imagery. A file from before, with two spaces, keeps as much as it gave: their sum."""
+    space = LiveSettings(disk_gb=40)
+    assert (space.textures_gb, space.imagery_gb) == (20, 20)
+    settings_file().write_text("[stream]\ndisk_budget_gb = 20\ncache_budget_gb = 20\n")
+    assert load_settings().disk_gb == 40
+    settings_file().write_text("[stream]\ncache_budget_gb = 30\n")  # the other one's default
+    assert load_settings().disk_gb == 50
+    settings_file().write_text("[stream]\ndisk_budget_gb = -3\ncache_budget_gb = 40\n")
+    assert load_settings().disk_gb == 60  # a wrong one counts as its default, 20
+    save_settings(load_settings())  # saved once: one space only in the file
+    written = tomllib.loads(settings_file().read_text())["stream"]
+    assert written["disk_gb"] == 60 and "disk_budget_gb" not in written
 
 
 def test_what_a_start_waits_for(home: Path) -> None:
@@ -236,7 +252,7 @@ def control_for(stream: FakeStream, **changed: Any) -> LiveControl:
         forget_imagery=lambda log: stream.done.append("imagery"),
         launch=lambda xplane: stream.done.append(f"launched {xplane}"),
         checks=checks(**changed),
-        settings=lambda: LiveSettings(disk_budget_gb=33),
+        settings=lambda: LiveSettings(disk_gb=66),
         echo=lambda _: None,
         catalog=lambda root: {},  # never GitHub from a test
     )
@@ -260,7 +276,8 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert status["stream"] == REPORT
     assert status["api"] == control_module.API
     assert stream.options is not None
-    assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's settings
+    assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
+    assert stream.options.cache_budget_gb == 33
     assert stream.options.start_mode == "around"
     c.stop()
     assert c.wait_idle(5)
@@ -451,19 +468,19 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         assert (await client.post("/api/live/stop")).status_code == 202
         assert c.wait_idle(5)
 
-        saved = await client.put("/api/live/settings", json={"disk_budget_gb": 40})
-        assert saved.status_code == 200 and saved.json()["disk_budget_gb"] == 40
+        saved = await client.put("/api/live/settings", json={"disk_gb": 60})
+        assert saved.status_code == 200 and saved.json()["disk_gb"] == 60
         assert tomllib.loads(settings_file().read_text())["enabled"] is True
-        wrong = await client.put("/api/live/settings", json={"disk_budget_gb": 0})
-        assert wrong.status_code == 422 and "disk_budget_gb" in wrong.json()["detail"]
-        assert load_settings().disk_budget_gb == 40
+        wrong = await client.put("/api/live/settings", json={"disk_gb": 0})
+        assert wrong.status_code == 422 and "disk_gb" in wrong.json()["detail"]
+        assert load_settings().disk_gb == 60
         relative = await client.put("/api/live/settings", json={"folder": "Live"})
         assert relative.status_code == 422 and "full path" in relative.json()["detail"]
         away = await client.put("/api/live/settings", json={"folder": str(home / "no" / "disk")})
         assert away.status_code == 422 and "plugged in" in away.json()["detail"]
         chosen = await client.put("/api/live/settings", json={"folder": str(home / "Live")})
         assert chosen.status_code == 200 and chosen.json()["folder"] == str(home / "Live")
-        assert load_settings().disk_budget_gb == 40  # the rest as it was
+        assert load_settings().disk_gb == 60  # the rest as it was
 
 
 @pytest.mark.anyio

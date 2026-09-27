@@ -21,6 +21,8 @@ from orthostudio.fsutil import atomic_write_text
 from orthostudio.live import settings_file
 
 TABLE = "stream"
+TEXTURES_SHARE = 0.5  # of Live's disk space: the textures built; the rest, the downloaded imagery
+OLD_BUDGETS = {"disk_budget_gb": 20.0, "cache_budget_gb": 10.0}  # the two spaces set before, apart
 
 
 class LiveSettings(BaseModel):
@@ -28,10 +30,10 @@ class LiveSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    disk_budget_gb: float = Field(20.0, ge=2.0, le=10_000.0)
-    """Disk the built textures may take; beyond it, the farthest are made coarser."""
-    cache_budget_gb: float = Field(10.0, ge=1.0, le=10_000.0)
-    """Disk the downloaded imagery may take; beyond it, the oldest goes."""
+    disk_gb: float = Field(40.0, ge=4.0, le=20_000.0)
+    """Disk Live may take, one space as AutoOrtho's and XPME's cache: half for the textures built
+    (beyond it, the farthest are made coarser), half for the downloaded imagery (beyond it, the
+    oldest goes). Two spaces, set apart, confused a user (2026-09-27): which one to raise?"""
     max_zoom: int = Field(16, ge=14, le=17)
     """AutoOrtho's max_zoom: the zoom of the textures away from airports. Below the mesh's (16), a
     smaller texture; 17, an 8192 px one."""
@@ -59,6 +61,16 @@ class LiveSettings(BaseModel):
     overlays: Literal["auto", "off"] = "auto"
     """AutoOrtho's roads, forests and buildings on Live's squares where no other scenery draws
     them (:mod:`orthostudio.live.overlays`); "off": nowhere."""
+
+    @property
+    def textures_gb(self) -> float:
+        """The built textures' part of Live's disk space."""
+        return self.disk_gb * TEXTURES_SHARE
+
+    @property
+    def imagery_gb(self) -> float:
+        """The downloaded imagery's part of Live's disk space."""
+        return self.disk_gb - self.textures_gb
 
     @field_validator("folder")
     @classmethod
@@ -102,6 +114,19 @@ def _read() -> dict:
         raise SettingsFileError(f"{settings_file()} does not parse: {e}") from e
 
 
+def _one_space(table: dict) -> dict:
+    """A file from before the one disk space: the two spaces it set, added (each one's default
+    where it is missing or wrong), so that Live keeps as much as it was given."""
+    if "disk_gb" in table or not any(key in table for key in OLD_BUDGETS):
+        return table
+    total = 0.0
+    for key, default in OLD_BUDGETS.items():
+        value = table.get(key, default)
+        valid = isinstance(value, int | float) and not isinstance(value, bool) and value > 0
+        total += float(value) if valid else default
+    return {**table, "disk_gb": total}
+
+
 def load_settings() -> LiveSettings:
     """The saved settings, the defaults for what is missing or cannot be read."""
     try:
@@ -110,6 +135,7 @@ def load_settings() -> LiveSettings:
         return LiveSettings()
     if not isinstance(table, dict):
         return LiveSettings()
+    table = _one_space(table)
     defaults = LiveSettings().model_dump()
     kept = {}
     for key, value in table.items():  # one wrong value costs itself, not its neighbours

@@ -215,18 +215,10 @@
         <legend class="question-title" data-i18n="disk.title">Disk space</legend>
         <p class="question-help" data-i18n="disk.help"></p>
         <div class="sub-question">
-          <label class="sub-question-title" for="set-disk" data-i18n="disk.textures">Built textures</label>
-          <div class="with-unit"><input type="number" id="set-disk" name="disk_budget_gb" min="2" step="1">
+          <label class="sub-question-title" for="set-disk" data-i18n="disk.space">Space for Live</label>
+          <div class="with-unit"><input type="number" id="set-disk" name="disk_gb" min="4" step="1">
             <span class="unit" data-i18n="unit.gb">GB</span></div>
-          <p class="question-help" data-i18n="disk.textures_help"></p>
           <p class="question-detected" id="disk-now"></p>
-        </div>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-cache" data-i18n="disk.imagery">Downloaded imagery</label>
-          <div class="with-unit"><input type="number" id="set-cache" name="cache_budget_gb" min="1" step="1">
-            <span class="unit" data-i18n="unit.gb">GB</span></div>
-          <p class="question-help" data-i18n="disk.imagery_help"></p>
-          <p class="question-detected" id="cache-now"></p>
         </div>
         <div class="actions live-delete">
           <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>

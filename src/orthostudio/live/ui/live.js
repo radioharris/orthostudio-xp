@@ -242,6 +242,9 @@ function drawBuild(status) {
     return;
   }
   const s = stream.streamer;
+  // Live's one disk space, as set: its textures and its downloaded imagery together
+  const space = diskUsed(status);
+  const budget = (Number(status.settings?.disk_gb) || 0) * 1e9;
   const queued = byLevel(s.queued, s.first_level);
   const building = s.building || s.pieces_awaited
     ? t("build.building_value", { n: number(s.building), pieces: number(s.pieces_awaited) })
@@ -258,9 +261,9 @@ function drawBuild(status) {
     ...(s.grown ? [[t("build.grown"), number(s.grown)]] : []),
     [t("build.downloaded"), downloaded],
     [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
-    [t("build.disk"), t("build.disk_value", { used: gb(s.disk_bytes), budget: number(s.disk_budget / 1e9) })],
+    [t("build.disk"), t("build.disk_value", { used: gb(space.total), budget: number(budget / 1e9) })],
   ]);
-  const share = s.disk_budget ? Math.min(1, s.disk_bytes / s.disk_budget) : 0;
+  const share = budget ? Math.min(1, space.total / budget) : 0;
   $("disk-bar").style.width = `${Math.round(share * 1000) / 10}%`;
   $("disk").classList.toggle("warn", share > 0.9);
 }
@@ -324,12 +327,20 @@ function drawChecks(status) {
   }
 }
 
-/** Disk space: what each takes now, and whether they can be deleted. */
-function drawDisk(status) {
+/** What Live takes on the disk now: its textures built and its downloaded imagery. */
+function diskUsed(status) {
   const streaming = status.state === "streaming" && status.stream;
   const textures = streaming ? status.stream.streamer.disk_bytes : status.checks.textures_bytes;
-  $("disk-now").textContent = t("disk.now", { gb: gb(textures) });
-  $("cache-now").textContent = t("disk.now", { gb: gb(status.checks.imagery_bytes) });
+  const imagery = status.checks.imagery_bytes || 0;
+  return { textures, imagery, total: textures + imagery };
+}
+
+/** Disk space: what Live takes now, of the two, and whether they can be deleted. */
+function drawDisk(status) {
+  const used = diskUsed(status);
+  $("disk-now").textContent = t("disk.now", {
+    gb: gb(used.total), textures: gb(used.textures), imagery: gb(used.imagery),
+  });
   const idle = status.state === "idle";
   $("delete-btn").disabled = !idle;
   $("delete-help").textContent = idle ? "" : t("disk.delete_streaming");
@@ -633,8 +644,7 @@ function startMode() {
 function fillSettings(settings) {
   $("set-max-zoom").value = String(settings.max_zoom);
   $("set-max-zoom-airports").value = String(settings.max_zoom_airports);
-  $("set-disk").value = String(settings.disk_budget_gb);
-  $("set-cache").value = String(settings.cache_budget_gb);
+  $("set-disk").value = String(settings.disk_gb);
   $("set-folder").value = settings.folder || "";
   $("set-simbrief").value = settings.simbrief_user || "";
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
@@ -657,8 +667,7 @@ function formSettings() {
   return {
     max_zoom: Number($("set-max-zoom").value),
     max_zoom_airports: Number($("set-max-zoom-airports").value),
-    disk_budget_gb: Number($("set-disk").value),
-    cache_budget_gb: Number($("set-cache").value),
+    disk_gb: Number($("set-disk").value),
     folder: $("set-folder").value.trim(),
     start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),

@@ -53,7 +53,7 @@ OrthoStudio XP's screens:
   only while Live is stopped, and textures already built keep their photos: "From scratch" builds
   them all again with a new source.
 - **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start
-  waits for, the flight plan, the disk space for the textures and for the downloaded imagery (with
+  waits for, the flight plan, Live's one disk space, shared by the textures and the downloaded imagery (with
   what each takes now, and a button to delete either), and Live's folder. They apply with Save, at
   the next start; leaving the tab with answers not saved says so.
 
@@ -313,13 +313,14 @@ is never made on the computer's own disk instead: Live says so and does not star
 - `overlays`: the roads, forests and buildings of Live's squares (linked into Custom Scenery as
   `y_osxp_live_overlays` while Live runs), copies of the regions' that take no space.
 
-Both have a budget, set in the window (20 GB and 10 GB by default; `--disk-budget-gb` and
-`--cache-budget-gb` in a terminal, where the window's settings are the defaults). Over it,
-OrthoStudio XP Live makes the textures seen longest ago coarser, only those more than 300 km from the
-aircraft and the camera, where X-Plane reads nothing: first back to 256 px (their small levels are
-in the file, nothing to download), then to the placeholder; and it drops the imagery downloaded
-longest ago. A texture that comes back within reach is built again before X-Plane wants it.
-Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
+They share one disk space, as AutoOrtho's and XPME's cache is one: set in the window (40 GB by
+default; `--disk-gb` in a terminal, where the window's setting is the default), half for the pack's
+textures, half for the imagery (two spaces, set apart, left a user wondering which to raise). Over
+its half, OrthoStudio XP Live makes the textures seen longest ago coarser, only those more than 300
+km from the aircraft and the camera, where X-Plane reads nothing: first back to 256 px (their small
+levels are in the file, nothing to download), then to the placeholder; and it drops the imagery
+downloaded longest ago. A texture that comes back within reach is built again before X-Plane wants
+it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
 
 ## What it costs
 
