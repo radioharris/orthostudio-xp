@@ -245,5 +245,7 @@ Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
 - The look-ahead follows the current track; a flight plan (SimBrief) would let it look further.
 - Distances are measured along the ground, but for the 8192 px textures: counting the altitude
   at every level would download little less at cruise, where most is for external views (25 km
-  around), which a shorter reach at cruise would save.
+  around), which a shorter reach at cruise would save. To set it on how pilots really fly, Live
+  notes how far and how low external views take the camera, at cruise and below, says it in its
+  log when it stops, and keeps the last 20 flights in `pack/_live/camera.json`.
 - Only where AutoOrtho has a mesh: its regions installed.

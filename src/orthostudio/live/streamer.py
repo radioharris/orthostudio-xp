@@ -1134,6 +1134,9 @@ def run(
                 f"scenery"
             )
 
+    from .cameralog import CameraLog
+
+    camera = CameraLog(streamer.pack_dir / "_live" / "camera.json")  # how far external views go
     streamer.start()
     streamer.refresh_flight_plan()
     if start is not None:
@@ -1220,6 +1223,8 @@ def run(
             if now - last_plan >= PLAN_EVERY_S and (values.get("lat") or arrival is not None):
                 last_plan = now
                 streamer.set_screen(values.get("win_w"), values.get("fov"))
+                if now - last_packet < FRESH_S and arrival is None:  # flying, not loading
+                    camera.note(values, now)
                 fix = None
                 if values.get("lat") and values.get("lon"):
                     fix = Fix(
@@ -1304,8 +1309,12 @@ def run(
                 report(progress_report(streamer, values, arrival, now, last_packet, mbs))
             if now - last_save >= 30:
                 streamer.save()
+                camera.save()
                 last_save = now
     except KeyboardInterrupt:
         pass
     finally:
         streamer.close()
+        camera.save()
+        for line in camera.summary():
+            log(f"  {line}")
