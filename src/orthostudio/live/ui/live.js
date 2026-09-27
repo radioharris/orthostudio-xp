@@ -701,6 +701,11 @@ async function act(path, body) {
   }
 }
 
+function tellLanguage() {
+  // the plugin's words in X-Plane follow the window's language
+  api("language", { method: "POST", body: { language: language() } }).catch(() => {});
+}
+
 async function askRegions() {
   // GitHub's list of AutoOrtho's regions, read by the engine in the background: the status brings it
   try {
@@ -732,6 +737,7 @@ function boot() {
   renderStartModes();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
+    tellLanguage();
     applyStatic(document);
     renderZooms();
     renderStartModes();
@@ -764,6 +770,7 @@ function boot() {
     $("settings-error").hidden = true;
   });
   loadProviders();
+  tellLanguage();
   askRegions();
   setInterval(askRegions, 60_000); // read again only when old (orthostudio/live/control.py)
   poll();

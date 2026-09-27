@@ -97,7 +97,7 @@ extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void
 
 void live_panel_show(const char *what, const char *progress, double fraction); /* live_panel.m */
 void live_panel_hide(void);
-void live_offer_show(const char *text, int reload); /* the offer with its two buttons, a notice with its cross */
+void live_offer_show(const char *text, int reload, int french); /* the offer with its two buttons, a notice with its cross */
 void live_offer_hide(void);
 int live_offer_clicked(void); /* 1: reload, 2: not now, 0: no click since the last call */
 
@@ -106,6 +106,7 @@ static int flights = 0; /* flights whose aircraft has loaded */
 static XPLMDataRef lat_ref, lon_ref;
 static int offered = 0, closed = 0; /* the offer ready (its id), and the last one whose panel went */
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
+static int french = 0; /* the Live window's language, which each answer says: its words in X-Plane */
 static char note[160]; /* its words */
 
 static double now(void) {
@@ -146,9 +147,10 @@ static void drain(void) {
     }
 }
 
-/* What the streamer says while X-Plane waits: "LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 at=LFBO runway 14L"
+/* What the streamer says while X-Plane waits: "LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFBO runway 14L"
    is 12 textures left, 45.0 % of the work done, 23 s since the start was known, downloading at
-   15.2 MB/s, and where (the rest of the line). */
+   15.2 MB/s, the Live window's language (the words shown take it), and where (the rest of the
+   line, in that language). */
 struct state {
     int left, permille, secs;
     double mbs;
@@ -171,6 +173,12 @@ static void parse_wait(char *p, struct state *st) {
 
 /* Sends `line` and waits up to `wait_s` for an answer. Returns 1 for go, 0 for wait, -1 for no
    answer yet, -2 if nothing listens (no streamer). */
+/* "lang=fr" or "lang=en" in an answer of the streamer: the Live window's language. */
+static void language_of(const char *answer) {
+    const char *l = strstr(answer, " lang=");
+    if (l) french = strncmp(l + 6, "fr", 2) == 0;
+}
+
 static int ask(const char *line, double wait_s, struct state *st) {
     char buf[256];
     struct timeval tv;
@@ -190,6 +198,7 @@ static int ask(const char *line, double wait_s, struct state *st) {
         buf[n] = 0;
         if (sscanf(buf, "LIVE1 GO %d", &st->left) == 1) return 1;
         if (strncmp(buf, "LIVE1 WAIT ", 11) == 0) {
+            language_of(buf);
             parse_wait(buf + 11, st);
             return 0;
         }
@@ -213,8 +222,13 @@ static void tell_start(void) {
 
 static void show(const struct state *st) {
     char what[200], progress[100];
-    snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
-    snprintf(progress, sizeof progress, "%d textures to build  -  %d s  -  %.1f MB/s", st->left, st->secs, st->mbs);
+    if (french) {
+        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
+        snprintf(progress, sizeof progress, "%d textures à construire  -  %d s  -  %.1f Mo/s", st->left, st->secs, st->mbs);
+    } else {
+        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
+        snprintf(progress, sizeof progress, "%d textures to build  -  %d s  -  %.1f MB/s", st->left, st->secs, st->mbs);
+    }
     live_panel_show(what, progress, st->permille / 1000.0);
 }
 
@@ -285,6 +299,7 @@ static float every_second(float since_call, float since_loop, int counter, void 
     while ((n = recv(sock, buf, sizeof buf - 1, MSG_DONTWAIT)) >= 0) {
         buf[n] = 0;
         at = 0;
+        language_of(buf);
         if (sscanf(buf, "LIVE1 OFFER READY %d", &id) == 1) {
             if (id != offered && id != closed) say("the 8192 px textures around the aircraft are built: a reload is offered");
             offered = id;
@@ -293,6 +308,7 @@ static float every_second(float since_call, float since_loop, int counter, void 
             offered = 0;
             noted = 0;
         } else if (sscanf(buf, "LIVE1 NOTE %d %n", &id, &at) == 1 && at > 0) {
+            if (strncmp(buf + at, "lang=", 5) == 0 && strlen(buf + at) > 8) at += 8; /* "lang=fr " */
             if (id != noted && id != closed_note) say("%s", buf + at);
             noted = id;
             snprintf(note, sizeof note, "%s", buf + at);
@@ -300,9 +316,9 @@ static float every_second(float since_call, float since_loop, int counter, void 
         }
     }
     if (offered && offered != closed)
-        live_offer_show("Live: 8K ready around the aircraft", 1);
+        live_offer_show(french ? "Live : 8K prête autour de l'avion" : "Live: 8K ready around the aircraft", 1, french);
     else if (noted && noted != closed_note)
-        live_offer_show(note, 0);
+        live_offer_show(note, 0, french);
     else
         live_offer_hide();
     send(sock, "LIVE1 ASK", 9, 0);

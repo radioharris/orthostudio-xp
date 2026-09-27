@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import dds
-from .aoregions import REGION_NAMES, region_of
+from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
@@ -1038,11 +1038,21 @@ def needs_reload(arrival: Arrival, xplane_started: float | None) -> bool:
 
 
 def notice_text(notice: dict) -> str:
-    """The notice as the plugin shows it in X-Plane and the log says it (the window has its own)."""
+    """The notice as the log says it (the window and the plugin have their own words)."""
     name = REGION_NAMES.get(notice["region"], notice["region"])
     if notice.get("installed"):
         return f"{name} is installed: used from Live's next start"
     return f"no mesh here: install {name} in the Live window"
+
+
+def plugin_note(notice: dict, language: str) -> str:
+    """The notice as the plugin shows it in X-Plane, in the Live window's language."""
+    if language != "fr":
+        return f"Live: {notice_text(notice)}"
+    name = REGION_NAMES_FR.get(notice["region"], notice["region"])
+    if notice.get("installed"):
+        return f"Live : {name} est installée, elle servira au prochain démarrage de Live"
+    return f"Live : pas de mesh ici, installez {name} dans la fenêtre de Live"
 
 
 _EXPECTED = {
@@ -1136,6 +1146,7 @@ def run(
     guess_last: bool = True,
     report: Callable[[dict], None] | None = None,
     reload_asked: Callable[[], bool] = lambda: False,
+    language: Callable[[], str] = lambda: "en",
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
@@ -1201,9 +1212,9 @@ def run(
                 running = "lat" in values and now - last_packet < FRESH_S
                 for kind, lat, lon, addr, why in gate.requests():
                     if kind == "ASK":  # the plugin, every second of a flight: a reload offered?
-                        notice = streamer.notice
-                        note = notice_text(notice) if notice else None
-                        gate.offer(addr, streamer.offer_state(), note, notice)
+                        notice, lang = streamer.notice, language()
+                        note = plugin_note(notice, lang) if notice else None
+                        gate.offer(addr, streamer.offer_state(), note, notice, lang=lang)
                         continue
                     if kind == "RELOAD":  # its button, in X-Plane
                         streamer.reload_now()
@@ -1214,7 +1225,7 @@ def run(
                         and not (arrival is not None and arrival.certain(now))
                     ):
                         if kind == "HOLD":  # a livery changed in flight: nothing loads
-                            gate.answer(addr, True, 0)
+                            gate.answer(addr, True, 0, lang=language())
                         continue
                     if arrival is None or (
                         arrival.how not in ("click", "from") and not arrival.near(lat, lon)
@@ -1229,7 +1240,16 @@ def run(
                         # no time limit: X-Plane waits while pieces arrive, however long a start
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
-                        gate.answer(addr, left == 0 or stalled, left, arrival.name, done, took, mbs)
+                        gate.answer(
+                            addr,
+                            left == 0 or stalled,
+                            left,
+                            arrival.name,
+                            done,
+                            took,
+                            mbs,
+                            lang=language(),
+                        )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
                             log(

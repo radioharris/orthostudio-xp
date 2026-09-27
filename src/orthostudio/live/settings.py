@@ -53,6 +53,9 @@ class LiveSettings(BaseModel):
     simbrief_user: str = Field("", max_length=64)
     """The SimBrief name or pilot ID whose last plan the path ahead follows
     (:mod:`orthostudio.live.flightplan`); empty: nothing is asked of simbrief.com."""
+    language: Literal["en", "fr"] = "en"
+    """The Live window's language, set by its EN/FR selector: the plugin's texts in X-Plane follow
+    it (its Log.txt lines stay English)."""
     overlays: Literal["auto", "off"] = "auto"
     """AutoOrtho's roads, forests and buildings on Live's squares where no other scenery draws
     them (:mod:`orthostudio.live.overlays`); "off": nowhere."""

@@ -45,6 +45,10 @@ from orthostudio.live.settings import (
 )
 
 
+class LanguageBody(BaseModel):
+    language: Literal["en", "fr"]
+
+
 class HomeBody(BaseModel):
     home: Literal["live", "build"]
     remember: bool = True
@@ -128,6 +132,11 @@ def live_router(control: LiveControl) -> APIRouter:
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return {"state": control.state}
+
+    @router.post("/language")
+    def language(body: LanguageBody) -> dict[str, Any]:
+        control.set_language(body.language)
+        return {"language": control.language}
 
     @router.post("/home")
     def home(body: HomeBody) -> dict[str, Any]:

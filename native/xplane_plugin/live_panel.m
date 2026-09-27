@@ -92,8 +92,8 @@ void live_panel_show(const char *what, const char *progress, double fraction) {
             [box.layer addSublayer:track];
             [panel orderFrontRegardless];
         }
-        headline.stringValue = [NSString stringWithUTF8String:what];
-        detail.stringValue = [NSString stringWithUTF8String:progress];
+        headline.stringValue = [NSString stringWithUTF8String:what] ?: @"";
+        detail.stringValue = [NSString stringWithUTF8String:progress] ?: @"";
         [CATransaction begin];
         [CATransaction setDisableActions:YES]; /* no animation: nothing would run it */
         fill.frame = CGRectMake(0, 0, BAR_W * (fraction < 0 ? 0 : fraction > 1 ? 1 : fraction), BAR_H);
@@ -149,15 +149,16 @@ static NSButton *offer_button(NSString *title, SEL action, NSRect frame) {
 
 void live_offer_hide(void);
 
-static char offer_text[160]; /* what the panel shows now, and whether with the reload button */
-static int offer_reload;
+static char offer_text[160]; /* what the panel shows now, with the reload button or not, in French or not */
+static int offer_reload, offer_french;
 
-void live_offer_show(const char *what, int reload) {
+void live_offer_show(const char *what, int reload, int french) {
     if (NSApp == nil) return;
-    if (offer_panel != nil && offer_reload == reload && strcmp(offer_text, what) == 0) return;
+    if (offer_panel != nil && offer_reload == reload && offer_french == french && strcmp(offer_text, what) == 0) return;
     live_offer_hide();
     snprintf(offer_text, sizeof offer_text, "%s", what);
     offer_reload = reload;
+    offer_french = french;
     @autoreleasepool {
         /* small, in the top right corner of X-Plane's window, below its menu bar's band; as wide as
            its words */
@@ -165,7 +166,8 @@ void live_offer_show(const char *what, int reload) {
         NSFont *font = [NSFont systemFontOfSize:13];
         CGFloat text_w = MIN(560, MAX(270, ceil([words sizeWithAttributes:@{NSFontAttributeName : font}].width) + 8));
         const CGFloat h = 44;
-        CGFloat w = 14 + text_w + (reload ? 124 : 0) + 34;
+        const CGFloat button_w = french ? 140 : 120; /* "Recharger la scène" is longer */
+        CGFloat w = 14 + text_w + (reload ? button_w + 4 : 0) + 34;
         NSWindow *xp = xplane_window();
         NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
         NSRect r = NSMakeRect(NSMaxX(around) - w - 16, NSMaxY(around) - h - 48, w, h);
@@ -193,7 +195,8 @@ void live_offer_show(const char *what, int reload) {
         offer_target = [LiveOfferTarget new];
         [box addSubview:text];
         if (reload) {
-            NSButton *button = offer_button(@"Reload scenery", @selector(reload:), NSMakeRect(14 + text_w, 7, 120, 30));
+            NSButton *button = offer_button(french ? @"Recharger la scène" : @"Reload scenery", @selector(reload:),
+                                            NSMakeRect(14 + text_w, 7, button_w, 30));
             button.keyEquivalent = @"";
             [box addSubview:button];
         }
@@ -205,8 +208,8 @@ void live_offer_show(const char *what, int reload) {
                     NSForegroundColorAttributeName : [NSColor colorWithCalibratedWhite:0.75 alpha:1],
                     NSFontAttributeName : [NSFont systemFontOfSize:17]
                 }];
-        close.toolTip = @"Close";
-        close.accessibilityLabel = @"Close";
+        close.toolTip = french ? @"Fermer" : @"Close";
+        close.accessibilityLabel = close.toolTip;
         [box addSubview:close];
         [offer_panel orderFrontRegardless];
     }

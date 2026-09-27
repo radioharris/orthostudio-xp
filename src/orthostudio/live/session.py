@@ -69,6 +69,7 @@ class Options:
     start_mode: str = "around"  # what X-Plane waits for at a start: streamer.START_MODES
     simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
     overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
+    language: str = "en"  # the Live window's: the plugin's words in X-Plane
     margin: float = 1.25
     camera_reach_km: float = 25.0
     workers: int = field(default_factory=default_workers)
@@ -308,10 +309,12 @@ def follow(
     report: Callable[[dict], None] | None = None,
     stop_hint: str = "Ctrl-C here to stop",
     reload_asked: Callable[[], bool] = lambda: False,
+    language: Callable[[], str] | None = None,
 ) -> None:
     """Follow X-Plane and keep the textures ahead of the aircraft built, until ``should_stop``
     (or Ctrl-C). The pack stays installed: :func:`finish` takes it out. ``reload_asked``: the Live
-    window's button, for the reload offered after a start (``start_mode`` "reload")."""
+    window's button, for the reload offered after a start (``start_mode`` "reload"). ``language``:
+    the Live window's, asked each time the plugin is answered (``options.language`` by default)."""
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
     from orthostudio.live.providers import cache_key
@@ -362,6 +365,7 @@ def follow(
                     log=log,
                     report=report,
                     reload_asked=reload_asked,
+                    language=language or (lambda: options.language),
                 )
             finally:
                 cache.close()

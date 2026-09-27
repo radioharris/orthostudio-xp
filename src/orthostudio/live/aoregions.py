@@ -55,6 +55,14 @@ REGION_NAMES = {  # as the plugin says them in X-Plane (the window says them in 
     "asi": "Asia",
     "aus_pac": "Australia and the Pacific",
 }
+REGION_NAMES_FR = {
+    "eur": "Europe",
+    "na": "Amérique du Nord",
+    "sa": "Amérique du Sud",
+    "afr": "Afrique",
+    "asi": "Asie",
+    "aus_pac": "Australie et Pacifique",
+}
 MAP_FILE = Path(__file__).with_name("aoregions_map.json")  # tools/live/aoregions_map.py
 MARKER = ".live-region.json"
 # AutoOrtho's rule (downloader.py, Release.parse), anchored: z_ the mesh, y_ the overlays

@@ -132,10 +132,12 @@ class GateTest(unittest.TestCase):
                 )
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
                 self.assertEqual(
-                    p.recv(100), b"LIVE1 WAIT n=12 p=457 s=23 mbs=15.2 at=LFML runway 13L"
+                    p.recv(100), b"LIVE1 WAIT n=12 p=457 s=23 mbs=15.2 lang=en at=LFML runway 13L"
                 )
-                gate.answer(got[1][3], False, 3, "LFPG Aérogare 2 機")
-                self.assertTrue(p.recv(100).endswith(b"at=LFPG Aerogare 2 ?"))  # ASCII, readable
+                gate.answer(got[1][3], False, 3, "LFPG Aérogare 2 機", lang="fr")
+                self.assertTrue(p.recv(100).endswith("lang=fr at=LFPG Aérogare 2 機".encode()))
+                gate.answer(got[1][3], False, 3, "LFBZ runway 09", lang="fr")
+                self.assertTrue(p.recv(100).endswith(b"lang=fr at=LFBZ piste 09"))  # in French
                 gate.answer(got[1][3], True, 0)
                 self.assertEqual(p.recv(100), b"LIVE1 GO 0")
         finally:
@@ -156,22 +158,21 @@ class GateTest(unittest.TestCase):
                 self.assertEqual([k for k, *_ in got], ["ASK", "RELOAD"])
                 addr = got[0][3]
                 for offer, line in [
-                    (None, b"LIVE1 OFFER NONE"),
-                    ({"state": "building", "left": 3, "id": 7}, b"LIVE1 OFFER BUILD 7 3"),
-                    ({"state": "ready", "left": 0, "id": 7}, b"LIVE1 OFFER READY 7"),
-                    ({"state": "asked", "left": 0, "id": 7}, b"LIVE1 OFFER NONE"),
+                    (None, b"LIVE1 OFFER NONE lang=en"),
+                    ({"state": "building", "left": 3, "id": 7}, b"LIVE1 OFFER BUILD 7 3 lang=en"),
+                    ({"state": "ready", "left": 0, "id": 7}, b"LIVE1 OFFER READY 7 lang=en"),
+                    ({"state": "asked", "left": 0, "id": 7}, b"LIVE1 OFFER NONE lang=en"),
                 ]:
                     gate.offer(addr, offer)
                     self.assertEqual(p.recv(100), line)
                 # no offer, no mesh under the aircraft: the notice, with its words
                 notice = {"id": 12, "region": "na", "installed": False}
-                gate.offer(addr, None, "no mesh here: install North America", notice)
-                self.assertEqual(
-                    p.recv(100), b"LIVE1 NOTE 12 Live: no mesh here: install North America"
-                )
+                note = "Live : pas de mesh ici, installez Amérique du Nord dans la fenêtre de Live"
+                gate.offer(addr, None, note, notice, lang="fr")
+                self.assertEqual(p.recv(200), f"LIVE1 NOTE 12 lang=fr {note}".encode())
                 ready = {"state": "ready", "left": 0, "id": 7}
-                gate.offer(addr, ready, "no mesh here: install North America", notice)
-                self.assertEqual(p.recv(100), b"LIVE1 OFFER READY 7")  # the offer first
+                gate.offer(addr, ready, note, notice, lang="fr")
+                self.assertEqual(p.recv(100), b"LIVE1 OFFER READY 7 lang=fr")  # the offer first
         finally:
             gate.close()
 
@@ -553,7 +554,7 @@ class ReloadOfferTest(unittest.TestCase):
                 time.sleep(0.1)
             # 4096 px: no 8192 px texture waited for
             self.assertEqual(set(self.streamer.built.values()), {0})
-            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE")  # not there yet
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE lang=en")  # not there yet
             self.xp.position = (self.lat, self.lon)  # the flight runs
             answers = []
             while not answers or not answers[-1].startswith("LIVE1 OFFER READY"):
@@ -567,7 +568,7 @@ class ReloadOfferTest(unittest.TestCase):
             while self.xp.commands != ["sim/operation/reload_scenery"]:
                 self.assertLess(time.time(), end)
                 time.sleep(0.05)
-            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE")
+            self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 OFFER NONE lang=en")
 
 
 @unittest.skipIf(CLANG is None, "needs clang")

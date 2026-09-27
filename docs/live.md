@@ -66,7 +66,8 @@ same way. In a terminal: `python -m orthostudio.live regions list`, `regions ins
 Where no region installed has a mesh, X-Plane shows its own scenery there, without photos: Live
 says so, in its window and in a small panel in X-Plane ("no mesh here: install North America"),
 from the start of a flight there or once the aircraft flies there. Over the open sea, where no
-region has any mesh, it says nothing.
+region has any mesh, it says nothing. What the plugin shows in X-Plane is in the language of the
+Live window (its EN/FR selector).
 
 They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author publishes them and
 AutoOrtho downloads them. Live downloads them from there, and never publishes them anywhere else:

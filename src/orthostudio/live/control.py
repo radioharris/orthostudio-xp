@@ -71,6 +71,7 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         start_mode=settings.start_mode,
         simbrief_user=settings.simbrief_user,
         overlays=settings.overlays,
+        language=settings.language,
         fresh=fresh,
     )
 
@@ -183,6 +184,11 @@ class LiveControl:
         self._catalog_thread: threading.Thread | None = None
         self._installer: Any = None
         self._install_thread: threading.Thread | None = None
+        # the window's language, which the plugin's words in X-Plane follow while a stream runs
+        try:
+            self.language = self._settings().language
+        except Exception:  # settings unreadable: the window says it elsewhere
+            self.language = "en"
 
     # --- what the page reads -----------------------------------------------------------------
 
@@ -308,6 +314,18 @@ class LiveControl:
             return False
         self._reload.clear()
         return True
+
+    def set_language(self, language: str, *, save: Any = None) -> None:
+        """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take
+        it at once, and it is kept for the next starts."""
+        if language not in ("en", "fr"):
+            raise ValueError(f"no language {language!r}")
+        self.language = language
+        settings = self._settings()
+        if settings.language != language:
+            from orthostudio.live.settings import save_settings
+
+            (save or save_settings)(settings.model_copy(update={"language": language}))
 
     def choose_home(self, home: str, *, remember: bool, save: Any = None) -> None:
         """The welcome page's answer: Live's window, or OrthoStudio XP's (this window then closes
@@ -460,6 +478,7 @@ class LiveControl:
                     report=self._reported,
                     stop_hint=STOP_HINT,
                     reload_asked=self._reload_asked,
+                    language=lambda: self.language,
                 )
         except session.RefusedError as e:
             self._error = str(e)

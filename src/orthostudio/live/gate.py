@@ -11,22 +11,25 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
   where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or livery, which a
   livery changed in flight also sends. The gate sends ``LIVE1 GO n`` once every texture X-Plane
   will read there is built. Otherwise it sends, for instance,
-  ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 at=LFMN runway 04R``:
+  ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
   - n is how many textures are left;
   - p is the progress in thousandths, counted from the first moment the start was known;
   - s is the seconds since then;
   - mbs is the download rate, in megabytes a second;
-  - at is the start's name, the rest of the line.
+  - lang is the Live window's language, ``en`` or ``fr``, which the plugin's words take;
+  - at is the start's name in that language (``LFMN piste 04R``), the rest of the line.
 
   The plugin's loading window shows all of it.
 
 - ``LIVE1 ASK``, every second of a flight: whether a reload of the scenery is offered (the "reload"
   start mode: X-Plane started at 4096 px, and the 8192 px textures around the aircraft are built
-  afterwards). The gate answers ``LIVE1 OFFER READY id``, ``LIVE1 OFFER BUILD id n`` (n textures
-  to go) or ``LIVE1 OFFER NONE``; ``id`` tells one offer from the next. Without an offer, where the
-  aircraft has no mesh under it but a region has one, it answers ``LIVE1 NOTE id text`` instead
-  ("Live: no mesh here: install North America in the Live window"), which the plugin shows in the
-  same small panel, with only its cross.
+  afterwards). The gate answers ``LIVE1 OFFER READY id lang=en``, ``LIVE1 OFFER BUILD id n
+  lang=en`` (n textures to go) or ``LIVE1 OFFER NONE lang=en``; ``id`` tells one offer from the
+  next. Without an offer, where the aircraft has no mesh under it but a region has one, it answers
+  ``LIVE1 NOTE id lang=fr text`` instead ("Live : pas de mesh ici, installez Amérique du Nord dans
+  la fenêtre de Live"), which the plugin shows in the same small panel, with only its cross.
+
+Lines go out in UTF-8, never cut inside a character: the plugin shows French with its accents.
 - ``LIVE1 RELOAD``: the user clicked the plugin's button in X-Plane; the streamer reloads the
   scenery over X-Plane's UDP, as the Live window's button does.
 
@@ -40,9 +43,9 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import socket
 import time
-import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 
@@ -98,11 +101,26 @@ def start_position(start: dict, airports: Airports) -> Start | None:
     return None
 
 
-def _ascii(text: str) -> bytes:
-    """The protocol's ASCII: a parking's accents dropped (Aérogare: Aerogare), anything else
-    beyond ASCII a question mark."""
-    bare = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
-    return bare.encode("ascii", "replace")
+def place_in(name: str, lang: str) -> str:
+    """A start's name in the window's language: ``LFBZ runway 09`` is ``LFBZ piste 09`` in French
+    (parking is the same word; an airport's own names for its stands, and coordinates, stay)."""
+    if lang == "fr":
+        return re.sub(r"^([A-Z0-9]{3,7}) runway ", r"\1 piste ", name)
+    return name
+
+
+def _fitted(text: str, limit: int) -> str:
+    """``text`` cut to ``limit`` bytes of UTF-8 at a character's end: the plugin's own buffer."""
+    return text.encode("utf-8")[:limit].decode("utf-8", "ignore")
+
+
+def _encoded(line: str, limit: int = 200) -> bytes:
+    """A line of the protocol in UTF-8, the plugin's words in French with their accents, at most
+    ``limit`` bytes, never cut inside a character: the plugin shows what it gets as UTF-8."""
+    data = line.encode("utf-8")
+    if len(data) <= limit:
+        return data
+    return data[:limit].decode("utf-8", "ignore").encode("utf-8")
 
 
 class Gate:
@@ -174,32 +192,39 @@ class Gate:
         done: float = 0.0,
         took: float = 0.0,
         mbs: float = 0.0,
+        lang: str = "en",
     ) -> None:
         if go:
             line = f"LIVE1 GO {left}"
         else:
             line = (
                 f"LIVE1 WAIT n={left} p={round(max(0.0, min(1.0, done)) * 1000)} s={round(took)} "
-                f"mbs={mbs:.1f} at={name}"
+                f"mbs={mbs:.1f} lang={lang} at={_fitted(place_in(name, lang), 100)}"
             )
         with contextlib.suppress(OSError):
-            self.sock.sendto(_ascii(line)[:200], addr)
+            self.sock.sendto(_encoded(line), addr)
 
     def offer(
-        self, addr: tuple, offer: dict | None, note: str | None = None, notice: dict | None = None
+        self,
+        addr: tuple,
+        offer: dict | None,
+        note: str | None = None,
+        notice: dict | None = None,
+        lang: str = "en",
     ) -> None:
         """The answer to ``LIVE1 ASK``: the reload offered, as ``Streamer.offer_state`` has it;
-        else the notice of a place with no mesh (``LIVE1 NOTE id text``); else nothing."""
+        else the notice of a place with no mesh (``LIVE1 NOTE id lang=xx text``, its words in the
+        window's language); else nothing. Each says the language the plugin's own words take."""
         if (offer is None or offer["state"] == "asked") and note and notice:
-            line = f"LIVE1 NOTE {notice['id']} Live: {note}"
+            line = f"LIVE1 NOTE {notice['id']} lang={lang} {note}"
         elif offer is None or offer["state"] == "asked":
-            line = "LIVE1 OFFER NONE"
+            line = f"LIVE1 OFFER NONE lang={lang}"
         elif offer["state"] == "ready":
-            line = f"LIVE1 OFFER READY {offer['id']}"
+            line = f"LIVE1 OFFER READY {offer['id']} lang={lang}"
         else:
-            line = f"LIVE1 OFFER BUILD {offer['id']} {offer['left']}"
+            line = f"LIVE1 OFFER BUILD {offer['id']} {offer['left']} lang={lang}"
         with contextlib.suppress(OSError):
-            self.sock.sendto(_ascii(line)[:200], addr)
+            self.sock.sendto(_encoded(line), addr)
 
     def close(self) -> None:
         self.sock.close()

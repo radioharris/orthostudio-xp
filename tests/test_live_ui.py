@@ -195,8 +195,9 @@ class FakeStream:
         return session.Prepared(Path("/X-Plane 12"), Path("/pack"), None, None, 0)
 
     def follow(
-        self, prepared, options, log, *, should_stop, report, stop_hint, reload_asked
+        self, prepared, options, log, *, should_stop, report, stop_hint, reload_asked, language
     ) -> None:
+        self.language = language
         report(self.report)
         if self.crash:
             raise RuntimeError(self.crash)
@@ -706,3 +707,29 @@ def test_the_overlays_setting(home: Path) -> None:
     assert control_module.options_for(load_settings(), fresh=False).overlays == "off"
     settings_file().write_text('[stream]\noverlays = "everywhere"\n')
     assert load_settings().overlays == "auto"
+
+
+def test_the_plugin_speaks_the_window_s_language(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = LiveControl(
+        prepare=stream.prepare,
+        follow=stream.follow,
+        finish=stream.finish,
+        checks=checks(),
+        echo=lambda _: None,
+        catalog=lambda root: {},
+    )
+    assert c.language == "en"
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    c.set_language("fr")  # the window's selector, while it streams
+    assert stream.language() == "fr"  # the plugin's next answer says it
+    assert load_settings().language == "fr"  # kept for the next starts
+    assert control_module.options_for(load_settings(), fresh=False).language == "fr"
+    with pytest.raises(ValueError):
+        c.set_language("de")
+    c.stop()
+    assert c.wait_idle(5)
