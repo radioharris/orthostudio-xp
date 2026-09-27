@@ -83,9 +83,10 @@ downloads nothing there: at a start from your home airport, X-Plane waits for no
 reads X-Plane's list of scenery packs at each start and says in its log which squares it leaves to
 your own; OrthoStudio XP lists the tiles it builds above Live's pack by itself.
 
-The first start prepares the whole region of your AutoOrtho scenery (Europe, for example), once,
-in about 2 minutes, so that X-Plane always finds every file it looks for. It takes almost no disk:
-the files share their content with AutoOrtho's until they are filled in.
+The first start prepares every region of AutoOrtho you have installed (Europe, North America...),
+once, in about 2 minutes a region, so that X-Plane always finds every file it looks for. It takes
+almost no disk: the files share their content with AutoOrtho's until they are filled in. A region
+you install later is added at the next start, keeping everything already built.
 
 Then, for every flight:
 
@@ -242,6 +243,7 @@ Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
   in use and widen it only when needed, to download less at cruise.
 
 - The look-ahead follows the current track; a flight plan (SimBrief) would let it look further.
-- Distances are measured along the ground; counting the altitude, as X-Plane probably does, would
-  download less at cruise.
-- Only the AutoOrtho region set up (Europe so far).
+- Distances are measured along the ground, but for the 8192 px textures: counting the altitude
+  at every level would download little less at cruise, where most is for external views (25 km
+  around), which a shorter reach at cruise would save.
+- Only where AutoOrtho has a mesh: its regions installed.

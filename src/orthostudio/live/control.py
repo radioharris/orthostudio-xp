@@ -42,7 +42,8 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.scenery import (
     autoortho_mounted,
-    default_source,
+    autoortho_scenery,
+    default_sources,
     is_installed,
     launch_xplane,
     xplane_running,
@@ -113,12 +114,13 @@ def gather_checks() -> dict[str, Any]:
         check_folder(live_root(), custom_scenery=xp / "Custom Scenery")
     except FolderError as e:
         out["folder_problem"] = str(e)
-    source = default_source(xp)
+    sources = default_sources(xp)
     out.update(
         xplane=str(xp),
-        mesh=str(source),
-        mesh_found=(source / "terrain").is_dir(),
-        region_ready=session.region_ready(default_pack_dir(), source),
+        # AutoOrtho's regions, by name, or where they would be
+        mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
+        mesh_found=bool(sources),
+        region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
         installed=is_installed(xp, LINK_NAME),
     )

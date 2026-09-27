@@ -22,7 +22,7 @@ from orthostudio.live import enabled, session, settings_file, supported
 from orthostudio.live.pack import LINK_NAME, default_pack_dir, load_built
 from orthostudio.live.scenery import (
     autoortho_mounted,
-    default_source,
+    default_sources,
     is_installed,
     xplane_running,
 )
@@ -241,7 +241,8 @@ def setup(
     xplane: XPlaneOpt = None,
     pack: PackOpt = None,
     source: Annotated[
-        Path | None, typer.Option(help="AutoOrtho scenery pack (default z_ao_eur)")
+        Path | None,
+        typer.Option(help="an AutoOrtho scenery pack (default: every AutoOrtho region installed)"),
     ] = None,
     force: Annotated[bool, typer.Option(help="set it up again")] = False,
 ) -> None:
@@ -251,8 +252,13 @@ def setup(
 
     saved = load_settings()
     xp_dir = _xplane(xplane)
+    sources = [source] if source else default_sources(xp_dir)
+    if not sources:
+        raise typer.Exit(
+            _fail("no AutoOrtho region installed: install one first (Europe: z_ao_eur)")
+        )
     setup_region(
-        source or default_source(xp_dir),
+        sources,
         pack or default_pack_dir(),
         force=force,
         log=typer.echo,

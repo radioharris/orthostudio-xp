@@ -16,7 +16,7 @@ import contextlib
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,7 +32,8 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.scenery import (
     autoortho_mounted,
-    default_source,
+    autoortho_scenery,
+    default_sources,
     find_xplane,
     install_link,
     is_installed,
@@ -98,15 +99,20 @@ def xplane_dir(explicit: Path | None) -> Path:
         raise RefusedError(f"{exc.message} {exc.remedy}") from exc
 
 
-def region_ready(pack: Path, source: Path) -> bool:
-    """Whether ``pack`` holds the region of ``source`` already: set up, nothing more to clone."""
-    from orthostudio.live.region import REGION_MARKER
+def _recorded_sources(pack: Path) -> list[str]:
+    from orthostudio.live.region import REGION_MARKER, sources_of
 
     try:
-        meta = json.loads((pack / REGION_MARKER).read_text())
+        return sources_of(json.loads((pack / REGION_MARKER).read_text()))
     except (OSError, ValueError):
-        return False
-    return meta.get("source") == str(source)
+        return []
+
+
+def region_ready(pack: Path, source: Path | Sequence[Path]) -> bool:
+    """Whether ``pack`` holds the AutoOrtho regions of ``source`` already (one, or several): set
+    up, nothing more to clone."""
+    wanted = {str(source)} if isinstance(source, Path) else {str(s) for s in source}
+    return bool(wanted) and set(_recorded_sources(pack)) == wanted
 
 
 def finest_quality(xplane: Path, quality: str) -> int:
@@ -190,11 +196,16 @@ def prepare(options: Options, log: Log) -> Prepared:
         check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)
     except FolderError as e:
         raise RefusedError(f"Live's folder: {e}. Choose another in the Live window.") from e
-    source = options.source or default_source(xp_dir)
-    if not region_ready(pack_dir, source) and not (source / "terrain").is_dir():
+    sources = [options.source] if options.source else default_sources(xp_dir)
+    if not sources:  # AutoOrtho taken away: the pack holds the mesh it was set up with
+        sources = [Path(s) for s in _recorded_sources(pack_dir)]
+    if not sources or (
+        not region_ready(pack_dir, sources) and not all((s / "terrain").is_dir() for s in sources)
+    ):
         raise RefusedError(
-            f"AutoOrtho's mesh is not there ({source}): OrthoStudio XP Live streams onto it for "
-            "now. Install AutoOrtho's Europe scenery (z_ao_eur) first."
+            f"AutoOrtho's mesh is not there ({options.source or autoortho_scenery(xp_dir)}): "
+            "OrthoStudio XP Live streams onto it for now. Install one of AutoOrtho's regions "
+            "first (Europe: z_ao_eur)."
         )
     fix = None
     if options.start:
@@ -204,7 +215,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             raise RefusedError(str(e)) from e
         fix = Fix(lat, lon)
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    setup_region(source, pack_dir, log=log, zooms=zooms)
+    setup_region(sources, pack_dir, log=log, zooms=zooms)
     if region_layout(pack_dir) != (zooms, LAYOUT_GROWING):  # each texture at its new size
         if xplane_running() and needs_relayout(pack_dir, zooms):
             raise RefusedError(

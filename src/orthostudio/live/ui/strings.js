@@ -98,8 +98,8 @@ export const STRINGS = {
     "checks.xplane_running_late":
       "X-Plane is running: quit it, start Live, then X-Plane (it looks at its scenery only when it starts).",
     "checks.xplane_stopped": "X-Plane is not running",
-    "checks.mesh": "AutoOrtho's Europe mesh: {path}",
-    "checks.mesh_missing": "AutoOrtho's Europe mesh is missing ({path}): Live streams onto it for now.",
+    "checks.mesh": "AutoOrtho's regions: {path}",
+    "checks.mesh_missing": "No AutoOrtho region ({path}): Live streams onto AutoOrtho's mesh for now.",
     "checks.region": "Region set up",
     "checks.region_todo": "The region is set up at the first start (about two minutes)",
     "checks.ao": "AutoOrtho is not running",
@@ -302,8 +302,8 @@ export const STRINGS = {
     "checks.xplane_running_late":
       "X-Plane tourne : quittez-le, démarrez Live, puis X-Plane (il ne regarde ses scènes qu'à son démarrage).",
     "checks.xplane_stopped": "X-Plane n'est pas lancé",
-    "checks.mesh": "Maillage Europe d'AutoOrtho : {path}",
-    "checks.mesh_missing": "Le maillage Europe d'AutoOrtho manque ({path}) : Live s'appuie dessus pour l'instant.",
+    "checks.mesh": "Régions d'AutoOrtho : {path}",
+    "checks.mesh_missing": "Aucune région d'AutoOrtho ({path}) : Live s'appuie sur son maillage pour l'instant.",
     "checks.region": "Région préparée",
     "checks.region_todo": "La région sera préparée au premier démarrage (deux minutes environ)",
     "checks.ao": "AutoOrtho n'est pas lancé",

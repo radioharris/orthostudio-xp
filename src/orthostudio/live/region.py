@@ -29,7 +29,7 @@ import shutil
 import struct
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -239,6 +239,32 @@ def texture_names(terrain_dir: Path) -> set[str]:
     return names
 
 
+def sources_of(meta: dict) -> list[str]:
+    """The AutoOrtho regions a pack holds, as its marker records them (one, before regions)."""
+    sources = meta.get("sources")
+    if isinstance(sources, list):
+        return [str(s) for s in sources]
+    return [str(meta["source"])] if meta.get("source") else []
+
+
+def _merge_dir(src: Path, dst: Path) -> int:
+    """Clone into ``dst`` what of ``src`` it lacks: a whole folder where ``dst`` has none of that
+    name, file by file where both have one. Returns how many were cloned."""
+    done = 0
+    for entry in os.scandir(src):
+        target = dst / entry.name
+        if entry.is_dir():
+            if not target.exists():
+                clone(entry.path, str(target))
+                done += 1
+            else:
+                done += _merge_dir(Path(entry.path), target)
+        elif not target.exists():
+            clone(entry.path, str(target))
+            done += 1
+    return done
+
+
 def _clone_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
     """Replace ``dst`` by a clone of ``src`` (one call for the whole tree)."""
     t0 = time.monotonic()
@@ -252,46 +278,73 @@ def _clone_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
 
 
 def setup_region(
-    source: Path,
+    source: Path | Sequence[Path],
     pack_dir: Path,
     force: bool = False,
     log: Callable[[str], None] = print,
     zooms: Zooms | None = None,
 ) -> dict:
-    """Make ``pack_dir`` hold the whole region of ``source``; keep the textures already built.
-    ``zooms``: what the textures are laid out for, the first time (:func:`relayout` after)."""
+    """Make ``pack_dir`` hold the whole of the AutoOrtho regions of ``source`` (one, or several:
+    Europe, North America...); keep the textures already built. A region added since is merged
+    in, once; one taken away sets the pack up again. ``zooms``: what the textures are laid out
+    for, the first time (:func:`relayout` after)."""
+    sources = [source] if isinstance(source, Path) else list(source)
+    keys = [str(s) for s in sources]
     marker = pack_dir / REGION_MARKER
-    if marker.exists() and not force:
-        meta = json.loads(marker.read_text())
-        if meta.get("source") == str(source):
-            if meta.get("version", 1) < REGION_VERSION:
-                _upgrade(pack_dir, log)
-                meta["version"] = REGION_VERSION
-                marker.write_text(json.dumps(meta))
-            return meta
+    old: dict = json.loads(marker.read_text()) if marker.exists() else {}
+    had = sources_of(old)
+    if old and not force and set(had) == set(keys):
+        if old.get("version", 1) < REGION_VERSION:
+            _upgrade(pack_dir, log)
+            old["version"] = REGION_VERSION
+            marker.write_text(json.dumps(old))
+        return old
     t0 = time.monotonic()
-    log(f"setting up the region of {source.name} in {pack_dir} (once)")
-    (pack_dir / "_live").mkdir(parents=True, exist_ok=True)
-    _clone_dir(source / "Earth nav data", pack_dir / "Earth nav data", log)
-    _clone_dir(source / "terrain", pack_dir / "terrain", log)
+    names_of = ", ".join(s.name for s in sources)
+    adding = bool(had) and set(had) < set(keys)  # only regions to add: merged in
+    if adding:
+        new = [s for s in sources if str(s) not in had]
+        log(f"adding {', '.join(s.name for s in new)} to the region in {pack_dir} (once)")
+    else:
+        new = sources
+        log(f"setting up the region of {names_of} in {pack_dir} (once)")
+        (pack_dir / "_live").mkdir(parents=True, exist_ok=True)
+        _clone_dir(new[0] / "Earth nav data", pack_dir / "Earth nav data", log)
+        _clone_dir(new[0] / "terrain", pack_dir / "terrain", log)
+        new = new[1:]
+    for extra in new:  # a DSF or a terrain another region has already stays that region's
+        merged = _merge_dir(extra / "Earth nav data", pack_dir / "Earth nav data")
+        merged += _merge_dir(extra / "terrain", pack_dir / "terrain")
+        log(f"  {extra.name}: {merged} folders and files merged in")
 
     textures = pack_dir / "textures"
     textures.mkdir(exist_ok=True)
     have = set(os.listdir(textures))
     masks = 0
-    for entry in os.scandir(source / "textures"):
-        if not entry.name.endswith(".dds") and entry.name not in have:
-            clone(entry.path, str(textures / entry.name))
-            masks += 1
+    for region in sources:
+        for entry in os.scandir(region / "textures"):
+            if not entry.name.endswith(".dds") and entry.name not in have:
+                clone(entry.path, str(textures / entry.name))
+                have.add(entry.name)
+                masks += 1
     log(f"  {masks} water masks and other files cloned")
 
-    zooms = zooms or Zooms()
+    # a pack that is there keeps its layout, the textures added included: a new zoom lays them all
+    # out again together (relayout)
+    if old:
+        zooms, layout = Zooms(**old.get("zooms", {})), old.get("layout", 1)
+    else:
+        zooms, layout = zooms or Zooms(), LAYOUT_GROWING
+
+    def top_for(zoom: int) -> int:
+        return zooms.start_top(zoom) if layout >= LAYOUT_GROWING else zooms.top(zoom)
+
     write_neutral(pack_dir)
     names = texture_names(pack_dir / "terrain")
     added = 0
     for _i, name in enumerate(sorted(names - have)):
         tex = parse_texture_name(name)
-        top = zooms.start_top(tex.zoom) if tex is not None else 0
+        top = top_for(tex.zoom) if tex is not None else 0
         clone(str(ensure_neutral(pack_dir, top)), str(textures / name))
         added += 1
         if added % 50_000 == 0:
@@ -299,12 +352,14 @@ def setup_region(
     log(f"  {len(names)} textures: {added} neutral clones, {len(names & have)} already built")
 
     meta = {
-        "source": str(source),
-        "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        **old,
+        "source": keys[0],
+        "sources": keys,
+        "created": old.get("created") or time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "textures": len(names),
         "version": REGION_VERSION,
         "zooms": asdict(zooms),
-        "layout": LAYOUT_GROWING,
+        "layout": layout,
     }
     marker.write_text(json.dumps(meta))
     log(f"region ready in {time.monotonic() - t0:.0f} s")
