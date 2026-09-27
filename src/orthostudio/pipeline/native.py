@@ -36,6 +36,8 @@ from orthostudio.sources.osm import (
     shared_board,
     snapshot_label,
 )
+from orthostudio.vectors import osmdata
+from orthostudio.vectors.coast import coastline_fault
 
 __all__ = [
     "COASTLINE_RULE",
@@ -53,6 +55,7 @@ __all__ = [
     "resolve_stages",
     "snapshot_label_of",
     "triangle_binary",
+    "unusable_coastline",
 ]
 
 log = logging.getLogger("orthostudio.build.native")
@@ -155,6 +158,28 @@ class OsmParams(RuleParams):
     """The list of layers depends on it (``osm-source.md`` 3): 4 layers at 1, 5 above."""
     refresh: str = ""
     """Free label: change it to ask for fresh data (the key follows, so the node re-runs)."""
+
+
+def unusable_coastline(tile: TileRef, snapshots: Mapping[str, OsmSnapshot]) -> str | None:
+    """Why the vector stage would refuse the coastline among ``snapshots``, or ``None``.
+
+    Given to the prepared sources' chain, which passes over a source whose coastline would stop
+    the build, and asked of a snapshot the store kept before it is used again: a library is cut
+    from OpenStreetMap on one night, faults included, and the live servers usually have them
+    mended (issue 3, 2026-09-27). A tile without a coastline has nothing to check.
+    """
+    snap = snapshots.get("coastline")
+    if snap is None or not snap.ways:
+        return None
+    fault = coastline_fault(osmdata.load(snap, layer="coastline", tile=tile).ways_with(), tile)
+    if fault is None:
+        return None
+    points = fault.context.get("points") or ()
+    where = ""
+    if points:
+        lat, lon = points[0]
+        where = f" at {lat}, {lon}" + (f" and {len(points) - 1} more" if len(points) > 1 else "")
+    return f"its coastline would stop the build ({fault.code}{where})"
 
 
 @dataclass(slots=True)

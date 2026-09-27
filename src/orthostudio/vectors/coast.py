@@ -57,6 +57,7 @@ __all__ = [
     "OsmWaysSource",
     "SeaArea",
     "build_sea_layers",
+    "coastline_fault",
     "coastline_multilinestring",
     "coastline_to_multipolygon",
     "cut_to_tile",
@@ -636,3 +637,16 @@ def build_sea_layers(
         stats=stats,
         errors=errors,
     )
+
+
+def coastline_fault(osm_data: Any, tile: TileRef) -> OsxpError | None:
+    """The fault for which :func:`build_sea_layers` refuses this coastline, or ``None``.
+
+    The very function the vector stage runs, with its parameters, recording the fault instead of
+    raising it: the verdict cannot differ from the build's. A prepared library is checked with it
+    before its layers are taken, since an open coastline there is a tile that fails, where the
+    live servers usually have it closed again: Lolland's lost its tag for 18 hours, the planet was
+    cut in between, and +54+010 and +54+011 could not be built (issue 3, 2026-09-27).
+    """
+    result = build_sea_layers(osm_data, tile, CoastParams(on_bad_coastline="record"))
+    return result.errors[0] if result.errors else None

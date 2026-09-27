@@ -40,7 +40,37 @@ design, and that is its only real defect. The page has no switch for it, by deci
 (2026-09-25): a switch sends builds back to the public servers and takes away what the library is
 for, so the library is baked again regularly instead. A rebake reaches the tiles a user builds for
 the first time; a tile already built keeps the snapshot of its first download for as long as the
-store keeps it.
+store keeps it, unless its coastline is one the build refuses (below).
+
+**A coastline the build would refuse is no answer.** A library holds OpenStreetMap as it was on the
+night it was cut, faults included, and a coastline fault fails the tile: a chain that stops inside
+it, a coastline drawn the wrong way round, three pieces meeting at one point. Lolland's lost its
+tag on 2026-09-13 at 20:09 UTC and had it back 18 hours later; the planet was cut at 23:59:59, and
++54+010 and +54+011 could not be built from the library (issue 3, 2026-09-27). So the chain checks
+the coastline of every answer before taking it (`Chain(unusable=...)`, given
+`pipeline.native.unusable_coastline` by the build), and passes over a source whose coastline the
+vector stage would refuse, as it passes over one that does not hold the tile: the next source is
+asked, the live servers last of all, which usually have the fault mended. Only that is checked. A
+change nobody sees on the ground, a road moved by a few metres, is no reason to leave the library,
+and nothing else sends a tile to the public servers.
+
+The check is the vector stage's own function, `vectors.coast.coastline_fault`, which runs
+`build_sea_layers` with `on_bad_coastline="record"` instead of `"raise"`: the verdict cannot differ
+from the build's. On a 14-core Mac it costs 86 ms for Lolland's tile, 171 ms for Marseille's,
+312 ms for the Cyclades, 2.1 s at worst (Bergen's fjords, 10,416 ways), and nothing on a tile
+without a coastline; it is paid when a tile's map data is downloaded, beside the minutes a build
+takes.
+
+A snapshot the store kept is checked the same way before it is used again (`_stored_osm`), once a
+session per snapshot, unless the vector stage was already built on it (`_vectors_built_on`, from
+the store's own record of what was built from what): that stage refuses such a coastline, so a
+tile already built, a colour or a decal changed, pays nothing. One whose coastline the build
+refuses, kept by 0.1.17 or 0.1.18 from the
+library or by any version from OpenStreetMap on a bad night, failed the tile at every build after
+the mend, since it came back under the same key; it is taken out of the store and asked for again.
+No tile was ever built on such a coastline, the vector stage refusing it, so nothing built depends
+on it. If the live servers still have the fault, the tile fails as before and its message, which
+asks to mend OpenStreetMap, is then the true one; the next build asks again.
 
 ## 2. What a source is
 
@@ -179,6 +209,7 @@ where a build reaches it:
 | the key is refused (401, 403) | every tile of the build from Overpass; `OSM_LIBRARY_KEY_REFUSED` said once | nothing more |
 | a tile the manifest lists is missing, damaged, of the wrong size or digest | that tile from Overpass; after two such tiles the library is set aside for the build, `OSM_PREPARED_SET_ASIDE` said once | one request per tile, two tiles at most |
 | a tile the library does not hold | that tile from Overpass | nothing |
+| a tile whose coastline the build would refuse | the next source, Overpass last; the log names the fault and where it is | the check, 0.1 to 0.3 s a coastal tile |
 | a fault in our own code reading the library | the tile from Overpass: `OsmJob` catches whatever the chain raises | nothing |
 | the user asked for fresh data | the library is not asked at all | nothing |
 

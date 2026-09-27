@@ -223,6 +223,7 @@ class Chain:
         *,
         give_up_after: int = GIVE_UP_AFTER,
         say: Callable[[str], None] | None = None,
+        unusable: Callable[[TileRef, Mapping[str, OsmSnapshot]], str | None] | None = None,
     ) -> None:
         self.sources = list(sources)
         self.give_up_after = give_up_after
@@ -230,6 +231,12 @@ class Chain:
         """Where a thing the user should know goes. A source set aside is the difference between
         a build that reads prepared tiles and one that queues behind the public servers for an
         hour, and it used to happen in the log alone (review M4)."""
+        self.unusable = unusable
+        """Why a build could not use the layers a source gives for a tile, or ``None``: a source
+        whose answer the build would fail on is passed over like one that does not hold the tile.
+        The build gives the coastline's check here (``pipeline.native.unusable_coastline``): a
+        library holds OpenStreetMap as it was on the day it was cut, faults included, where the
+        live servers usually have them mended (issue 3, 2026-09-27)."""
         self.failures: dict[str, int] = {}
         self._lock = threading.Lock()
         """A batch runs two network slots and they share this chain: without it, two failures of
@@ -267,10 +274,26 @@ class Chain:
             if missing:  # a source that says yes must hold the whole tile
                 notes.append(f"{source.name}: missing {', '.join(missing)}")
                 continue
+            why = self._unusable(tile, got)
+            if why:  # a tile the build would fail on is no answer either
+                notes.append(f"{source.name}: {why}")
+                continue
             stamp = str(getattr(source, "stamp", "") or "")
             name = f"{source.name} ({stamp})" if stamp else source.name
             return ChainResult(got, name, tuple(notes))
         return ChainResult(None, "", tuple(notes))
+
+    def _unusable(self, tile: TileRef, got: Mapping[str, OsmSnapshot]) -> str | None:
+        """``unusable``, which never refuses a source by breaking: a check that fails says
+        nothing, and the layers are taken as every build before it took them."""
+        if self.unusable is None:
+            return None
+        try:
+            return self.unusable(tile, got)
+        except Exception as exc:
+            log.warning("%s: the layers could not be checked (%s: %s); taken as they are",
+                        tile.name, type(exc).__name__, exc)  # fmt: skip
+            return None
 
     def _tell(self, trouble: OsxpError) -> None:
         log.warning("%s: %s", trouble.code, trouble.message)

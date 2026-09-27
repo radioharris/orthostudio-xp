@@ -55,7 +55,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **Map data in seconds.** The airports, roads, coastline and water of every tile of the planet
   come from OrthoStudio XP's own library (OpenStreetMap as of 13 September 2026, updated
   regularly), at every road level, where a public server can take minutes or fail; when the library
-  cannot answer, the public Overpass servers are asked as before. A folder of map data you already
+  cannot answer, or holds a coastline that would not close, the public Overpass servers are asked
+  as before. A folder of map data you already
   have, ours or Ortho4XP's (road levels 0 and 1 for Ortho4XP's), can be read first: Settings,
   under "For experts".
 - **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.

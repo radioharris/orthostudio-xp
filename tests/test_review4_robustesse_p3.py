@@ -393,6 +393,93 @@ def test_osm_refresh_downloads_again(tmp_path: Path) -> None:
     assert again.ref.key == first.ref.key and refreshed.ref.key != first.ref.key
 
 
+def _coastline(*, closed: bool) -> OsmSnapshot:
+    """An island of the tile, or a coastline that stops in the middle of it."""
+    island = [(43.4, 5.4), (43.4, 5.6), (43.6, 5.6), (43.6, 5.4)]
+    at = island if closed else [(43.2, 5.2), (43.3, 5.3)]
+    order = (1, 2, 3, 4, 1) if closed else (1, 2)
+    return dataclasses.replace(
+        _snapshot("coastline"),
+        nodes=tuple(OsmNode(id=i, lat=lat, lon=lon, tags={}) for i, (lat, lon) in enumerate(at, 1)),
+        ways=(OsmWay(id=10, nodes=order, tags={"natural": "coastline"}),),
+    )
+
+
+def test_a_kept_coastline_the_build_would_refuse_is_asked_for_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue 3 (2026-09-27): a coastline kept open (from a library of 0.1.18, or from OpenStreetMap
+    on a bad night) failed the tile at every build, since the store handed it back under the same
+    key after the mend. It is set aside and asked for again; mended, it is used again."""
+    import orthostudio.pipeline.build as build_mod
+
+    monkeypatch.setattr(build_mod, "_KEPT_COASTLINES", {})
+    spec = _spec(tmp_path, osm_fetch=True)
+    env = BuildEnv.create([spec])
+    calls: list[str] = []
+
+    def fetch(tile: TileRef, specs: Any) -> dict[str, OsmSnapshot]:
+        calls.append(tile.name)
+        coast = _coastline(closed=len(calls) > 1)  # open at the first answer, mended after
+        return {s.name: coast if s.name == "coastline" else _snapshot(s.name) for s in specs}
+
+    with native.osm_job(native.OsmJob(fetch=fetch)):
+        kept = run_osm_phase([spec], env)[TILE]
+        asked_again = run_osm_phase([spec], env)[TILE]
+        used_again = run_osm_phase([spec], env)[TILE]
+    assert calls == [TILE.name, TILE.name]  # the mended one was not asked for a third time
+    assert kept.ref is not None and asked_again.ref is not None and used_again.ref is not None
+    assert kept.ref.key == asked_again.ref.key == used_again.ref.key  # the same key, new data
+    assert kept.ref.digest != asked_again.ref.digest == used_again.ref.digest
+    assert used_again.skipped == "stored snapshot reused"
+
+
+def test_map_data_the_vector_stage_was_built_on_is_not_checked_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The vector stage refuses a coastline that does not close, so a snapshot it was built on is
+    known good: a colour or a decal changed on a built tile pays no check (issue 3)."""
+    from types import SimpleNamespace
+
+    import orthostudio.pipeline.build as build_mod
+    from orthostudio.vectors.rule import VECTORS
+
+    class _Store:
+        def __init__(self, children: dict[str, str]) -> None:
+            self.children = children
+
+        def dependents(self, key: str) -> list[tuple[str, str]]:
+            return [(child, "osm") for child in self.children]
+
+        def info(self, key: str) -> SimpleNamespace:
+            return SimpleNamespace(rule=self.children[key])
+
+    built = _Store({"v": VECTORS.name, "c": native.COASTLINE_RULE.name})
+    assert build_mod._vectors_built_on(built, "k") is True  # type: ignore[arg-type]
+    only_coast = _Store({"c": native.COASTLINE_RULE.name})
+    assert build_mod._vectors_built_on(only_coast, "k") is False  # type: ignore[arg-type]
+    broken = SimpleNamespace(dependents=lambda key: 1 / 0)
+    assert build_mod._vectors_built_on(broken, "k") is False  # type: ignore[arg-type]
+
+    # through the build: the open coastline of a snapshot built on is used again, unchecked
+    monkeypatch.setattr(build_mod, "_KEPT_COASTLINES", {})
+    spec = _spec(tmp_path, osm_fetch=True)
+    env = BuildEnv.create([spec])
+    calls: list[str] = []
+
+    def fetch(tile: TileRef, specs: Any) -> dict[str, OsmSnapshot]:
+        calls.append(tile.name)
+        coast = _coastline(closed=False)
+        return {s.name: coast if s.name == "coastline" else _snapshot(s.name) for s in specs}
+
+    with native.osm_job(native.OsmJob(fetch=fetch)):
+        run_osm_phase([spec], env)
+        monkeypatch.setattr(build_mod, "_vectors_built_on", lambda store, key: True)
+        again = run_osm_phase([spec], env)[TILE]
+    assert calls == [TILE.name] and again.skipped == "stored snapshot reused"
+    assert build_mod._KEPT_COASTLINES == {}  # not even looked at
+
+
 def test_an_empty_coastline_layer_is_accepted_as_a_coastline(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
