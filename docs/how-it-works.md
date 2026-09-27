@@ -74,7 +74,7 @@ tile fails for want of map data.
 | Step | What it does | Typical time (ZL16, one tile, M4 Pro) |
 |---|---|---|
 | **OSM** | Reads the OpenStreetMap airports, roads, coastline and water of the tile: from the prepared library, or from the public Overpass servers. | 1-4 s from the library, 8-15 s from Overpass when it answers |
-| **Relief** | Reads the elevation: X-Plane 12's own scenery from the disk, or the files Settings asks for (Copernicus, USGS, Canada's lidar), downloaded the first time and kept. | 5-30 s when Copernicus files are downloaded (measured 2026-09-26) |
+| **Relief** | Reads the elevation: X-Plane 12's own scenery from the disk, or the files Settings asks for (Copernicus, USGS, Canada's lidar), downloaded the first time, however long a big one takes, and kept. | 5-30 s when Copernicus files are downloaded (measured 2026-09-26) |
 | **Terrain** | Traces the lines the relief must follow (shores, flat runways, rivers, roads), then cuts the relief into triangles, finer where it matters: mountains, shores, airports. | 10-30 s: the tracing 5-20 s, up to a minute at road level 5, the mesh 4-10 s |
 | **Coast** | Builds the water masks: soft transitions between the photo and X-Plane's water. | 1-4 s |
 | **Imagery** | Downloads the image pieces, assembles them into textures, compresses them to DDS. | 40 s to 2 min if nothing is cached (the provider's speed decides), 10-15 s if the pieces are |
@@ -85,8 +85,9 @@ Several tiles are built at once: the relief of up to three tiles is computed at 
 the masks and DSFs of the others alongside, and the image encoding uses all the cores but two.
 Downloads go through one network lane: one tile's imagery after the other, with up to 128
 requests to the provider at the same time (a limit measured not to get throttled,
-`docs/benchmarks/network.md`). On a cold build the imagery is most of the time, and the
-processor mostly waits for the provider.
+`docs/benchmarks/network.md`). A relief you chose to download (Copernicus, USGS) has a lane of
+its own beside it, one tile at a time, so the images never wait for it. On a cold build the
+imagery is most of the time, and the processor mostly waits for the provider.
 
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again

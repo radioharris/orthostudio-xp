@@ -572,7 +572,8 @@ declaration, or a second pass, could lower it), 1 when the job is done.
 3. *Queueing*: the main graph ends with the slowest of its lanes -- per scheduler kind, the
    seconds left over the kind's slots (one `net` slot, so the textures nodes of a batch run one
    after the other, and they cannot start before the first tile's OSM data is in; a downloaded
-   relief queues there too, X-Plane's is a `subprocess` row; `subprocess` =
+   relief has a lane of its own beside them (`progress.RELIEF_LANE`), X-Plane's is a `subprocess`
+   row; `subprocess` =
    `default_subprocess_slots()`; `io` = 2; `cpu` = the workers), the OSM rows on their lane of one
    (`progress.OSM_LANE`) -- and of its tiles' chains (elevation, vectors, mesh, masks, dsf,
    textures, pack, install in a row), each starting once the OSM downloads queued before its
