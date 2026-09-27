@@ -14,9 +14,10 @@
  * stayed empty: it needs the run loop to draw a new value. Outside an application (the tests'
  * stand-in for X-Plane), NSApp is nil and nothing is shown.
  *
- * In flight, a second panel offers the reload of the scenery once the 8192 px textures around the
- * aircraft are built (the "reload" start mode): X-Plane runs then, so its buttons work as any. They
- * take a click at once, and the panel never takes the keyboard from X-Plane.
+ * In flight, a second panel, small in the top right corner, offers the reload of the scenery once
+ * the 8192 px textures around the aircraft are built (the "reload" start mode): Reload scenery, or
+ * close it. X-Plane runs then, so its buttons work as any. They take a click at once, and the panel
+ * never takes the keyboard from X-Plane.
  */
 
 #import <Cocoa/Cocoa.h>
@@ -147,9 +148,11 @@ static NSButton *offer_button(NSString *title, SEL action, NSRect frame) {
 void live_offer_show(void) {
     if (NSApp == nil || offer_panel != nil) return;
     @autoreleasepool {
+        /* small, in the top right corner of X-Plane's window, below its menu bar's band */
+        const CGFloat w = 440, h = 44;
         NSWindow *xp = xplane_window();
         NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
-        NSRect r = NSMakeRect(NSMidX(around) - 300, NSMaxY(around) - 130, 600, 96);
+        NSRect r = NSMakeRect(NSMaxX(around) - w - 16, NSMaxY(around) - h - 48, w, h);
         offer_panel = [[NSPanel alloc] initWithContentRect:r
                                                  styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                    backing:NSBackingStoreBuffered
@@ -162,24 +165,29 @@ void live_offer_show(void) {
         offer_panel.releasedWhenClosed = NO;
         offer_panel.becomesKeyOnlyIfNeeded = YES;
 
-        NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, r.size.width, r.size.height)];
+        NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
         box.wantsLayer = YES;
         box.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:0.92].CGColor;
-        box.layer.cornerRadius = 12;
+        box.layer.cornerRadius = 10;
         offer_panel.contentView = box;
 
-        NSTextField *title = label(NSMakeRect(20, 70, 560, 18), 12, [NSColor colorWithCalibratedWhite:0.6 alpha:1]);
-        title.stringValue = @"OrthoStudio XP Live";
-        NSTextField *headline = label(NSMakeRect(20, 46, 560, 22), 15, [NSColor whiteColor]);
-        headline.stringValue = @"The 8192 px textures around the aircraft are ready";
-        NSTextField *detail = label(NSMakeRect(20, 14, 330, 18), 12, [NSColor colorWithCalibratedWhite:0.8 alpha:1]);
-        detail.alignment = NSTextAlignmentLeft;
-        detail.stringValue = @"Reloading takes X-Plane a few seconds.";
+        NSTextField *text = label(NSMakeRect(14, 12, 270, 20), 13, [NSColor whiteColor]);
+        text.alignment = NSTextAlignmentLeft;
+        text.stringValue = @"Live: 8K ready around the aircraft";
         offer_target = [LiveOfferTarget new];
-        NSButton *later = offer_button(@"Not now", @selector(later:), NSMakeRect(356, 8, 90, 30));
-        NSButton *reload = offer_button(@"Reload the scenery", @selector(reload:), NSMakeRect(446, 8, 140, 30));
+        NSButton *reload = offer_button(@"Reload scenery", @selector(reload:), NSMakeRect(284, 7, 120, 30));
         reload.keyEquivalent = @"";
-        for (NSView *v in @[ title, headline, detail, later, reload ]) [box addSubview:v];
+        NSButton *close = offer_button(@"", @selector(later:), NSMakeRect(408, 9, 26, 26));
+        close.bordered = NO;
+        close.attributedTitle = [[NSAttributedString alloc]
+            initWithString:@"\u00d7"
+                attributes:@{
+                    NSForegroundColorAttributeName : [NSColor colorWithCalibratedWhite:0.75 alpha:1],
+                    NSFontAttributeName : [NSFont systemFontOfSize:17]
+                }];
+        close.toolTip = @"Close";
+        close.accessibilityLabel = @"Close";
+        for (NSView *v in @[ text, reload, close ]) [box addSubview:v];
         [offer_panel orderFrontRegardless];
     }
 }

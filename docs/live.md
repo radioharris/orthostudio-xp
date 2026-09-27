@@ -100,8 +100,8 @@ Then, for every flight:
    with the seconds gone by and the download rate in MB/s. X-Plane's own window looks frozen
    meanwhile: it is waiting, it has not crashed.
 3. Fly, anywhere. Another flight started from X-Plane's menu waits the same way. With "Normal,
-   then reload in 8192 px", a panel appears at the top of X-Plane once the 8192 px textures around
-   you are built: Reload the scenery, or Not now.
+   then reload in 8192 px", a small panel appears in the top right corner of X-Plane once the
+   8192 px textures around you are built: Reload scenery, or close it (x).
 4. Quit X-Plane, then click Stop (Ctrl-C in a terminal). Stopped or closed while X-Plane still
    runs, Live waits for X-Plane to quit before it takes its pack out: X-Plane reads its textures
    from it. "Leave it installed" stops waiting; the window then offers to take the pack out once
