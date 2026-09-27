@@ -25,13 +25,36 @@ DETAIL_DEG = 3.0  # a view wider than this, in latitude or longitude, gets squar
 MAX_TEXTURES = 15_000  # the most rectangles one answer holds
 ROUTE_POINTS = 400  # a route's points, at most, as the map draws it
 
+Row = tuple[float, float, float, float, int]
+
 _lock = threading.Lock()
-_cache: dict[Path, tuple[float, list[tuple[float, float, float, float, int]]]] = {}
+_cache: dict[Path, tuple[float, list[Row]]] = {}
+_bounds: dict[str, tuple[float, float, float, float] | None] = {}  # a name's rectangle, once
 
 
-def _built(pack: Path) -> list[tuple[float, float, float, float, int]]:
+def _rectangle(name: str) -> tuple[float, float, float, float] | None:
+    got = _bounds.get(name, False)
+    if got is False:
+        tex = parse_texture_name(name)
+        got = None if tex is None else tex.bounds
+        _bounds[name] = got
+    return got
+
+
+def rows_of(textures: dict[str, int], grown: set[str]) -> list[Row]:
     """(south, west, north, east, level) of every texture built: level -1 is 8192 px, 0 is 4096
-    px, 1 is 2048... The record is read again only once the streamer has saved it since."""
+    px, 1 is 2048..."""
+    rows = []
+    for name, level in textures.items():
+        box = _rectangle(name)
+        if box is None or not isinstance(level, int) or level > 4:
+            continue
+        rows.append((*box, -1 if name in grown else level))
+    return rows
+
+
+def _built(pack: Path) -> list[Row]:
+    """The pack's record, read again only once the streamer has saved it since."""
     marker = pack / "_live" / "ortho.json"
     try:
         mtime = marker.stat().st_mtime
@@ -42,25 +65,28 @@ def _built(pack: Path) -> list[tuple[float, float, float, float, int]]:
         if hit is not None and hit[0] == mtime:
             return hit[1]
     meta = load_built(pack)
-    grown = set(meta.get("grown", []))
-    rows = []
-    for name, level in meta.get("textures", {}).items():
-        tex = parse_texture_name(name)
-        if tex is None or not isinstance(level, int) or level > 4:
-            continue
-        south, west, north, east = tex.bounds
-        rows.append((south, west, north, east, -1 if name in grown else level))
+    rows = rows_of(meta.get("textures", {}), set(meta.get("grown", [])))
     with _lock:
         _cache[pack] = (mtime, rows)
     return rows
 
 
-def built_in(pack: Path, west: float, south: float, east: float, north: float) -> dict[str, Any]:
+def built_in(
+    pack: Path,
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+    rows: list[Row] | None = None,
+) -> dict[str, Any]:
     """The textures built in a view: ``{"textures": [[s, w, n, e, level], ...]}`` for a small
     view, ``{"squares": [[lat, lon, count, sharpest], ...]}`` for a wide one; ``more`` when a
-    small view had more than :data:`MAX_TEXTURES`."""
+    small view had more than :data:`MAX_TEXTURES`. ``rows``: the running streamer's, from its
+    memory; else the pack's record."""
     rows = [
-        r for r in _built(pack) if r[0] < north and r[2] > south and r[1] < east and r[3] > west
+        r
+        for r in (_built(pack) if rows is None else rows)
+        if r[0] < north and r[2] > south and r[1] < east and r[3] > west
     ]
     if north - south > DETAIL_DEG or east - west > DETAIL_DEG:
         squares: dict[tuple[int, int], list[int]] = {}

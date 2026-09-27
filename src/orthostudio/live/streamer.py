@@ -231,6 +231,7 @@ class Streamer:
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # the textures whose file is 8192 px: each built from its 8192 px level
         self.grown = {n for n in self.meta.get("grown", []) if self.built.get(n) == MIN_LEVEL}
+        self.built_version = 0  # one more at each change of built or grown: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
             n: (0.0, 0) for n in self.meta.get("patchy", []) if n in self.built
@@ -613,6 +614,14 @@ class Streamer:
         self.log("  reloading the scenery: X-Plane reads the 8192 px textures around the aircraft")
         return True
 
+    def built_now(self, known: int = -1) -> tuple[int, dict[str, int] | None, set[str] | None]:
+        """(version, textures built, grown), copied under the lock for the window's map; nothing
+        copied when ``known`` is the version already: the map asks every few seconds."""
+        with self.lock:
+            if known == self.built_version:
+                return self.built_version, None, None
+            return self.built_version, dict(self.built), set(self.grown)
+
     def offer_state(self) -> dict | None:
         """The offer as the Live window and the plugin show it: ``building`` (``left`` textures to
         go), ``ready``, or ``asked``; ``id`` tells one offer from the next."""
@@ -629,6 +638,7 @@ class Streamer:
             fut.result()
             with self.lock:  # the status line and the save copy them whole, from the main thread
                 self.built[name] = level
+                self.built_version += 1
                 self.done[level] += 1
                 if level < 0:  # its file is 8192 px now
                     self.grown.add(name)
@@ -850,6 +860,7 @@ class Streamer:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
             with self.lock:
+                self.built_version += 1
                 self.grown.discard(name)
                 self.patchy.pop(name, None)
                 if level >= NEUTRAL_LEVEL:

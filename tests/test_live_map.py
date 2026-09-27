@@ -132,3 +132,66 @@ async def test_the_map_s_api(home: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 def test_the_map_s_scripts_parse() -> None:
     for name in ("basemap.js", "livemap.js", "live.js"):
         subprocess.run([NODE or "node", "--check", str(UI_DIR / name)], check=True)
+
+
+class FakeStreamer:
+    """What the map reads of a running streamer: its textures built, versioned."""
+
+    def __init__(self) -> None:
+        self.version, self.built, self.grown = 1, dict(BUILT), {LYON[1]}
+        self.copied = 0
+
+    def built_now(self, known: int = -1):
+        if known == self.version:
+            return self.version, None, None
+        self.copied += 1
+        return self.version, dict(self.built), set(self.grown)
+
+
+def test_the_map_reads_the_running_streamer(home: Path) -> None:
+    control = LiveControl(
+        echo=lambda _: None, catalog=lambda root: {}, checks=lambda: {"xplane": None}
+    )
+    streamer = FakeStreamer()
+    control._attach(streamer)  # as session.follow does once the streamer runs
+    view = (4.5, 45.3, 6.5, 46.5)
+    got = control.built_in(*view)
+    assert got["version"] == 1 and len(got["textures"]) == 4  # nothing on the disk: its memory
+    assert control.built_in(*view, known=1) == {"version": 1, "same": True}  # nothing new
+    assert streamer.copied == 1  # "same" copies nothing
+    streamer.built[LYON[2]], streamer.version = 0, 2  # one more built sharper
+    got = control.built_in(*view, known=1)
+    assert got["version"] == 2 and sorted(r[4] for r in got["textures"]) == [-1, 0, 0, 0]
+    control._attach(None)  # stopped: the record on the disk again
+    assert "version" not in control.built_in(*view)
+
+
+def test_the_streamer_counts_its_changes(tmp_path: Path) -> None:
+    from live_helpers import NAMES, FakeDownloader, make_source
+    from orthostudio.live.cache import ChunkCache
+    from orthostudio.live.region import setup_region
+    from orthostudio.live.streamer import Streamer
+
+    pack = tmp_path / "pack"
+    setup_region(make_source(tmp_path, textures=NAMES), pack, log=lambda _: None)
+    s = Streamer(
+        pack,
+        ChunkCache(tmp_path / "c.sqlite"),
+        FakeDownloader,
+        finest_quality=1,
+        log=lambda _: None,
+    )
+    try:
+        version, built, grown = s.built_now()
+        assert built == {} and grown == set()
+        assert s.built_now(version) == (version, None, None)
+
+        class Done:
+            def result(self):
+                return None
+
+        s._finished(Done(), f"{NAMES[0]}.dds", 0)  # a texture built
+        after, built, _ = s.built_now(version)
+        assert after == version + 1 and built == {f"{NAMES[0]}.dds": 0}
+    finally:
+        s.cache.close()

@@ -183,12 +183,12 @@ def live_router(control: LiveControl) -> APIRouter:
         return control.regions()
 
     @router.get("/map/built")
-    def map_built(west: float, south: float, east: float, north: float) -> dict[str, Any]:
-        """The textures built in the map's view (orthostudio.live.mapdata)."""
-        from orthostudio.live.mapdata import built_in
-        from orthostudio.live.pack import default_pack_dir
-
-        return built_in(default_pack_dir(), west, south, east, north)
+    def map_built(
+        west: float, south: float, east: float, north: float, known: int = -1
+    ) -> dict[str, Any]:
+        """The textures built in the map's view (orthostudio.live.mapdata); ``known``: the version
+        the map has, answered with ``same`` while nothing changed."""
+        return control.built_in(west, south, east, north, known)
 
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:

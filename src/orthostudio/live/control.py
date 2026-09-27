@@ -184,6 +184,9 @@ class LiveControl:
         self._catalog_thread: threading.Thread | None = None
         self._installer: Any = None
         self._install_thread: threading.Thread | None = None
+        # the running streamer, for the map: what it has built, from its memory
+        self.streamer: Any = None
+        self._map_rows: tuple[int, list] = (-1, [])
         # the window's language, which the plugin's words in X-Plane follow while a stream runs
         try:
             self.language = self._settings().language
@@ -314,6 +317,29 @@ class LiveControl:
             return False
         self._reload.clear()
         return True
+
+    def _attach(self, streamer: Any) -> None:
+        self.streamer = streamer
+        self._map_rows = (-1, [])
+
+    def built_in(
+        self, west: float, south: float, east: float, north: float, known: int = -1
+    ) -> dict:
+        """The textures built in the map's view: from the running streamer's memory, at once, with
+        its version (``{"version", "same": true}`` when the map has it already); else from the
+        pack's record, which the streamer writes every 30 s."""
+        from orthostudio.live.mapdata import built_in, rows_of
+
+        streamer = self.streamer
+        if streamer is None:
+            return built_in(default_pack_dir(), west, south, east, north)
+        version, textures, grown = streamer.built_now(known)
+        if textures is None:
+            return {"version": version, "same": True}
+        if self._map_rows[0] != version:  # the rectangles of this version, once
+            self._map_rows = (version, rows_of(textures, grown or set()))
+        out = built_in(default_pack_dir(), west, south, east, north, rows=self._map_rows[1])
+        return {**out, "version": version}
 
     def set_language(self, language: str, *, save: Any = None) -> None:
         """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take
@@ -479,6 +505,7 @@ class LiveControl:
                     stop_hint=STOP_HINT,
                     reload_asked=self._reload_asked,
                     language=lambda: self.language,
+                    attach=self._attach,
                 )
         except session.RefusedError as e:
             self._error = str(e)

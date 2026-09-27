@@ -195,7 +195,17 @@ class FakeStream:
         return session.Prepared(Path("/X-Plane 12"), Path("/pack"), None, None, 0)
 
     def follow(
-        self, prepared, options, log, *, should_stop, report, stop_hint, reload_asked, language
+        self,
+        prepared,
+        options,
+        log,
+        *,
+        should_stop,
+        report,
+        stop_hint,
+        reload_asked,
+        language,
+        attach,
     ) -> None:
         self.language = language
         report(self.report)

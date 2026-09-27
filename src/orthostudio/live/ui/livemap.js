@@ -11,7 +11,7 @@ import { createBaseMap } from "./basemap.js";
 export const LEVEL_COLOURS = { "-1": "#2e9e4f", 0: "#8cc63f", 1: "#f2b134", coarser: "#9aa0a6" };
 const REGION_COLOUR = "#5a8dd6";
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
-const BUILT_EVERY_MS = 10_000;
+const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 
 export function levelColour(level) {
   return LEVEL_COLOURS[String(level)] || LEVEL_COLOURS.coarser;
@@ -40,17 +40,23 @@ export function createLiveMap(el, { api }) {
   let streaming = false;
   let builtTimer = 0;
 
-  async function drawBuilt() {
+  let builtVersion = -1; // what the map shows, as the engine counts its changes
+
+  /** The textures built in the view: all again when the view moved (`fresh`), else only if the
+   * engine has built or made coarser any since. */
+  async function drawBuilt(fresh = true) {
     clearTimeout(builtTimer);
     const b = map.getBounds();
-    const q = `west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`;
+    let q = `west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`;
+    if (!fresh) q += `&known=${builtVersion}`;
     let got;
     try {
       got = await api(`map/built?${q}`);
     } catch (_e) {
       got = null;
     }
-    if (got) {
+    if (got && !got.same) {
+      builtVersion = got.version ?? -1;
       built.clearLayers();
       const style = (level) => ({
         renderer: canvas, weight: 0, fillColor: levelColour(level), fillOpacity: 0.45, interactive: false,
@@ -62,7 +68,7 @@ export function createLiveMap(el, { api }) {
         L.rectangle([[lat, lon], [lat + 1, lon + 1]], style(best)).addTo(built);
       }
     }
-    if (streaming) builtTimer = setTimeout(drawBuilt, BUILT_EVERY_MS);
+    if (streaming) builtTimer = setTimeout(() => drawBuilt(false), BUILT_EVERY_MS);
   }
 
   async function drawRegions() {
