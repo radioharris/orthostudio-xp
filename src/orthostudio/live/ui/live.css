@@ -51,3 +51,13 @@
 .welcome-remember { font-size: var(--fs-2); color: var(--fg-2); }
 
 .topbar-tools .live-osxp { width: auto; padding: 0 8px; white-space: nowrap; }
+
+/* AutoOrtho's regions, the mesh Live installs */
+.regions { list-style: none; margin: var(--gap) 0 0; padding: 0; display: grid; gap: 6px; }
+.region-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
+.region-name { font-weight: 600; min-width: 11em; }
+.region-size { color: var(--fg-2); font-size: var(--fs-2); min-width: 5em; font-variant-numeric: tabular-nums; }
+.region-state { color: var(--fg-2); font-size: var(--fs-2); flex: 1; }
+.region-actions { display: flex; gap: 6px; margin-left: auto; }
+.region-progress { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.region .progress { height: 8px; border-radius: 4px; margin-top: 4px; }

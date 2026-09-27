@@ -307,6 +307,131 @@ function drawSimbrief() {
   if (name) button.textContent = t("plan.take", { name });
 }
 
+// --- AutoOrtho's regions: the mesh -----------------------------------------------------------
+
+let regionsDrawn = ""; // what the list shows: drawn again only when it changes, keeping the focus
+let removeArmed = null; // the region whose Delete was clicked once: a second click deletes it
+
+function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = danger ? "btn btn-small btn-danger" : "btn btn-small";
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function regionAct(path, method = "POST") {
+  $("regions-error").hidden = true;
+  try {
+    const regions = await api(path, { method });
+    if (last) draw({ ...last, regions });
+  } catch (error) {
+    $("regions-error").hidden = false;
+    $("regions-error").textContent = error.message;
+  }
+}
+
+function drawRegions(status) {
+  const regions = status.regions || { list: [], install: null };
+  const install = regions.install;
+  const running = install && !["done", "failed", "cancelled"].includes(install.phase);
+  const idle = status.state === "idle";
+  $("regions-loading").hidden = regions.list.length > 0 || Boolean(regions.error);
+  if (regions.error) {
+    $("regions-error").hidden = false;
+    $("regions-error").textContent = t("regions.error", { error: regions.error });
+  }
+  const shape = JSON.stringify([language(), regions.list, install && [install.region, install.phase,
+    install.error], running, idle, removeArmed]);
+  if (shape !== regionsDrawn) {
+    regionsDrawn = shape;
+    const ul = $("regions-list");
+    ul.replaceChildren();
+    for (const r of regions.list) {
+      const li = document.createElement("li");
+      li.className = "region";
+      li.dataset.region = r.id;
+      const head = document.createElement("div");
+      head.className = "region-head";
+      const name = document.createElement("span");
+      name.className = "region-name";
+      name.textContent = t(`region.${r.id}`);
+      const size = document.createElement("span");
+      size.className = "region-size";
+      size.textContent = r.size ? t("regions.size", { gb: gb(r.size) }) : "";
+      const state = document.createElement("span");
+      state.className = "region-state";
+      const actions = document.createElement("span");
+      actions.className = "region-actions";
+      const mine = install && install.region === r.id;
+      if (r.installed_by === "autoortho") {
+        state.textContent = t("regions.by_autoortho");
+      } else if (mine && running) {
+        actions.append(regionButton(t("regions.cancel"), () => regionAct("regions/cancel")));
+      } else if (r.installed_by === "live") {
+        const newer = r.release && r.installed_release && r.release !== r.installed_release;
+        state.textContent = newer
+          ? t("regions.newer", { release: r.release })
+          : t("regions.by_live", { release: r.installed_release || "" });
+        if (newer) {
+          actions.append(regionButton(t("regions.update"), () => regionAct(`regions/${r.id}/install`),
+            { disabled: running }));
+        }
+        const armed = removeArmed === r.id;
+        actions.append(regionButton(
+          armed ? t("regions.confirm_remove", { name: t(`region.${r.id}`), gb: gb(r.size || 0) })
+            : t("regions.remove"),
+          () => {
+            if (armed) {
+              removeArmed = null;
+              regionAct(`regions/${r.id}`, "DELETE");
+            } else {
+              removeArmed = r.id;
+              if (last) draw(last);
+            }
+          },
+          { danger: true, disabled: !idle || running }));
+      } else if (r.size) {
+        actions.append(regionButton(t("regions.install"), () => regionAct(`regions/${r.id}/install`),
+          { disabled: running }));
+      }
+      head.append(name, size, state, actions);
+      li.append(head);
+      if (mine) {
+        const line = document.createElement("p");
+        line.className = "question-help region-progress";
+        line.id = "region-progress";
+        li.append(line);
+        if (running) {
+          const bar = document.createElement("div");
+          bar.className = "progress";
+          const fill = document.createElement("span");
+          fill.id = "region-bar";
+          bar.append(fill);
+          li.append(bar);
+        }
+      }
+      ul.append(li);
+    }
+  }
+  if (install && $("region-progress")) {
+    const done = { done: gb(install.done_bytes), total: gb(install.total_bytes),
+      unpacked: install.unpacked, zips: install.zips };
+    const line = $("region-progress");
+    line.classList.toggle("is-warn", install.phase === "failed");
+    if (running) line.textContent = t("regions.progress", done);
+    else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
+    else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
+    else line.textContent = t("regions.done");
+    if ($("region-bar")) {
+      const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
+      $("region-bar").style.width = `${Math.round(share * 1000) / 10}%`;
+    }
+  }
+}
+
 function draw(status) {
   last = status;
   drawSimbrief();
@@ -316,6 +441,7 @@ function draw(status) {
   drawChecks(status);
   drawDisk(status);
   drawFolder(status);
+  drawRegions(status);
   if (saved === null) {
     saved = status.settings;
     fillSettings(saved);
@@ -446,6 +572,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
     input.checked = input.value === (settings.app_home || "ask");
   }
+  for (const input of document.querySelectorAll('input[name="overlays"]')) {
+    input.checked = input.value === (settings.overlays || "auto");
+  }
   drawSimbrief();
   for (const input of $("start-choices").querySelectorAll("input")) {
     input.checked = input.value === settings.start_mode;
@@ -466,6 +595,7 @@ async function saveSettings(event) {
     start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
+    overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
   };
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
@@ -565,6 +695,16 @@ async function act(path, body) {
   }
 }
 
+async function askRegions() {
+  // GitHub's list of AutoOrtho's regions, read by the engine in the background: the status brings it
+  try {
+    const regions = await api("regions");
+    if (last) draw({ ...last, regions });
+  } catch (_e) {
+    // the status says it
+  }
+}
+
 async function loadProviders() {
   try {
     providers = await api("providers");
@@ -618,6 +758,8 @@ function boot() {
     $("settings-error").hidden = true;
   });
   loadProviders();
+  askRegions();
+  setInterval(askRegions, 60_000); // read again only when old (orthostudio/live/control.py)
   poll();
 }
 

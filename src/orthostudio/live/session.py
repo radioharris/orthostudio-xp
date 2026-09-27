@@ -24,6 +24,7 @@ from typing import Any
 from orthostudio.errors import OsxpError
 from orthostudio.live.pack import (
     LINK_NAME,
+    OVERLAY_LINK_NAME,
     FolderError,
     check_folder,
     default_cache_path,
@@ -68,11 +69,12 @@ class Options:
     max_zoom_airports: int = 18
     start_mode: str = "around"  # what X-Plane waits for at a start: streamer.START_MODES
     simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
+    overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
     margin: float = 1.25
     camera_reach_km: float = 25.0
     workers: int = field(default_factory=default_workers)
     port: int = 49000  # X-Plane's UDP port
-    source: Path | None = None  # None: AutoOrtho's z_ao_eur
+    source: Path | None = None  # None: every AutoOrtho region installed, AutoOrtho's or Live's
     no_plugin: bool = False
     fresh: bool = False  # as the first time: every texture and all imagery forgotten
     disk_budget_gb: float = 20.0
@@ -204,9 +206,8 @@ def prepare(options: Options, log: Log) -> Prepared:
         not region_ready(pack_dir, sources) and not all((s / "terrain").is_dir() for s in sources)
     ):
         raise RefusedError(
-            f"AutoOrtho's mesh is not there ({options.source or autoortho_scenery(xp_dir)}): "
-            "OrthoStudio XP Live streams onto it for now. Install one of AutoOrtho's regions "
-            "first (Europe: z_ao_eur)."
+            f"no mesh to stream onto ({options.source or autoortho_scenery(xp_dir)}): install "
+            "the region you fly over first, in the Live window (Regions), or with AutoOrtho."
         )
     fix = None
     if options.start:
@@ -241,6 +242,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             + (f" and {len(packs) - 3} more" if len(packs) > 3 else "")
             + "): X-Plane shows it there, and Live downloads nothing there"
         )
+    _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
     gate = None
     # X-Plane loads plugins at start-up: if it is running, only one already there counts
     if not options.no_plugin and (
@@ -264,6 +266,38 @@ def prepare(options: Options, log: Log) -> Prepared:
         f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
     )
     return Prepared(xp_dir, pack_dir, gate, fix, finest, covered)
+
+
+def overlay_dir() -> Path:
+    """Live's overlay pack (orthostudio.live.overlays), beside its pack in Live's folder."""
+    return live_root() / "overlays"
+
+
+def _overlays(
+    xp_dir: Path,
+    pack_dir: Path,
+    sources: Sequence[Path],
+    covered: dict,
+    setting: str,
+    running: bool,
+    log: Log,
+) -> None:
+    """AutoOrtho's roads, forests and buildings on Live's squares where nothing else draws them,
+    in a pack of their own listed above the ortho; none, and the pack out of X-Plane, else. Made
+    again only while X-Plane is not running: it reads the overlays it has loaded."""
+    from orthostudio.live import overlays
+
+    folder = overlay_dir()
+    if running:  # the pack stays as X-Plane found it
+        return
+    placed = overlays.build(xp_dir, pack_dir, folder, sources, live_root(), covered, setting, log)
+    if placed:
+        install_link(xp_dir, folder, OVERLAY_LINK_NAME, log=log, kind="overlay")
+    elif (
+        is_installed(xp_dir, OVERLAY_LINK_NAME)
+        or (xp_dir / "Custom Scenery" / OVERLAY_LINK_NAME).is_symlink()
+    ):
+        uninstall_link(xp_dir, OVERLAY_LINK_NAME, log=log)
 
 
 def follow(
@@ -341,6 +375,10 @@ def uninstall(xplane: Path, log: Log) -> None:
     from orthostudio.live import plugin
 
     uninstall_link(xplane, LINK_NAME, log=log)
+    if (xplane / "Custom Scenery" / OVERLAY_LINK_NAME).is_symlink() or is_installed(
+        xplane, OVERLAY_LINK_NAME
+    ):
+        uninstall_link(xplane, OVERLAY_LINK_NAME, log=log)
     if plugin.installed(xplane):
         plugin.uninstall(xplane)
         log("uninstalled: the OrthoStudio XP Live plugin is out of X-Plane")

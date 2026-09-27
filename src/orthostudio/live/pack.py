@@ -7,6 +7,9 @@ computer's own disk, unless the Live window's settings chose another. Not OrthoS
 folder: that one may move to another disk for a while, and a pack following it would be set up
 again there, the textures built and the imagery downloaded left behind (a user, 2026-09-27).
 - ``pack``, the pack X-Plane reads through the link ``z_osxp_live`` in Custom Scenery;
+- ``overlays``, the roads, forests and buildings of its squares, through ``y_osxp_live_overlays``
+  (:mod:`orthostudio.live.overlays`);
+- ``regions``, the AutoOrtho regions Live installed itself (:mod:`orthostudio.live.aoregions`);
 - ``chunks.sqlite``, the downloaded image pieces.
 
 The pack's textures are APFS clones of one neutral file until they are built, so the folder must be
@@ -24,6 +27,7 @@ from orthostudio.home import osxp_home
 from orthostudio.live.clone import clones_work
 
 LINK_NAME = "z_osxp_live"
+OVERLAY_LINK_NAME = "y_osxp_live_overlays"
 MARKER = Path("_live") / "ortho.json"
 
 

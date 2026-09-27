@@ -227,6 +227,7 @@ def control_for(stream: FakeStream, **changed: Any) -> LiveControl:
         checks=checks(**changed),
         settings=lambda: LiveSettings(disk_budget_gb=33),
         echo=lambda _: None,
+        catalog=lambda root: {},  # never GitHub from a test
     )
 
 
@@ -579,3 +580,109 @@ def test_threads_are_not_left_behind(home: Path, monkeypatch: pytest.MonkeyPatch
     c.stop()
     assert c.wait_idle(5)
     assert "live-stream" not in {t.name for t in threading.enumerate()} - before
+
+
+# --- AutoOrtho's regions ------------------------------------------------------------------------
+
+
+class FakeInstaller:
+    """An install that downloads until it is stopped."""
+
+    def __init__(self, root: Path, region, log=print) -> None:
+        self.region = region
+        self.stopped = threading.Event()
+        self.phase = "downloading"
+
+    def run(self) -> None:
+        while not self.stopped.wait(0.01):
+            pass
+        self.phase = "cancelled"
+
+    def cancel(self) -> None:
+        self.stopped.set()
+
+    def snapshot(self) -> dict:
+        return {"region": self.region.id, "phase": self.phase, "done_bytes": 5, "total_bytes": 10}
+
+
+def regions_control(xp: Path) -> LiveControl:
+    from orthostudio.live.aoregions import AoRegion, Asset
+
+    catalog = {
+        "eur": AoRegion("eur", "0.0.51", (Asset("z_eur_00.zip", "https://x/e", 10),)),
+        "na": AoRegion("na", "0.0.54", (Asset("z_na_00.zip", "https://x/n", 20),)),
+    }
+    return LiveControl(
+        checks=checks(xplane=str(xp)),
+        settings=LiveSettings,
+        echo=lambda _: None,
+        catalog=lambda root: catalog,
+        installer=FakeInstaller,
+    )
+
+
+def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+
+    xp = tmp_path / "X-Plane 12"
+    (xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_na" / "terrain").mkdir(parents=True)
+    c = regions_control(xp)
+    # the status never asks GitHub itself: the regions installed only, sizes unknown
+    assert [(r["id"], r["size"]) for r in c.status()["regions"]["list"]] == [("na", None)]
+    c.regions(fetch=True)
+    wait_for(lambda: len(c.regions()["list"]) == 2)
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["eur"] == {
+        "id": "eur",
+        "release": "0.0.51",
+        "size": 10,
+        "installed_by": None,
+        "installed_release": None,
+    }
+    assert listed["na"]["installed_by"] == "autoortho"  # AutoOrtho's own: used as it is
+    c.install_region("eur")
+    with pytest.raises(session.RefusedError):
+        c.install_region("na")  # one at a time
+    assert c.regions()["install"]["phase"] == "downloading"
+    with pytest.raises(session.RefusedError):
+        c.remove_region("eur")  # not while it is installed
+    c.cancel_install()
+    wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
+    mine = aoregions.mesh_dir(live_root(), "eur")
+    mine.mkdir(parents=True)
+    (mine / aoregions.MARKER).write_text('{"release": "0.0.50"}')
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["eur"]["installed_by"] == "live"
+    assert listed["eur"]["installed_release"] == "0.0.50"  # the page offers the update
+    c.remove_region("eur")
+    assert not mine.exists()
+    with pytest.raises(session.RefusedError):
+        c.remove_region("eur")  # Live has not installed it (any more)
+    with pytest.raises(session.RefusedError):
+        c.install_region("atlantis")
+
+
+@pytest.mark.anyio
+async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
+    c = regions_control(tmp_path / "X-Plane 12")
+    async with client_for(create_live_app(c)) as client:
+        await client.get("/api/live/regions")
+        wait_for(lambda: c.regions()["list"])
+        got = (await client.get("/api/live/regions")).json()
+        assert [r["id"] for r in got["list"]] == ["eur", "na"]
+        started = await client.post("/api/live/regions/eur/install")
+        assert started.status_code == 202 and started.json()["install"]["region"] == "eur"
+        assert (await client.post("/api/live/regions/na/install")).status_code == 409
+        await client.post("/api/live/regions/cancel")
+        wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
+        assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not Live's
+
+
+def test_the_overlays_setting(home: Path) -> None:
+    assert LiveSettings().overlays == "auto"
+    save_settings(LiveSettings(overlays="off"))
+    assert load_settings().overlays == "off"
+    assert control_module.options_for(load_settings(), fresh=False).overlays == "off"
+    settings_file().write_text('[stream]\noverlays = "everywhere"\n')
+    assert load_settings().overlays == "auto"

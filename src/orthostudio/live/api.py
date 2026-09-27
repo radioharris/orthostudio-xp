@@ -148,6 +148,31 @@ def live_router(control: LiveControl) -> APIRouter:
         window.to_the_front()
         return {"front": True}
 
+    @router.get("/regions")
+    def regions() -> dict[str, Any]:
+        return control.regions(fetch=True)
+
+    @router.post("/regions/cancel")
+    def cancel_install() -> dict[str, Any]:
+        control.cancel_install()
+        return control.regions()
+
+    @router.post("/regions/{region_id}/install", status_code=202)
+    def install_region(region_id: str) -> dict[str, Any]:
+        try:
+            control.install_region(region_id)
+        except session.RefusedError as e:
+            raise HTTPException(409, str(e)) from e
+        return control.regions()
+
+    @router.delete("/regions/{region_id}")
+    def remove_region(region_id: str) -> dict[str, Any]:
+        try:
+            control.remove_region(region_id)
+        except session.RefusedError as e:
+            raise HTTPException(409, str(e)) from e
+        return control.regions()
+
     @router.get("/providers")
     def providers() -> list[dict[str, Any]]:
         from orthostudio.live.providers import listing

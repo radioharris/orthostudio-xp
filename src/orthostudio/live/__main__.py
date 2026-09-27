@@ -3,9 +3,10 @@
 """``python -m orthostudio.live <command>``: OrthoStudio XP Live from the command line.
 
 ``ui`` opens the Live window; ``stream`` follows X-Plane and keeps its textures built, in the
-terminal; ``setup`` prepares the region's pack once; ``reset`` forgets what was built and
-downloaded; ``status`` says what is built and installed; ``uninstall`` takes the pack and the
-plugin out of X-Plane. Until its launch, every command needs ``enabled = true`` in
+terminal; ``setup`` prepares the region's pack once; ``regions`` lists, installs and deletes
+AutoOrtho's regions, the mesh Live streams onto; ``reset`` forgets what was built and downloaded;
+``status`` says what is built and installed; ``uninstall`` takes the pack and the plugin out of
+X-Plane. Until its launch, every command needs ``enabled = true`` in
 ``~/.orthostudio/live.toml`` (:func:`orthostudio.live.enabled`). ``stream`` takes the window's
 settings (:mod:`orthostudio.live.settings`) for the options it is not given.
 """
@@ -304,6 +305,87 @@ def uninstall(xplane: XPlaneOpt = None) -> None:
             _fail("X-Plane is running and reads its textures from the pack: quit it first")
         )
     session.uninstall(xp_dir, typer.echo)
+
+
+regions_app = typer.Typer(
+    no_args_is_help=True, help="AutoOrtho's regions: the mesh Live streams onto"
+)
+app.add_typer(regions_app, name="regions")
+
+
+def _catalog() -> dict:
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+
+    try:
+        return aoregions.catalog(live_root())
+    except aoregions.CatalogError as exc:
+        raise typer.Exit(_fail(str(exc))) from exc
+
+
+@regions_app.command("list")
+def regions_list(xplane: XPlaneOpt = None) -> None:
+    """Each region, its size, and whether AutoOrtho or Live installed it."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+    from orthostudio.live.scenery import autoortho_regions
+
+    regions = _catalog()
+    mine = aoregions.installed(live_root())
+    theirs = {p.name.removeprefix("z_ao_") for p in autoortho_regions(_xplane(xplane))}
+    for region_id in aoregions.REGION_IDS:
+        region = regions.get(region_id)
+        size = f"{region.size / 1e9:5.1f} GB" if region else "     ?"
+        if region_id in theirs:
+            state = "installed by AutoOrtho"
+        elif region_id in mine:
+            state = f"installed by Live ({mine[region_id].get('release')})"
+        else:
+            state = "not installed"
+        typer.echo(f"{region_id:8s} {size}  {state}")
+
+
+@regions_app.command("install")
+def regions_install(region: str) -> None:
+    """Download a region from AutoOrtho's GitHub into Live's folder; Ctrl-C stops, and the next
+    install goes on from there."""
+    import threading
+
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+
+    regions = _catalog()
+    if region not in regions:
+        raise typer.Exit(_fail(f"no region {region!r}: one of {', '.join(sorted(regions))}"))
+    installer = aoregions.Installer(live_root(), regions[region], log=typer.echo)
+    thread = threading.Thread(target=installer.run, daemon=True)
+    thread.start()
+    try:
+        while thread.is_alive():
+            thread.join(10.0)
+            p = installer.snapshot()
+            if thread.is_alive():
+                done, total = p["done_bytes"] / 1e9, p["total_bytes"] / 1e9
+                typer.echo(
+                    f"  {p['phase']}: {done:.1f} of {total:.1f} GB,"
+                    f" {p['unpacked']} of {p['zips']} files unpacked"
+                )
+    except KeyboardInterrupt:
+        installer.cancel()
+        thread.join()
+    if installer.snapshot()["phase"] != "done":
+        raise typer.Exit(1)
+
+
+@regions_app.command("remove")
+def regions_remove(region: str) -> None:
+    """Delete a region Live installed (AutoOrtho's own stay AutoOrtho's)."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+
+    if region not in aoregions.installed(live_root()):
+        raise typer.Exit(_fail(f"Live has not installed the region {region!r}"))
+    aoregions.remove(live_root(), region, log=typer.echo)
 
 
 if __name__ == "__main__":

@@ -45,9 +45,41 @@ them on the disk as ordinary files. X-Plane never waits for it, so there is noth
 ## What you do
 
 Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It shows what Live
-needs (X-Plane, AutoOrtho's mesh, AutoOrtho not running, the plugin), what it does, and its
-settings: the imagery source, the disk space for the textures and for the downloaded imagery (with
-what each takes now, and a button to delete either), and Live's folder. Its log is at the bottom.
+needs (X-Plane, a mesh, AutoOrtho not running, the plugin), what it does, and its settings: the
+regions of the mesh, the roads, forests and buildings, the imagery source, the disk space for the
+textures and for the downloaded imagery (with what each takes now, and a button to delete either),
+and Live's folder. Its log is at the bottom.
+
+### The mesh: AutoOrtho's regions
+
+Live draws its photos on AutoOrtho's mesh, the ground's shape and the textures' outlines, which
+AutoOrtho's author publishes for the whole planet on GitHub (github.com/kubilus1/autoortho-scenery).
+It comes in six regions, and you install once the ones you fly over, as in AutoOrtho: Europe
+(17 GB), North America (26 GB), South America (9 GB), Africa (12 GB), Asia (33 GB), Australia and
+the Pacific (6 GB). The settings' first question lists them, each with an Install button. Once
+unpacked a region takes about 1.7 times its size on the disk. An install goes on where it stopped
+(a dropped connection, the Stop button, the Mac put to sleep), and a region is used from the next
+start once it is whole. A region AutoOrtho installed is used as it is, never downloaded again. In
+a terminal: `python -m orthostudio.live regions list`, `regions install eur`, `regions remove eur`.
+
+Live downloads the regions from AutoOrtho's GitHub, as AutoOrtho itself does, and never publishes
+them anywhere else: that repository names no licence.
+
+### Roads, forests and buildings
+
+Where Live shows its photos, X-Plane no longer draws its own roads, trees, buildings and beaches:
+it reads one ground per square, and its own scenery carries them. AutoOrtho's regions bring them
+back as "overlays", which Live puts on its squares, in a pack of its own listed just above the
+ortho (`y_osxp_live_overlays`), except:
+
+- where simHeaven X-World is: it brings its own roads and buildings, and its manual asks to leave
+  out what is not needed, since X-Plane loads a pack even when another hides it. Looked at square
+  by square: simHeaven X-World Europe has nothing over North Africa, which gets AutoOrtho's;
+- on your own tiles, which have their own overlays, and where another overlay pack is on
+  (AutoOrtho's `yAutoOrtho_Overlays`, Ortho4XP's): they would be drawn twice.
+
+Global Forests needs nothing: it hides the forests of every pack below it, Live's included, and
+keeps their roads and buildings. The setting "Never" leaves the overlays out altogether.
 
 There is no setting for the texture quality or for how far outside views reach: Live reads the
 texture quality X-Plane is set to, and builds sharp 25 km beyond the aircraft for outside views.
@@ -228,6 +260,10 @@ is never made on the computer's own disk instead: Live says so and does not star
   neutral placeholder that takes no space elsewhere. (A disk-usage tool counts every placeholder
   whole, terabytes of them: they share one file's blocks.)
 - `chunks.sqlite`: the downloaded imagery, so that nothing is downloaded twice.
+- `regions`: the AutoOrtho regions Live installed (`z_ao_<region>` for the mesh, `y_ao_<region>`
+  for its overlays), and while an install runs, what it has downloaded so far.
+- `overlays`: the roads, forests and buildings of Live's squares (linked into Custom Scenery as
+  `y_osxp_live_overlays` while Live runs), copies of the regions' that take no space.
 
 Both have a budget, set in the window (20 GB and 10 GB by default; `--disk-budget-gb` and
 `--cache-budget-gb` in a terminal, where the window's settings are the defaults). Over it,
@@ -264,10 +300,10 @@ Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
 - The 25 km for external views is always kept, cockpit or not. The plugin could tell which view is
   in use and widen it only when needed, to download less at cruise.
 
-- The look-ahead follows the current track; a flight plan (SimBrief) would let it look further.
 - Distances are measured along the ground, but for the 8192 px textures: counting the altitude
   at every level would download little less at cruise, where most is for external views (25 km
   around), which a shorter reach at cruise would save. To set it on how pilots really fly, Live
   notes how far and how low external views take the camera, at cruise and below, says it in its
   log when it stops, and keeps the last 20 flights in `pack/_live/camera.json`.
-- Only where AutoOrtho has a mesh: its regions installed.
+- Only where AutoOrtho has a mesh: the six regions cover the land of the planet, the islands AutoOrtho
+  left out excepted.

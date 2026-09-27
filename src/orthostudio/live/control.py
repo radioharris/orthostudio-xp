@@ -29,7 +29,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from orthostudio.live import session, supported
+from orthostudio.live import aoregions, session, supported
 from orthostudio.live.evict import usage
 from orthostudio.live.pack import (
     LINK_NAME,
@@ -42,6 +42,7 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.scenery import (
     autoortho_mounted,
+    autoortho_regions,
     autoortho_scenery,
     default_sources,
     is_installed,
@@ -52,6 +53,7 @@ from orthostudio.live.settings import LiveSettings, load_settings
 
 API = 1  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
+CATALOG_S = 600.0  # AutoOrtho's list of regions asked for again this often (GitHub: hourly)
 LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
 STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
@@ -68,6 +70,7 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         max_zoom_airports=settings.max_zoom_airports,
         start_mode=settings.start_mode,
         simbrief_user=settings.simbrief_user,
+        overlays=settings.overlays,
         fresh=fresh,
     )
 
@@ -144,6 +147,8 @@ class LiveControl:
         checks: Callable[[], dict[str, Any]] = gather_checks,
         settings: Callable[[], LiveSettings] = load_settings,
         echo: Callable[[str], None] = print,
+        catalog: Callable[..., dict] | None = None,
+        installer: Callable[..., Any] | None = None,
     ) -> None:
         self._prepare = prepare
         self._follow = follow
@@ -168,6 +173,15 @@ class LiveControl:
         self.leaving_for: str | None = None
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
+        # AutoOrtho's regions: GitHub's list, read in the background, and one install at a time
+        self._catalog_of = catalog or aoregions.catalog
+        self._installer_of = installer or aoregions.Installer
+        self._catalog: dict | None = None
+        self._catalog_error: str | None = None
+        self._catalog_at = 0.0
+        self._catalog_thread: threading.Thread | None = None
+        self._installer: Any = None
+        self._install_thread: threading.Thread | None = None
 
     # --- what the page reads -----------------------------------------------------------------
 
@@ -201,6 +215,7 @@ class LiveControl:
             "log_seq": seq,
             "checks": self.checks(),
             "settings": self._settings().model_dump(),
+            "regions": self.regions(),
         }
 
     def log_after(self, after: int) -> dict[str, Any]:
@@ -303,6 +318,102 @@ class LiveControl:
             (save or save_settings)(settings)
         if home == "build":
             self.leaving_for = "build"
+
+    # --- AutoOrtho's regions -----------------------------------------------------------------
+
+    def _read_catalog(self) -> None:
+        try:
+            got = self._catalog_of(live_root())
+            with self._lock:
+                self._catalog, self._catalog_error = got, None
+        except Exception as e:
+            with self._lock:
+                self._catalog_error = str(e)
+        finally:
+            with self._lock:
+                self._catalog_at = time.monotonic()
+
+    def regions(self, *, fetch: bool = False) -> dict[str, Any]:
+        """AutoOrtho's regions as the page lists them: each with its size and whether AutoOrtho or
+        Live installed it; the install under way. With ``fetch`` (the page's own request, not its
+        status), GitHub's list is read again in the background when it is old."""
+        with self._lock:
+            reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
+            stale = time.monotonic() - self._catalog_at > CATALOG_S
+            if fetch and not reading and (self._catalog is None or stale):
+                self._catalog_thread = threading.Thread(
+                    target=self._read_catalog, name="live-regions", daemon=True
+                )
+                self._catalog_thread.start()
+            catalog, error = self._catalog, self._catalog_error
+            installer = self._installer
+        mine = aoregions.installed(live_root())
+        xp = self.checks().get("xplane")
+        theirs = (
+            {p.name.removeprefix("z_ao_") for p in autoortho_regions(Path(xp))} if xp else set()
+        )
+        listed = []
+        for region_id in aoregions.REGION_IDS:
+            region = (catalog or {}).get(region_id)
+            if region is None and region_id not in mine and region_id not in theirs:
+                continue
+            installed_by = (
+                "autoortho" if region_id in theirs else "live" if region_id in mine else None
+            )
+            listed.append(
+                {
+                    "id": region_id,
+                    "release": region.release if region else None,
+                    "size": region.size if region else None,
+                    "installed_by": installed_by,
+                    "installed_release": mine.get(region_id, {}).get("release"),
+                }
+            )
+        progress = installer.snapshot() if installer is not None else None
+        return {"list": listed, "error": error if catalog is None else None, "install": progress}
+
+    def install_region(self, region_id: str) -> None:
+        """Download and install one of AutoOrtho's regions into Live's folder, in the background.
+        One at a time; used from the next start on."""
+        with self._lock:
+            catalog = self._catalog
+            busy = self._install_thread is not None and self._install_thread.is_alive()
+        if busy:
+            raise session.RefusedError("a region is being installed: one at a time")
+        region = (catalog or {}).get(region_id)
+        if region is None:
+            raise session.RefusedError(
+                f"AutoOrtho has no region {region_id!r} (or GitHub did not say)"
+            )
+        installer = self._installer_of(live_root(), region, log=self.log)
+        thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
+        with self._lock:
+            self._installer, self._install_thread = installer, thread
+        thread.start()
+
+    def cancel_install(self) -> None:
+        with self._lock:
+            installer = self._installer
+        if installer is not None:
+            installer.cancel()
+
+    def remove_region(self, region_id: str) -> None:
+        """Delete a region Live installed; not while Live streams, nor while it is installed."""
+        with self._lock:
+            installing = (
+                self._install_thread is not None
+                and self._install_thread.is_alive()
+                and self._installer.region.id == region_id
+            )
+            streaming = self._state != IDLE
+        if streaming:
+            raise session.RefusedError("Live is streaming: stop it first")
+        if installing:
+            raise session.RefusedError("this region is being installed: stop that first")
+        if region_id not in aoregions.installed(live_root()):
+            raise session.RefusedError(f"Live has not installed the region {region_id!r}")
+        aoregions.remove(live_root(), region_id, log=self.log)
+        self._checked = (0.0, None)
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         thread = self._thread
