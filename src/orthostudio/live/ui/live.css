@@ -26,8 +26,18 @@
 .dot-warn { border-color: var(--warn); background: var(--warn); }
 .dot-info { border-color: var(--accent); }
 
-/* the settings: a screen's head, as OrthoStudio XP's Settings */
-.live-settings-head { margin-top: var(--section-gap); }
+/* the imagery source, chosen first, before Start: the list beside its title, its credit and
+   notes under them */
+.live-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: var(--gap) 0; }
+.live-source .sub-question-title { display: inline; margin: 0; }
+.live-source-select { width: auto; min-width: 16em; max-width: 100%; }
+.live-source > p { flex: 1 0 100%; margin: 0; }
+
+/* a button to the regions, beside what asks for one */
+.live-go { margin-left: 6px; vertical-align: baseline; }
+
+/* a question a button pointed at, marked for a moment */
+.question.is-pointed { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .live .log pre { max-height: 360px; }
 

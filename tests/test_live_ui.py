@@ -438,6 +438,11 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         for name in ("find.js", "zoom.js", "i18n.js", "settings.js"):
             assert (await client.get(f"/static/{name}")).status_code == 200, name
         assert 'id="settings-search"' in page.text and 'id="find-bar"' in page.text
+        # two screens, as OrthoStudio XP's; the imagery source on Live's, before Start
+        html = page.text
+        assert 'id="screen-live"' in html and 'id="screen-settings"' in html
+        assert html.index('id="set-provider"') < html.index('id="start-btn"')
+        assert html.index('id="set-provider"') < html.index('id="screen-settings"')
         status = (await client.get("/api/live/status")).json()
         assert status["state"] == IDLE and status["checks"]["plugin"] == "ready"
         assert (await client.post("/api/live/start", json={"fresh": False})).status_code == 202
@@ -596,6 +601,33 @@ def test_the_settings_search_reads_what_a_question_shows() -> None:
         check=True,
     )
     assert json.loads(out.stdout) == [True, False, True, True]
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_address_names_the_screen() -> None:
+    """#settings opens the settings, #settings/regions with the regions in view; anything else,
+    Live's screen."""
+    script = (
+        f"import {{ screenFromHash }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "console.log(JSON.stringify(['', '#live', '#settings', '#settings/regions', '#live/x',"
+        " '#nope', '#settings/a b'].map(screenFromHash)));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    live = {"name": "live", "question": None}
+    assert json.loads(out.stdout) == [
+        live,
+        live,
+        {"name": "settings", "question": None},
+        {"name": "settings", "question": "regions"},
+        live,
+        live,
+        live,
+    ]
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

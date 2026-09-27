@@ -147,6 +147,10 @@ function drawState(status) {
 
   const { state, checks } = status;
   const idle = state === "idle";
+  // the photos: chosen before Start, and kept until Live stops
+  $("set-provider").disabled = !idle;
+  $("set-provider").title = idle ? "" : t("source.running");
+  if (!idle) $("source-saved").hidden = true;
   $("start-btn").hidden = !idle;
   $("start-btn").disabled = Boolean(blocking(checks));
   $("fresh-row").hidden = !idle;
@@ -169,14 +173,32 @@ function drawState(status) {
   $("action-help").hidden = !help;
 }
 
+let noticeDrawn = ""; // what the flight's notice says
+
+/** A button to the regions, in the settings: where there is no mesh, the one to install. */
+function goToRegions() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-small live-go";
+  button.textContent = t("regions.go");
+  button.addEventListener("click", () => showScreen("settings", "regions"));
+  return button;
+}
+
 function drawFlight(status) {
   const stream = status.state === "streaming" ? status.stream : null;
   // where the aircraft (or the start) has no mesh under it: the region to install
   const notice = stream?.notice;
   $("flight-notice").hidden = !notice;
-  if (notice) {
-    $("flight-notice").textContent = t(notice.installed ? "flight.notice_installed" : "flight.notice",
-      { region: t(`region.${notice.region}`) });
+  const said = notice
+    ? t(notice.installed ? "flight.notice_installed" : "flight.notice", { region: t(`region.${notice.region}`) })
+    : "";
+  if (said !== noticeDrawn) { // drawn again only when it changes: its button keeps the click
+    noticeDrawn = said;
+    const words = document.createElement("span");
+    words.textContent = said;
+    $("flight-notice").replaceChildren(words);
+    if (notice && !notice.installed) $("flight-notice").append(" ", goToRegions());
   }
   if (!stream) {
     const running = status.checks.xplane_running;
@@ -243,10 +265,12 @@ function drawBuild(status) {
   $("disk").classList.toggle("warn", share > 0.9);
 }
 
+let checksDrawn = ""; // the checks as drawn
+
 function drawChecks(status) {
   const c = status.checks;
   const items = [];
-  const add = (kind, text) => items.push([kind, text]);
+  const add = (kind, text, go = false) => items.push([kind, text, go]);
   if (!c.supported) add("failed", t("checks.macos_no"));
   if (c.folder_problem) add("failed", t("checks.folder_problem", { problem: c.folder_problem }));
   else add("done", t("checks.folder", { path: c.folder }));
@@ -261,7 +285,7 @@ function drawChecks(status) {
   if (c.mesh) {
     const names = (c.mesh_regions || []).map((id) => t(`region.${id}`)).join(", ") || c.mesh;
     add(c.mesh_found || c.region_ready ? "done" : "failed",
-      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }));
+      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }), !c.mesh_found);
   }
   add(c.region_ready ? "done" : "info", t(c.region_ready ? "checks.region" : "checks.region_todo"));
   add(c.autoortho_mounted ? "failed" : "done", t(c.autoortho_mounted ? "checks.ao_mounted" : "checks.ao"));
@@ -270,14 +294,18 @@ function drawChecks(status) {
   else add("warn", t("checks.plugin_missing"));
   if (status.state === "idle" && c.installed && !c.xplane_running) add("warn", t("checks.left_installed"));
 
+  const key = JSON.stringify(items);
+  if (key === checksDrawn) return; // drawn again only when they change: a button keeps its click
+  checksDrawn = key;
   const ul = $("checks");
   ul.replaceChildren();
-  for (const [kind, text] of items) {
+  for (const [kind, text, go] of items) {
     const li = document.createElement("li");
     const dot = document.createElement("span");
     dot.className = `dot dot-${kind}`;
     const words = document.createElement("span");
     words.textContent = text;
+    if (go) words.append(" ", goToRegions());
     li.append(dot, words);
     ul.append(li);
   }
@@ -491,6 +519,21 @@ function renderProviders(current) {
   drawSource();
 }
 
+/** The source chosen on Live's screen, before Start: saved at once, the next start takes it. */
+async function chooseProvider() {
+  drawSource();
+  $("source-error").hidden = true;
+  try {
+    saved = await api("settings", { method: "PUT", body: { provider: $("set-provider").value } });
+    $("source-saved").textContent = t("source.saved");
+    $("source-saved").hidden = false;
+  } catch (error) {
+    $("source-error").textContent = error.message;
+    $("source-error").hidden = false;
+    renderProviders(saved?.provider || "BI");
+  }
+}
+
 /** Under the list: the source's credit and licence, and what it does not cover. */
 function drawSource() {
   const p = providers.find((q) => q.code === $("set-provider").value);
@@ -595,20 +638,32 @@ function fillSettings(settings) {
   if (providers.length) renderProviders(settings.provider);
 }
 
-async function saveSettings(event) {
-  event.preventDefault();
-  const body = {
+/** The answers the form holds, as Save sends them. The source is not among them: Live's screen
+ * saves it as soon as it is chosen. */
+function formSettings() {
+  return {
     max_zoom: Number($("set-max-zoom").value),
     max_zoom_airports: Number($("set-max-zoom-airports").value),
     disk_budget_gb: Number($("set-disk").value),
     cache_budget_gb: Number($("set-cache").value),
-    provider: $("set-provider").value || saved?.provider || "BI",
     folder: $("set-folder").value.trim(),
     start_mode: startMode(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
   };
+}
+
+/** Whether an answer was changed without Save. */
+function settingsChanged() {
+  if (!saved) return false;
+  const now = formSettings();
+  return Object.keys(now).some((key) => String(now[key] ?? "") !== String(saved[key] ?? ""));
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const body = formSettings();
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
   try {
@@ -780,6 +835,7 @@ function toast(message) {
 }
 
 let osxpWords = null; // OrthoStudio XP's words (static/i18n.js), which its find bar and zoom speak
+let findTools = null; // its find bar (static/find.js), once loaded
 
 /**
  * OrthoStudio XP's find bar (Cmd+F, Ctrl+F) and text size (Cmd+plus, Cmd+minus, Cmd+0), as they
@@ -795,6 +851,7 @@ async function bindPageTools() {
       import("../static/zoom.js"),
     ]);
     osxpWords = words;
+    findTools = find;
     osxpWords.setLanguage(language());
     find.bindFind();
     whenInOwnWindow(() => {
@@ -855,6 +912,56 @@ async function bindSearch() {
   drawSearch();
 }
 
+// --- the two screens, as OrthoStudio XP's -------------------------------------------------------
+
+const SCREENS = ["live", "settings"];
+let shownScreen = "live";
+
+/** The screen an address names: #live, #settings, #settings/regions (that question in view).
+ * Live's by default. */
+export function screenFromHash(hash) {
+  const m = String(hash || "").match(/^#(\w+)(?:\/([\w-]+))?$/);
+  if (!m || !SCREENS.includes(m[1])) return { name: "live", question: null };
+  return { name: m[1], question: m[1] === "settings" ? m[2] || null : null };
+}
+
+/**
+ * Live's screen (the source, Start, the map, the flight, the textures, the checks) or its
+ * settings, one at a time, as OrthoStudio XP's screens: in flight only the first is looked at, and
+ * the settings are answered once (a user, 2026-09-27).
+ */
+function showScreen(name, question = null) {
+  if (!SCREENS.includes(name)) name = "live";
+  if (shownScreen === "settings" && name !== "settings" && settingsChanged()) {
+    toast(t("settings.left_unsaved")); // as OrthoStudio XP says it: nothing applies without Save
+  }
+  shownScreen = name;
+  for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
+  for (const btn of $("nav").querySelectorAll(".nav-btn")) {
+    if (btn.dataset.screen === name) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  }
+  if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+  findTools?.findForget(); // an open find bar looks in the screen now shown
+  if (name === "live") liveMap?.shown();
+  if (question) showQuestion(question);
+  else window.scrollTo(0, 0);
+}
+
+/** A question of the settings in view, as a button pointing at it asks: shown even where the
+ * search had left it out, and marked for a moment. */
+function showQuestion(question) {
+  const box = $(`q-${question}`);
+  if (!box) return;
+  if (box.hidden) {
+    $("settings-search").value = "";
+    drawSearch();
+  }
+  box.scrollIntoView({ block: "start" });
+  box.classList.add("is-pointed");
+  setTimeout(() => box.classList.remove("is-pointed"), 2000);
+}
+
 function tellLanguage() {
   // the plugin's words in X-Plane follow the window's language
   api("language", { method: "POST", body: { language: language() } }).catch(() => {});
@@ -899,6 +1006,7 @@ function boot() {
     renderStartModes();
     renderProviders($("set-provider").value);
     drawSearch();
+    if (!$("source-saved").hidden) $("source-saved").textContent = t("source.saved");
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
@@ -911,7 +1019,7 @@ function boot() {
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));
-  $("set-provider").addEventListener("change", drawSource);
+  $("set-provider").addEventListener("change", chooseProvider);
   $("set-simbrief").addEventListener("input", drawSimbrief);
   $("simbrief-osxp").addEventListener("click", () => {
     $("set-simbrief").value = last?.checks?.osxp_simbrief || "";
@@ -926,6 +1034,16 @@ function boot() {
     $("settings-status").textContent = "";
     $("settings-error").hidden = true;
   });
+  $("nav").addEventListener("click", (event) => {
+    const btn = event.target.closest(".nav-btn");
+    if (btn) showScreen(btn.dataset.screen);
+  });
+  window.addEventListener("hashchange", () => {
+    const route = screenFromHash(location.hash);
+    showScreen(route.name, route.question);
+  });
+  const route = screenFromHash(location.hash);
+  showScreen(route.name, route.question);
   startMap();
   bindPageTools();
   bindSearch();

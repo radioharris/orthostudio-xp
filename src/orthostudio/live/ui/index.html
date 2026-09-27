@@ -26,7 +26,10 @@
     </svg>
     <span class="brand-name">OrthoStudio XP Live</span>
   </div>
-  <div class="nav"></div>
+  <nav class="nav" aria-label="Screens" id="nav">
+    <button type="button" class="nav-btn" data-screen="live" data-i18n="nav.live">Live</button>
+    <button type="button" class="nav-btn" data-screen="settings" data-i18n="nav.settings">Settings</button>
+  </nav>
   <div class="topbar-tools">
     <button type="button" class="tool-btn live-osxp" id="osxp-btn" data-i18n="action.osxp">Build tiles</button>
     <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
@@ -38,6 +41,7 @@
 </header>
 
 <main id="main" class="main live">
+<section id="screen-live" class="screen" aria-labelledby="state-title">
   <section class="question live-state" aria-live="polite">
     <div class="live-state-head">
       <span class="dot" id="state-dot"></span>
@@ -49,6 +53,15 @@
       <p class="question-help num" id="hold-text"></p>
     </div>
     <p class="error-inline" id="state-error" role="alert" hidden></p>
+    <!-- the photos, chosen first, before Start: saved as soon as chosen -->
+    <div class="live-source">
+      <label class="sub-question-title live-source-title" for="set-provider" data-i18n="source.title">Imagery source</label>
+      <select id="set-provider" name="provider" class="question-select live-source-select"></select>
+      <p class="question-help" id="provider-attribution"></p>
+      <p class="question-help is-warn" id="provider-note" hidden></p>
+      <p class="question-help" id="source-saved" hidden></p>
+      <p class="error-inline" id="source-error" role="alert" hidden></p>
+    </div>
     <div class="actions">
       <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
       <label class="switch" id="fresh-row" hidden>
@@ -116,8 +129,15 @@
     <ul class="live-checks" id="checks"></ul>
   </section>
 
-  <div class="screen-head live-settings-head">
-    <h1 data-i18n="settings.title">Settings</h1>
+  <details class="log" id="log-box">
+    <summary data-i18n="log.title">Log</summary>
+    <pre id="log"></pre>
+  </details>
+</section>
+
+<section id="screen-settings" class="screen" hidden aria-labelledby="settings-title">
+  <div class="screen-head">
+    <h1 id="settings-title" data-i18n="settings.title">Settings</h1>
     <p class="lead" data-i18n="settings.lead">They take effect at the next start.</p>
   </div>
   <form id="settings-form" novalidate>
@@ -147,14 +167,6 @@
             <span class="choice-text"><span class="choice-label" data-i18n="overlays.off">Never</span>
               <span class="choice-note" data-i18n="overlays.off_note"></span></span></label>
         </div>
-      </fieldset>
-
-      <fieldset class="question" id="q-source">
-        <legend class="question-title" id="q-source-title" data-i18n="source.title">Imagery source</legend>
-        <p class="question-help" data-i18n="source.help"></p>
-        <select id="set-provider" name="provider" class="question-select" aria-labelledby="q-source-title"></select>
-        <p class="question-help" id="provider-attribution"></p>
-        <p class="question-help is-warn" id="provider-note" hidden></p>
       </fieldset>
 
       <fieldset class="question" id="q-zoom">
@@ -253,11 +265,7 @@
     </div>
     <p class="error-inline" id="settings-error" role="alert" hidden></p>
   </form>
-
-  <details class="log" id="log-box">
-    <summary data-i18n="log.title">Log</summary>
-    <pre id="log"></pre>
-  </details>
+</section>
 </main>
 
 <!-- OrthoStudio XP's find bar (static/find.js): Cmd+F and Ctrl+F in Live's own window. -->

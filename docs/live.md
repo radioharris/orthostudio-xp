@@ -44,23 +44,30 @@ them on the disk as ordinary files. X-Plane never waits for it, so there is noth
 
 ## What you do
 
-Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It shows what Live
-needs (X-Plane, a mesh, AutoOrtho not running, the plugin), what it does, and its settings: the
-regions of the mesh, the roads, forests and buildings, the imagery source, the disk space for the
-textures and for the downloaded imagery (with what each takes now, and a button to delete either),
-and Live's folder. Its log is at the bottom.
+Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It has two tabs, as
+OrthoStudio XP's screens:
+
+- **Live**: the imagery source, chosen first and saved as soon as chosen, then Start; the map, the
+  flight and the textures; what Live needs (X-Plane, a mesh, AutoOrtho not running, the plugin),
+  with a button to the regions where a mesh is missing; its log at the bottom. The source changes
+  only while Live is stopped, and textures already built keep their photos: "From scratch" builds
+  them all again with a new source.
+- **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start
+  waits for, the flight plan, the disk space for the textures and for the downloaded imagery (with
+  what each takes now, and a button to delete either), and Live's folder. They apply with Save, at
+  the next start; leaving the tab with answers not saved says so.
 
 As in OrthoStudio XP's window, a field over the settings keeps only the questions holding the words
 typed (accents, case and plurals aside), and the window has OrthoStudio XP's find bar (Cmd+F,
-Ctrl+F) and text size (Cmd+plus, Cmd+minus, Cmd+0), which it takes as they are. In a browser, the
-browser's own keys stay.
+Ctrl+F), which looks in the tab shown, and text size (Cmd+plus, Cmd+minus, Cmd+0), which it takes
+as they are. In a browser, the browser's own keys stay.
 
 ### The mesh, by region
 
 Live lays its photos on sceneries: the mesh, the ground's shape and the textures' outlines. It comes
 in six regions, which you install once, the ones you fly over, and delete whenever you like: Europe
 (17 GB), North America (26 GB), South America (9 GB), Africa (12 GB), Asia (33 GB), Australia and
-the Pacific (6 GB). The settings' first question lists them: Install, or Installed and Delete.
+the Pacific (6 GB). The Settings tab's first question lists them: Install, or Installed and Delete.
 Once unpacked a region takes about 1.7 times its size on the disk. An install goes on where it
 stopped (a dropped connection, the Stop button, the Mac put to sleep), and a region is used from
 the next start once it is whole. A region already on the disk (AutoOrtho's installer put the same

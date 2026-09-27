@@ -107,6 +107,10 @@ export function createLiveMap(el, { api, info = null }) {
    * engine has built or made coarser any since. */
   async function drawBuilt(fresh = true) {
     clearTimeout(builtTimer);
+    if (!el.offsetParent) { // its screen is hidden: nothing asked until it is shown (shown())
+      if (streaming) builtTimer = setTimeout(() => drawBuilt(false), BUILT_EVERY_MS);
+      return;
+    }
     const b = map.getBounds();
     let q = `west=${b.getWest()}&south=${b.getSouth()}&east=${b.getEast()}&north=${b.getNorth()}`;
     if (!fresh) q += `&known=${builtVersion}`;
@@ -311,6 +315,11 @@ export function createLiveMap(el, { api, info = null }) {
     bordersShown: base.bordersShown,
     invalidate() {
       map.invalidateSize();
+    },
+    /** Its screen shown again: Leaflet measures its box, and the textures are asked anew. */
+    shown() {
+      map.invalidateSize();
+      drawBuilt();
     },
   };
 }

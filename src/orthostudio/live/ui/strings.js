@@ -7,6 +7,8 @@
 export const STRINGS = {
   en: {
     "app.language": "Language",
+    "nav.live": "Live",
+    "nav.settings": "Settings",
 
     "state.idle": "Ready",
     "state.idle_lead":
@@ -100,17 +102,17 @@ export const STRINGS = {
       "X-Plane is running: quit it, start Live, then X-Plane (it looks at its scenery only when it starts).",
     "checks.xplane_stopped": "X-Plane is not running",
     "checks.mesh": "Regions installed: {path}",
-    "checks.mesh_missing": "No mesh yet: install the region you fly over (Settings, first question).",
+    "checks.mesh_missing": "No mesh yet: install the region you fly over.",
     "checks.region": "Region set up",
     "checks.region_todo": "The region is set up at the first start (about two minutes)",
-    "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region} (Settings, first question).",
+    "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region}.",
     "flight.notice_installed": "No mesh here yet: {region} is installed, and used from Live's next start.",
     "map.title": "Map",
     "map.follow": "Follow the aircraft",
     "map.details": "Details",
     "map.route": "Show my SimBrief route",
     "map.route_error": "No route: {error}",
-    "map.route_no_name": "No route: put your SimBrief name in the settings (Flight plan).",
+    "map.route_no_name": "No route: put your SimBrief name in Settings (Flight plan).",
     "map.tip_photos": "Photos of ZL{zoom}: {ground} a pixel",
     "map.tip_cm": "{n} cm",
     "map.tip_m": "{n} m",
@@ -135,6 +137,7 @@ export const STRINGS = {
     "map.legend_region": "Region installed",
     "map.legend_route": "Route",
     "regions.title": "The mesh, by region",
+    "regions.go": "Go to the regions",
     "regions.help":
       "The sceneries Live lays its photos on. Install the regions you fly over, delete them whenever you like.",
     "regions.source":
@@ -180,6 +183,7 @@ export const STRINGS = {
     "settings.save": "Save",
     "settings.undo": "Undo my changes",
     "settings.saved": "Saved.",
+    "settings.left_unsaved": "Settings not saved yet: they apply only after Save.",
     "settings.search": "Search the settings",
     "settings.search_ph": "Search: zoom, disk, SimBrief…",
     "settings.search_found": "{n} of {total} settings.",
@@ -191,8 +195,9 @@ export const STRINGS = {
     "find.close": "Close (Esc)",
 
     "source.title": "Imagery source",
-    "source.help":
-      "The aerial photos Live downloads. Textures already built keep theirs: delete them (Disk space) to build them again from another source.",
+    "source.saved":
+      "Saved. Textures already built keep their photos: “From scratch” builds them all again with this source.",
+    "source.running": "It changes once Live is stopped.",
     "source.group_world": "The whole world",
     "source.group_mine": "My sources",
     "source.group_country": "One country",
@@ -305,6 +310,8 @@ export const STRINGS = {
   },
   fr: {
     "app.language": "Langue",
+    "nav.live": "Live",
+    "nav.settings": "Réglages",
 
     "state.idle": "Prêt",
     "state.idle_lead":
@@ -400,17 +407,17 @@ export const STRINGS = {
       "X-Plane tourne : quittez-le, démarrez Live, puis X-Plane (il ne regarde ses scènes qu'à son démarrage).",
     "checks.xplane_stopped": "X-Plane n'est pas lancé",
     "checks.mesh": "Régions installées : {path}",
-    "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez (Réglages, première question).",
+    "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez.",
     "checks.region": "Région préparée",
     "checks.region_todo": "La région sera préparée au premier démarrage (deux minutes environ)",
-    "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region} (Réglages, première question).",
+    "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region}.",
     "flight.notice_installed": "Pas encore de mesh ici : {region} est installée, et servira dès le prochain démarrage de Live.",
     "map.title": "Carte",
     "map.follow": "Suivre l'avion",
     "map.details": "Détails",
     "map.route": "Afficher ma route SimBrief",
     "map.route_error": "Pas de route : {error}",
-    "map.route_no_name": "Pas de route : indiquez votre nom SimBrief dans les réglages (Plan de vol).",
+    "map.route_no_name": "Pas de route : indiquez votre nom SimBrief dans les Réglages (Plan de vol).",
     "map.tip_photos": "Photos ZL{zoom} : {ground} par pixel",
     "map.tip_cm": "{n} cm",
     "map.tip_m": "{n} m",
@@ -435,6 +442,7 @@ export const STRINGS = {
     "map.legend_region": "Région installée",
     "map.legend_route": "Route",
     "regions.title": "Le mesh, par région",
+    "regions.go": "Aller aux régions",
     "regions.help":
       "Les sceneries sur lesquelles Live pose ses photos. Installez les régions que vous survolez, supprimez-les quand vous voulez.",
     "regions.source":
@@ -481,6 +489,7 @@ export const STRINGS = {
     "settings.save": "Enregistrer",
     "settings.undo": "Annuler mes changements",
     "settings.saved": "Enregistré.",
+    "settings.left_unsaved": "Réglages pas encore enregistrés : ils ne s'appliquent qu'après « Enregistrer ».",
     "settings.search": "Chercher un réglage",
     "settings.search_ph": "Chercher : zoom, disque, SimBrief…",
     "settings.search_found": "{n} sur {total} réglages.",
@@ -492,8 +501,9 @@ export const STRINGS = {
     "find.close": "Fermer (Échap)",
 
     "source.title": "Source des images",
-    "source.help":
-      "Les photos aériennes que Live télécharge. Les textures déjà construites gardent les leurs : supprimez-les (Place sur le disque) pour les reconstruire avec une autre source.",
+    "source.saved":
+      "Enregistré. Les textures déjà construites gardent leurs photos : « Repartir de zéro » les reconstruit toutes avec cette source.",
+    "source.running": "Elle se change quand Live est arrêté.",
     "source.group_world": "Le monde entier",
     "source.group_mine": "Mes sources",
     "source.group_country": "Un seul pays",
