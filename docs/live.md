@@ -92,9 +92,12 @@ X-Plane unloads the area (coming back, it reads it again, and by then it is live
 airport's own textures, the 12 km are 3 km.
 
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
-the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. A country's source
-has nothing past its border: there, and wherever it has no imagery, Live takes Bing Maps. Textures
-already built keep their imagery; delete them to build them again from another source.
+the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. Live adds two that
+AutoOrtho offers: Esri's Firefly (the same photos as Esri, softer colours) and NAIP (the United
+States). Google, Yandex and Apple are not offered: their terms forbid taking their photos outside
+their own applications. A country's source has nothing past its border: there, and wherever it has
+no imagery, Live takes Bing Maps. Textures already built keep their imagery; delete them to build
+them again from another source.
 
 Your own tiles come first. Where you have built a tile with OrthoStudio XP (or imported one from
 Ortho4XP, or installed another ortho scenery above Live's pack), X-Plane shows it, and Live

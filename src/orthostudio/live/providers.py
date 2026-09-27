@@ -5,7 +5,9 @@ pieces.
 
 The sources are OrthoStudio XP's own (:mod:`orthostudio.imagery.providers`): the registry it ships,
 Bing Maps first, and the sources a user added in its Plan (``sources.toml``), with their URL
-grammar, their answers for "no imagery here" and their limits. Live adds two things a stream needs:
+grammar, their answers for "no imagery here" and their limits. Between the two come Live's own
+(``registry.toml`` here, in the same grammar): sources AutoOrtho offers that OrthoStudio XP does
+not ship. Live adds two things a stream needs:
 
 - **Bing Maps beyond a country's source.** A source that covers one country (Spain's PNOA, the
   Netherlands' PDOK...) has nothing past its border, and a flight crosses borders: a texture
@@ -19,6 +21,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from functools import cache
+from pathlib import Path
 from typing import Any
 
 from orthostudio.imagery.grid import quadkey
@@ -42,9 +46,23 @@ __all__ = [
 FALLBACK = "BI"  # Bing Maps: beyond the bounds of a country's source
 
 
+LIVE_REGISTRY = Path(__file__).with_name("registry.toml")
+
+
+@cache
+def live_sources() -> dict[str, Provider]:
+    """Live's own sources, which OrthoStudio XP's own lists do not show."""
+    return load_registry(LIVE_REGISTRY)
+
+
 def registry() -> dict[str, Provider]:
-    """OrthoStudio XP's sources, then the user's own, by code."""
-    return load_registry()
+    """OrthoStudio XP's sources, Live's own, then the user's own, by code: a source of the user's
+    never replaces another, as in OrthoStudio XP."""
+    theirs = load_registry()
+    sources = {code: p for code, p in theirs.items() if not p.custom}
+    for code, p in [*live_sources().items(), *theirs.items()]:
+        sources.setdefault(code, p)
+    return sources
 
 
 def provider(code: str) -> Provider:

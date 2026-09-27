@@ -68,6 +68,43 @@ class ProvidersTest(unittest.TestCase):
         self.assertIn("PDOK", codes)
         self.assertNotIn("NL", codes)  # the very same imagery as PDOK: listed once
 
+    def test_live_s_own_sources_after_osxp_s(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from orthostudio.imagery.providers import load_registry
+
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict("os.environ", OSXP_HOME=home):
+            Path(home, "sources.toml").write_text(
+                "schema = 1\n"
+                '[providers.NAIP]\nurl_template = "https://mine.example/{zoom}/{x}/{y}"\n'
+                "max_zl = 17\n"
+                '[providers.Mine]\nurl_template = "https://mine.example/{zoom}/{x}/{y}"\n'
+                "max_zl = 17\n"
+            )
+            codes = list(registry())
+            osxp = [c for c, p in load_registry().items() if not p.custom]
+            self.assertEqual(codes, [*osxp, "FIREFLY", "NAIP", "Mine"])  # the user's own last
+            self.assertNotIn("FIREFLY", osxp)  # OrthoStudio XP's own lists do not change
+            naip = registry()["NAIP"]
+            self.assertFalse(naip.custom)  # Live's, not the user's of the same code
+        self.assertIsNone(fallback_for(registry()["FIREFLY"]))  # the whole world
+        self.assertEqual(
+            tile_url(registry()["FIREFLY"], 16100, 11740, 15),
+            "https://fly.maptiles.arcgis.com/arcgis/rest/services/World_Imagery_Firefly/MapServer"
+            "/tile/15/11740/16100",
+        )
+        self.assertEqual(fallback_for(naip).code, "BI")  # Bing Maps beyond the United States
+        self.assertTrue(covers(naip, *_tile(39.1, -94.58, 16), 16))  # Kansas City
+        self.assertFalse(covers(naip, *_tile(45.76, 4.84, 16), 16))  # Lyon
+        self.assertEqual(cache_key("NAIP"), "NAIP+BI")
+        listed = {p["code"]: p for p in listing()}
+        self.assertEqual(listed["NAIP"]["extent"], "United States")  # the Live window's country
+        self.assertIsNone(listed["FIREFLY"]["extent"])
+        for code in ("GO2", "YNDX", "APPLE"):  # their terms keep them out (registry.toml)
+            self.assertNotIn(code, listed)
+
 
 def _tile(lat: float, lon: float, zoom: int) -> tuple[int, int]:
     n = 2**zoom
