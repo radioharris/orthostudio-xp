@@ -253,7 +253,7 @@ def test_a_build_downloads_each_tile_in_its_own_graph(tmp_path: Path) -> None:
     assert g.vectors.inputs["osm"] is g.osm
     assert g.coastline is not None and g.coastline.inputs == {"osm": g.osm}
     assert next(iter(g.by_role)) == "osm" and g.osm in g.all()
-    assert sched.lanes == {OVERPASS_LANE: 1} and sched.slots["net"] == 1
+    assert sched.lanes == {OVERPASS_LANE: 1, "relief": 1} and sched.slots["net"] == 1
 
     with native.osm_job(native.OsmJob(fetch=lambda t, ss: {s.name: _snapshot(s.name) for s in ss})):
         outcomes = run_osm_phase([spec], env)

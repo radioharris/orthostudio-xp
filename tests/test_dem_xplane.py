@@ -377,20 +377,24 @@ def test_the_pipeline_refuses_a_tile_x_plane_has_no_dsf_for(tmp_path: Path) -> N
         dem_declaration(_spec(tmp_path, relief="xplane"), {}, lambda t: None, None)
 
 
-def test_x_planes_relief_does_not_queue_on_the_network_slot(tmp_path: Path) -> None:
+def test_no_relief_queues_on_the_images_network_slot(tmp_path: Path) -> None:
     """The elevations of a batch queued one after the other on the imagery's network slot, and
     each vector stage waited for its own: X-Plane's relief, read from its DSFs, runs in a
-    subprocess slot; a downloaded relief still takes the network slot."""
-    from orthostudio.pipeline.build import BuildEnv, declare, make_scheduler
+    subprocess slot. A downloaded relief ran there still, and held it while its file was read: a
+    user's first tile, ready at 4:01, had its images wait until 8:51 behind three USGS reliefs
+    (2026-09-26). It downloads on a lane of its own now, one tile at a time."""
+    from orthostudio.pipeline.build import RELIEF_LANE, BuildEnv, declare, make_scheduler
 
     gs = tmp_path / "gs"
     _block(gs, GERMANY, lambda c: 300)
-    for relief, kind in (("xplane", "subprocess"), ("view", "net")):
+    for relief, kind, lane in (("xplane", "subprocess", None), ("view", "net", RELIEF_LANE)):
         spec = _spec(tmp_path, relief=relief, global_scenery_dir=gs, osm_fetch=False)
         spec.overlay = spec.xp12_rasters = False
         env = BuildEnv.create([spec])
-        (g,) = declare([spec], make_scheduler(env.store, env), env, planning=True)
-        assert g.dem is not None and g.dem.kind == kind, relief
+        sched = make_scheduler(env.store, env)
+        (g,) = declare([spec], sched, env, planning=True)
+        assert g.dem is not None and (g.dem.kind, g.dem.lane) == (kind, lane), relief
+        assert sched.lanes[RELIEF_LANE] == 1 and sched.slots["net"] == 1
 
 
 def test_an_unknown_relief_is_refused_before_anything_runs(tmp_path: Path) -> None:

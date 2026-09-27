@@ -31,7 +31,7 @@ consumed subset contains it, and everything below them whose input bytes changed
 ```
                  +43+005/osm       (orthostudio.osm, net, lane overpass; when the layers are missing)
                         :
-                 +43+005/dem       (orthostudio.dem, subprocess; net for a downloaded relief)
+                 +43+005/dem       (orthostudio.dem, subprocess; net, lane relief, when downloaded)
                         |
                  +43+005/vectors   (orthostudio.vectors, subprocess) <- OSM layers
                         |          +43+005/coastline (orthostudio.coastline, io) <- OSM layers
@@ -250,8 +250,12 @@ GB each plus the masks' own pool, and X-Plane 12's relief, read from its DSFs; a
 until 2026-09-15, which gave a 4-core Windows virtual machine one slot, so that a batch's stages ran one
 after the other there while a 14-core Mac ran three), `net_slots = 1` (one
 Bing pipeline at a time: the provider's `max_in_flight` is the politeness limit, not the number of
-tiles; a downloaded relief queues there too), `io_slots = 2`, `ram_budget_mb = 60 %` of the physical
-memory, and the `overpass` lane of one (`OVERPASS_LANE`, `scheduler.md` 2): the OSM downloads (8.3)
+tiles), `io_slots = 2`, `ram_budget_mb = 60 %` of the physical memory, the `relief` lane of one
+(`RELIEF_LANE`): a downloaded relief (Copernicus, USGS, Canada's lidar...), one tile at a time
+beside the imagery's slot, where until 0.1.19 the batch's reliefs ran one after the other before
+any image and held it while their files were read (a user's first tile, ready at 4:01, had its
+images wait until 8:51 behind three USGS reliefs, 2026-09-26), and the `overpass` lane of one
+(`OVERPASS_LANE`, `scheduler.md` 2): the OSM downloads (8.3)
 run in the graph, one tile at a time, because the public Overpass mirrors already answer "too
 busy" to more than the client's two requests a cluster (`docs/benchmarks/p2-build.md`, run F; rule
 9, "polite network"), and beside the imagery's slot. Until 2026-09-14 they ran first, in a phase 0

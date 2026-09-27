@@ -85,8 +85,9 @@ Several tiles are built at once: the relief of up to three tiles is computed at 
 the masks and DSFs of the others alongside, and the image encoding uses all the cores but two.
 Downloads go through one network lane: one tile's imagery after the other, with up to 128
 requests to the provider at the same time (a limit measured not to get throttled,
-`docs/benchmarks/network.md`). On a cold build the imagery is most of the time, and the
-processor mostly waits for the provider.
+`docs/benchmarks/network.md`). A relief you chose to download (Copernicus, USGS) has a lane of
+its own beside it, one tile at a time, so the images never wait for it. On a cold build the
+imagery is most of the time, and the processor mostly waits for the provider.
 
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
