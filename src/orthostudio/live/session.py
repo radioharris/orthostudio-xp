@@ -370,7 +370,6 @@ def follow(
                     should_stop=should_stop,
                     gate=prepared.gate,
                     start_name=options.start,
-                    guess_last=not options.fresh,
                     log=log,
                     report=report,
                     reload_asked=reload_asked,

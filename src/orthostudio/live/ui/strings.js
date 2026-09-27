@@ -23,9 +23,6 @@ export const STRINGS = {
     "state.held_lead": "X-Plane stays on its loading screen until everything it will show there is built.",
     "state.building_start": "Building the ortho around {name}",
     "state.building_start_lead": "X-Plane is about to load this flight.",
-    "state.building_last": "Preparing your last start: {name}",
-    "state.building_last_lead":
-      "X-Plane remembers where your last flight started, and Live prepares it in advance. Start elsewhere, and Live goes there as soon as you click Start Flight.",
     "state.start_ready": "The ortho around {name} is ready",
     "state.start_ready_lead": "X-Plane shows it as soon as it gets there.",
     "state.following": "Following the aircraft",
@@ -69,7 +66,6 @@ export const STRINGS = {
     "flight.speed": "Ground speed",
     "flight.plan": "Flight plan",
     "flight.plan_following": "{name} (SimBrief), followed",
-    "flight.plan_off": "{name} (SimBrief), off the route: 5 minutes straight ahead",
     "flight.screen": "X-Plane's image",
     "flight.screen_value": "{width} px, field of view {fov}°: sharp (4096 px) up to {km} km",
     "flight.camera": "Camera",
@@ -255,7 +251,7 @@ export const STRINGS = {
       "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 5 minutes straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
     "plan.privacy":
-      "Only this name goes to simbrief.com, when Live starts and when a flight starts. Empty: nothing is asked.",
+      "Only this name goes to simbrief.com, when a flight starts. Empty: nothing is asked.",
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
@@ -339,9 +335,6 @@ export const STRINGS = {
       "X-Plane reste sur son écran de chargement jusqu'à ce que tout ce qu'il affichera là soit construit.",
     "state.building_start": "Construction de l'ortho autour de {name}",
     "state.building_start_lead": "X-Plane va charger ce vol.",
-    "state.building_last": "Préparation de votre dernier départ : {name}",
-    "state.building_last_lead":
-      "X-Plane retient où votre dernier vol a commencé, et Live le prépare d'avance. Partez d'ailleurs, et Live y passe dès que vous cliquez « Start Flight ».",
     "state.start_ready": "L'ortho autour de {name} est prête",
     "state.start_ready_lead": "X-Plane l'affiche dès qu'il y arrive.",
     "state.following": "Suit l'avion",
@@ -386,7 +379,6 @@ export const STRINGS = {
     "flight.speed": "Vitesse sol",
     "flight.plan": "Plan de vol",
     "flight.plan_following": "{name} (SimBrief), suivi",
-    "flight.plan_off": "{name} (SimBrief), hors de la route : 5 minutes tout droit",
     "flight.screen": "Image d'X-Plane",
     "flight.screen_value": "{width} px, champ de vision {fov}° : net (4096 px) jusqu'à {km} km",
     "flight.camera": "Caméra",
@@ -575,7 +567,7 @@ export const STRINGS = {
       "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 5 minutes tout droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
     "plan.privacy":
-      "Seul ce nom est envoyé à simbrief.com, au démarrage de Live et de chaque vol. Vide : rien n'est demandé.",
+      "Seul ce nom est envoyé à simbrief.com, au départ de chaque vol. Vide : rien n'est demandé.",
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "start.title": "Au démarrage d'un vol",

@@ -92,14 +92,7 @@ function headline(status) {
       return [t("state.held", { name: start.name }), t("state.held_lead"), "running"];
     }
     if (start && !start.ready) {
-      // X-Plane's last start, prepared before X-Plane is there: a guess, said as one (a user
-      // read "X-Plane is about to load this flight" with X-Plane not even started, 2026-09-27)
-      const guess = start.how === "last";
-      return [
-        t(guess ? "state.building_last" : "state.building_start", { name: start.name }),
-        t(guess ? "state.building_last_lead" : "state.building_start_lead"),
-        "running",
-      ];
+      return [t("state.building_start", { name: start.name }), t("state.building_start_lead"), "running"];
     }
     if (start && start.ready && stream.data !== "fresh") {
       return [t("state.start_ready", { name: start.name }), t("state.start_ready_lead"), "done"];
@@ -224,12 +217,10 @@ function drawFlight(status) {
     rows.push([t("flight.altitude"), `${number(a.alt_ft)} ft`]);
     rows.push([t("flight.speed"), `${number(a.gs_kt)} kt`]);
   }
+  // the SimBrief plan, only while the aircraft flies it: nothing says a pilot means to fly the
+  // last one they made (a user, 2026-09-27)
   const plan = stream.streamer?.flight_plan;
-  if (plan) {
-    rows.push([t("flight.plan"), t(plan.following ? "flight.plan_following" : "flight.plan_off", {
-      name: plan.name,
-    })]);
-  }
+  if (plan?.following) rows.push([t("flight.plan"), t("flight.plan_following", { name: plan.name })]);
   const screen = stream.streamer?.screen;
   if (screen) {
     rows.push([t("flight.screen"), t("flight.screen_value", {

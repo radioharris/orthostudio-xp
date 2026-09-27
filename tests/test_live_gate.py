@@ -104,7 +104,6 @@ class GateTest(unittest.TestCase):
             self.xplane, {"LFML": (43.4367, 5.215), "LFMN": (43.6654, 7.215)}.get, port=self.port
         )
         try:
-            self.assertEqual(gate.last_start(), (43.4367, 5.215, "LFML runway 13L"))
             self.assertIsNone(gate.new_start())  # nothing new since the gate opened
             write_start(self.prefs, {"runway_start": {"airport_id": "LFMN", "runway": "04R"}})
             self.assertEqual(gate.new_start(), (43.6654, 7.215, "LFMN runway 04R"))

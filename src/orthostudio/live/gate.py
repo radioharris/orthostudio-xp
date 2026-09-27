@@ -142,11 +142,6 @@ class Gate:
         except OSError:
             return None
 
-    def last_start(self) -> Start | None:
-        """The start X-Plane saved last time: where the next flight will likely begin."""
-        start = read_last_start(self.prefs)
-        return start_position(start, self.airports) if start else None
-
     def new_start(self) -> Start | None:
         """The start X-Plane has saved since the last call: the user has clicked Start Flight."""
         mtime = self._prefs_mtime()

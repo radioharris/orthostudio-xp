@@ -293,7 +293,8 @@ class Streamer:
 
     def refresh_flight_plan(self) -> None:
         """Ask SimBrief for the pilot's last plan, in a thread of its own, at most once a minute:
-        when Live starts, and when a flight does (a new plan may have been made meanwhile)."""
+        when a flight starts, or X-Plane is found flying somewhere new (a new plan may have been
+        made meanwhile). Used only while the aircraft flies it."""
         if not self.simbrief_user or time.monotonic() - self._plan_asked < PLAN_ASK_EVERY_S:
             return
         self._plan_asked = time.monotonic()
@@ -480,6 +481,7 @@ class Streamer:
                 self.in_flight[n] = (jobs[n][0] if n in jobs else max(u, 1.0), lv)
             if jumped:
                 self.reload_pending = True
+                self.refresh_flight_plan()  # X-Plane flying somewhere new: its plan may be new
             self.last_fix = fix
         return jobs
 
@@ -1024,7 +1026,7 @@ class Arrival:
     lat: float
     lon: float
     name: str
-    # "from" (--from), "last" (the last start, at launch), "click" (Freeflight.prf), "plugin"
+    # "from" (--from), "click" (Freeflight.prf), "plugin"
     how: str
     since: float
     ready_at: float | None = None  # when everything X-Plane will read there was built
@@ -1057,7 +1059,7 @@ def needs_reload(arrival: Arrival, xplane_started: float | None) -> bool:
         return False  # the plugin held it until everything was built
     if arrival.ready_at is not None and arrival.ready_at - arrival.since < 1.0:
         return False  # already built when X-Plane was told to start there
-    if arrival.how in ("from", "last") and not arrival.held:
+    if arrival.how == "from" and not arrival.held:
         return reload_after_prepared_start(arrival.ready_at, xplane_started)
     return True
 
@@ -1082,7 +1084,6 @@ def plugin_note(notice: dict, language: str) -> str:
 
 _EXPECTED = {
     "from": "building around {} before X-Plane loads it",
-    "last": "the last flight started at {}: building there while X-Plane starts",
     "click": "X-Plane is starting a flight at {}: building there",
     # X-Plane also saves its start when it quits, and nothing tells the two apart yet
     "click_running": (
@@ -1139,8 +1140,6 @@ def progress_report(
         left, work = streamer.urgent_work()
         start = {
             "name": arrival.name,
-            # "last": a guess, X-Plane's last start while it is not there yet; "click", "from", ...
-            "how": arrival.how,
             "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
             "ready": arrival.ready_at is not None,
             "left": left,
@@ -1174,7 +1173,6 @@ def run(
     log: Callable[[str], None] = print,
     gate=None,
     start_name: str | None = None,
-    guess_last: bool = True,
     report: Callable[[dict], None] | None = None,
     reload_asked: Callable[[], bool] = lambda: False,
     language: Callable[[], str] = lambda: "en",
@@ -1222,14 +1220,13 @@ def run(
     from .cameralog import CameraLog
 
     camera = CameraLog(streamer.pack_dir / "_live" / "camera.json")  # how far external views go
+    # Nothing guessed: the start is the one the user chooses in X-Plane (the click, or the plugin
+    # as the flight loads), or gives with --from. X-Plane's last start was built at once, and the
+    # last SimBrief plan asked for and drawn, as if the user meant to fly them again (a user,
+    # 2026-09-27: "nothing says I want to fly my last flight").
     streamer.start()
-    streamer.refresh_flight_plan()
     if start is not None:
         expect(start.lat, start.lon, start_name or f"{start.lat:.3f} {start.lon:.3f}", "from")
-    elif gate is not None and guess_last:
-        last = gate.last_start()
-        if last is not None:
-            expect(*last, "last")
     try:
         while not should_stop():
             if streamer.crashed is not None:

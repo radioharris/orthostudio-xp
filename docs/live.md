@@ -201,7 +201,7 @@ you install later is added at the next start, keeping everything already built.
 Then, for every flight:
 
 1. Click Start in the window (or `uv run python -m orthostudio.live stream` in a terminal). It
-   starts building around the airport of your last flight at once, while you start X-Plane.
+   builds nothing yet: nothing says where you will fly, so it waits for the flight you choose.
    "From scratch" forgets every texture built and all imagery downloaded, as the very first time.
 2. Start X-Plane (the window's Start X-Plane button, once Live is ready), choose your flight and
    click Start Flight. X-Plane then waits on its loading
@@ -254,7 +254,8 @@ far X-Plane reads 4096 px there.
 With your SimBrief name in the settings (Flight plan), Live follows your last SimBrief plan while
 you fly it, ten minutes of route ahead, turns and approach included, beside the five minutes
 straight on; off the route, or flying it the other way, it looks straight on only. Only that name
-goes to simbrief.com, when Live starts and when a flight starts. The window offers the name
+goes to simbrief.com, when a flight starts; the route is drawn on the map only while you fly
+it (or when you ask for it with the map's button). The window offers the name
 OrthoStudio XP has, and asks SimBrief nothing until you take it. What is
 missing is downloaded and built, the most urgent first, and replaces the file on the disk. X-Plane
 picks the new file up by itself the next time it wants that texture sharper.

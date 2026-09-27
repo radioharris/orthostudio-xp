@@ -104,6 +104,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   let plane = null;
   let camera = null;
   let routeKey = "";
+  let askedRoute = null; // the route the "Show my SimBrief route" button drew
   let follow = true;
   let providerCode = "";
   let streaming = false;
@@ -354,11 +355,13 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
         map.removeLayer(camera);
         camera = null;
       }
+      // the SimBrief route while the aircraft flies it; else the one the button asked for, if any
       const plan = stream?.streamer?.flight_plan;
-      if (plan?.points) drawRoute(plan.points);
+      drawRoute(plan?.following && plan.points ? plan.points : askedRoute);
     },
     /** The route asked for with the map's button, before a flight. */
     showRoute(points) {
+      askedRoute = points || null;
       drawRoute(points);
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
