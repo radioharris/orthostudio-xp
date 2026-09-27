@@ -33,7 +33,6 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.scenery import (
     autoortho_mounted,
-    autoortho_scenery,
     default_sources,
     find_xplane,
     install_link,
@@ -206,8 +205,8 @@ def prepare(options: Options, log: Log) -> Prepared:
         not region_ready(pack_dir, sources) and not all((s / "terrain").is_dir() for s in sources)
     ):
         raise RefusedError(
-            f"no mesh to stream onto ({options.source or autoortho_scenery(xp_dir)}): install "
-            "the region you fly over first, in the Live window (Regions), or with AutoOrtho."
+            "no mesh yet: install the region you fly over, in the Live window (Settings, first "
+            "question) or with `python -m orthostudio.live regions install <region>`"
         )
     fix = None
     if options.start:
