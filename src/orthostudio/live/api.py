@@ -195,6 +195,11 @@ def live_router(control: LiveControl) -> APIRouter:
         """The textures built under a point of the map, with their facts: its tooltip."""
         return {"textures": control.textures_at(lat, lon)}
 
+    @router.get("/map/own")
+    def map_own() -> list[dict[str, Any]]:
+        """The squares X-Plane takes from the user's own tiles: the map frames them."""
+        return control.own_tiles()
+
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
         """The one-degree squares of the regions installed."""

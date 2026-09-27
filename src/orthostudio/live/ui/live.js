@@ -267,6 +267,12 @@ function drawBuild(status) {
 
 let checksDrawn = ""; // the checks as drawn
 
+/** A square's name as OrthoStudio XP writes it: +46+006. */
+export function tileName(lat, lon) {
+  const sign = (v) => (v < 0 ? "-" : "+");
+  return `${sign(lat)}${String(Math.abs(lat)).padStart(2, "0")}${sign(lon)}${String(Math.abs(lon)).padStart(3, "0")}`;
+}
+
 function drawChecks(status) {
   const c = status.checks;
   const items = [];
@@ -288,6 +294,13 @@ function drawChecks(status) {
       t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }), !c.mesh_found);
   }
   add(c.region_ready ? "done" : "info", t(c.region_ready ? "checks.region" : "checks.region_todo"));
+  // the user's own tiles: X-Plane shows them, and Live leaves their squares alone
+  const own = (c.own_tiles || []).map(([lat, lon]) => tileName(lat, lon));
+  if (own.length) {
+    add("done", t("checks.own_tiles", {
+      tiles: own.length <= 4 ? own.join(", ") : t("checks.own_squares", { n: number(own.length) }),
+    }));
+  }
   add(c.autoortho_mounted ? "failed" : "done", t(c.autoortho_mounted ? "checks.ao_mounted" : "checks.ao"));
   if (c.plugin === "ready") add("done", t("checks.plugin"));
   else if (c.plugin === "to_build") add("info", t("checks.plugin_build"));
@@ -775,12 +788,17 @@ async function showSimbriefRoute() {
   }
 }
 
+/** The legend's lines for the user's own tiles: those the map frames only. */
+function drawOwnLegend(kinds) {
+  for (const kind of ["osxp", "ortho4xp", "other"]) $(`legend-own-${kind}`).hidden = !kinds.has(kind);
+}
+
 async function startMap() {
   if (typeof L === "undefined") return; // Leaflet did not load: the rest of the page works
   try {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
     const { createLiveMap } = await import("./livemap.js");
-    liveMap = createLiveMap($("live-map"), { api, info: $("map-info") });
+    liveMap = createLiveMap($("live-map"), { api, info: $("map-info"), ownKinds: drawOwnLegend });
   } catch (_e) {
     liveMap = null;
     return;

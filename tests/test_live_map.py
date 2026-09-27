@@ -71,6 +71,9 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     assert [row[4] for row in wide["textures"]] == [18, 17, 16]
     assert sorted(wide["squares"]) == [[43, 1, 1, 12], [45, 4, 1, 14]]  # squares of their middles
     assert mapdata.built_in(pack, 100.0, 10.0, 101.0, 11.0)["textures"] == []
+    # where the user's own tile is, X-Plane shows it: Live's textures there are left out
+    theirs = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5, covered={(46, 6)})
+    assert [row[4] for row in theirs["textures"]] == [17, 16, 14]  # Geneva's ZL18 left out
     assert mapdata.built_in(tmp_path / "nothing", 4.5, 45.3, 6.5, 46.5)["textures"] == []
 
 
@@ -110,6 +113,7 @@ async def test_the_map_s_api(home: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         assert [t["zoom"] for t in at] == [18]
         assert at[0]["px"] == 4096 and at[0]["photos_zoom"] == 18 and at[0]["bytes"] > 10**7
         assert (await client.get("/api/live/map/regions")).json() == {}  # none installed
+        assert (await client.get("/api/live/map/own")).json() == []  # no X-Plane: no own tile
         # the SimBrief route: only on the button, and only with a name in Live's settings
         assert (await client.post("/api/live/map/route")).status_code == 409
         save_settings(LiveSettings(simbrief_user="pilot"))

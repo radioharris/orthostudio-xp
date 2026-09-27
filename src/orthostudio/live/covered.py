@@ -138,10 +138,14 @@ def _folder(xplane: Path, written: str) -> Path:
 
 
 def covered_squares(
-    xplane: Path, below: str, region: Collection[tuple[int, int]] | None = None
+    xplane: Path,
+    below: str,
+    region: Collection[tuple[int, int]] | None = None,
+    packs: SceneryPacks | None = None,
 ) -> dict[tuple[int, int], str]:
     """``{(lat, lon): pack}``: the squares of ``region`` (Live's pack's; all when None) whose
-    ground X-Plane takes from an enabled pack listed above ``below`` (Live's link).
+    ground X-Plane takes from an enabled pack listed above ``below`` (Live's link), in ``packs``
+    (X-Plane's list as it is on the disk when None).
 
     A pack is ground or overlays as one of its DSFs there says, read up to its properties: packs
     are one or the other, and simHeaven X-World or Global Forests hold thousands of zipped DSFs,
@@ -149,7 +153,8 @@ def covered_squares(
     imported from Ortho4XP are ground without reading."""
     wanted = None if region is None else set(region)
     out: dict[tuple[int, int], str] = {}
-    for entry in SceneryPacks.load(_ini(xplane)).entries:  # the top first
+    listed = packs if packs is not None else SceneryPacks.load(_ini(xplane))
+    for entry in listed.entries:  # the top first
         if entry.name == below:
             break
         if not entry.enabled or entry.is_global_airports:
@@ -169,3 +174,13 @@ def covered_squares(
         for square in squares:
             out.setdefault(square, entry.name)
     return out
+
+
+def own_squares(xplane: Path, below: str) -> dict[tuple[int, int], str]:
+    """The squares X-Plane takes from the user's own scenery, as :func:`covered_squares` finds
+    them, Live's pack listed or not: where it is listed, else where OrthoStudio XP would list it
+    (its ordering rule, below the tiles it built), in memory only. The Live window shows them while
+    Live is stopped too."""
+    packs = SceneryPacks.load(_ini(xplane))
+    packs.ensure(below, kind="ortho")  # never saved: the list on the disk stays as it is
+    return covered_squares(xplane, below, packs=packs)

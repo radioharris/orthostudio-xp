@@ -54,6 +54,7 @@ from orthostudio.live.settings import LiveSettings, load_settings
 API = 1  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
 CATALOG_S = 600.0  # AutoOrtho's list of regions asked for again this often (GitHub: hourly)
+OWN_S = 30.0  # the user's own tiles looked for again this often, or when X-Plane's list changes
 LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
 STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
@@ -83,6 +84,43 @@ def _osxp_simbrief() -> str | None:
         return (osxp_settings().essential.simbrief_user or "").strip() or None
     except Exception:  # OrthoStudio XP's settings unreadable: nothing to offer
         return None
+
+
+_own: tuple[float, tuple[str, float], dict[tuple[int, int], str]] = (0.0, ("", -1.0), {})
+
+
+def own_tiles(xp: Path) -> dict[tuple[int, int], str]:
+    """``{(lat, lon): pack}``: the squares X-Plane takes from the user's own scenery (a tile
+    OrthoStudio XP built, one imported from Ortho4XP, another ortho), Live stopped or not
+    (:func:`orthostudio.live.covered.own_squares`). Looked for again when X-Plane's list of packs
+    changes, else every OWN_S: about 0.1 s each time, where the checks are every 3 s."""
+    global _own
+    from orthostudio.live.covered import own_squares
+    from orthostudio.live.scenery import _ini
+
+    try:
+        seen = (str(xp), _ini(xp).stat().st_mtime)
+    except OSError:
+        return {}
+    at, was, got = _own
+    if was == seen and time.monotonic() - at < OWN_S:
+        return got
+    try:
+        got = own_squares(xp, LINK_NAME)
+    except OSError:
+        got = {}
+    _own = (time.monotonic(), seen, got)
+    return got
+
+
+def made_by(pack: str) -> str:
+    """Who made a pack of the user's: "osxp" (a tile OrthoStudio XP built), "ortho4xp" (one
+    imported from Ortho4XP), "other" (another scenery's ground)."""
+    from orthostudio.install.scenery_packs import IMPORTED_PACK_PREFIX, ORTHO_PREFIX
+
+    if pack.startswith(ORTHO_PREFIX):
+        return "osxp"
+    return "ortho4xp" if pack.startswith(IMPORTED_PACK_PREFIX) else "other"
 
 
 def gather_checks() -> dict[str, Any]:
@@ -128,6 +166,8 @@ def gather_checks() -> dict[str, Any]:
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
         installed=is_installed(xp, LINK_NAME),
+        # the squares X-Plane takes from the user's own tiles: Live downloads nothing there
+        own_tiles=[[lat, lon, pack] for (lat, lon), pack in sorted(own_tiles(xp).items())],
     )
     return out
 
@@ -330,16 +370,31 @@ class LiveControl:
         pack's record, which the streamer writes every 30 s."""
         from orthostudio.live.mapdata import built_in, rows_of
 
+        # where the user's own tiles are, X-Plane shows them: Live's textures there are left out
+        theirs = {(t["lat"], t["lon"]) for t in self.own_tiles()}
         streamer = self.streamer
         if streamer is None:
-            return built_in(default_pack_dir(), west, south, east, north)
+            return built_in(default_pack_dir(), west, south, east, north, covered=theirs)
         version, textures, grown = streamer.built_now(known)
         if textures is None:
             return {"version": version, "same": True}
         if self._map_rows[0] != version:  # the rectangles of this version, once
             self._map_rows = (version, rows_of(textures, grown or set()))
-        out = built_in(default_pack_dir(), west, south, east, north, rows=self._map_rows[1])
+        out = built_in(
+            default_pack_dir(), west, south, east, north, rows=self._map_rows[1], covered=theirs
+        )
         return {**out, "version": version}
+
+    def own_tiles(self) -> list[dict]:
+        """The squares X-Plane takes from the user's own tiles, for the map: each with its pack and
+        who made it (:func:`made_by`). None without X-Plane."""
+        xp = self.checks().get("xplane")
+        if not xp:
+            return []
+        return [
+            {"lat": lat, "lon": lon, "pack": pack, "kind": made_by(pack)}
+            for (lat, lon), pack in sorted(own_tiles(Path(xp)).items())
+        ]
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:
         """The textures built under a point of the map, with their facts (its tooltip)."""

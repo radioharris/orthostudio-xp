@@ -109,6 +109,17 @@
 .swatch.is-less { background: #9aa0a6; }
 .swatch.is-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
 .swatch.is-route { height: 3px; background: #e0572f; border-radius: 0; }
+
+/* the user's own tiles, framed as OrthoStudio XP's Plan frames the tiles in X-Plane: its colours,
+   its dark line under them */
+.live-map .live-own-casing { stroke: var(--map-casing); fill: none; }
+.live-map .live-own { stroke: var(--ok); fill: none; }
+.live-map .live-own.is-ortho4xp { stroke: var(--map-ortho4xp); }
+.live-map .live-own.is-other { stroke: var(--fg-2); }
+.live-map .live-own, .live-map .live-own-casing { shape-rendering: crispEdges; }
+.swatch.is-own { background: transparent; border: 2px solid var(--ok); box-sizing: border-box; }
+.swatch.is-own.is-ortho4xp { border-color: var(--map-ortho4xp); }
+.swatch.is-own.is-other { border-color: var(--fg-2); }
 .live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
 .live-plane svg { display: block; }
 /* as the Plan map draws them (styles.css .plan-map .osxp-border, .osxp-airport-label) */

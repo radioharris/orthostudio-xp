@@ -28,6 +28,8 @@ const REGION_COLOUR = "#5a8dd6";
 const REGIONS_MAX_ZOOM = 6; // closer, the view is inside a region: its shade would only tint it
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
+const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
+const OWN_INSET = 2.5; // px: as OrthoStudio XP's Plan frames a tile, inside it, never on its edge
 
 export function photoColour(zoom) {
   return PHOTO_COLOURS[Math.min(19, zoom)] || PHOTO_COLOURS.coarser;
@@ -74,7 +76,7 @@ function planeIcon(track) {
   return L.divIcon({ className: "live-plane", html: svg, iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 
-export function createLiveMap(el, { api, info = null }) {
+export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   const base = createBaseMap(el);
   const { map } = base;
   function pane(name, zIndex, opacity) {
@@ -88,8 +90,16 @@ export function createLiveMap(el, { api, info = null }) {
   const regionsCanvas = pane("liveRegions", 300, 0.14);
   const squaresCanvas = pane("liveSquares", 310, 0.3);
   const texturesCanvas = pane("liveTextures", 320, 0.5);
+  // over the borders (340), under the airports (365): the user's own tiles, framed
+  const ownPane = map.createPane("liveOwn");
+  ownPane.style.zIndex = "350";
+  ownPane.style.pointerEvents = "none";
   const regions = L.layerGroup().addTo(map);
   const built = L.layerGroup().addTo(map);
+  const own = L.layerGroup().addTo(map);
+  let ownTiles = []; // [{lat, lon, pack, kind}]: GET map/own
+  let ownKey = "";
+  let ownAt = 0;
   const route = L.layerGroup().addTo(map);
   let plane = null;
   let camera = null;
@@ -173,6 +183,52 @@ export function createLiveMap(el, { api, info = null }) {
     }
   }
 
+  /**
+   * The user's own tiles, framed as OrthoStudio XP's Plan frames the tiles in X-Plane (a user
+   * asked for the same, 2026-09-27): a line inside each square, green for a tile OrthoStudio XP
+   * built, violet for one imported from Ortho4XP, grey for another scenery's ground, over a dark
+   * one that keeps it seen on any photo. X-Plane shows the tile there, never Live's textures,
+   * which the engine leaves out of the map (mapdata.built_in).
+   */
+  function insetBox(box, px) {
+    const nw = map.latLngToLayerPoint([box[1][0], box[0][1]]);
+    const se = map.latLngToLayerPoint([box[0][0], box[1][1]]);
+    if (se.x - nw.x < 4 * px || se.y - nw.y < 4 * px) return null;
+    const inNw = map.layerPointToLatLng(L.point(nw.x + px, nw.y + px));
+    const inSe = map.layerPointToLatLng(L.point(se.x - px, se.y - px));
+    return [[inSe.lat, inNw.lng], [inNw.lat, inSe.lng]];
+  }
+  function drawOwn() {
+    own.clearLayers();
+    for (const tile of ownTiles) {
+      const box = [[tile.lat, tile.lon], [tile.lat + 1, tile.lon + 1]];
+      const frame = insetBox(box, OWN_INSET) || box; // far out, too small: on its own edge
+      own.addLayer(L.rectangle(frame, {
+        pane: "liveOwn", className: "live-own-casing", interactive: false, fill: false, weight: 5,
+      }));
+      own.addLayer(L.rectangle(frame, {
+        pane: "liveOwn", className: `live-own is-${tile.kind}`, interactive: false, fill: false, weight: 3,
+      }));
+    }
+  }
+  async function readOwn() {
+    ownAt = Date.now();
+    let got;
+    try {
+      got = await api("map/own");
+    } catch (_e) {
+      return;
+    }
+    const key = JSON.stringify(got);
+    if (key === ownKey) return;
+    ownKey = key;
+    ownTiles = Array.isArray(got) ? got : [];
+    drawOwn();
+    ownKinds?.(new Set(ownTiles.map((x) => x.kind)));
+    drawBuilt(); // Live's textures under a tile new or gone: left out, or back
+  }
+  map.on("zoomend", drawOwn); // the frame's inset is in pixels
+
   // the regions' shade only while zoomed out: closer, the view is inside one
   function showRegions() {
     const wanted = map.getZoom() <= REGIONS_MAX_ZOOM;
@@ -188,6 +244,8 @@ export function createLiveMap(el, { api, info = null }) {
   let asking = 0;
   function under(latlng) {
     const { lat, lng } = latlng;
+    const mine = ownTiles.find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
+    if (mine) return { key: `o:${mine.lat},${mine.lon}`, own: mine }; // X-Plane shows it there
     let best = null;
     for (const r of shownTextures) {
       if (lat >= r[0] && lat < r[2] && lng >= r[1] && lng < r[3]) {
@@ -217,6 +275,10 @@ export function createLiveMap(el, { api, info = null }) {
     if (found.key === hovered) return;
     hovered = found.key;
     clearTimeout(asking);
+    if (found.own) {
+      say(escapeHtml(t(`map.own_${found.own.kind}`, { pack: found.own.pack })));
+      return;
+    }
     if (found.square) {
       const [, , count, best] = found.square;
       say(escapeHtml(t("map.tip_square", { n: fmt(count), zoom: best })));
@@ -251,6 +313,7 @@ export function createLiveMap(el, { api, info = null }) {
   drawRegions();
   showRegions();
   drawBuilt();
+  readOwn();
 
   return {
     map,
@@ -265,6 +328,7 @@ export function createLiveMap(el, { api, info = null }) {
           base.setProvider(p);
         }
       }
+      if (Date.now() - ownAt > OWN_EVERY_MS) readOwn(); // a tile built or removed meanwhile
       const stream = status.state === "streaming" ? status.stream : null;
       const wasStreaming = streaming;
       streaming = Boolean(stream);
@@ -320,6 +384,7 @@ export function createLiveMap(el, { api, info = null }) {
     shown() {
       map.invalidateSize();
       drawBuilt();
+      readOwn();
     },
   };
 }

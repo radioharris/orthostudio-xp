@@ -16,7 +16,7 @@ from live_helpers import NAMES, FakeDownloader, atom, make_source, make_xplane
 from orthostudio.install.scenery_packs import IMPORTED_PACK_PREFIX, ORTHO_PREFIX
 from orthostudio.live import session
 from orthostudio.live.cache import ChunkCache
-from orthostudio.live.covered import covered_squares, dsf_properties, is_overlay
+from orthostudio.live.covered import covered_squares, dsf_properties, is_overlay, own_squares
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.pack import LINK_NAME
 from orthostudio.live.region import setup_region
@@ -103,6 +103,28 @@ def test_the_squares_the_users_own_tiles_cover(tmp_path: Path) -> None:
         (44, 5): "Photo Lyon",
     }
     assert covered_squares(xp, LINK_NAME, region={(44, 5)}) == {(44, 5): "Photo Lyon"}
+
+
+def test_the_users_tiles_while_live_is_stopped(tmp_path: Path) -> None:
+    """Live's pack out of X-Plane's list (Live stopped): its tiles are those above where
+    OrthoStudio XP would list it, below the tiles it built; the list on the disk is left alone."""
+    xp = tmp_path / "X-Plane 12"
+    scenery = xp / "Custom Scenery"
+    scenery.mkdir(parents=True)
+    ini = scenery / "scenery_packs.ini"
+    ini.write_text(
+        "I\n1000 Version\nSCENERY\n\n"
+        "SCENERY_PACK *GLOBAL_AIRPORTS*\n"
+        f"SCENERY_PACK Custom Scenery/{ORTHO_PREFIX}+46+006/\n"
+        "SCENERY_PACK Custom Scenery/Photo Lyon/\n"
+        "SCENERY_PACK Custom Scenery/z_ao_eur/\n"
+    )
+    before = ini.read_text()
+    put_dsf(scenery / f"{ORTHO_PREFIX}+46+006", (46, 6), b"not read")
+    put_dsf(scenery / "Photo Lyon", (44, 5), dsf({"sim/west": "5"}))  # below Live's place
+    put_dsf(scenery / "z_ao_eur", (46, 6), dsf({"sim/west": "6"}))
+    assert own_squares(xp, LINK_NAME) == {(46, 6): f"{ORTHO_PREFIX}+46+006"}
+    assert ini.read_text() == before
 
 
 def test_one_dsf_read_a_pack_and_only_its_start(

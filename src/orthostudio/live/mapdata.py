@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import threading
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,17 @@ def _built(pack: Path) -> list[Row]:
     return rows
 
 
+def _theirs(row: Row, covered: Collection[tuple[int, int]]) -> bool:
+    """Whether every square a texture reaches is the user's own tile's: X-Plane shows the tile
+    there, never this texture (as the streamer leaves it, orthostudio.live.streamer)."""
+    south, west, north, east = row[:4]
+    return all(
+        (lat, lon) in covered
+        for lat in range(math.floor(south), math.ceil(north))
+        for lon in range(math.floor(west), math.ceil(east))
+    )
+
+
 def built_in(
     pack: Path,
     west: float,
@@ -85,6 +97,7 @@ def built_in(
     east: float,
     north: float,
     rows: list[Row] | None = None,
+    covered: Collection[tuple[int, int]] = (),
 ) -> dict[str, Any]:
     """The textures built in a view, each by the zoom of its photos, how sharp it is on the
     ground: ``{"textures": [[s, w, n, e, photos zoom], ...], "squares": [[lat, lon, count,
@@ -93,12 +106,15 @@ def built_in(
     grouped by one-degree square: the 256 px ones are thousands around a flight, and one colour
     for a whole square hid the sharp textures near the aircraft (a user, 2026-09-27). Beyond
     :data:`MAX_TEXTURES`, the blurriest go to the squares too (``more``). ``rows``: the running
-    streamer's, from its memory; else the pack's record."""
+    streamer's, from its memory; else the pack's record. ``covered``: the squares of the user's
+    own tiles, where the textures are left out (X-Plane shows the tiles)."""
     rows = [
         r
         for r in (_built(pack) if rows is None else rows)
         if r[0] < north and r[2] > south and r[1] < east and r[3] > west
     ]
+    if covered:
+        rows = [r for r in rows if not _theirs(r, covered)]
     wide = north - south > DETAIL_DEG or east - west > DETAIL_DEG
     one_by_one = sorted(
         (r for r in rows if not wide or r[4] >= WIDE_BLURRIEST), key=lambda r: -r[4]

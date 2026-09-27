@@ -631,6 +631,21 @@ def test_the_address_names_the_screen() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_a_square_is_named_as_osxp_names_it() -> None:
+    script = (
+        f"import {{ tileName }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "console.log(JSON.stringify([tileName(46, 6), tileName(-33, -70), tileName(5, 150)]));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == ["+46+006", "-33-070", "+05+150"]
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_parses() -> None:
     for name in ("live.js", "strings.js"):
         subprocess.run([NODE or "node", "--check", str(UI_DIR / name)], check=True)

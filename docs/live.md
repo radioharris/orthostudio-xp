@@ -103,6 +103,12 @@ texture and a bar over the top of the map says what it is, live: its photos and 
 a pixel shows, its tile, its pixels and the disk it takes, and when Live last had it in reach.
 The "Details" box hides the bar.
 
+Your own tiles are framed as OrthoStudio XP's Plan frames the tiles in X-Plane: green for a tile
+OrthoStudio XP built, violet for one imported from Ortho4XP, grey for another scenery's ground.
+X-Plane shows them there, so the map leaves Live's textures out under them, and the bar says so;
+the checks list them too. Live finds them in X-Plane's list of sceneries, above its own pack (or
+where it would go, while Live is stopped), and looks again when that list changes.
+
 ### Roads, forests and buildings
 
 Where Live shows its photos, X-Plane no longer draws its own roads, trees, buildings and beaches:
