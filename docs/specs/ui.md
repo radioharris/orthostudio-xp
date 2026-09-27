@@ -797,7 +797,12 @@ linked there, as in a folder shared over a network or with a virtual machine, an
 formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and tells
 not to format that disk, whose format is not the cause: the old words blamed exFAT or FAT32 and
 advised formatting to a user whose APFS disk the Windows VM reached through Parallels (2026-09-27).
-It also says where a disk's format is read (Disk Utility, the disk's Properties). The refusal used
+It also says where a disk's format is read (Disk Utility, the disk's Properties). A drive letter
+alone (`E:`, `why` = `drive`) is named as a drive, with the full path to type (`E:\OrthoStudio`),
+and a folder not made yet on a disk that is there (`absent`) is told to be made first: the same
+user read "not a full path" for `E:`, then "Plug in the disk it is on" with the disk in place
+(2026-09-27); "Plug in" is kept for a folder whose disk is away, the folder above it gone too
+(`CFG_DATA_DIR_MISSING`). The refusal used
 to show at the foot of the form, under every question, where a user
 saving from the data folder's question never saw it, and began "Settings rejected by the engine"
 (a French tester, 2026-09-22).

@@ -1875,14 +1875,18 @@ const STRINGS = {
 // Why a data folder is refused (CFG_DATA_DIR_INVALID's context.why, orthostudio.home).
 const DATA_DIR_WHY = {
   fr: {
+    drive: ["« {path} » est un lecteur, pas un dossier.", "Tapez le chemin complet d'un dossier sur ce lecteur, avec une barre oblique inverse après les deux-points, par exemple {path}\\OrthoStudio, ou choisissez-le avec « Choisir le dossier des tuiles… »."],
     relative: ["« {path} » n'est pas un chemin complet.", "Choisissez le dossier avec « Choisir le dossier des tuiles… », ou tapez son chemin complet."],
+    absent: ["Le dossier {path} n'existe pas encore.", "Créez-le d'abord, dans le Finder ou l'Explorateur de fichiers, ou choisissez un dossier qui existe avec « Choisir le dossier des tuiles… »."],
     file: ["{path} est un fichier, pas un dossier.", "Choisissez un dossier."],
     xplane: ["{path} est dans le dossier Custom Scenery d'X-Plane, dont X-Plane lit chaque dossier comme un décor.", "Choisissez un dossier en dehors de Custom Scenery."],
     unwritable: ["OrthoStudio XP ne peut pas écrire dans {path}.", "Choisissez un dossier où vous pouvez écrire : un disque peut être en lecture seule."],
     links: ["{path} ne convient pas : on ne peut pas y lier des fichiers, ce qui est le cas d'un dossier partagé en réseau ou avec une machine virtuelle, et d'un disque formaté en exFAT ou FAT32. Chaque tuile y prendrait trois fois plus de place.", "Si ce dossier est partagé en réseau ou avec une machine virtuelle, choisissez-en un sur le disque de cet ordinateur : son format n'y est pour rien, ne le formatez pas. Sinon, choisissez un dossier sur un disque formaté en APFS ou Mac OS Extended (Mac), NTFS (Windows) ou ext4 (Linux) ; l'Utilitaire de disque (Mac) ou les Propriétés du disque (Windows) disent son format. Reformater un disque efface son contenu."],
   },
   en: {
+    drive: ["“{path}” is a drive, not a folder.", "Type the full path of a folder on that drive, with a backslash after the colon, for instance {path}\\OrthoStudio, or choose it with “Choose the folder for the tiles…”."],
     relative: ["“{path}” is not a full path.", "Choose the folder with “Choose the folder for the tiles…”, or type its full path."],
+    absent: ["The folder {path} does not exist yet.", "Create it first, in Finder or File Explorer, or choose a folder that exists with “Choose the folder for the tiles…”."],
     file: ["{path} is a file, not a folder.", "Choose a folder."],
     xplane: ["{path} is inside X-Plane's Custom Scenery, where X-Plane reads every folder as scenery.", "Choose a folder outside Custom Scenery."],
     unwritable: ["OrthoStudio XP cannot write to {path}.", "Choose a folder you can write to: a disk may be read-only."],

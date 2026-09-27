@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import secrets
 import tomllib
 from pathlib import Path
@@ -112,9 +113,18 @@ def require_data_root() -> Path:
 
 
 _DATA_DIR_REFUSALS: dict[str, tuple[str, str | None]] = {
+    "drive": (
+        "it names a drive, not a folder on it",
+        "Type the full path of a folder on that drive, with a backslash after the colon "
+        "(E:\\OrthoStudio, for instance), or choose it with the button.",
+    ),
     "relative": (
         "the path is not absolute",
         "Choose the folder with the button, or type its full path.",
+    ),
+    "absent": (
+        "the folder does not exist yet",
+        "Create it first, or choose a folder that exists with the button.",
     ),
     "file": ("it is a file, not a folder", "Choose a folder."),
     "xplane": (
@@ -134,6 +144,10 @@ _DATA_DIR_REFUSALS: dict[str, tuple[str, str | None]] = {
 }
 
 
+_DRIVE_ALONE = re.compile(r"[A-Za-z]:")
+"""``E:``: to Windows, the folder it last worked in on that drive, never the drive's root."""
+
+
 def _refuse_data_dir(path: Path, why: str, detail: str = "") -> OsxpError:
     reason, remedy = _DATA_DIR_REFUSALS[why]
     context = {"path": str(path), "reason": f"{reason}{detail}", "why": why}
@@ -142,9 +156,16 @@ def _refuse_data_dir(path: Path, why: str, detail: str = "") -> OsxpError:
 
 def check_data_dir(value: str | Path, *, custom_scenery: Path | None = None) -> Path:
     """The folder ``value`` names, resolved, once it can hold the data. Else
-    ``CFG_DATA_DIR_MISSING`` (not found: its disk unplugged, the folder not created yet) or
-    ``CFG_DATA_DIR_INVALID``, whose ``why`` is ``relative``, ``file``, ``xplane`` (inside
-    ``custom_scenery``), ``unwritable`` or ``links``.
+    ``CFG_DATA_DIR_MISSING`` (its disk unplugged: not even the folder above it is there) or
+    ``CFG_DATA_DIR_INVALID``, whose ``why`` is ``drive`` (a drive letter alone, ``E:``),
+    ``relative``, ``absent`` (the folder above it is there, the folder is not made yet),
+    ``file``, ``xplane`` (inside ``custom_scenery``), ``unwritable`` or ``links``.
+
+    A user typed ``E:`` in their Windows VM and read that it was not a full path, then
+    ``E:\\OrthoStudio``, not made yet, and read "Plug in the disk it is on" with the disk in
+    place (2026-09-27): a drive alone, and a folder not made on a disk that is there, have words
+    of their own. A disk that is away takes its folder above away with it (``/Volumes`` on a Mac
+    belongs to the system, where no program leaves an empty stand-in).
 
     The disk must hard-link files: a texture is one file linked into the store and into its pack
     (``orthostudio.clean``). exFAT and FAT32, the format many external disks come in, cannot, nor
@@ -153,12 +174,16 @@ def check_data_dir(value: str | Path, *, custom_scenery: Path | None = None) -> 
     each texture would take three times its size: such a folder is refused (a user agreed,
     2026-09-15). Two empty probe files are written, linked and removed to find out.
     """
+    if _DRIVE_ALONE.fullmatch(str(value).strip()):
+        raise _refuse_data_dir(Path(str(value).strip()), "drive")
     path = Path(str(value)).expanduser()
     if not path.is_absolute():
         raise _refuse_data_dir(path, "relative")
     with contextlib.suppress(OSError):
         path = path.resolve()
     if not path.exists():
+        if path.parent != path and path.parent.is_dir():
+            raise _refuse_data_dir(path, "absent")
         raise OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(path)})
     if not path.is_dir():
         raise _refuse_data_dir(path, "file")
