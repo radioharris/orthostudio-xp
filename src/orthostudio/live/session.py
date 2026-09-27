@@ -155,7 +155,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
     from orthostudio.live import plugin
     from orthostudio.live.gate import Gate
-    from orthostudio.live.region import setup_region
+    from orthostudio.live.region import Zooms, needs_relayout, relayout, setup_region
     from orthostudio.live.route import Route, airport_positions, apt_dat
     from orthostudio.live.streamer import Fix
 
@@ -191,7 +191,15 @@ def prepare(options: Options, log: Log) -> Prepared:
         except SystemExit as e:  # an airport X-Plane does not know
             raise RefusedError(str(e)) from e
         fix = Fix(lat, lon)
-    setup_region(source, pack_dir, log=log)
+    zooms = Zooms(options.max_zoom, options.max_zoom_airports)
+    setup_region(source, pack_dir, log=log, zooms=zooms)
+    if needs_relayout(pack_dir, zooms):  # another zoom: each texture at its new size
+        if xplane_running():
+            raise RefusedError(
+                "the zoom changed and X-Plane is running: it keeps a texture at the size it first "
+                "read. Quit X-Plane, then start again"
+            )
+        relayout(pack_dir, zooms, log)
     if options.fresh:
         reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)

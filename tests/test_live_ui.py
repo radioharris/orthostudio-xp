@@ -346,7 +346,8 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
         s.built = {f"{names[0]}.dds": 0}
         s.done[0] = 1
         snap = s.snapshot()
-        assert snap["built"] == [1, 0, 0, 0, 0]
+        assert snap["first_level"] == -1  # 8192 px, one zoom above the mesh's
+        assert snap["built"] == [0, 1, 0, 0, 0, 0]
         assert snap["disk_bytes"] == texture_bytes(0)
         assert "queue empty (urgent 0)" in s.status()
         assert "built L0:1 |" in s.status()

@@ -1,11 +1,15 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The DDS layout X-Plane reads for a 4096 x 4096 ortho texture.
+"""The DDS layout X-Plane reads for an ortho texture: 4096 x 4096 at the mesh's zoom.
 
 It mirrors AutoOrtho's ``pydds``: BC1 (DXT1), 128-byte header, every mip level down to 1 x 1 (13
 levels for 4096), 11,184,952 bytes in all. Knowing where each level starts turns an offset X-Plane
 reads into "X-Plane wanted mip level k", and lets a file hold only some of its levels, the others
 left as a hole of a sparse file.
+
+A level is named for 4096 px: level 1 is 2048 px, level -1 8192. A texture whose zoom is set below
+the mesh's is a smaller file, and one zoom above it an 8192 px one, as AutoOrtho sizes them: the
+file's sharpest level is its ``top`` (:func:`size_of`, :func:`level_layout`).
 """
 
 from __future__ import annotations
@@ -31,6 +35,17 @@ def mip_layout(size: int = TEXTURE_SIZE) -> list[tuple[int, int]]:
         offset += length
         width //= 2
     return out
+
+
+def size_of(top: int) -> int:
+    """The side of a texture whose sharpest level is ``top``: 4096 px at 0, 2048 at 1, 8192 at
+    -1."""
+    return TEXTURE_SIZE >> top if top >= 0 else TEXTURE_SIZE << -top
+
+
+def level_layout(top: int) -> list[tuple[int, int]]:
+    """``mip_layout`` of a texture whose sharpest level is ``top``: entry k is level ``top + k``."""
+    return mip_layout(size_of(top))
 
 
 def file_size(size: int = TEXTURE_SIZE) -> int:

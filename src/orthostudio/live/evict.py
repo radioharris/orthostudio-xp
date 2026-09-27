@@ -26,11 +26,11 @@ TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction
 
 @cache
 def texture_bytes(level: int) -> int:
-    """Disk a texture built from ``level`` takes (a neutral clone shares the template's blocks)."""
+    """Disk a texture built from ``level`` takes: its levels from that one down, whatever the size
+    of its file (a neutral clone, and the neutral larger levels, share the template's blocks)."""
     if level >= NEUTRAL_LEVEL:
         return 0
-    layout = dds.mip_layout()
-    return 4096 + sum(length for _, length in layout[level:])
+    return 4096 + sum(length for _, length in dds.level_layout(level))
 
 
 def usage(built: dict[str, int]) -> int:

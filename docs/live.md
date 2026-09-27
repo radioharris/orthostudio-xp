@@ -34,6 +34,16 @@ There is no setting for the texture quality or for how far outside views reach: 
 texture quality X-Plane is set to, and builds sharp 25 km beyond the aircraft for outside views.
 Less, and X-Plane would show the neutral colour, green-grey, up close or around a distant camera.
 
+The zoom is set as in AutoOrtho: a maximum zoom (14 to 17, 16 by default) and a zoom near airports
+(16 to 19, 18 by default, for the package's ZL18 textures, which are its airports' surroundings).
+X-Plane picks by itself, by distance, which version of a texture it shows; the zoom sets the
+sharpest version there is, the one seen up close. Below the package's zoom a texture is smaller
+(1024 px at ZL14): less sharp near the ground, far less to download, shorter waits at a start. One
+zoom above, it is 8192 px: sharper near the ground, four times more to download for the textures
+nearest the aircraft and the camera. At cruise it changes nothing. A new zoom applies at the next
+start of Live, X-Plane closed: Live puts every texture at its new size, about a minute, keeping
+what it built and downloading nothing.
+
 The imagery sources are OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA,
 the Netherlands' PDOK...), and the sources you added in OrthoStudio XP's Plan. A country's source
 has nothing past its border: there, and wherever it has no imagery, Live takes Bing Maps. Textures

@@ -11,9 +11,16 @@ from pathlib import Path
 from orthostudio.live import dds
 from orthostudio.live.cache import IMAGE, NO_IMAGERY, ChunkCache
 from orthostudio.live.geo import parse_texture_name
-from orthostudio.live.rings import finest_for_quality, finest_for_zoom_cap, ring_km, top_level_for
+from orthostudio.live.rings import (
+    file_top,
+    finest_for_quality,
+    finest_readable,
+    ring_km,
+    top_level_for,
+    zoom_for,
+)
 from orthostudio.live.route import Route, airport_positions
-from orthostudio.live.texture import chunk_grid, parent_keys, piece_keys, write_sparse
+from orthostudio.live.texture import chunk_grid, parent_keys, piece_keys, pieces_of, write_sparse
 
 APT = b"""I
 1200 Version
@@ -37,13 +44,32 @@ class RingsTest(unittest.TestCase):
         self.assertEqual(top_level_for(40, 16, finest=0), 2)  # 38 km ring, widened by the margin
         self.assertEqual(top_level_for(200, 16, finest=0), 4)
         self.assertEqual(top_level_for(10, 18, finest=0), 2)
+        self.assertEqual(ring_km(-1, 16), 6.0)  # 8192 px: the law carried one level on
+        self.assertEqual(top_level_for(5, 16, finest=-1), -1)
+        self.assertEqual(top_level_for(10, 16, finest=-1), 0)
 
     def test_settings(self):
         self.assertEqual(finest_for_quality(5), 0)
         self.assertEqual(finest_for_quality(4), 1)
         self.assertEqual(finest_for_quality(None), 0)
-        self.assertEqual(finest_for_zoom_cap(16, 15), 1)  # AutoOrtho's max_zoom 15
-        self.assertEqual(finest_for_zoom_cap(16, 18), 0)
+
+    def test_zooms_as_autoortho_sizes_them(self):
+        """getortho.py: below the mesh's zoom a smaller texture, one zoom above an 8192 px one."""
+        self.assertEqual(file_top(16, 16), 0)  # 4096 px
+        self.assertEqual(file_top(16, 14), 2)  # 1024 px
+        self.assertEqual(file_top(16, 17), -1)  # 8192 px
+        self.assertEqual(file_top(16, 19), -1)  # one zoom above at most
+        self.assertEqual(file_top(18, 19), -1)
+        self.assertEqual(file_top(18, 16), 2)
+        self.assertEqual(zoom_for(18, 14, 19), 19)  # the mesh's ZL18 textures: its airports
+        self.assertEqual(zoom_for(16, 14, 19), 14)
+        # X-Plane at Maximum reads a file's sharpest level; at High, the sharper of two readings
+        self.assertEqual(finest_readable(0, 0), 0)
+        self.assertEqual(finest_readable(-1, 0), -1)
+        self.assertEqual(finest_readable(2, 0), 2)
+        self.assertEqual(finest_readable(0, 1), 1)
+        self.assertEqual(finest_readable(-1, 1), 0)  # 4096 of 8192: one level down from the file
+        self.assertEqual(finest_readable(2, 1), 2)  # 1024 px: under High's 2048 already
 
 
 class RouteTest(unittest.TestCase):
@@ -99,6 +125,9 @@ class SparseTest(unittest.TestCase):
         self.assertEqual(chunk_grid(tex, 1), (15, 16968, 11760, 8))
         self.assertEqual(chunk_grid(tex, 4), (12, 2121, 1470, 1))
         self.assertEqual(len(piece_keys(tex, 1)), 64)
+        self.assertEqual(chunk_grid(tex, -1), (17, 67872, 47040, 32))  # 8192 px: ZL17 pieces
+        self.assertEqual(len(piece_keys(tex, -1)), pieces_of(-1))
+        self.assertEqual((pieces_of(-1), pieces_of(0), pieces_of(4)), (1024, 256, 1))
         self.assertEqual(parent_keys((12, 2121, 1470), depth=2), [(11, 1060, 735), (10, 530, 367)])
 
     def test_write_sparse(self):
@@ -119,6 +148,19 @@ class SparseTest(unittest.TestCase):
         self.assertLess(st.st_blocks * 512, 256 * 1024)  # and takes no disk
         with self.assertRaises(ValueError):
             write_sparse(Path(tmp) / "x.dds", 3, levels)
+
+    def test_files_of_every_size(self):
+        """1024 px for a zoom two below the mesh's, 8192 px one above: the header says so."""
+        with tempfile.TemporaryDirectory() as tmp:
+            for top, side in ((2, 1024), (-1, 8192)):
+                layout = dds.level_layout(top)
+                levels = [bytes([k]) * length for k, (_, length) in enumerate(layout)]
+                path = Path(tmp) / f"{side}.dds"
+                write_sparse(path, top, levels, file_top=top)
+                data = path.read_bytes()
+                self.assertEqual(len(data), dds.file_size(side))
+                self.assertEqual(data[:128], dds.header(side))
+                self.assertEqual(data[layout[1][0]], 1)  # the level under the sharpest one
 
 
 if __name__ == "__main__":

@@ -113,6 +113,19 @@ export const STRINGS = {
     "source.fallback": "It covers one country only ({country}): elsewhere, Live takes Bing Maps.",
     "source.low_zoom": "It stops at zoom {zl}: up close, the ortho is blurrier.",
 
+    "zoom.title": "Zoom",
+    "zoom.help":
+      "X-Plane picks by itself, by distance, how much of each texture to show: the zoom sets the sharpest it can show, up close. At cruise, it changes nothing.",
+    "zoom.max": "Maximum zoom",
+    "zoom.max_help": "Away from airports. The package's zoom is 16.",
+    "zoom.airports": "Zoom near airports",
+    "zoom.airports_help": "Around airports, where the package's zoom is 18.",
+    "zoom.lower": "ZL{zl}: less sharp up close, {times} times less to download",
+    "zoom.same": "ZL{zl}: the package's",
+    "zoom.higher": "ZL{zl}: sharper up close, 4 times more to download (8192 px textures)",
+    "zoom.change":
+      "A new zoom applies at the next start of Live, X-Plane closed: Live puts its textures at their new size, about a minute, with nothing to download.",
+
     "disk.title": "Disk space",
     "disk.help": "Live keeps two things on the disk, each within the space set here.",
     "disk.textures": "Built textures",
@@ -264,6 +277,19 @@ export const STRINGS = {
     "source.group_country": "Un seul pays",
     "source.fallback": "Elle ne couvre qu'un pays ({country}) : ailleurs, Live prend Bing Maps.",
     "source.low_zoom": "Elle s'arrête au zoom {zl} : de près, l'ortho est plus floue.",
+
+    "zoom.title": "Zoom",
+    "zoom.help":
+      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette qu'il peut montrer, de près. En croisière, il ne change rien.",
+    "zoom.max": "Zoom maximum",
+    "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
+    "zoom.airports": "Zoom près des aéroports",
+    "zoom.airports_help": "Autour des aéroports, où le zoom du package est 18.",
+    "zoom.lower": "ZL{zl} : moins net de près, {times} fois moins à télécharger",
+    "zoom.same": "ZL{zl} : celui du package",
+    "zoom.higher": "ZL{zl} : plus net de près, 4 fois plus à télécharger (textures 8192 px)",
+    "zoom.change":
+      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met ses textures à leur nouvelle taille, une minute environ, sans rien télécharger.",
 
     "disk.title": "Place sur le disque",
     "disk.help": "Live garde deux choses sur le disque, chacune dans la place réglée ici.",

@@ -63,6 +63,8 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         provider=settings.provider,
         disk_budget_gb=settings.disk_budget_gb,
         cache_budget_gb=settings.cache_budget_gb,
+        max_zoom=settings.max_zoom,
+        max_zoom_airports=settings.max_zoom_airports,
         fresh=fresh,
     )
 

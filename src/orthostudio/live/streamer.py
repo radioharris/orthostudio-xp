@@ -38,10 +38,10 @@ from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, levels_usage, pick, usage
 from .geo import haversine_m, parse_texture_name
 from .pack import MARKER, load_built
-from .region import NEUTRAL_FILE, NEUTRAL_LEVEL
-from .rings import LOAD_LEVEL, finest_for_zoom_cap, ring_km, top_level_for
+from .region import NEUTRAL_LEVEL, Zooms, neutral_file
+from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, top_level_for
 from .route import KM_PER_DEG, Route
-from .texture import parent_keys, piece_keys, worker_ignores_ctrl_c
+from .texture import parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
 
 PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px level
 LOAD_KM = (
@@ -51,7 +51,7 @@ LOOKAHEAD_MIN = 5.0  # the path ahead the planner looks along
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
-LEVELS = 5  # 0 (4096 px) to 4 (256 px)
+LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
@@ -192,10 +192,9 @@ class Streamer:
         self.index = TextureIndex(
             e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
         )
-        neutral = pack_dir / NEUTRAL_FILE
-        self.base = (
-            str(neutral) if neutral.exists() else None
-        )  # every texture starts from the neutral one
+        # the zoom set: each texture's file is laid out for it (region.relayout), 8192 px one zoom
+        # above the mesh's, smaller below
+        self.zooms = Zooms(max_zoom, max_zoom_airports)
         self.lock = threading.Lock()
         self.queue: dict[str, tuple[float, int]] = {}  # name -> (urgency km, level)
         self.in_flight: dict[str, tuple[float, int]] = {}
@@ -212,9 +211,18 @@ class Streamer:
     def level_of(self, name: str) -> int:
         return self.built.get(name, NEUTRAL_LEVEL)
 
+    def top_of(self, name: str) -> int:
+        """The sharpest level of a texture's file (0: 4096 px, 1: 2048, -1: 8192)."""
+        tex = parse_texture_name(name)
+        return self.zooms.top(tex.zoom) if tex is not None else 0
+
+    def neutral_for(self, name: str) -> str | None:
+        """The neutral texture of the size of a texture's file: what it is built over."""
+        path = self.pack_dir / neutral_file(self.top_of(name))
+        return str(path) if path.exists() else None
+
     def finest_for(self, zoom: int) -> int:
-        cap = self.max_zoom if zoom <= 16 else self.max_zoom_airports
-        return max(self.finest_quality, finest_for_zoom_cap(zoom, cap))
+        return finest_readable(self.zooms.top(zoom), self.finest_quality)
 
     def plan(self, fix: Fix, x_plane_there: bool = True) -> dict[str, tuple[float, int]]:
         """Queue every texture within reach built coarser than X-Plane will read it.
@@ -276,7 +284,7 @@ class Streamer:
             batch: list[tuple[str, int, float]] = []
             pieces = 0
             for name, (urgency, level) in sorted(self.queue.items(), key=lambda kv: kv[1][0]):
-                n = (16 >> level) ** 2
+                n = pieces_of(level)
                 if batch and pieces + n > max_pieces:
                     break
                 batch.append((name, level, urgency))
@@ -308,7 +316,7 @@ class Streamer:
             jobs = [
                 lv for u, lv in list(self.queue.values()) + list(self.in_flight.values()) if u <= 0
             ]
-        return len(jobs), sum((16 >> lv) ** 2 for lv in jobs)
+        return len(jobs), sum(pieces_of(lv) for lv in jobs)
 
     def maybe_reload(self) -> bool:
         with self.lock:
@@ -394,7 +402,8 @@ class Streamer:
                         job.pieces,
                         job.parents,
                         str(self.pack_dir / "textures" / job.name),
-                        self.base,
+                        self.neutral_for(job.name),
+                        self.top_of(job.name),
                     ),
                 )
                 encoding[fut] = job
@@ -492,7 +501,12 @@ class Streamer:
         )
         for name, level in picks[:EVICT_BATCH]:
             try:
-                downgrade(self.pack_dir / "textures" / name, level, self.pack_dir / NEUTRAL_FILE)
+                downgrade(
+                    self.pack_dir / "textures" / name,
+                    level,
+                    self.pack_dir / neutral_file(self.top_of(name)),
+                    file_top=self.top_of(name),
+                )
             except OSError as e:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
@@ -546,11 +560,12 @@ class Streamer:
             done = dict(self.done)
         dl = self.downloader
         return {
-            "queued": [queued.get(lv, 0) for lv in range(LEVELS)],
+            "first_level": MIN_LEVEL,  # the lists below: levels -1 (8192 px) to 4 (256 px)
+            "queued": [queued.get(lv, 0) for lv in LEVELS],
             "urgent": urgent,
             "building": flying,
             "pieces_awaited": self.pieces_pending,
-            "built": [done.get(lv, 0) for lv in range(LEVELS)],  # since the streamer started
+            "built": [done.get(lv, 0) for lv in LEVELS],  # since the streamer started
             "downloaded": getattr(dl, "downloaded", 0),
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
@@ -562,8 +577,12 @@ class Streamer:
 
     def status(self) -> str:
         s = self.snapshot()
-        q = " ".join(f"L{lv}:{n}" for lv, n in enumerate(s["queued"]) if n) or "empty"
-        d = " ".join(f"L{lv}:{n}" for lv, n in enumerate(s["built"]) if n) or "nothing yet"
+
+        def by_level(counts: list[int]) -> str:
+            return " ".join(f"L{lv}:{n}" for lv, n in zip(LEVELS, counts, strict=True) if n)
+
+        q = by_level(s["queued"]) or "empty"
+        d = by_level(s["built"]) or "nothing yet"
         return (
             f"queue {q} (urgent {s['urgent']}), building {s['building']}, "
             f"{s['pieces_awaited']} pieces awaited | built {d} | "

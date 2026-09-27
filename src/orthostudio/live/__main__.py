@@ -117,8 +117,19 @@ def stream(
             "(less than X-Plane reads shows the neutral colour, green-grey, up close)"
         ),
     ] = "auto",
-    max_zoom: Annotated[int, typer.Option(help="sharpest imagery for ZL16 textures")] = 16,
-    max_zoom_airports: Annotated[int, typer.Option(help="sharpest imagery for ZL18 textures")] = 18,
+    max_zoom: Annotated[
+        int | None,
+        typer.Option(
+            help="AutoOrtho's max_zoom, 14 to 17: the zoom away from airports (default 16)"
+        ),
+    ] = None,
+    max_zoom_airports: Annotated[
+        int | None,
+        typer.Option(
+            help="AutoOrtho's max_zoom_near_airports, 16 to 19: the zoom around airports "
+            "(default 18)"
+        ),
+    ] = None,
     margin: Annotated[
         float, typer.Option(help="build for rings this much wider than measured")
     ] = 1.25,
@@ -176,8 +187,10 @@ def stream(
         start=start,
         provider=provider or saved.provider,
         quality=quality,
-        max_zoom=max_zoom,
-        max_zoom_airports=max_zoom_airports,
+        max_zoom=saved.max_zoom if max_zoom is None else max_zoom,
+        max_zoom_airports=(
+            saved.max_zoom_airports if max_zoom_airports is None else max_zoom_airports
+        ),
         margin=margin,
         camera_reach_km=camera_reach_km,
         workers=workers,
@@ -212,11 +225,17 @@ def setup(
     force: Annotated[bool, typer.Option(help="set it up again")] = False,
 ) -> None:
     """Make the pack hold a whole AutoOrtho region, once (stream does it too)."""
-    from orthostudio.live.region import setup_region
+    from orthostudio.live.region import Zooms, setup_region
+    from orthostudio.live.settings import load_settings
 
+    saved = load_settings()
     xp_dir = _xplane(xplane)
     setup_region(
-        source or default_source(xp_dir), pack or default_pack_dir(), force=force, log=typer.echo
+        source or default_source(xp_dir),
+        pack or default_pack_dir(),
+        force=force,
+        log=typer.echo,
+        zooms=Zooms(saved.max_zoom, saved.max_zoom_airports),
     )
 
 

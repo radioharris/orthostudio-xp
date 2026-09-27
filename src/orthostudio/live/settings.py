@@ -31,6 +31,12 @@ class LiveSettings(BaseModel):
     """Disk the built textures may take; beyond it, the farthest are made coarser."""
     cache_budget_gb: float = Field(10.0, ge=1.0, le=10_000.0)
     """Disk the downloaded imagery may take; beyond it, the oldest goes."""
+    max_zoom: int = Field(16, ge=14, le=17)
+    """AutoOrtho's max_zoom: the zoom of the textures away from airports. Below the mesh's (16), a
+    smaller texture; 17, an 8192 px one."""
+    max_zoom_airports: int = Field(18, ge=16, le=19)
+    """AutoOrtho's max_zoom_near_airports: the zoom of the mesh's ZL18 textures, around airports;
+    19, an 8192 px one."""
     provider: str = "BI"
     """The imagery source: a code of OrthoStudio XP's sources
     (:func:`orthostudio.live.providers.registry`)."""

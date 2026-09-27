@@ -44,8 +44,10 @@ function number(value, digits = 0) {
   }).format(value);
 }
 
-function byLevel(counts) {
-  const parts = counts.map((n, level) => (n ? `L${level} ${number(n)}` : null)).filter(Boolean);
+/** "7 × 4096 px · 5 × 2048 px": counts by level, the first ``first`` (-1: 8192 px). */
+function byLevel(counts, first) {
+  const side = (level) => (level >= 0 ? 4096 >> level : 4096 << -level);
+  const parts = counts.map((n, i) => (n ? `${number(n)} × ${side(first + i)} px` : null)).filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -189,7 +191,7 @@ function drawBuild(status) {
     return;
   }
   const s = stream.streamer;
-  const queued = byLevel(s.queued);
+  const queued = byLevel(s.queued, s.first_level);
   const building = s.building || s.pieces_awaited
     ? t("build.building_value", { n: number(s.building), pieces: number(s.pieces_awaited) })
     : null;
@@ -201,7 +203,7 @@ function drawBuild(status) {
   kv($("build"), [
     [t("build.queued"), queued && `${queued} (${t("build.urgent", { n: number(s.urgent) })})`],
     [t("build.building"), building],
-    [t("build.built"), byLevel(s.built)],
+    [t("build.built"), byLevel(s.built, s.first_level)],
     [t("build.downloaded"), downloaded],
     [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
     [t("build.disk"), t("build.disk_value", { used: gb(s.disk_bytes), budget: number(s.disk_budget / 1e9) })],
@@ -338,7 +340,28 @@ function drawSource() {
 
 // --- the settings ------------------------------------------------------------------------------
 
+/** The zooms offered, as AutoOrtho's: below the package's, the same, one above (8192 px). */
+const ZOOMS = { max_zoom: [16, [14, 15, 16, 17]], max_zoom_airports: [18, [16, 17, 18, 19]] };
+
+function renderZooms() {
+  for (const [name, [mesh, zooms]] of Object.entries(ZOOMS)) {
+    const select = $(name === "max_zoom" ? "set-max-zoom" : "set-max-zoom-airports");
+    const current = select.value;
+    select.replaceChildren(...zooms.map((zl) => {
+      const option = document.createElement("option");
+      option.value = String(zl);
+      if (zl < mesh) option.textContent = t("zoom.lower", { zl, times: 4 ** (mesh - zl) });
+      else if (zl === mesh) option.textContent = t("zoom.same", { zl });
+      else option.textContent = t("zoom.higher", { zl });
+      return option;
+    }));
+    if (current) select.value = current;
+  }
+}
+
 function fillSettings(settings) {
+  $("set-max-zoom").value = String(settings.max_zoom);
+  $("set-max-zoom-airports").value = String(settings.max_zoom_airports);
   $("set-disk").value = String(settings.disk_budget_gb);
   $("set-cache").value = String(settings.cache_budget_gb);
   $("set-folder").value = settings.folder || "";
@@ -348,6 +371,8 @@ function fillSettings(settings) {
 async function saveSettings(event) {
   event.preventDefault();
   const body = {
+    max_zoom: Number($("set-max-zoom").value),
+    max_zoom_airports: Number($("set-max-zoom-airports").value),
     disk_budget_gb: Number($("set-disk").value),
     cache_budget_gb: Number($("set-cache").value),
     provider: $("set-provider").value || saved?.provider || "BI",
@@ -468,9 +493,11 @@ function boot() {
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   applyStatic(document);
+  renderZooms();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     applyStatic(document);
+    renderZooms();
     renderProviders($("set-provider").value);
     if (last) draw(last);
   });

@@ -7,12 +7,18 @@ resolution proportional to distance, about 0.18 m per pixel per km. A ZL16 textu
 across, is read at level 3 (512 px) from 72 km, level 2 from 38 km, level 1 from 21 km and level 0
 (4096 px) under 12 km, the last only with texture quality at Maximum; a ZL18 texture follows the
 same law four times closer. At DSF load, 130-230 km away, X-Plane reads level 4 (256 px) only.
+
+A level is the same ground resolution whatever the file's size (level 1 is 2048 px of the texture's
+area), so the rings hold for a texture made smaller or larger by the zoom set, which only moves the
+sharpest level there is to read (:func:`file_top`). Level -1, 8192 px, is read under 6 km: the law
+carried one level on, not measured.
 """
 
 from __future__ import annotations
 
 LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
-RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0}
+MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
+RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0, -1: 6.0}
 DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
 
 
@@ -26,7 +32,7 @@ def top_level_for(
 ) -> int:
     """The sharpest level X-Plane will read of a texture of ``zoom`` whose centre comes within
     ``distance_km`` of the camera, never sharper than ``finest``."""
-    for level in range(max(finest, 0), LOAD_LEVEL):
+    for level in range(max(finest, MIN_LEVEL), LOAD_LEVEL):
         if distance_km <= ring_km(level, zoom) * margin:
             return level
     return LOAD_LEVEL
@@ -43,7 +49,23 @@ def finest_for_quality(tex_res: int | None) -> int:
     return max(0, min(LOAD_LEVEL, 5 - tex_res))
 
 
-def finest_for_zoom_cap(zoom: int, max_zoom: int) -> int:
-    """The sharpest level worth building when imagery stops at ``max_zoom`` (AutoOrtho's setting):
-    level k of a texture of ``zoom`` is imagery at ``zoom - k``."""
-    return max(0, min(LOAD_LEVEL, zoom - max_zoom))
+def zoom_for(zoom: int, max_zoom: int, max_zoom_airports: int) -> int:
+    """The zoom set for a texture of ``zoom``: AutoOrtho's rule (getortho.py
+    ``_get_target_zoom_level``), the one near airports for the mesh's ZL18 textures, which are its
+    airports' surroundings, the maximum zoom for the others."""
+    return max_zoom_airports if zoom == 18 else max_zoom
+
+
+def file_top(zoom: int, max_zoom: int) -> int:
+    """The sharpest level of a texture of ``zoom`` whose imagery goes to ``max_zoom``: level k is
+    imagery at ``zoom - k``. As AutoOrtho sizes it, below the mesh's zoom it is a smaller texture
+    (level 1: 2048 px) and above it an 8192 px one, one zoom above at most (level -1)."""
+    return max(MIN_LEVEL, min(LOAD_LEVEL, zoom - max_zoom))
+
+
+def finest_readable(top: int, quality: int) -> int:
+    """The sharpest level X-Plane reads of a texture whose sharpest is ``top``, at its texture
+    quality (:func:`finest_for_quality`, 0 at Maximum). Whether the quality drops levels from the
+    file's own size or from 4096 px was not measured: the sharper of the two is built, so that
+    nothing X-Plane reads is left neutral."""
+    return min(top + quality, max(top, quality))
