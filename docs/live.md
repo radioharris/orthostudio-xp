@@ -50,6 +50,11 @@ regions of the mesh, the roads, forests and buildings, the imagery source, the d
 textures and for the downloaded imagery (with what each takes now, and a button to delete either),
 and Live's folder. Its log is at the bottom.
 
+As in OrthoStudio XP's window, a field over the settings keeps only the questions holding the words
+typed (accents, case and plurals aside), and the window has OrthoStudio XP's find bar (Cmd+F,
+Ctrl+F) and text size (Cmd+plus, Cmd+minus, Cmd+0), which it takes as they are. In a browser, the
+browser's own keys stay.
+
 ### The mesh, by region
 
 Live lays its photos on sceneries: the mesh, the ground's shape and the textures' outlines. It comes

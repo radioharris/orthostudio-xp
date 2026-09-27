@@ -754,6 +754,107 @@ async function startMap() {
   $("map-route").addEventListener("click", showSimbriefRoute);
 }
 
+// --- the window's keys and the settings' search, as OrthoStudio XP's ---------------------------
+
+/**
+ * `then` once this page is known to be in Live's own window, never in a browser's tab: pywebview
+ * writes `window.pywebview` into the page it opens and announces it with `pywebviewready`, not
+ * always before the page starts (as OrthoStudio XP's app.js whenInOwnWindow).
+ */
+function whenInOwnWindow(then) {
+  if (window.pywebview) then();
+  else window.addEventListener("pywebviewready", then, { once: true });
+}
+
+let toastTimer = 0;
+
+/** A word for a moment, as OrthoStudio XP's: the text size just chosen. */
+function toast(message) {
+  const el = $("toast");
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.hidden = true;
+  }, 4000);
+}
+
+let osxpWords = null; // OrthoStudio XP's words (static/i18n.js), which its find bar and zoom speak
+
+/**
+ * OrthoStudio XP's find bar (Cmd+F, Ctrl+F) and text size (Cmd+plus, Cmd+minus, Cmd+0), as they
+ * are (static/find.js, static/zoom.js): Live's window has neither, and a browser keeps its own.
+ * Loaded here rather than with the page, as the map is: they speak OrthoStudio XP's own words,
+ * told the page's language.
+ */
+async function bindPageTools() {
+  try {
+    const [words, find, zoom] = await Promise.all([
+      import("../static/i18n.js"),
+      import("../static/find.js"),
+      import("../static/zoom.js"),
+    ]);
+    osxpWords = words;
+    osxpWords.setLanguage(language());
+    find.bindFind();
+    whenInOwnWindow(() => {
+      find.bindFindKeys();
+      zoom.bindZoom(toast);
+    });
+  } catch (_e) {
+    // not there: the page works without them
+  }
+}
+
+let searching = null; // OrthoStudio XP's settings search (static/settings.js), once loaded
+
+/** The text a reader sees in a question: what is hidden left out, a list's choices in. */
+export function shownText(node) {
+  let text = "";
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3) text += ` ${child.nodeValue}`;
+    else if (child.nodeType === 1 && !child.hidden) text += shownText(child);
+  }
+  return text;
+}
+
+/**
+ * The settings' search, as OrthoStudio XP's (its searchWords and matchesSearch): every word
+ * typed, in any order, accents, case and a plural's s aside. The questions left out leave the two
+ * columns, so that those found gather at the top.
+ */
+function drawSearch() {
+  const words = searching ? searching.searchWords($("settings-search").value) : [];
+  const on = words.length > 0;
+  const boxes = document.querySelectorAll("#settings-form .settings-questions > .question");
+  let shown = 0;
+  for (const box of boxes) {
+    const hit = !on || searching.matchesSearch(shownText(box), words);
+    if (box.hidden !== !hit) box.hidden = !hit;
+    if (hit) shown += 1;
+  }
+  const note = $("settings-search-note");
+  note.hidden = !on;
+  note.classList.toggle("is-warn", on && shown === 0);
+  note.textContent = !on
+    ? ""
+    : shown
+      ? t("settings.search_found", { n: shown, total: boxes.length })
+      : t("settings.search_none");
+}
+
+async function bindSearch() {
+  $("settings-search").addEventListener("input", drawSearch);
+  try {
+    const { searchWords, matchesSearch } = await import("../static/settings.js");
+    searching = { searchWords, matchesSearch };
+  } catch (_e) {
+    $("settings-search").closest(".settings-search").hidden = true; // nothing to search with
+    return;
+  }
+  drawSearch();
+}
+
 function tellLanguage() {
   // the plugin's words in X-Plane follow the window's language
   api("language", { method: "POST", body: { language: language() } }).catch(() => {});
@@ -790,12 +891,14 @@ function boot() {
   renderStartModes();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
+    osxpWords?.setLanguage(language());
     tellLanguage();
     liveMap?.languageChanged();
     applyStatic(document);
     renderZooms();
     renderStartModes();
     renderProviders($("set-provider").value);
+    drawSearch();
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
@@ -824,6 +927,8 @@ function boot() {
     $("settings-error").hidden = true;
   });
   startMap();
+  bindPageTools();
+  bindSearch();
   loadProviders();
   tellLanguage();
   askRegions();

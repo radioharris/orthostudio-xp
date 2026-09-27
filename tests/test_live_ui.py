@@ -434,6 +434,10 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         assert page.status_code == 200 and "live/live.js" in page.text
         for path in ("/live/live.js", "/live/strings.js", "/live/live.css", "/static/styles.css"):
             assert (await client.get(path)).status_code == 200, path
+        # OrthoStudio XP's find bar, text size and settings search, loaded by the page as they are
+        for name in ("find.js", "zoom.js", "i18n.js", "settings.js"):
+            assert (await client.get(f"/static/{name}")).status_code == 200, name
+        assert 'id="settings-search"' in page.text and 'id="find-bar"' in page.text
         status = (await client.get("/api/live/status")).json()
         assert status["state"] == IDLE and status["checks"]["plugin"] == "ready"
         assert (await client.post("/api/live/start", json={"fresh": False})).status_code == 202
@@ -536,7 +540,7 @@ def test_the_page_says_everything_in_both_languages() -> None:
     js = (UI_DIR / "live.js").read_text()
     html = (UI_DIR / "index.html").read_text()
     used = set(re.findall(r'\bt\("([\w.]+)"', js))
-    used |= set(re.findall(r'data-i18n(?:-title)?="([\w.]+)"', html))
+    used |= set(re.findall(r'data-i18n(?:-title|-placeholder|-aria-label)?="([\w.]+)"', html))
     used |= {f"flight.data_{d}" for d in ("none", "fresh", "stale")}  # t(`flight.data_${...}`)
     modes = ("full", "around", "normal", "reload")
     used |= {f"start.{m}" for m in modes} | {f"start.{m}_note" for m in modes}
@@ -567,6 +571,31 @@ def test_a_click_on_a_field_title_is_left_to_its_text() -> None:
     js = (UI_DIR / "live.js").read_text()
     handler = r"addEventListener\(\"click\",[^}]*isTitleClick\(ev\.target\)[^}]*\}, true\)"
     assert re.search(handler, js)  # in the capture phase, before any other listener
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_settings_search_reads_what_a_question_shows() -> None:
+    """OrthoStudio XP's search (its settings.js), on the text a question shows: what is hidden
+    (the start's four choices with the package's zooms) is left out, a list's choices are in."""
+    osxp = UI_DIR.parent.parent / "ui" / "settings.js"
+    script = (
+        f"import {{ shownText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ searchWords, matchesSearch }} from {json.dumps(osxp.as_uri())};"
+        "const text = (v) => ({ nodeType: 3, nodeValue: v });"
+        "const el = (kids, hidden = false) => ({ nodeType: 1, hidden, childNodes: kids });"
+        "const box = el([text('Zoom'), el([el([text('ZL17: sharper up close')])]),"
+        " el([text('Normal, then reload in 8192 px')], true), text('Espace disque')]);"
+        "const seen = shownText(box);"
+        "console.log(JSON.stringify(['sharper', 'reload', 'disques', 'ESPACE zoom']"
+        ".map((q) => matchesSearch(seen, searchWords(q)))));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == [True, False, True, True]
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

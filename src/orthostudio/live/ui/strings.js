@@ -180,6 +180,15 @@ export const STRINGS = {
     "settings.save": "Save",
     "settings.undo": "Undo my changes",
     "settings.saved": "Saved.",
+    "settings.search": "Search the settings",
+    "settings.search_ph": "Search: zoom, disk, SimBrief…",
+    "settings.search_found": "{n} of {total} settings.",
+    "settings.search_none": "Nothing matches. Try another word of the question.",
+    "find.label": "Find on this page",
+    "find.placeholder": "Find on this page",
+    "find.previous": "Previous (Shift+Enter)",
+    "find.next": "Next (Enter)",
+    "find.close": "Close (Esc)",
 
     "source.title": "Imagery source",
     "source.help":
@@ -472,6 +481,15 @@ export const STRINGS = {
     "settings.save": "Enregistrer",
     "settings.undo": "Annuler mes changements",
     "settings.saved": "Enregistré.",
+    "settings.search": "Chercher un réglage",
+    "settings.search_ph": "Chercher : zoom, disque, SimBrief…",
+    "settings.search_found": "{n} sur {total} réglages.",
+    "settings.search_none": "Rien ne correspond. Essayez un autre mot de la question.",
+    "find.label": "Chercher dans cette page",
+    "find.placeholder": "Chercher dans cette page",
+    "find.previous": "Précédent (Maj+Entrée)",
+    "find.next": "Suivant (Entrée)",
+    "find.close": "Fermer (Échap)",
 
     "source.title": "Source des images",
     "source.help":
@@ -634,8 +652,15 @@ export function countryName(extent) {
   return STRINGS[current][`country.${extent}`] ?? extent;
 }
 
-/** Apply the data-i18n attributes of a subtree. */
+/** Apply the data-i18n attributes of a subtree: a text, a title, a field's placeholder, a name
+ * read aloud. */
 export function applyStatic(root) {
   for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
   for (const el of root.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
+  for (const el of root.querySelectorAll("[data-i18n-placeholder]")) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+  for (const el of root.querySelectorAll("[data-i18n-aria-label]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
+  }
 }

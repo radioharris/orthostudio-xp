@@ -121,6 +121,11 @@
     <p class="lead" data-i18n="settings.lead">They take effect at the next start.</p>
   </div>
   <form id="settings-form" novalidate>
+    <div class="settings-search">
+      <input type="search" id="settings-search" class="settings-search-input" spellcheck="false" autocomplete="off"
+             data-i18n-placeholder="settings.search_ph" data-i18n-aria-label="settings.search" placeholder="Search: zoom, disk, SimBrief…" aria-label="Search the settings">
+      <p class="help settings-search-note" id="settings-search-note" aria-live="polite" hidden></p>
+    </div>
     <div class="settings-questions">
       <fieldset class="question" id="q-regions">
         <legend class="question-title" data-i18n="regions.title">The mesh, by region</legend>
@@ -254,6 +259,17 @@
     <pre id="log"></pre>
   </details>
 </main>
+
+<!-- OrthoStudio XP's find bar (static/find.js): Cmd+F and Ctrl+F in Live's own window. -->
+<div id="find-bar" class="find-bar" role="search" hidden>
+  <input type="search" id="find-input" class="find-input" spellcheck="false" autocomplete="off"
+         data-i18n-placeholder="find.placeholder" data-i18n-aria-label="find.label" placeholder="Find on this page" aria-label="Find on this page">
+  <span class="help find-count" id="find-count" aria-live="polite"></span>
+  <button type="button" class="btn btn-small" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
+  <button type="button" class="btn btn-small" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
+  <button type="button" class="btn btn-small" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- Delete: which of the two, what each costs, as OrthoStudio XP's own confirmations. -->
 <dialog id="delete-dialog" class="dialog" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-text">
