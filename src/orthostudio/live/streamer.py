@@ -51,6 +51,7 @@ LOOKAHEAD_MIN = 5.0  # the path ahead the planner looks along
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+STALL_S = 60.0  # pieces awaited this long and none arriving: no internet, X-Plane is let go
 LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
@@ -204,6 +205,7 @@ class Streamer:
         self.done = Counter()
         self.errors = 0
         self.crashed: BaseException | None = None
+        self.last_progress = time.monotonic()  # a piece arrived, or none was awaited
         self._thread: threading.Thread | None = None
 
     # --- planning -----------------------------------------------------------------------------
@@ -318,6 +320,10 @@ class Streamer:
             ]
         return len(jobs), sum(pieces_of(lv) for lv in jobs)
 
+    def stalled_s(self) -> float:
+        """How long pieces have been awaited with none arriving (0 while they arrive)."""
+        return time.monotonic() - self.last_progress
+
     def maybe_reload(self) -> bool:
         with self.lock:
             urgent = sum(1 for u, _ in self.queue.values() if u <= 0) + sum(
@@ -375,6 +381,8 @@ class Streamer:
         def known(keys: list[Key]) -> dict[Key, bytes | None]:
             got = self.cache.get_many(self.provider, keys)
             self.from_cache += len(got)
+            if got:
+                self.last_progress = time.monotonic()
             return {k: (body if status == IMAGE else None) for k, (status, body) in got.items()}
 
         def ask(job: _Job, keys) -> None:
@@ -413,6 +421,7 @@ class Streamer:
             value = body if status == IMAGE else None
             if status in (IMAGE, NO_IMAGERY):
                 to_cache.append((key, status, value))
+                self.last_progress = time.monotonic()
             for name in waiting.pop(key, ()):
                 job = jobs.get(name)
                 if job is None:
@@ -454,6 +463,8 @@ class Streamer:
                         jobs.pop(job.name, None)
                         self._finished(fut, job.name, job.level)
                     self.pieces_pending = len(requested)
+                    if not requested:  # nothing awaited: nothing stalled
+                        self.last_progress = time.monotonic()
                     if to_cache and (len(to_cache) >= 256 or time.monotonic() - last_flush > 1.0):
                         self.cache.put_many(self.provider, to_cache)
                         to_cache.clear()
@@ -613,6 +624,7 @@ class Arrival:
     ready_at: float | None = None  # when everything X-Plane will read there was built
     held: bool = False  # the plugin held X-Plane for it
     released: bool = False  # ... and let it go with everything built
+    stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     work: int = 0  # the most image pieces seen to build for it: the progress bar's whole
     loading: bool = (
@@ -799,8 +811,18 @@ def run(
                         done = arrival.progress(work)
                         took = now - arrival.since
                         arrival.held = True
-                        gate.answer(addr, left == 0, left, arrival.name, done, took, mbs)
-                        if left == 0 and not arrival.released:
+                        # no time limit: X-Plane waits while pieces arrive, however long a start
+                        # takes, and goes on only once nothing has arrived for a minute
+                        stalled = left > 0 and streamer.stalled_s() > STALL_S
+                        gate.answer(addr, left == 0 or stalled, left, arrival.name, done, took, mbs)
+                        if stalled and not arrival.stalled:
+                            arrival.stalled = True
+                            log(
+                                f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
+                                f"{left} textures to build around {arrival.name} (is the internet "
+                                f"there?); the scenery is reloaded once they are built"
+                            )
+                        elif left == 0 and not arrival.released:
                             arrival.released = True
                             log(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "

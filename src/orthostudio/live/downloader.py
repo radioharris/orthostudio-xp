@@ -60,7 +60,9 @@ class Downloader:
         )
         self._next_request: dict[str, float] = {}  # per source, when its ceiling allows the next
         self.on_piece = on_piece
-        self.max_in_flight = max_in_flight or min(self.p.max_in_flight, 96)
+        # the most requests the source's servers took at once, as OrthoStudio XP measured them
+        # (Bing Maps: 128, beyond which it gave no more)
+        self.max_in_flight = max_in_flight or self.p.max_in_flight
         self.timeout_s = timeout_s
         self.attempts = attempts
         self.downloaded = self.bytes = self.no_imagery = self.failed = self.retries = (

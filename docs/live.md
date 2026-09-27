@@ -79,8 +79,13 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
   says the textures are built.
 - OrthoStudio XP Live learns where you start the moment you click Start Flight, because X-Plane saves it
   in its preferences, so the building starts before X-Plane even loads the aircraft.
-- The plugin never holds X-Plane in flight, lets it go after 5 minutes whatever happens, and does
-  nothing if OrthoStudio XP Live is not running.
+- The plugin never holds X-Plane in flight, and does nothing if OrthoStudio XP Live is not
+  running. At a start it holds X-Plane as long as the ortho keeps arriving, with no time limit:
+  sharp zooms can take more than five minutes in a new area. It lets X-Plane go when nothing has
+  downloaded for a minute (no internet), or when you click Stop in the Live window; X-Plane then
+  shows the neutral colour where nothing was built, and gets its scenery reloaded once it is.
+- Live asks the imagery source for as many pieces at once as its servers take, as OrthoStudio XP
+  measured them: 128 for Bing Maps.
 
 Without the plugin (`--no-plugin`), X-Plane does not wait. Where a texture is not built yet, it shows
 a plain placeholder colour (never black). Once everything it shows is built, OrthoStudio XP Live asks it

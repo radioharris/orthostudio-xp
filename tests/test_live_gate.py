@@ -643,3 +643,92 @@ class RunTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SilentDownloader:
+    """Asked for pieces, answers none: the internet gone."""
+
+    def __init__(self, on_piece):
+        self.asked = []
+        self.downloaded = self.bytes = self.failed = 0
+
+    def submit(self, key, priority):
+        self.asked.append(key)
+
+    def close(self):
+        pass
+
+
+class NoTimeLimitTest(unittest.TestCase):
+    """The plugin holds X-Plane as long as pieces arrive, with no time limit; once none has arrived
+    for STALL_S, the streamer lets X-Plane go, and reloads the scenery once all is built."""
+
+    def test_nothing_downloads_any_more(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            port = free_port()
+            gate = Gate(root / "X-Plane 12", lambda icao: None, port=port)
+            logged = []
+            s = Streamer(
+                pack, cache, SilentDownloader, finest_quality=1, workers=1, log=logged.append
+            )
+            stop = threading.Event()
+            lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
+            with (
+                mock.patch.object(streamer_module, "STALL_S", 1.5),
+                mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2),
+            ):
+                thread = threading.Thread(
+                    target=run,
+                    daemon=True,
+                    kwargs=dict(
+                        streamer=s,
+                        xp=ScriptedXPlane(),
+                        gate=gate,
+                        should_stop=stop.is_set,
+                        log=logged.append,
+                    ),
+                )
+                thread.start()
+                answers = []
+                t0 = time.time()
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+                    p.connect(("127.0.0.1", port))
+                    p.settimeout(0.5)
+                    while time.time() - t0 < 20:
+                        p.send(f"LIVE1 HOLD {lat:.6f} {lon:.6f} aircraft".encode())
+                        try:
+                            answers.append(p.recv(100).decode())
+                        except TimeoutError:
+                            continue
+                        if answers[-1].startswith("LIVE1 GO"):
+                            break
+                        time.sleep(0.1)
+                took = time.time() - t0
+                stop.set()
+                thread.join(30)
+            gate.close()
+            cache.close()
+        self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers[:3])
+        self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
+        self.assertNotEqual(answers[-1], "LIVE1 GO 0")  # textures were left to build
+        self.assertGreater(took, 1.5)  # held while pieces could still come
+        self.assertTrue(any("nothing downloaded for" in line for line in logged), logged[-5:])
+
+
+class InFlightTest(unittest.TestCase):
+    def test_as_many_requests_at_once_as_the_source_takes(self):
+        """OrthoStudio XP measured Bing's servers: 128 requests at once, beyond which they gave no
+        more. Live asked 96."""
+        from orthostudio.live.downloader import Downloader
+        from orthostudio.live.providers import registry
+
+        d = Downloader("BI", lambda *a: None)
+        try:
+            self.assertEqual(d.max_in_flight, registry()["BI"].max_in_flight)
+            self.assertEqual(d.max_in_flight, 128)
+        finally:
+            d.close()

@@ -32,7 +32,9 @@
  * - the streamer stops while X-Plane waits (an error, Ctrl-C): its port closes, X-Plane goes on at
  *   once, and Log.txt says so;
  * - a livery change in flight: the streamer says go at once;
- * - after MAX_HOLD_S: X-Plane goes on anyway.
+ * - no time limit otherwise, as long as the streamer answers: a start with sharp zooms takes more
+ *   than the five minutes it once allowed (a user, 2026-09-27). The streamer itself lets X-Plane go
+ *   when nothing has downloaded for a minute (no internet), and Stop in the Live window does too.
  *
  * orthostudio/live/plugin.py builds it against X-Plane's own XPLM framework. It declares the few XPLM functions
  * it uses itself, so the SDK is not needed.
@@ -78,9 +80,6 @@ extern void XPLMDebugString(const char *inString);
 #endif
 #ifndef SILENT_S
 #define SILENT_S 5.0 /* it answered, then stopped */
-#endif
-#ifndef MAX_HOLD_S
-#define MAX_HOLD_S 300.0
 #endif
 
 void live_panel_show(const char *what, const char *progress, double fraction); /* live_panel.m */
@@ -237,10 +236,6 @@ static void hold(const char *at) {
         if (answered == 0 && t - start > NO_STREAMER_S) break;
         if (answered > 0 && t - answered > SILENT_S) {
             say("the streamer stopped answering: X-Plane goes on");
-            break;
-        }
-        if (t - start > MAX_HOLD_S) {
-            say("%d textures still to build after %.0f s: X-Plane goes on", st.left, t - start);
             break;
         }
     }
