@@ -403,7 +403,7 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
         assert snap["built"] == [0, 1, 0, 0, 0, 0]
         assert snap["disk_bytes"] == texture_bytes(0)
         assert "queue empty (urgent 0)" in s.status()
-        assert "built L0:1 |" in s.status()
+        assert "built 4096 px: 1 |" in s.status()
         arrival = Arrival(45.5, 6.5, "LFLL runway 17R", "click", time.time() - 12, held=True)
         values = {"lat": 45.7, "lon": 5.1, "alt_m": 250.0, "gs_ms": 0.0}
         now = time.time()

@@ -270,7 +270,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             )
     finest = finest_quality(xp_dir, options.quality)
     log(
-        f"X-Plane texture quality: finest level {finest} ({4096 >> finest} px); "
+        f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
         f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
     )
     return Prepared(xp_dir, pack_dir, gate, fix, finest, covered)

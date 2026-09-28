@@ -733,7 +733,7 @@ class Streamer:
                     self.patchy.pop(name, None)
         except Exception as e:  # the planner queues it again
             self.errors += 1
-            self.log(f"  failed to build {name} at level {level}: {e}")
+            self.log(f"  failed to build {name} at {dds.size_of(level)} px: {e}")
         finally:
             with self.lock:
                 self.in_flight.pop(name, None)
@@ -1121,8 +1121,10 @@ class Streamer:
     def status(self) -> str:
         s = self.snapshot()
 
-        def by_level(counts: list[int]) -> str:
-            return " ".join(f"L{lv}:{n}" for lv, n in zip(LEVELS, counts, strict=True) if n)
+        def by_level(counts: list[int]) -> str:  # "4096 px: 3, 2048 px: 12"
+            return ", ".join(
+                f"{dds.size_of(lv)} px: {n}" for lv, n in zip(LEVELS, counts, strict=True) if n
+            )
 
         q = by_level(s["queued"]) or "empty"
         d = by_level(s["built"]) or "nothing yet"

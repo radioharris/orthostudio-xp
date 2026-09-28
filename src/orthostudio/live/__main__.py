@@ -286,10 +286,12 @@ def status(xplane: XPlaneOpt = None, pack: PackOpt = None) -> None:
     pack_dir = pack or default_pack_dir()
     textures = load_built(pack_dir).get("textures", {})
     typer.echo(f"pack:      {pack_dir}: {len(textures)} textures built")
-    for level in range(5):
+    from orthostudio.live.dds import size_of
+
+    for level in range(-1, 5):  # 8192 px to 256 px
         n = sum(1 for v in textures.values() if v == level)
         if n:
-            typer.echo(f"           level {level} ({4096 >> level:4d} px): {n}")
+            typer.echo(f"           {size_of(level):4d} px: {n}")
     typer.echo(
         f"installed: {'yes' if is_installed(xp_dir, LINK_NAME) else 'no'}"
         f" (X-Plane plugin: {'yes' if plugin.installed(xp_dir) else 'no'})"
