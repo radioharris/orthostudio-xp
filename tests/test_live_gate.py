@@ -651,7 +651,9 @@ class ReachTest(unittest.TestCase):
                 reach_km=25.0,
                 log=lambda _: None,
             )
-            urgency, level = views.plan(away, x_plane_there=False)[name]
+            self.assertEqual(views.plan(away, x_plane_there=False)[name][1], 2)  # the cockpit
+            outside = Fix(lat - 0.3, lon, cam_lat=lat - 0.3027, cam_lon=lon)  # 300 m behind
+            urgency, level = views.plan(outside, x_plane_there=False)[name]
             self.assertEqual(
                 level, 0
             )  # 33 - 25 = 8 km from where the camera may be: the 12 km ring
@@ -660,6 +662,34 @@ class ReachTest(unittest.TestCase):
                 lat - 2.3, lon
             )  # 255 km: only the 256 px level, which the camera does not change
             self.assertEqual(views.plan(far, x_plane_there=False)[name][1], 4)
+            cache.close()
+
+    def test_the_reach_only_in_external_views(self):
+        """The camera's reach while the camera is 200 m or more from the aircraft (an external
+        view), and a minute after it came back; none in the cockpit, where it built what nobody
+        looked at (three quarters of what Live downloaded at cruise)."""
+        from orthostudio.live.streamer import REACH_HOLD_S
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            s = Streamer(
+                pack,
+                cache,
+                lambda on_piece: None,
+                finest_quality=0,
+                reach_km=20.0,
+                log=lambda _: None,
+            )
+            cockpit = Fix(45.5, 6.5, cam_lat=45.5001, cam_lon=6.5)  # 11 m: the pilot's head
+            outside = Fix(45.5, 6.5, cam_lat=45.5027, cam_lon=6.5)  # 300 m out
+            self.assertEqual(s.reach_now(Fix(45.5, 6.5), now=100.0), 0.0)  # no camera said
+            self.assertEqual(s.reach_now(cockpit, now=100.0), 0.0)
+            self.assertEqual(s.reach_now(outside, now=100.0), 20.0)
+            self.assertEqual(s.reach_now(cockpit, now=100.0 + REACH_HOLD_S - 1), 20.0)  # just back
+            self.assertEqual(s.reach_now(cockpit, now=100.0 + REACH_HOLD_S + 1), 0.0)
             cache.close()
 
     def test_a_camera_far_up_needs_only_the_small_levels(self):

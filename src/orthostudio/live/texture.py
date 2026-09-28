@@ -10,8 +10,9 @@ is imagery at zoom ``z - k``: ``(16 >> k)²`` pieces of 256 px, 1,024 at level -
 
 X-Plane counts a file's levels from its top (an fs_usage trace in flight, 2026-09-28), so it reads
 each level of an 8192 px file one ring before the photos of that level are built at a 4096 px
-file's distances. Nearer than 38 km that does not matter: the camera's reach builds each level's
-photos before X-Plane reads it there, and the screen would not show it sharper anyway. The far
+file's distances. Nearer than 38 km the streamer builds its 4096 px and 2048 px levels that ring
+earlier (``Streamer._level``; the camera's reach did it until 2026-09-29, even in the cockpit).
+The far
 levels of an 8192 px file, though, are read at 72 km and at load before their photos come: so a
 file built from the 512 px or the 256 px level has the level above it written too, as its copy,
 twice as wide (:func:`double_bc1`, :func:`needs_copy`), the same image, never the neutral colour.

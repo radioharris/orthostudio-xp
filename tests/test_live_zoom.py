@@ -352,14 +352,19 @@ def sharp(jobs: dict) -> list[int]:
 
 def test_what_a_start_waits_for(tmp_path: Path) -> None:
     """At a start: the 8192 px within 15 km (12 km, where X-Plane reads them, and a quarter), which
-    X-Plane waits for (urgency <= 0); 4096 px farther, to the camera's reach."""
+    X-Plane waits for (urgency <= 0); farther, each level of these 8192 px files where X-Plane
+    reads it, a ring before a 4096 px file's: their 4096 px level within 26 km (21 km and a
+    quarter). No camera's reach in the cockpit; in an external view it widens the rings."""
     s = row_streamer(tmp_path)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
     assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.6 km
     for k in (0, 1, 2):
         assert jobs[f"{ROW[k]}.dds"][0] <= 0
+    assert [jobs[f"{name}.dds"][1] for name in ROW[3:7]] == [0, 1, 1, 1]  # 20.4 km: 4096 px
+    outside = at(0)  # an external view: the camera 300 m from the aircraft
+    outside.cam_lat, outside.cam_lon = outside.lat + 0.0027, outside.lon
+    jobs = s.plan(outside, x_plane_there=False, starting=True)
     assert [jobs[f"{name}.dds"][1] for name in ROW[3:6]] == [0, 0, 0]  # 35 km with the reach
-    assert jobs[f"{ROW[6]}.dds"][1] == 1
     s.cache.close()
 
 
@@ -409,7 +414,7 @@ def test_the_rings_grow_with_xplanes_image() -> None:
 def test_a_wider_image_reads_sharper_farther(tmp_path: Path) -> None:
     s = row_streamer(tmp_path, reach_km=0.0)
     fix = at(0)
-    assert s.plan(fix, x_plane_there=False)[f"{ROW[3]}.dds"][1] == 1  # 20.8 km: 2048 px
+    assert s.plan(fix, x_plane_there=False)[f"{ROW[4]}.dds"][1] == 1  # 27 km: 2048 px
     s.set_screen(2704, 33.5)  # zoomed in: X-Plane reads the top level up to 25 km
     assert s.plan(fix, x_plane_there=False)[f"{ROW[3]}.dds"][1] == -1
     assert s.snapshot()["screen"] == {
