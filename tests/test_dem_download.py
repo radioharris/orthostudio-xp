@@ -80,7 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body[i * size : (i + 1) * size])
                 self.wfile.flush()
                 time.sleep(0.1)
-        except (BrokenPipeError, ConnectionResetError):
+        except ConnectionError:  # Windows may say ConnectionAbortedError (WinError 10053)
             with self.lock:
                 self.cut.add(self.path)
 
@@ -140,12 +140,15 @@ def test_a_transfer_that_stops_midway_is_given_up_long_before_the_server(server:
     assert took < 15.0, f"waited {took:.1f} s"
 
 
-def test_the_answers_keep_the_fetchers_codes(server: str) -> None:
+def test_the_answers_keep_the_fetchers_codes(server: str, monkeypatch: pytest.MonkeyPatch) -> None:
     missing = sources.http_download(f"{server}/missing", timeout_s=2.0)
     assert missing.status == 404 and missing.error is None and missing.final  # memoised
     assert _Handler.asked["/missing"] == 1, "the server's word is not asked again"
     busy = sources.http_download(f"{server}/busy", timeout_s=2.0)
     assert busy.ok and busy.body == BODY and _Handler.asked["/busy"] == 3  # two 503, then the file
+    # Windows retries a refused connection on the machine itself before it gives up, longer
+    # than the fixture's 1 s: it was a timeout there (CI, 2026-09-29). The app gives 10 s.
+    monkeypatch.setattr(sources, "RELIEF_CONNECT_S", 5.0)
     down = sources.http_download("http://127.0.0.1:9/nothing", timeout_s=2.0, max_attempts=2)
     assert down.error == "NET_CONNECTION_FAILED" and down.status == 0 and not down.final
 
