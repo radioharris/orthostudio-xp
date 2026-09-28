@@ -395,13 +395,14 @@ def test_cold_then_warm_runs(
 # --- P2: parent fallback ----------------------
 
 
-def test_containers_are_written_plainly_and_textures_still_forced(
+def test_containers_and_textures_are_written_without_forcing(
     server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A hard disk under Windows waited for every container and every texture forced to disk, and
     the images crawled at a user's (2026-09-28). A container is checked whenever it is read and
-    fetched again when damaged: it is written plainly. A texture enters the store forced, as
-    before: nothing checks it when it is used again."""
+    fetched again when damaged; a texture is forced with the rest of its tile before the pack
+    hands it to X-Plane, and checked when a build starts after one cut short
+    (``test_build_graph``, ``test_graph_store``). Neither is forced as it is written."""
     from orthostudio.graph import store as store_mod
     from orthostudio.imagery import chunks as chunks_mod
 
@@ -424,7 +425,7 @@ def test_containers_are_written_plainly_and_textures_still_forced(
     report = build_textures(make_spec(server, tmp_path, mask_dir, fsync=True))
     assert report.ok, report.errors
     assert container_writes and not any(container_writes)
-    assert sum("texture.dds" in p for p in forced) == report.counts["built"] == 2
+    assert report.counts["built"] == 2 and not [p for p in forced if "texture.dds" in p]
 
 
 def test_parent_fallback_and_placeholder_chain(

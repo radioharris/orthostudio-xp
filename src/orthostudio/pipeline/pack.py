@@ -1530,6 +1530,9 @@ def _tile_pack(ctx: RunContext) -> None:
     assert isinstance(params, PackParams)
     tile = TileRef.parse(params.tile)
     _refuse_rewrite_under_running_xplane(env, tile)
+    # Its textures and .ter files were not forced to disk one by one (graph/store.py
+    # DEFERRED_RULES): they are, as a group, before X-Plane is handed any of them.
+    env.store.make_durable()
     manifest, _files = assemble_pack(
         env.store,
         Path(params.out_dir),

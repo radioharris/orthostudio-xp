@@ -263,6 +263,102 @@ def test_a_texture_linked_from_the_store_is_not_forced_twice(
     assert sorted(forced) == ["copied.dds", "one.ter"]
 
 
+def _put_dds(store: Store, n: int, data: bytes) -> str:
+    return _put(store, n, data, rule="texture.dds")
+
+
+def test_a_texture_is_committed_unforced_and_forced_by_the_durable_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forcing each texture as it was written held a build on a hard disk (2026-09-28): the
+    textures are forced as a group at the durable point, and the few artefacts of other rules as
+    before. A second point forces nothing already forced."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
+    forced: list[str] = []
+    monkeypatch.setattr(
+        store_mod,
+        "_fsync_file",
+        lambda p: forced.append(next(x for x in p.parts if x in (RULE, "texture.dds"))),
+    )
+    with Store(tmp_path / "store", fsync=True) as s:
+        before = s.durable_until()
+        assert before is not None
+        _put_dds(s, 1, b"DDS one")
+        _put(s, 2, b"vectors")
+        assert forced == [RULE], "the texture waits for the durable point"
+        time.sleep(0.01)
+        assert s.make_durable() == 1 and forced == [RULE, "texture.dds"]
+        after = s.durable_until()
+        assert after is not None and after > before
+        time.sleep(0.01)
+        assert s.make_durable() == 0 and forced == [RULE, "texture.dds"]
+
+
+def test_what_an_interrupted_build_left_torn_is_dropped_at_the_next_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A power cut before the durable point can leave a texture's bytes unwritten: the next
+    build checks every texture indexed since the point against its digest, drops the torn one
+    and keeps the whole one; then the point moves and nothing is checked twice."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
+    with Store(tmp_path / "store", fsync=True) as s:
+        whole = _put_dds(s, 1, b"DDS whole texture")
+        torn = _put_dds(s, 2, b"DDS torn texture!")
+        path = s.path(torn)
+    path.write_bytes(bytes(path.stat().st_size))  # what the disk kept of it: zeros
+    time.sleep(0.01)
+    with Store(tmp_path / "store", fsync=True) as s:
+        report = s.recover()
+        assert report.checked == 2 and report.dropped == (torn,)
+        assert s.has(whole) and not s.has(torn) and not path.exists()
+        time.sleep(0.01)
+        assert s.recover().checked == 0
+
+
+def test_a_texture_found_on_disk_without_its_row_is_kept_only_when_it_is_the_same(
+    tmp_path: Path,
+) -> None:
+    """Renamed into place, then a power cut before its row: the file may be torn. Building the
+    same key again, the store keeps the one on disk when it is byte for byte what it has just
+    built, and puts its own in place of any other."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key, recipe = _key(7, "texture.dds")
+        final = s.artifact_path("texture.dds", key)
+        final.parent.mkdir(parents=True, exist_ok=True)
+        final.write_bytes(bytes(9))  # torn: zeros where the texture was
+        with s.begin("texture.dds", key, "file") as b:
+            b.out.write_bytes(b"DDS bytes")
+            info, adopted = b.commit(version=1, recipe=recipe, inputs=[])
+        assert not adopted and final.read_bytes() == b"DDS bytes"
+        assert info.digest == digest_bytes(b"DDS bytes")
+        assert not [p for p in final.parent.iterdir() if p != final], "nothing left aside"
+        key2, recipe2 = _key(8, "texture.dds")
+        final2 = s.artifact_path("texture.dds", key2)
+        final2.parent.mkdir(parents=True, exist_ok=True)
+        final2.write_bytes(b"DDS same")  # whole, only its row lost
+        with s.begin("texture.dds", key2, "file") as b:
+            b.out.write_bytes(b"DDS same")
+            _info, adopted2 = b.commit(version=1, recipe=recipe2, inputs=[])
+        assert adopted2 and final2.read_bytes() == b"DDS same"
+
+
+def test_a_store_without_a_durable_point_counts_what_it_holds_as_durable(tmp_path: Path) -> None:
+    """Every version before this one forced each file as it was written: a store it left behind
+    gets a durable point on opening, and nothing of it is checked."""
+    from orthostudio.graph import store as store_mod
+
+    with Store(tmp_path / "store", fsync=True) as s:
+        _put_dds(s, 1, b"DDS old")
+    (tmp_path / "store" / store_mod.DURABLE_FILE).unlink()
+    time.sleep(0.01)
+    with Store(tmp_path / "store", fsync=True) as s:
+        assert s.durable_until() is not None and s.recover().checked == 0
+
+
 def test_pins_refcount_and_delete(store: Store) -> None:
     parent = _put(store, 10, b"parent")
     d = store.digest_of(parent)

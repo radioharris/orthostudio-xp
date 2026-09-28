@@ -2757,6 +2757,14 @@ def build_tiles(
     t0 = time.perf_counter()
     env = env if env is not None else BuildEnv.create(specs)
     store = env.store
+    # What a build interrupted by a power cut left torn is dropped before anything reuses it
+    # (graph/store.py DEFERRED_RULES): after a build that ended normally, next to nothing to check.
+    recovered = store.recover()
+    if recovered.dropped:
+        log.warning(
+            "%d artefacts of an interrupted build were not whole on disk and are built again",
+            len(recovered.dropped),
+        )
     # Validate the stage options *before* anything is downloaded or written (finding V1).
     choices = stage_choices(specs)
     # The OSM downloads are nodes of the graph, on a lane of their own (spec 8.3): each tile goes
@@ -2874,6 +2882,8 @@ def build_tiles(
             cancelled = cancelled or scheduler2.cancelled
             _learn_texture_cost(scheduler2, redone, collector)
 
+    # whatever the passes committed after the last pack, cancelled or failed, reaches the disk
+    store.make_durable()
     by_spec_graph = {id(g.spec): g for g in graphs}
     tiles: list[TileOutcome] = []
     built = hits = failed = 0

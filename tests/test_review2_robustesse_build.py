@@ -11,6 +11,7 @@ second-pass logic only retries tiles hurt by a *neighbour*.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -74,6 +75,34 @@ def _empty_layer(tile: TileRef, layer: str) -> OsmSnapshot:
 def _empty_layers(tile: TileRef, layers: list) -> dict[str, OsmSnapshot]:
     """An OSM download that answers every layer with an empty extract."""
     return {spec.name: _empty_layer(tile, spec.name) for spec in layers}
+
+
+def test_a_build_drops_what_an_interrupted_one_left_torn_and_ends_on_a_durable_point(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The textures are no longer forced to disk one by one (``graph/store.py``
+    ``DEFERRED_RULES``, 2026-09-28): a build first drops what a power cut left torn, before
+    anything could reuse it, and ends on a durable point, even when all its tiles fail."""
+    from orthostudio.graph import artifact_key
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
+    store = env.store
+    key, recipe = artifact_key("texture.dds", 1, {"n": 1}, {})
+    with store.begin("texture.dds", key, "file") as b:
+        b.out.write_bytes(b"DDS a texture of a build cut short")
+        b.commit(version=1, recipe=recipe, inputs=[])
+    torn = store.path(key)
+    torn.write_bytes(bytes(torn.stat().st_size))  # what the disk kept of it: zeros
+    time.sleep(0.01)
+    started = time.time()
+    with native.osm_job(native.OsmJob(fetch=_no_network)):
+        report = build_tiles(
+            [_spec(tmp_path, T)], cpu_in_threads=True, env=env, handle_sigint=False
+        )
+    assert not report.ok and not store.has(key) and not torn.exists()
+    until = store.durable_until()
+    assert until is not None and until >= started
 
 
 def test_batch_of_failing_tiles_is_reported_not_raised(tmp_path: Path, env: BuildEnv) -> None:
