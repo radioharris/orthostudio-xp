@@ -563,6 +563,28 @@ def test_the_photos_of_the_sharp_levels_are_not_kept(
     assert len(held) == (len(keys) if kept else 0)
 
 
+def test_live_holds_back_while_x_plane_loads_scenery(tmp_path: Path) -> None:
+    """In flight, X-Plane's scenery load flag up: Live holds back, and YIELD_AFTER_S after; for
+    YIELD_MAX_S of a load at most; never at a start, where X-Plane waits for what Live builds."""
+    from orthostudio.live import streamer as st
+
+    s = row_streamer(tmp_path)
+    s.x_plane_loads(True, now=100.0)
+    assert s.yield_until == 0.0  # not flying: a start, X-Plane waits on its loading screen
+    s.flying = True
+    s.x_plane_loads(True, now=100.0)
+    assert s.yield_until == 100.0 + st.YIELD_AFTER_S
+    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 1)  # a load this long: no more held
+    assert s.yield_until == 100.0 + st.YIELD_AFTER_S
+    lines = []
+    s.log = lines.append
+    s.x_plane_loads(False, now=140.0)
+    assert lines == [f"  X-Plane loaded scenery: Live held back for {40:.0f} s"]
+    s.x_plane_loads(True, now=200.0)  # a new load: held again
+    assert s.yield_until == 200.0 + st.YIELD_AFTER_S
+    s.cache.close()
+
+
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:
     """Its file is the last build's: a sharper one waits for the one on its way."""
     s = row_streamer(tmp_path)

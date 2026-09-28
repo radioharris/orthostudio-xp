@@ -85,7 +85,7 @@ LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
-EVICT_EVERY_S = 30.0
+EVICT_EVERY_S = 10.0
 FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers while it waits
 # 8192 px textures encoded at once at most, each in a process of its own, which ends with it and
 # gives its memory back: twelve workers kept 14 GB after such textures, and a user's Mac, short of
@@ -97,7 +97,9 @@ SHARP_WORKERS = 4
 UNCACHED_FROM = 0
 COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads it: late
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
-EVICT_BATCH = 500  # textures made coarser per round, so that the builder is never held up long
+# textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
+# loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
+EVICT_BATCH = 50
 FRESH_S = (
     2.0  # X-Plane's position is live if it came this recently: X-Plane is running, not loading
 )
@@ -118,7 +120,14 @@ DATAREFS = [
     ("agl_m", "sim/flightmodel/position/y_agl"),
     ("win_w", "sim/graphics/view/window_width"),  # X-Plane's image: what the rings scale with
     ("fov", "sim/graphics/view/field_of_view_deg"),
+    ("scenery_loading", "sim/graphics/scenery/async_scenery_load_in_progress"),
 ]
+# X-Plane loading scenery in flight (its flag above), and this long after: Live starts no encoding
+# but for textures X-Plane already reads, and evicts nothing. The mountain test pair's hitches fell
+# as X-Plane loaded DSFs: Live 146 and 387 ms there while it encoded (and evicted), AutoOrtho none
+# over 40 ms (2026-09-28). At most YIELD_MAX_S of each load, so that a long one starves nothing.
+YIELD_AFTER_S = 5.0
+YIELD_MAX_S = 30.0
 
 
 @dataclass
@@ -234,6 +243,8 @@ class Streamer:
         self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
         # X-Plane flies (not waiting on a start, not away): the encoders leave it its cores
         self.flying = False
+        self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
+        self._load_since: float | None = None
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
@@ -360,6 +371,25 @@ class Streamer:
         """Textures encoded at once: all the workers while X-Plane waits on a start or is away,
         FLIGHT_ENCODES while it flies, its cores left to it."""
         return min(self.workers, FLIGHT_ENCODES) if self.flying else self.workers
+
+    def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
+        """X-Plane's scenery load flag, in flight: Live holds back while it is up and YIELD_AFTER_S
+        after, for at most YIELD_MAX_S of each load (the constants)."""
+        now = time.monotonic() if now is None else now
+        if not (loading and self.flying):
+            if self._load_since is not None:
+                held = now - self._load_since
+                self.log(f"  X-Plane loaded scenery: Live held back for {held:.0f} s")
+            self._load_since = None
+            return
+        if self._load_since is None:
+            self._load_since = now
+        if now - self._load_since < YIELD_MAX_S:
+            self.yield_until = now + YIELD_AFTER_S
+
+    def yielding(self) -> bool:
+        """Whether Live holds back for X-Plane's scenery load (:meth:`x_plane_loads`)."""
+        return time.monotonic() < self.yield_until
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
@@ -675,8 +705,9 @@ class Streamer:
             all while X-Plane waits, FLIGHT_ENCODES while it flies; an 8192 px level in a process
             of its own (``sharp_pool``), one getting its copy only once it has it."""
             cap = self.encode_cap()
+            held = self.yielding()  # X-Plane loads scenery: only what it reads already
             while len(encoding) < cap:
-                free = [j for j in ready if j.name not in copying]
+                free = [j for j in ready if j.name not in copying and not (held and j.urgency > 0)]
                 if not free:
                     break
                 job = min(free, key=lambda j: j.urgency)
@@ -850,7 +881,7 @@ class Streamer:
                         to_cache.clear()
                         last_flush = time.monotonic()
                     self.maybe_reload()
-                    if time.monotonic() - last_evict > EVICT_EVERY_S:
+                    if time.monotonic() - last_evict > EVICT_EVERY_S and not self.yielding():
                         self.evict()
                         last_evict = time.monotonic()
                     if self.stop.is_set() and not encoding:
@@ -1319,6 +1350,7 @@ def run(
                 for idx, v in packet.items():
                     if 0 <= idx < len(fields):
                         values[fields[idx]] = v
+                streamer.x_plane_loads(values.get("scenery_loading", 0.0) >= 0.5)
             if now - last_plan >= PLAN_EVERY_S and (values.get("lat") or arrival is not None):
                 last_plan = now
                 streamer.set_screen(values.get("win_w"), values.get("fov"))
