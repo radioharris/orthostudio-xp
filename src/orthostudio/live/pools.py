@@ -11,6 +11,8 @@ are forked by a fork server (:func:`context`): a bare Python, started from Live'
 early as it can (:func:`start_server`, before the engine is loaded), where forking is safe. And a
 pool that loses a process all the same, to a crash or to macOS short of memory, starts again
 (:class:`RenewingPool`): the textures it was encoding fail and are queued again, and Live goes on.
+Nor does Live's process fork commands while it streams: macOS's list of processes says whether
+X-Plane runs, and posix_spawn, which does not fork, launches it (orthostudio.live.scenery).
 """
 
 from __future__ import annotations
