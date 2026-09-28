@@ -134,7 +134,12 @@ it is not the receipt's: the tile was built since with other colours, say), is r
 links, under a second), an install whose link or `scenery_packs.ini` line is gone is redone. Both operations are
 idempotent.
 
-`tile.pack` writes, atomically per file (`fsutil`):
+`tile.pack` first makes the store durable (`Store.make_durable`, `graph-keys.md` 6): the tile's
+textures, DSF and `.ter` files are committed without being forced to disk one by one, and are
+forced as a group here, before X-Plane is handed any of them (2026-09-28, a user's builds on a
+hard disk). `build_tiles` checks, when it starts, what a build cut short left since its last
+durable point (`Store.recover`), and makes the store durable once its passes are over. Then it
+writes, atomically per file (`fsutil`):
 
 ```
 <out>/zOrthoStudio_+43+005/

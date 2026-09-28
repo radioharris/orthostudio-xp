@@ -121,18 +121,50 @@ DDS) in 20 ms, i.e. digesting is never the bottleneck of a build.
 3. `commit()`: validate the kind; fsync every written file (unless `Store(fsync=False)`),
    except a DDS held as a hard link to a `texture.dds` artefact, forced when that artefact was
    committed: a tile's textures folder forced each of them again, and on a hard disk under
-   Windows every such flush waits for the disk (2026-09-28);
+   Windows every such flush waits for the disk (2026-09-28); and except the artefacts of
+   `DEFERRED_RULES` (below), not forced here at all;
    compute digest and size; if `<key>` already exists on disk, **adopt** it (our output is
    discarded, the on-disk one is digested and indexed: another process won the race, or a
-   crash had left a renamed artefact without its row); else `os.rename(out, <key>)`
-   (atomic on POSIX and NTFS when the target does not exist); fsync the shard directory;
-   upsert the index row and the edges in one sqlite transaction; remove the tmp dir.
+   crash had left a renamed artefact without its row), unless it is an artefact of
+   `DEFERRED_RULES` whose digest is not ours: not forced, it may be what a power cut left of
+   it, and ours takes its place (one that cannot be moved aside is refused, never adopted);
+   else `os.rename(out, <key>)` (atomic on POSIX and NTFS when the target does not exist);
+   fsync the shard directory; upsert the index row and the edges in one sqlite transaction
+   (`created_at` taken inside it); remove the tmp dir.
 4. `abort()` or an exception removes the tmp dir; nothing reaches the index.
+
+**Deferred rules (since 0.1.19).** `texture.dds`, `tile.dsf` and `tile.textures` make some
+2,100 files a ZL17 tile, and forcing each as it was written made a hard disk under Windows
+wait at each: a user's images crawled at 0.6 to 0.8 texture a second, and 2.4 with nothing
+forced (reproduced on a hard disk with Windows-like flushes, 2026-09-28). Their artefacts are
+committed without forcing, and made durable as a group:
+
+* `Store.make_durable()` sends to the disk the bytes of every artefact of these rules indexed
+  since the **durable point** (`durable.json` in the store's root: `{"until": <time>}`) and of
+  their shard folders, without asking the disk to empty its own cache at each file
+  (`NtFlushBuffersFileEx` with `FLUSH_FLAGS_NO_SYNC` on Windows, `FlushFileBuffers` where it is
+  missing; `fsync` elsewhere, which on a Mac leaves that cache alone); checkpoints the index;
+  then empties the disk's cache **once** (`FlushFileBuffers`, `F_FULLFSYNC` on a Mac) on the new
+  point's file before renaming it into place, so the point never reaches the disk before what it
+  vouches for. The point is the moment it asked the index, less `DURABLE_MARGIN_S` (30 s: a row
+  becomes visible a few milliseconds after its `created_at`). Emptying the cache at each file,
+  the groups of two tiles took 8 and 15 minutes on a hard disk busy with the next tile's images,
+  and slowed them (2026-09-28).
+  The pack calls it before it writes the tile's folder (`pipeline/pack.py`), so X-Plane is
+  never handed a file a power cut could still tear; `build_tiles` calls it once its passes are
+  over, cancelled or failed.
+* `Store.recover()`, when a build starts, checks every artefact of these rules indexed since
+  the point against its digest, drops the torn ones before anything can reuse them, and makes
+  the rest durable. After a build that ended normally there is next to nothing to check; after
+  a power cut, at most what was built since the last pack.
+* A store without a durable point (every earlier version forced file by file) gets one on
+  opening, and none of what it holds is checked.
 
 | Crash point | State on disk | Recovery |
 |---|---|---|
 | during 2 or before the rename | `<key>.tmp-*` left behind | ignored by every reader (not indexed, name never matches a key); swept at `Store()` open when older than `tmp_max_age_s` (1 h) **and** the owner pid of the name is gone (`os.kill(pid, 0)`; `OpenProcess` on Windows), or older than `tmp_hard_max_age_s` (24 h) whatever the owner (a reused pid must not pin it), or by `fsck(repair=True)`; a build in progress in another process is never swept (P2a review) |
-| after the rename, before the index row | `<key>` present, no row | `has()` is False; the next build of the key adopts it; `fsck` lists it under `files_without_rows` |
+| after the rename, before the index row | `<key>` present, no row | `has()` is False; the next build of the key adopts it (an artefact of `DEFERRED_RULES` only when its digest is the one just built, else replaced); `fsck` lists it under `files_without_rows` |
+| power cut before a durable point | artefacts of `DEFERRED_RULES` indexed, their bytes perhaps not on disk | `recover()` at the next build checks them against their digests and drops the torn ones; nothing handed to X-Plane is among them (the pack made its files durable first) |
 | row present, files removed by hand | row without files | `has()` deletes the row and returns False (self-healing) |
 | two processes build the same key | one renames, the other adopts | both report the same digest; `uses` counts both (`test_concurrent_processes_building_the_same_key_agree`) |
 | corrupted content | digest mismatch | `fsck(verify=True)` reports it; `repair=True` deletes it |

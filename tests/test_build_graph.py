@@ -433,6 +433,83 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     assert not pack_is_intact(pack_dir, manifest)
 
 
+def test_the_pack_forces_the_tiles_files_before_x_plane_is_handed_any(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tile's textures and ``.ter`` files are no longer forced one by one (``graph/store.py``
+    ``DEFERRED_RULES``, 2026-09-28): the pack forces them as a group before it writes the tile's
+    folder, so X-Plane is never handed a file a power cut could still tear."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
+    store = env.store
+
+    def fill_dsf(out: Path) -> None:
+        (out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF")
+        (out / "terrain").mkdir()
+
+    dsf = _artefact_dir(store, "tile.dsf", "44" * 32, fill_dsf)
+    out_root = tmp_path / "out"
+    pack_dir = out_root / pack_dir_name(T)
+    forced_while_the_pack_was: list[bool] = []
+    make_durable = store.make_durable
+
+    def spy() -> int:
+        forced_while_the_pack_was.append(pack_dir.exists())
+        return make_durable()
+
+    monkeypatch.setattr(store, "make_durable", spy)
+    penv = _PackEnv(store, out_root, None, None)
+
+    def pack_run(ctx):
+        with pack_env(penv):
+            return run_p0_rule(ctx)
+
+    params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
+    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    sched = _sched(env)
+    sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
+    asyncio.run(sched.run(["+43+005/BI14/pack"]))
+    assert not sched.failed, sched.failed
+    assert forced_while_the_pack_was == [False] and pack_dir.is_dir()
+    info = store.info(dsf.key)
+    until = store.durable_until()
+    assert info is not None and until is not None and info.created_at <= until
+
+
+def test_a_tile_whose_files_cannot_be_made_safe_is_not_packed(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file of the tile held by another program cannot be forced to disk: the pack says so as
+    the conflict it is (``XP_PACK_CONFLICT``, quit what holds it) and writes nothing."""
+    store = env.store
+
+    def fill_dsf(out: Path) -> None:
+        (out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF")
+        (out / "terrain").mkdir()
+
+    dsf = _artefact_dir(store, "tile.dsf", "55" * 32, fill_dsf)
+
+    def held() -> int:
+        raise PermissionError(13, "in use", str(dsf.path))
+
+    monkeypatch.setattr(store, "make_durable", held)
+    out_root = tmp_path / "out"
+    penv = _PackEnv(store, out_root, None, None)
+
+    def pack_run(ctx):
+        with pack_env(penv):
+            return run_p0_rule(ctx)
+
+    params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
+    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    sched = _sched(env)
+    sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
+    asyncio.run(sched.run(["+43+005/BI14/pack"]))
+    assert sched.failed["+43+005/BI14/pack"].code == "XP_PACK_CONFLICT"
+    assert not (out_root / pack_dir_name(T)).exists()
+
+
 def test_the_pack_records_the_colours_its_textures_are_encoded_with(
     tmp_path: Path, env: BuildEnv
 ) -> None:

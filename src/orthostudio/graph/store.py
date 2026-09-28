@@ -10,12 +10,14 @@ docs/specs/graph-keys.md for the crash matrix.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import secrets
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from collections.abc import Iterable, Iterator
@@ -25,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.fsutil import fsync_dir as _fsync_dir
+from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
     ArtifactInUseError,
@@ -55,6 +58,23 @@ TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
 """Age after which a ``*.tmp-*`` directory is swept even if its owner pid still exists."""
 _OPEN_RETRY_S = 15.0
+DEFERRED_RULES = frozenset({"texture.dds", "tile.dsf", "tile.textures"})
+"""Rules whose artefacts are committed without forcing each of their files to disk.
+
+A tile at ZL17 is some 700 textures and two folders of 700 ``.ter`` files each: forcing every one
+of them as it was written made a hard disk under Windows wait at each, and a user's images crawl
+at 0.6 to 0.8 texture a second (reproduced 2026-09-28; 2.4 with nothing forced). They are forced
+as a group instead, by :meth:`Store.make_durable`, before a tile is handed to X-Plane
+(``pipeline/pack.py``); :meth:`Store.recover` checks, when a build starts, the ones no durable
+point reached, which a power cut may have left torn; a commit finding one of them on disk
+without its row keeps it only when it is the very artefact it has just built. The artefacts of
+other rules are few and forced as before."""
+DURABLE_FILE = "durable.json"
+"""The durable point, in the store's root: every artefact of :data:`DEFERRED_RULES` indexed
+before ``until`` has its files on the disk."""
+DURABLE_MARGIN_S = 30.0
+"""How far behind the moment it asked the index a durable point stays: an artefact is indexed a
+few milliseconds after its ``created_at``, and a clock set back a little must not hide one."""
 INDEX_LOCKED_PATIENCE_S = 300.0
 """How long a write asks again for the index while another process holds it, before it fails.
 
@@ -170,6 +190,14 @@ class FsckReport:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RecoverReport:
+    """What :meth:`Store.recover` found: the artefacts it checked and the torn ones it dropped."""
+
+    checked: int
+    dropped: tuple[str, ...]
+
+
 class Build:
     """An in-progress artefact: write into :attr:`out`, then :meth:`commit` or :meth:`abort`."""
 
@@ -219,7 +247,8 @@ class Build:
         if self.kind == "dir" and not out.is_dir():
             raise CommitError(f"rule {self.rule!r} left no directory at {out}")
         try:
-            if self._store.fsync:
+            forced = self._store.fsync and self.rule not in DEFERRED_RULES
+            if forced:
                 _fsync_tree(out)
             digest, size = digest_path(out)
             final = self._store.artifact_path(self.rule, self.key)
@@ -232,8 +261,17 @@ class Build:
                         raise
                     adopted = True
             if adopted:
-                digest, size = digest_path(final)
-            if self._store.fsync:
+                found = digest_path(final)
+                if found[0] != digest and self.rule in DEFERRED_RULES:
+                    # Not forced to disk, the one found may be what a power cut left of it
+                    # (renamed, never indexed): ours is whole, and it takes the name.
+                    if _replace(out, final):
+                        adopted = False
+                    else:
+                        found = digest_path(final)  # another process put its own there first
+                if adopted:
+                    digest, size = found
+            if forced:
                 _fsync_dir(final.parent)
             info = self._store._index(
                 key=self.key,
@@ -266,7 +304,11 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True)
         self.fsync = fsync
         self._lock = threading.RLock()
+        self._durable_lock = threading.Lock()
         self._db = self._open_index()
+        if self.durable_until() is None:
+            # a new store, or one every earlier version forced file by file: all durable
+            self._write_durable(time.time())
         self.sweep_tmp(tmp_max_age_s, hard_max_age_s=tmp_hard_max_age_s)
 
     # -- lifecycle -----------------------------------------------------------------------
@@ -361,6 +403,97 @@ class Store:
                 if not _index_busy(exc) or time.monotonic() >= deadline:
                     raise
                 log.warning("index at %s held elsewhere (%s), asking again", self.root, exc)
+
+    # -- durability ----------------------------------------------------------------------
+
+    def durable_until(self) -> float | None:
+        """The durable point (:data:`DURABLE_FILE`): every artefact of :data:`DEFERRED_RULES`
+        indexed before it has its files on the disk. ``None`` when unreadable."""
+        try:
+            data = json.loads((self.root / DURABLE_FILE).read_text(encoding="utf-8"))
+            return float(data["until"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _write_durable(self, until: float) -> None:
+        """Write the durable point after the one flush of the disk's own cache a group needs:
+        it covers every file :func:`_flush_data` sent to the disk before, and comes before the
+        point can reach the disk itself."""
+        path = self.root / DURABLE_FILE
+        tmp = path.with_name(f"{path.name}{TMP_MARKER}{os.getpid()}-{secrets.token_hex(4)}")
+        with contextlib.suppress(OSError):  # a store on a disk that cannot be written
+            try:
+                with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(json.dumps({"until": until}) + "\n")
+                    f.flush()
+                    _flush_disk(f.fileno())
+                fs_replace(tmp, path)  # asked again on Windows while a reader holds the point
+            finally:
+                tmp.unlink(missing_ok=True)
+            _fsync_dir(self.root)
+
+    def _deferred_since(self, since: float | None) -> list[sqlite3.Row]:
+        marks = ",".join("?" * len(DEFERRED_RULES))
+        with self._lock:
+            return self._db.execute(
+                f"SELECT key, rule, kind, digest FROM artifacts "
+                f"WHERE rule IN ({marks}) AND created_at > ? ORDER BY created_at",
+                (*sorted(DEFERRED_RULES), since if since is not None else float("-inf")),
+            ).fetchall()
+
+    def make_durable(self) -> int:
+        """Force to disk the artefacts of :data:`DEFERRED_RULES` indexed since the durable
+        point, then move the point up to now (less :data:`DURABLE_MARGIN_S`); returns how many
+        were forced. Files the system has already written cost it little: this runs once a tile,
+        where forcing each file as it was written held the whole build. A file it cannot send to
+        the disk raises ``PermissionError``, and the point stays where it was."""
+        with self._durable_lock:
+            since = self.durable_until()
+            asked = time.time()
+            rows = self._deferred_since(since)
+            shards: set[Path] = set()
+            for row in rows:
+                path = self.artifact_path(str(row["rule"]), str(row["key"]))
+                try:
+                    if row["kind"] == "file":
+                        _flush_data(path)
+                    else:
+                        _flush_tree_data(path)
+                except FileNotFoundError:
+                    continue  # deleted since: nothing to keep
+                shards.add(path.parent)
+            for shard in shards:
+                _flush_dir_data(shard)
+            with self._lock, contextlib.suppress(sqlite3.Error):
+                self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            self._write_durable(max(since or 0.0, asked - DURABLE_MARGIN_S))
+            return len(rows)
+
+    def recover(self) -> RecoverReport:
+        """When a build starts: check the artefacts of :data:`DEFERRED_RULES` indexed since the
+        durable point against their digest, drop the torn ones (a power cut, a crash of the
+        system or a disk unplugged before a durable point), and make the rest durable.
+
+        After a build that ended normally there is next to nothing to check. A build still
+        running in another process has its fresh artefacts checked too, which reads them and
+        finds them whole."""
+        rows = self._deferred_since(self.durable_until())
+        dropped: list[str] = []
+        for row in rows:
+            key = str(row["key"])
+            path = self.artifact_path(str(row["rule"]), key)
+            if not path.exists():
+                continue  # the row alone: has() drops it the next time it is asked
+            try:
+                whole = digest_path(path)[0] == row["digest"]
+            except OSError:
+                whole = False
+            if not whole:
+                log.warning("artefact %s was not whole on disk; dropped", key[:16])
+                self.delete(key, force=True)
+                dropped.append(key)
+        self.make_durable()
+        return RecoverReport(checked=len(rows), dropped=tuple(dropped))
 
     # -- paths ---------------------------------------------------------------------------
 
@@ -462,8 +595,10 @@ class Store:
         recipe: str,
         inputs: list[InputRef],
     ) -> ArtifactInfo:
-        now = time.time()
         with self._tx():
+            # taken once the index is ours: a durable point asks for rows by this time, and a
+            # write that waited for the index must not look older than rows indexed meanwhile
+            now = time.time()
             self._db.execute(
                 """
                 INSERT INTO artifacts
@@ -853,6 +988,26 @@ def _move_aside(p: Path) -> Path:
     return aside
 
 
+def _replace(out: Path, final: Path) -> bool:
+    """Put ``out`` at ``final`` in place of what is there. False when another process put its own
+    there in between, which is kept: it was just written, and is whole."""
+    doomed = _move_aside(final)
+    if doomed == final and final.exists():
+        # what may be torn cannot be moved (a file held open): refuse rather than adopt it
+        raise StoreError(f"{final} is in the way and cannot be moved aside")
+    try:
+        os.rename(out, final)
+    except OSError:
+        if doomed != final:
+            _remove_path(doomed)
+        if not final.exists():
+            raise
+        return False
+    if doomed != final:
+        _remove_path(doomed)
+    return True
+
+
 def _remove_path(p: Path) -> None:
     try:
         if p.is_dir() and not p.is_symlink():
@@ -902,6 +1057,119 @@ def _linked_texture(f: Path) -> bool:
         return f.stat().st_nlink > 1
     except OSError:
         return False
+
+
+def _flush_data(p: Path) -> None:
+    """Send a file's bytes to the disk, leaving the disk's own cache to the one flush that ends
+    a durable point (:func:`_flush_disk`, in :meth:`Store._write_durable`).
+
+    ``FlushFileBuffers`` empties that cache at every file, and on a hard disk busy with the next
+    tile's images each such flush waited for all of them: a tile's group took 8 and 15 minutes
+    in a test (2026-09-28). ``NtFlushBuffersFileEx`` with ``FLUSH_FLAGS_NO_SYNC`` (Windows 8 and
+    later, NTFS) writes the bytes only, ``FlushFileBuffers`` when it is missing. On a Mac,
+    ``fsync`` already leaves the disk's cache alone."""
+    if os.name == "nt":
+        fd = _open_for_flush(p)
+        try:
+            if not _nt_flush_no_sync(fd):
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+        return
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+FLUSH_OPEN_ATTEMPTS = 10
+"""How many times :func:`_open_for_flush` asks for a file another process holds (2.75 s)."""
+
+
+def _open_for_flush(p: Path) -> int:
+    """A handle Windows can flush: it flushes those opened for writing only. A file another
+    process holds without letting others write (a scanner, X-Plane) is asked again for an
+    instant, then refused with ``PermissionError``: a durable point must never vouch for a file
+    it could not send to the disk, where a commit that forced its files could say so of one."""
+    for attempt in range(FLUSH_OPEN_ATTEMPTS):
+        try:
+            return os.open(p, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        except PermissionError:
+            if attempt == FLUSH_OPEN_ATTEMPTS - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+    raise AssertionError("unreachable")
+
+
+def _flush_dir_data(d: Path) -> None:
+    """A folder's entries sent to the disk, as :func:`_flush_data` (nothing to do on Windows)."""
+    if os.name == "nt":
+        return
+    with contextlib.suppress(OSError):
+        fd = os.open(d, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def _flush_tree_data(p: Path) -> None:
+    for dirpath, _dirs, files in os.walk(p):
+        for name in files:
+            f = Path(dirpath) / name
+            if f.is_file() and not f.is_symlink() and not _linked_texture(f):
+                _flush_data(f)
+
+
+def _flush_disk(fd: int) -> None:
+    """Flush a file and the disk's own cache with it, everything sent to it before included:
+    ``FlushFileBuffers`` on Windows, ``F_FULLFSYNC`` on a Mac, ``fsync`` elsewhere."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        try:
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            return
+        except OSError:
+            pass  # a file system without it: fsync is what it has
+    os.fsync(fd)
+
+
+_FLUSH_FLAGS_NO_SYNC = 0x00000002
+_NT_FLUSH: Any = None
+"""``ntdll.NtFlushBuffersFileEx`` once looked up, ``False`` where it is missing."""
+
+
+def _nt_flush_no_sync(fd: int) -> bool:
+    """``NtFlushBuffersFileEx(FLUSH_FLAGS_NO_SYNC)``: False when it is missing or refuses (a file
+    system other than NTFS), and the caller flushes the usual way."""
+    global _NT_FLUSH
+    import ctypes
+
+    if _NT_FLUSH is None:
+        try:
+            from ctypes import wintypes
+
+            fn = ctypes.WinDLL("ntdll").NtFlushBuffersFileEx  # type: ignore[attr-defined]
+            fn.argtypes = [
+                wintypes.HANDLE, wintypes.ULONG, ctypes.c_void_p, wintypes.ULONG, ctypes.c_void_p
+            ]  # fmt: skip
+            fn.restype = ctypes.c_long
+            _NT_FLUSH = fn
+        except (OSError, AttributeError, ImportError):
+            _NT_FLUSH = False
+    if not _NT_FLUSH:
+        return False
+    import msvcrt
+
+    status_block = (ctypes.c_size_t * 2)()  # IO_STATUS_BLOCK: the status (or a pointer), a size
+    try:
+        handle = msvcrt.get_osfhandle(fd)  # type: ignore[attr-defined]
+        status = _NT_FLUSH(handle, _FLUSH_FLAGS_NO_SYNC, None, 0, ctypes.byref(status_block))
+    except OSError:
+        return False
+    return int(status) == 0
 
 
 def _index_busy(exc: sqlite3.OperationalError) -> bool:
