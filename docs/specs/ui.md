@@ -639,9 +639,16 @@ sources' full names, which the column does not show, "BI" came before "Arc"), th
 X-Plane, the largest and OrthoStudio XP's own first; the second reverses it; ties, and the rows
 by default, keep the tile order the engine lists them in. The sort is kept in this browser
 (`osxp.librarySort`, a convenience: storage refused keeps the tile order); the search is not. A
-tile's detail row stays under it whatever the order.
+tile's detail row stays under it whatever the order. A size the engine is still measuring
+(`size_pending`, `api.md` 2.3) shows no figure, as for a folder that cannot be read, and sorts
+as unknown, and the page asks for the list
+again 5 s later (`SIZES_RETRY_MS`) until none is pending: on a user's hard disk the Plan's map
+and the Library waited minutes at each start for every tile's size (2026-09-28), and now wait
+for none.
 
-**Disk space** (below the table, `GET /api/disk`, `POST /api/clean`): the data used by the tiles on
+**Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
+shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
+of the Library asked for it, from the Plan at the start too): the data used by the tiles on
 this computer, the data no tile needs any more, the downloaded images, the map background and the
 **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a modal dialog that
 says what goes and how much (Escape keeps everything), with **two** checkboxes, one for the

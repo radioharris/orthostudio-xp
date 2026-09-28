@@ -387,6 +387,22 @@ def test_a_store_without_a_durable_point_counts_what_it_holds_as_durable(tmp_pat
         assert s.durable_until() is not None and s.recover().checked == 0
 
 
+def test_a_store_opened_for_a_read_does_not_list_its_folders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding the abandoned build folders lists every folder of the store, which a hard disk
+    took minutes over at each start of the app (2026-09-28): the page's reads leave it to the
+    next build."""
+    swept: list[int] = []
+    monkeypatch.setattr(Store, "sweep_tmp", lambda self, *a, **k: swept.append(1) or [])
+    with Store(tmp_path / "store", fsync=False, sweep=False):
+        pass
+    assert swept == []
+    with Store(tmp_path / "store", fsync=False):
+        pass
+    assert swept == [1]
+
+
 def test_pins_refcount_and_delete(store: Store) -> None:
     parent = _put(store, 10, b"parent")
     d = store.digest_of(parent)

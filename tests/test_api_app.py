@@ -769,18 +769,94 @@ async def test_library_delete_without_xplane_and_of_a_folder_already_gone(
 @pytest.mark.anyio
 async def test_sizes_count_a_hard_linked_store_file_once(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
     """``store_bytes`` said 50.3 GB for a store ``du`` measured at 24 GB: the index adds a DDS up
-    once per artefact that hard-links it (``texture.dds`` and ``tile.textures``)."""
-    dds = home / "store" / "texture.dds" / "ab" / ("ab" + "0" * 62)
-    dds.parent.mkdir(parents=True)
-    dds.write_bytes(b"D" * 5000)
-    listed = home / "store" / "tile.textures" / "cd" / ("cd" + "0" * 62) / "textures" / "a.dds"
-    listed.parent.mkdir(parents=True)
-    os.link(dds, listed)
+    once per artefact that hard-links it (``texture.dds`` and ``tile.textures``). Read from the
+    index since 0.1.19, the tiles' textures folders left out (``Store.disk_bytes``)."""
+    from orthostudio.graph import Store, artifact_key
+
+    with Store(home / "store", fsync=False) as store:
+        key, recipe = artifact_key("texture.dds", 1, {"n": 1}, {})
+        with store.begin("texture.dds", key, "file") as b:
+            b.out.write_bytes(b"D" * 5000)
+            b.commit(version=1, recipe=recipe, inputs=[])
+        key2, recipe2 = artifact_key("tile.textures", 1, {"n": 2}, {})
+        with store.begin("tile.textures", key2, "dir") as b:
+            (b.out / "textures").mkdir()
+            os.link(store.path(key), b.out / "textures" / "a.dds")
+            b.commit(version=1, recipe=recipe2, inputs=[])
     (home / "chunks").mkdir()
     (home / "chunks" / "1_2.chunks").write_bytes(b"j" * 300)
     async with client_for(app) as c:
         doc = (await c.get("/api/sizes")).json()
     assert doc["store_bytes"] == 5000 and doc["chunks_bytes"] == 300
+
+
+def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A user's Plan and Library waited minutes at each start of the app, on a hard disk, for
+    every file of every tile to be measured, a size column's figures (2026-09-28). A size is
+    remembered with what changes when the tile does and measured again only then; one that takes
+    long is measured in the background, the list answering at once with it pending."""
+    import time
+
+    from orthostudio.api import app as appmod
+    from orthostudio.clean import disk_bytes
+    from orthostudio.install import default_library_path
+    from orthostudio.install.library import Library
+    from orthostudio.model import TileRef
+
+    pack = _osxp_pack(home, "+43+005")
+    with Library(default_library_path()) as lib:
+        lib.register(TileRef(43, 5), "BI", 16, pack, "osxp")
+    measured: list[Path] = []
+    measure = appmod._pack_bytes
+    monkeypatch.setattr(appmod, "_pack_bytes", lambda p: measured.append(p) or measure(p))
+
+    def ortho() -> dict:
+        return next(r for r in appmod._library_rows(None) if r["kind"] == "ortho")
+
+    first = ortho()
+    assert first["size_bytes"] == disk_bytes([pack]) > 0 and first["size_pending"] is False
+    assert ortho()["size_bytes"] == first["size_bytes"] and len(measured) == 1, "remembered"
+    (pack / "textures" / "b.dds").write_bytes(b"DDS " + b"\2" * 1000)  # the tile changed
+    grown = ortho()
+    assert len(measured) == 2 and grown["size_bytes"] == first["size_bytes"] + 1004
+
+    monkeypatch.setattr(appmod, "PACK_SIZES_BUDGET_S", 0.0)  # a hard disk: nothing in time
+    (pack / "terrain" / "b.ter").write_text("A\n")
+    pending = ortho()
+    assert pending["size_pending"] is True and pending["size_bytes"] is None
+    deadline = time.monotonic() + 10
+    while appmod._PACK_SIZES_MEASURING and time.monotonic() < deadline:
+        time.sleep(0.02)
+    after = ortho()
+    assert after["size_pending"] is False and after["size_bytes"] == disk_bytes([pack])
+
+
+def test_the_status_bar_reads_the_stores_size_from_its_index(tmp_path: Path) -> None:
+    """Measuring the store's folders read every file of it at each start of the app, a minute or
+    two on a user's hard disk (2026-09-28): the index knows each artefact's size, and a tile's
+    textures folder, which hard-links the textures counted already, is left out."""
+    import os as _os
+
+    from orthostudio.api.app import _store_bytes
+    from orthostudio.graph import Store, artifact_key
+
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as store:
+        key, recipe = artifact_key("texture.dds", 1, {"n": 1}, {})
+        with store.begin("texture.dds", key, "file") as b:
+            b.out.write_bytes(b"D" * 1000)
+            b.commit(version=1, recipe=recipe, inputs=[])
+        dds = store.path(key)
+        key2, recipe2 = artifact_key("tile.textures", 1, {"n": 2}, {})
+        with store.begin("tile.textures", key2, "dir") as b:
+            (b.out / "textures").mkdir()
+            _os.link(dds, b.out / "textures" / "a.dds")
+            (b.out / "a.ter").write_text("A" * 10)
+            b.commit(version=1, recipe=recipe2, inputs=[])
+        assert store.total_size() == 2010  # the linked texture twice
+    assert _store_bytes(root) == 1000
 
 
 def test_library_reads_the_colours_of_a_pack_whose_manifest_predates_them(home: Path) -> None:

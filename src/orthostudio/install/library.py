@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS meta (
     v TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tiles {_TILES_COLUMNS};
+CREATE TABLE IF NOT EXISTS pack_sizes (
+    path  TEXT PRIMARY KEY,
+    stamp TEXT NOT NULL,
+    bytes INTEGER NOT NULL
+);
 """
 
 
@@ -153,6 +158,27 @@ class Library:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+    # ------------------------------------------------------------ sizes
+
+    def known_size(self, path: Path, stamp: str) -> int | None:
+        """The bytes a pack was measured at, when its ``stamp`` has not moved since.
+
+        Measuring a pack reads every one of its files, which a hard disk took minutes over for a
+        user's tiles at each start of the app, the Plan and the Library waiting for it
+        (2026-09-28): what was measured is remembered with what changes whenever the pack does
+        (``api.app._pack_stamp``). The table is new in 0.1.19; earlier versions leave it alone."""
+        row = self._db.execute(
+            "SELECT bytes FROM pack_sizes WHERE path = ? AND stamp = ?", (str(path), stamp)
+        ).fetchone()
+        return None if row is None else int(row["bytes"])
+
+    def remember_size(self, path: Path, stamp: str, size: int) -> None:
+        self._db.execute(
+            "INSERT INTO pack_sizes (path, stamp, bytes) VALUES (?, ?, ?) "
+            "ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, bytes = excluded.bytes",
+            (str(path), stamp, int(size)),
+        )
 
     # ------------------------------------------------------------ rows
 

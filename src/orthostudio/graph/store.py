@@ -299,7 +299,11 @@ class Store:
         fsync: bool = True,
         tmp_max_age_s: float = 3600.0,
         tmp_hard_max_age_s: float = TMP_HARD_MAX_AGE_S,
+        sweep: bool = True,
     ):
+        """``sweep=False`` for a read of the page, which leaves the abandoned build folders to the
+        next build: finding them lists every folder of the store, tens of thousands of entries a
+        hard disk read at each start of the app for minutes (a user's, 2026-09-28)."""
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.fsync = fsync
@@ -309,7 +313,8 @@ class Store:
         if self.durable_until() is None:
             # a new store, or one every earlier version forced file by file: all durable
             self._write_durable(time.time())
-        self.sweep_tmp(tmp_max_age_s, hard_max_age_s=tmp_hard_max_age_s)
+        if sweep:
+            self.sweep_tmp(tmp_max_age_s, hard_max_age_s=tmp_hard_max_age_s)
 
     # -- lifecycle -----------------------------------------------------------------------
 
@@ -555,6 +560,18 @@ class Store:
                 ).fetchall()
         for row in rows:
             yield self._row_info(row)
+
+    def disk_bytes(self) -> int:
+        """The store's bytes on the disk from its index alone: every artefact's size, save those
+        of the tiles' textures folders, which hold hard links to the ``texture.dds`` artefacts
+        counted already (their own ``.ter`` files are some 1 kB a texture). Measuring the folders
+        read every file of the store, which a hard disk took minutes over at each start of the
+        app (a user's, 2026-09-28); :meth:`total_size` counts each linked texture twice."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE rule != 'tile.textures'"
+            ).fetchone()
+        return int(row[0])
 
     def total_size(self) -> int:
         with self._lock:

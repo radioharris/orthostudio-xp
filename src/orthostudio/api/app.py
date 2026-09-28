@@ -12,8 +12,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
+import stat
 import subprocess
+import threading
 import time
 import tomllib
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
@@ -358,22 +361,19 @@ def _sizes() -> dict[str, int]:
 
 
 def _store_bytes(root: Path) -> int:
-    """The store's size on the disk: each file once, however many artefacts hard-link it.
+    """The store's size on the disk, from its index (:meth:`Store.disk_bytes`): each file once,
+    the tiles' textures folders left out since they hard-link the textures counted already.
 
-    The index's sum counted a DDS once per artefact linking it (``texture.dds`` and
-    ``tile.textures``): 50.3 GB for a store ``du`` measured at 24 GB. It remains the answer
-    when the folder cannot be read. The index is opened only when the folder exists (opening
-    creates it).
+    Measuring its folders read every file of the store, which a user's hard disk took a minute or
+    two over at each start of the app, beside the Library's own measures (2026-09-28); the
+    index's plain sum counted a linked DDS twice (50.3 GB for a store ``du`` measured at 24 GB).
+    The index is opened only when the folder exists (opening creates it), and without sweeping.
     """
     if not root.is_dir():
         return 0
     try:
-        return disk_bytes([root])
-    except OSError:
-        pass
-    try:
-        with Store(root) as st:
-            return st.total_size()
+        with Store(root, sweep=False) as st:
+            return st.disk_bytes()
     except Exception:
         return 0
 
@@ -391,6 +391,94 @@ def _display_zl(kind: str, zl: int | None) -> int | None:
     the library, which the page used to render as "ZL 0". ``None`` is rendered as an em dash.
     """
     return zl if kind == "ortho" and zl else None
+
+
+log = logging.getLogger("orthostudio.api")
+
+PACK_SIZES_BUDGET_S = 0.5
+"""How long a Library list measures the packs it knows no size for before it answers with the
+others pending: all of them on an SSD, where a pack measures in milliseconds."""
+_PACK_SIZES_LOCK = threading.Lock()
+_PACK_SIZES_MEASURING: set[Path] = set()
+
+
+def _pack_stamp(pack: Path) -> str | None:
+    """What changes whenever a pack's files do: the times of its manifest and of its folders (the
+    pack's, ``textures``, ``terrain``, and the DSF's under ``Earth nav data``). A folder's time
+    moves when a file is added, removed or replaced in it, as every write of a pack is (renamed
+    into place), and reading these costs a few stats where measuring reads every file. ``None``
+    when nothing of the pack can be read."""
+    targets = [pack, pack / MANIFEST_NAME, pack / "textures", pack / "terrain"]
+    earth = pack / "Earth nav data"
+    with contextlib.suppress(OSError):
+        targets += [earth, *sorted(p for p in earth.iterdir() if p.is_dir())]
+    parts = []
+    for target in targets:
+        try:
+            st = target.stat()
+        except OSError:
+            continue
+        size = st.st_size if stat.S_ISREG(st.st_mode) else 0
+        parts.append(f"{target.relative_to(pack)}:{st.st_mtime_ns}:{size}")
+    return "|".join(parts) or None
+
+
+def _pack_sizes(lib: Library, packs: list[Path]) -> tuple[dict[Path, int | None], set[Path]]:
+    """The size of each pack, and the packs still being measured.
+
+    The Plan and the Library waited for every pack's files to be measured, a size column's
+    figures: minutes at each start of the app on a user's hard disk (2026-09-28). A size
+    remembered with the pack's stamp is taken as is; the others are measured here for up to
+    :data:`PACK_SIZES_BUDGET_S`, and the rest in the background, the list answering at once."""
+    sizes: dict[Path, int | None] = {}
+    todo: list[tuple[Path, str | None]] = []
+    for pack in packs:
+        stamp = _pack_stamp(pack)
+        known = lib.known_size(pack, stamp) if stamp is not None else None
+        sizes[pack] = known
+        if known is None:
+            todo.append((pack, stamp))
+    deadline = time.monotonic() + PACK_SIZES_BUDGET_S
+    later: list[tuple[Path, str | None]] = []
+    for pack, stamp in todo:
+        with _PACK_SIZES_LOCK:
+            busy = pack in _PACK_SIZES_MEASURING
+        if busy or time.monotonic() >= deadline:
+            later.append((pack, stamp))
+            continue
+        size = _pack_bytes(pack)
+        sizes[pack] = size
+        if size is not None and stamp is not None:
+            lib.remember_size(pack, stamp, size)
+    return sizes, _measure_later(later)
+
+
+def _measure_later(packs: list[tuple[Path, str | None]]) -> set[Path]:
+    """Measure ``packs`` in a thread of their own, each once however often the page asks."""
+    with _PACK_SIZES_LOCK:
+        fresh = [(p, s) for p, s in packs if p not in _PACK_SIZES_MEASURING]
+        _PACK_SIZES_MEASURING.update(p for p, _ in fresh)
+    if fresh:
+        threading.Thread(
+            target=_measure_packs, args=(fresh,), name="osxp-pack-sizes", daemon=True
+        ).start()
+    return {p for p, _ in packs}
+
+
+def _measure_packs(packs: list[tuple[Path, str | None]]) -> None:
+    try:
+        with Library(default_library_path()) as lib:
+            for pack, stamp in packs:
+                size = _pack_bytes(pack)
+                if size is not None and stamp is not None:
+                    lib.remember_size(pack, stamp, size)
+                with _PACK_SIZES_LOCK:
+                    _PACK_SIZES_MEASURING.discard(pack)
+    except Exception:  # a figure of the page never stops the engine
+        log.warning("measuring the packs' sizes failed", exc_info=True)
+    finally:
+        with _PACK_SIZES_LOCK:
+            _PACK_SIZES_MEASURING.difference_update(p for p, _ in packs)
 
 
 def _pack_bytes(path: Path) -> int | None:
@@ -430,6 +518,9 @@ def _same_pack(state: Any, path: Path) -> bool:
 def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
     with Library(default_library_path()) as lib:
         rows = lib.list()
+        present = {r.path: r.path.is_dir() for r in rows}
+        packs = [r.path for r in rows if r.kind == "ortho" and present[r.path]]
+        sizes, pending = _pack_sizes(lib, packs)
     # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
     states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
     photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and r.path.is_dir()])
@@ -445,9 +536,8 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 shared_links[r.path] = overlay_link(cs, r.path) or cs / r.path.name
             target = shared_links[r.path]
         installed = _installed(target, r.path)
-        present = r.path.is_dir()
         # an overlay pack is shared by the tiles: no size of its own
-        size = _pack_bytes(r.path) if present and r.kind == "ortho" else None
+        size = sizes.get(r.path) if present[r.path] and r.kind == "ortho" else None
         out.append(
             {
                 "tile": r.tile.name,
@@ -462,7 +552,9 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 "registered_at": r.registered_at,
                 "updated_at": r.updated_at,
                 "size_bytes": size,
-                "present": present,
+                # being measured in the background: the page asks again (PACK_SIZES_BUDGET_S)
+                "size_pending": r.path in pending,
+                "present": present[r.path],
                 "photo": photos.get(r.path),
                 "built": built.get(r.path),
                 "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
@@ -520,7 +612,7 @@ def _pack_photos(pack_dirs: list[Path]) -> dict[Path, dict[str, float] | None]:
             older[pack_dir] = entry.key
     if older:
         try:
-            with Store(default_store_root()) as store:
+            with Store(default_store_root(), sweep=False) as store:
                 for pack_dir, key in older.items():
                     photos[pack_dir] = _artefact_photo(store, key)
         except (OSError, GraphError):

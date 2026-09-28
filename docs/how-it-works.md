@@ -264,7 +264,11 @@ slower (measured 2026-09-28). The textures and their small `.ter` files are not 
 either: a tile's are forced as a group before the tile is handed to X-Plane, so X-Plane never gets
 a file a power cut could still spoil, and a build that follows one cut short by a power cut, a
 crash of the system or a disk unplugged first checks what that build wrote since its last tile,
-and makes again what did not reach the disk whole.
+and makes again what did not reach the disk whole. At the start of the app, nothing waits for
+the size of the tiles: each is remembered and measured again only when the tile changes, and one
+not known yet shows no figure a moment while it is measured in the background (on a hard disk
+the Plan and the Library waited minutes for these figures). The program itself starts faster
+from an SSD.
 Nothing is moved: the tiles built before stay where they are and keep working in X-Plane, and the
 next ones go to the new folder. Each folder has its own `yOrthoStudio_Overlays`, which Custom
 Scenery lists as `yOrthoStudio_Overlays_2` (then `_3`...) when X-Plane shows the tiles of two
