@@ -387,6 +387,77 @@ def test_a_store_without_a_durable_point_counts_what_it_holds_as_durable(tmp_pat
         assert s.durable_until() is not None and s.recover().checked == 0
 
 
+def test_a_store_opened_for_a_read_does_not_list_its_folders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding the abandoned build folders lists every folder of the store, which a hard disk
+    took minutes over at each start of the app (2026-09-28): the page's reads leave it to the
+    next build."""
+    swept: list[int] = []
+    monkeypatch.setattr(Store, "sweep_tmp", lambda self, *a, **k: swept.append(1) or [])
+    with Store(tmp_path / "store", fsync=False, sweep=False):
+        pass
+    assert swept == []
+    with Store(tmp_path / "store", fsync=False):
+        pass
+    assert swept == [1]
+
+
+def test_the_index_keeps_the_stores_size_on_the_disk(tmp_path: Path) -> None:
+    """The status bar summed the whole index for the store's size, whose pages a cold hard disk
+    fetched one seek at a time (2026-09-28): the index keeps the figure in ``meta``, in the
+    transaction of each row that comes, changes or goes, the tiles' textures folders left out
+    (they hard-link textures counted already). An index from before counts its rows once."""
+    import sqlite3
+
+    root = tmp_path / "store"
+
+    def summed(s: Store) -> int:
+        row = s._db.execute(
+            "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE rule != 'tile.textures'"
+        ).fetchone()
+        return int(row[0])
+
+    with Store(root, fsync=False) as s:
+        assert s.disk_bytes() == 0
+        vectors = _put(s, 1, b"v" * 100)
+        _put_dds(s, 2, b"D" * 1000)
+        _put(s, 3, b"t" * 50, rule="tile.textures")
+        assert s.disk_bytes() == 1100 == summed(s)
+        info = s.info(vectors)
+        assert info is not None
+        # the row of a key written again (two processes building it): the upsert's update
+        s._index(
+            key=vectors,
+            rule=RULE,
+            version=1,
+            kind="file",
+            digest=info.digest,
+            size=400,
+            recipe=_key(1)[1],
+            inputs=[],
+        )
+        assert s.disk_bytes() == 1400 == summed(s)
+        assert s.delete(vectors)
+        assert s.disk_bytes() == 1000 == summed(s)
+    with Store(root, fsync=False) as s:
+        assert s.disk_bytes() == 1000, "kept across openings"
+
+    # an index as 0.1.18 left it: no triggers, no figure, and rows written without them
+    raw = sqlite3.connect(root / "index.sqlite")
+    for name in ("added", "removed", "changed"):
+        raw.execute(f"DROP TRIGGER artifacts_disk_bytes_{name}")
+    raw.execute("DELETE FROM meta WHERE k = 'disk_bytes'")
+    raw.execute("UPDATE artifacts SET size = size + 5")
+    raw.commit()
+    raw.close()
+    with Store(root, fsync=False) as s:
+        assert s.disk_bytes() == 1005 == summed(s), "counted once at the opening"
+        with s._tx() as db:
+            db.execute("UPDATE meta SET v = '42' WHERE k = 'disk_bytes'")
+        assert s.disk_bytes() == 42, "one row read, not the sum"
+
+
 def test_pins_refcount_and_delete(store: Store) -> None:
     parent = _put(store, 10, b"parent")
     d = store.digest_of(parent)

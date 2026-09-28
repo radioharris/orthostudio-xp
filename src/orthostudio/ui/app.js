@@ -4563,6 +4563,17 @@ async function retryJob() {
 const libraryBusy = new Set();
 
 let libraryTimer = 0;
+let sizesTimer = 0;
+
+/** How long the page waits before it asks again for the sizes the engine is measuring. */
+export const SIZES_RETRY_MS = 5000;
+
+/** Whether the engine is still measuring the size of a tile of `rows` (`size_pending`): on a hard
+ * disk it answers the list at once and measures in the background (a user's Plan and Library
+ * waited minutes for these figures, 2026-09-28). */
+export function sizesPending(rows) {
+  return Array.isArray(rows) && rows.some((r) => r && r.size_pending === true);
+}
 
 /** The Library read again in a moment: a build installs its tiles one after the other. */
 function loadLibrarySoon() {
@@ -4574,6 +4585,8 @@ async function loadLibrary() {
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
+    clearTimeout(sizesTimer);
+    if (sizesPending(state.library)) sizesTimer = setTimeout(loadLibrary, SIZES_RETRY_MS);
     renderTilesBuilt(); // the chosen squares a build has just made, or a delete has just taken
     // The status bar counts the same tiles: a build that ends or installs a tile, a tile deleted,
     // show at once there too (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
@@ -4604,7 +4617,10 @@ export function dataFolderShown(status) {
 
 /** GET /api/disk: what "Free space" would give back, measured without deleting anything. */
 async function loadDisk() {
-  if (!$("disk-list")) return;
+  // What "Free space" would give back is measured over the whole store, the downloaded pieces and
+  // the relief: only for the Library, which shows it. Every list of the Library asked for it,
+  // from the Plan at the start too, and a user's hard disk measured it for minutes (2026-09-28).
+  if (!$("disk-list") || state.screen !== "library") return;
   try {
     state.disk = await api("GET", "/api/disk");
   } catch (_err) {

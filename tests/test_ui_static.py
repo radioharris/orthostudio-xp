@@ -559,6 +559,25 @@ def _function_body(code: str, name: str) -> str:
     return match.group(0)
 
 
+def test_the_library_asks_again_for_sizes_and_measures_the_disk_only_when_shown() -> None:
+    """On a user's hard disk the Plan and the Library waited minutes at each start for figures:
+    every tile's size, and what "Free space" would give back, asked from the Plan too
+    (2026-09-28). The engine answers the list at once and measures the sizes in the background:
+    the page asks again while any is pending; and the disk space is measured only when the
+    Library shows."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    load = _function_body(app_js, "loadLibrary")
+    assert "sizesPending(state.library)" in load
+    assert "setTimeout(loadLibrary, SIZES_RETRY_MS)" in load
+    assert 'state.screen !== "library"' in _function_body(app_js, "loadDisk")
+    got = _node_json(
+        "app.js",
+        "[m.sizesPending([{size_pending: false}, {size_pending: true}]), "
+        "m.sizesPending([{size_bytes: 3}]), m.sizesPending(null), m.SIZES_RETRY_MS]",
+    )
+    assert got == [True, False, False, 5000]
+
+
 def test_saved_zones_with_problems_stay_listed() -> None:
     """A zone the engine flags stays in the list, marked; problems naming no zone of the list are
     kept for the notice; ids stay unique so that a row never acts on its twin."""

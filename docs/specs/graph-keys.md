@@ -174,7 +174,7 @@ The executor never trusts a path that is not both indexed and present.
 ## 7. SQLite index (`schema_version = 1`, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
 
 ```sql
-CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version
+CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes
 CREATE TABLE artifacts (
     key          TEXT PRIMARY KEY,   -- 64 hex
     rule         TEXT NOT NULL,
@@ -204,6 +204,19 @@ CREATE TABLE pins (
     pinned_at REAL NOT NULL
 );
 ```
+
+`meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
+bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
+the `texture.dds` counted already. Three triggers keep it in the transaction of each row that
+comes, changes size or goes (`artifacts_disk_bytes_added`, `_removed`, `_changed`), created at
+each opening when missing. The first time the figure is asked (a new index, or one from before
+0.1.19) it is the sum of the rows, kept since: summing them at each start of the app read the
+whole index, 9.9 s for 10 000 artefacts on a cold hard disk, where the figure kept takes no
+measurable time (2026-09-28).
+The sum is not done at the opening, which a build's and the Library's are too. Triggers rather
+than code, so that an earlier version writing to the same index keeps the figure right: every
+version writes a row by an upsert and removes one by its key (a `REPLACE` would not fire the
+delete trigger).
 
 `refcount(key) = pins on key + edges whose parent_key is key`. A different schema version
 raises `IncompatibleIndexError` at open (no migration in P0). One connection per `Store`,
@@ -285,9 +298,10 @@ collects by reachability from the packs on disk instead:
   directories are not swept: superseded builds stay for `osxp clean`, and the deleted tile is
   credited in `freed_bytes` with its own cache only. Running the whole clean there took other
   processes' finished artefacts that no pack referenced yet (review of the delete);
-* **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the page's
-  store size, which the index's sum put at twice the disk's (a DDS linked by two artefacts),
-  and the size of each pack in the library (`api.md` 2.3).
+* **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the size of each
+  pack in the library (`api.md` 2.3), and the page's store size until 0.1.19, which the index's
+  sum put at twice the disk's (a DDS linked by two artefacts); the store's is now the figure its
+  index keeps, the tiles' textures folders left out (section 7).
 
 Measured on the reference machine, 2026-09-13: 5 installed tiles, 122 of 1 827 artefacts
 removed (the flat `+46+006` of decision 0007 and two benchmark builds), 1.7 GB freed, every

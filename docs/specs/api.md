@@ -50,7 +50,7 @@ by default; tests inject a generator of synthetic events.
 | `GET /api/update` | – | `{current, latest, url, available}`: whether a newer OrthoStudio XP has been published (`orthostudio.update`). GitHub's `releases/latest` is asked at most once a day and the answer is kept in `$OSXP_HOME/update.json`; `url` is the release page, built by the engine rather than taken from GitHub's answer. No answer (offline, refused, rate-limited) is `available: false`, never an error. With `expert.check_updates` off, GitHub is not asked at all. A pre-release is never offered, but a build of one (`0.1.17rc1`) is offered its final and anything later. Nothing is downloaded or installed (a user who did not read the forum stayed on the version he had, with bugs fixed since, 2026-09-21) |
 | `GET /api/status` | – | `{version, api_level, xplane: {path, detected, running, others}, doctor: [Check...], home, user_home, data_dir: {path, chosen, present}, library_count, language, active_job, platform: "mac"\|"win"\|"lin", can_quit, engine: {root, pid, code}}`; it measures no folder (the sizes are `GET /api/sizes`), and what takes time (the checks, the list of processes, the other X-Plane folders, the packs, the library count) runs side by side in worker threads, never on the loop: `tasklist` there held every other request of the page (2026-09-22); a job's `relief` says where its tiles take their heights (`xplane`, `copernicus`, `usgs`, `usgs1`, `canada`, `south_america`, `file`, or `view` in the test suite; a folder of one's own laid over a relief keeps the relief's name), so that Works can show it while it builds (a user missed it, 2026-09-17; `usgs1` was missing until 0.1.19, and its builds read *own relief file*); `xplane.others` names the other X-Plane 12 folders of the machine, in the order tried (a user's tile went into an X-Plane 12 he had forgotten, 2026-09-17); `user_home` is the home folder of whoever runs the engine, which the page uses to write the paths under it with `~` (shorter to read, and no user's name in the pictures posted with a report); `data_dir` is where the tiles and the downloads go (`orthostudio.home.data_root`: `home` unless `chosen` in Settings), `present` false while its disk is unplugged; `can_quit` is true when `osxp serve` started the engine; `engine.root` is the folder of the `orthostudio` package it runs, which tells an installation from another, and `engine.code` the mark of the code it started with, which tells it from the same installation after its files changed (section 6) |
 | `GET /api/engine` | – | `{version, api_level, can_quit, active_job, engine: {root, pid, code}}`, answered at once, without the measures of `/api/status`: a second launch recognises the running OrthoStudio XP with it (section 6) |
-| `GET /api/sizes` | - | `{store_bytes, chunks_bytes}`: the bytes on the disk of the store (a hard-linked file once) and of the downloaded images (read from the folder listings: they are never linked, and on Windows asking a file its links opens it), for the status bar, which asks after each status and waits for nothing; pages that ask while a measure runs share it. Apart from the status since API level 20: on Windows, behind an antivirus, the walk of a big store kept the page on the menu alone (2026-09-22) |
+| `GET /api/sizes` | - | `{store_bytes, chunks_bytes}`: the bytes on the disk of the store (a hard-linked file once: since 0.1.19 read from its index, `Store.disk_bytes`, every artefact's size but the tiles' textures folders, which hard-link the textures counted already, a figure the index keeps as its rows come and go, `graph-keys.md` 7; the walk of the store read every file of it, a minute or two on a user's hard disk at each start, and the sum of the index's rows 9.9 s on a cold hard disk for 10 000 artefacts, 2026-09-28) and of the downloaded images (read from the folder listings: they are never linked, and on Windows asking a file its links opens it), for the status bar, which asks after each status and waits for nothing; pages that ask while a measure runs share it. Apart from the status since API level 20: on Windows, behind an antivirus, the walk of a big store kept the page on the menu alone (2026-09-22) |
 | `POST /api/presence` | `{}` | a page is open (the page says so every 30 s, and when it shows again): `{ok: true}`; `osxp serve --quit-when-closed` stops five minutes after the last one (section 6) |
 | `POST /api/quit` | `{force?}` | stops OrthoStudio XP (`osxp serve`'s `uvicorn.Server.should_exit`, 0.3 s after the answer): `{stopping: true, cancelled: <job id> \| null, queued_cancelled: [job id...]}`; 409 `SYS_BUSY` while a job runs unless `force` (the queued jobs are then cancelled, then the running one: `JobManager.cancel_all`, so that none starts in between); 409 `SYS_NOT_STOPPABLE` when the engine was not started by `osxp serve` |
 | `POST /api/choose-folder` | `{prompt, start?}` | asks for a folder in the platform's own dialog, on the computer the engine runs on (a user asked for a button instead of typing the X-Plane folder, 2026-09-15; `fsutil.choose_folder_command`): the Finder's on macOS (`osascript -l JavaScript`, `chooseFolder`, in front of the browser: AppleScript's `activate` held it back 2 s), the File Explorer's on Windows (PowerShell, `FolderBrowserDialog` over a topmost owner, brought in front by the engine once it shows, UTF-8 output), zenity's or kdialog's on Linux. `start` opens it in that folder when it exists. `{path}`, `null` when the user cancelled; 409 `SYS_BUSY` while a dialog is already open (the page asks only once: a click while its dialog opens says so); 501 `SYS_NO_FOLDER_DIALOG` when none can open (a Linux without zenity or kdialog). Waits up to 15 minutes |
@@ -80,7 +80,7 @@ by default; tests inject a generator of synthetic events.
 | `POST /api/jobs/{id}/cancel` | – | `{job_id, status}`; 409 when already finished |
 | `POST /api/jobs/{id}/retry` | `{queue?}` | `{job_id, status, retry_of, queue_position}` (201): the same specs as a new job, queued like `POST /api/jobs`; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` as above |
 | `GET /api/patches` | `?dir=` | `{dir, exists, tiles}`: the tiles the folder of hand-made mesh patches has something for, each with what a build of it reads (`pipeline.build.patched_tiles`: `{"-20-044": ["SBCF.patch.osm"]}`, south-west first). The folder is `dir`, what Settings shows before it is saved (empty: the default), else the saved `expert.patches_dir`, else `$OSXP_HOME/patches`; `dir` is `null` when there is none. For the Plan and Settings to name the patches before anything is built (a user took "Patches: none" in a report for his patch not being found, when it was for another square, 2026-09-21) |
-| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, present, photo, overlay}]` (section 2.3) |
+| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, size_pending, present, photo, built, overlay}]` (section 2.3) |
 | `POST /api/library/overlays` | `{use: "others" \| "own", tiles, xplane_dir?}` | leaves the roads, forests and buildings of the squares to the other active overlay packs, or draws the tiles' own again (`install.md` 4.3): `{changed: [tile...], states: {tile: {state, others}}}`; 409 `XP_RUNNING`, 409 `SYS_TILE_IN_BUILD` for a tile in a build under way or waiting, 422 for a name that is not a tile |
 | `POST /api/library/import-ortho4xp` | `{folder}` | `{entries, searched}`: the imported rows, and the folders it looked in (`Tiles/` of the Ortho4XP folder, and the build folder its GUI remembers), so that a page can say where it found nothing (a user pressed Import and could not tell what had happened, 2026-09-21). Before 0.1.10 it answered the list of rows alone, which the page still reads |
 | `POST /api/library/{name}/install` | `{xplane_dir?, link?, path?}` | the install receipt (section 2.3); 409 `SYS_TILE_IN_BUILD` for a pack OrthoStudio XP built whose tile is in the running or a queued job: the end of that build decides what X-Plane shows of the tile (an Ortho4XP pack of the tile stays free) |
@@ -100,15 +100,18 @@ by default; tests inject a generator of synthetic events.
 `/api/status` and `/api/sizes` count and measure what the user sees, not what the indexes add up:
 `library_count` is the number of tiles (distinct tiles among the `ortho` rows: an installed
 OrthoStudio XP tile also has an `overlay` row, and the page said "12 tiles in the library" for 6);
-`store_bytes` and `chunks_bytes` are the bytes of the files on the disk, each file once
-(`orthostudio.clean.disk_bytes`). The store's index counted a DDS once per artefact that hard-links
-it (`texture.dds` and `tile.textures`): 50.3 GB for a store `du` measured at 24 GB. The index's sum
-remains the answer when the store folder cannot be read. The store holds some 12 000 files; the walk
-takes well under a second on the reference Mac, and the page calls the routes at load and after a
-library action, never on a timer. On Windows a folder's listing gives the sizes but not the hard
-links, and asking a file for them opens it (`disk_bytes(links=False)` does without them for the
-downloaded images, never linked); behind an antivirus the store's walk could take long, which is
-why the sizes left the status (API level 20).
+`store_bytes` and `chunks_bytes` are the bytes of the files on the disk, each file once. The store's
+index counted a DDS once per artefact that hard-links it (`texture.dds` and `tile.textures`): 50.3 GB
+for a store `du` measured at 24 GB. Since 0.1.19 `store_bytes` leaves out the tiles' textures
+folders, which hold those links, and is the figure the index keeps as its rows come and go
+(`Store.disk_bytes`, `graph-keys.md` 7): walking the store's folders read every file of it, a
+minute or two on a user's hard disk at each start of the app, and summing the index's rows took
+9.9 s for 10 000 artefacts on a cold hard disk (2026-09-28). `chunks_bytes` walks the
+folder of the downloaded images (`orthostudio.clean.disk_bytes`). The page calls the routes at load
+and after a library action, never on a timer. On Windows a folder's listing gives the sizes but
+not the hard links, and asking a file for them opens it (`disk_bytes(links=False)` does without
+them for the downloaded images, never linked); behind an antivirus the store's walk could take
+long, which is why the sizes left the status (API level 20).
 
 ### 2.2 Request schemas (pydantic, `extra='forbid'`)
 
@@ -177,6 +180,11 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   called plain, 2026-09-18). `null` when neither says: built with the plain colours, built before
   they existed, or its artefact has left the store. The page marks a tile whose square now asks
   for others (a user asked what happens to an installed tile, 2026-09-18);
+* `built`: for an `ortho` row OrthoStudio XP built, what it was built with and when, `{facts, at}`:
+  the manifest's `[built]` (`PackManifest.built`, empty for a pack written before 0.1.10) and the
+  time the manifest was written, which is when the pack was assembled (a user asked where to see
+  it, 2026-09-21); `null` when the manifest cannot be read, and for an imported tile, whose
+  settings are Ortho4XP's;
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as
@@ -187,6 +195,25 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   cannot be read. A DDS hard-linked from the store counts in full: deleting the pack alone
   does not give it back, the store clean of the delete does. A pack holds 400 to 720 files:
   the library of 50 such packs is listed in 0.1 s on the reference Mac (warm cache).
+  **Remembered since 0.1.19** (`library.sqlite`, table `pack_facts`): measuring reads every file of
+  every pack, and on a user's hard disk the Plan and the Library waited minutes at each start of
+  the app for these figures (2026-09-28). A size is kept with the pack's `photo` and `built`, read
+  from its manifest at the same time, the time they were read and the pack's **stamp** (the times
+  of its manifest, of its folder and of `textures`, `terrain` and the DSF's folders, which move
+  whenever a file is added, removed or replaced there: `api.app._pack_stamp`). What was read after
+  the library last registered the pack (a build, an import, an install: `updated_at`) is shown as
+  it is, and the list reads nothing of the pack for it: on a cold hard disk, 40 packs took 2.5 s
+  for their stamps, eight stats a pack, and 4.3 s for their manifests (2026-09-28). The stamps are
+  checked after the answer, in a thread of their own, and a pack changed outside the app is read
+  again there: the next list shows it. A pack to read (never read, or registered since) is
+  measured during the answer for up to `PACK_SIZES_BUDGET_S` (0.5 s: all of them on an SSD) and
+  the others in that thread, each once however often the page asks; their rows say
+  `size_bytes: null`, `size_pending: true`, and the page asks again 5 s later (`ui.md`), while
+  their `photo` and `built` are read from their manifests during the answer: the page compares
+  the colours with the square's, and must never take a tile for plain while it is measured. A file
+  changed in place, which no write of a pack by OrthoStudio XP does, leaves what was read as it
+  was until the pack is written again;
+* `size_pending`: `true` while the engine measures the row's size in the background (above).
 
 The row a button means: the page sends the row's `path` to `install`, `uninstall` and `delete`
 (`pack.library_pack`). A `path` that is not a pack of that name is 422
@@ -716,7 +743,7 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
 * `retry` records `retry_of` in the new job's `request`.
 * Measured on the reference Mac (empty home): `/api/status` 60 ms (doctor
   offline), `/api/plan` for +43+005 at ZL14 10 ms; the 18 tests run in 1.4 s.
-* `/api/sizes`'s `store_bytes` walks the store folder (`orthostudio.clean.disk_bytes`); the
-  index's sum is the fallback when the folder cannot be read, and is opened only when the directory
-  exists (opening creates it). The doctor's `chunks` check counts the containers from the folder
+* `/api/sizes`'s `store_bytes` reads the figure the store's index keeps (`Store.disk_bytes`,
+  `graph-keys.md` 7), the index opened only when the directory exists (opening creates it) and
+  without sweeping; `chunks_bytes` walks the images' folder from its listings. The doctor's `chunks` check counts the containers from the folder
   listings too (`doctor._containers`): asked of each file, the size opened every one on Windows.

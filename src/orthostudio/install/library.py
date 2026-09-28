@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS meta (
     v TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tiles {_TILES_COLUMNS};
+CREATE TABLE IF NOT EXISTS pack_facts (
+    path        TEXT PRIMARY KEY,
+    stamp       TEXT NOT NULL,
+    bytes       INTEGER NOT NULL,
+    photo       TEXT,
+    built       TEXT,
+    measured_at REAL NOT NULL
+);
 """
 
 
@@ -128,6 +136,20 @@ class LibraryEntry:
         return self.path.name
 
 
+@dataclass(frozen=True, slots=True)
+class PackFacts:
+    """What the Library shows of a pack's files, as read at ``measured_at`` with the pack's
+    ``stamp`` (``api.app._pack_stamp``): its ``bytes`` on the disk, the colours it was built with
+    (``photo``) and what it was built with (``built``, ``{facts, at}``), each ``None`` when
+    nothing could say."""
+
+    stamp: str
+    bytes: int
+    photo: dict[str, float] | None
+    built: dict[str, Any] | None
+    measured_at: float
+
+
 class Library:
     """sqlite-backed registry of built packs; use as a context manager or call ``close``."""
 
@@ -153,6 +175,50 @@ class Library:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+    # ------------------------------------------------------------ facts of the packs
+
+    def remembered_facts(self) -> dict[str, PackFacts]:
+        """What was last read of each pack's files, by the pack's path.
+
+        Measuring a pack reads every one of its files, which a hard disk took minutes over for a
+        user's tiles at each start of the app, the Plan and the Library waiting for it
+        (2026-09-28), and reading its manifest for its colours and what it was built with still
+        took 4.3 s for 40 tiles on a cold hard disk: what was read is kept with the pack's stamp
+        and the time it was read at. The table is new in 0.1.19; earlier versions leave it
+        alone."""
+        rows = self._db.execute(
+            "SELECT path, stamp, bytes, photo, built, measured_at FROM pack_facts"
+        )
+        return {
+            row["path"]: PackFacts(
+                stamp=row["stamp"],
+                bytes=int(row["bytes"]),
+                photo=None if row["photo"] is None else json.loads(row["photo"]),
+                built=None if row["built"] is None else json.loads(row["built"]),
+                measured_at=float(row["measured_at"]),
+            )
+            for row in rows
+        }
+
+    def remember_facts(self, path: Path, facts: PackFacts) -> None:
+        def text(value: dict[str, Any] | None) -> str | None:
+            return None if value is None else json.dumps(value, sort_keys=True, default=str)
+
+        self._db.execute(
+            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, "
+            "bytes = excluded.bytes, photo = excluded.photo, built = excluded.built, "
+            "measured_at = excluded.measured_at",
+            (
+                str(path),
+                facts.stamp,
+                int(facts.bytes),
+                text(facts.photo),
+                text(facts.built),
+                float(facts.measured_at),
+            ),
+        )
 
     # ------------------------------------------------------------ rows
 

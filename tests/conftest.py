@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -96,3 +98,15 @@ def _no_data_folder_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
         return real() if os.environ.get(home.OSXP_HOME_ENV) else None
 
     monkeypatch.setattr(home, "_configured_data_dir", configured)
+
+
+@pytest.fixture(autouse=True)
+def _no_pack_sizes_left_measuring() -> Iterator[None]:
+    """The Library measures and checks its tiles' sizes in a thread of its own
+    (``api.app._measure_later``): a test leaves none running into the next one, whose own
+    ``_pack_bytes`` it would call."""
+    yield
+    appmod = sys.modules.get("orthostudio.api.app")
+    deadline = time.monotonic() + 10
+    while appmod is not None and appmod._PACK_SIZES_MEASURING and time.monotonic() < deadline:
+        time.sleep(0.01)
