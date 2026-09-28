@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -194,6 +195,72 @@ def test_fsync_path_works(tmp_path: Path) -> None:
     with Store(tmp_path / "s", fsync=True) as s:
         key = _put(s, 9, b"synced")
         assert s.path(key).read_bytes() == b"synced"
+
+
+def test_a_write_waits_for_an_index_held_longer_than_sqlites_own_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SQLite gives up after its ``busy_timeout``, and a build on a hard disk held the index
+    longer: 12 textures of 695 failed "database is locked", their tile with them (2026-09-28).
+    A write asks again, and goes through once the index is free."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "INDEX_LOCKED_PATIENCE_S", 20.0)
+    with Store(tmp_path / "store", fsync=False) as s:
+        s._db.execute("PRAGMA busy_timeout = 100")  # SQLite's own wait: 30 s in a build
+        other = sqlite3.connect(
+            s.root / "index.sqlite", isolation_level=None, check_same_thread=False
+        )
+        other.execute("BEGIN IMMEDIATE")  # another process holding the index
+        release = threading.Timer(1.5, lambda: other.execute("COMMIT"))
+        release.start()
+        started = time.monotonic()
+        key = _put(s, 1)
+        waited = time.monotonic() - started
+        release.join()
+        other.close()
+        assert s.has(key) and waited >= 1.0, waited
+
+
+def test_a_write_to_an_index_held_too_long_still_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The patience has an end: a stuck index is an error, not a build that never ends."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "INDEX_LOCKED_PATIENCE_S", 0.5)
+    with Store(tmp_path / "store", fsync=False) as s:
+        s._db.execute("PRAGMA busy_timeout = 100")
+        other = sqlite3.connect(s.root / "index.sqlite", isolation_level=None)
+        other.execute("BEGIN IMMEDIATE")
+        started = time.monotonic()
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            _put(s, 1)
+        assert time.monotonic() - started < 5.0
+        other.execute("ROLLBACK")
+        other.close()
+
+
+def test_a_texture_linked_from_the_store_is_not_forced_twice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tile's textures folder holds a hard link to each DDS of the store, whose data was forced
+    when it was committed: forcing every link again protected nothing and made a hard disk wait
+    once more per texture (2026-09-28). A copy, and any other file, is forced as before."""
+    from orthostudio.graph import store as store_mod
+
+    forced: list[str] = []
+    monkeypatch.setattr(store_mod, "_fsync_file", lambda p: forced.append(p.name))
+    stored = tmp_path / "stored.dds"
+    stored.write_bytes(b"DDS |")
+    tile = tmp_path / "tile"
+    (tile / "textures").mkdir(parents=True)
+    (tile / "terrain").mkdir()
+    os.link(stored, tile / "textures" / "linked.dds")
+    (tile / "textures" / "copied.dds").write_bytes(b"DDS |")
+    (tile / "terrain" / "one.ter").write_text("A\n")
+    store_mod._fsync_tree(tile)
+    assert sorted(forced) == ["copied.dds", "one.ter"]
 
 
 def test_pins_refcount_and_delete(store: Store) -> None:

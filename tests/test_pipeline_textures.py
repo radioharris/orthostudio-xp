@@ -395,6 +395,38 @@ def test_cold_then_warm_runs(
 # --- P2: parent fallback ----------------------
 
 
+def test_containers_are_written_plainly_and_textures_still_forced(
+    server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hard disk under Windows waited for every container and every texture forced to disk, and
+    the images crawled at a user's (2026-09-28). A container is checked whenever it is read and
+    fetched again when damaged: it is written plainly. A texture enters the store forced, as
+    before: nothing checks it when it is used again."""
+    from orthostudio.graph import store as store_mod
+    from orthostudio.imagery import chunks as chunks_mod
+
+    container_writes: list[bool] = []
+    write_container = chunks_mod.atomic_write_bytes
+
+    def spy_write(path: Path, data: bytes, *, fsync: bool = False) -> Path:
+        container_writes.append(fsync)
+        return write_container(path, data, fsync=fsync)
+
+    forced: list[str] = []
+    fsync_tree = store_mod._fsync_tree
+
+    def spy_tree(p: Path) -> None:
+        forced.append(str(p))
+        fsync_tree(p)
+
+    monkeypatch.setattr(chunks_mod, "atomic_write_bytes", spy_write)
+    monkeypatch.setattr(store_mod, "_fsync_tree", spy_tree)
+    report = build_textures(make_spec(server, tmp_path, mask_dir, fsync=True))
+    assert report.ok, report.errors
+    assert container_writes and not any(container_writes)
+    assert sum("texture.dds" in p for p in forced) == report.counts["built"] == 2
+
+
 def test_parent_fallback_and_placeholder_chain(
     server: TileServer, tmp_path: Path, mask_dir: Path
 ) -> None:

@@ -55,6 +55,13 @@ TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
 """Age after which a ``*.tmp-*`` directory is swept even if its owner pid still exists."""
 _OPEN_RETRY_S = 15.0
+INDEX_LOCKED_PATIENCE_S = 300.0
+"""How long a write asks again for the index while another process holds it, before it fails.
+
+SQLite's own wait (``busy_timeout``) gives up after 30 s. On a hard disk, the forced writes of a
+build held the index longer than that: 12 textures of 695 failed "database is locked", and their
+tile with them (2026-09-28, the hard disk of a user's slow builds reproduced). Well below the
+600 s a texture may take (``pipeline/textures.ENCODE_TIMEOUT_S``)."""
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -333,7 +340,7 @@ class Store:
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
-            self._db.execute("BEGIN IMMEDIATE")
+            self._begin_immediate()
             try:
                 yield self._db
             except BaseException:
@@ -341,6 +348,19 @@ class Store:
                 raise
             else:
                 self._db.execute("COMMIT")
+
+    def _begin_immediate(self) -> None:
+        """``BEGIN IMMEDIATE``, asked again while another process holds the index, for up to
+        :data:`INDEX_LOCKED_PATIENCE_S`: each ask already waits ``busy_timeout`` (30 s)."""
+        deadline = time.monotonic() + INDEX_LOCKED_PATIENCE_S
+        while True:
+            try:
+                self._db.execute("BEGIN IMMEDIATE")
+                return
+            except sqlite3.OperationalError as exc:
+                if not _index_busy(exc) or time.monotonic() >= deadline:
+                    raise
+                log.warning("index at %s held elsewhere (%s), asking again", self.root, exc)
 
     # -- paths ---------------------------------------------------------------------------
 
@@ -866,8 +886,28 @@ def _fsync_tree(p: Path) -> None:
     for dirpath, _dirs, files in os.walk(p):
         for name in files:
             f = Path(dirpath) / name
-            if f.is_file() and not f.is_symlink():
+            if f.is_file() and not f.is_symlink() and not _linked_texture(f):
                 _fsync_file(f)
+
+
+def _linked_texture(f: Path) -> bool:
+    """A DDS this artefact holds as a hard link to a ``texture.dds`` artefact
+    (``pipeline/textures.publish_file``), whose data was forced to disk when that artefact was
+    committed: forcing it again protects nothing. A tile's textures folder forced every one of
+    them a second time, and on a hard disk under Windows each such flush waits for the disk
+    (2026-09-28). A copy (``link=False``) has one name only, and is forced as any file."""
+    if f.suffix.lower() != ".dds":
+        return False
+    try:
+        return f.stat().st_nlink > 1
+    except OSError:
+        return False
+
+
+def _index_busy(exc: sqlite3.OperationalError) -> bool:
+    """Whether SQLite gave up waiting for the index, rather than failing for another reason."""
+    text = str(exc)
+    return "locked" in text or "busy" in text
 
 
 def _tmp_owner_pid(name: str) -> int | None:

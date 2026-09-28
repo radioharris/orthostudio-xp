@@ -256,7 +256,11 @@ disk's format; each tile would take three times its space there, so such a folde
 a shared folder, the answer is a folder on the computer's own disk, never formatting the disk.
 Typed, the folder is a full path (`E:\OrthoStudio` on Windows, not `E:` alone) to a folder that
 exists: one not made yet is refused with the advice to make it first, and one whose disk is
-unplugged with the advice to plug it in.
+unplugged with the advice to plug it in. A hard disk works, more slowly than an SSD: a build reads
+and writes thousands of files at a time. OrthoStudio XP writes the downloaded image pieces without
+forcing each one to the disk, and checks them whenever it reads them back (a damaged one is
+downloaded again); on a hard disk under Windows, forcing every file made the images several times
+slower (measured 2026-09-28). The textures themselves are still forced to the disk, once each.
 Nothing is moved: the tiles built before stay where they are and keep working in X-Plane, and the
 next ones go to the new folder. Each folder has its own `yOrthoStudio_Overlays`, which Custom
 Scenery lists as `yOrthoStudio_Overlays_2` (then `_3`...) when X-Plane shows the tiles of two

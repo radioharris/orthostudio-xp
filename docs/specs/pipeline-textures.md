@@ -152,6 +152,10 @@ so a long plan (ZL17: 800 containers of about 4 MB) shows progress and can be ca
      container on disk so the next run fetches them, and reports `IMG_TILE_CORRUPTED`
      (degraded). The texture is still published with the parent or neighbourhood fill (its
      recipe holds the corrupted body, so the refetched texture is a rebuild, not a hit).
+     Since 0.1.19 the structural check of layer 1 is applied again there, to the bodies read
+     back from disk: the containers are no longer forced to disk (`imagery-chunks.md` 5), and a
+     body whose end a power cut left as zeros still decodes, into wrong pixels, without a word
+     from Pillow (measured 2026-09-28).
   A cache is therefore never poisoned by a body that is not an image.
 - When the last pending tile of a container arrives, the container is written to the
   `ChunkStore` (atomic, in a thread) whatever its completeness, so that a crash or a
