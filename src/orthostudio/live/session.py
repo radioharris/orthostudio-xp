@@ -51,10 +51,11 @@ class RefusedError(Exception):
 
 
 def default_workers() -> int:
-    """Encoding processes: every core of this computer but two (:mod:`orthostudio.live.machine`)."""
+    """Encoding processes: every core of this computer but two, one for each 3 GB of its memory at
+    most (:mod:`orthostudio.live.machine`)."""
     from orthostudio.live import machine
 
-    return machine.encoders(machine.machine()[0])
+    return machine.encoders(*machine.machine())
 
 
 @dataclass

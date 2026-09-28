@@ -585,6 +585,49 @@ class EncodersTest(unittest.TestCase):
             self.assertEqual(s.sharp_builds, 1)
             cache.close()
 
+    def test_short_of_memory_in_flight_live_holds_back(self):
+        """The system's word on its memory (machine.memory_pressure), in flight only: short of it,
+        one texture at a time and no 8192 px one ahead of time; very short, only what X-Plane
+        reads now. On a simulated 16 GB computer Live's bursts stalled X-Plane (2026-09-28)."""
+        from orthostudio.live import machine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            level = [machine.SHORT]
+            said: list[str] = []
+            s = Streamer(
+                pack,
+                cache,
+                lambda on_piece: None,
+                finest_quality=0,
+                workers=6,
+                log=said.append,
+                flight_encodes=2,
+                memory_pressure=lambda: level[0],
+            )
+            # waiting on a start: nothing drawn to stutter, all the workers
+            self.assertEqual(s.encode_cap(), 6)
+            self.assertEqual(s.memory_state(), machine.NORMAL)
+            s.flying = True
+            self.assertEqual(s.encode_cap(), 1)  # short of memory: one at a time
+            self.assertIn("short of memory", said[-1])
+            self.assertTrue(s.may_encode(5.0, 0))  # ahead of time, 4096 px: yes
+            self.assertFalse(s.may_encode(5.0, -1))  # ahead of time, 8192 px: not now
+            self.assertTrue(s.may_encode(-1.0, -1))  # X-Plane reads it: always
+            level[0] = machine.VERY_SHORT
+            s.memory_state(now=time.monotonic() + 10)
+            self.assertFalse(s.may_encode(5.0, 0))  # only what X-Plane reads now
+            self.assertTrue(s.may_encode(0.0, 0))
+            level[0] = machine.NORMAL
+            s.memory_state(now=time.monotonic() + 20)
+            self.assertEqual(s.encode_cap(), 2)
+            self.assertTrue(s.may_encode(5.0, -1))
+            self.assertIn("memory back", said[-1])
+            cache.close()
+
 
 class ReachTest(unittest.TestCase):
     def test_external_views_widen_the_sharp_rings(self):

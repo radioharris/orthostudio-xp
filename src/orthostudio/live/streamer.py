@@ -50,7 +50,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import dds, pools
+from . import dds, machine, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, pick, usage
@@ -133,6 +133,10 @@ DATAREFS = [
 # over 40 ms (2026-09-28). At most YIELD_MAX_S of each load, so that a long one starves nothing.
 YIELD_AFTER_S = 5.0
 YIELD_MAX_S = 30.0
+# the system's word on its memory, read this often in flight (machine.memory_pressure): short of
+# it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
+# reads now
+PRESSURE_EVERY_S = 1.0
 
 
 @dataclass
@@ -228,6 +232,7 @@ class Streamer:
         tint_8192: bool = False,
         flight_encodes: int = FLIGHT_ENCODES,
         sharp_builds: int = SHARP_WORKERS,
+        memory_pressure: Callable[[], int] = machine.memory_pressure,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -248,6 +253,9 @@ class Streamer:
         # this computer's share while X-Plane flies, and of 8192 px builds (live.machine)
         self.flight_encodes = flight_encodes
         self.sharp_builds = sharp_builds
+        self._memory_pressure = memory_pressure
+        self.pressure = machine.NORMAL  # the system's word on its memory, in flight
+        self._pressure_at = -PRESSURE_EVERY_S
         self.xp = xplane  # anything with .command(name): the UDP link, or a test's stand-in
         self.log = log
         self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
@@ -379,8 +387,47 @@ class Streamer:
 
     def encode_cap(self) -> int:
         """Textures encoded at once: all the workers while X-Plane waits on a start or is away,
-        this computer's share while it flies (``flight_encodes``), its cores left to it."""
-        return min(self.workers, self.flight_encodes) if self.flying else self.workers
+        this computer's share while it flies (``flight_encodes``), its cores left to it; one while
+        the computer is short of memory (:meth:`memory_state`)."""
+        if not self.flying:
+            return self.workers
+        if self.memory_state() >= machine.SHORT:
+            return 1
+        return min(self.workers, self.flight_encodes)
+
+    def memory_state(self, now: float | None = None) -> int:
+        """In flight, the system's word on its memory (``machine.memory_pressure``), read at most
+        every PRESSURE_EVERY_S, a change logged; NORMAL while X-Plane waits on a start or is away,
+        where nothing is drawn to stutter."""
+        if not self.flying:
+            self.pressure = machine.NORMAL
+            return self.pressure
+        now = time.monotonic() if now is None else now
+        if now - self._pressure_at >= PRESSURE_EVERY_S:
+            self._pressure_at = now
+            level = self._memory_pressure()
+            if level != self.pressure:
+                self.log(
+                    "  this computer is very short of memory: Live encodes only what X-Plane reads"
+                    " now, one texture at a time"
+                    if level >= machine.VERY_SHORT
+                    else "  this computer is short of memory: Live encodes one texture at a time,"
+                    " no 8192 px one ahead of time"
+                    if level >= machine.SHORT
+                    else "  memory back: Live encodes as this computer's share allows"
+                )
+                self.pressure = level
+        return self.pressure
+
+    def may_encode(self, urgency: float, level: int) -> bool:
+        """Whether a texture ready to encode may start now: what X-Plane reads already always;
+        the rest not while X-Plane loads scenery (:meth:`yielding`) nor while the computer is very
+        short of memory, an 8192 px level ahead of time not while it is short of it."""
+        if urgency <= 0:
+            return True
+        if self.yielding() or self.pressure >= machine.VERY_SHORT:
+            return False
+        return not (level < 0 and self.pressure >= machine.SHORT)
 
     def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
         """X-Plane's scenery load flag, in flight: Live holds back while it is up and YIELD_AFTER_S
@@ -725,10 +772,13 @@ class Streamer:
             all while X-Plane waits, this computer's share while it flies (``encode_cap``); an
             8192 px level in a process of its own (``sharp_pool``, ``sharp_builds`` of them), one
             getting its copy only once it has it."""
-            cap = self.encode_cap()
-            held = self.yielding()  # X-Plane loads scenery: only what it reads already
+            cap = self.encode_cap()  # the memory's state read with it (memory_state)
             while len(encoding) < cap:
-                free = [j for j in ready if j.name not in copying and not (held and j.urgency > 0)]
+                free = [
+                    j
+                    for j in ready
+                    if j.name not in copying and self.may_encode(j.urgency, j.level)
+                ]
                 if not free:
                     break
                 job = min(free, key=lambda j: j.urgency)

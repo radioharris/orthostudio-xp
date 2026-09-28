@@ -6,6 +6,7 @@ Linux and Windows alike."""
 from __future__ import annotations
 
 import ctypes
+import ctypes.util
 import os
 import sys
 from pathlib import Path
@@ -19,9 +20,10 @@ from orthostudio.live import control, machine
     ("cores", "ram", "encoders", "flight", "sharp"),
     [
         (14, 48, 12, 4, 4),  # the Mac the test flights flew on (2026-09-28): as before
-        (8, 16, 6, 2, 1),  # a Mac of 8 cores and 16 GB
+        (14, 16, 5, 2, 1),  # the same cores, 16 GB: the memory bounds the encoders
+        (8, 16, 5, 2, 1),  # a Mac of 8 cores and 16 GB
         (10, 24, 8, 2, 2),
-        (16, 32, 14, 4, 2),  # a PC of 8 cores, 16 threads
+        (16, 32, 10, 4, 2),  # a PC of 8 cores, 16 threads
         (4, 8, 2, 1, 1),
     ],
 )
@@ -88,7 +90,7 @@ def test_the_log_says_the_share_and_warns_below_32_gb(monkeypatch: pytest.Monkey
     monkeypatch.setenv("OSXP_LIVE_MACHINE", "8,16")
     small = machine.share()
     assert small.notes(16, 18) == [
-        "this computer: 8 cores, 16 GB: 6 encoders, 2 textures at once in flight, "
+        "this computer: 8 cores, 16 GB: 5 encoders, 2 textures at once in flight, "
         "1 at 8192 px at once"
     ]
     for zooms in ((17, 18), (16, 19), (17, 19)):
@@ -123,3 +125,79 @@ def test_no_osxp_engine_before_the_fork_server() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=os.environ
     )
     assert out.stdout.strip() == "False"
+
+
+@pytest.mark.parametrize(("level", "expected"), [(1, 0), (2, 1), (4, 2), (0, 0)])
+def test_macos_memory_pressure(monkeypatch: pytest.MonkeyPatch, level: int, expected: int) -> None:
+    """macOS's own level: normal, warning, critical; unread counts as normal."""
+    monkeypatch.setattr(machine, "MACOS", True)
+    monkeypatch.setattr(machine, "WINDOWS", False)
+    monkeypatch.setattr(machine, "_darwin_pressure_level", lambda: level)
+    assert machine.memory_pressure() == expected
+
+
+@pytest.mark.parametrize(
+    ("available_kb", "expected"), [(3_200_000, 0), (1_300_000, 1), (500_000, 2)]
+)
+def test_linux_memory_pressure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, available_kb: int, expected: int
+) -> None:
+    """Linux: the memory available against the total, from /proc/meminfo (16 GB here)."""
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        f"MemTotal:       16000000 kB\nMemFree:  100 kB\nMemAvailable:   {available_kb} kB\n"
+    )
+    monkeypatch.setattr(machine, "MACOS", False)
+    monkeypatch.setattr(machine, "WINDOWS", False)
+    monkeypatch.setattr(machine, "MEMINFO", str(meminfo))
+    assert machine.memory_pressure() == expected
+
+
+@pytest.mark.parametrize(("load", "expected"), [(85, 0), (92, 1), (97, 2)])
+def test_windows_memory_pressure(monkeypatch: pytest.MonkeyPatch, load: int, expected: int) -> None:
+    """Windows: the memory load GlobalMemoryStatusEx gives."""
+
+    class Kernel32:
+        def GlobalMemoryStatusEx(self, status: object) -> int:  # noqa: N802 (Windows' name)
+            status._obj.dwMemoryLoad = load  # type: ignore[attr-defined]
+            return 1
+
+    monkeypatch.setattr(machine, "MACOS", False)
+    monkeypatch.setattr(machine, "WINDOWS", True)
+    monkeypatch.setattr(
+        ctypes, "windll", type("WinDLL", (), {"kernel32": Kernel32()})(), raising=False
+    )
+    assert machine.memory_pressure() == expected
+
+
+def test_memory_pressure_unreadable_is_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(machine, "MACOS", False)
+    monkeypatch.setattr(machine, "WINDOWS", False)
+    monkeypatch.setattr(machine, "MEMINFO", "/no/such/meminfo")
+    assert machine.memory_pressure() == machine.NORMAL
+
+
+def test_this_computer_s_memory_pressure_reads() -> None:
+    """On the machine the tests run on, whichever system it is."""
+    assert machine.memory_pressure() in (machine.NORMAL, machine.SHORT, machine.VERY_SHORT)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS's I/O policy")
+def test_background_io_throttles_this_thread_and_gives_it_back() -> None:
+    libc = ctypes.CDLL(ctypes.util.find_library("c"))
+    before = libc.getiopolicy_np(0, 1)
+    with machine.background_io():
+        assert libc.getiopolicy_np(0, 1) == 3  # IOPOL_THROTTLE, this thread only
+    assert libc.getiopolicy_np(0, 1) == before
+
+
+def test_background_io_where_the_system_says_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing breaks: the work is done at its usual priority."""
+
+    def refused() -> None:
+        raise OSError("not allowed")
+
+    monkeypatch.setattr(machine, "_enter_background_io", refused)
+    with machine.background_io():
+        done = True
+    assert done
