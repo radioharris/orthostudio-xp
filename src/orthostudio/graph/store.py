@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import os
 import secrets
 import shutil
@@ -473,7 +474,7 @@ class Store:
         marks = ",".join("?" * len(DEFERRED_RULES))
         with self._lock:
             return self._db.execute(
-                f"SELECT key, rule, kind, digest FROM artifacts "
+                f"SELECT key, rule, kind, digest, created_at FROM artifacts "
                 f"WHERE rule IN ({marks}) AND created_at > ? ORDER BY created_at",
                 (*sorted(DEFERRED_RULES), since if since is not None else float("-inf")),
             ).fetchall()
@@ -482,13 +483,19 @@ class Store:
         """Force to disk the artefacts of :data:`DEFERRED_RULES` indexed since the durable
         point, then move the point up to now (less :data:`DURABLE_MARGIN_S`); returns how many
         were forced. Files the system has already written cost it little: this runs once a tile,
-        where forcing each file as it was written held the whole build. A file it cannot send to
-        the disk raises ``PermissionError``, and the point stays where it was."""
+        where forcing each file as it was written held the whole build.
+
+        A file another program holds cannot be sent to the disk (:func:`_open_for_flush`): it is
+        left as the system wrote it, named in the log, and the point stops just before its
+        artefact, which the next point asks again and :meth:`recover` checks against its digest.
+        Its tile goes on: failing it for a file that is almost always whole stopped a build for
+        nothing (2026-09-28)."""
         with self._durable_lock:
             since = self.durable_until()
             asked = time.time()
             rows = self._deferred_since(since)
             shards: set[Path] = set()
+            held: list[float] = []
             for row in rows:
                 path = self.artifact_path(str(row["rule"]), str(row["key"]))
                 try:
@@ -498,13 +505,25 @@ class Store:
                         _flush_tree_data(path)
                 except FileNotFoundError:
                     continue  # deleted since: nothing to keep
+                except PermissionError as exc:
+                    log.warning(
+                        "%s is held by another program and was not forced to disk; "
+                        "the next build checks it (%s)",
+                        exc.filename or path,
+                        exc.strerror or exc,
+                    )
+                    held.append(float(row["created_at"]))
+                    continue
                 shards.add(path.parent)
             for shard in shards:
                 _flush_dir_data(shard)
             with self._lock, contextlib.suppress(sqlite3.Error):
                 self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
-            self._write_durable(max(since or 0.0, asked - DURABLE_MARGIN_S))
-            return len(rows)
+            until = asked - DURABLE_MARGIN_S
+            if held:  # the rows come oldest first: the point stays below the first one held
+                until = min(until, math.nextafter(held[0], -math.inf))
+            self._write_durable(max(since or 0.0, until))
+            return len(rows) - len(held)
 
     def recover(self) -> RecoverReport:
         """When a build starts: check the artefacts of :data:`DEFERRED_RULES` indexed since the
@@ -1146,9 +1165,9 @@ FLUSH_OPEN_ATTEMPTS = 10
 
 def _open_for_flush(p: Path) -> int:
     """A handle Windows can flush: it flushes those opened for writing only. A file another
-    process holds without letting others write (a scanner, X-Plane) is asked again for an
+    process holds without letting others write (a scanner, a sync tool) is asked again for an
     instant, then refused with ``PermissionError``: a durable point must never vouch for a file
-    it could not send to the disk, where a commit that forced its files could say so of one."""
+    it could not send to the disk, and :meth:`Store.make_durable` stops before that one."""
     for attempt in range(FLUSH_OPEN_ATTEMPTS):
         try:
             return os.open(p, os.O_RDWR | getattr(os, "O_BINARY", 0))

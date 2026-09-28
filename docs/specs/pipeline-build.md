@@ -137,7 +137,8 @@ idempotent.
 `tile.pack` first makes the store durable (`Store.make_durable`, `graph-keys.md` 6): the tile's
 textures, DSF and `.ter` files are committed without being forced to disk one by one, and are
 forced as a group here, before X-Plane is handed any of them (2026-09-28, a user's builds on a
-hard disk). `build_tiles` checks, when it starts, what a build cut short left since its last
+hard disk); one another program holds is left to the next build's check, and the tile goes on
+(`graph-keys.md` 6). `build_tiles` checks, when it starts, what a build cut short left since its last
 durable point (`Store.recover`), and makes the store durable once its passes are over. Then it
 writes, atomically per file (`fsutil`):
 

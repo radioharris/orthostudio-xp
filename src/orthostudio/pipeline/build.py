@@ -2883,10 +2883,7 @@ def build_tiles(
             _learn_texture_cost(scheduler2, redone, collector)
 
     # whatever the passes committed after the last pack, cancelled or failed, reaches the disk
-    try:
-        store.make_durable()
-    except PermissionError as exc:  # the point stays behind: the next build checks them
-        log.warning("a file of this build could not be forced to disk (%s)", exc)
+    store.make_durable()
     by_spec_graph = {id(g.spec): g for g in graphs}
     tiles: list[TileOutcome] = []
     built = hits = failed = 0

@@ -150,9 +150,15 @@ committed without forcing, and made durable as a group:
   becomes visible a few milliseconds after its `created_at`). Emptying the cache at each file,
   the groups of two tiles took 8 and 15 minutes on a hard disk busy with the next tile's images,
   and slowed them (2026-09-28).
+  Windows flushes a file opened for writing only, and another program may hold one without
+  letting others write (a scanner, a sync tool): it is asked again for 2.75 s
+  (`FLUSH_OPEN_ATTEMPTS`), then left as the system wrote it. The log names it, and the point
+  stops just before its artefact: the next point asks it again, and the next `recover()` checks
+  it and what came after it. Its tile goes on: failing it stopped a build for a file almost always
+  whole (2026-09-28).
   The pack calls it before it writes the tile's folder (`pipeline/pack.py`), so X-Plane is
-  never handed a file a power cut could still tear; `build_tiles` calls it once its passes are
-  over, cancelled or failed.
+  handed no file a power cut could still tear but one another program held then; `build_tiles`
+  calls it once its passes are over, cancelled or failed.
 * `Store.recover()`, when a build starts, checks every artefact of these rules indexed since
   the point against its digest, drops the torn ones before anything can reuse them, and makes
   the rest durable. After a build that ended normally there is next to nothing to check; after
@@ -164,7 +170,7 @@ committed without forcing, and made durable as a group:
 |---|---|---|
 | during 2 or before the rename | `<key>.tmp-*` left behind | ignored by every reader (not indexed, name never matches a key); swept at `Store()` open when older than `tmp_max_age_s` (1 h) **and** the owner pid of the name is gone (`os.kill(pid, 0)`; `OpenProcess` on Windows), or older than `tmp_hard_max_age_s` (24 h) whatever the owner (a reused pid must not pin it), or by `fsck(repair=True)`; a build in progress in another process is never swept (P2a review) |
 | after the rename, before the index row | `<key>` present, no row | `has()` is False; the next build of the key adopts it (an artefact of `DEFERRED_RULES` only when its digest is the one just built, else replaced); `fsck` lists it under `files_without_rows` |
-| power cut before a durable point | artefacts of `DEFERRED_RULES` indexed, their bytes perhaps not on disk | `recover()` at the next build checks them against their digests and drops the torn ones; nothing handed to X-Plane is among them (the pack made its files durable first) |
+| power cut before a durable point | artefacts of `DEFERRED_RULES` indexed, their bytes perhaps not on disk | `recover()` at the next build checks them against their digests and drops the torn ones; nothing handed to X-Plane is among them (the pack made its files durable first), but a file another program held at the pack: the tile's folder keeps its hard link to what the disk kept of it until the tile is assembled again |
 | row present, files removed by hand | row without files | `has()` deletes the row and returns False (self-healing) |
 | two processes build the same key | one renames, the other adopts | both report the same digest; `uses` counts both (`test_concurrent_processes_building_the_same_key_agree`) |
 | corrupted content | digest mismatch | `fsck(verify=True)` reports it; `repair=True` deletes it |
