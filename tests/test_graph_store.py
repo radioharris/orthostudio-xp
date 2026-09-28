@@ -332,11 +332,35 @@ def test_a_durable_point_stops_before_a_file_another_program_holds(
         until = s.durable_until()
         assert before_first is not None and before_taken is not None and until is not None
         assert before_first.created_at <= until < before_taken.created_at
-        # the next build starts while it is still held: it checks it and what came after it
-        assert s.recover().checked == 2 and s.durable_until() == until
+        # the next build starts while it is still held: it checks that one alone (the one after
+        # it was forced, and is listed with the point), and the point stays below it
+        assert s.recover().checked == 1 and s.durable_until() == until
         monkeypatch.setattr(store_mod, "_flush_data", lambda p: forced.append(p.name))
-        assert s.recover().checked == 2 and s.has(taken) and s.has(last)
-        assert forced[-2:] == [taken, last] and s.recover().checked == 0
+        assert s.recover().checked == 1 and s.has(taken) and s.has(last)
+        assert forced == [first, last, taken]  # each forced once
+        assert s.recover().checked == 0
+
+
+def test_the_next_start_reads_nothing_the_last_point_forced_within_its_margin(
+    tmp_path: Path,
+) -> None:
+    """The point stays DURABLE_MARGIN_S behind the moment it asked, and the last tile's textures
+    are indexed seconds before a build ends: the next build read their whole folder again, 7.6 GB
+    and 68 s on a hard disk (2026-09-29). What a point forced within its margin is listed with
+    it; what came after it, or was indexed again under the same key since, is checked."""
+    with Store(tmp_path / "store", fsync=True) as s:
+        time.sleep(0.01)
+        early = _put_dds(s, 1, b"DDS forced within the margin")
+        assert s.make_durable() == 1
+        until, info = s.durable_until(), s.info(early)
+        assert until is not None and info is not None and until < info.created_at
+        assert s.recover().checked == 0
+        _put_dds(s, 2, b"DDS indexed after the point")
+        assert s.recover().checked == 1  # and its own point forces it
+        assert s.recover().checked == 0
+        s.delete(early, force=True)
+        assert _put_dds(s, 1, b"DDS forced within the margin") == early  # the same key, again
+        assert s.recover().checked == 1
 
 
 def test_what_an_interrupted_build_left_torn_is_dropped_at_the_next_start(

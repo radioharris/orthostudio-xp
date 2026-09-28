@@ -72,7 +72,8 @@ without its row keeps it only when it is the very artefact it has just built. Th
 other rules are few and forced as before."""
 DURABLE_FILE = "durable.json"
 """The durable point, in the store's root: every artefact of :data:`DEFERRED_RULES` indexed
-before ``until`` has its files on the disk."""
+before ``until`` has its files on the disk, and so has each one ``forced`` lists after it (its
+key and its ``created_at``)."""
 DURABLE_MARGIN_S = 30.0
 """How far behind the moment it asked the index a durable point stays: an artefact is indexed a
 few milliseconds after its ``created_at``, and a clock set back a little must not hide one."""
@@ -447,22 +448,33 @@ class Store:
     def durable_until(self) -> float | None:
         """The durable point (:data:`DURABLE_FILE`): every artefact of :data:`DEFERRED_RULES`
         indexed before it has its files on the disk. ``None`` when unreadable."""
+        return self._durable()[0]
+
+    def _durable(self) -> tuple[float | None, dict[str, float]]:
+        """The durable point, and the artefacts forced after it (key: ``created_at``)."""
         try:
             data = json.loads((self.root / DURABLE_FILE).read_text(encoding="utf-8"))
-            return float(data["until"])
+            until = float(data["until"])
         except (OSError, ValueError, KeyError, TypeError):
-            return None
+            return None, {}
+        try:  # a point written before the list, or a list that cannot be read: none
+            return until, {str(k): float(v) for k, v in dict(data.get("forced") or {}).items()}
+        except (TypeError, ValueError):
+            return until, {}
 
-    def _write_durable(self, until: float) -> None:
+    def _write_durable(self, until: float, forced: dict[str, float] | None = None) -> None:
         """Write the durable point after the one flush of the disk's own cache a group needs:
         it covers every file :func:`_flush_data` sent to the disk before, and comes before the
         point can reach the disk itself."""
         path = self.root / DURABLE_FILE
         tmp = path.with_name(f"{path.name}{TMP_MARKER}{os.getpid()}-{secrets.token_hex(4)}")
+        point: dict[str, Any] = {"until": until}
+        if forced:
+            point["forced"] = forced
         with contextlib.suppress(OSError):  # a store on a disk that cannot be written
             try:
                 with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-                    f.write(json.dumps({"until": until}) + "\n")
+                    f.write(json.dumps(point) + "\n")
                     f.flush()
                     _flush_disk(f.fileno())
                 fs_replace(tmp, path)  # asked again on Windows while a reader holds the point
@@ -485,19 +497,30 @@ class Store:
         were forced. Files the system has already written cost it little: this runs once a tile,
         where forcing each file as it was written held the whole build.
 
+        The ones it forced within the margin are listed with the point (key and ``created_at``):
+        the last tile's textures are indexed seconds before a build ends, and the next build's
+        :meth:`recover` read its whole folder again, 7.6 GB and 68 s on a hard disk for a tile
+        at ZL17 (2026-09-29). A row indexed again under the same key since is not the one forced.
+
         A file another program holds cannot be sent to the disk (:func:`_open_for_flush`): it is
         left as the system wrote it, named in the log, and the point stops just before its
         artefact, which the next point asks again and :meth:`recover` checks against its digest.
         Its tile goes on: failing it for a file that is almost always whole stopped a build for
         nothing (2026-09-28)."""
         with self._durable_lock:
-            since = self.durable_until()
+            since, forced_before = self._durable()
             asked = time.time()
             rows = self._deferred_since(since)
             shards: set[Path] = set()
             held: list[float] = []
+            forced: dict[str, float] = {}
+            sent = 0
             for row in rows:
-                path = self.artifact_path(str(row["rule"]), str(row["key"]))
+                key, created = str(row["key"]), float(row["created_at"])
+                if forced_before.get(key) == created:
+                    forced[key] = created  # forced by the point before: its files are on the disk
+                    continue
+                path = self.artifact_path(str(row["rule"]), key)
                 try:
                     if row["kind"] == "file":
                         _flush_data(path)
@@ -512,8 +535,10 @@ class Store:
                         exc.filename or path,
                         exc.strerror or exc,
                     )
-                    held.append(float(row["created_at"]))
+                    held.append(created)
                     continue
+                forced[key] = created
+                sent += 1
                 shards.add(path.parent)
             for shard in shards:
                 _flush_dir_data(shard)
@@ -522,18 +547,24 @@ class Store:
             until = asked - DURABLE_MARGIN_S
             if held:  # the rows come oldest first: the point stays below the first one held
                 until = min(until, math.nextafter(held[0], -math.inf))
-            self._write_durable(max(since or 0.0, until))
-            return len(rows) - len(held)
+            until = max(since or 0.0, until)
+            self._write_durable(until, {k: c for k, c in forced.items() if c > until})
+            return sent
 
     def recover(self) -> RecoverReport:
         """When a build starts: check the artefacts of :data:`DEFERRED_RULES` indexed since the
         durable point against their digest, drop the torn ones (a power cut, a crash of the
         system or a disk unplugged before a durable point), and make the rest durable.
 
-        After a build that ended normally there is next to nothing to check. A build still
-        running in another process has its fresh artefacts checked too, which reads them and
-        finds them whole."""
-        rows = self._deferred_since(self.durable_until())
+        After a build that ended normally there is nothing to check: what its last point forced
+        within its margin is listed with it. A build still running in another process has its
+        fresh artefacts checked too, which reads them and finds them whole."""
+        since, forced = self._durable()
+        rows = [
+            row
+            for row in self._deferred_since(since)
+            if forced.get(str(row["key"])) != float(row["created_at"])
+        ]
         dropped: list[str] = []
         for row in rows:
             key = str(row["key"])
