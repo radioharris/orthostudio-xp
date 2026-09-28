@@ -41,7 +41,8 @@ pack is shared by every tile. OrthoStudio XP writes the same pack under its own 
 What the source looks like (X-Plane 12 Global Scenery, `+43+005`, DSFTool 2.3.0-b2): 11.5 MB
 7z (LZMA, one member `+43+005.dsf`, 24.7 MB), text 169.7 MB / 2 801 507 lines: 7 `PROPERTY`,
 190 `TERRAIN_DEF`, 175 `POLYGON_DEF` (index 0 = `lib/g12/beaches.bch`, then `.for` forests,
-`.lin` airport borders, `.ags` autogen, `.fac` facades), 1 `NETWORK_DEF` (`lib/g10/roads_EU.net`,
+`.lin` airport borders, `.ags` autogen strings, `.fac` facades; a tile of cities has `.agb`
+autogen blocks too, 274 of them on `+33-112`), 1 `NETWORK_DEF` (`lib/g10/roads_EU.net`,
 `NETWORK_DEF` index 0, 12 road subtypes in use), 0 `OBJECT_DEF`, 11 `RASTER_DEF`, 12 395
 patches (1 087 468 vertices), 38 576 polygons (363 of type 0), 156 258 road segments. Five
 other Global Scenery tiles sampled (`+43+004`, `+48+002`, `+51-001`, `+40-074`, `+34-119`)
