@@ -639,6 +639,26 @@ def test_a_square_is_named_as_osxp_names_it() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer() -> None:
+    """Below the 32 GB they want (orthostudio.live.machine), whichever of the two is chosen."""
+    script = (
+        f"import {{ shortOfMemory }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "const small = { cores: 8, ram_gb: 16, sharp_ram_gb: 32 };"
+        "const large = { cores: 14, ram_gb: 48, sharp_ram_gb: 32 };"
+        "console.log(JSON.stringify([shortOfMemory(small, 16, 18), shortOfMemory(small, 17, 18),"
+        " shortOfMemory(small, 16, 19), shortOfMemory(large, 17, 19), shortOfMemory(null, 17, 19),"
+        " shortOfMemory({ ...small, ram_gb: 32 }, 17, 19)]));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == [False, True, True, False, False, False]
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_parses() -> None:
     for name in ("live.js", "strings.js"):
         subprocess.run([NODE or "node", "--check", str(UI_DIR / name)], check=True)

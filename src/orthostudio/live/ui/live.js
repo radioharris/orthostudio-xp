@@ -278,6 +278,15 @@ function drawChecks(status) {
   const items = [];
   const add = (kind, text, go = false) => items.push([kind, text, go]);
   if (!c.supported) add("failed", t("checks.macos_no"));
+  const m = c.machine;
+  if (m) {
+    const s = status.settings || {};
+    if (shortOfMemory(m, s.max_zoom, s.max_zoom_airports)) {
+      add("warn", t("zoom.memory", { ram: m.ram_gb, need: m.sharp_ram_gb }));
+    } else {
+      add("done", t("checks.machine", { cores: m.cores, ram: m.ram_gb }));
+    }
+  }
   if (c.folder_problem) add("failed", t("checks.folder_problem", { problem: c.folder_problem }));
   else add("done", t("checks.folder", { path: c.folder }));
   if (c.xplane) add("done", t("checks.xplane", { path: c.xplane }));
@@ -497,6 +506,7 @@ function draw(status) {
   drawFlight(status);
   drawBuild(status);
   drawChecks(status);
+  drawMemory();
   drawDisk(status);
   drawFolder(status);
   drawRegions(status);
@@ -596,6 +606,24 @@ function drawStart() {
     || Number($("set-max-zoom-airports").value) > ZOOMS.max_zoom_airports[0];
   $("start-options").hidden = !sharp;
   $("start-plain").hidden = sharp;
+  drawMemory();
+}
+
+/** Whether zooms above the package's (8192 px textures) are chosen on a computer with less memory
+ * than they need (the checks' `machine`): the checks and the zoom settings say so. */
+export function shortOfMemory(machine, maxZoom, maxZoomAirports) {
+  if (!machine) return false;
+  const sharp = maxZoom > ZOOMS.max_zoom[0] || maxZoomAirports > ZOOMS.max_zoom_airports[0];
+  return sharp && machine.ram_gb < machine.sharp_ram_gb;
+}
+
+/** Under the zooms, as they are chosen: ZL17 or ZL19 on a computer short of memory for them. */
+function drawMemory() {
+  const m = last?.checks?.machine;
+  const note = $("zoom-memory");
+  const short = shortOfMemory(m, Number($("set-max-zoom").value), Number($("set-max-zoom-airports").value));
+  note.hidden = !short;
+  if (short) note.textContent = t("zoom.memory", { ram: m.ram_gb, need: m.sharp_ram_gb });
 }
 
 function fillSettings(settings) {

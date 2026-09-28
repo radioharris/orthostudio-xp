@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -52,7 +51,10 @@ class RefusedError(Exception):
 
 
 def default_workers() -> int:
-    return max(1, (os.cpu_count() or 4) - 2)
+    """Encoding processes: every core of this computer but two (:mod:`orthostudio.live.machine`)."""
+    from orthostudio.live import machine
+
+    return machine.encoders(machine.machine()[0])
 
 
 @dataclass
@@ -316,12 +318,16 @@ def follow(
     window's, asked each time the plugin is answered (``options.language`` by default).
     ``attach``: told of the streamer once it runs, and of None once it stops (the window's map
     reads what it builds from its memory)."""
+    from orthostudio.live import machine
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
     from orthostudio.live.providers import cache_key
     from orthostudio.live.streamer import DATAREFS, Streamer, run
     from orthostudio.live.xpudp import XPlaneUDP
 
+    computer = machine.share(options.workers)
+    for line in computer.notes(options.max_zoom, options.max_zoom_airports):
+        log(line)
     try:
         xp = XPlaneUDP([d for _, d in DATAREFS], port=options.port)
         try:
@@ -347,6 +353,8 @@ def follow(
                     covered=prepared.covered,
                     simbrief_user=options.simbrief_user,
                     tint_8192=options.tint_8192,
+                    flight_encodes=computer.flight_encodes,
+                    sharp_builds=computer.sharp_builds,
                     installed_regions=lambda: {
                         s.name.removeprefix("z_ao_") for s in default_sources(prepared.xplane)
                     },

@@ -178,6 +178,8 @@ export const STRINGS = {
     "checks.plugin_missing": "No X-Plane plugin: X-Plane will not wait for the ortho at a start",
     "checks.left_installed":
       "Live's pack is still in X-Plane: take it out, or X-Plane shows neutral textures wherever nothing was built.",
+    "checks.machine":
+      "This computer: {cores} cores, {ram} GB of memory. In flight, Live takes only a small share of it: X-Plane comes first.",
 
     "settings.title": "Settings",
     "settings.lead": "They take effect at the next start.",
@@ -217,6 +219,8 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed: Live puts every texture at its new size, a couple of minutes, with nothing to download.",
+    "zoom.memory":
+      "This computer has {ram} GB of memory, and ZL17 and ZL19 need {need} GB: X-Plane may stutter or run out of memory. ZL16 and ZL18, the package's, suit it better.",
     "home.title": "When the app starts",
     "home.help":
       "What OrthoStudio XP opens: Live's window, or OrthoStudio XP's, to build tiles. Each window has a button to the other.",
@@ -474,6 +478,8 @@ export const STRINGS = {
     "checks.plugin_missing": "Pas de plugin X-Plane : X-Plane n'attendra pas l'ortho au départ",
     "checks.left_installed":
       "Le pack de Live est encore dans X-Plane : retirez-le, sinon X-Plane affiche des textures neutres partout où rien n'a été construit.",
+    "checks.machine":
+      "Cet ordinateur : {cores} cœurs, {ram} Go de mémoire. En vol, Live n'en prend qu'une petite part : X-Plane passe en premier.",
 
     "settings.title": "Réglages",
     "settings.lead": "Ils s'appliquent au prochain démarrage.",
@@ -514,6 +520,8 @@ export const STRINGS = {
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":
       "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met chaque texture à sa nouvelle taille, deux minutes environ, sans rien télécharger.",
+    "zoom.memory":
+      "Cet ordinateur a {ram} Go de mémoire, et ZL17 et ZL19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. ZL16 et ZL18, ceux du package, lui conviennent mieux.",
     "home.title": "Au lancement de l'application",
     "home.help":
       "Ce qu'OrthoStudio XP ouvre : la fenêtre Live, ou celle d'OrthoStudio XP pour construire des tuiles. Chaque fenêtre a un bouton vers l'autre.",

@@ -126,9 +126,12 @@ def made_by(pack: str) -> str:
 
 def gather_checks() -> dict[str, Any]:
     """What streaming needs, as the page lists it."""
-    from orthostudio.live import plugin
+    from orthostudio.live import machine, plugin
 
+    cores, ram_gb = machine.machine()
     out: dict[str, Any] = {
+        # this computer, and the memory ZL17 and ZL19 want: the page warns below it
+        "machine": {"cores": cores, "ram_gb": round(ram_gb), "sharp_ram_gb": machine.SHARP_RAM_GB},
         "supported": supported(),
         "xplane": None,
         "xplane_problem": None,

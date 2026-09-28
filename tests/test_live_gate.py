@@ -561,6 +561,30 @@ class EncodersTest(unittest.TestCase):
             self.assertEqual(s.encode_cap(), streamer_module.FLIGHT_ENCODES)
             cache.close()
 
+    def test_a_smaller_computer_s_share(self):
+        """A computer of 8 cores and 16 GB (orthostudio.live.machine): its six workers all at work
+        while X-Plane waits, two while it flies, one 8192 px texture at a time."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            s = Streamer(
+                pack,
+                cache,
+                lambda on_piece: None,
+                finest_quality=0,
+                workers=6,
+                log=lambda _: None,
+                flight_encodes=2,
+                sharp_builds=1,
+            )
+            self.assertEqual(s.encode_cap(), 6)
+            s.flying = True
+            self.assertEqual(s.encode_cap(), 2)
+            self.assertEqual(s.sharp_builds, 1)
+            cache.close()
+
 
 class ReachTest(unittest.TestCase):
     def test_external_views_widen_the_sharp_rings(self):

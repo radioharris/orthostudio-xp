@@ -86,10 +86,13 @@ BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
 EVICT_EVERY_S = 10.0
-FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers while it waits
+# textures encoded at once while X-Plane flies, all workers while it waits: by default the share of
+# a computer of 14 cores, each computer's own from its cores (orthostudio.live.machine)
+FLIGHT_ENCODES = 4
 # 8192 px textures encoded at once at most, each in a process of its own, which ends with it and
 # gives its memory back: twelve workers kept 14 GB after such textures, and a user's Mac, short of
-# memory, froze X-Plane (2026-09-28)
+# memory, froze X-Plane (2026-09-28). By default a computer of 48 GB's, each one's own from its
+# memory.
 SHARP_WORKERS = 4
 # The photos of the levels this sharp and sharper (4096 and 8192 px) are not kept in the imagery
 # cache: the texture built holds them, and they took most of what the cache wrote (2026-09-28).
@@ -221,6 +224,8 @@ class Streamer:
         simbrief_user: str = "",
         installed_regions: Callable[[], Collection[str]] = frozenset,
         tint_8192: bool = False,
+        flight_encodes: int = FLIGHT_ENCODES,
+        sharp_builds: int = SHARP_WORKERS,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -238,6 +243,9 @@ class Streamer:
         self.margin = margin
         self.reach_km = reach_km  # how far from the aircraft an external view may take the camera
         self.workers = workers
+        # this computer's share while X-Plane flies, and of 8192 px builds (live.machine)
+        self.flight_encodes = flight_encodes
+        self.sharp_builds = sharp_builds
         self.xp = xplane  # anything with .command(name): the UDP link, or a test's stand-in
         self.log = log
         self.tint_8192 = tint_8192  # the test: the 8192 px levels built pink (texture.tinted)
@@ -369,8 +377,8 @@ class Streamer:
 
     def encode_cap(self) -> int:
         """Textures encoded at once: all the workers while X-Plane waits on a start or is away,
-        FLIGHT_ENCODES while it flies, its cores left to it."""
-        return min(self.workers, FLIGHT_ENCODES) if self.flying else self.workers
+        this computer's share while it flies (``flight_encodes``), its cores left to it."""
+        return min(self.workers, self.flight_encodes) if self.flying else self.workers
 
     def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
         """X-Plane's scenery load flag, in flight: Live holds back while it is up and YIELD_AFTER_S
@@ -702,8 +710,9 @@ class Streamer:
 
         def submit_ready(pool) -> None:
             """The most urgent textures ready to encode, as many as the encoders may take now:
-            all while X-Plane waits, FLIGHT_ENCODES while it flies; an 8192 px level in a process
-            of its own (``sharp_pool``), one getting its copy only once it has it."""
+            all while X-Plane waits, this computer's share while it flies (``encode_cap``); an
+            8192 px level in a process of its own (``sharp_pool``, ``sharp_builds`` of them), one
+            getting its copy only once it has it."""
             cap = self.encode_cap()
             held = self.yielding()  # X-Plane loads scenery: only what it reads already
             while len(encoding) < cap:
@@ -836,7 +845,7 @@ class Streamer:
             ) as pool,
             pools.RenewingPool(
                 lambda: ProcessPoolExecutor(
-                    max_workers=min(SHARP_WORKERS, self.workers),
+                    max_workers=min(self.sharp_builds, self.workers),
                     initializer=worker_ignores_ctrl_c,
                     mp_context=pools.context(),
                     max_tasks_per_child=1,
