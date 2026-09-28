@@ -189,8 +189,10 @@ def stream(
     """Follow X-Plane and keep the textures ahead of the aircraft built. Start it before X-Plane.
 
     The options left out are the Live window's settings."""
+    from orthostudio.live import pools
     from orthostudio.live.settings import LiveSettings, load_settings
 
+    pools.start_server()  # before the engine loads PROJ (orthostudio.live.pools)
     saved = load_settings()
     space = saved
     if disk_gb is not None:

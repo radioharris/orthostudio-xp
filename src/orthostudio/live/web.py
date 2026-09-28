@@ -128,7 +128,9 @@ def open_window(port: int, *, browser: bool = False, start: str | None = None) -
     left behind. ``start="welcome"``: the app's question first. Returns ``"build"`` when its
     answer was OrthoStudio XP's window, for the app to open it."""
     from orthostudio import window
+    from orthostudio.live import pools
 
+    pools.start_server()  # before the engine's API loads PROJ (orthostudio.live.pools)
     control = LiveControl()
     server, thread = _serve(create_live_app(control), port)
     url = f"http://127.0.0.1:{port}/" + ("welcome" if start == "welcome" else "")

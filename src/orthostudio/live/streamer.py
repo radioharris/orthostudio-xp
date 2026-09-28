@@ -7,7 +7,8 @@ for every texture within 300 km, the level X-Plane will read of it over the next
 of ``orthostudio.live.rings`` applied to its distance from the path ahead. Textures built coarser
 than that are queued, the most urgent first: those nearest to the ring where X-Plane will want them.
 A builder thread downloads their pieces (the chunk cache, then the downloader), encodes them in a
-process pool and replaces each file with rename(). X-Plane opens a texture again for every sharper
+process pool (``orthostudio.live.pools``: forked by a small process of their own, started again if
+it loses one) and replaces each file with rename(). X-Plane opens a texture again for every sharper
 level, so it reads the new file at its next ring.
 
 At a flight's start, OrthoStudio XP Live's X-Plane plugin holds X-Plane on its loading screen until
@@ -47,7 +48,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import dds
+from . import dds, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, pick, usage
@@ -620,8 +621,6 @@ class Streamer:
     def _build_loop(self) -> None:
         """Each texture on its own: its pieces from the cache or asked for, then parents for pieces
         without imagery, then the encoding pool as soon as it has them all."""
-        import multiprocessing
-
         from .texture import build_job, copy_up
 
         answers: queue.Queue[tuple[Key, int, bytes | None]] = queue.Queue()
@@ -778,14 +777,22 @@ class Streamer:
 
         last_flush = last_evict = time.monotonic()
         with (
-            ProcessPoolExecutor(
-                max_workers=self.workers, initializer=worker_ignores_ctrl_c
+            pools.RenewingPool(
+                lambda: ProcessPoolExecutor(
+                    max_workers=self.workers,
+                    initializer=worker_ignores_ctrl_c,
+                    mp_context=pools.context(),
+                ),
+                self.log,
             ) as pool,
-            ProcessPoolExecutor(
-                max_workers=min(SHARP_WORKERS, self.workers),
-                initializer=worker_ignores_ctrl_c,
-                mp_context=multiprocessing.get_context("spawn"),
-                max_tasks_per_child=1,
+            pools.RenewingPool(
+                lambda: ProcessPoolExecutor(
+                    max_workers=min(SHARP_WORKERS, self.workers),
+                    initializer=worker_ignores_ctrl_c,
+                    mp_context=pools.context(),
+                    max_tasks_per_child=1,
+                ),
+                self.log,
             ) as sharp_pool,
         ):
             try:
