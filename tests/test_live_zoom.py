@@ -2,8 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The zoom set, as AutoOrtho's max_zoom and max_zoom_near_airports: each texture's file at the size
 of its zoom from the start (1024 px two zooms below the mesh's, 8192 px one above), an 8192 px file
-holding the copy of its sharpest level built above it, a new zoom laying the pack out again without
-losing what was built, and where the 8192 px level gets its photos."""
+built from a far level holding its copy above it, a new zoom laying the pack out again without
+losing what was built, where the 8192 px level gets its photos, and its copy when they are late."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from orthostudio.live.region import (
     setup_region,
 )
 from orthostudio.live.streamer import Fix, Streamer
-from orthostudio.live.texture import double_bc1, downgrade, write_sparse
+from orthostudio.live.texture import copy_up, double_bc1, downgrade, needs_copy, write_sparse
 
 AIRPORT = "93184_132608_BI18"  # a ZL18 texture inside NAMES[0]: the mesh's airports
 # ZL16 textures in a row eastwards from NAMES[0], one every 6.8 km (45.4° N)
@@ -131,23 +131,30 @@ def test_the_copy_is_the_level_doubled() -> None:
             assert big[y][x] == small[y // 2][x // 2]
 
 
-def test_an_8192_file_holds_the_copy_of_its_sharpest_level(tmp_path: Path) -> None:
-    """X-Plane counts a file's levels from its top: it reads each level of an 8192 px file a ring
-    before its photos are built, and finds there the copy of the level below. A 4096 px file has
-    none: X-Plane reads each of its levels where its photos are built."""
+def test_an_8192_file_built_from_a_far_level_holds_its_copy(tmp_path: Path) -> None:
+    """X-Plane counts a file's levels from its top: it reads the far levels of an 8192 px file (at
+    72 km, at load) before their photos come, and finds there the copy of the level below. Nearer,
+    the photos are there first: no copy, each would take four times the disk of its level."""
+    assert [needs_copy(level, -1) for level in range(-1, 5)] == [False] * 4 + [True] * 2
+    assert not needs_copy(4, 0)  # a 4096 px file: X-Plane reads each level where it is built
     pack = region(tmp_path, Zooms(17, 18))
+    neutral = ensure_neutral(pack, -1)
     path = pack / "textures" / f"{NAMES[0]}.dds"
-    write_sparse(path, 2, levels_from(2, -1), base=ensure_neutral(pack, -1), file_top=-1)
+    write_sparse(path, 3, levels_from(3, -1), base=neutral, file_top=-1, copy_above=True)
     assert side_of(path) == 8192
-    assert level_bytes(path, 1, -1) == double_bc1(levels_from(2, -1)[0], 1024)
-    for level in (-1, 0):  # above the copy: the neutral colour, never read that early
-        assert level_bytes(path, level, -1) == level_bytes(pack / neutral_file(-1), level, -1)
-    for level in range(2, 5):
+    assert level_bytes(path, 2, -1) == double_bc1(levels_from(3, -1)[0], 512)
+    for level in (-1, 0, 1):  # above the copy: the neutral colour, never read that early
+        assert level_bytes(path, level, -1) == level_bytes(neutral, level, -1)
+    for level in (3, 4):
         assert level_bytes(path, level, -1) == levels_from(level, -1)[0]
 
-    plain = pack / "textures" / f"{NAMES[1]}.dds"
-    write_sparse(plain, 2, levels_from(2, 0), base=ensure_neutral(pack, 0), file_top=0)
-    assert level_bytes(plain, 1, 0) == level_bytes(pack / neutral_file(0), 1, 0)
+    near = pack / "textures" / f"{NAMES[1]}.dds"
+    write_sparse(near, 0, levels_from(0, -1), base=neutral, file_top=-1)
+    assert level_bytes(near, -1, -1) == level_bytes(neutral, -1, -1)
+    copy_up(near, neutral, -1)  # its photos late: the 4096 px level copied up, nothing else
+    assert level_bytes(near, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
+    for level in range(5):
+        assert level_bytes(near, level, -1) == levels_from(level, -1)[0]
 
 
 # --- the pack's layout --------------------------------------------------------------------------
@@ -193,13 +200,12 @@ def test_a_new_zoom_keeps_what_is_built(tmp_path: Path) -> None:
     assert side_of(pack / "textures" / f"{AIRPORT}.dds") == 4096  # airports untouched
     assert any("ZL16 textures: 2 to 1024 px" in line for line in lines)
 
-    # up to ZL17: 8192 px, its levels kept, the copy of the sharpest above it, the rest neutral
+    # up to ZL17: 8192 px, its levels kept, the sharper ones neutral
     assert relayout(pack, Zooms(17, 18), log=quiet) == 2
     assert side_of(built) == 8192
     assert level_bytes(built, 2, -1) == levels_from(2, 0)[0]
-    assert level_bytes(built, 1, -1) == double_bc1(levels_from(2, 0)[0], 1024)
     neutral = pack / neutral_file(-1)
-    for level in (-1, 0):
+    for level in (-1, 0, 1):
         assert level_bytes(built, level, -1) == level_bytes(neutral, level, -1)
     assert other.read_bytes() == neutral.read_bytes()
     assert recorded(pack)["textures"] == {built.name: 2}
@@ -223,8 +229,7 @@ def test_an_8192_texture_keeps_its_size_while_its_zoom_goes_that_far(tmp_path: P
 
 def test_a_pack_whose_textures_grew(tmp_path: Path) -> None:
     """A pack of ZL17 from when textures started at 4096 px and grew to 8192 px in flight: laid
-    out once more, every file at 8192 px, those built with the copy above their sharpest level;
-    the grown ones as they are."""
+    out once more, every file at 8192 px, its levels kept; the grown ones as they are."""
     pack = region(tmp_path, Zooms(16, 18))
     grown = sharp_file(pack, f"{NAMES[0]}.dds")
     built = pack / "textures" / f"{NAMES[1]}.dds"
@@ -237,7 +242,7 @@ def test_a_pack_whose_textures_grew(tmp_path: Path) -> None:
     assert relayout(pack, Zooms(17, 18), log=quiet) == 1
     assert grown.read_bytes() == before
     assert side_of(built) == 8192
-    assert level_bytes(built, -1, -1) == double_bc1(levels_from(0, 0)[0], 4096)
+    assert level_bytes(built, -1, -1) == level_bytes(pack / neutral_file(-1), -1, -1)
     assert level_bytes(built, 0, -1) == levels_from(0, 0)[0]
     assert side_of(pack / "textures" / f"{AIRPORT}.dds") == 4096  # ZL18: the mesh's own
     assert "grown" not in recorded(pack)
@@ -245,30 +250,30 @@ def test_a_pack_whose_textures_grew(tmp_path: Path) -> None:
 
 
 def test_a_pack_of_8192_px_files_without_copies(tmp_path: Path) -> None:
-    """The first layout: 8192 px files from the start, but none with the copy: each file built
-    coarser than 8192 px gets it."""
+    """The first layout: 8192 px files from the start, but none with the copy: each file built from
+    a far level gets it, the others are left as they are."""
     pack = region(tmp_path, Zooms(17, 18))
-    path = pack / "textures" / f"{NAMES[0]}.dds"
+    far, near = (pack / "textures" / f"{name}.dds" for name in NAMES)
     neutral = ensure_neutral(pack, -1)
-    write_sparse(path, 1, levels_from(1, -1), base=neutral, file_top=-1)
-    with path.open("r+b") as f:  # as the first layout wrote it: no copy
-        offset, _ = dds.level_layout(-1)[1]
-        f.seek(offset)
-        f.write(level_bytes(neutral, 0, -1))
-    record(pack, {path.name: 1})
+    write_sparse(far, 3, levels_from(3, -1), base=neutral, file_top=-1)  # as the first layout
+    write_sparse(near, 1, levels_from(1, -1), base=neutral, file_top=-1)
+    record(pack, {far.name: 3, near.name: 1})
     as_layout(pack, Zooms(17, 18), None)
+    before = near.read_bytes()
 
     assert region_layout(pack) == (Zooms(17, 18), 1)
     assert relayout(pack, Zooms(17, 18), log=quiet) == 1
-    assert level_bytes(path, 0, -1) == double_bc1(levels_from(1, -1)[0], 2048)
-    assert recorded(pack)["textures"] == {path.name: 1}
+    assert level_bytes(far, 2, -1) == double_bc1(levels_from(3, -1)[0], 512)
+    assert near.read_bytes() == before
+    assert recorded(pack)["textures"] == {far.name: 3, near.name: 1}
 
 
 def test_an_8192_texture_on_the_disk_and_made_coarser(tmp_path: Path) -> None:
     """Its disk, the copy counted; made coarser, it keeps its size, the copy above what it keeps."""
     assert texture_bytes(-1, -1) == 4096 + sum(n for _, n in dds.level_layout(-1))
     assert texture_bytes(-1, -1) > 4 * texture_bytes(0) - 1_000_000
-    assert texture_bytes(0, -1) == texture_bytes(0) + dds.level_layout(-1)[0][1]
+    assert texture_bytes(0, -1) == texture_bytes(0)  # no copy: its photos come first
+    assert texture_bytes(3, -1) == texture_bytes(3) + dds.level_layout(2)[0][1]
     assert texture_bytes(4, -1) == texture_bytes(4) + dds.level_layout(3)[0][1]
     assert texture_bytes(4, 0) == texture_bytes(4)
     pack = region(tmp_path, Zooms(17, 18))
@@ -412,11 +417,67 @@ def test_a_wider_image_reads_sharper_farther(tmp_path: Path) -> None:
 
 
 def test_no_8192_px_below_maximum_texture_quality(tmp_path: Path) -> None:
-    """At High, X-Plane reads no 8192 px level: none gets its photos, the copy stays there."""
+    """At High, X-Plane reads no 8192 px level: none gets its photos."""
     s = row_streamer(tmp_path)
     s.reads_8192.clear()  # as finest_quality=1 makes it
     assert sharp(s.plan(at(0), x_plane_there=False, starting=True)) == []
     s.cache.close()
+
+
+def test_late_8192_px_photos_get_the_copy_first(tmp_path: Path) -> None:
+    """In flight, an 8192 px level still without its photos as X-Plane is about to read it (13 km)
+    is marked for the copy of its 4096 px level; not at a start (X-Plane waits for the photos),
+    nor where the copy is already, nor farther."""
+    s = row_streamer(tmp_path)
+    for k in (1, 2):
+        s.built[f"{ROW[k]}.dds"] = 0
+    s.plan(at(0), x_plane_there=False, starting=True)
+    assert s.to_copy == set()
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    assert s.to_copy == {f"{ROW[1]}.dds"}  # 6.8 km; 13.6 km is not yet late
+    s.to_copy.clear()
+    s.copied_up.add(f"{ROW[1]}.dds")
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    assert s.to_copy == set()
+    s.cache.close()
+
+
+class NoInternet:
+    """A downloader that never answers."""
+
+    downloaded = bytes = failed = 0
+
+    def __init__(self, on_piece) -> None:
+        pass
+
+    def submit(self, key, priority) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.mark.skipif(Image is None, reason="needs numpy, Pillow and ispc_texcomp")
+def test_the_builder_copies_up_while_the_photos_do_not_come(tmp_path: Path) -> None:
+    """No internet: the 8192 px level of a texture X-Plane is about to read gets the copy of its
+    4096 px level, the ortho as at ZL16, never the neutral colour; its photos stay awaited."""
+    pack = region(tmp_path, Zooms(17, 18), textures=ROW)
+    name = f"{ROW[1]}.dds"
+    path = pack / "textures" / name
+    write_sparse(path, 0, levels_from(0, -1), base=ensure_neutral(pack, -1), file_top=-1)
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(pack, cache, NoInternet, finest_quality=0, max_zoom=17, workers=2, log=quiet)
+    s.built[name] = 0
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    s.start()
+    deadline = time.time() + 60
+    while name not in s.copied_up and time.time() < deadline:
+        time.sleep(0.1)
+    s.close()
+    cache.close()
+    assert name in s.copied_up and s.built[name] == 0
+    assert level_bytes(path, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
+    assert level_bytes(path, 0, -1) == levels_from(0, -1)[0]
 
 
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:

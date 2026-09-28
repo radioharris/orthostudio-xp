@@ -8,10 +8,17 @@ levels from the one built down are written; the larger ones are the neutral text
 the disk, which X-Plane, reading by distance, never reaches. Level ``k`` of a texture of zoom ``z``
 is imagery at zoom ``z - k``: ``(16 >> k)²`` pieces of 256 px, 1,024 at level -1 (8192 px).
 
-An 8192 px file has one level more written: the one above the level built holds a copy of it, twice
-as wide (:func:`double_bc1`). X-Plane counts a file's levels from its top (an fs_usage trace in
-flight, 2026-09-28), so it reads each level of an 8192 px file one ring before the photos of that
-level are built: it finds that copy there, the same image, never the neutral colour.
+X-Plane counts a file's levels from its top (an fs_usage trace in flight, 2026-09-28), so it reads
+each level of an 8192 px file one ring before the photos of that level are built at a 4096 px
+file's distances. Nearer than 38 km that does not matter: the camera's reach builds each level's
+photos before X-Plane reads it there, and the screen would not show it sharper anyway. The far
+levels of an 8192 px file, though, are read at 72 km and at load before their photos come: so a
+file built from the 512 px or the 256 px level has the level above it written too, as its copy,
+twice as wide (:func:`double_bc1`, :func:`needs_copy`), the same image, never the neutral colour.
+And the 8192 px level of a texture about to get its photos first gets the copy of its 4096 px
+level (:func:`copy_up`): photos coming late show the ortho as at ZL16, never the neutral colour.
+A copy takes four times the disk of the level it copies, which is why there are no others (every
+level copied took 27.7 GB for a five-minute flight near Lyon, 2026-09-28).
 
 The pieces are assembled, mip-mapped in linear light and encoded to BC1 by
 ``orthostudio.live.imaging``, imported where it is used so that the layout functions here need
@@ -42,6 +49,7 @@ MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
 # sees where X-Plane shows it; the 4096 px and smaller levels are the photos as they are.
 TINT_RGB = (255, 64, 200)
 TINT_ALPHA = 0.35
+COPY_FROM = 3  # the levels whose copy goes above them in an 8192 px file: 512 px and smaller
 
 
 def worker_ignores_ctrl_c() -> None:
@@ -116,12 +124,19 @@ def double_bc1(blob: bytes, side: int) -> bytes:
     return out.reshape(2 * n, 2 * n, 2).tobytes()
 
 
+def needs_copy(level: int, file_top: int) -> bool:
+    """Whether a file whose sharpest level is ``file_top``, built from ``level``, holds the copy of
+    that level above it: an 8192 px file built from a far level (the module's docstring)."""
+    return file_top < 0 and level >= COPY_FROM
+
+
 def write_sparse(
     path: Path,
     top_level: int,
     levels: Sequence[bytes],
     base: Path | None = None,
     file_top: int = 0,
+    copy_above: bool = False,
 ) -> None:
     """Write the levels of ``path`` from ``top_level`` down to 1 x 1, and replace it atomically.
 
@@ -129,11 +144,11 @@ def write_sparse(
     ``base`` (the region's neutral texture of that size, complete at every level), the file starts
     as a clone of it and only the levels given are written: the larger ones stay the base's, shared
     on the disk at no cost, so a level read sharper than it was built shows the neutral colour,
-    never black. Without, they are a hole of a sparse file, which reads as zeros. In an 8192 px
-    file, the level above ``top_level`` is written too, as its copy (the module's docstring).
+    never black. Without, they are a hole of a sparse file, which reads as zeros. ``copy_above``:
+    the level above ``top_level`` written too, as its copy (the module's docstring).
     """
     layout = dds.level_layout(file_top)
-    if file_top < 0 and top_level > file_top and levels:
+    if copy_above and top_level > file_top and levels:
         levels = [double_bc1(levels[0], dds.size_of(top_level)), *levels]
         top_level -= 1
     first = top_level - file_top
@@ -190,7 +205,21 @@ def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
         replace_with_clone(str(neutral), str(path))
         return
     levels = _levels_from(path, level, file_top)
-    write_sparse(path, level, levels, base=neutral if neutral.exists() else None, file_top=file_top)
+    write_sparse(
+        path,
+        level,
+        levels,
+        base=neutral if neutral.exists() else None,
+        file_top=file_top,
+        copy_above=needs_copy(level, file_top),
+    )
+
+
+def copy_up(path: Path, neutral: Path, file_top: int = -1) -> None:
+    """The 8192 px level of a texture built from its 4096 px one made the copy of that one, the
+    levels kept, nothing downloaded: until its photos come (the module's docstring)."""
+    levels = _levels_from(path, 0, file_top)
+    write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True)
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:
@@ -199,7 +228,9 @@ def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) ->
     is built to now."""
     keep = max(built, new_top)
     levels = _levels_from(path, keep, old_top)
-    write_sparse(path, keep, levels, base=neutral, file_top=new_top)
+    write_sparse(
+        path, keep, levels, base=neutral, file_top=new_top, copy_above=needs_copy(keep, new_top)
+    )
     return keep
 
 
@@ -293,5 +324,12 @@ def build_job(job) -> tuple[str, int, int, int]:
     tex = parse_texture_name(name)
     img, from_parent, blank = assemble(tex, level, pieces, parents)
     levels = encode_levels(img, tint_top=tint and level < 0)
-    write_sparse(Path(path), level, levels, base=base, file_top=file_top)
+    write_sparse(
+        Path(path),
+        level,
+        levels,
+        base=base,
+        file_top=file_top,
+        copy_above=needs_copy(level, file_top),
+    )
     return name, level, from_parent, blank

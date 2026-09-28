@@ -31,16 +31,40 @@ def decode_piece(body: bytes) -> np.ndarray:
 _TO_LINEAR = ((np.arange(256, dtype=np.float32) / 255.0) ** GAMMA).astype(np.float32)
 
 
+STRIP = 512  # rows of a level taken to linear light at a time: an 8192 px level whole is 800 MB
+
+
+def _half(lin: np.ndarray) -> np.ndarray:
+    """The level below, in linear light: the average of each four texels."""
+    return 0.25 * (lin[0::2, 0::2] + lin[1::2, 0::2] + lin[0::2, 1::2] + lin[1::2, 1::2])
+
+
+def _stored(lin: np.ndarray) -> np.ndarray:
+    """A level in linear light back to stored values, uint8, one float array at a time."""
+    out = np.power(lin, 1.0 / GAMMA)
+    out *= 255.0
+    np.round(out, out=out)
+    np.clip(out, 0, 255, out=out)
+    return out.astype(np.uint8)
+
+
 def mip_chain(rgb: np.ndarray) -> list[np.ndarray]:
-    """``rgb`` (square, power-of-two side) and every smaller level down to 1 x 1, RGB uint8."""
+    """``rgb`` (square, power-of-two side) and every smaller level down to 1 x 1, RGB uint8. The
+    first smaller level is made a strip of rows at a time, the same values: an 8192 px texture's
+    encoding held 2 GB at once, and a user's Mac, out of memory, froze X-Plane (2026-09-28)."""
     side = rgb.shape[0]
     if rgb.shape[1] != side or side & (side - 1):
         raise ValueError(f"mip_chain needs a square power-of-two image, got {rgb.shape[1]}x{side}")
     out = [rgb]
-    lin = _TO_LINEAR[rgb]
+    if side == 1:
+        return out
+    lin = np.empty((side // 2, side // 2, rgb.shape[2]), dtype=np.float32)
+    for y in range(0, side, STRIP):
+        lin[y // 2 : (y + STRIP) // 2] = _half(_TO_LINEAR[rgb[y : y + STRIP]])
+    out.append(_stored(lin))
     while lin.shape[0] > 1:
-        lin = 0.25 * (lin[0::2, 0::2] + lin[1::2, 0::2] + lin[0::2, 1::2] + lin[1::2, 1::2])
-        out.append(np.clip(np.round(255.0 * lin ** (1.0 / GAMMA)), 0, 255).astype(np.uint8))
+        lin = _half(lin)
+        out.append(_stored(lin))
     return out
 
 

@@ -27,11 +27,13 @@ TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction
 @cache
 def texture_bytes(level: int, top: int = 0) -> int:
     """Disk a texture built from ``level`` takes in a file whose sharpest level is ``top``: its
-    levels from that one down, and in an 8192 px file the copy of that level above it
-    (orthostudio.live.texture.write_sparse). The rest shares the neutral template's blocks."""
+    levels from that one down, and the copy of that level above it where there is one
+    (orthostudio.live.texture.needs_copy). The rest shares the neutral template's blocks."""
+    from .texture import needs_copy
+
     if level >= NEUTRAL_LEVEL:
         return 0
-    copy = dds.level_layout(level - 1)[0][1] if top < level and top < 0 else 0
+    copy = dds.level_layout(level - 1)[0][1] if needs_copy(level, top) else 0
     return 4096 + copy + sum(length for _, length in dds.level_layout(level))
 
 

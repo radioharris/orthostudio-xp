@@ -12,8 +12,9 @@ X-Plane counts a file's levels from its top, whatever the file's size (an fs_usa
 2026-09-28): an 8192 px file read whole at 12 km, its 4096 px level from 21 km. So the rings are
 those of a 4096 px file's levels. The photos of each level are built by them, whatever the zoom set
 (:func:`file_top`): a smaller file is read later than that, which is safe, and an 8192 px one a ring
-earlier, where it finds a copy of the level below (orthostudio.live.texture). Its 8192 px level,
-read where a 4096 px file's 4096 px one is, is the streamer's own rule.
+earlier, where it finds the photos already, built farther for the camera's reach, or a copy of the
+level below (orthostudio.live.texture). Its 8192 px level, read where a 4096 px file's 4096 px one
+is, is the streamer's own rule.
 
 The rings were measured on one image, 2704 px wide with a 65° field of view. Probe flight 2
 (``docs/findings/2026-09-27-probe-flight-2.md`` in X-StreamOrtho) found X-Plane reading each level

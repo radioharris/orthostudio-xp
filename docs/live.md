@@ -150,14 +150,22 @@ now and then. So every file's label says 8192 px from the start, and never chang
 Coming nearer, X-Plane reads the floors counting from the top: the fifth at load, the fourth at
 72 km, the third at 38 km, the second at 21 km, the top one at 12 km. Live puts the photos in each
 floor at the same distances as for a 4096 px file, so nothing more is downloaded there. With an
-8192 px label X-Plane reads each floor a ring earlier, and finds there the photos of the floor
-below, copied at its size: the same image, which the screen could not show sharper at that
-distance anyway. The top floor gets its own photos, one zoom above the package's, within 15 km of
-the aircraft, of its path ahead and of the camera, in every direction, before X-Plane reads it at
-12 km: a turn or a go-around needs nothing guessed. High up there are fewer, since X-Plane measures
-in three dimensions. Where the camera goes farther (external views), the top floor holds the copy
-of the 4096 px floor: the ortho as with ZL16, never blank. For an airport's textures, the 12 and
-15 km are 3 and 3.75 km.
+8192 px label X-Plane reads each floor a ring earlier. Nearer than about 40 km that changes
+nothing: the margin kept for external views has the photos there first. Farther, at 72 km and at
+load, it finds the photos of the floor below, copied at its size: the same image, which the
+screen could not show sharper at that distance anyway. The top floor gets its own photos, one zoom
+above the package's, within 15 km of the aircraft, of its path ahead and of the camera, in every
+direction, before X-Plane reads it at 12 km: a turn or a go-around needs nothing guessed. High up
+there are fewer, since X-Plane measures in three dimensions. If those photos are late (a slow
+connection), Live copies the 4096 px floor into the top one first: the ortho as with ZL16, never
+blank. A copy takes four times the disk of the floor it copies, so there are no others: with a
+copy in every floor, a five-minute flight near Lyon took 27.7 GB (2026-09-28). An external camera
+taken more than 15 km from the aircraft and near the ground may find the neutral colour, green-
+grey, under it until it goes away. For an airport's textures, the 12 and 15 km are 3 and 3.75 km.
+
+Each 8192 px texture is made in a process of its own, which ends with it and gives its memory
+back: made by the twelve workers that make the others, they kept 14 GB between them, and the Mac,
+short of memory, froze X-Plane for up to a second (2026-09-28).
 
 When a flight starts, X-Plane waits on its loading screen for the textures around the aircraft,
 and with ZL17 or ZL19 for their 8192 px within 15 km. Nothing to choose: the three start choices
@@ -169,7 +177,7 @@ about 1.4 GB at the start and 13 GB an hour.
 
 The eye hardly tells ZL17 from ZL16, so a test shows where X-Plane really shows the 8192 px: with
 "Test: show the 8192 px textures in pink" ticked (or `--tint-8192`), Live builds the 8192 px level
-of every texture washed with pink, the copies and the 4096 px and smaller levels as they are.
+of every texture washed with pink, a copy and the 4096 px and smaller levels as they are.
 Where the ground turns pink, X-Plane shows the 8192 px: around the aircraft from the start, and
 within 15 km of it in flight. It showed that X-Plane shows the 8192 px of the files it loads, and
 that its reload of the scenery does not read again the textures it holds. Live's tab says the
@@ -264,8 +272,8 @@ much faster than anything downloads. X-Plane reads whatever is in the files ther
 does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 20 km
 farther around the aircraft than the aircraft alone needs (`--camera-reach-km`), and an external
 view shows the right imagery as soon as you switch to it, as with AutoOrtho. A camera taken farther
-than that may find a placeholder, which X-Plane keeps until it loads that area again; the 8192 px
-level needs no reach, since its copy of the 4096 px one is always there.
+than that may find a placeholder, which X-Plane keeps until it loads that area again. The 8192 px
+level has no reach: 15 km around the camera wherever it is.
 
 X-Plane decides how sharp a texture must be from its distance, in rings. For a normal texture
 (about 7 km across):

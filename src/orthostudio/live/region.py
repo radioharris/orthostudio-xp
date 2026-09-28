@@ -136,9 +136,10 @@ def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
 def _layout_plan(pack_dir: Path, zooms: Zooms) -> dict[int, list[tuple[str, int]]]:
     """What laying the pack out for ``zooms`` changes: by zoom, the textures whose file gets another
     size, with the size it gets (its sharpest level). From a layout before :data:`LAYOUT_FIXED`,
-    an 8192 px file built coarser than 8192 px is written again too, for the copy above its sharpest
-    level."""
+    an 8192 px file built from a far level is written again too, for the copy above it
+    (orthostudio.live.texture.needs_copy)."""
     from .pack import load_built
+    from .texture import needs_copy
 
     old, layout = region_layout(pack_dir)
     meta = load_built(pack_dir)
@@ -151,7 +152,7 @@ def _layout_plan(pack_dir: Path, zooms: Zooms) -> dict[int, list[tuple[str, int]
         for name in names:
             size = -1 if name in grown else was
             level = built.get(name)
-            uncopied = layout < LAYOUT_FIXED and now < 0 and level is not None and level > now
+            uncopied = layout < LAYOUT_FIXED and level is not None and needs_copy(level, now)
             if size != now or uncopied:
                 change.append((name, now))
         if change:

@@ -22,12 +22,14 @@ once. So every ring is widened by ``reach_km``, the distance the camera may go.
 One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file is
 8192 px from the pack's layout on (``orthostudio.live.region``), and X-Plane reads it as such from
 the start. Its photos are built as those of a 4096 px file, at the same distances: X-Plane, which
-counts a file's levels from its top, reads each level a ring earlier and finds there the copy of the
-level below (``orthostudio.live.texture``). The 8192 px level itself gets its photos, one zoom
-above the mesh's, a quarter farther than X-Plane reads it (12 km at ZL16), all around the aircraft,
-its path ahead and the camera, in three dimensions as X-Plane measures, so not from high up. It
-needs no camera reach: a camera that goes farther finds the copy of the 4096 px level, the ortho
-without its finest detail, never the neutral colour. At a start, X-Plane waits for all of them.
+counts a file's levels from its top, reads each level a ring earlier, and finds there its photos
+already (the camera's reach) or, for the far levels, their copy (``orthostudio.live.texture``). The
+8192 px level itself gets its photos, one zoom above the mesh's, a quarter farther than X-Plane
+reads it (12 km at ZL16), all around the aircraft, its path ahead and the camera, in three
+dimensions as X-Plane measures, so not from high up. At a start, X-Plane waits for all of them. In
+flight, photos late as X-Plane is about to read them get the 4096 px level copied up in their
+place first (:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral colour. No camera
+reach for that level: a camera taken farther, near the ground, may find the neutral colour there.
 """
 
 from __future__ import annotations
@@ -80,6 +82,11 @@ WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
 RELOAD_COMMAND = "sim/operation/reload_scenery"
 EVICT_EVERY_S = 30.0
 FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers while it waits
+# 8192 px textures encoded at once at most, each in a process of its own, which ends with it and
+# gives its memory back: twelve workers kept 14 GB after such textures, and a user's Mac, short of
+# memory, froze X-Plane (2026-09-28)
+SHARP_WORKERS = 4
+COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads it: late
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
 EVICT_BATCH = 500  # textures made coarser per round, so that the builder is never held up long
 FRESH_S = (
@@ -219,6 +226,10 @@ class Streamer:
         # X-Plane flies (not waiting on a start, not away): the encoders leave it its cores
         self.flying = False
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
+        # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
+        # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
+        self.to_copy: set[str] = set()
+        self.copied_up: set[str] = set()
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         self.built_version = 0  # one more at each change of built: the window's map
@@ -365,8 +376,8 @@ class Streamer:
         at ZL18). The photos come within a quarter more of the path ahead, the aircraft or the
         camera (``s``), urgent once X-Plane reads them (``s_now``: from the aircraft and the
         camera). Both are in three dimensions, from the heights above the ground, as X-Plane
-        measures: none from high up. No camera reach: a camera that goes farther finds the copy,
-        never the neutral colour. At a start, X-Plane waits for all of them."""
+        measures: none from high up. No camera reach (the module's docstring). At a start, X-Plane
+        waits for all of them."""
         read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
         built = read * self.margin
         if s > built:
@@ -403,6 +414,7 @@ class Streamer:
         h = max(0.0, fix.agl_m) / 1000.0
         h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
         jobs: dict[str, tuple[float, int]] = {}
+        late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
         for name, lat, lon, zoom in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
             if name in self.theirs:  # X-Plane shows the user's own tile there
                 continue
@@ -438,6 +450,13 @@ class Streamer:
                 sharp = self._sharpest(zoom, s, s_now, starting)
                 if sharp is not None:
                     level, urgency = MIN_LEVEL, sharp
+                    if (  # its photos late, X-Plane about to read that level: the copy goes in
+                        not starting
+                        and self.level_of(name) == 0
+                        and name not in self.copied_up
+                        and s_now <= ring_km(0, zoom) * self.scale * COPY_UP_AT
+                    ):
+                        late.append(name)
             if self.level_of(name) <= level:
                 patch = self.patchy.get(name)
                 if patch is None or patch[0] > now:
@@ -453,6 +472,7 @@ class Streamer:
                 for n, j in jobs.items()
                 if not (n in self.in_flight and self.in_flight[n][1] <= j[1])
             }
+            self.to_copy.update(late)
             for n, (
                 u,
                 lv,
@@ -573,6 +593,7 @@ class Streamer:
                 self.built[name] = level
                 self.built_version += 1
                 self.done[level] += 1
+                self.copied_up.discard(name)  # its file written again: no copy there any more
                 if patched:  # built again later, a little later each time
                     tries = self.patchy.get(name, (0.0, 0))[1]
                     wait = min(PATCH_RETRY_MAX_S, PATCH_RETRY_S * 2**tries)
@@ -599,7 +620,9 @@ class Streamer:
     def _build_loop(self) -> None:
         """Each texture on its own: its pieces from the cache or asked for, then parents for pieces
         without imagery, then the encoding pool as soon as it has them all."""
-        from .texture import build_job
+        import multiprocessing
+
+        from .texture import build_job, copy_up
 
         answers: queue.Queue[tuple[Key, int, bytes | None]] = queue.Queue()
         self.downloader = self.downloader_factory(
@@ -611,6 +634,7 @@ class Streamer:
         asked_at: dict[Key, float] = {}  # when each piece awaited was asked for
         encoding: dict[Future, _Job] = {}
         ready: list[_Job] = []  # pieces all in, waiting for an encoder (submit_ready)
+        copying: dict[str, Future] = {}  # late 8192 px levels getting their copy (copy_late)
         to_cache: list[tuple[Key, int, bytes | None]] = []
 
         def known(keys: list[Key]) -> dict[Key, bytes | None]:
@@ -643,14 +667,18 @@ class Streamer:
 
         def submit_ready(pool) -> None:
             """The most urgent textures ready to encode, as many as the encoders may take now:
-            all while X-Plane waits, FLIGHT_ENCODES while it flies."""
+            all while X-Plane waits, FLIGHT_ENCODES while it flies; an 8192 px level in a process
+            of its own (``sharp_pool``), one getting its copy only once it has it."""
             cap = self.encode_cap()
-            while ready and len(encoding) < cap:
-                job = min(ready, key=lambda j: j.urgency)
+            while len(encoding) < cap:
+                free = [j for j in ready if j.name not in copying]
+                if not free:
+                    break
+                job = min(free, key=lambda j: j.urgency)
                 ready.remove(job)
                 job.stage = "encoding"
                 top = self.top_of(job.name)
-                fut = pool.submit(
+                fut = (sharp_pool if job.level < 0 else pool).submit(
                     build_job,
                     (
                         job.name,
@@ -664,6 +692,42 @@ class Streamer:
                     ),
                 )
                 encoding[fut] = job
+
+        def copy_late(pool) -> None:
+            """The late 8192 px levels the planner found (``to_copy``): the 4096 px level copied
+            up into each, in a worker, before its photos are encoded; not once they are being."""
+            with self.lock:
+                late = [n for n in self.to_copy if n not in copying]
+            busy = {job.name for job in encoding.values()}
+            for name in late:
+                if name in busy or self.built.get(name) != 0:
+                    with self.lock:
+                        self.to_copy.discard(name)
+                    continue
+                top = self.top_of(name)
+                neutral = self.neutral_for(top)
+                copying[name] = pool.submit(
+                    copy_up,
+                    self.pack_dir / "textures" / name,
+                    None if neutral is None else Path(neutral),
+                    top,
+                )
+
+        def copies_done() -> None:
+            for name in [n for n, f in copying.items() if f.done()]:
+                fut = copying.pop(name)
+                with self.lock:
+                    self.to_copy.discard(name)
+                try:
+                    fut.result()
+                except Exception as e:
+                    self.log(f"  could not copy up the 4096 px level of {name}: {e}")
+                    continue
+                with self.lock:
+                    self.copied_up.add(name)
+                self.log(
+                    f"  {name}: its 8192 px photos late, its 4096 px level copied up meanwhile"
+                )
 
         def answer(key: Key, status: int, body: bytes | None, pool) -> None:
             requested.discard(key)
@@ -713,9 +777,17 @@ class Streamer:
                         without(job, key, None, True, pool)
 
         last_flush = last_evict = time.monotonic()
-        with ProcessPoolExecutor(
-            max_workers=self.workers, initializer=worker_ignores_ctrl_c
-        ) as pool:
+        with (
+            ProcessPoolExecutor(
+                max_workers=self.workers, initializer=worker_ignores_ctrl_c
+            ) as pool,
+            ProcessPoolExecutor(
+                max_workers=min(SHARP_WORKERS, self.workers),
+                initializer=worker_ignores_ctrl_c,
+                mp_context=multiprocessing.get_context("spawn"),
+                max_tasks_per_child=1,
+            ) as sharp_pool,
+        ):
             try:
                 while not self.stop.is_set() or encoding:
                     if not self.stop.is_set() and len(encoding) + len(ready) < self.workers * 4:
@@ -737,6 +809,8 @@ class Streamer:
                     except queue.Empty:
                         pass
                     give_up_stuck(pool)
+                    copies_done()
+                    copy_late(pool)
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)
@@ -806,6 +880,7 @@ class Streamer:
             with self.lock:
                 self.built_version += 1
                 self.patchy.pop(name, None)
+                self.copied_up.discard(name)
                 if level >= NEUTRAL_LEVEL:
                     self.built.pop(name, None)
                     self.seen.pop(name, None)

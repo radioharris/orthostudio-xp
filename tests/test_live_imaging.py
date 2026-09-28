@@ -137,6 +137,29 @@ class ImagingTest(unittest.TestCase):
         # 25 % light is 136 once gamma-encoded, not the 64 an average of the stored values gives
         self.assertAlmostEqual(int(chain[1][0, 0, 0]), round(255 * 0.25 ** (1 / 2.2)), delta=1)
 
+    def test_levels_by_strips_are_the_same(self):
+        """The first smaller level is made a strip of rows at a time, to spare memory: the very
+        values the whole image in linear light gives."""
+        from unittest import mock
+
+        from orthostudio.live import imaging
+
+        def whole(rgb):
+            out, lin = [rgb], imaging._TO_LINEAR[rgb]
+            while lin.shape[0] > 1:
+                lin = 0.25 * (lin[0::2, 0::2] + lin[1::2, 0::2] + lin[0::2, 1::2] + lin[1::2, 1::2])
+                out.append(np.clip(np.round(255.0 * lin ** (1 / 2.2)), 0, 255).astype(np.uint8))
+            return out
+
+        rgb = np.random.default_rng(3).integers(0, 256, (256, 256, 3), dtype=np.uint8)
+        with mock.patch.object(imaging, "STRIP", 16):
+            strips = imaging.mip_chain(rgb)
+        self.assertEqual(len(strips), 9)
+        for got, want in zip(strips, whole(rgb), strict=True):
+            np.testing.assert_array_equal(got, want)
+        one = np.zeros((1, 1, 3), dtype=np.uint8)
+        self.assertEqual(len(imaging.mip_chain(one)), 1)
+
     def test_four_colour(self):
         from orthostudio.live.imaging import four_colour
 
