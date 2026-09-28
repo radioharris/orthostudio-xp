@@ -220,16 +220,21 @@ def prepare(options: Options, log: Log) -> Prepared:
             raise RefusedError(str(e)) from e
         fix = Fix(lat, lon)
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    setup_region(sources, pack_dir, log=log, zooms=zooms)
-    if region_layout(pack_dir) != (zooms, LAYOUT_FIXED):  # each texture at its new size
-        if xplane_running() and needs_relayout(pack_dir, zooms):
-            raise RefusedError(
-                "the zoom changed and X-Plane is running: it keeps a texture at the size it first "
-                "read. Quit X-Plane, then start again"
-            )
-        relayout(pack_dir, zooms, log)
-    if options.fresh:
-        reset(pack_dir, log)
+    from orthostudio.live import machine
+
+    # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
+    # the disk: every other program keeps it (machine.background_io)
+    with machine.background_io():
+        setup_region(sources, pack_dir, log=log, zooms=zooms)
+        if region_layout(pack_dir) != (zooms, LAYOUT_FIXED):  # each texture at its new size
+            if xplane_running() and needs_relayout(pack_dir, zooms):
+                raise RefusedError(
+                    "the zoom changed and X-Plane is running: it keeps a texture at the size it "
+                    "first read. Quit X-Plane, then start again"
+                )
+            relayout(pack_dir, zooms, log)
+        if options.fresh:
+            reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)
     # only the squares Live's pack has: another pack's elsewhere does not matter to it
     region = {

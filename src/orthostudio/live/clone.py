@@ -57,6 +57,24 @@ def clone_or_copy(src: str, dst: str) -> None:
         shutil.copyfile(src, dst)
 
 
+def clone_or_link(src: str, dst: str) -> bool:
+    """Clone ``src`` to ``dst``; where the two are on different disks (no clone across them), a
+    link to ``src`` instead, read through by X-Plane. True when cloned."""
+    try:
+        clone(src, dst)
+        return True
+    except OSError as e:
+        if e.errno not in (errno.ENOTSUP, errno.EXDEV):
+            raise
+        os.symlink(src, dst)
+        return False
+
+
+def same_disk(a: str | Path, b: str | Path) -> bool:
+    """Whether ``a`` and ``b`` are on the same volume, where one can be cloned into the other."""
+    return os.stat(a).st_dev == os.stat(b).st_dev
+
+
 def replace_with_clone(src: str, dst: str) -> None:
     """Atomically replace ``dst`` by a clone of ``src``: clone beside it, then rename() over it."""
     tmp = os.path.join(os.path.dirname(dst), f".live-tmp-{os.getpid()}-{os.path.basename(dst)}")

@@ -31,7 +31,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import dds
-from .clone import clone
+from .clone import clone, clone_or_link, same_disk
 from .geo import parse_texture_name
 from .rings import file_top, zoom_for
 from .texture import write_sparse
@@ -257,33 +257,73 @@ def sources_of(meta: dict) -> list[str]:
 
 
 def _merge_dir(src: Path, dst: Path) -> int:
-    """Clone into ``dst`` what of ``src`` it lacks: a whole folder where ``dst`` has none of that
-    name, file by file where both have one. Returns how many were cloned."""
+    """Put into ``dst`` what of ``src`` it lacks: a whole folder where ``dst`` has none of that
+    name, file by file where both have one; clones on the same disk, links across disks. A linked
+    folder of ``dst`` is made a real one first (:func:`_unlink_dir`), so nothing is ever written
+    into another region's own folder. Returns how many were put in."""
+    if dst.is_symlink():
+        _unlink_dir(dst)
+    same = same_disk(src, dst)
     done = 0
     for entry in os.scandir(src):
         target = dst / entry.name
         if entry.is_dir():
-            if not target.exists():
-                clone(entry.path, str(target))
+            if not target.exists() and not target.is_symlink():
+                (clone if same else os.symlink)(entry.path, str(target))
                 done += 1
             else:
                 done += _merge_dir(Path(entry.path), target)
-        elif not target.exists():
-            clone(entry.path, str(target))
+        elif not target.exists() and not target.is_symlink():
+            (clone if same else os.symlink)(entry.path, str(target))
             done += 1
     return done
 
 
+def _unlink_dir(link: Path) -> None:
+    """A link to a folder made a real folder of links to what that one holds, so that another
+    region's files can go in beside them."""
+    target = link.parent / os.readlink(link)
+    link.unlink()
+    link.mkdir()
+    for entry in os.scandir(target):
+        os.symlink(entry.path, link / entry.name)
+
+
+def _clone_tree(src: Path, dst: Path, log: Callable[[str], None], done: list[int]) -> None:
+    """``dst`` made a clone of ``src``, entry by entry: many short calls, where one call for the
+    whole tree (684,000 terrain files) held the disk for 53 s and froze other programs
+    twice (2026-09-28)."""
+    dst.mkdir()
+    for entry in os.scandir(src):
+        target = dst / entry.name
+        if entry.is_dir(follow_symlinks=False):
+            _clone_tree(Path(entry.path), target, log, done)
+        else:
+            clone(entry.path, str(target))
+            done[0] += 1
+            if done[0] % 100_000 == 0:
+                log(f"  {done[0]} files cloned...")
+
+
 def _clone_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
-    """Replace ``dst`` by a clone of ``src`` (one call for the whole tree)."""
+    """Replace ``dst`` by a clone of ``src``, file by file; where the pack is on another disk than
+    ``src``, which no clone crosses, by a link to it: X-Plane reads the mesh from there."""
     t0 = time.monotonic()
     old = dst.with_name(dst.name + ".old")
-    if dst.exists():
+    if dst.exists() or dst.is_symlink():
         dst.rename(old)
-    clone(str(src), str(dst))
-    if old.exists():
+    if same_disk(src, dst.parent):
+        done = [0]
+        _clone_tree(src, dst, log, done)
+        how = f"{done[0]} files cloned in {time.monotonic() - t0:.0f} s"
+    else:
+        os.symlink(src, dst)
+        how = f"linked to {src}, on another disk"
+    if old.is_symlink():
+        old.unlink()
+    elif old.exists():
         shutil.rmtree(old)
-    log(f"  {dst.name}: cloned in {time.monotonic() - t0:.0f} s")
+    log(f"  {dst.name}: {how}")
 
 
 def setup_region(
@@ -333,10 +373,10 @@ def setup_region(
     for region in sources:
         for entry in os.scandir(region / "textures"):
             if not entry.name.endswith(".dds") and entry.name not in have:
-                clone(entry.path, str(textures / entry.name))
+                clone_or_link(entry.path, str(textures / entry.name))
                 have.add(entry.name)
                 masks += 1
-    log(f"  {masks} water masks and other files cloned")
+    log(f"  {masks} water masks and other files cloned (linked from another disk)")
 
     # a pack that is there keeps its layout, the textures added included: a new zoom lays them all
     # out again together (relayout)
