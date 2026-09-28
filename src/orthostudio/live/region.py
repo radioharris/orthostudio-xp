@@ -369,14 +369,18 @@ def setup_region(
     textures = pack_dir / "textures"
     textures.mkdir(exist_ok=True)
     have = set(os.listdir(textures))
-    masks = 0
+    masks = linked = 0
     for region in sources:
         for entry in os.scandir(region / "textures"):
             if not entry.name.endswith(".dds") and entry.name not in have:
-                clone_or_link(entry.path, str(textures / entry.name))
+                if not clone_or_link(entry.path, str(textures / entry.name)):
+                    linked += 1
                 have.add(entry.name)
                 masks += 1
-    log(f"  {masks} water masks and other files cloned (linked from another disk)")
+    log(
+        f"  {masks} water masks and other files placed"
+        + (f", {linked} of them linked from another disk" if linked else ", cloned")
+    )
 
     # a pack that is there keeps its layout, the textures added included: a new zoom lays them all
     # out again together (relayout)

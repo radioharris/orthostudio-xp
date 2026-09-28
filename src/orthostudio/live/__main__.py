@@ -247,6 +247,7 @@ def setup(
     force: Annotated[bool, typer.Option(help="set it up again")] = False,
 ) -> None:
     """Make the pack hold a whole AutoOrtho region, once (stream does it too)."""
+    from orthostudio.live import machine
     from orthostudio.live.region import Zooms, setup_region
     from orthostudio.live.settings import load_settings
 
@@ -257,13 +258,14 @@ def setup(
         raise typer.Exit(
             _fail("no AutoOrtho region installed: install one first (Europe: z_ao_eur)")
         )
-    setup_region(
-        sources,
-        pack or default_pack_dir(),
-        force=force,
-        log=typer.echo,
-        zooms=Zooms(saved.max_zoom, saved.max_zoom_airports),
-    )
+    with machine.background_io():  # the disk left to every other program (as a stream's setup)
+        setup_region(
+            sources,
+            pack or default_pack_dir(),
+            force=force,
+            log=typer.echo,
+            zooms=Zooms(saved.max_zoom, saved.max_zoom_airports),
+        )
 
 
 @app.command()

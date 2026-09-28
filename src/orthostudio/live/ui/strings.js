@@ -15,7 +15,7 @@ export const STRINGS = {
       "Start Live before X-Plane, then fly: at each start, X-Plane waits on its loading screen until the ortho around the airport is built.",
     "state.blocked": "Not ready",
     "state.starting": "Starting…",
-    "state.starting_region": "Setting up the region, once: about two minutes.",
+    "state.starting_region": "Setting up the region, once: about three minutes.",
     "state.starting_install": "Putting the pack and the plugin in X-Plane.",
     "state.waiting": "Waiting for X-Plane",
     "state.waiting_lead": "Start X-Plane and choose a flight.",
@@ -99,7 +99,7 @@ export const STRINGS = {
     "checks.own_squares": "{n} squares",
     "checks.mesh_missing": "No mesh yet: install the region you fly over.",
     "checks.region": "Region set up",
-    "checks.region_todo": "The region is set up at the first start (about two minutes)",
+    "checks.region_todo": "The region is set up at the first start (about three minutes)",
     "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region}.",
     "flight.notice_installed": "No mesh here yet: {region} is installed, and used from Live's next start.",
     "map.title": "Map",
@@ -290,7 +290,7 @@ export const STRINGS = {
     "folder.choose": "Choose…",
     "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its imagery",
     "folder.moved":
-      "In another folder, Live sets the region up again, about two minutes; what the old one holds stays there.",
+      "In another folder, Live sets the region up again, about three minutes; what the old one holds stays there.",
 
     "country.Spain": "Spain",
     "country.Netherlands": "Netherlands",
@@ -312,7 +312,7 @@ export const STRINGS = {
       "Démarrez Live avant X-Plane, puis volez : à chaque départ, X-Plane attend sur son écran de chargement que l'ortho autour de l'aéroport soit construite.",
     "state.blocked": "Pas prêt",
     "state.starting": "Démarrage…",
-    "state.starting_region": "Préparation de la région, une seule fois : deux minutes environ.",
+    "state.starting_region": "Préparation de la région, une seule fois : trois minutes environ.",
     "state.starting_install": "Installation du pack et du plugin dans X-Plane.",
     "state.waiting": "En attente de X-Plane",
     "state.waiting_lead": "Lancez X-Plane et choisissez un vol.",
@@ -398,7 +398,7 @@ export const STRINGS = {
     "checks.own_squares": "{n} carrés",
     "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez.",
     "checks.region": "Région préparée",
-    "checks.region_todo": "La région sera préparée au premier démarrage (deux minutes environ)",
+    "checks.region_todo": "La région sera préparée au premier démarrage (trois minutes environ)",
     "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region}.",
     "flight.notice_installed": "Pas encore de mesh ici : {region} est installée, et servira dès le prochain démarrage de Live.",
     "map.title": "Carte",
@@ -593,7 +593,7 @@ export const STRINGS = {
     "folder.choose": "Choisir…",
     "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses images",
     "folder.moved":
-      "Dans un autre dossier, Live prépare la région à nouveau, deux minutes environ ; ce que l'ancien contient y reste.",
+      "Dans un autre dossier, Live prépare la région à nouveau, trois minutes environ ; ce que l'ancien contient y reste.",
 
     "country.Spain": "Espagne",
     "country.Netherlands": "Pays-Bas",
