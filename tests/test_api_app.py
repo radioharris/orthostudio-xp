@@ -795,8 +795,12 @@ def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
 ) -> None:
     """A user's Plan and Library waited minutes at each start of the app, on a hard disk, for
     every file of every tile to be measured, a size column's figures (2026-09-28). A size is
-    remembered with what changes when the tile does and measured again only then; one that takes
-    long is measured in the background, the list answering at once with it pending."""
+    remembered, and the list reads nothing of a tile for it until the tile is registered again
+    (a build): even the stamps of 40 tiles took 2.5 s on a cold hard disk. They are checked in
+    the background, and a tile changed outside the app shows its new size at the next list. A
+    size that takes long is measured in the background, the list answering at once with it
+    pending."""
+    import threading
     import time
 
     from orthostudio.api import app as appmod
@@ -806,29 +810,53 @@ def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
     from orthostudio.model import TileRef
 
     pack = _osxp_pack(home, "+43+005")
-    with Library(default_library_path()) as lib:
-        lib.register(TileRef(43, 5), "BI", 16, pack, "osxp")
+
+    def register() -> None:  # what a build does once it has written the tile
+        with Library(default_library_path()) as lib:
+            lib.register(TileRef(43, 5), "BI", 16, pack, "osxp")
+
+    register()
     measured: list[Path] = []
-    measure = appmod._pack_bytes
+    stamped: list[str] = []
+    measure, stamp = appmod._pack_bytes, appmod._pack_stamp
     monkeypatch.setattr(appmod, "_pack_bytes", lambda p: measured.append(p) or measure(p))
+    monkeypatch.setattr(
+        appmod, "_pack_stamp", lambda p: stamped.append(threading.current_thread().name) or stamp(p)
+    )
+
+    def settled() -> None:
+        deadline = time.monotonic() + 10
+        while appmod._PACK_SIZES_MEASURING and time.monotonic() < deadline:
+            time.sleep(0.01)
 
     def ortho() -> dict:
         return next(r for r in appmod._library_rows(None) if r["kind"] == "ortho")
 
     first = ortho()
     assert first["size_bytes"] == disk_bytes([pack]) > 0 and first["size_pending"] is False
-    assert ortho()["size_bytes"] == first["size_bytes"] and len(measured) == 1, "remembered"
-    (pack / "textures" / "b.dds").write_bytes(b"DDS " + b"\2" * 1000)  # the tile changed
-    grown = ortho()
-    assert len(measured) == 2 and grown["size_bytes"] == first["size_bytes"] + 1004
+    stamped.clear()
+    again = ortho()
+    assert again["size_bytes"] == first["size_bytes"] and len(measured) == 1, "remembered"
+    assert threading.current_thread().name not in stamped, "the list read nothing of the tile"
+    settled()
+
+    (pack / "textures" / "b.dds").write_bytes(b"DDS " + b"\2" * 1000)  # changed outside the app
+    assert ortho()["size_bytes"] == first["size_bytes"]
+    settled()  # the check in the background saw it
+    assert ortho()["size_bytes"] == first["size_bytes"] + 1004 and len(measured) == 2
+    settled()
+
+    (pack / "terrain" / "b.ter").write_text("A\n")
+    register()
+    assert ortho()["size_bytes"] == disk_bytes([pack]) and len(measured) == 3, "built again"
+    settled()
 
     monkeypatch.setattr(appmod, "PACK_SIZES_BUDGET_S", 0.0)  # a hard disk: nothing in time
-    (pack / "terrain" / "b.ter").write_text("A\n")
+    (pack / "terrain" / "c.ter").write_text("A\n")
+    register()
     pending = ortho()
     assert pending["size_pending"] is True and pending["size_bytes"] is None
-    deadline = time.monotonic() + 10
-    while appmod._PACK_SIZES_MEASURING and time.monotonic() < deadline:
-        time.sleep(0.02)
+    settled()
     after = ortho()
     assert after["size_pending"] is False and after["size_bytes"] == disk_bytes([pack])
 

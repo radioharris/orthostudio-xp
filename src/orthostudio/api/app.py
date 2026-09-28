@@ -84,6 +84,7 @@ from orthostudio.imagery.providers import (
 )
 from orthostudio.install import (
     Library,
+    LibraryEntry,
     custom_scenery_dir,
     default_library_path,
     install_pack,
@@ -396,7 +397,7 @@ def _display_zl(kind: str, zl: int | None) -> int | None:
 log = logging.getLogger("orthostudio.api")
 
 PACK_SIZES_BUDGET_S = 0.5
-"""How long a Library list measures the packs it knows no size for before it answers with the
+"""How long a Library list measures the packs it has no size for before it answers with the
 others pending: all of them on an SSD, where a pack measures in milliseconds."""
 _PACK_SIZES_LOCK = threading.Lock()
 _PACK_SIZES_MEASURING: set[Path] = set()
@@ -423,55 +424,75 @@ def _pack_stamp(pack: Path) -> str | None:
     return "|".join(parts) or None
 
 
-def _pack_sizes(lib: Library, packs: list[Path]) -> tuple[dict[Path, int | None], set[Path]]:
-    """The size of each pack, and the packs still being measured.
+def _pack_sizes(lib: Library, rows: list[LibraryEntry]) -> tuple[dict[Path, int | None], set[Path]]:
+    """The size of the pack of each of ``rows``, and the packs still being measured.
 
     The Plan and the Library waited for every pack's files to be measured, a size column's
-    figures: minutes at each start of the app on a user's hard disk (2026-09-28). A size
-    remembered with the pack's stamp is taken as is; the others are measured here for up to
-    :data:`PACK_SIZES_BUDGET_S`, and the rest in the background, the list answering at once."""
+    figures: minutes at each start of the app on a user's hard disk (2026-09-28). A size is taken
+    as the library remembers it when it was measured after the pack was last registered (a build,
+    an import, an install), and the list reads nothing of the pack for it: even its stamp, eight
+    stats a pack, took 2.5 s for 40 tiles on a cold hard disk (2026-09-28). The stamps are
+    checked in the background, for a pack changed outside the app, which the next list shows. A
+    size to measure is measured here for up to :data:`PACK_SIZES_BUDGET_S`, the rest in the
+    background, pending."""
+    registered: dict[Path, float] = {}  # a pack of several tiles has a row for each
+    for row in rows:
+        registered[row.path] = max(row.updated_at, registered.get(row.path, row.updated_at))
+    remembered = lib.remembered_sizes()
     sizes: dict[Path, int | None] = {}
-    todo: list[tuple[Path, str | None]] = []
-    for pack in packs:
-        stamp = _pack_stamp(pack)
-        known = lib.known_size(pack, stamp) if stamp is not None else None
-        sizes[pack] = known
-        if known is None:
-            todo.append((pack, stamp))
+    todo: list[Path] = []
+    check: list[tuple[Path, str | None]] = []
+    for pack, updated_at in registered.items():
+        known = remembered.get(str(pack))
+        if known is not None and known.measured_at > updated_at:
+            sizes[pack] = known.bytes
+            check.append((pack, known.stamp))
+        else:
+            sizes[pack] = None
+            todo.append(pack)
     deadline = time.monotonic() + PACK_SIZES_BUDGET_S
     later: list[tuple[Path, str | None]] = []
-    for pack, stamp in todo:
+    for pack in todo:
         with _PACK_SIZES_LOCK:
             busy = pack in _PACK_SIZES_MEASURING
         if busy or time.monotonic() >= deadline:
-            later.append((pack, stamp))
+            later.append((pack, None))
             continue
-        size = _pack_bytes(pack)
-        sizes[pack] = size
-        if size is not None and stamp is not None:
-            lib.remember_size(pack, stamp, size)
-    return sizes, _measure_later(later)
+        sizes[pack] = _measure_pack(lib, pack)
+    _measure_later(lib.path, later + check)  # those waited for first
+    return sizes, {pack for pack, _ in later}
 
 
-def _measure_later(packs: list[tuple[Path, str | None]]) -> set[Path]:
-    """Measure ``packs`` in a thread of their own, each once however often the page asks."""
+def _measure_pack(lib: Library, pack: Path, known_stamp: str | None = None) -> int | None:
+    """Measure ``pack`` and remember its size, unless its stamp is still ``known_stamp``: then
+    nothing is read but the stamp. The bytes measured; ``None`` when unchanged or unreadable."""
+    at = time.time()  # before the stamp: a pack registered meanwhile is measured again
+    stamp = _pack_stamp(pack)
+    if stamp is None or stamp == known_stamp:
+        return None
+    size = _pack_bytes(pack)
+    if size is not None:
+        lib.remember_size(pack, stamp, size, at)
+    return size
+
+
+def _measure_later(library: Path, packs: list[tuple[Path, str | None]]) -> None:
+    """Measure ``packs`` in a thread of their own, each once however often the page asks; a pack
+    given with its stamp is only checked. ``library`` is the database the list read."""
     with _PACK_SIZES_LOCK:
         fresh = [(p, s) for p, s in packs if p not in _PACK_SIZES_MEASURING]
         _PACK_SIZES_MEASURING.update(p for p, _ in fresh)
     if fresh:
         threading.Thread(
-            target=_measure_packs, args=(fresh,), name="osxp-pack-sizes", daemon=True
+            target=_measure_packs, args=(library, fresh), name="osxp-pack-sizes", daemon=True
         ).start()
-    return {p for p, _ in packs}
 
 
-def _measure_packs(packs: list[tuple[Path, str | None]]) -> None:
+def _measure_packs(library: Path, packs: list[tuple[Path, str | None]]) -> None:
     try:
-        with Library(default_library_path()) as lib:
-            for pack, stamp in packs:
-                size = _pack_bytes(pack)
-                if size is not None and stamp is not None:
-                    lib.remember_size(pack, stamp, size)
+        with Library(library) as lib:
+            for pack, known_stamp in packs:
+                _measure_pack(lib, pack, known_stamp)
                 with _PACK_SIZES_LOCK:
                     _PACK_SIZES_MEASURING.discard(pack)
     except Exception:  # a figure of the page never stops the engine
@@ -519,11 +540,11 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
     with Library(default_library_path()) as lib:
         rows = lib.list()
         present = {r.path: r.path.is_dir() for r in rows}
-        packs = [r.path for r in rows if r.kind == "ortho" and present[r.path]]
+        packs = [r for r in rows if r.kind == "ortho" and present[r.path]]
         sizes, pending = _pack_sizes(lib, packs)
     # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
     states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
-    photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and r.path.is_dir()])
+    photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and present[r.path]])
     built = _pack_built([r.path for r in rows if r.kind == "ortho" and r.built_by == "osxp"])
     shared_links: dict[Path, Path] = {}
     out: list[dict[str, Any]] = []

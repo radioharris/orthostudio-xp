@@ -119,6 +119,36 @@ CREATE TABLE IF NOT EXISTS pins (
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
 """
 
+_DISK_BYTES_TRIGGERS = (
+    """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_added AFTER INSERT ON artifacts
+    WHEN NEW.rule != 'tile.textures'
+    BEGIN
+        UPDATE meta SET v = CAST(v AS INTEGER) + NEW.size WHERE k = 'disk_bytes';
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_removed AFTER DELETE ON artifacts
+    WHEN OLD.rule != 'tile.textures'
+    BEGIN
+        UPDATE meta SET v = CAST(v AS INTEGER) - OLD.size WHERE k = 'disk_bytes';
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_changed AFTER UPDATE OF rule, size
+    ON artifacts
+    BEGIN
+        UPDATE meta SET v = CAST(v AS INTEGER)
+            - (CASE WHEN OLD.rule != 'tile.textures' THEN OLD.size ELSE 0 END)
+            + (CASE WHEN NEW.rule != 'tile.textures' THEN NEW.size ELSE 0 END)
+        WHERE k = 'disk_bytes';
+    END""",
+)
+"""What :meth:`Store.disk_bytes` answers, kept in ``meta`` by the index itself as its rows come and
+go, in the same transaction: every artefact's size, save those of the tiles' textures folders,
+which hard-link the ``texture.dds`` artefacts counted already. Summing the rows read the whole
+index, whose pages a hard disk fetched one seek at a time: 9.9 s for 10 000 artefacts on a cold
+hard disk, at each start of the app, for the status bar (2026-09-28). Triggers rather than code,
+so that an earlier version writing to the same index keeps the figure right: every version writes
+a row by an upsert and removes one by its key, and none replaces one whole (a ``REPLACE`` would
+not fire the delete trigger). The figure is put there the first time it is asked, from the sum of
+the rows, which the triggers left alone until then."""
+
 
 @dataclass(frozen=True, slots=True)
 class ArtifactInfo:
@@ -378,6 +408,8 @@ class Store:
                     f"index schema {row['v']} at {self.root}, this OrthoStudio XP expects "
                     f"{SCHEMA_VERSION}"
                 )
+            for trigger in _DISK_BYTES_TRIGGERS:
+                db.execute(trigger)
         except BaseException:
             db.execute("ROLLBACK")
             raise
@@ -566,12 +598,20 @@ class Store:
         of the tiles' textures folders, which hold hard links to the ``texture.dds`` artefacts
         counted already (their own ``.ter`` files are some 1 kB a texture). Measuring the folders
         read every file of the store, which a hard disk took minutes over at each start of the
-        app (a user's, 2026-09-28); :meth:`total_size` counts each linked texture twice."""
+        app (a user's, 2026-09-28); :meth:`total_size` counts each linked texture twice. One row
+        read, which the index keeps up to date (:data:`_DISK_BYTES_TRIGGERS`)."""
         with self._lock:
-            row = self._db.execute(
-                "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE rule != 'tile.textures'"
-            ).fetchone()
-        return int(row[0])
+            row = self._db.execute("SELECT v FROM meta WHERE k = 'disk_bytes'").fetchone()
+            if row is None:
+                # a new index, or one from before 0.1.19: its rows summed once, and kept since.
+                # Here rather than at the opening, which a build's and the Library's are too.
+                with self._tx():
+                    self._db.execute(
+                        "INSERT OR IGNORE INTO meta (k, v) SELECT 'disk_bytes', "
+                        "COALESCE(SUM(size), 0) FROM artifacts WHERE rule != 'tile.textures'"
+                    )
+                row = self._db.execute("SELECT v FROM meta WHERE k = 'disk_bytes'").fetchone()
+        return max(0, int(row[0]))
 
     def total_size(self) -> int:
         with self._lock:

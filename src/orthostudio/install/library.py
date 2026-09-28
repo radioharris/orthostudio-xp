@@ -85,9 +85,10 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 CREATE TABLE IF NOT EXISTS tiles {_TILES_COLUMNS};
 CREATE TABLE IF NOT EXISTS pack_sizes (
-    path  TEXT PRIMARY KEY,
-    stamp TEXT NOT NULL,
-    bytes INTEGER NOT NULL
+    path        TEXT PRIMARY KEY,
+    stamp       TEXT NOT NULL,
+    bytes       INTEGER NOT NULL,
+    measured_at REAL NOT NULL
 );
 """
 
@@ -133,6 +134,15 @@ class LibraryEntry:
         return self.path.name
 
 
+@dataclass(frozen=True, slots=True)
+class RememberedSize:
+    """A pack's size as :meth:`Library.remember_size` kept it."""
+
+    stamp: str
+    bytes: int
+    measured_at: float
+
+
 class Library:
     """sqlite-backed registry of built packs; use as a context manager or call ``close``."""
 
@@ -161,23 +171,26 @@ class Library:
 
     # ------------------------------------------------------------ sizes
 
-    def known_size(self, path: Path, stamp: str) -> int | None:
-        """The bytes a pack was measured at, when its ``stamp`` has not moved since.
+    def remembered_sizes(self) -> dict[str, RememberedSize]:
+        """Each pack's size as last measured, by the pack's path.
 
         Measuring a pack reads every one of its files, which a hard disk took minutes over for a
         user's tiles at each start of the app, the Plan and the Library waiting for it
-        (2026-09-28): what was measured is remembered with what changes whenever the pack does
-        (``api.app._pack_stamp``). The table is new in 0.1.19; earlier versions leave it alone."""
-        row = self._db.execute(
-            "SELECT bytes FROM pack_sizes WHERE path = ? AND stamp = ?", (str(path), stamp)
-        ).fetchone()
-        return None if row is None else int(row["bytes"])
+        (2026-09-28): what was measured is remembered with the pack's stamp (what changes whenever
+        its files do, ``api.app._pack_stamp``) and the time it was measured at. The table is new
+        in 0.1.19; earlier versions leave it alone."""
+        rows = self._db.execute("SELECT path, stamp, bytes, measured_at FROM pack_sizes")
+        return {
+            row["path"]: RememberedSize(row["stamp"], int(row["bytes"]), float(row["measured_at"]))
+            for row in rows
+        }
 
-    def remember_size(self, path: Path, stamp: str, size: int) -> None:
+    def remember_size(self, path: Path, stamp: str, size: int, measured_at: float) -> None:
         self._db.execute(
-            "INSERT INTO pack_sizes (path, stamp, bytes) VALUES (?, ?, ?) "
-            "ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, bytes = excluded.bytes",
-            (str(path), stamp, int(size)),
+            "INSERT INTO pack_sizes (path, stamp, bytes, measured_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, bytes = excluded.bytes, "
+            "measured_at = excluded.measured_at",
+            (str(path), stamp, int(size), float(measured_at)),
         )
 
     # ------------------------------------------------------------ rows
