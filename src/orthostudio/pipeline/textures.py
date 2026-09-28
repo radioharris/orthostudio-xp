@@ -870,8 +870,12 @@ class _Pipeline:
         self.ter_params = dataclasses.replace(spec.ter_params, mask_zl=spec.mask_zl)
         self.out_dir = Path(spec.out_dir)
         folder = cache_name(spec.provider)  # a source of the user's: its address names it too
+        # Not forced to disk: a container is checked whenever it is read (its header and entries
+        # by ``ChunkContainer.from_bytes``, each body's signature and trailer at assembly), and
+        # what a power cut damaged is fetched again. Forcing one per texture, which Windows does
+        # for real, made a hard disk wait at every texture and the images crawl (2026-09-28).
         self.chunk_store = ChunkStore(
-            spec.chunks_root, fsync=spec.fsync, folders={spec.provider.code: folder}
+            spec.chunks_root, fsync=False, folders={spec.provider.code: folder}
         )
         self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False)
         self.store = Store(spec.store_root, fsync=spec.fsync)

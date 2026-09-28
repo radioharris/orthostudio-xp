@@ -118,7 +118,10 @@ DDS) in 20 ms, i.e. digesting is never the bottleneck of a build.
 1. `store.begin(rule, key, kind)` creates the tmp dir, `out` (an empty directory for
    `kind=dir`) and `scratch/`.
 2. The rule writes `out`.
-3. `commit()`: validate the kind; fsync every written file (unless `Store(fsync=False)`);
+3. `commit()`: validate the kind; fsync every written file (unless `Store(fsync=False)`),
+   except a DDS held as a hard link to a `texture.dds` artefact, forced when that artefact was
+   committed: a tile's textures folder forced each of them again, and on a hard disk under
+   Windows every such flush waits for the disk (2026-09-28);
    compute digest and size; if `<key>` already exists on disk, **adopt** it (our output is
    discarded, the on-disk one is digested and indexed: another process won the race, or a
    crash had left a renamed artefact without its row); else `os.rename(out, <key>)`
@@ -175,7 +178,11 @@ raises `IncompatibleIndexError` at open (no migration in P0). One connection per
 guarded by an `RLock`; several processes share the file through WAL and `busy_timeout`.
 Opening is retried for up to 15 s: when several processes create the same index at the same
 instant, the WAL switch can fail with "database is locked" without consulting the busy
-handler (observed once in five runs of the four-process race test before the retry).
+handler (observed once in five runs of the four-process race test before the retry). A write
+transaction (`BEGIN IMMEDIATE`, `Store._tx`) is asked again, for up to `INDEX_LOCKED_PATIENCE_S`
+(300 s, under the 600 s a texture may take), each time SQLite gives up waiting (30 s): on a hard
+disk, the forced writes of a build held the index longer, and 12 textures of 695 failed "database
+is locked", their tile with them (2026-09-28, a user's slow builds reproduced on a hard disk).
 
 ## 8. Executor semantics (`orthostudio.graph.executor`)
 

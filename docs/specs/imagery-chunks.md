@@ -116,6 +116,13 @@ old file or the new one, never a partial one; an abandoned tmp file is ignored b
 `has` (they only look at the final name). `read` returns `None` when the file is absent and
 raises on a corrupted one.
 
+The build writes its containers with `fsync=False` (`pipeline/textures.py`, since 0.1.19): a
+container is checked whenever it is read (`from_bytes`: size, magic, count, each entry's offset,
+length, status and type; each `OK` body's signature and trailer again at assembly,
+`textures-assemble.md` 5), and what a power cut damaged is fetched again. Forcing one to disk
+per texture, which Windows does for real, made a hard disk wait at every texture: a user's
+images crawled at 0.6 to 0.8 texture a second, reproduced on a hard disk (2026-09-28).
+
 ## 6. No legacy fallback
 
 Until decision 0010 the module could read a texture of Ortho4XP's JPEG cache (`legacy_jpeg_path`,

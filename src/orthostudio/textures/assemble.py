@@ -249,7 +249,9 @@ def assemble_texture_detailed(
     for i, entry in enumerate(entries):
         tile: np.ndarray | None = None
         if entry.status == ChunkStatus.OK:
-            tile = _decode_or_none(entry.data)
+            # checked again as on receipt: a body whose end a power cut left unwritten (zeros)
+            # still decodes, into wrong pixels, without a word from Pillow (measured 2026-09-28)
+            tile = _decode_or_none(entry.data) if image_body_complete(entry.data) else None
             if tile is None:
                 result.corrupted.append(i)
         if tile is None and fallback is not None:

@@ -78,7 +78,10 @@ with the Ortho4XP formula and upsampled with Pillow `BICUBIC`. The Ortho4XP loop
   reported in `missing`; the crop offsets follow the Ortho4XP formula (test against a hand-built
   parent whose quadrants have distinct colours, at `d = 1, 2, 5`; `d = 6` is never asked).
 - A missing chunk without parent is filled with its neighbours' mean and reported.
-- An `OK` chunk with a corrupted body behaves like `ERROR`.
+- An `OK` chunk with a corrupted body behaves like `ERROR`, and so does one failing
+  `image_body_complete` (signature and trailer) although it decodes: a JPEG whose end was left
+  as zeros decodes into wrong pixels without an error (measured 2026-09-28), which a container
+  not forced to disk can hold after a power cut.
 - `decode_tile` refuses wrong sizes and undecodable bodies with `IMG_TILE_CORRUPTED`.
 
 ## 6. Measurements (decode paths, 256 chunks of one 4096² texture, mean of 3 runs)

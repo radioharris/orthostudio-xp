@@ -162,6 +162,22 @@ def test_corrupted_ok_chunk_behaves_like_error(png_chunks: list[bytes]) -> None:
     assert (result.rgb[0:256, 768:1024] == 200).all()
 
 
+def test_an_ok_piece_whose_end_was_never_written_is_corrupted(png_chunks: list[bytes]) -> None:
+    """A container is no longer forced to disk (2026-09-28): a power cut can leave the end of a
+    body unwritten, zeros, and such a JPEG still decodes, into wrong pixels, without a word from
+    Pillow. Checked again at assembly as on receipt, it is corrupted and fetched again."""
+    rgb = np.random.default_rng(3).integers(0, 256, size=(256, 256, 3), dtype=np.uint8)
+    jpeg = _encode(rgb, "JPEG", quality=85)
+    half = len(jpeg) // 2
+    torn = jpeg[:half] + bytes(len(jpeg) - half)
+    decode_tile(torn)  # what made it dangerous: it decodes
+    entries = [Entry(ChunkStatus.OK, d) for d in png_chunks]
+    entries[5] = Entry(ChunkStatus.OK, torn, "image/jpeg")
+    entries[6] = Entry(ChunkStatus.OK, jpeg, "image/jpeg")
+    result = assemble_texture_detailed(Container(entries))
+    assert result.corrupted == [5]
+
+
 def test_fallback_shape_is_checked(png_chunks: list[bytes]) -> None:
     entries = [Entry(ChunkStatus.OK, d) for d in png_chunks]
     entries[0] = Entry(ChunkStatus.MISSING)
