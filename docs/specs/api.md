@@ -80,7 +80,7 @@ by default; tests inject a generator of synthetic events.
 | `POST /api/jobs/{id}/cancel` | – | `{job_id, status}`; 409 when already finished |
 | `POST /api/jobs/{id}/retry` | `{queue?}` | `{job_id, status, retry_of, queue_position}` (201): the same specs as a new job, queued like `POST /api/jobs`; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` as above |
 | `GET /api/patches` | `?dir=` | `{dir, exists, tiles}`: the tiles the folder of hand-made mesh patches has something for, each with what a build of it reads (`pipeline.build.patched_tiles`: `{"-20-044": ["SBCF.patch.osm"]}`, south-west first). The folder is `dir`, what Settings shows before it is saved (empty: the default), else the saved `expert.patches_dir`, else `$OSXP_HOME/patches`; `dir` is `null` when there is none. For the Plan and Settings to name the patches before anything is built (a user took "Patches: none" in a report for his patch not being found, when it was for another square, 2026-09-21) |
-| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, size_pending, present, photo, overlay}]` (section 2.3) |
+| `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, size_pending, present, photo, built, overlay}]` (section 2.3) |
 | `POST /api/library/overlays` | `{use: "others" \| "own", tiles, xplane_dir?}` | leaves the roads, forests and buildings of the squares to the other active overlay packs, or draws the tiles' own again (`install.md` 4.3): `{changed: [tile...], states: {tile: {state, others}}}`; 409 `XP_RUNNING`, 409 `SYS_TILE_IN_BUILD` for a tile in a build under way or waiting, 422 for a name that is not a tile |
 | `POST /api/library/import-ortho4xp` | `{folder}` | `{entries, searched}`: the imported rows, and the folders it looked in (`Tiles/` of the Ortho4XP folder, and the build folder its GUI remembers), so that a page can say where it found nothing (a user pressed Import and could not tell what had happened, 2026-09-21). Before 0.1.10 it answered the list of rows alone, which the page still reads |
 | `POST /api/library/{name}/install` | `{xplane_dir?, link?, path?}` | the install receipt (section 2.3); 409 `SYS_TILE_IN_BUILD` for a pack OrthoStudio XP built whose tile is in the running or a queued job: the end of that build decides what X-Plane shows of the tile (an Ortho4XP pack of the tile stays free) |
@@ -180,6 +180,11 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   called plain, 2026-09-18). `null` when neither says: built with the plain colours, built before
   they existed, or its artefact has left the store. The page marks a tile whose square now asks
   for others (a user asked what happens to an installed tile, 2026-09-18);
+* `built`: for an `ortho` row OrthoStudio XP built, what it was built with and when, `{facts, at}`:
+  the manifest's `[built]` (`PackManifest.built`, empty for a pack written before 0.1.10) and the
+  time the manifest was written, which is when the pack was assembled (a user asked where to see
+  it, 2026-09-21); `null` when the manifest cannot be read, and for an imported tile, whose
+  settings are Ortho4XP's;
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as
@@ -190,22 +195,24 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   cannot be read. A DDS hard-linked from the store counts in full: deleting the pack alone
   does not give it back, the store clean of the delete does. A pack holds 400 to 720 files:
   the library of 50 such packs is listed in 0.1 s on the reference Mac (warm cache).
-  **Remembered since 0.1.19** (`library.sqlite`, table `pack_sizes`): measuring reads every file of
+  **Remembered since 0.1.19** (`library.sqlite`, table `pack_facts`): measuring reads every file of
   every pack, and on a user's hard disk the Plan and the Library waited minutes at each start of
-  the app for these figures (2026-09-28). A size is kept with the time it was measured and the
-  pack's **stamp** (the times of its manifest, of its folder and of `textures`, `terrain` and the
-  DSF's folders, which move whenever a file is added, removed or replaced there:
-  `api.app._pack_stamp`). A size measured after the library last registered the pack (a build,
-  an import, an install: `updated_at`) is shown as it is, and the list reads nothing of the pack
-  for it: even the stamps, eight stats a pack, took 2.5 s for 40 packs on a cold hard disk
-  (2026-09-28).
-  The stamps are checked after the answer, in a thread of their own, and a pack changed outside
-  the app is measured again there: the next list shows its new size. A size to measure (none
-  yet, or the pack registered since) is measured during the answer for up to
-  `PACK_SIZES_BUDGET_S` (0.5 s: all of them on an SSD) and the others in that thread, each once
-  however often the page asks; their rows say `size_bytes: null`, `size_pending: true`, and the
-  page asks again 5 s later (`ui.md`). A file changed in place, which no write of a pack by
-  OrthoStudio XP does, leaves the size as it was until the pack is written again;
+  the app for these figures (2026-09-28). A size is kept with the pack's `photo` and `built`, read
+  from its manifest at the same time, the time they were read and the pack's **stamp** (the times
+  of its manifest, of its folder and of `textures`, `terrain` and the DSF's folders, which move
+  whenever a file is added, removed or replaced there: `api.app._pack_stamp`). What was read after
+  the library last registered the pack (a build, an import, an install: `updated_at`) is shown as
+  it is, and the list reads nothing of the pack for it: on a cold hard disk, 40 packs took 2.5 s
+  for their stamps, eight stats a pack, and 4.3 s for their manifests (2026-09-28). The stamps are
+  checked after the answer, in a thread of their own, and a pack changed outside the app is read
+  again there: the next list shows it. A pack to read (never read, or registered since) is
+  measured during the answer for up to `PACK_SIZES_BUDGET_S` (0.5 s: all of them on an SSD) and
+  the others in that thread, each once however often the page asks; their rows say
+  `size_bytes: null`, `size_pending: true`, and the page asks again 5 s later (`ui.md`), while
+  their `photo` and `built` are read from their manifests during the answer: the page compares
+  the colours with the square's, and must never take a tile for plain while it is measured. A file
+  changed in place, which no write of a pack by OrthoStudio XP does, leaves what was read as it
+  was until the pack is written again;
 * `size_pending`: `true` while the engine measures the row's size in the background (above).
 
 The row a button means: the page sends the row's `path` to `install`, `uninstall` and `delete`

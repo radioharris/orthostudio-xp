@@ -790,39 +790,63 @@ async def test_sizes_count_a_hard_linked_store_file_once(app, home: Path, xplane
     assert doc["store_bytes"] == 5000 and doc["chunks_bytes"] == 300
 
 
-def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
+def test_the_library_remembers_its_tiles_facts_and_waits_for_none(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A user's Plan and Library waited minutes at each start of the app, on a hard disk, for
-    every file of every tile to be measured, a size column's figures (2026-09-28). A size is
-    remembered, and the list reads nothing of a tile for it until the tile is registered again
-    (a build): even the stamps of 40 tiles took 2.5 s on a cold hard disk. They are checked in
-    the background, and a tile changed outside the app shows its new size at the next list. A
+    every file of every tile to be measured, a size column's figures (2026-09-28). What the list
+    shows of a tile's files (its size, its colours, what it was built with) is remembered, and the
+    list reads nothing of the tile for it until the tile is registered again (a build): even the
+    stamps of 40 tiles took 2.5 s on a cold hard disk, and their manifests 4.3 s. They are checked
+    in the background, and a tile changed outside the app shows its new facts at the next list. A
     size that takes long is measured in the background, the list answering at once with it
-    pending."""
+    pending, and its colours and what it was built with read from its manifest meanwhile."""
     import threading
     import time
+    from dataclasses import replace
 
     from orthostudio.api import app as appmod
     from orthostudio.clean import disk_bytes
     from orthostudio.install import default_library_path
     from orthostudio.install.library import Library
     from orthostudio.model import TileRef
+    from orthostudio.pipeline.pack import read_manifest
 
     pack = _osxp_pack(home, "+43+005")
+    bright = {"brightness": 0.5, "contrast": 0.0, "saturation": 0.25}
+    dark = {"brightness": -0.5, "contrast": 0.0, "saturation": 0.0}
+
+    def write_manifest(photo: dict[str, float]) -> None:  # the last file a build writes
+        m = replace(read_manifest(pack), photo=photo, built={"version": "0.1.19"})
+        (pack / "orthostudio.toml").write_text(m.to_toml())
 
     def register() -> None:  # what a build does once it has written the tile
         with Library(default_library_path()) as lib:
             lib.register(TileRef(43, 5), "BI", 16, pack, "osxp")
 
+    write_manifest(bright)
     register()
+    here = threading.current_thread().name
     measured: list[Path] = []
     stamped: list[str] = []
+    read: list[tuple[str, list[Path]]] = []
     measure, stamp = appmod._pack_bytes, appmod._pack_stamp
+    photos_of, built_of = appmod._pack_photos, appmod._pack_built
+
+    def photos(packs: list[Path], *store):  # type: ignore[no-untyped-def]
+        read.append((threading.current_thread().name, list(packs)))
+        return photos_of(packs, *store)
+
+    def built(packs: list[Path]):  # type: ignore[no-untyped-def]
+        read.append((threading.current_thread().name, list(packs)))
+        return built_of(packs)
+
     monkeypatch.setattr(appmod, "_pack_bytes", lambda p: measured.append(p) or measure(p))
     monkeypatch.setattr(
         appmod, "_pack_stamp", lambda p: stamped.append(threading.current_thread().name) or stamp(p)
     )
+    monkeypatch.setattr(appmod, "_pack_photos", photos)
+    monkeypatch.setattr(appmod, "_pack_built", built)
 
     def settled() -> None:
         deadline = time.monotonic() + 10
@@ -834,16 +858,26 @@ def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
 
     first = ortho()
     assert first["size_bytes"] == disk_bytes([pack]) > 0 and first["size_pending"] is False
+    assert first["photo"] == bright and first["built"]["facts"] == {"version": "0.1.19"}
     stamped.clear()
+    read.clear()
     again = ortho()
-    assert again["size_bytes"] == first["size_bytes"] and len(measured) == 1, "remembered"
-    assert threading.current_thread().name not in stamped, "the list read nothing of the tile"
+    assert (again["size_bytes"], again["photo"], again["built"]) == (
+        first["size_bytes"], bright, first["built"]
+    )  # fmt: skip
+    assert len(measured) == 1, "remembered"
+    assert here not in stamped, "the list read nothing of the tile"
+    assert all(not packs for name, packs in read if name == here), "not even its manifest"
     settled()
 
     (pack / "textures" / "b.dds").write_bytes(b"DDS " + b"\2" * 1000)  # changed outside the app
-    assert ortho()["size_bytes"] == first["size_bytes"]
+    write_manifest(dark)
+    changed = ortho()
+    assert (changed["size_bytes"], changed["photo"]) == (first["size_bytes"], bright)
     settled()  # the check in the background saw it
-    assert ortho()["size_bytes"] == first["size_bytes"] + 1004 and len(measured) == 2
+    after = ortho()
+    assert after["size_bytes"] == disk_bytes([pack]) and after["photo"] == dark
+    assert len(measured) == 2
     settled()
 
     (pack / "terrain" / "b.ter").write_text("A\n")
@@ -853,12 +887,16 @@ def test_the_library_remembers_its_tiles_sizes_and_waits_for_none(
 
     monkeypatch.setattr(appmod, "PACK_SIZES_BUDGET_S", 0.0)  # a hard disk: nothing in time
     (pack / "terrain" / "c.ter").write_text("A\n")
+    write_manifest(bright)
     register()
     pending = ortho()
     assert pending["size_pending"] is True and pending["size_bytes"] is None
+    assert pending["photo"] == bright, "the colours are never missing"
+    assert pending["built"]["facts"] == {"version": "0.1.19"}
     settled()
-    after = ortho()
-    assert after["size_pending"] is False and after["size_bytes"] == disk_bytes([pack])
+    done = ortho()
+    assert done["size_pending"] is False and done["size_bytes"] == disk_bytes([pack])
+    assert done["photo"] == bright and len(measured) == 4
 
 
 def test_the_status_bar_reads_the_stores_size_from_its_index(tmp_path: Path) -> None:

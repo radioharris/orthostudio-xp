@@ -93,7 +93,7 @@ from orthostudio.install import (
     packs_of_their_own,
     xplane_running,
 )
-from orthostudio.install.library import ortho4xp_searched
+from orthostudio.install.library import PackFacts, ortho4xp_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
@@ -424,31 +424,36 @@ def _pack_stamp(pack: Path) -> str | None:
     return "|".join(parts) or None
 
 
-def _pack_sizes(lib: Library, rows: list[LibraryEntry]) -> tuple[dict[Path, int | None], set[Path]]:
-    """The size of the pack of each of ``rows``, and the packs still being measured.
+def _pack_facts(
+    lib: Library, rows: list[LibraryEntry], store: _PhotoStore
+) -> tuple[dict[Path, PackFacts], list[tuple[Path, str | None]]]:
+    """What the Library shows of the files of the packs of ``rows`` (their size, their colours,
+    what they were built with) for those the library knows, and the packs left to the background
+    (:func:`_measure_later`): with ``None`` those still to measure, whose size is pending, and
+    with their stamp those to check.
 
     The Plan and the Library waited for every pack's files to be measured, a size column's
-    figures: minutes at each start of the app on a user's hard disk (2026-09-28). A size is taken
-    as the library remembers it when it was measured after the pack was last registered (a build,
-    an import, an install), and the list reads nothing of the pack for it: even its stamp, eight
-    stats a pack, took 2.5 s for 40 tiles on a cold hard disk (2026-09-28). The stamps are
-    checked in the background, for a pack changed outside the app, which the next list shows. A
-    size to measure is measured here for up to :data:`PACK_SIZES_BUDGET_S`, the rest in the
-    background, pending."""
+    figures: minutes at each start of the app on a user's hard disk (2026-09-28). A pack's facts
+    are taken as the library remembers them when they were read after the pack was last
+    registered (a build, an import, an install), and the list reads nothing of the pack for them:
+    its stamp, eight stats a pack, took 2.5 s for 40 tiles on a cold hard disk, and its manifest
+    4.3 s (2026-09-28). The stamps are checked in the background, for a pack changed outside the
+    app, which the next list shows. A pack to read is read here for up to
+    :data:`PACK_SIZES_BUDGET_S`, the rest in the background, its size pending: the list reads its
+    manifest meanwhile, so that its colours and what it was built with are never missing."""
     registered: dict[Path, float] = {}  # a pack of several tiles has a row for each
     for row in rows:
         registered[row.path] = max(row.updated_at, registered.get(row.path, row.updated_at))
-    remembered = lib.remembered_sizes()
-    sizes: dict[Path, int | None] = {}
+    remembered = lib.remembered_facts()
+    known: dict[Path, PackFacts] = {}
     todo: list[Path] = []
     check: list[tuple[Path, str | None]] = []
     for pack, updated_at in registered.items():
-        known = remembered.get(str(pack))
-        if known is not None and known.measured_at > updated_at:
-            sizes[pack] = known.bytes
-            check.append((pack, known.stamp))
+        facts = remembered.get(str(pack))
+        if facts is not None and facts.measured_at > updated_at:
+            known[pack] = facts
+            check.append((pack, facts.stamp))
         else:
-            sizes[pack] = None
             todo.append(pack)
     deadline = time.monotonic() + PACK_SIZES_BUDGET_S
     later: list[tuple[Path, str | None]] = []
@@ -458,22 +463,28 @@ def _pack_sizes(lib: Library, rows: list[LibraryEntry]) -> tuple[dict[Path, int 
         if busy or time.monotonic() >= deadline:
             later.append((pack, None))
             continue
-        sizes[pack] = _measure_pack(lib, pack)
-    _measure_later(lib.path, later + check)  # those waited for first
-    return sizes, {pack for pack, _ in later}
+        facts = _measure_pack(lib, pack, store)
+        if facts is not None:
+            known[pack] = facts
+    return known, later + check  # those waited for first
 
 
-def _measure_pack(lib: Library, pack: Path, known_stamp: str | None = None) -> int | None:
-    """Measure ``pack`` and remember its size, unless its stamp is still ``known_stamp``: then
-    nothing is read but the stamp. The bytes measured; ``None`` when unchanged or unreadable."""
+def _measure_pack(
+    lib: Library, pack: Path, store: _PhotoStore, known_stamp: str | None = None
+) -> PackFacts | None:
+    """Measure ``pack``, read its manifest and remember both, unless its stamp is still
+    ``known_stamp``: then nothing is read but the stamp. ``None`` when unchanged or unreadable."""
     at = time.time()  # before the stamp: a pack registered meanwhile is measured again
     stamp = _pack_stamp(pack)
     if stamp is None or stamp == known_stamp:
         return None
     size = _pack_bytes(pack)
-    if size is not None:
-        lib.remember_size(pack, stamp, size, at)
-    return size
+    if size is None:
+        return None
+    photo = _pack_photos([pack], store)[pack]
+    facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at)
+    lib.remember_facts(pack, facts)
+    return facts
 
 
 def _measure_later(library: Path, packs: list[tuple[Path, str | None]]) -> None:
@@ -490,9 +501,9 @@ def _measure_later(library: Path, packs: list[tuple[Path, str | None]]) -> None:
 
 def _measure_packs(library: Path, packs: list[tuple[Path, str | None]]) -> None:
     try:
-        with Library(library) as lib:
+        with Library(library) as lib, _PhotoStore() as store:
             for pack, known_stamp in packs:
-                _measure_pack(lib, pack, known_stamp)
+                _measure_pack(lib, pack, store, known_stamp)
                 with _PACK_SIZES_LOCK:
                     _PACK_SIZES_MEASURING.discard(pack)
     except Exception:  # a figure of the page never stops the engine
@@ -537,15 +548,19 @@ def _same_pack(state: Any, path: Path) -> bool:
 
 
 def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
-    with Library(default_library_path()) as lib:
+    with Library(default_library_path()) as lib, _PhotoStore() as store:
         rows = lib.list()
         present = {r.path: r.path.is_dir() for r in rows}
         packs = [r for r in rows if r.kind == "ortho" and present[r.path]]
-        sizes, pending = _pack_sizes(lib, packs)
+        known, later = _pack_facts(lib, packs, store)
+        # the colours and what it was built with of a pack the library does not know yet: its
+        # manifest, read now
+        unknown = list(dict.fromkeys(r.path for r in packs if r.path not in known))
+        photos = {p: f.photo for p, f in known.items()} | _pack_photos(unknown, store)
+    built = {p: f.built for p, f in known.items()} | _pack_built(unknown)
+    pending = {pack for pack, stamp in later if stamp is None}
     # whose roads, forests and buildings X-Plane draws on the squares of the tiles it shows
     states = overlay_states(cs) if cs is not None and cs.is_dir() else {}
-    photos = _pack_photos([r.path for r in rows if r.kind == "ortho" and present[r.path]])
-    built = _pack_built([r.path for r in rows if r.kind == "ortho" and r.built_by == "osxp"])
     shared_links: dict[Path, Path] = {}
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -558,7 +573,7 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
             target = shared_links[r.path]
         installed = _installed(target, r.path)
         # an overlay pack is shared by the tiles: no size of its own
-        size = sizes.get(r.path) if present[r.path] and r.kind == "ortho" else None
+        facts = known.get(r.path) if present[r.path] and r.kind == "ortho" else None
         out.append(
             {
                 "tile": r.tile.name,
@@ -572,15 +587,18 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 "keys": r.keys,
                 "registered_at": r.registered_at,
                 "updated_at": r.updated_at,
-                "size_bytes": size,
+                "size_bytes": None if facts is None else facts.bytes,
                 # being measured in the background: the page asks again (PACK_SIZES_BUDGET_S)
                 "size_pending": r.path in pending,
                 "present": present[r.path],
-                "photo": photos.get(r.path),
-                "built": built.get(r.path),
+                "photo": photos.get(r.path) if r.kind == "ortho" else None,
+                # an imported tile's settings are Ortho4XP's, which nothing here can read
+                "built": built.get(r.path) if r.kind == "ortho" and r.built_by == "osxp" else None,
                 "overlay": _overlay_json(state) if _same_pack(state, r.path) else None,
             }
         )
+    # once the list has read what it needed, which the disk then serves first
+    _measure_later(lib.path, later)
     return out
 
 
@@ -607,7 +625,9 @@ def _pack_built(pack_dirs: list[Path]) -> dict[Path, dict[str, Any] | None]:
     return out
 
 
-def _pack_photos(pack_dirs: list[Path]) -> dict[Path, dict[str, float] | None]:
+def _pack_photos(
+    pack_dirs: list[Path], store: _PhotoStore | None = None
+) -> dict[Path, dict[str, float] | None]:
     """The colours each of these packs was built with; ``None`` when nothing can say.
 
     The manifest holds them since 0.1.18 (it had the table from 2026-09-18, but ``declare`` left
@@ -615,30 +635,48 @@ def _pack_photos(pack_dirs: list[Path]) -> dict[Path, dict[str, float] | None]:
     built bright then looked plain to the page, which said nothing while X-Plane showed a bright
     tile (a user, 2026-09-18): the textures artefact the manifest names is asked instead, since
     its recorded params are what the build encoded. The store is opened once, and only if an
-    older pack needs it. A build with the plain colours records none of the three, and a pack
-    whose artefact has left the store cannot be asked: both answer ``None``, and the page says
-    nothing.
+    older pack needs it (``store``, which a caller measuring packs one by one keeps open). A build
+    with the plain colours records none of the three, and a pack whose artefact has left the store
+    cannot be asked: both answer ``None``, and the page says nothing.
     """
     photos: dict[Path, dict[str, float] | None] = {}
-    older: dict[Path, str] = {}
-    for pack_dir in pack_dirs:
-        photos[pack_dir] = None
-        try:
-            manifest = read_manifest(pack_dir)
-        except (OSError, ValueError):
-            continue
-        if manifest.photo:
-            photos[pack_dir] = dict(manifest.photo)
-        elif (entry := manifest.artefacts.get("textures")) is not None:
-            older[pack_dir] = entry.key
-    if older:
-        try:
-            with Store(default_store_root(), sweep=False) as store:
-                for pack_dir, key in older.items():
-                    photos[pack_dir] = _artefact_photo(store, key)
-        except (OSError, GraphError):
-            pass  # no store to ask: the page says nothing rather than guessing "plain"
+    with contextlib.ExitStack() as stack:
+        asked = store if store is not None else stack.enter_context(_PhotoStore())
+        for pack_dir in pack_dirs:
+            photos[pack_dir] = None
+            try:
+                manifest = read_manifest(pack_dir)
+            except (OSError, ValueError):
+                continue
+            if manifest.photo:
+                photos[pack_dir] = dict(manifest.photo)
+            elif (entry := manifest.artefacts.get("textures")) is not None:
+                photos[pack_dir] = asked.photo(entry.key)
     return photos
+
+
+class _PhotoStore:
+    """The store, asked for the colours of packs built before 0.1.18 (:func:`_pack_photos`):
+    opened at the first such pack, and once however many follow."""
+
+    def __init__(self) -> None:
+        self._store: Store | None = None
+        self._tried = False
+
+    def __enter__(self) -> _PhotoStore:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._store is not None:
+            self._store.close()
+
+    def photo(self, key: str) -> dict[str, float] | None:
+        if not self._tried:
+            self._tried = True
+            # no store to ask: the page says nothing rather than guessing "plain"
+            with contextlib.suppress(OSError, GraphError):
+                self._store = Store(default_store_root(), sweep=False)
+        return None if self._store is None else _artefact_photo(self._store, key)
 
 
 def _artefact_photo(store: Store, key: str) -> dict[str, float] | None:
