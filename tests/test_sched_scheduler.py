@@ -162,6 +162,18 @@ def _max_concurrent(spans: list[Span]) -> int:
     return best
 
 
+def _max_admitted(events: list[Event]) -> int:
+    """How many nodes the scheduler had let run at once, by its own Started and Done events."""
+    cur = best = 0
+    for e in events:
+        if isinstance(e, Started):
+            cur += 1
+            best = max(best, cur)
+        elif isinstance(e, (Done, Failed)):
+            cur -= 1
+    return best
+
+
 def _done(events: list[Event]) -> dict[str, Done]:
     return {e.node_id: e for e in events if isinstance(e, Done)}
 
@@ -263,12 +275,15 @@ def test_a_relief_downloads_beside_the_images(store: Store) -> None:
 
 @pytest.mark.parametrize(("budget", "expected"), [(1000, 1), (1300, 2), (None, 4)])
 def test_ram_budget(store: Store, budget: int | None, expected: int) -> None:
+    """Counted by what the scheduler admits (its Started and Done), not by when the threads ran:
+    on a busy Windows runner the others started 0.2 s after the first, once it was over, and
+    four nodes let in at once were seen two at a time (CI, 2026-09-29)."""
     sched = _sched(store, cpu_workers=4, ram_budget_mb=budget)
     for i in range(4):
         sched.add(_node(f"m{i}", SRC, ram_mb=600, seconds=0.1, tag=f"{budget}-{i}"))
-    refs, _ = _run(sched, list(sched.nodes))
+    refs, events = _run(sched, list(sched.nodes))
     assert len(refs) == 4
-    assert _max_concurrent(_spans()) == expected
+    assert _max_admitted(events) == expected
 
 
 def test_oversized_node_is_admitted_alone(store: Store) -> None:
