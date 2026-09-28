@@ -140,29 +140,34 @@ forced (reproduced on a hard disk with Windows-like flushes, 2026-09-28). Their 
 committed without forcing, and made durable as a group:
 
 * `Store.make_durable()` sends to the disk the bytes of every artefact of these rules indexed
-  since the **durable point** (`durable.json` in the store's root: `{"until": <time>}`) and of
-  their shard folders, without asking the disk to empty its own cache at each file
+  since the **durable point** (`durable.json` in the store's root:
+  `{"until": <time>, "forced": {<key>: <created_at>}}`) and of their shard folders,
+  without asking the disk to empty its own cache at each file
   (`NtFlushBuffersFileEx` with `FLUSH_FLAGS_NO_SYNC` on Windows, `FlushFileBuffers` where it is
   missing; `fsync` elsewhere, which on a Mac leaves that cache alone); checkpoints the index;
   then empties the disk's cache **once** (`FlushFileBuffers`, `F_FULLFSYNC` on a Mac) on the new
   point's file before renaming it into place, so the point never reaches the disk before what it
   vouches for. The point is the moment it asked the index, less `DURABLE_MARGIN_S` (30 s: a row
-  becomes visible a few milliseconds after its `created_at`). Emptying the cache at each file,
+  becomes visible a few milliseconds after its `created_at`). What it forced within that margin
+  is listed with the point (`forced`): the last tile's textures are indexed seconds before a
+  build ends, and the next build read their whole folder again, 7.6 GB and 68 s on a hard disk
+  for a tile at ZL17 (2026-09-29). A row indexed again under the same key since has another
+  `created_at`, and is not taken for the one forced. Emptying the cache at each file,
   the groups of two tiles took 8 and 15 minutes on a hard disk busy with the next tile's images,
   and slowed them (2026-09-28).
   Windows flushes a file opened for writing only, and another program may hold one without
   letting others write (a scanner, a sync tool): it is asked again for 2.75 s
   (`FLUSH_OPEN_ATTEMPTS`), then left as the system wrote it. The log names it, and the point
   stops just before its artefact: the next point asks it again, and the next `recover()` checks
-  it and what came after it. Its tile goes on: failing it stopped a build for a file almost always
-  whole (2026-09-28).
+  it (what came after it and was forced is listed with the point). Its tile goes on: failing
+  it stopped a build for a file almost always whole (2026-09-28).
   The pack calls it before it writes the tile's folder (`pipeline/pack.py`), so X-Plane is
   handed no file a power cut could still tear but one another program held then; `build_tiles`
   calls it once its passes are over, cancelled or failed.
 * `Store.recover()`, when a build starts, checks every artefact of these rules indexed since
-  the point against its digest, drops the torn ones before anything can reuse them, and makes
-  the rest durable. After a build that ended normally there is next to nothing to check; after
-  a power cut, at most what was built since the last pack.
+  the point and not listed with it against its digest, drops the torn ones before anything can
+  reuse them, and makes the rest durable. After a build that ended normally there is nothing to
+  check; after a power cut, at most what was built since the last pack.
 * A store without a durable point (every earlier version forced file by file) gets one on
   opening, and none of what it holds is checked.
 
