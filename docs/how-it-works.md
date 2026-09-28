@@ -261,10 +261,12 @@ and writes thousands of files at a time. OrthoStudio XP writes the downloaded im
 forcing each one to the disk, and checks them whenever it reads them back (a damaged one is
 downloaded again); on a hard disk under Windows, forcing every file made the images several times
 slower (measured 2026-09-28). The textures and their small `.ter` files are not forced one by one
-either: a tile's are forced as a group before the tile is handed to X-Plane, so X-Plane never gets
-a file a power cut could still spoil, and a build that follows one cut short by a power cut, a
+either: a tile's are forced as a group before the tile is handed to X-Plane, so X-Plane gets no
+file a power cut could still spoil, and a build that follows one cut short by a power cut, a
 crash of the system or a disk unplugged first checks what that build wrote since its last tile,
-and makes again what did not reach the disk whole. At the start of the app, the Library reads nothing
+and makes again what did not reach the disk whole. A file another program holds at that moment
+(an antivirus, a sync tool) cannot be forced under Windows: the tile goes on all the same, the
+log names the file, and the next build checks it. At the start of the app, the Library reads nothing
 of the tiles but their folders: a tile's size, its colours and what it was built with are
 remembered, and read again when the tile is built again or changes, which is checked in the
 background; a size not known yet shows no figure a moment while it is measured, and the store keeps

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -299,29 +300,43 @@ def test_a_texture_is_committed_unforced_and_forced_by_the_durable_point(
         assert s.make_durable() == 0 and len(forced) == 2
 
 
-def test_a_durable_point_never_vouches_for_a_file_it_could_not_send(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_durable_point_stops_before_a_file_another_program_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Windows flushes a file opened for writing only, and another process may hold one (a
-    scanner): the point stays where it was, and the next build checks that file."""
+    """Windows flushes a file opened for writing only, and another program may hold one (a
+    scanner, a sync tool). Failing the tile for it stopped a build for a file almost always
+    whole: the point never vouches for it but stops just before it, the log names it, and a build
+    starting while it is still held goes on; once it is free, the next point passes it."""
     from orthostudio.graph import store as store_mod
 
     monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
     with Store(tmp_path / "store", fsync=True) as s:
-        before = s.durable_until()
-        key = _put_dds(s, 1, b"DDS held")
+        first = _put_dds(s, 1, b"DDS first")
         time.sleep(0.01)
+        taken = _put_dds(s, 2, b"DDS held")
+        time.sleep(0.01)
+        last = _put_dds(s, 3, b"DDS last")
+        time.sleep(0.01)
+        forced: list[str] = []
 
         def held(p: Path) -> None:
-            raise PermissionError(13, "in use", str(p))
+            if p.name == taken:
+                raise PermissionError(13, "in use", str(p))
+            forced.append(p.name)
 
         monkeypatch.setattr(store_mod, "_flush_data", held)
-        with pytest.raises(PermissionError):
-            s.make_durable()
-        assert s.durable_until() == before
-        monkeypatch.undo()
-        monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
-        assert s.recover().checked == 1 and s.has(key)
+        with caplog.at_level(logging.WARNING, logger="orthostudio.graph.store"):
+            assert s.make_durable() == 2
+        assert sorted(forced) == sorted([first, last]) and str(s.path(taken)) in caplog.text
+        before_first, before_taken = s.info(first), s.info(taken)
+        until = s.durable_until()
+        assert before_first is not None and before_taken is not None and until is not None
+        assert before_first.created_at <= until < before_taken.created_at
+        # the next build starts while it is still held: it checks it and what came after it
+        assert s.recover().checked == 2 and s.durable_until() == until
+        monkeypatch.setattr(store_mod, "_flush_data", lambda p: forced.append(p.name))
+        assert s.recover().checked == 2 and s.has(taken) and s.has(last)
+        assert forced[-2:] == [taken, last] and s.recover().checked == 0
 
 
 def test_what_an_interrupted_build_left_torn_is_dropped_at_the_next_start(

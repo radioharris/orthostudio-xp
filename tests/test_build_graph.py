@@ -477,11 +477,16 @@ def test_the_pack_forces_the_tiles_files_before_x_plane_is_handed_any(
     assert info is not None and until is not None and info.created_at <= until
 
 
-def test_a_tile_whose_files_cannot_be_made_safe_is_not_packed(
+def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
     tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A file of the tile held by another program cannot be forced to disk: the pack says so as
-    the conflict it is (``XP_PACK_CONFLICT``, quit what holds it) and writes nothing."""
+    """A file of the tile another program holds (a scanner, a sync tool) cannot be forced to
+    disk on Windows. Failing the tile for it (``XP_PACK_CONFLICT``, 2026-09-28) stopped a build for
+    a file almost always whole: the tile is packed, and the durable point stops before that
+    file, which the next build checks (``graph-keys.md`` 6)."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
     store = env.store
 
     def fill_dsf(out: Path) -> None:
@@ -490,10 +495,10 @@ def test_a_tile_whose_files_cannot_be_made_safe_is_not_packed(
 
     dsf = _artefact_dir(store, "tile.dsf", "55" * 32, fill_dsf)
 
-    def held() -> int:
-        raise PermissionError(13, "in use", str(dsf.path))
+    def held(p: Path) -> None:
+        raise PermissionError(13, "in use", str(p))
 
-    monkeypatch.setattr(store, "make_durable", held)
+    monkeypatch.setattr(store_mod, "_flush_data", held)
     out_root = tmp_path / "out"
     penv = _PackEnv(store, out_root, None, None)
 
@@ -506,8 +511,11 @@ def test_a_tile_whose_files_cannot_be_made_safe_is_not_packed(
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
-    assert sched.failed["+43+005/BI14/pack"].code == "XP_PACK_CONFLICT"
-    assert not (out_root / pack_dir_name(T)).exists()
+    assert not sched.failed, sched.failed
+    assert (out_root / pack_dir_name(T) / T.dsf_relpath).is_file()
+    info = store.info(dsf.key)
+    until = store.durable_until()
+    assert info is not None and until is not None and until < info.created_at
 
 
 def test_the_pack_records_the_colours_its_textures_are_encoded_with(
