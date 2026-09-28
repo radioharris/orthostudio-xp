@@ -18,7 +18,9 @@ X-Plane loaded the area before its textures were there: once everything it may a
 built, the streamer asks it to reload the scenery.
 
 External views take the camera away from the aircraft, and X-Plane reads what is in the files at
-once. So every ring is widened by ``reach_km``, the distance the camera may go.
+once. So every ring round the aircraft and its path is widened by ``reach_km``, the distance the
+camera may go; the camera itself, where it is, counts in three dimensions from its own height, as
+X-Plane measures, with no reach round it.
 
 One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file is
 8192 px from the pack's layout on (``orthostudio.live.region``), and X-Plane reads it as such from
@@ -472,17 +474,14 @@ class Streamer:
             if route is not None:
                 d = min(d, route.distance_km(lat, lon))
             s, s_now = math.hypot(d, h), math.hypot(d_now, h)  # the same in three dimensions
-            if camera is not None:
-                d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
-                if d_cam < d:
-                    d, d_now = d_cam, min(d_now, d_cam)
-                s_cam = math.hypot(d_cam, h_cam)
-                s, s_now = min(s, s_cam), min(s_now, s_cam)
             top = self.top_of(name)
+            finest = finest_readable(top, self.finest_quality)
+            # the aircraft and its path: a camera may be anywhere within reach_km of them, near
+            # the ground, so the rings are widened by it, on the distance along the ground
             level = top_level_for(
                 max(0.0, d - self.reach_km) / self.scale,  # the rings grow with X-Plane's image
                 zoom,
-                finest_readable(top, self.finest_quality),
+                finest,
                 self.margin,
             )
             ring = (
@@ -491,6 +490,19 @@ class Streamer:
                 else ring_km(level, zoom) * self.margin * self.scale + self.reach_km
             )
             urgency = d_now - ring
+            if camera is not None:
+                # the camera where it is: X-Plane reads from it in three dimensions, so one high
+                # up or far out needs only the small levels, and no reach around it (it is there).
+                # On the ground's distance and widened by the reach, a camera taken 57 km out at
+                # cruise had Live build 4096 px levels around the point below it (2026-09-28).
+                d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
+                s_cam = math.hypot(d_cam, h_cam)
+                s, s_now = min(s, s_cam), min(s_now, s_cam)
+                level_cam = top_level_for(s_cam / self.scale, zoom, finest, self.margin)
+                if level_cam <= level and level_cam != LOAD_LEVEL:
+                    urgency_cam = s_cam - ring_km(level_cam, zoom) * self.margin * self.scale
+                    urgency = urgency_cam if level_cam < level else min(urgency, urgency_cam)
+                    level = level_cam
             if level == 0 and zoom in self.reads_8192:
                 sharp = self._sharpest(zoom, s, s_now, starting)
                 if sharp is not None:
