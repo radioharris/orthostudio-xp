@@ -1532,7 +1532,10 @@ def _tile_pack(ctx: RunContext) -> None:
     _refuse_rewrite_under_running_xplane(env, tile)
     # Its textures and .ter files were not forced to disk one by one (graph/store.py
     # DEFERRED_RULES): they are, as a group, before X-Plane is handed any of them.
-    env.store.make_durable()
+    try:
+        env.store.make_durable()
+    except PermissionError as exc:
+        raise _pack_locked(Path(exc.filename or env.store.root), exc) from exc
     manifest, _files = assemble_pack(
         env.store,
         Path(params.out_dir),

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.fsutil import fsync_dir as _fsync_dir
+from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
     ArtifactInUseError,
@@ -426,7 +427,7 @@ class Store:
                     f.write(json.dumps({"until": until}) + "\n")
                     f.flush()
                     _flush_disk(f.fileno())
-                os.replace(tmp, path)
+                fs_replace(tmp, path)  # asked again on Windows while a reader holds the point
             finally:
                 tmp.unlink(missing_ok=True)
             _fsync_dir(self.root)
@@ -444,7 +445,8 @@ class Store:
         """Force to disk the artefacts of :data:`DEFERRED_RULES` indexed since the durable
         point, then move the point up to now (less :data:`DURABLE_MARGIN_S`); returns how many
         were forced. Files the system has already written cost it little: this runs once a tile,
-        where forcing each file as it was written held the whole build."""
+        where forcing each file as it was written held the whole build. A file it cannot send to
+        the disk raises ``PermissionError``, and the point stays where it was."""
         with self._durable_lock:
             since = self.durable_until()
             asked = time.time()
@@ -1067,10 +1069,7 @@ def _flush_data(p: Path) -> None:
     later, NTFS) writes the bytes only, ``FlushFileBuffers`` when it is missing. On a Mac,
     ``fsync`` already leaves the disk's cache alone."""
     if os.name == "nt":
-        try:
-            fd = os.open(p, os.O_RDWR | getattr(os, "O_BINARY", 0))
-        except PermissionError:
-            return  # a read-only file: it was flushed when it was written
+        fd = _open_for_flush(p)
         try:
             if not _nt_flush_no_sync(fd):
                 os.fsync(fd)
@@ -1082,6 +1081,25 @@ def _flush_data(p: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+FLUSH_OPEN_ATTEMPTS = 10
+"""How many times :func:`_open_for_flush` asks for a file another process holds (2.75 s)."""
+
+
+def _open_for_flush(p: Path) -> int:
+    """A handle Windows can flush: it flushes those opened for writing only. A file another
+    process holds without letting others write (a scanner, X-Plane) is asked again for an
+    instant, then refused with ``PermissionError``: a durable point must never vouch for a file
+    it could not send to the disk, where a commit that forced its files could say so of one."""
+    for attempt in range(FLUSH_OPEN_ATTEMPTS):
+        try:
+            return os.open(p, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        except PermissionError:
+            if attempt == FLUSH_OPEN_ATTEMPTS - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 def _flush_dir_data(d: Path) -> None:
