@@ -17,6 +17,7 @@ import os
 import secrets
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from collections.abc import Iterable, Iterator
@@ -25,7 +26,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orthostudio.fsutil import atomic_write_text
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
@@ -415,10 +415,21 @@ class Store:
             return None
 
     def _write_durable(self, until: float) -> None:
+        """Write the durable point after the one flush of the disk's own cache a group needs:
+        it covers every file :func:`_flush_data` sent to the disk before, and comes before the
+        point can reach the disk itself."""
+        path = self.root / DURABLE_FILE
+        tmp = path.with_name(f"{path.name}{TMP_MARKER}{os.getpid()}-{secrets.token_hex(4)}")
         with contextlib.suppress(OSError):  # a store on a disk that cannot be written
-            atomic_write_text(
-                self.root / DURABLE_FILE, json.dumps({"until": until}) + "\n", fsync=True
-            )
+            try:
+                with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(json.dumps({"until": until}) + "\n")
+                    f.flush()
+                    _flush_disk(f.fileno())
+                os.replace(tmp, path)
+            finally:
+                tmp.unlink(missing_ok=True)
+            _fsync_dir(self.root)
 
     def _deferred_since(self, since: float | None) -> list[sqlite3.Row]:
         marks = ",".join("?" * len(DEFERRED_RULES))
@@ -443,14 +454,14 @@ class Store:
                 path = self.artifact_path(str(row["rule"]), str(row["key"]))
                 try:
                     if row["kind"] == "file":
-                        _fsync_file(path)
+                        _flush_data(path)
                     else:
-                        _fsync_tree(path)
+                        _flush_tree_data(path)
                 except FileNotFoundError:
                     continue  # deleted since: nothing to keep
                 shards.add(path.parent)
             for shard in shards:
-                _fsync_dir(shard)
+                _flush_dir_data(shard)
             with self._lock, contextlib.suppress(sqlite3.Error):
                 self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
             self._write_durable(max(since or 0.0, asked - DURABLE_MARGIN_S))
@@ -1044,6 +1055,103 @@ def _linked_texture(f: Path) -> bool:
         return f.stat().st_nlink > 1
     except OSError:
         return False
+
+
+def _flush_data(p: Path) -> None:
+    """Send a file's bytes to the disk, leaving the disk's own cache to the one flush that ends
+    a durable point (:func:`_flush_disk`, in :meth:`Store._write_durable`).
+
+    ``FlushFileBuffers`` empties that cache at every file, and on a hard disk busy with the next
+    tile's images each such flush waited for all of them: a tile's group took 8 and 15 minutes
+    in a test (2026-09-28). ``NtFlushBuffersFileEx`` with ``FLUSH_FLAGS_NO_SYNC`` (Windows 8 and
+    later, NTFS) writes the bytes only, ``FlushFileBuffers`` when it is missing. On a Mac,
+    ``fsync`` already leaves the disk's cache alone."""
+    if os.name == "nt":
+        try:
+            fd = os.open(p, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        except PermissionError:
+            return  # a read-only file: it was flushed when it was written
+        try:
+            if not _nt_flush_no_sync(fd):
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+        return
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _flush_dir_data(d: Path) -> None:
+    """A folder's entries sent to the disk, as :func:`_flush_data` (nothing to do on Windows)."""
+    if os.name == "nt":
+        return
+    with contextlib.suppress(OSError):
+        fd = os.open(d, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def _flush_tree_data(p: Path) -> None:
+    for dirpath, _dirs, files in os.walk(p):
+        for name in files:
+            f = Path(dirpath) / name
+            if f.is_file() and not f.is_symlink() and not _linked_texture(f):
+                _flush_data(f)
+
+
+def _flush_disk(fd: int) -> None:
+    """Flush a file and the disk's own cache with it, everything sent to it before included:
+    ``FlushFileBuffers`` on Windows, ``F_FULLFSYNC`` on a Mac, ``fsync`` elsewhere."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        try:
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            return
+        except OSError:
+            pass  # a file system without it: fsync is what it has
+    os.fsync(fd)
+
+
+_FLUSH_FLAGS_NO_SYNC = 0x00000002
+_NT_FLUSH: Any = None
+"""``ntdll.NtFlushBuffersFileEx`` once looked up, ``False`` where it is missing."""
+
+
+def _nt_flush_no_sync(fd: int) -> bool:
+    """``NtFlushBuffersFileEx(FLUSH_FLAGS_NO_SYNC)``: False when it is missing or refuses (a file
+    system other than NTFS), and the caller flushes the usual way."""
+    global _NT_FLUSH
+    import ctypes
+
+    if _NT_FLUSH is None:
+        try:
+            from ctypes import wintypes
+
+            fn = ctypes.WinDLL("ntdll").NtFlushBuffersFileEx  # type: ignore[attr-defined]
+            fn.argtypes = [
+                wintypes.HANDLE, wintypes.ULONG, ctypes.c_void_p, wintypes.ULONG, ctypes.c_void_p
+            ]  # fmt: skip
+            fn.restype = ctypes.c_long
+            _NT_FLUSH = fn
+        except (OSError, AttributeError, ImportError):
+            _NT_FLUSH = False
+    if not _NT_FLUSH:
+        return False
+    import msvcrt
+
+    status_block = (ctypes.c_size_t * 2)()  # IO_STATUS_BLOCK: the status (or a pointer), a size
+    try:
+        handle = msvcrt.get_osfhandle(fd)  # type: ignore[attr-defined]
+        status = _NT_FLUSH(handle, _FLUSH_FLAGS_NO_SYNC, None, 0, ctypes.byref(status_block))
+    except OSError:
+        return False
+    return int(status) == 0
 
 
 def _index_busy(exc: sqlite3.OperationalError) -> bool:

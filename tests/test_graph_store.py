@@ -277,23 +277,26 @@ def test_a_texture_is_committed_unforced_and_forced_by_the_durable_point(
 
     monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
     forced: list[str] = []
-    monkeypatch.setattr(
-        store_mod,
-        "_fsync_file",
-        lambda p: forced.append(next(x for x in p.parts if x in (RULE, "texture.dds"))),
-    )
+
+    def spy(how: str):
+        return lambda p: forced.append(
+            f"{how} {next(x for x in p.parts if x in (RULE, 'texture.dds'))}"
+        )
+
+    monkeypatch.setattr(store_mod, "_fsync_file", spy("forced"))
+    monkeypatch.setattr(store_mod, "_flush_data", spy("sent"))
     with Store(tmp_path / "store", fsync=True) as s:
         before = s.durable_until()
         assert before is not None
         _put_dds(s, 1, b"DDS one")
         _put(s, 2, b"vectors")
-        assert forced == [RULE], "the texture waits for the durable point"
+        assert forced == [f"forced {RULE}"], "the texture waits for the durable point"
         time.sleep(0.01)
-        assert s.make_durable() == 1 and forced == [RULE, "texture.dds"]
+        assert s.make_durable() == 1 and forced == [f"forced {RULE}", "sent texture.dds"]
         after = s.durable_until()
         assert after is not None and after > before
         time.sleep(0.01)
-        assert s.make_durable() == 0 and forced == [RULE, "texture.dds"]
+        assert s.make_durable() == 0 and len(forced) == 2
 
 
 def test_what_an_interrupted_build_left_torn_is_dropped_at_the_next_start(
