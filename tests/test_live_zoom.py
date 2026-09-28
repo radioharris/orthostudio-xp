@@ -34,7 +34,14 @@ from orthostudio.live.region import (
     setup_region,
 )
 from orthostudio.live.streamer import Fix, Streamer
-from orthostudio.live.texture import copy_up, double_bc1, downgrade, needs_copy, write_sparse
+from orthostudio.live.texture import (
+    copy_up,
+    double_bc1,
+    downgrade,
+    needs_copy,
+    piece_keys,
+    write_sparse,
+)
 
 AIRPORT = "93184_132608_BI18"  # a ZL18 texture inside NAMES[0]: the mesh's airports
 # ZL16 textures in a row eastwards from NAMES[0], one every 6.8 km (45.4° N)
@@ -478,6 +485,81 @@ def test_the_builder_copies_up_while_the_photos_do_not_come(tmp_path: Path) -> N
     assert name in s.copied_up and s.built[name] == 0
     assert level_bytes(path, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
     assert level_bytes(path, 0, -1) == levels_from(0, -1)[0]
+
+
+def test_a_sharper_build_writes_only_its_new_levels(tmp_path: Path) -> None:
+    """Built to 4096 px, then to 8192: the 8192 px level written, those below kept as the file had
+    them, built from their own photos, not written again; a build no sharper writes them all. A
+    far level's copy above is written with it, over the one the file had."""
+    pack = region(tmp_path, Zooms(17, 18), textures=ROW)
+    neutral = ensure_neutral(pack, -1)
+    path = pack / "textures" / f"{ROW[0]}.dds"
+    write_sparse(path, 0, levels_from(0, -1), base=neutral, file_top=-1)
+    new = [bytes([200 + k]) * len(b) for k, b in enumerate(levels_from(-1, -1))]
+    write_sparse(path, -1, new, base=neutral, file_top=-1, keep_from=0)
+    assert level_bytes(path, -1, -1) == new[0]
+    assert level_bytes(path, 0, -1) == levels_from(0, -1)[0]
+    assert level_bytes(path, 4, -1) == levels_from(4, -1)[0]
+    write_sparse(path, -1, new, base=neutral, file_top=-1, keep_from=-1)  # no sharper: all
+    assert level_bytes(path, 0, -1) == new[1]
+
+    far = pack / "textures" / f"{ROW[1]}.dds"
+    write_sparse(far, 4, levels_from(4, -1), base=neutral, file_top=-1, copy_above=True)
+    new3 = [bytes([150 + k]) * len(b) for k, b in enumerate(levels_from(3, -1))]
+    write_sparse(far, 3, new3, base=neutral, file_top=-1, copy_above=True, keep_from=4)
+    assert level_bytes(far, 3, -1) == new3[0]
+    assert level_bytes(far, 2, -1) == double_bc1(new3[0], dds.size_of(3))  # its copy
+    assert level_bytes(far, 4, -1) == levels_from(4, -1)[0]  # kept
+    assert level_bytes(far, 1, -1) == level_bytes(neutral, 1, -1)
+
+
+def test_a_copy_up_writes_only_the_copy(tmp_path: Path) -> None:
+    pack = region(tmp_path, Zooms(17, 18), textures=ROW)
+    neutral = ensure_neutral(pack, -1)
+    path = pack / "textures" / f"{ROW[0]}.dds"
+    write_sparse(path, 0, levels_from(0, -1), base=neutral, file_top=-1)
+    before = path.read_bytes()
+    copy_up(path, neutral, -1)
+    offset = dds.level_layout(-1)[1][0]
+    assert path.read_bytes()[offset:] == before[offset:]
+    assert level_bytes(path, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
+
+
+@pytest.mark.skipif(Image is None, reason="needs numpy, Pillow and ispc_texcomp")
+@pytest.mark.parametrize(
+    ("max_zoom", "level", "kept"), [(17, -1, False), (16, 0, False), (14, 2, True)]
+)
+def test_the_photos_of_the_sharp_levels_are_not_kept(
+    tmp_path: Path, max_zoom: int, level: int, kept: bool
+) -> None:
+    """The photos of a texture built to 4096 px or sharper stay out of the imagery cache: the
+    texture holds them. Those of coarser levels are kept, for the next flights."""
+    pack = region(tmp_path, Zooms(max_zoom, 18))
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(
+        pack,
+        cache,
+        FakeDownloader,
+        finest_quality=0,
+        max_zoom=max_zoom,
+        max_zoom_airports=18,
+        workers=2,
+        reach_km=0.0,
+        log=quiet,
+    )
+    name = f"{NAMES[0]}.dds"
+    lat, lon = parse_texture_name(name).center
+    s.plan(Fix(lat, lon), x_plane_there=False, starting=True)
+    s.start()
+    deadline = time.time() + 120
+    while s.built.get(name) != level and time.time() < deadline:
+        time.sleep(0.1)
+    s.close()
+    keys = piece_keys(parse_texture_name(name), level)
+    held = cache.get_many(s.provider, keys)
+    cache.close()
+    assert s.built[name] == level
+    assert len(held) == (len(keys) if kept else 0)
 
 
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:

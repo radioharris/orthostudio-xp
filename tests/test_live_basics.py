@@ -101,6 +101,18 @@ class CacheTest(unittest.TestCase):
             c.close()
         self.assertEqual(got, {(12, 1, 2): (IMAGE, b"jpeg"), (12, 1, 3): (NO_IMAGERY, None)})
 
+    def test_a_rollback_journal_not_a_write_ahead_log(self):
+        # In the WAL every piece was written twice: 2.5 times its bytes, 1.4 with the journal.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "c.sqlite"
+            old = __import__("sqlite3").connect(str(path))
+            old.execute("PRAGMA journal_mode=WAL")  # a cache from before
+            old.close()
+            c = ChunkCache(path)
+            mode = c.db.execute("PRAGMA journal_mode").fetchone()[0]
+            c.close()
+        self.assertEqual(mode, "truncate")
+
     def test_used_from_another_thread(self):
         # The streamer opens it in the main thread and its builder thread uses it.
         import threading

@@ -87,6 +87,10 @@ FLIGHT_ENCODES = 4  # textures encoded at once while X-Plane flies; all workers 
 # gives its memory back: twelve workers kept 14 GB after such textures, and a user's Mac, short of
 # memory, froze X-Plane (2026-09-28)
 SHARP_WORKERS = 4
+# The photos of the levels this sharp and sharper (4096 and 8192 px) are not kept in the imagery
+# cache: the texture built holds them, and they took most of what the cache wrote (2026-09-28).
+# Built again after being made coarser, a texture downloads them again, as the first time.
+UNCACHED_FROM = 0
 COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads it: late
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
 EVICT_BATCH = 500  # textures made coarser per round, so that the builder is never held up long
@@ -688,6 +692,7 @@ class Streamer:
                         self.neutral_for(top),
                         top,
                         self.tint_8192,
+                        self.built.get(job.name),  # its levels kept below a sharper build
                     ),
                 )
                 encoding[fut] = job
@@ -733,13 +738,24 @@ class Streamer:
             asked_at.pop(key, None)
             value = body if status == IMAGE else None
             failed = status not in (IMAGE, NO_IMAGERY)  # every try failed: not "no imagery here"
+            names = waiting.pop(key, set())
             if not failed:
-                to_cache.append((key, status, value))
+                if status != IMAGE or not baked_in(key, names):
+                    to_cache.append((key, status, value))
                 self.last_progress = time.monotonic()
-            for name in waiting.pop(key, ()):
+            for name in names:
                 job = jobs.get(name)
                 if job is not None:
                     without(job, key, value, failed, pool)
+
+        def baked_in(key: Key, names: set[str]) -> bool:
+            """A photo only textures built to UNCACHED_FROM or sharper asked for, as one of their
+            own pieces (not a parent): not kept, the texture built holds it."""
+            wanting = [jobs.get(name) for name in names]
+            return bool(wanting) and all(
+                job is not None and job.level <= UNCACHED_FROM and key in job.missing
+                for job in wanting
+            )
 
         def without(job: _Job, key: Key, value: bytes | None, failed: bool, pool) -> None:
             """The piece's answer to the job, or its absence (``failed``: built again later)."""

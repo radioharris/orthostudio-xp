@@ -137,6 +137,7 @@ def write_sparse(
     base: Path | None = None,
     file_top: int = 0,
     copy_above: bool = False,
+    keep_from: int | None = None,
 ) -> None:
     """Write the levels of ``path`` from ``top_level`` down to 1 x 1, and replace it atomically.
 
@@ -146,6 +147,11 @@ def write_sparse(
     on the disk at no cost, so a level read sharper than it was built shows the neutral colour,
     never black. Without, they are a hole of a sparse file, which reads as zeros. ``copy_above``:
     the level above ``top_level`` written too, as its copy (the module's docstring).
+
+    ``keep_from``: the level ``path`` is built to already. A sharper build starts from a clone of
+    ``path`` itself and writes only the levels above that one: those from ``keep_from`` down stay
+    the file's, built from their own photos, not written again (a sharper build rewrote them all,
+    the most of Live's disk writes after the 8192 px levels themselves, 2026-09-28).
     """
     layout = dds.level_layout(file_top)
     if copy_above and top_level > file_top and levels:
@@ -158,15 +164,17 @@ def write_sparse(
         if len(blob) != length:
             raise ValueError(f"level at {offset}: {len(blob)} bytes, expected {length}")
     tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
-    if base is not None:
+    kept = keep_from is not None and top_level < keep_from and _built_file(path, file_top)
+    if kept or base is not None:
         from .clone import clone
 
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
-        clone(str(base), str(tmp))
+        clone(str(path if kept else base), str(tmp))
+        written = levels[: keep_from - top_level] if kept else levels
         fd = os.open(tmp, os.O_WRONLY)
         try:
-            os.pwrite(fd, b"".join(levels), layout[first][0])
+            os.pwrite(fd, b"".join(written), layout[first][0])
         finally:
             os.close(fd)
     else:
@@ -180,6 +188,14 @@ def write_sparse(
         finally:
             os.close(fd)
     os.rename(tmp, path)  # atomic: X-Plane opens either the old file or the new one
+
+
+def _built_file(path: Path, file_top: int) -> bool:
+    """Whether ``path`` is a texture file of the size ``file_top`` gives, to build on."""
+    try:
+        return dds.read_top(path) == file_top
+    except (OSError, ValueError):
+        return False
 
 
 def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
@@ -219,7 +235,7 @@ def copy_up(path: Path, neutral: Path, file_top: int = -1) -> None:
     """The 8192 px level of a texture built from its 4096 px one made the copy of that one, the
     levels kept, nothing downloaded: until its photos come (the module's docstring)."""
     levels = _levels_from(path, 0, file_top)
-    write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True)
+    write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True, keep_from=0)
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:
@@ -313,14 +329,16 @@ def encode_levels(img, tint_top: bool = False) -> list[bytes]:
 
 
 def build_job(job) -> tuple[str, int, int, int]:
-    """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint]]]) -> (name, top
-    level, from parent, blank). ``base``: the neutral texture the file starts from, of the file's
-    size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``: the test of the
-    8192 px, their level pink (:func:`encode_levels`)."""
+    """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint[, built]]]]) ->
+    (name, top level, from parent, blank). ``base``: the neutral texture the file starts from, of
+    the file's size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``: the
+    test of the 8192 px, their level pink (:func:`encode_levels`); ``built``: the level the file
+    holds already, kept below a sharper build (``write_sparse``'s ``keep_from``)."""
     name, level, pieces, parents, path = job[:5]
     base = Path(job[5]) if len(job) > 5 and job[5] else None
     file_top = job[6] if len(job) > 6 else 0
     tint = bool(job[7]) if len(job) > 7 else False
+    built = job[8] if len(job) > 8 else None
     tex = parse_texture_name(name)
     img, from_parent, blank = assemble(tex, level, pieces, parents)
     levels = encode_levels(img, tint_top=tint and level < 0)
@@ -331,5 +349,6 @@ def build_job(job) -> tuple[str, int, int, int]:
         base=base,
         file_top=file_top,
         copy_above=needs_copy(level, file_top),
+        keep_from=built,
     )
     return name, level, from_parent, blank

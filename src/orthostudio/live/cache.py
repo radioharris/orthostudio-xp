@@ -4,6 +4,10 @@
 
 A piece is ``(provider, zoom, x, y)``: a 256 x 256 JPEG, or the provider's word that it has no
 imagery there (kept too, so that the sea is not asked for again at every build).
+
+The file has a rollback journal, not a write-ahead log: in the WAL every piece was written twice,
+2.5 times its bytes in all, 1.4 with the journal (measured, 2026-09-28, pieces as Live asks for
+them); new pages are not journaled, and a crash still leaves the file whole.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ class ChunkCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Opened by the main thread, used by the builder's: one user at a time, never both.
         self.db = sqlite3.connect(str(path), check_same_thread=False)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA journal_mode=TRUNCATE")  # the module's docstring
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS chunks (provider TEXT, z INTEGER, x INTEGER, y INTEGER,"
