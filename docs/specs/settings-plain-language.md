@@ -1135,8 +1135,10 @@ No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/d
 - **Does.** Polygon types of the Global Scenery left out of the overlay pack. Index 0 is the first
   `POLYGON_DEF` of the source, `lib/g12/beaches.bch` on the XP12 tiles sampled (Ortho4XP
   `O4_Overlay_Utils.py:120-151`; OrthoStudio XP `overlays/exclusions.py:27-33, 97-114`,
-  `overlays.md` 2). Names are safer than indices: `.for` forests, `.fac` facades, `.ags` autogen,
-  `.lin` airport borders (`overlays.md` 2). OrthoStudio XP also keeps the objects Ortho4XP dropped
+  `overlays.md` 2). Names are safer than indices: `.for` forests, `.fac` facades, `.ags` and `.agb` autogen (X-Plane 12
+  has both: on `+33-112`, 25 577 `.ags` strings and 274 `.agb` blocks; the page's hint named `.ags`
+  alone until 0.1.19, and a user excluding it kept the blocks), `.lin` airport borders
+  (`overlays.md` 2). OrthoStudio XP also keeps the objects Ortho4XP dropped
   (`keep_objects`, not a setting of the model).
 - **In X-Plane.** The listed types disappear on the tile: the beaches by default, because
   X-Plane's beaches follow its own coastline, not the photo's; forests, facades or autogen if

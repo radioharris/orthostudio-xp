@@ -253,6 +253,16 @@ def test_languages_differ() -> None:
     assert len(same) < len(tables["fr"]) // 4, same
 
 
+def test_the_overlay_exclusion_help_names_both_kinds_of_autogen() -> None:
+    """X-Plane 12's autogen comes as strings (``.ags``) and blocks (``.agb``): 25 577 and 274 on
+    +33-112. The help named ``.ags`` alone, and a user who left it out kept the blocks
+    (2026-09-28)."""
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        hint = tables[lang]["settings.x.exclude_pol_hint"]
+        assert ".ags" in hint and ".agb" in hint, (lang, hint)
+
+
 # -- contract mapping ------------------------------------------------------------------------
 
 
