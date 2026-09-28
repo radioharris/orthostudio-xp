@@ -242,7 +242,7 @@ export const STRINGS = {
 
     "plan.title": "Flight plan",
     "plan.help":
-      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 5 minutes straight ahead.",
+      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 90 seconds straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
     "plan.privacy":
       "Only this name goes to simbrief.com, when a flight starts. Empty: nothing is asked.",
@@ -541,7 +541,7 @@ export const STRINGS = {
 
     "plan.title": "Plan de vol",
     "plan.help":
-      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 5 minutes tout droit devant.",
+      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 90 secondes tout droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
     "plan.privacy":
       "Seul ce nom est envoyé à simbrief.com, au départ de chaque vol. Vide : rien n'est demandé.",

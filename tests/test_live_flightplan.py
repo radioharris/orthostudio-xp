@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The path ahead along the pilot's last SimBrief plan, while the aircraft flies it: turns and
-approaches included, where five minutes straight on miss them."""
+approaches included, where the track straight on misses them."""
 
 from __future__ import annotations
 

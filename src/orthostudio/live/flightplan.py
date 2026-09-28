@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The pilot's flight plan, from SimBrief, for the path ahead.
 
-Live looks ahead along the aircraft's track, five minutes straight on, which a turn, a departure
+Live looks ahead along the aircraft's track, 90 seconds straight on, which a turn, a departure
 procedure or an approach leaves: after a tight turn, a few textures near the aircraft could not
 grow to 8192 px in time. With the pilot's last SimBrief plan, the path ahead follows the route
 instead, ten minutes of it, while the aircraft is on it (within ROUTE_KM, going its way).

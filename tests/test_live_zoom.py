@@ -365,10 +365,11 @@ def test_what_a_start_waits_for(tmp_path: Path) -> None:
 
 def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
     """In flight: within 15 km of the path ahead, the aircraft and the camera, whatever the way it
-    flies, nothing guessed of where it turns; urgent once X-Plane reads them (12 km)."""
+    flies, nothing guessed of where it turns; urgent once X-Plane reads them (12 km). The path is
+    90 seconds long: in a turn, five minutes swept 38 km of it all around the aircraft."""
     s = row_streamer(tmp_path)
     east = s.plan(at(0, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
-    assert sharp(east) == list(range(9))  # the path: 45 km ahead, 15 km around its end
+    assert sharp(east) == list(range(5))  # the path: 13.5 km ahead, 15 km around its end
     assert east[f"{ROW[1]}.dds"][0] <= 0  # 6.8 km: X-Plane reads it now
     assert east[f"{ROW[2]}.dds"][0] > 0  # 13.6 km: not yet
     west = s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
