@@ -651,9 +651,7 @@ class ReachTest(unittest.TestCase):
                 reach_km=25.0,
                 log=lambda _: None,
             )
-            self.assertEqual(views.plan(away, x_plane_there=False)[name][1], 2)  # the cockpit
-            outside = Fix(lat - 0.3, lon, cam_lat=lat - 0.3027, cam_lon=lon)  # 300 m behind
-            urgency, level = views.plan(outside, x_plane_there=False)[name]
+            urgency, level = views.plan(away, x_plane_there=False)[name]
             self.assertEqual(
                 level, 0
             )  # 33 - 25 = 8 km from where the camera may be: the 12 km ring
@@ -664,12 +662,11 @@ class ReachTest(unittest.TestCase):
             self.assertEqual(views.plan(far, x_plane_there=False)[name][1], 4)
             cache.close()
 
-    def test_the_reach_only_in_external_views(self):
-        """The camera's reach while the camera is 200 m or more from the aircraft (an external
-        view), and a minute after it came back; none in the cockpit, where it built what nobody
-        looked at (three quarters of what Live downloaded at cruise)."""
-        from orthostudio.live.streamer import REACH_HOLD_S
-
+    def test_the_reach_even_in_the_cockpit(self):
+        """The camera's reach widens the rings in the cockpit too: an external view comes without
+        warning, a zoom takes the camera out faster than any build, and X-Plane never reads a level
+        again. With the reach only in external views (2026-09-29), a quick zoom out would have
+        found the 4096 px levels 15 to 35 km out still the neutral colour."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pack = root / "stream_pack"
@@ -683,13 +680,12 @@ class ReachTest(unittest.TestCase):
                 reach_km=20.0,
                 log=lambda _: None,
             )
-            cockpit = Fix(45.5, 6.5, cam_lat=45.5001, cam_lon=6.5)  # 11 m: the pilot's head
-            outside = Fix(45.5, 6.5, cam_lat=45.5027, cam_lon=6.5)  # 300 m out
-            self.assertEqual(s.reach_now(Fix(45.5, 6.5), now=100.0), 0.0)  # no camera said
-            self.assertEqual(s.reach_now(cockpit, now=100.0), 0.0)
-            self.assertEqual(s.reach_now(outside, now=100.0), 20.0)
-            self.assertEqual(s.reach_now(cockpit, now=100.0 + REACH_HOLD_S - 1), 20.0)  # just back
-            self.assertEqual(s.reach_now(cockpit, now=100.0 + REACH_HOLD_S + 1), 0.0)
+            lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
+            name = f"{NAMES[0]}.dds"
+            cockpit = Fix(lat - 0.25, lon, cam_lat=lat - 0.2499, cam_lon=lon)  # 28 km, the head
+            self.assertEqual(s.plan(cockpit, x_plane_there=False)[name][1], 0)  # 4096 px already
+            zoomed = Fix(lat - 0.25, lon, cam_lat=lat - 0.1, cam_lon=lon)  # 17 km out, low
+            self.assertEqual(s.plan(zoomed, x_plane_there=False)[name][1], 0)  # what it reads
             cache.close()
 
     def test_a_camera_far_up_needs_only_the_small_levels(self):
