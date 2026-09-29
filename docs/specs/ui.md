@@ -644,7 +644,10 @@ tile's detail row stays under it whatever the order. A size the engine is still 
 as unknown, and the page asks for the list
 again 5 s later (`SIZES_RETRY_MS`) until none is pending: on a user's hard disk the Plan's map
 and the Library waited minutes at each start for every tile's size (2026-09-28), and now wait
-for none.
+for none. That ask reads the rows for their sizes alone (`loadLibrarySizes`) and redraws the
+table: it ran the whole list's work every 5 s, *Free space*'s measure included, which a hard disk
+takes minutes over, so the measures piled up until nothing answered, and the Plan's colour sliders
+were rebuilt under the hand (review of 0.1.19, 2026-09-29).
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list

@@ -363,6 +363,24 @@ def test_the_next_start_reads_nothing_the_last_point_forced_within_its_margin(
         assert s.recover().checked == 1
 
 
+def test_the_rows_since_a_durable_point_are_read_through_an_index(tmp_path: Path) -> None:
+    """Every durable point and every start read the rows indexed since the point. Without an index
+    on their date the query visited every texture row of the store, in no order: some 2 000 pages
+    for 10 000 artefacts, up to a minute on a hard disk that had not read them yet (review of
+    0.1.19, 2026-09-29). A store made before the index gets it when it is opened."""
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as s:
+        s._db.execute("DROP INDEX artifacts_rule_created")  # as 0.1.18 left its stores
+    with Store(root, fsync=False) as s:
+        said: list[str] = []
+        s._db.set_trace_callback(said.append)
+        s._deferred_since(time.time() - 30.0)
+        s._db.set_trace_callback(None)
+        (query,) = [q for q in said if q.lstrip().upper().startswith("SELECT")]
+        plan = " ".join(str(row[3]) for row in s._db.execute(f"EXPLAIN QUERY PLAN {query}"))
+    assert "USING INDEX artifacts_rule_created (rule=? AND created_at>?)" in plan, plan
+
+
 def test_what_an_interrupted_build_left_torn_is_dropped_at_the_next_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -4591,12 +4591,32 @@ function loadLibrarySoon() {
   libraryTimer = setTimeout(loadLibrary, 800);
 }
 
+/** The sizes still being measured, asked again in a moment. */
+function askSizesAgain() {
+  clearTimeout(sizesTimer);
+  if (sizesPending(state.library)) sizesTimer = setTimeout(loadLibrarySizes, SIZES_RETRY_MS);
+}
+
+/** The list read again for its sizes alone: nothing else changes while the engine measures them.
+ * It ran the whole of loadLibrary every five seconds, "Free space"'s measure included, which a hard
+ * disk takes minutes over: the measures piled up until nothing answered, and the Plan's colour
+ * sliders were rebuilt under the hand (review of 0.1.19, 2026-09-29). */
+async function loadLibrarySizes() {
+  try {
+    const rows = await api("GET", "/api/library");
+    state.library = Array.isArray(rows) ? rows : [];
+    renderLibrary();
+  } catch (_err) {
+    // the rows shown stay, and their sizes are asked again in a moment
+  }
+  askSizesAgain();
+}
+
 async function loadLibrary() {
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
-    clearTimeout(sizesTimer);
-    if (sizesPending(state.library)) sizesTimer = setTimeout(loadLibrary, SIZES_RETRY_MS);
+    askSizesAgain();
     renderTilesBuilt(); // the chosen squares a build has just made, or a delete has just taken
     // The status bar counts the same tiles: a build that ends or installs a tile, a tile deleted,
     // show at once there too (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
