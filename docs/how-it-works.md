@@ -273,7 +273,9 @@ background; a size not known yet shows no figure a moment while it is measured, 
 its own size up to date (on a hard disk the Plan and the Library waited minutes for these figures). The program itself starts faster
 from an SSD.
 Nothing is moved: the tiles built before stay where they are and keep working in X-Plane, and the
-next ones go to the new folder. Each folder has its own `yOrthoStudio_Overlays`, which Custom
+next ones go to the new folder, *Build again* included: it builds the same tiles with the same
+choices in the folders Settings name now (the data folder, X-Plane's, the patches'), and while the
+data folder's disk is unplugged it says so and starts nothing, as a new build does. Each folder has its own `yOrthoStudio_Overlays`, which Custom
 Scenery lists as `yOrthoStudio_Overlays_2` (then `_3`...) when X-Plane shows the tiles of two
 folders at once, so every tile keeps its roads, forests and buildings. A tile built again into the
 new folder takes the place of its old build in X-Plane, and the old build stays in the Library,
@@ -423,7 +425,8 @@ directory, whichever you have. *Choose…* opens the folder dialog; left empty, 
 XP reads its own `patches` folder, `~/.orthostudio/patches`, which it makes empty when it starts
 so that there is somewhere to drop them. A tile that has a
 directory there is built with its patches, and editing a patch builds that tile again by itself; a
-tile without one is built as before. Settings names the tiles the folder has patches for, the Plan
+tile without one is built as before. *Build again* reads the folder Settings name at that moment,
+after a restart of the app too. Settings names the tiles the folder has patches for, the Plan
 says which of the tiles you chose will be built with them and which files, and the report of a build
 lists the tiles it built with patches.
 

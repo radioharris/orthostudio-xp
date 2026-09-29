@@ -32,7 +32,8 @@ JobManager(*, jobs_dir: Path | None = None, build=build_tiles, env_factory=Build
     start(specs, *, install=False, request=None, queue=False) -> Job
         # JobBusyError when a job is active; queue=True appends to the FIFO instead
     get(job_id) -> Job | None ; list() -> list[Job] ; active() -> Job | None
-    cancel(job_id) -> bool ; retry(job_id, *, queue=False) -> Job   # same specs, new id
+    cancel(job_id) -> bool ; retry(job_id, *, where, queue=False) -> Job
+        # the same build as a new job, in the folders `where` gives (section 5.1)
     close(timeout=10.0)                                              # cancel + join
 
 Job.state() -> dict   # section 5 ; Job.events(after_seq) -> list[dict] ; Job.wait(timeout)
@@ -78,7 +79,7 @@ by default; tests inject a generator of synthetic events.
 | `GET /api/jobs/{id}` | – | `JobState` (section 5) or 404 |
 | `GET /api/jobs/{id}/events` | header `Last-Event-ID` or `?after=` | SSE stream (section 5.3) |
 | `POST /api/jobs/{id}/cancel` | – | `{job_id, status}`; 409 when already finished |
-| `POST /api/jobs/{id}/retry` | `{queue?}` | `{job_id, status, retry_of, queue_position}` (201): the same specs as a new job, queued like `POST /api/jobs`; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` as above |
+| `POST /api/jobs/{id}/retry` | `{queue?}` | `{job_id, status, retry_of, queue_position}` (201): the same build as a new job, in the folders chosen now (section 5.1), queued like `POST /api/jobs`; 422 `CFG_DATA_DIR_MISSING`, `XP_DIR_NOT_FOUND` or `XP_GLOBAL_SCENERY_NOT_FOUND` as for a new job, and nothing starts; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` as above |
 | `GET /api/patches` | `?dir=` | `{dir, exists, tiles}`: the tiles the folder of hand-made mesh patches has something for, each with what a build of it reads (`pipeline.build.patched_tiles`: `{"-20-044": ["SBCF.patch.osm"]}`, south-west first). The folder is `dir`, what Settings shows before it is saved (empty: the default), else the saved `expert.patches_dir`, else `$OSXP_HOME/patches`; `dir` is `null` when there is none. For the Plan and Settings to name the patches before anything is built (a user took "Patches: none" in a report for his patch not being found, when it was for another square, 2026-09-21) |
 | `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, size_pending, present, photo, built, overlay}]` (section 2.3) |
 | `POST /api/library/overlays` | `{use: "others" \| "own", tiles, xplane_dir?}` | leaves the roads, forests and buildings of the squares to the other active overlay packs, or draws the tiles' own again (`install.md` 4.3): `{changed: [tile...], states: {tile: {state, others}}}`; 409 `XP_RUNNING`, 409 `SYS_TILE_IN_BUILD` for a tile in a build under way or waiting, 422 for a name that is not a tile |
@@ -353,8 +354,16 @@ committed.
 
 Retry is a **new job with the same specs**: the scheduler's keys make every committed node a hit and
 the textures node re-fetches only the `ERROR` chunks (spec `pipeline-build.md` 2.2). The page labels
-it "Retry the missing ones" when the failure was `TEX_MISSING`. The specs are copied as saved; the
-`legacy_dir` an older job may have saved is ignored (decision 0010).
+it "Retry the missing ones" when the failure was `TEX_MISSING`. The specs are copied as saved
+(the `legacy_dir` an older job may have saved is ignored, decision 0010), but for where the
+build reads and writes: `specs.where_now`, the function `POST /api/jobs` takes them from, gives
+the data folder's `store_root`, `chunks_root` and `out_dir`, X-Plane's `custom_scenery` and
+`global_scenery_dir`, and `patches_dir` from the settings as they are now, and refuses as a new
+job does: the data folder's disk unplugged is `CFG_DATA_DIR_MISSING`, before any job starts.
+Kept from the first build, these folders sent a user's Build again to a data folder he had left
+because its disk was gone: an internal error on `E:\` at once, and with the old disk still there
+the tiles would have gone back to it without a word (2026-09-29). A job read back from its file
+never held its patches folder: after a restart, Build again built without the patches.
 
 ### 5.2 Events (journal)
 
@@ -740,7 +749,8 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   relayed to the page in P2b). Without an X-Plane folder it answers 422 `XP_DIR_NOT_FOUND`.
 * A cancelled job has no `BuildReport` (`report: null`): the `CancelRequested` exception
   leaves `build_tiles` before it assembles one; the per-node state is complete.
-* `retry` records `retry_of` in the new job's `request`.
+* `retry` records `retry_of` in the new job's `request`; the X-Plane folder of that request, when it
+  named one, is the one `where_now` resolves, as for a new job.
 * Measured on the reference Mac (empty home): `/api/status` 60 ms (doctor
   offline), `/api/plan` for +43+005 at ZL14 10 ms; the 18 tests run in 1.4 s.
 * `/api/sizes`'s `store_bytes` reads the figure the store's index keeps (`Store.disk_bytes`,
