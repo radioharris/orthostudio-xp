@@ -451,8 +451,14 @@ and Triangle4XP returns the same mesh from either (`p4-vectors.md` 5).
 graph waits for the tile's own download only. The nodes queue on the `overpass` lane, one tile at a
 time, apart from the imagery's network slot; the Overpass client already spreads a tile's layers
 over the mirrors (`osm-source.md` 4) and reports each layer and its download rate
-(`+43+005: 2/4 OSM layers (1.4 MB/s)`). A relief that downloads (not X-Plane 12's) reports each file received and its rate the same way
-(`+43+005: elevation, 2 file(s) (3.1 MB/s)`, `dem_download_message`). `osm_plan` decides before
+(`+43+005: 2/4 OSM layers (1.4 MB/s)`). The relief node says what it does. A file it downloads is
+reported as it arrives, every second, with the rate the same way (`+43+005: elevation, downloading
+file 1, 210 of 430 MB (16.2 MB/s)`, `dem_downloading_message`, fed by `http_download`'s
+`on_bytes`); then, and from its start for a relief already on disk or X-Plane 12's, that it reads
+(`+43+005: elevation, 2 file(s) at 3.1 MB/s, reading`, `dem_reading_message`, the rate out of the
+brackets). The page showed the rate only once a file was in, then kept it over the 45 s a USGS
+file of 430 MB takes to read, and a user took the relief for stuck (2026-09-29). ANADEM's parts
+come through the fetcher: *downloading* until they are in, with no rate meanwhile. `osm_plan` decides before
 anything runs which tiles have a
 snapshot already (their `osm` rows are announced as reused, the snapshot is the input) and which
 download. `run_osm_phase` runs the same nodes on a scheduler of their own, for a caller that wants

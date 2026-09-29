@@ -446,6 +446,13 @@ RELIEF_CONNECT_S = 10.0
 RELIEF_ATTEMPTS = 4
 """Transfers of one file before its failure is final, as the fetcher counted them (a 429 obeyed
 within its budget is not one)."""
+RELIEF_PROGRESS_S = 1.0
+"""Seconds between two words of a relief file that arrives (``on_bytes``): the page showed its rate
+only once the whole file was in, then kept it over the 45 s the file took to read (a user,
+2026-09-29)."""
+BytesFn = Callable[[int, int | None], None]
+"""``on_bytes(received, expected)``: the bytes of the file in so far, and its size when the server
+says it (``Content-Length``)."""
 _RELIEF_BACKOFF_S = (0.5, 1.0, 2.0)
 """Waits before the second, third and fourth transfers: the fetcher's, without its jitter."""
 _RELIEF_ERRORS = {
@@ -532,7 +539,11 @@ def _stop(answer: Any) -> None:
 
 
 async def _relief_transfer(
-    session: Any, url: str, silence_s: float, cancel: threading.Event | None
+    session: Any,
+    url: str,
+    silence_s: float,
+    cancel: threading.Event | None,
+    on_bytes: BytesFn | None = None,
 ) -> tuple[str, int, bytes, float | None]:
     """One transfer: ``(kind, status, body, retry_after)``. ``kind`` is ``ok`` for any answer the
     fetcher counted as one (a 404 included), ``server`` for a 5xx, ``pushback`` for a 429,
@@ -571,8 +582,16 @@ async def _relief_transfer(
                 retry_after = _retry_after(headers) if status == 429 else None
                 return ("pushback" if status == 429 else "server"), status, b"", retry_after
             pieces: list[bytes] = []
+            received, told = 0, time.monotonic()
+            expected = _content_length(answer.headers)
+            if on_bytes is not None:
+                on_bytes(0, expected)
             async for piece in answer.aiter_content():
                 pieces.append(piece)
+                received += len(piece)
+                if on_bytes is not None and time.monotonic() - told >= RELIEF_PROGRESS_S:
+                    told = time.monotonic()
+                    on_bytes(received, expected if expected and expected >= received else None)
             return "ok", status, b"".join(pieces), None
 
     task = asyncio.ensure_future(read())
@@ -592,12 +611,22 @@ async def _relief_transfer(
         return ("timeout" if timed_out else "connect"), 0, b"", None
 
 
+def _content_length(headers: Any) -> int | None:
+    """The size an answer announces, or ``None`` when it announces none (or nonsense)."""
+    for name, value in headers.items():
+        if str(name).lower() == "content-length":
+            with contextlib.suppress(ValueError):
+                return int(str(value).strip()) or None
+    return None
+
+
 def http_download(
     url: str,
     *,
     timeout_s: float = RELIEF_SILENCE_S,
     max_attempts: int = RELIEF_ATTEMPTS,
     cancel: threading.Event | None = None,
+    on_bytes: BytesFn | None = None,
 ) -> Download:
     """One relief file (spec section 3.5), read as it arrives on a connection kept from one call
     to the next, and given up only after ``timeout_s`` without a byte.
@@ -609,7 +638,9 @@ def http_download(
     (:attr:`Download.final`); a 5xx, a silence or a refused connection are asked again, up to
     ``max_attempts`` transfers, then carry the fetcher's code; a 429's pause is obeyed, and costs
     no attempt while the pauses stay within their budget (``net-download.md`` R2). ``cancel``
-    stops the transfer within 0.2 s: ``SYS_CANCELLED`` is raised.
+    stops the transfer within 0.2 s: ``SYS_CANCELLED`` is raised. ``on_bytes`` hears when the
+    file starts to arrive, then every :data:`RELIEF_PROGRESS_S` how much of it is in, on the
+    transfer's own thread; a transfer asked again starts again from nothing.
     """
     from orthostudio.net import fetch
 
@@ -621,7 +652,7 @@ def http_download(
         if cancel is not None and cancel.is_set():
             raise _cancelled()
         kind, status, body, retry_after = _RELIEF_HTTP.run(
-            lambda session: _relief_transfer(session, url, timeout_s, cancel)
+            lambda session: _relief_transfer(session, url, timeout_s, cancel, on_bytes)
         )
         if kind == "cancelled":
             raise _cancelled()

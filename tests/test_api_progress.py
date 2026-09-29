@@ -1041,11 +1041,14 @@ def test_the_textures_message_carries_the_download_rate() -> None:
         assert "MB/s" not in build_mod.textures_progress_message("BI16", snapshot, unknown)
 
 
-def test_a_downloaded_relief_reports_what_it_received_and_its_rate(
+def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A user asked for the rate wherever the network works: a relief that downloads (not X-Plane
-    12's own) reports each file received and the rate, where the page reads it."""
+    12's own) says each file as it arrives, with the rate where the page reads it. Once the file is
+    in, the node says it is read, the rate out of the brackets: the page kept the last rate over
+    the 45 s a USGS file of 430 MB took to read, and a user took the relief for stuck
+    (2026-09-29)."""
     from orthostudio.dem import rule as dem_rule
     from orthostudio.dem.sources import Download
 
@@ -1060,6 +1063,8 @@ def test_a_downloaded_relief_reports_what_it_received_and_its_rate(
 
     def fetched(url: str, **kw: Any) -> Download:
         assert "cancel" in kw  # the build's Cancel reaches the transfer
+        kw["on_bytes"](0, 3_000_000)
+        kw["on_bytes"](1_000_000, 3_000_000)
         return Download(url, body=b"x" * 3_000_000, status=200)
 
     def rule(ctx: Any) -> None:
@@ -1069,12 +1074,19 @@ def test_a_downloaded_relief_reports_what_it_received_and_its_rate(
     monkeypatch.setattr(build_mod, "run_p0_rule", rule)
     build_mod._dem_run(cast(Any, None), _spec("+46+006", zl=14))(Ctx())
     assert answers and answers[0].ok
-    ((fraction, message),) = seen
-    assert fraction == 0.0 and message.startswith("+46+006: elevation, 1 file(s) (")
-    assert message.endswith(" MB/s)")
-    assert (
-        build_mod.dem_download_message(TileRef(46, 6), 0, 0, 1.0) == "+46+006: elevation, 0 file(s)"
-    )
+    assert {fraction for fraction, _ in seen} == {0.0}
+    said = [message for _, message in seen]
+    assert said[:3] == [
+        "+46+006: elevation, reading",  # a relief on disk is read at once
+        "+46+006: elevation, downloading file 1",
+        "+46+006: elevation, downloading file 1",
+    ]
+    assert said[3].startswith("+46+006: elevation, downloading file 1, 1 of 3 MB (")
+    assert said[3].endswith(" MB/s)")
+    assert len(said) == 5 and said[4].startswith("+46+006: elevation, 1 file(s) at ")
+    assert said[4].endswith(" MB/s, reading") and "MB/s)" not in said[4]  # no rate for the page
+    unsized = build_mod.dem_downloading_message(TileRef(46, 6), 2, 5_000_000, None, 8_000_000, 2.0)
+    assert unsized == "+46+006: elevation, downloading file 2, 5 MB (4.0 MB/s)"
 
 
 # -- weights -------------------------------------------------------------------------------

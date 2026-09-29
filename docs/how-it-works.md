@@ -51,7 +51,10 @@ it changed, and the connections to the library stay open from one tile to the ne
 and the tracing of the roads, water and airports for the mesh have steps of their own, Relief and
 Terrain: they take most of the time, 17 to 36 s of relief and 46 to 75 s of tracing on those
 Swiss tiles at road level 5, and with them in one Data step a map read in two seconds from the
-library read "Data 28 s" (2026-09-26).
+library read "Data 28 s" (2026-09-26). While a relief file downloads, Relief shows its speed as it
+arrives, then *reading the relief* while the file is read: a USGS square of 430 MB takes about half
+a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
+download, left in place, made those seconds look stuck (2026-09-29).
 
 Two places are looked in before those servers, in order: a folder of your own, if you named one in
 Settings, and the prepared library this version carries. Each one is taken whole or not at all, and

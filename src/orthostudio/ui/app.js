@@ -4074,6 +4074,16 @@ export function downloadRate(message) {
   return m ? Number(m[1]) : null;
 }
 
+/** What the relief step does where its line gives no rate: a file about to arrive, or the relief
+ * being read (build.py dem_downloading_message, dem_reading_message). The page kept the last
+ * download's rate over the 45 s a USGS file of 430 MB took to read, and a user took the relief
+ * for stuck (2026-09-29). */
+export function reliefPhase(message) {
+  const m = /: elevation, (?:.*, )?(downloading|reading)\b/.exec(String(message || ""));
+  if (!m) return null;
+  return m[1] === "reading" ? t("works.relief_reading") : t("works.relief_downloading");
+}
+
 /** "42 %" in French, "42%" in English; rounded down, so that 100 % means finished. */
 function fmtPercent(fraction) {
   const lang = language();
@@ -4358,7 +4368,7 @@ export function stepView(job, tile, s) {
     // A step that downloads shows its rate (a user asked for it wherever the network works:
     // Imagery, the OSM layers of Data); the engine's whole line stays in the tooltip.
     const rate = downloadRate(step.message);
-    detail = rate ? fmtMbps(rate) : step.message || "";
+    detail = rate ? fmtMbps(rate) : reliefPhase(step.message) || step.message || "";
     help = step.message || "";
   } else if (status === "pending" && s === "imagery") {
     // Coast is done and Imagery waits: for the tile's DSF, which lists its images (Assembly), or
