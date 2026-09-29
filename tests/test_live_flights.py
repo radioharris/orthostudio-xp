@@ -668,3 +668,25 @@ def test_a_camera_recorded_is_kept_the_one_before_set_aside(tmp_path: Path) -> N
     empty = tmp_path / "empty.csv"
     empty.write_text("path_s,external,a,b,c,h,p,r,fov\n")
     assert fly.keep_camera(empty, results, "camera-check") is None
+
+
+def test_the_photos_sharpness_where_their_ground_differs(tmp_path: Path) -> None:
+    """The same camera, the same moment: the sky and the aircraft alike, the ground's detail not."""
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    rng = np.random.default_rng(7)
+    sky = np.full((256, 512), 200, dtype=np.uint8)
+    ground = rng.integers(0, 255, size=(256, 512), dtype=np.uint8)
+    sharp = Image.fromarray(np.vstack([sky, ground]))
+    blurred_ground = Image.fromarray(ground).filter(ImageFilter.GaussianBlur(2))
+    blurry = Image.fromarray(np.vstack([sky, np.asarray(blurred_ground)]))
+    sharp.save(tmp_path / "live.png")
+    blurry.save(tmp_path / "ao.png")
+    got = report.sharpness([tmp_path / "ao.png", tmp_path / "live.png"])
+    assert got is not None
+    assert got["vs_first"][0] == 0.0 and got["vs_first"][1] > 50  # the sharp ground, much more
+    assert 0.4 < got["ground"] <= 0.5  # the sky alike: left out
+    assert report.sharpness([tmp_path / "ao.png", tmp_path / "ao.png"]) is None  # nothing differs
+    assert report.sharpness([tmp_path / "ao.png"]) is None
+    assert report.sharpness([tmp_path / "ao.png", None]) is None

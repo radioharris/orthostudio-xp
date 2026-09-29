@@ -418,14 +418,39 @@ def compare_view(rels: list[str], results: Path = fly.RESULTS) -> dict[str, Any]
             for t, f in zip(report._shots_of(flight), files, strict=False):
                 row = shots.setdefault((name, t), [None] * len(series))
                 row[k] = f"results/{s.name}/{flight.name}/screenshots/{f.name}"
+
+    def photos(images: list[str | None]) -> list[Path | None]:
+        return [results / img.removeprefix("results/") if img else None for img in images]
+
     return {
         "labels": labels,
         "html": markdown_html(table),
         "shots": [
-            {"scenario": name, "t": t, "images": images}
+            {
+                "scenario": name,
+                "t": t,
+                "images": images,
+                "sharpness": report.sharpness(photos(images)),
+            }
             for (name, t), images in sorted(shots.items(), key=lambda kv: (kv[0][0], kv[0][1]))
         ],
     }
+
+
+def _table_head(path: Path) -> tuple[list[str], list[str]]:
+    """A campaign's table: the setups it compares (its first table's columns) and their outcomes."""
+    labels: list[str] = []
+    outcomes: list[str] = []
+    with contextlib.suppress(OSError):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if line.startswith("| |") and not labels:
+                labels = cells[1:]
+            elif line.startswith("| outcome |") and not outcomes:
+                outcomes = cells[1:]
+            if labels and outcomes:
+                break
+    return labels, outcomes
 
 
 def results_list(results: Path = fly.RESULTS) -> list[dict[str, Any]]:
@@ -460,14 +485,15 @@ def results_list(results: Path = fly.RESULTS) -> list[dict[str, Any]]:
             and path.suffix == ".md"
             and re.match(r"^\d{4}-\d\d-\d\d \d{6} ", path.name)
         ):
+            labels, outcomes = _table_head(path)
             items.append(
                 {
                     "path": path.name,
                     "kind": "campaign",
                     "when": path.name[:17],
-                    "what": f"campagne {path.stem[18:]}",
-                    "with": "",
-                    "outcome": "",
+                    "what": f"tableau comparatif, campagne {path.stem[18:]}",
+                    "with": " · ".join(in_french(lb) for lb in labels),
+                    "outcome": "complète" if outcomes and set(outcomes) == {"done"} else "arrêtée",
                 }
             )
     return sorted(items, key=lambda i: i["when"], reverse=True)

@@ -226,7 +226,8 @@ def test_the_results_newest_first(tmp_path: Path) -> None:
     make_results(tmp_path)
     items = bench.results_list(tmp_path)
     assert [i["kind"] for i in items] == ["campaign", "series"]
-    assert items[0]["what"] == "campagne ao-vs-live"
+    assert items[0]["what"] == "tableau comparatif, campagne ao-vs-live"
+    assert items[0]["with"] == "AutoOrtho · Live" and items[0]["outcome"] == "arrêtée"
     assert items[1] == {
         "path": "2026-09-29 142654",
         "kind": "series",

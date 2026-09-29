@@ -370,16 +370,18 @@ async function loadResults(openNewest) {
   const body = $("results");
   body.replaceChildren();
   for (const it of items) {
-    const box = el("input", { type: "checkbox", "aria-label": "à comparer", value: it.path });
-    if (it.kind !== "series") box.disabled = true; // a campaign's table: its runs are compared already
-    box.addEventListener("click", (e) => e.stopPropagation());
-    box.addEventListener("change", refreshCompare);
-    const row = el("tr", {},
+    // a flight's row can be ticked to compare it; a campaign's table compares its own already
+    const box = it.kind === "series" ? el("input", { type: "checkbox", "aria-label": "à comparer", value: it.path }) : null;
+    if (box) {
+      box.addEventListener("click", (e) => e.stopPropagation());
+      box.addEventListener("change", refreshCompare);
+    }
+    const row = el("tr", { class: it.kind === "campaign" ? "is-table" : "" },
       el("td", { class: "bench-pick" }, box),
       el("td", { class: "num", text: when(it.when) }),
       el("td", { text: it.what }),
       el("td", { text: WITH[it.with] || it.with }),
-      el("td", { text: it.outcome === "done" ? "fait" : it.outcome }));
+      el("td", { text: it.outcome === "done" ? "fait" : it.outcome === "X-Plane quit" ? "arrêté (X-Plane fermé)" : it.outcome }));
     row.addEventListener("click", () => openResult(it.path, row));
     body.append(row);
   }
@@ -406,8 +408,11 @@ async function compareResults() {
     const parts = [el("h2", { text: "Comparaison" }), el("div", { html: c.html })];
     if (c.shots.length) parts.push(el("h3", { text: "Les photos, au même moment du même vol" }));
     for (const row of c.shots) {
+      const sharp = row.sharpness;
       const cells = row.images.map((src, k) => {
-        const fig = el("figure", { class: "bench-compare-cell" }, el("figcaption", { text: c.labels[k] }));
+        const vs = sharp ? sharp.vs_first[k] : null;
+        const note = !sharp ? "" : k === 0 ? " · netteté : la référence" : ` · netteté ${vs >= 0 ? "+" : ""}${vs.toLocaleString("fr-FR")} %`;
+        const fig = el("figure", { class: "bench-compare-cell" }, el("figcaption", { text: c.labels[k] + note }));
         if (src) {
           const img = el("img", { src, alt: c.labels[k], loading: "lazy" });
           img.addEventListener("click", () => { $("shot-img").src = src; $("shot").hidden = false; });
@@ -419,8 +424,9 @@ async function compareResults() {
       });
       const grid = el("div", { class: "bench-compare-grid" }, ...cells);
       grid.style.gridTemplateColumns = `repeat(${row.images.length}, minmax(0, 1fr))`;
+      const ground = sharp ? ` (sol comparé : ${Math.round(sharp.ground * 100)} % de la photo)` : "";
       parts.push(el("div", { class: "bench-part" },
-        el("p", { class: "question-help", text: `${row.scenario}, à ${Math.round(row.t)} s de vol` }), grid));
+        el("p", { class: "question-help", text: `${row.scenario}, à ${Math.round(row.t)} s de vol${ground}` }), grid));
     }
     view.replaceChildren(...parts);
   } catch (e) {

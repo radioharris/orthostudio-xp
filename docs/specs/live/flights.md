@@ -122,8 +122,10 @@ of its own (8661), apart from Live's window, which is for its users and never sp
 - the flight under way: the campaign's run, the scenario, a bar of the path's time, the runner's
   output, and a Stop button (the runner's Ctrl-C: it writes what it has and quits X-Plane);
 - the results, newest first: a click shows a series' summary, each flight's report and its
-  screenshots, or a campaign's table; two series or more ticked are compared: their figures in one
-  table a scenario, then their screenshots of each same moment side by side;
+  screenshots, or a campaign's table (its row says the setups it compares, and whether the campaign
+  went to its end); two series or more ticked are compared: their figures in one table a scenario,
+  then their screenshots of each same moment side by side, each with its sharpness against the
+  first's (below);
 - the camera: the scenario's, or the user's own. "Enregistrer ma caméra" flies one scenario with
   X-Plane alone and leaves the view to the user; the test pilot records it 20 times a second of
   path (`camera-record`): outside, the camera's place ahead of, right of and above the aircraft,
@@ -167,6 +169,17 @@ a descent, a close and two far external views), all cold, the user's four compar
 (2026-09-29), each at the same zooms on both sides: AutoOrtho with its defaults at 16/18 and at
 17/19, then with the user's settings at 16/18 and at 17/19, each against Live at those zooms.
 Six flights (each Live flight serves two comparisons), about 2 h 50, nobody at the controls.
+
+## The photos' sharpness
+
+Two flights with the same camera (the scenario's, or the user's replayed) take their screenshots
+with the same framing at the same moments: where two of them differ is the ground, whose textures
+differ; the sky, the aircraft and the panel are alike (`report.sharpness`). The photos are compared
+by blocks of 32 px: those that differ by more than 4 of 255 on average in some photo are the
+ground's (X-Plane's frame counter, top left, left out), and on them each photo's mean gradient
+says the detail it shows. The comparisons give each photo's against the first's, and a campaign's
+table the mean over its screenshots. AutoOrtho with its defaults and Live, both at 16/18, cold,
+the user's camera: +0.3 % for Live over 5 photos (2026-09-29), the same.
 
 ## Results
 

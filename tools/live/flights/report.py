@@ -31,6 +31,7 @@ import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 PILOT = "OrthoStudio XP Test Pilot: "
 MARK = re.compile(r"scenery load at (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?), path (-?\d+(?:\.\d+)?) s")
@@ -342,11 +343,15 @@ def metrics(folder: Path) -> dict:
         launched = str(run.get("xplane_start", "started")).startswith("started")
         text = (folder / "Log.txt").read_text(errors="replace").splitlines()
         loads = [ld for ld in scenery_loads(text, launched) if ld.path_s is not None]
+    shots = (
+        sorted((folder / "screenshots").glob("*.png")) if (folder / "screenshots").is_dir() else []
+    )
     return {
         "run": run,
         "frames": frames,
         "costs": costs(_system_rows(folder / "system.csv"), run),
         "loads": len(loads),
+        "shots": shots,
     }
 
 
@@ -356,6 +361,53 @@ def xplane_window_model() -> Callable[[float, float], set[Tile]] | None:
     except ImportError:
         return None
     return xplane_tiles
+
+
+BLOCK = 32  # px: the photos compared block by block
+SAME_BELOW = 4.0  # mean difference, of 255: a block alike in every photo (sky, aircraft, panel)
+OVERLAY_PX = 64  # X-Plane's frame counter, top left: left out
+
+
+def sharpness(paths: list[Path]) -> dict[str, Any] | None:
+    """The screenshots of one moment of one flight, taken with the same camera (a scenario's own,
+    or the user's replayed), compared: where they differ is the ground, whose textures differ; the
+    sky, the aircraft and the panel are alike. On those blocks, each photo's mean gradient (the
+    detail it shows): ``{"values": [...], "vs_first": [...], "ground": share of the photo}``. None
+    when fewer than two photos, or no block differs."""
+    import numpy as np
+    from PIL import Image
+
+    photos = [p for p in paths if p is not None and Path(p).is_file()]
+    if len(photos) < 2 or len(photos) != len(paths):
+        return None
+    grays = [np.asarray(Image.open(p).convert("L"), dtype=np.float32) for p in photos]
+    h = min(g.shape[0] for g in grays) // BLOCK * BLOCK
+    w = min(g.shape[1] for g in grays) // BLOCK * BLOCK
+    grays = [g[:h, :w] for g in grays]
+
+    def blocks(a: Any) -> Any:  # (rows, cols, BLOCK, BLOCK)
+        return a.reshape(h // BLOCK, BLOCK, w // BLOCK, BLOCK).swapaxes(1, 2)
+
+    def energy(g: Any) -> Any:  # the mean gradient of each block
+        gx = np.zeros_like(g)
+        gy = np.zeros_like(g)
+        gx[:, 1:] = np.abs(np.diff(g, axis=1))
+        gy[1:, :] = np.abs(np.diff(g, axis=0))
+        return blocks(gx + gy).mean(axis=(2, 3))
+
+    first = blocks(grays[0])
+    differ = np.zeros((h // BLOCK, w // BLOCK), dtype=bool)
+    for g in grays[1:]:
+        differ |= np.abs(blocks(g) - first).mean(axis=(2, 3)) > SAME_BELOW
+    differ[: OVERLAY_PX // BLOCK, : (OVERLAY_PX * 8) // BLOCK] = False
+    if not differ.any():
+        return None
+    values = [float(energy(g)[differ].mean()) for g in grays]
+    return {
+        "values": [round(v, 2) for v in values],
+        "vs_first": [round(100.0 * (v / values[0] - 1.0), 1) if values[0] else 0.0 for v in values],
+        "ground": round(float(differ.mean()), 3),
+    }
 
 
 def _written(c: dict) -> str:
@@ -369,6 +421,25 @@ def _cost(m: dict, phase: str, fmt: Callable[[dict], str]) -> str:
 
 def _frames(m: dict, fmt: Callable[[Frames], str]) -> str:
     return fmt(m["frames"]) if m["frames"] else "?"
+
+
+def _sharpness_row(ms: list[dict]) -> list[str]:
+    """Each run's screenshots against the first run's, moment by moment (``sharpness``): the mean
+    difference of the detail on the ground, in %."""
+    count = min((len(m["shots"]) for m in ms), default=0)
+    if len(ms) < 2 or count == 0:
+        return ["?"] * len(ms)
+    diffs: list[list[float]] = [[] for _ in ms]
+    for k in range(count):
+        got = sharpness([m["shots"][k] for m in ms])
+        if got:
+            for i, v in enumerate(got["vs_first"]):
+                diffs[i].append(v)
+    if not diffs[0]:
+        return ["?"] * len(ms)
+    return ["the reference"] + [
+        f"{statistics.fmean(d):+.1f} % ({len(d)} photos)" for d in diffs[1:]
+    ]
 
 
 def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -> str:
@@ -432,6 +503,7 @@ def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -
                 ],
             ),
             ("X-Plane's scenery loads in the path", [str(m["loads"]) for m in ms]),
+            ("screenshots' sharpness, against the first", _sharpness_row(ms)),
         ]
         out += [f"## {name}", ""]
         out.append("| | " + " | ".join(label for label, _ in cells) + " |")
