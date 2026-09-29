@@ -653,3 +653,26 @@ def test_the_streamer_builds_to_the_file_size(
     path = pack / "textures" / name
     assert side_of(path) == side
     assert path.stat().st_size == dds.file_size(side)
+
+
+def test_speed_and_track_from_positions_when_xplane_says_none() -> None:
+    """A drone's aircraft: X-Plane says 0 kt while it flies at 600 kt. The planner takes its speed
+    and track from its last two positions, so that the path ahead is planned (2026-09-29)."""
+    from orthostudio.live.streamer import motion_from_positions
+
+    before = Fix(43.637, 2.40)
+    fix = Fix(43.637, 2.40 + 0.6172 / 80.47, trk_deg=275.5)  # 617 m east in 2 s
+    motion_from_positions(before, 100.0, fix, 102.0)
+    assert fix.gs_ms == pytest.approx(308.6, rel=0.01)
+    assert fix.trk_deg == pytest.approx(90.0, abs=0.5)
+    flying = Fix(43.637, 2.4077, gs_ms=250.0, trk_deg=88.0)  # X-Plane says it: as it says
+    motion_from_positions(before, 100.0, flying, 102.0)
+    assert (flying.gs_ms, flying.trk_deg) == (250.0, 88.0)
+    parked = Fix(43.637, 2.40001)  # a metre: taxiing, or nothing
+    motion_from_positions(before, 100.0, parked, 102.0)
+    assert parked.gs_ms == 0.0
+    jumped = Fix(45.0, 5.0)  # hundreds of km in 2 s: a jump, not a flight
+    motion_from_positions(before, 100.0, jumped, 102.0)
+    assert jumped.gs_ms == 0.0
+    motion_from_positions(None, 0.0, jumped, 102.0)  # the first position: nothing to go by
+    assert jumped.gs_ms == 0.0
