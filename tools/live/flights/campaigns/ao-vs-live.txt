@@ -1,0 +1,10 @@
+# AutoOrtho and Live over the same flight, each from nothing (cold: nothing built, nothing
+# downloaded): AutoOrtho with its own defaults and Live at the same zooms, then AutoOrtho with your
+# settings, and your settings at ZL17/19 against Live with your Live settings (ZL17/19).
+# About 25 min a run: X-Plane starts again for each, after its streamer.
+scenarios toulouse-low
+run --streamer autoortho --ao-settings default --cold
+run --streamer live --zooms 16/18 --cold
+run --streamer autoortho --cold
+run --streamer autoortho --zooms 17/19 --cold
+run --streamer live --cold

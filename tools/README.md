@@ -8,4 +8,6 @@ installers, Python inside (`docs/specs/packaging.md`), and the macOS app that ru
 `relief/`: says how far apart two relief sources are over one square, from the files a build
 keeps (ANADEM against Copernicus, a folder of one's own against either). `live/`: writes
 OrthoStudio XP Live's map of which of AutoOrtho's regions has the mesh of each square
-(`src/orthostudio/live/aoregions_map.json`), from the regions' zips' lists of files.
+(`src/orthostudio/live/aoregions_map.json`), from the regions' zips' lists of files. `live/flights/`:
+OrthoStudio XP Live's replayable test flights, flown by X-Plane itself through the test pilot
+plugin (`native/xplane_test_pilot`), each with its report (`docs/specs/live/flights.md`).

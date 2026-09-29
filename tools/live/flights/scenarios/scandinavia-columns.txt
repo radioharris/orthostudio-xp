@@ -1,0 +1,14 @@
+# X-Plane's window of DSF tiles at 60.5 N (Live's model of it was measured at 43.6 N): its size at
+# the start, then where it moves its columns, east across three of them, back west across three.
+# X-Plane alone does (fly.py, no streamer): Log.txt says which tiles it loads, and where.
+#
+# East from 10.40 E to 13.03 E (the columns move at 10.65, 11.65, 12.65 if as at 43.6 N), a U-turn
+# to the right, west to 9.96 E (at 12.35, 11.35, 10.35): 21.5 min at FL300, 480 kt over the ground.
+start 60.50 10.40 30000 90 480
+weather clear
+zulu 11 271          # 13:00 in Norway on 29 September
+camera 0 99999 cockpit
+leg 565 0 0          # east
+leg 60 3 0           # the U-turn, 3 degrees a second
+leg 663 0 0          # west, to 60.415 N 9.964 E: where scandinavia-rows starts
+screenshot 120

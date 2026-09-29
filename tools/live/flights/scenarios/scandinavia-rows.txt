@@ -1,0 +1,14 @@
+# X-Plane's rows of DSF tiles at 60.5 N, never measured: where it moves them, north across 61 N
+# and back south. Starts where scandinavia-columns ends: in one series, no second start.
+#
+# North from 60.44 N to 61.76 N, a U-turn to the right, south to 60.28 N, between 9.88 and 10.06 E
+# (no column moves there): 21.8 min at FL300, 480 kt over the ground.
+start 60.415 9.964 30000 270 480
+weather clear
+zulu 11.4 271
+camera 0 99999 cockpit
+leg 30 3 0           # right, to the north
+leg 567 0 0          # north
+leg 60 3 0           # the U-turn
+leg 648 0 0          # south
+screenshot 120
