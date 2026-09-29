@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.errors import OsxpError
+from orthostudio.live.filesystem import is_folder_link
 from orthostudio.live.pack import (
     LINK_NAME,
     OVERLAY_LINK_NAME,
@@ -188,7 +189,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     pack_dir = options.pack or default_pack_dir()
     link = xp_dir / "Custom Scenery" / LINK_NAME
     already = (
-        link.is_symlink()
+        is_folder_link(link)
         and link.resolve() == pack_dir.resolve()
         and is_installed(xp_dir, LINK_NAME)
     )
@@ -226,7 +227,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
-        setup_region(sources, pack_dir, log=log, zooms=zooms)
+        setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
         if region_layout(pack_dir) != (zooms, LAYOUT_FIXED):  # each texture at its new size
             if xplane_running() and needs_relayout(pack_dir, zooms):
                 raise RefusedError(
@@ -300,9 +301,8 @@ def _overlays(
     placed = overlays.build(xp_dir, pack_dir, folder, sources, live_root(), covered, setting, log)
     if placed:
         install_link(xp_dir, folder, OVERLAY_LINK_NAME, log=log, kind="overlay")
-    elif (
-        is_installed(xp_dir, OVERLAY_LINK_NAME)
-        or (xp_dir / "Custom Scenery" / OVERLAY_LINK_NAME).is_symlink()
+    elif is_installed(xp_dir, OVERLAY_LINK_NAME) or is_folder_link(
+        xp_dir / "Custom Scenery" / OVERLAY_LINK_NAME
     ):
         uninstall_link(xp_dir, OVERLAY_LINK_NAME, log=log)
 
@@ -399,7 +399,7 @@ def uninstall(xplane: Path, log: Log) -> None:
     from orthostudio.live import plugin
 
     uninstall_link(xplane, LINK_NAME, log=log)
-    if (xplane / "Custom Scenery" / OVERLAY_LINK_NAME).is_symlink() or is_installed(
+    if is_folder_link(xplane / "Custom Scenery" / OVERLAY_LINK_NAME) or is_installed(
         xplane, OVERLAY_LINK_NAME
     ):
         uninstall_link(xplane, OVERLAY_LINK_NAME, log=log)

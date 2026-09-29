@@ -12,9 +12,10 @@ again there, the textures built and the imagery downloaded left behind (a user, 
 - ``regions``, the AutoOrtho regions Live installed itself (:mod:`orthostudio.live.aoregions`);
 - ``chunks.sqlite``, the downloaded image pieces.
 
-The pack's textures are APFS clones of one neutral file until they are built, so the folder must be
-on an APFS disk (:func:`check_folder`). ``_live/ortho.json`` in the pack records the level each
-texture is built to.
+The pack's textures round the aircraft are names of one neutral file until they are built, and a
+built one keeps on the disk only the levels built, so the folder must be on a disk that can do both
+(:func:`check_folder`, :mod:`orthostudio.live.filesystem`): APFS on a Mac, NTFS on Windows, ext4 on
+Linux. ``_live/ortho.json`` in the pack records the level each texture is built to.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.home import osxp_home
-from orthostudio.live.clone import clones_work
+from orthostudio.live.filesystem import abilities
 
 LINK_NAME = "z_osxp_live"
 OVERLAY_LINK_NAME = "y_osxp_live_overlays"
@@ -51,7 +52,8 @@ def check_folder(path: Path, *, custom_scenery: Path | None = None, create: bool
     """``path``, once it can hold Live's pack. Raises :class:`FolderError` when it is not a full
     path, when its disk is not there (never made on the computer's own disk instead), when it is a
     file, inside X-Plane's Custom Scenery (which X-Plane reads as scenery), or on a disk that cannot
-    clone files: not APFS, or read only. ``create`` makes it when its parent is there."""
+    hold the pack: one with neither clones nor sparse files, or no hard links (Mac OS Extended,
+    exFAT, FAT32), or read only. ``create`` makes it when its parent is there."""
     path = Path(path).expanduser()
     if not path.is_absolute():
         raise FolderError(f"{path} is not a full path")
@@ -63,8 +65,11 @@ def check_folder(path: Path, *, custom_scenery: Path | None = None, create: bool
         inside, scenery = path.resolve(), Path(custom_scenery).resolve()
         if inside == scenery or scenery in inside.parents:
             raise FolderError(f"{path} is inside X-Plane's Custom Scenery, read as scenery")
-    if not clones_work(path if path.exists() else path.parent):
-        raise FolderError(f"{path} cannot hold the pack: its disk must be APFS, and writable")
+    if not abilities(path if path.exists() else path.parent).holds_pack:
+        raise FolderError(
+            f"{path} cannot hold the pack: its disk must be APFS (a Mac), NTFS (Windows) or ext4 "
+            f"(Linux), and writable"
+        )
     if create:
         path.mkdir(exist_ok=True)
     return path

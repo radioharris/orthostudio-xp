@@ -10,7 +10,8 @@ measurements behind it and the users' guide are in ``docs/specs/live.md``.
 It is switched off until its launch, and changes nothing in the rest of OrthoStudio XP: its own file
 ``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, turns it on with ``enabled = true``
 (:func:`enabled`). OrthoStudio XP's settings screen never saves that file, so the switch stays as
-set. macOS only: the pack relies on APFS clones.
+set. macOS only for now: the plugin's window is Cocoa, and Live lists and starts programs as
+macOS does; its files work on every disk kind (``orthostudio.live.filesystem``).
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ __all__ = ["enabled", "settings_file", "supported"]
 
 
 def supported() -> bool:
-    """Whether OrthoStudio XP Live can run here (macOS: APFS clones, the plugin's window)."""
+    """Whether OrthoStudio XP Live can run here (macOS: the plugin's window, its programs)."""
     return sys.platform == "darwin"
 
 

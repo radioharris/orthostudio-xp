@@ -15,7 +15,7 @@ export const STRINGS = {
       "Start Live before X-Plane, then fly: at each start, X-Plane waits on its loading screen until the ortho around the airport is built.",
     "state.blocked": "Not ready",
     "state.starting": "Starting…",
-    "state.starting_region": "Setting up the region, once: about three minutes, over an hour on a hard drive.",
+    "state.starting_region": "Setting up the region, once: a few seconds.",
     "state.starting_install": "Putting the pack and the plugin in X-Plane.",
     "state.waiting": "Waiting for X-Plane",
     "state.waiting_lead": "Start X-Plane and choose a flight.",
@@ -85,7 +85,7 @@ export const STRINGS = {
     "build.none": "none",
 
     "checks.title": "Checks",
-    "checks.macos_no": "Live runs on macOS only for now: its pack relies on APFS clones.",
+    "checks.macos_no": "Live runs on macOS only for now: its X-Plane plugin and its handling of programs are macOS's.",
     "checks.folder": "Live's folder: {path}",
     "checks.folder_problem": "Live's folder: {problem}",
     "checks.xplane": "X-Plane 12: {path}",
@@ -99,7 +99,7 @@ export const STRINGS = {
     "checks.own_squares": "{n} squares",
     "checks.mesh_missing": "No mesh yet: install the region you fly over.",
     "checks.region": "Region set up",
-    "checks.region_todo": "The region is set up at the first start (about three minutes, over an hour on a hard drive)",
+    "checks.region_todo": "The region is set up at the first start (a few seconds)",
     "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region}.",
     "flight.notice_installed": "No mesh here yet: {region} is installed, and used from Live's next start.",
     "map.title": "Map",
@@ -284,7 +284,7 @@ export const STRINGS = {
 
     "folder.title": "Live's folder",
     "folder.help":
-      "Where Live keeps its textures and its downloaded imagery, on an APFS disk. An SSD is best: on a hard drive, the region's first setup takes over an hour (Europe, against three minutes on an SSD).",
+      "Where Live keeps its textures and its downloaded imagery: on the computer's own disk, or on a disk of the same kind (APFS on a Mac, NTFS on Windows, ext4 on Linux). Not on a disk in Mac OS Extended, exFAT or FAT32.",
     "folder.now": "Now: {path}",
     "reveal.mac": "Show in Finder",
     "reveal.win": "Show in File Explorer",
@@ -316,7 +316,7 @@ export const STRINGS = {
       "Démarrez Live avant X-Plane, puis volez : à chaque départ, X-Plane attend sur son écran de chargement que l'ortho autour de l'aéroport soit construite.",
     "state.blocked": "Pas prêt",
     "state.starting": "Démarrage…",
-    "state.starting_region": "Préparation de la région, une seule fois : trois minutes environ, plus d'une heure sur un disque dur.",
+    "state.starting_region": "Préparation de la région, une seule fois : quelques secondes.",
     "state.starting_install": "Installation du pack et du plugin dans X-Plane.",
     "state.waiting": "En attente de X-Plane",
     "state.waiting_lead": "Lancez X-Plane et choisissez un vol.",
@@ -388,7 +388,7 @@ export const STRINGS = {
     "build.none": "aucune",
 
     "checks.title": "Vérifications",
-    "checks.macos_no": "Live ne tourne que sur macOS pour l'instant : son pack repose sur les clones APFS.",
+    "checks.macos_no": "Live ne tourne que sur macOS pour l'instant : son plugin X-Plane et sa gestion des programmes sont ceux de macOS.",
     "checks.folder": "Dossier de Live : {path}",
     "checks.folder_problem": "Dossier de Live : {problem}",
     "checks.xplane": "X-Plane 12 : {path}",
@@ -402,7 +402,7 @@ export const STRINGS = {
     "checks.own_squares": "{n} carrés",
     "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez.",
     "checks.region": "Région préparée",
-    "checks.region_todo": "La région sera préparée au premier démarrage (trois minutes environ, plus d'une heure sur un disque dur)",
+    "checks.region_todo": "La région sera préparée au premier démarrage (quelques secondes)",
     "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region}.",
     "flight.notice_installed": "Pas encore de mesh ici : {region} est installée, et servira dès le prochain démarrage de Live.",
     "map.title": "Carte",
@@ -591,7 +591,7 @@ export const STRINGS = {
 
     "folder.title": "Dossier de Live",
     "folder.help":
-      "Où Live garde ses textures et les images téléchargées, sur un disque APFS. Un SSD est préférable : sur un disque dur, la première préparation de la région prend plus d'une heure (Europe, contre trois minutes sur un SSD).",
+      "Où Live garde ses textures et les images téléchargées : sur le disque de l'ordinateur, ou sur un disque du même format (APFS sur Mac, NTFS sur Windows, ext4 sur Linux). Pas sur un disque en Mac OS étendu, exFAT ou FAT32.",
     "folder.now": "En ce moment : {path}",
     "reveal.mac": "Afficher dans le Finder",
     "reveal.win": "Afficher dans l'Explorateur de fichiers",

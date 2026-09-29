@@ -10,11 +10,11 @@ import time
 import unittest
 from pathlib import Path
 
-from live_helpers import NAMES, FakeDownloader, Image, jpeg_body, make_source
+from live_helpers import NAMES, FakeDownloader, Image, jpeg_body, make_source, make_squares
 from orthostudio.live import dds
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.geo import parse_texture_name
-from orthostudio.live.region import NEUTRAL_FILE, REGION_MARKER, setup_region
+from orthostudio.live.region import NEUTRAL_FILE, REGION_MARKER, REGION_VERSION, setup_region
 from orthostudio.live.streamer import Fix, Streamer, TextureIndex, ahead
 from orthostudio.live.texture import piece_keys
 
@@ -28,10 +28,13 @@ class RegionTest(unittest.TestCase):
             (pack / "textures").mkdir(parents=True)
             (pack / "textures" / f"{NAMES[0]}.dds").write_bytes(b"built already")
             meta = setup_region(src, pack, log=lambda _: None)
-            self.assertEqual(meta["textures"], 2)
+            self.assertEqual(meta["version"], REGION_VERSION)
             self.assertTrue((pack / "Earth nav data" / "+40+000" / "+45+006.dsf").exists())
-            self.assertTrue((pack / "terrain" / f"{NAMES[1]}_water_overlay.ter").exists())
             self.assertTrue((pack / "textures" / "water_transition.png").exists())
+            water = pack / "terrain" / f"{NAMES[1]}_water_overlay.ter"
+            self.assertFalse(water.exists())  # made with its square, round the aircraft
+            make_squares(pack)
+            self.assertTrue(water.exists())
             self.assertEqual((pack / "textures" / f"{NAMES[0]}.dds").read_bytes(), b"built already")
             neutral = (pack / "textures" / f"{NAMES[1]}.dds").read_bytes()
             self.assertEqual(neutral, (pack / NEUTRAL_FILE).read_bytes())
@@ -44,36 +47,43 @@ class RegionTest(unittest.TestCase):
             for start, length in layout[:4]:
                 self.assertNotEqual(set(neutral[start : start + min(length, 4096)]), {0})
 
-    def test_upgrade_from_version_1(self):
-        """A pack set up with the first, holed neutral texture is brought up to date once."""
-        import json
-
+    def _pack_of_before(self, root: Path, version: int | None) -> tuple[Path, Path, Path]:
+        """A pack as an older Live left it: every square's files, a texture built to 2 (holed
+        above it with version 1), the other a neutral name (holed with version 1)."""
         from orthostudio.live.region import neutral_levels
         from orthostudio.live.texture import write_sparse
 
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            src = make_source(root, tile=(45, 6), textures=NAMES)
-            pack = root / "stream_pack"
-            setup_region(src, pack, log=lambda _: None)
-            # make it look like version 1: a holed neutral clone, a built texture with a hole above
-            # it
+        src = make_source(root, tile=(45, 6), textures=NAMES)
+        pack = root / "stream_pack"
+        setup_region(src, pack, log=lambda _: None)
+        make_squares(pack)
+        if version == 1:
             write_sparse(pack / "textures" / f"{NAMES[1]}.dds", 4, neutral_levels(4))
-            built = pack / "textures" / f"{NAMES[0]}.dds"
-            write_sparse(built, 2, [bytes([9]) * length for _, length in dds.mip_layout()[2:]])
-            (pack / "_live" / "ortho.json").write_text(
-                json.dumps({"textures": {f"{NAMES[0]}.dds": 2}})
-            )
-            meta = json.loads((pack / REGION_MARKER).read_text())
+        built = pack / "textures" / f"{NAMES[0]}.dds"
+        write_sparse(built, 2, [bytes([9]) * length for _, length in dds.mip_layout()[2:]])
+        (pack / "_live" / "ortho.json").write_text(json.dumps({"textures": {built.name: 2}}))
+        meta = json.loads((pack / REGION_MARKER).read_text())
+        if version is None or version == 1:
             meta.pop("version")
-            (pack / REGION_MARKER).write_text(json.dumps(meta))
+        else:
+            meta["version"] = version
+        (pack / REGION_MARKER).write_text(json.dumps(meta))
+        return src, pack, built
+
+    def test_upgrade_from_version_1(self):
+        """A pack set up with the first, holed neutral texture and every square's files is
+        brought up to date once: its built textures never black, the rest made per square."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src, pack, built = self._pack_of_before(Path(tmp), 1)
             logged = []
             setup_region(src, pack, log=logged.append)
             self.assertTrue(any("never black" in line for line in logged))
-            self.assertEqual(json.loads((pack / REGION_MARKER).read_text())["version"], 2)
+            self.assertTrue(any("made per square" in line for line in logged))
+            self.assertEqual(json.loads((pack / REGION_MARKER).read_text())["version"], 3)
+            self.assertFalse((pack / "textures" / f"{NAMES[1]}.dds").exists())
+            self.assertEqual(list((pack / "terrain").iterdir()), [])
+            self.assertTrue((pack / "textures" / "water_transition.png").exists())
             layout = dds.mip_layout()
-            clone_ = (pack / "textures" / f"{NAMES[1]}.dds").read_bytes()
-            self.assertEqual(clone_, (pack / NEUTRAL_FILE).read_bytes())
             upgraded = built.read_bytes()
             self.assertNotEqual(
                 set(upgraded[layout[0][0] : layout[0][0] + 4096]), {0}
@@ -81,6 +91,27 @@ class RegionTest(unittest.TestCase):
             self.assertEqual(
                 set(upgraded[layout[2][0] : layout[2][0] + 4096]), {9}
             )  # its own level kept
+
+    def test_upgrade_waits_for_xplane(self):
+        """A pack of version 2, every square's files: taken away only once X-Plane is not running,
+        which may be reading them; meanwhile the streamer finds them all there."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src, pack, built = self._pack_of_before(Path(tmp), 2)
+            other = pack / "textures" / f"{NAMES[1]}.dds"
+            logged = []
+            setup_region(src, pack, log=logged.append, xplane_running=lambda: True)
+            self.assertTrue(any("while X-Plane runs" in line for line in logged))
+            self.assertEqual(json.loads((pack / REGION_MARKER).read_text())["version"], 2)
+            self.assertTrue(other.exists() and (pack / "terrain" / f"{NAMES[1]}.ter").exists())
+            cache = ChunkCache(Path(tmp) / "c.sqlite")
+            s = Streamer(pack, cache, FakeDownloader, finest_quality=0, log=lambda _: None)
+            self.assertIsNone(s.names)  # nothing made nor taken away: every file is there
+            self.assertEqual(len(s.index), 2)
+            cache.close()
+            setup_region(src, pack, log=lambda _: None)  # X-Plane has quit
+            self.assertEqual(json.loads((pack / REGION_MARKER).read_text())["version"], 3)
+            self.assertFalse(other.exists())
+            self.assertTrue(built.exists())
 
 
 class PlanningTest(unittest.TestCase):

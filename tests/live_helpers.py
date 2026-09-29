@@ -47,6 +47,66 @@ def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Pat
     return src
 
 
+def live_names(pack: Path, busy=lambda name: False, forget=lambda name: None, log=None):
+    """The ``Names`` of a pack set up (``orthostudio.live.names``), as the streamer makes it,
+    nothing made yet."""
+    import threading
+
+    from orthostudio.live.geo import parse_texture_name
+    from orthostudio.live.names import Names, RegionTextures
+    from orthostudio.live.region import region_zooms, sources_of_pack
+    from orthostudio.live.streamer import TextureIndex
+
+    sources = sources_of_pack(pack)
+    region = RegionTextures(sources)
+    index = TextureIndex(region.entries())
+    zooms = region_zooms(pack)
+
+    def top_of(name: str) -> int:
+        return zooms.top(parse_texture_name(name).zoom)
+
+    return Names(
+        pack,
+        index.by_tile,
+        sources,
+        top_of,
+        threading.Lock(),
+        busy=busy,
+        forget=forget,
+        log=log or (lambda _: None),
+        others=region.others,
+    )
+
+
+def square_of(name: str) -> tuple[int, int]:
+    """The square of a texture's centre."""
+    import math
+
+    from orthostudio.live.geo import parse_texture_name
+
+    lat, lon = parse_texture_name(f"{name.removesuffix('.dds')}.dds").center
+    return math.floor(lat), math.floor(lon)
+
+
+def make_squares(pack: Path, busy=lambda name: False):
+    """The files of every square of the pack's regions made, as Live makes those round the
+    aircraft (``orthostudio.live.names``): the ``Names`` that made them."""
+    from orthostudio.live.evict import tiles_of
+    from orthostudio.live.geo import parse_texture_name
+
+    names = live_names(pack, busy)
+    squares = {
+        square
+        for entries in names.by_tile.values()
+        for entry in entries
+        for square in tiles_of(parse_texture_name(entry[0]))
+    }
+    for square in sorted(squares):
+        names.make(square)
+        names.done.add(square)
+    return names
+
+
 def make_xplane(root: Path) -> Path:
     xp = root / "X-Plane 12"
     scenery = xp / "Custom Scenery"

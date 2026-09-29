@@ -11,9 +11,9 @@ XP. It is switched on by its own file, `~/.orthostudio/live.toml`:
 enabled = true
 ```
 
-It runs on macOS only for now (its pack relies on APFS clones), from OrthoStudio XP's folder with
-`uv run python -m orthostudio.live <command>`. `ui` opens its window; the other commands do the
-same from the terminal.
+It runs on macOS only for now (its X-Plane plugin and its handling of programs are macOS's), from
+OrthoStudio XP's folder with `uv run python -m orthostudio.live <command>`. `ui` opens its window;
+the other commands do the same from the terminal.
 
 ## One app with OrthoStudio XP
 
@@ -321,15 +321,18 @@ and how much disk the textures and the downloaded imagery may take.
 
 ## Where everything is, and the disk
 
-Live has a folder of its own: `~/.orthostudio/live`, unless its settings choose another, on an APFS
-disk. Not OrthoStudio XP's data folder, which may move to another disk for a while: a pack following
+Live has a folder of its own: `~/.orthostudio/live`, unless its settings choose another, on the
+computer's own disk or on a disk of the same kind: APFS on a Mac, NTFS on Windows, ext4 on Linux,
+never Mac OS Extended, exFAT or FAT32, which would take every texture round the aircraft whole.
+Not OrthoStudio XP's data folder, which may move to another disk for a while: a pack following
 it would be set up again there, and what it held left behind. A folder whose disk is not plugged in
 is never made on the computer's own disk instead: Live says so and does not start.
 
 - `pack`: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while OrthoStudio
-  XP Live runs). Every texture of the region is there: built for real where you have flown, a
-  neutral placeholder that takes no space elsewhere. (A disk-usage tool counts every placeholder
-  whole, terabytes of them: they share one file's blocks.)
+  XP Live runs). Every DSF of the region is there; the files they name only round the aircraft,
+  made as X-Plane comes: each texture built for real where you have flown, a neutral placeholder
+  that takes no space elsewhere. (A disk-usage tool counts every placeholder whole: they share one
+  file.)
 - `chunks.sqlite`: the downloaded imagery, so that nothing is downloaded twice.
 - `regions`: the AutoOrtho regions Live installed (`z_ao_<region>` for the mesh, `y_ao_<region>`
   for its overlays), and while an install runs, what it has downloaded so far.

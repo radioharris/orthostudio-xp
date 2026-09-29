@@ -939,6 +939,8 @@ class RunTest(unittest.TestCase):
         self.assertEqual(
             self.streamer.built, {f"{n}.dds": 1 for n in NAMES}
         )  # built before X-Plane goes on
+        self.assertTrue(self.streamer.squares_ready(self.lat, self.lon))  # and its squares' files
+        self.assertTrue((self.pack / "terrain" / f"{NAMES[0]}_water_overlay.ter").exists())
         waits = [
             dict(kv.split("=", 1) for kv in a.split(" at=")[0].split()[2:]) for a in answers[:-1]
         ]
@@ -953,6 +955,30 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
         self.assertFalse(self.streamer.read_early)
         self.assertTrue(any("X-Plane goes on" in m for m in self.log))
+
+    def test_held_until_its_squares_files_are_made(self):
+        """Everything built, X-Plane still waits for the files of its squares: the .ter files and
+        texture names its DSFs name (orthostudio.live.names)."""
+        names = self.streamer.names
+        go_on = threading.Event()
+        made = names.make
+
+        def slow_make(square):
+            go_on.wait(30)
+            return made(square)
+
+        names.make = slow_make
+        self.click()
+        self.assertTrue(
+            self.wait_for(lambda: self.streamer.built == {f"{n}.dds": 1 for n in NAMES})
+        )
+        answers = self.hold(self.lat, self.lon, timeout=1.5)
+        self.assertTrue(answers and all(a.startswith("LIVE1 WAIT n=0 ") for a in answers), answers)
+        self.assertTrue(self.wait_for(lambda: any("are being made" in m for m in self.log)))
+        go_on.set()
+        answers = self.hold(self.lat, self.lon)
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertTrue((self.pack / "terrain" / f"{NAMES[0]}.ter").exists())
 
     def test_without_the_plugin_no_reload(self):
         """X-Plane did not wait: once everything is built the log says so, and no reload of the

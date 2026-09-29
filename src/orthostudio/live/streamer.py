@@ -63,8 +63,17 @@ from .evict import EVICT_SAFE_KM, TARGET, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
+from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
-from .region import NEUTRAL_LEVEL, Zooms, ensure_neutral, neutral_file
+from .region import (
+    NEUTRAL_LEVEL,
+    REGION_VERSION,
+    Zooms,
+    ensure_neutral,
+    neutral_file,
+    region_version,
+    sources_of_pack,
+)
 from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
 from .route import KM_PER_DEG, Route
 from .texture import parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
@@ -214,20 +223,25 @@ class _Job:
 
 
 class TextureIndex:
-    """The region's textures by 1-degree tile: (name, lat, lon, zoom)."""
+    """The region's textures by the 1-degree tile of their centre: (name, lat, lon, zoom, kinds,
+    source), the last two the files its region has for it (``orthostudio.live.names``). From
+    names, those two are 0."""
 
-    def __init__(self, names):
-        self.by_tile: dict[tuple[int, int], list[tuple[str, float, float, int]]] = defaultdict(list)
-        for name in names:
-            tex = parse_texture_name(name)
-            if tex is not None:
+    def __init__(self, textures):
+        self.by_tile: dict[tuple[int, int], list[Entry]] = defaultdict(list)
+        for item in textures:
+            if isinstance(item, str):
+                tex = parse_texture_name(item)
+                if tex is None:
+                    continue
                 lat, lon = tex.center
-                self.by_tile[(math.floor(lat), math.floor(lon))].append((name, lat, lon, tex.zoom))
+                item = (item, lat, lon, tex.zoom, 0, 0)
+            self.by_tile[(math.floor(item[1]), math.floor(item[2]))].append(item)
 
     def __len__(self) -> int:
         return sum(len(v) for v in self.by_tile.values())
 
-    def around(self, lat: float, lon: float, km: float) -> Iterator[tuple[str, float, float, int]]:
+    def around(self, lat: float, lon: float, km: float) -> Iterator[Entry]:
         dlat = km / KM_PER_DEG + 1
         dlon = km / (KM_PER_DEG * max(0.05, math.cos(math.radians(min(89.0, abs(lat) + dlat))))) + 1
         for tl in range(math.floor(lat - dlat), math.floor(lat + dlat) + 1):
@@ -311,14 +325,23 @@ class Streamer:
         self.cache_budget = cache_budget
         self.evicted = 0
         self.cache_freed = 0
+        # the region's textures, from its regions' terrain folders: the pack makes their files per
+        # square round the aircraft (orthostudio.live.names). A pack of before, not made over yet
+        # (X-Plane was running), has every texture's file already.
+        self.sources = sources_of_pack(pack_dir)
+        per_square = bool(self.sources) and region_version(pack_dir) >= REGION_VERSION
+        region = RegionTextures(self.sources) if per_square else None
         self.index = TextureIndex(
-            e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
+            region.entries()
+            if region is not None
+            else (e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds"))
         )
+        others = region.others if region is not None else None  # the rest of it freed
         # the zoom set: each texture's file is laid out for it (region.relayout), smaller below the
         # mesh's zoom, 8192 px one zoom above
         self.zooms = Zooms(max_zoom, max_zoom_airports)
         self._tops: dict[str, int] = {}  # each texture's file size, once known (top_of)
-        zooms = {z for textures in self.index.by_tile.values() for *_, z in textures}
+        zooms = {entry[3] for textures in self.index.by_tile.values() for entry in textures}
         self.reads_8192 = {  # the zooms whose 8192 px level X-Plane reads, at its texture quality
             z for z in zooms if finest_readable(self.zooms.top(z), finest_quality) == MIN_LEVEL
         }
@@ -354,6 +377,71 @@ class Streamer:
         self.crashed: BaseException | None = None
         self.last_progress = time.monotonic()  # a piece arrived, or none was awaited
         self._thread: threading.Thread | None = None
+        # the files of the squares round the aircraft, a start and the camera (_want_squares)
+        self.names: Names | None = None
+        if others is not None:
+            self.names = Names(
+                pack_dir,
+                self.index.by_tile,
+                self.sources,
+                self.top_of,
+                self.lock,
+                busy=self._holds,
+                forget=self._forget_missing,
+                log=log,
+                others=others,
+            )
+            self.names.yielding = self.yielding
+        self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
+
+    # --- the squares' files -------------------------------------------------------------------
+
+    def _holds(self, name: str) -> bool:
+        """Under ``self.lock``: whether a texture is built, queued or building, its file never
+        taken away with its square's (orthostudio.live.names)."""
+        return name in self.built or name in self.queue or name in self.in_flight
+
+    def _forget_missing(self, name: str) -> None:
+        """Under ``self.lock``: a texture recorded as built whose file is gone (taken away by
+        hand) is forgotten, so that the planner builds it again."""
+        if self.built.pop(name, None) is not None:
+            self.seen.pop(name, None)
+            self.patchy.pop(name, None)
+            self.built_version += 1
+            self.log(f"  {name} was built but its file is gone: built again")
+
+    def _want_squares(self, fix: Fix, starting: bool) -> None:
+        """The squares whose files the pack holds: X-Plane's window and a ring round the aircraft,
+        the camera and a start X-Plane is loading, all kept until the flight is there
+        (:meth:`arrived`); the rest a ring farther taken away (orthostudio.live.names)."""
+        if self.names is None:
+            return
+        if starting:
+            self._points["start"] = (fix.lat, fix.lon)
+        else:
+            self._points["aircraft"] = (fix.lat, fix.lon)
+            if fix.cam_lat is not None and fix.cam_lon is not None:
+                self._points["camera"] = (fix.cam_lat, fix.cam_lon)
+            else:
+                self._points.pop("camera", None)
+        points = list(self._points.values())
+        self.names.want(
+            squares_round(points, RING), squares_round(points, KEEP), (fix.lat, fix.lon)
+        )
+
+    def arrived(self) -> None:
+        """The start X-Plane loaded is where it flies now, or it did not go there: its squares are
+        kept only as the aircraft's."""
+        self._points.pop("start", None)
+
+    def squares_ready(self, lat: float, lon: float) -> bool:
+        """Whether the files of X-Plane's window round (``lat``, ``lon``) are made: a start's, for
+        the plugin to let X-Plane go. True where the pack has every file (a pack of before), or
+        where making them failed (the log says it; X-Plane is not held for ever)."""
+        names = self.names
+        if names is None or names.crashed is not None:
+            return True
+        return names.ready(squares_round([(lat, lon)], 0))
 
     # --- planning -----------------------------------------------------------------------------
 
@@ -579,7 +667,7 @@ class Streamer:
         h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
         jobs: dict[str, tuple[float, int]] = {}
         late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
-        for name, lat, lon, zoom in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
+        for name, lat, lon, zoom, *_ in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
             if name in self.theirs:  # X-Plane shows the user's own tile there
                 continue
             d_now = haversine_m(fix.lat, fix.lon, lat, lon) / 1000.0
@@ -662,6 +750,7 @@ class Streamer:
                 self.read_early = True
                 self.refresh_flight_plan()  # X-Plane flying somewhere new: its plan may be new
             self.last_fix = fix
+        self._want_squares(fix, starting)
         return jobs
 
     def take_batch(self, max_pieces: int = BATCH_PIECES) -> list[tuple[str, int, float]]:
@@ -702,7 +791,7 @@ class Streamer:
         """Whether the region set up has textures near there (AutoOrtho's z_ao_eur: Europe)."""
         return any(
             haversine_m(lat, lon, tlat, tlon) < 100_000
-            for _, tlat, tlon, _ in self.index.around(lat, lon, 100.0)
+            for _, tlat, tlon, *_ in self.index.around(lat, lon, 100.0)
         )
 
     def notice_at(self, lat: float | None, lon: float | None) -> dict | None:
@@ -1101,8 +1190,14 @@ class Streamer:
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
             try:
-                top = dds.read_top(path)  # the file's size from its header: it keeps it
-                downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                if level >= NEUTRAL_LEVEL and self.names is not None:
+                    if self.names.holds(name):  # on a square made: the neutral texture's name
+                        self.names.pool.replace(self.top_of(name), path)
+                    else:  # far from every square made: no file there at all
+                        path.unlink(missing_ok=True)
+                else:
+                    top = dds.read_top(path)  # the file's size from its header: it keeps it
+                    downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
             except OSError as e:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
@@ -1130,11 +1225,15 @@ class Streamer:
     def start(self) -> None:
         self._thread = threading.Thread(target=self.build_loop, name="live-builder", daemon=True)
         self._thread.start()
+        if self.names is not None:
+            self.names.start()
 
     def close(self) -> None:
         self.stop.set()
         if self._thread is not None:
             self._thread.join()
+        if self.names is not None:
+            self.names.close()
         self.save()
 
     def save(self) -> None:
@@ -1496,9 +1595,11 @@ def run(
                         # no time limit: X-Plane waits while pieces arrive, however long a start
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
+                        # and the files of its squares made (orthostudio.live.names)
+                        ready = left == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
                         gate.answer(
                             addr,
-                            left == 0 or stalled,
+                            ready or stalled,
                             left,
                             arrival.name,
                             done,
@@ -1513,7 +1614,7 @@ def run(
                                 f"{left} textures to build around {arrival.name} (is the internet "
                                 f"there?)"
                             )
-                        elif left == 0 and not arrival.released:
+                        elif ready and not arrival.released:
                             arrival.released = True
                             log(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
@@ -1526,7 +1627,18 @@ def run(
                                 f"around {arrival.name} "
                                 f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
                             )
-            if arrival is not None and arrival.ready_at is None and streamer.urgent_left() == 0:
+                        elif not ready and not stalled and now - last_wait >= 5:
+                            last_wait = now
+                            log(
+                                "  X-Plane waits on its loading screen: the files of its squares "
+                                f"around {arrival.name} are being made"
+                            )
+            if (
+                arrival is not None
+                and arrival.ready_at is None
+                and streamer.urgent_left() == 0
+                and streamer.squares_ready(arrival.lat, arrival.lon)
+            ):
                 arrival.ready_at = now
                 log(f"  everything X-Plane will read around {arrival.name} is built")
             if now - last_packet > 5 and now - last_subscribe > 5:
@@ -1578,12 +1690,14 @@ def run(
                     if arrival.loading and may_have_read_early(arrival, xplane_started_at()):
                         streamer.read_early = True  # (never loading: X-Plane was there all along)
                     streamer.plan(fix, x_plane_there=False)
+                    streamer.arrived()
                     arrival = None
                 elif running:  # X-Plane runs somewhere else
                     if arrival.elsewhere_since is None:
                         arrival.elsewhere_since = now
                     elif now - arrival.elsewhere_since > ELSEWHERE_S:
                         log(f"  X-Plane did not start at {arrival.name}")
+                        streamer.arrived()
                         arrival = None
                     if arrival is not None and arrival.certain(
                         now

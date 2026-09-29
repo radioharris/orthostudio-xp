@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from live_helpers import NAMES, FakeDownloader, Image, make_source, make_xplane
+from live_helpers import NAMES, FakeDownloader, Image, make_source, make_squares, make_xplane
 from orthostudio.live import dds, session
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.evict import texture_bytes
@@ -58,9 +58,11 @@ def side_of(path: Path) -> int:
 
 
 def region(root: Path, zooms: Zooms | None = None, textures=(*NAMES, AIRPORT)) -> Path:
+    """A pack set up, the files of its squares made as round the aircraft."""
     pack = root / "pack"
     source = make_source(root, tile=(45, 6), textures=textures)
     setup_region(source, pack, log=quiet, zooms=zooms)
+    make_squares(pack)
     return pack
 
 

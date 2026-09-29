@@ -29,21 +29,21 @@ nothing beyond the standard library.
 from __future__ import annotations
 
 import contextlib
-import fcntl
+import errno
 import os
 import signal
-import struct
 from collections.abc import Sequence
 from pathlib import Path
 
 from . import dds
 from .cache import Key
+from .clone import NO_CLONE
+from .filesystem import BINARY, make_sparse, punch_hole, pwrite, replace
 from .geo import Texture, parse_texture_name
 
+__all__ = ["punch_hole", "write_sparse"]
+
 CHUNK = 256
-BLOCK = 4096
-# <sys/fcntl.h>; argument: struct fpunchhole {uint flags; uint reserved; off_t offset; off_t length}
-F_PUNCHHOLE = 99
 MAX_PARENT_DEPTH = 4
 MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
 # The test of the 8192 px (settings tint_8192): that level only, washed with pink, so that a pilot
@@ -57,7 +57,7 @@ def worker_ignores_ctrl_c() -> None:
     """Initializer of the encoding pools: Ctrl-C is for the main process, which winds the pool
     down. And a lower priority: X-Plane's threads go first, the encoders take the cores left (a
     user saw stutters in flight while Live built, 2026-09-28)."""
-    with contextlib.suppress(OSError):
+    with contextlib.suppress(OSError, AttributeError):  # no nice() on Windows
         os.nice(10)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -84,24 +84,6 @@ def piece_keys(tex: Texture, level: int) -> list[Key]:
 def parent_keys(key: Key, depth: int = MAX_PARENT_DEPTH) -> list[Key]:
     z, x, y = key
     return [(z - d, x >> d, y >> d) for d in range(1, depth + 1) if z - d >= 0]
-
-
-def punch_hole(fd: int, start: int, end: int) -> bool:
-    """Give back the disk under [start, end), whole 4 KB blocks only. False where unsupported.
-
-    APFS allocates the gap when a file is extended (by ``ftruncate`` or by writing past its end), at
-    no I/O cost; only ``F_PUNCHHOLE`` makes it a hole again (measured: 0.3 ms and 47 KB a
-    placeholder, against 11 MB).
-    """
-    start = (start + BLOCK - 1) // BLOCK * BLOCK
-    end = end // BLOCK * BLOCK
-    if end <= start:
-        return True
-    try:
-        fcntl.fcntl(fd, F_PUNCHHOLE, struct.pack("=IIqq", 0, 0, start, end - start))
-        return True
-    except OSError:
-        return False
 
 
 def double_bc1(blob: bytes, side: int) -> bytes:
@@ -166,29 +148,49 @@ def write_sparse(
             raise ValueError(f"level at {offset}: {len(blob)} bytes, expected {length}")
     tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
     kept = keep_from is not None and top_level < keep_from and _built_file(path, file_top)
-    if kept or base is not None:
-        from .clone import clone
-
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(tmp)
-        clone(str(path if kept else base), str(tmp))
+    source = path if kept else base
+    if source is not None and _clone_into(source, tmp):
         written = levels[: keep_from - top_level] if kept else levels
-        fd = os.open(tmp, os.O_WRONLY)
+        fd = os.open(tmp, os.O_WRONLY | BINARY)
         try:
-            os.pwrite(fd, b"".join(written), layout[first][0])
+            pwrite(fd, b"".join(written), layout[first][0])
         finally:
             os.close(fd)
-    else:
+    else:  # nothing to start from, or a disk that clones nothing: the levels given, then a hole
         size = dds.size_of(file_top)
-        fd = os.open(tmp, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o644)
+        fd = os.open(tmp, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | BINARY, 0o644)
         try:
+            make_sparse(fd)
             os.ftruncate(fd, dds.file_size(size))
-            os.pwrite(fd, dds.header(size), 0)
-            os.pwrite(fd, b"".join(levels), layout[first][0])
+            pwrite(fd, dds.header(size), 0)
+            pwrite(fd, b"".join(levels), layout[first][0])
             punch_hole(fd, dds.HEADER_SIZE, layout[first][0])
         finally:
             os.close(fd)
-    os.rename(tmp, path)  # atomic: X-Plane opens either the old file or the new one
+    replace(tmp, path)  # atomic: X-Plane opens either the old file or the new one
+
+
+_UNCLONED: set[int] = set()  # disks found to clone nothing, by device: not tried again
+
+
+def _clone_into(source: Path, tmp: Path) -> bool:
+    """``tmp`` made a clone of ``source``; False, nothing made, where the disk clones nothing
+    (NTFS, ext4: the caller writes a sparse file instead, :mod:`orthostudio.live.filesystem`)."""
+    from .clone import clone
+
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(tmp)
+    device = os.stat(source).st_dev
+    if device in _UNCLONED:
+        return False
+    try:
+        clone(str(source), str(tmp))
+        return True
+    except OSError as e:
+        if e.errno not in NO_CLONE:
+            raise
+        _UNCLONED.add(device)
+        return False
 
 
 def _built_file(path: Path, file_top: int) -> bool:
@@ -212,14 +214,29 @@ def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
     return levels
 
 
+def to_neutral(path: Path, neutral: Path) -> None:
+    """``path`` made a name of the neutral texture again, atomically: a hard link, else (a file
+    with as many names as its disk allows, a disk without links) a clone or a copy."""
+    from .clone import clone_or_copy
+
+    tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(tmp)
+    try:
+        os.link(neutral, tmp)
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            raise
+        clone_or_copy(str(neutral), str(tmp))
+    replace(tmp, path)
+
+
 def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
     """Make a built texture coarser in place of downloading: keep its levels from ``level`` down
     (they are in the file already) over a clone of the neutral texture of its size, the file's
-    size unchanged; past level 4, the neutral clone."""
+    size unchanged; past level 4, the neutral texture itself (:func:`to_neutral`)."""
     if level > 4:
-        from .clone import replace_with_clone
-
-        replace_with_clone(str(neutral), str(path))
+        to_neutral(path, neutral)
         return
     levels = _levels_from(path, level, file_top)
     write_sparse(
