@@ -174,7 +174,8 @@ def test_manager_failure_then_retry_hits(home: Path) -> None:
     assert err["code"] == "TEX_MISSING" and err["action"] == "retry" and err["stage"] == "imagery"
     assert err["remedy"]
     build.fail.clear()
-    again = mgr.retry(job.id)
+    again = mgr.retry(job.id, where={})  # the same folders; the page's are the settings' own
+    assert again.specs == job.specs
     assert again.id != job.id and again.request["retry_of"] == job.id
     assert again.wait(10.0)
     st2 = again.state()

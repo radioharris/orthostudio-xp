@@ -307,6 +307,94 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
             assert data_root() == home
 
 
+@pytest.mark.anyio
+async def test_build_again_builds_in_the_data_folder_chosen_now_and_waits_for_its_disk(
+    app: Any, tmp_path: Path, xplane: Path
+) -> None:
+    """A user's data folder was on a disk that had gone: he chose another in Settings and pressed
+    Build again, which failed at once, "Internal error: FileNotFoundError: [WinError 3] ...
+    'E:\\\\'" (2026-09-29). The job kept the folders of its first build; with the old disk still
+    there, the tiles would have gone back to it without a word. Build again builds the same tiles
+    where Settings says now, and says the disk is missing as a new build does."""
+    application, mgr, _ = app
+    first, now = tmp_path / "T7" / "OrthoStudio", tmp_path / "SSD" / "OrthoStudio"
+    first.mkdir(parents=True)
+    now.mkdir(parents=True)
+    async with client_for(application) as c:
+        settings = (await c.get("/api/settings")).json()
+        settings["essential"]["data_dir"] = str(first)
+        assert (await c.put("/api/settings", json=settings)).status_code == 200
+        r = await c.post("/api/jobs", json={"tiles": ["+43+005"], "zoom_level": 14})
+        assert r.status_code == 201, r.text
+        job = mgr.get(r.json()["job_id"])
+        assert job is not None and job.wait(30)
+        assert job.specs[0].store_root == first.resolve() / "store"
+
+        settings["essential"]["data_dir"] = str(now)
+        assert (await c.put("/api/settings", json=settings)).status_code == 200
+        r = await c.post(f"/api/jobs/{job.id}/retry", json={})
+        assert r.status_code == 201, r.text
+        again = mgr.get(r.json()["job_id"])
+        assert again is not None and again.wait(30)
+        root = now.resolve()
+        (spec,) = again.specs
+        assert (spec.store_root, spec.chunks_root, spec.out_dir) == (
+            root / "store", root / "chunks", root / "tiles"
+        )  # fmt: skip
+        assert (spec.tile, spec.zl, spec.config) == (job.specs[0].tile, 14, job.specs[0].config)
+
+        now.parent.rename(tmp_path / "SSD away")  # its disk unplugged
+        jobs = len(mgr.list())
+        r = await c.post(f"/api/jobs/{again.id}/retry", json={})
+        assert r.status_code == 422, r.text
+        err = r.json()["error"]
+        assert err["code"] == "CFG_DATA_DIR_MISSING" and err["context"] == {"path": str(root)}
+        assert len(mgr.list()) == jobs  # nothing started
+
+
+@pytest.mark.anyio
+async def test_build_again_after_a_restart_keeps_the_hand_made_patches(
+    home: Path, xplane: Path
+) -> None:
+    """A job read back from its file at the next start has no patches folder: the file never
+    held one, and Build again built the tile without the user's hand-made patches (a flattened
+    helipad back on its slope; found 2026-09-29). It takes the folder the settings give now."""
+    patches = home / "patches"  # ~/.orthostudio/patches, used when Settings names no other
+    (patches / "+43+005").mkdir(parents=True)
+
+    def start() -> tuple[Any, JobManager]:
+        mgr = JobManager(jobs_dir=home / "jobs", build=FakeBuild(), env_factory=None)
+        application = create_app(
+            env_factory=None,
+            jobs=mgr,
+            airports=FakeIndex(),
+            settings_path=home / "config.toml",
+            reveal=lambda path: None,
+        )
+        return application, mgr
+
+    application, mgr = start()
+    try:
+        async with client_for(application) as c:
+            r = await c.post("/api/jobs", json={"tiles": ["+43+005"], "zoom_level": 14})
+            assert r.status_code == 201, r.text
+            job = mgr.get(r.json()["job_id"])
+            assert job is not None and job.wait(30) and job.specs[0].patches_dir == patches
+    finally:
+        mgr.close()
+
+    application, mgr = start()  # the next start reads the job back from its file
+    try:
+        async with client_for(application) as c:
+            r = await c.post(f"/api/jobs/{job.id}/retry", json={})
+            assert r.status_code == 201, r.text
+            again = mgr.get(r.json()["job_id"])
+            assert again is not None and again.wait(30)
+            assert again.specs[0].patches_dir == patches
+    finally:
+        mgr.close()
+
+
 def test_osxp_plan_says_the_data_folder_is_missing(home: Path, tmp_path: Path) -> None:
     _choose(home, tmp_path / "gone")
     result = CliRunner().invoke(

@@ -61,6 +61,7 @@ from orthostudio.api.specs import (
     patches_dir_of,
     plan_answer,
     resolve_xplane,
+    where_now,
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import clean, disk_bytes
@@ -1587,10 +1588,19 @@ def create_app(
         job = job_or_404(job_id)
         if isinstance(job, JSONResponse):
             return job
+        # the same build, in the folders chosen now (data folder, X-Plane, patches): the data
+        # folder's disk is checked as for a new build, not found by an internal error at its start
+        where = await asyncio.to_thread(
+            where_now,
+            settings(),
+            install=job.install,
+            xplane_dir=(job.request or {}).get("xplane_dir"),
+            global_scenery=any(spec.overlay or spec.xp12_rasters for spec in job.specs),
+        )
         if deleting.locked():
             return busy_deleting()
         try:
-            new = manager.retry(job_id, queue=req.queue)
+            new = manager.retry(job_id, where=where, queue=req.queue)
         except JobBusyError as busy:
             return _plain_error(
                 "SYS_BUSY",

@@ -59,6 +59,7 @@ __all__ = [
     "request_zones",
     "resolve_xplane",
     "typed_overrides",
+    "where_now",
     "xplane_not_found",
 ]
 
@@ -274,8 +275,6 @@ def make_specs(
             "CFG_PROVIDER_OUT_OF_COVERAGE",
             context={"provider": provider, "extent": source.extent, "tiles": " ".join(uncovered)},
         )
-    # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
-    patches_dir = patches_dir_of(settings)
     max_zl = reg[provider].max_zl
     for name, own in sorted(levels.items()):
         if own > max_zl:
@@ -314,22 +313,14 @@ def make_specs(
         else []
         for name in tiles
     }
-    xp = resolve_xplane(req.xplane_dir, essential.xplane_dir)
-    if install and xp is None:
-        raise xplane_not_found(essential.xplane_dir)
-    gs = resolve_global_scenery(xplane=xp)
     # "none": the overlays come from another pack (simHeaven X-World): OrthoStudio XP builds none
     overlay = bool(req.overlay) and getattr(essential, "overlays", "xplane") != "none"
-    if gs is None and (overlay or req.xp12_rasters):
-        if xp is None:
-            raise xplane_not_found(essential.xplane_dir)
-        raise OsxpError(
-            "XP_GLOBAL_SCENERY_NOT_FOUND",
-            context={"path": str(xp)},
-            remedy="Install X-Plane 12's scenery with the X-Plane installer, or choose another "
-            "X-Plane 12 folder in Settings.",
-        )
-    out_dir = default_tiles_root()
+    where = where_now(
+        settings,
+        install=install,
+        xplane_dir=req.xplane_dir,
+        global_scenery=bool(overlay or req.xp12_rasters),
+    )
     specs: list[BuildSpec] = []
     for name in tiles:
         tile = TileRef.parse(name)
@@ -338,8 +329,6 @@ def make_specs(
                 tile=tile,
                 provider=provider,
                 zl=levels.get(name, zl),
-                out_dir=out_dir,
-                global_scenery_dir=gs,
                 config=with_photo_zones(
                     with_tile_photo(
                         with_zone_list(config, zone_lists[name], tile), tile_choices.get(name)
@@ -348,15 +337,55 @@ def make_specs(
                     tile,
                 ),
                 install=install,
-                custom_scenery=custom_scenery_dir(xp) if xp is not None else None,
                 overlay=overlay,
                 xp12_rasters=req.xp12_rasters,
-                store_root=default_store_root(),
-                chunks_root=default_chunks_root(),
-                patches_dir=patches_dir,
+                **where,
             )
         )
     return specs
+
+
+def where_now(
+    settings: Any,
+    *,
+    install: bool,
+    xplane_dir: str | None = None,
+    global_scenery: bool = False,
+) -> dict[str, Any]:
+    """Where a build reads and writes, from the settings as they are now (spec 2.2): the data
+    folder's tiles, store and chunks, X-Plane's Custom Scenery and Global Scenery, the folder of
+    hand-made mesh patches. ``BuildSpec`` fields, raising ``OsxpError`` as a new build does: the
+    data folder must be there (``CFG_DATA_DIR_MISSING``), X-Plane too for an install, and its
+    Global Scenery when the build reads it (``global_scenery``: the overlay, the XP12 rasters).
+
+    A new build and Build again both take it from here. Build again kept the folders of its first
+    build: a user who had left a data folder whose disk was gone got an internal error, and one
+    whose old disk was still there would have seen the tiles go back to it (2026-09-29).
+    """
+    require_data_root()
+    essential = settings.essential
+    xp = resolve_xplane(xplane_dir, essential.xplane_dir)
+    if install and xp is None:
+        raise xplane_not_found(essential.xplane_dir)
+    gs = resolve_global_scenery(xplane=xp)
+    if gs is None and global_scenery:
+        if xp is None:
+            raise xplane_not_found(essential.xplane_dir)
+        raise OsxpError(
+            "XP_GLOBAL_SCENERY_NOT_FOUND",
+            context={"path": str(xp)},
+            remedy="Install X-Plane 12's scenery with the X-Plane installer, or choose another "
+            "X-Plane 12 folder in Settings.",
+        )
+    return {
+        "out_dir": default_tiles_root(),
+        "global_scenery_dir": gs,
+        "custom_scenery": custom_scenery_dir(xp) if xp is not None else None,
+        "store_root": default_store_root(),
+        "chunks_root": default_chunks_root(),
+        # hand-made mesh patches, as Ortho4XP holds them (a user of the page asked, 2026-09-17)
+        "patches_dir": patches_dir_of(settings),
+    }
 
 
 def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:

@@ -25,7 +25,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -1304,13 +1304,16 @@ class JobManager:
                 cancelled.append(self._active.id)
             return cancelled
 
-    def retry(self, job_id: str, *, queue: bool = False) -> Job:
-        """A new job with the same specs (the committed artefacts become hits)."""
+    def retry(self, job_id: str, *, where: Mapping[str, Any], queue: bool = False) -> Job:
+        """A new job that builds what ``job_id`` built (the committed artefacts become hits), in
+        the folders ``where`` gives: the ones chosen now (:func:`orthostudio.api.specs.where_now`),
+        not the first build's, whose disk may be gone since. A job read back from its file has no
+        patches folder of its own: the settings' is the one (2026-09-29)."""
         job = self.get(job_id)
         if job is None:
             raise KeyError(job_id)
         request = {**(job.request or {}), "retry_of": job.id}
-        specs = list(job.specs)
+        specs = [replace(spec, **where) for spec in job.specs]
         return self.start(specs, install=job.install, request=request, queue=queue)
 
     def _forgettable(self, job: Job) -> bool:
