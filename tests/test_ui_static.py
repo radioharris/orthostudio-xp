@@ -1920,7 +1920,9 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
         4_200_000,
         3.0,
     )
-    relief_line = build_mod.dem_download_message(TileRef(46, 6), 2, 9_300_000, 3.0)
+    relief_line = build_mod.dem_downloading_message(
+        TileRef(46, 6), 2, 4_000_000, 9_000_000, 9_300_000, 3.0
+    )
     data = {"status": "running", "fraction": 0.3, "message": osm_line, "nodes": {}}
     tile["steps"]["osm"] = data
     got = _node_json(
@@ -1935,6 +1937,34 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     assert got[2]["help"] == with_rate  # the whole line stays in the tooltip
     assert got[3]["detail"] == "1.4 MB/s" and got[3]["help"] == osm_line
     assert got[4] == 3.1  # a downloaded relief
+
+
+def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
+    """The Relief step showed the rate of a file once the file was in, then kept it over the
+    45 s the file took to read, and a user took the relief for stuck (2026-09-29). As a file
+    arrives the step shows its rate; before the first second, that it downloads; after, and
+    for a relief already on disk, that it reads, the whole line kept in the tooltip."""
+    from orthostudio.model import TileRef
+    from orthostudio.pipeline import build as build_mod
+
+    square = TileRef(46, 6)
+    lines = [
+        build_mod.dem_reading_message(square),
+        build_mod.dem_downloading_message(square, 1, 0, None, 0, 0.0),
+        build_mod.dem_downloading_message(square, 1, 210_000_000, 430_000_000, 210_000_000, 13.0),
+        build_mod.dem_reading_message(square, 1, 430_000_000, 27.0),
+    ]
+    job = {"status": "running", "install": True, "tiles": []}
+    views = []
+    for message in lines:
+        relief = {"status": "running", "fraction": 0, "message": message, "nodes": {}}
+        tile = {"tile": "+46+006", "steps": {"relief": relief}}
+        views.append(f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'relief')")
+    got = _node_json("app.js", "[" + ", ".join(views) + "]")
+    assert [view["detail"] for view in got] == [
+        "reading the relief", "downloading", "16.2 MB/s", "reading the relief"
+    ]  # fmt: skip
+    assert got[3]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:

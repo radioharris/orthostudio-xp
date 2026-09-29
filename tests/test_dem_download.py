@@ -120,6 +120,29 @@ def test_a_file_still_arriving_is_waited_for(server: str) -> None:
     assert _Handler.asked["/slow"] == 1, "one transfer, no second copy"
 
 
+def test_a_file_that_arrives_says_how_much_of_it_is_in(
+    server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page showed a relief's rate only once the whole file was in, then kept it over the
+    45 s the file took to read (a user, 2026-09-29). The transfer now says when the file starts
+    to arrive, with its announced size, then how much of it is in, spaced by RELIEF_PROGRESS_S."""
+    monkeypatch.setattr(sources, "RELIEF_PROGRESS_S", 0.5)
+    heard: list[tuple[float, int, int | None]] = []
+    started = time.monotonic()
+    got = sources.http_download(
+        f"{server}/slow",
+        timeout_s=2.0,
+        on_bytes=lambda received, size: heard.append((time.monotonic(), received, size)),
+    )
+    assert got.ok and got.body == BODY
+    assert heard[0][1:] == (0, len(BODY)), "the start, with the size the server announced"
+    counts = [received for _, received, _ in heard]
+    assert counts == sorted(counts) and 0 < counts[-1] < len(BODY)
+    assert all(size == len(BODY) for _, _, size in heard)
+    took = time.monotonic() - started
+    assert 4 <= len(heard) <= took / 0.5 + 2, f"{len(heard)} words in {took:.1f} s"
+
+
 def test_a_silent_server_is_given_up_and_asked_again(server: str) -> None:
     started = time.monotonic()
     got = sources.http_download(f"{server}/silent", timeout_s=2.0, max_attempts=2)

@@ -1321,47 +1321,92 @@ class _Registry:
                 self.scheduler.add(node)
 
 
-def dem_download_message(tile: TileRef, files: int, received: int, elapsed_s: float) -> str:
-    """The progress line of a relief that downloads, ``+46+006: elevation, 2 file(s) (3.1 MB/s)``:
-    the files received and the rate since the node started, in the brackets where the Works page
-    reads the rate of any step (``ui.md`` 2.2; a user asked for it wherever the network works)."""
-    text = f"{tile.name}: elevation, {files} file(s)"
+def dem_downloading_message(
+    tile: TileRef,
+    number: int,
+    in_file: int,
+    file_size: int | None,
+    received: int,
+    elapsed_s: float,
+) -> str:
+    """The line of a relief file as it arrives, ``+46+006: elevation, downloading file 1, 210 of
+    430 MB (16.2 MB/s)``: the rate is every byte of the relief received since the node started, in
+    the brackets where the Works page reads the rate of any step (``ui.md`` 2.2; a user asked for
+    it wherever the network works). Before the first second, ``downloading file 1`` alone."""
+    text = f"{tile.name}: elevation, downloading file {number}"
+    if in_file > 0:
+        size = f" of {file_size / 1e6:.0f}" if file_size else ""
+        text += f", {in_file / 1e6:.0f}{size} MB"
     if received > 0 and elapsed_s > 0:
         text += f" ({received / 1e6 / elapsed_s:.1f} MB/s)"
     return text
 
 
+def dem_reading_message(
+    tile: TileRef, files: int = 0, received: int = 0, elapsed_s: float = 0.0
+) -> str:
+    """The line of a relief being read, ``+46+006: elevation, 2 file(s) at 3.1 MB/s, reading``, or
+    ``+46+006: elevation, reading`` with nothing downloaded. The rate is kept for the log, out of
+    the brackets: the page showed the last download's rate over the 45 s a USGS file of 430 MB
+    took to read, and a user took the relief for stuck (2026-09-29)."""
+    text = f"{tile.name}: elevation"
+    if files:
+        text += f", {files} file(s)"
+        if received > 0 and elapsed_s > 0:
+            text += f" at {received / 1e6 / elapsed_s:.1f} MB/s"
+    return f"{text}, reading"
+
+
 def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
-    """Bind the elevation job (where the cells live, how to download) for ``orthostudio.dem@1``;
-    a relief that downloads reports each file received and the rate (X-Plane's downloads none)."""
+    """Bind the elevation job (where the cells live, how to download) for ``orthostudio.dem@1``.
+    The node says what it does: reading, or downloading a file with the rate as it arrives, then
+    reading what came (X-Plane's relief downloads nothing)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
         start = time.perf_counter()
         got = [0, 0]  # files, bytes
 
+        def reading() -> None:
+            elapsed = time.perf_counter() - start
+            ctx.progress(0.0, dem_reading_message(spec.tile, got[0], got[1], elapsed))
+
         def download(url: str) -> Download:
+            number = got[0] + 1
+
+            def arriving(in_file: int, size: int | None) -> None:
+                elapsed = time.perf_counter() - start
+                ctx.progress(
+                    0.0,
+                    dem_downloading_message(
+                        spec.tile, number, in_file, size, got[1] + in_file, elapsed
+                    ),
+                )
+
+            arriving(0, None)
             # the build's Cancel reaches the transfer: a file of 400 MB is no longer cut at 30 s,
             # so a cancel must not wait for its end
-            answer = dem_sources.http_download(url, cancel=cast(Any, ctx.cancel_event))
+            answer = dem_sources.http_download(
+                url, cancel=cast(Any, ctx.cancel_event), on_bytes=arriving
+            )
             if answer.body:
                 got[0] += 1
                 got[1] += len(answer.body)
-                elapsed = time.perf_counter() - start
-                ctx.progress(0.0, dem_download_message(spec.tile, got[0], got[1], elapsed))
+            reading()
             return answer
 
         def ranges(url: str, parts: Any) -> list[bytes]:
             # ANADEM is read part by part: each part received counts like a file's bytes, so the
             # Works line shows the rate of a square as it does for a source served whole.
+            elapsed = time.perf_counter() - start
+            ctx.progress(
+                0.0, dem_downloading_message(spec.tile, got[0] + 1, 0, None, got[1], elapsed)
+            )
             answers = dem_sources.http_ranges(url, parts)
             body = sum(len(b) for b in answers)
             if body:
                 got[0] += 1
                 got[1] += body
-                ctx.progress(
-                    0.0,
-                    dem_download_message(spec.tile, got[0], got[1], time.perf_counter() - start),
-                )
+            reading()
             return answers
 
         job = DemJob(
@@ -1371,6 +1416,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             ranges=ranges,
             cancel=cast(Any, ctx.cancel_event),
         )
+        reading()  # a relief already on disk is read at once: the page says so from the start
         with dem_job(job):
             return run_p0_rule(ctx)
 

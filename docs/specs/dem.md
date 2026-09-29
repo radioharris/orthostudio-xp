@@ -294,7 +294,10 @@ pauses stay within twelve and 120 s (`net-download.md` R2); and the "4xx and 3xx
 are retried" decision of Ortho4XP is kept: a 404 is the server's word and goes to the memo (3.4).
 The build's Cancel is checked every 0.2 s and tells curl to stop at the file's next piece; one
 that comes before the headers lets the transfer reach them and stops it there, since cancelling
-the wait for them leaves curl reading the whole file for nobody (curl_cffi 0.16).
+the wait for them leaves curl reading the whole file for nobody (curl_cffi 0.16). `on_bytes`
+hears when a file starts to arrive, with the size its `Content-Length` announces, then every
+`RELIEF_PROGRESS_S` (1 s) how much of it is in: the build's Relief step shows the rate as the
+file arrives, where it showed it only once the file was in (`pipeline-build.md`, 2026-09-29).
 
 Until 0.1.19 a relief went through that fetcher (`orthostudio.net.fetch.Fetcher`), built for
 thousands of small pieces: each transfer was cut at 30 s whole, and a second copy of it started
