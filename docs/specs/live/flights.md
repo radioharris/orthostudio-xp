@@ -81,8 +81,10 @@ crashed X-Plane through FlyWithLua), X-Plane's reload of the scenery, a kill of 
 flight loops do not run.
 
 Streamers, each started before X-Plane as the user starts it (X-Plane reads the list of scenery
-packs at start-up), and stopped only once X-Plane has quit (the runner's small process above then
-gives the streamer its Ctrl-C):
+packs at start-up), and stopped only once X-Plane has quit: the runner's small process above then
+gives its Ctrl-C to the streamer and to every process under it, each process group once, and a
+SIGTERM to any still there 2 min later. AutoOrtho's mount worker has a group of its own: a Ctrl-C to
+AutoOrtho's group alone left it running, its region mounted (2026-09-29).
 
 - `none`: X-Plane alone (the default).
 - `live`: Live's `stream` from this checkout, with the user's Live settings and folder. `--cold`

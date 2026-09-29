@@ -520,3 +520,37 @@ def test_a_campaigns_runs_side_by_side(tmp_path: Path) -> None:
     assert "| | AutoOrtho, its defaults, cold | Live, ZL16/18, cold |" in text
     assert "| frame time: mean, 99th, worst (ms) | 20.0, 20, 20 | 16.0, 16, 16 |" in text
     assert "| start | ? | ? |" in text  # no system.csv: the costs unknown, said so
+
+
+def test_a_streamer_stops_with_every_process_it_started(tmp_path: Path) -> None:
+    """AutoOrtho's mount worker has a process group of its own: a Ctrl-C to AutoOrtho's group left
+    it running, its region mounted (2026-09-29). The whole tree gets it."""
+    import subprocess
+    import time
+
+    child = tmp_path / "child.pid"
+    parent = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import subprocess, sys, time\n"
+            "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'],"
+            " start_new_session=True)\n"
+            f"open({str(child)!r}, 'w').write(str(c.pid))\n"
+            "time.sleep(60)\n",
+        ],
+        start_new_session=True,
+    )
+    end = time.time() + 10
+    while not child.exists() or not child.read_text():
+        assert time.time() < end
+        time.sleep(0.05)
+    worker = int(child.read_text())
+    tree = [p for p, _ in fly.process_tree(parent.pid)]
+    assert tree[0] == parent.pid and worker in tree
+    fly.stop_tree(parent.pid, timeout_s=10)
+    parent.wait(5)
+    end = time.time() + 5
+    while fly._still(worker, dict(fly.process_tree(worker)).get(worker, "?")):
+        assert time.time() < end, "the worker in its own group is still there"
+        time.sleep(0.1)

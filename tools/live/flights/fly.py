@@ -255,7 +255,7 @@ def start_live(
         if proc.poll() is not None:
             tail = "\n".join(text.splitlines()[-15:])
             raise RefusedError(f"Live stopped before it was ready:\n{tail}")
-    stop_now(proc)
+    quit_in_background(proc)
     raise RefusedError("Live not ready after 20 min")
 
 
@@ -375,17 +375,58 @@ def start_autoortho(
         if proc.poll() is not None:
             tail = "\n".join(log.read_text(errors="replace").splitlines()[-15:])
             raise RefusedError(f"AutoOrtho stopped before it mounted its regions:\n{tail}")
-    stop_now(proc)
+    quit_in_background(proc)
     raise RefusedError("AutoOrtho's regions not mounted after 5 min")
 
 
-def stop_now(proc: subprocess.Popen | None) -> None:
-    """Ctrl-C, as in its terminal (X-Plane not running)."""
-    if proc is not None and proc.poll() is None:
-        try:
-            os.killpg(proc.pid, signal.SIGINT)
-        except OSError:
-            proc.send_signal(signal.SIGINT)
+def process_tree(pid: int) -> list[tuple[int, str]]:
+    """``pid`` and every process under it, with its command, whatever its process group:
+    AutoOrtho's mount worker has a group of its own, which a Ctrl-C to AutoOrtho's group did not
+    reach (2026-09-29: its region stayed mounted after the flight)."""
+    rows = sampler.processes()
+    command = {p: c for p, _, _, _, c in rows}
+    children: dict[int, list[int]] = {}
+    for p, parent, *_ in rows:
+        children.setdefault(parent, []).append(p)
+    out: list[tuple[int, str]] = []
+    todo = [pid]
+    while todo:
+        p = todo.pop()
+        if p in command and all(p != q for q, _ in out):
+            out.append((p, command[p]))
+            todo += children.get(p, [])
+    return out
+
+
+def _still(pid: int, command: str) -> bool:
+    """The same process still there (its number not given to another since)."""
+    now = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True)
+    return now.returncode == 0 and now.stdout.strip() == command
+
+
+def stop_tree(pid: int, timeout_s: float = STOP_TIMEOUT_S) -> None:
+    """Ctrl-C to the streamer ``pid`` and to every process under it, each group once, as in its
+    terminal (it takes its files out of X-Plane); SIGTERM to those still there ``timeout_s`` later.
+    Only once X-Plane has quit: X-Plane reads its textures through it."""
+    tree = process_tree(pid)
+    groups: list[int] = []
+    for p, _ in tree:
+        with contextlib.suppress(OSError):
+            group = os.getpgid(p)
+            if group not in groups:
+                groups.append(group)
+    for group in groups:
+        with contextlib.suppress(OSError):
+            os.killpg(group, signal.SIGINT)
+    began = time.time()
+    while time.time() - began < timeout_s:
+        if not any(_still(p, c) for p, c in tree):
+            return
+        time.sleep(1.0)
+    for p, c in tree:
+        if _still(p, c):
+            with contextlib.suppress(OSError):
+                os.kill(p, signal.SIGTERM)
 
 
 def quit_xplane_udp() -> None:
@@ -410,25 +451,13 @@ def after_series(pid: int) -> None:
             with contextlib.suppress(OSError):
                 quit_xplane_udp()
         time.sleep(2.0)
-    if pid <= 0:
-        return
-    try:
-        os.killpg(pid, signal.SIGINT)
-    except OSError:
-        return
-    began = time.time()
-    while time.time() - began < STOP_TIMEOUT_S:
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return
-        time.sleep(2.0)
-    with contextlib.suppress(OSError):
-        os.killpg(pid, signal.SIGTERM)
+    if pid > 0:
+        stop_tree(pid)
 
 
 def quit_in_background(proc: subprocess.Popen | None) -> None:
-    """X-Plane quit, then the streamer stopped, by ``after_series`` in a process of its own."""
+    """X-Plane quit, then the streamer stopped, by ``after_series`` in a process of its own; the
+    streamer only, at once, when X-Plane is not running."""
     pid = proc.pid if proc is not None and proc.poll() is None else 0
     subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)],
@@ -706,7 +735,7 @@ def run(a: argparse.Namespace) -> int:
         elif still_up:
             say("X-Plane stays up (--keep-open)")
         else:
-            stop_now(proc)
+            quit_in_background(proc)
         print((out / "summary.md").read_text())
     return (
         0
