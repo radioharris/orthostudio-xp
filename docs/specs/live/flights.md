@@ -122,7 +122,16 @@ of its own (8661), apart from Live's window, which is for its users and never sp
 - the flight under way: the campaign's run, the scenario, a bar of the path's time, the runner's
   output, and a Stop button (the runner's Ctrl-C: it writes what it has and quits X-Plane);
 - the results, newest first: a click shows a series' summary, each flight's report and its
-  screenshots, or a campaign's table;
+  screenshots, or a campaign's table; two series or more ticked are compared: their figures in one
+  table a scenario, then their screenshots of each same moment side by side;
+- the camera: the scenario's, or the user's own. "Enregistrer ma caméra" flies one scenario with
+  X-Plane alone and leaves the view to the user; the test pilot records it 20 times a second of
+  path (`camera-record`): outside, the camera's place ahead of, right of and above the aircraft,
+  its heading from the aircraft's, its pitch and roll; inside, the pilot's head; and X-Plane's field
+  of view. It is kept as the scenario's camera (`build/flights/cameras/<scenario>.csv`, the one
+  before set aside, dated), and the runs that ask for it (`--camera mine`) replay it where the
+  aircraft is then (`camera-track`): outside through the plugin's camera, inside in the 3D cockpit
+  with the pilot's head set;
 - Live's own map (`livemap.js`, as Live's window draws it, its tooltips in French) while Live
   flies: the aircraft at the test pilot's last frame, its heading from the frames a second before,
   the scenario's path, and the textures Live built, by the zoom of their photos; and in a Live

@@ -56,3 +56,12 @@
 .bench-map-head .live-map-toggle { margin-left: auto; }
 .bench-map .live-map-wrap { min-height: 360px; height: 360px; }
 .bench-report .bench-map .live-map-wrap { min-height: 460px; height: 460px; }
+
+/* results compared: the checks, and the photos of a same moment side by side */
+.bench-results-head { display: flex; align-items: center; gap: 12px; }
+.bench-results-head .question-title { margin: 0; }
+.bench-pick { width: 28px; }
+.bench-compare-grid { display: grid; gap: 8px; }
+.bench-compare-cell { margin: 0; min-width: 0; }
+.bench-compare-cell figcaption { font-size: var(--fs-3); color: var(--fg-2); margin-bottom: 4px; }
+.bench-compare-cell img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); cursor: zoom-in; }

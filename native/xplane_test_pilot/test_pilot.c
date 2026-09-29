@@ -39,6 +39,9 @@
  *   camera T0 T1 cockpit                 the 3D cockpit between T0 and T1 seconds of path
  *   camera T0 T1 chase METRES UP BEARING a camera METRES from the aircraft, UP above it, at
  *                                        BEARING degrees from its heading, looking at it
+ *   camera-record                        the user's camera recorded, 20 times a second of path, into
+ *                                        camera.csv: the plugin leaves the view to the user
+ *   camera-track FILE                    a camera recorded so replayed, as the user moved it
  *   screenshot T                         a screenshot at T seconds of path
  *   end quit|stay                        what then (stay: X-Plane stays up, paused, for the next)
  *   aircraft PATH                        for the runner, which starts X-Plane with it (--load_acf)
@@ -105,10 +108,17 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define MAX_SHOTS 256
 #define READY_S 3.0             /* X-Plane flying at the start this long: the path begins */
 #define START_KM 20.0
+#define TRACK_EVERY 0.05        /* the user's camera recorded 20 times a second of path */
+#define MAX_TRACK 200000        /* poses: more than 2 h of path */
 
 enum { WAITING, PLACED, FLYING, DONE };
 
 struct leg { double seconds, turn, climb; };
+/* The user's camera at a time of the path. Outside (ext): a ahead, b right, c up of the aircraft,
+   metres; h its heading from the aircraft's, p its pitch, r its roll, degrees. Inside: the pilot's
+   head, a b c its x y z (metres, the aircraft's axes), h p r its psi the phi. fov: X-Plane's
+   field of view, degrees. */
+struct pose { double t, a, b, c, h, p, r, fov; int ext; };
 struct camera { double t0, t1, dist, up, bearing; int chase; };
 
 static char dir[1024], box[1100]; /* X-Plane's folder, and the runner's: Output/osxp_test_pilot/ */
@@ -120,6 +130,12 @@ static struct leg legs[MAX_LEGS];
 static int n_legs = 0;
 static struct camera cameras[MAX_CAMERAS];
 static int n_cameras = 0, camera_on = 0, cockpit_set = -1; /* the cockpit camera last set */
+static int camera_record = 0, inside_set = 0; /* recording the user's camera; the cockpit set */
+static FILE *camfile = NULL;
+static double cam_last = -1.0;
+static struct pose *track = NULL; /* a camera recorded, replayed */
+static int n_track = 0;
+static char track_file[600];
 static double shots[MAX_SHOTS];
 static int n_shots = 0, next_shot = 0;
 static double *path = NULL; /* lat, lon, metres, heading every STEP s */
@@ -128,7 +144,7 @@ static double run0 = 0.0, ready_since = -1.0, path_t = 0.0;
 static FILE *frames = NULL, *events = NULL;
 static double frame_flushed = 0.0;
 static XPLMDataRef r_lat, r_lon, r_ele, r_run, r_paused, r_x, r_y, r_z, r_vx, r_vy, r_vz, r_psi, r_theta, r_phi,
-    r_q, r_override, r_view_x, r_view_y, r_view_z, r_loading;
+    r_q, r_override, r_view_x, r_view_y, r_view_z, r_loading, r_ext, r_vhdg, r_vpitch, r_vroll, r_fov, r_head[6];
 static int loading = 0; /* X-Plane loading scenery, as the last frame saw it */
 static double load_began = 0.0; /* X-Plane's clock when that load began */
 
@@ -151,7 +167,7 @@ static int read_scenario(const char *file) {
     FILE *f = fopen(file, "r");
     if (!f) return 0;
     active = 0, end_quit = 0, weather_clear = 0, n_legs = 0, n_cameras = 0, n_shots = 0, next_shot = 0;
-    zulu_h = -1.0, day = -1.0;
+    zulu_h = -1.0, day = -1.0, camera_record = 0, track_file[0] = 0;
     while (fgets(line, sizeof line, f)) {
         char *hash = strchr(line, '#');
         double a, b, c, d, e;
@@ -174,6 +190,14 @@ static int read_scenario(const char *file) {
                 cam.chase = strcmp(mode, "chase") == 0;
                 cameras[n_cameras++] = cam;
             }
+        } else if (strcmp(word, "camera-record") == 0) {
+            camera_record = 1;
+        } else if (strcmp(word, "camera-track") == 0) { /* the rest of the line: a path, spaces and all */
+            char *from = strstr(line, "camera-track") + strlen("camera-track"), *end;
+            while (*from == ' ' || *from == '\t') from++;
+            end = from + strlen(from);
+            while (end > from && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t')) *--end = 0;
+            snprintf(track_file, sizeof track_file, "%s", from);
         } else if (strcmp(word, "screenshot") == 0 && n_shots < MAX_SHOTS && sscanf(line, "screenshot %lf", &a) == 1) {
             shots[n_shots++] = a;
         } else if (strcmp(word, "end") == 0) {
@@ -263,6 +287,136 @@ static void place(double t) {
     XPLMSetDataf(r_phi, 0.0f);
     quaternion(hdg, q);
     XPLMSetDatavf(r_q, q, 0, 4);
+}
+
+/* A camera recorded (camera-track): its poses, in the order of their times. */
+static void read_track(void) {
+    char line[256];
+    FILE *f;
+    free(track);
+    track = NULL, n_track = 0;
+    if (!track_file[0] || !(f = fopen(track_file, "r"))) return;
+    track = malloc(sizeof(struct pose) * MAX_TRACK);
+    while (track && n_track < MAX_TRACK && fgets(line, sizeof line, f)) {
+        struct pose q;
+        if (sscanf(line, "%lf,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &q.t, &q.ext, &q.a, &q.b, &q.c, &q.h, &q.p, &q.r,
+                   &q.fov) == 9)
+            track[n_track++] = q;
+    }
+    fclose(f);
+}
+
+static double angle_between(double from, double to, double f) {
+    double d = fmod(to - from + 540.0, 360.0) - 180.0;
+    return from + d * f;
+}
+
+/* The recorded camera at t: between the two poses round it; outside or inside as the first. */
+static void track_at(double t, struct pose *out) {
+    int lo = 0, hi = n_track - 1;
+    double f;
+    const struct pose *a, *b;
+    if (t <= track[0].t || n_track == 1) {
+        *out = track[0];
+        return;
+    }
+    if (t >= track[hi].t) {
+        *out = track[hi];
+        return;
+    }
+    while (hi - lo > 1) {
+        int mid = (lo + hi) / 2;
+        if (track[mid].t <= t) lo = mid;
+        else hi = mid;
+    }
+    a = &track[lo], b = &track[hi];
+    f = (t - a->t) / (b->t - a->t);
+    *out = *a;
+    if (a->ext != b->ext) return;
+    out->a = a->a + (b->a - a->a) * f, out->b = a->b + (b->b - a->b) * f, out->c = a->c + (b->c - a->c) * f;
+    out->h = angle_between(a->h, b->h, f), out->p = a->p + (b->p - a->p) * f;
+    out->r = angle_between(a->r, b->r, f), out->fov = a->fov + (b->fov - a->fov) * f;
+}
+
+/* The user's camera, as X-Plane shows it now: a pose (struct pose). */
+static void camera_pose(struct pose *q) {
+    double psi = XPLMGetDataf(r_psi), rad = psi * M_PI / 180.0;
+    q->t = path_t, q->ext = XPLMGetDatai(r_ext) != 0, q->fov = XPLMGetDataf(r_fov);
+    if (q->ext) {
+        double dx = XPLMGetDataf(r_view_x) - XPLMGetDatad(r_x), dy = XPLMGetDataf(r_view_y) - XPLMGetDatad(r_y),
+               dz = XPLMGetDataf(r_view_z) - XPLMGetDatad(r_z);
+        q->a = dx * sin(rad) - dz * cos(rad); /* ahead: north is -z */
+        q->b = dx * cos(rad) + dz * sin(rad); /* right */
+        q->c = dy;
+        q->h = fmod(XPLMGetDataf(r_vhdg) - psi + 540.0, 360.0) - 180.0;
+        q->p = XPLMGetDataf(r_vpitch), q->r = XPLMGetDataf(r_vroll);
+    } else {
+        q->a = XPLMGetDataf(r_head[0]), q->b = XPLMGetDataf(r_head[1]), q->c = XPLMGetDataf(r_head[2]);
+        q->h = XPLMGetDataf(r_head[3]), q->p = XPLMGetDataf(r_head[4]), q->r = XPLMGetDataf(r_head[5]);
+    }
+}
+
+static void record_camera(void) {
+    struct pose q;
+    if (!camfile || path_t - cam_last < TRACK_EVERY) return;
+    cam_last = path_t;
+    camera_pose(&q);
+    fprintf(camfile, "%.2f,%d,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f\n", q.t, q.ext, q.a, q.b, q.c, q.h, q.p, q.r,
+            q.fov);
+}
+
+/* The recorded camera's outside poses: from the aircraft where the path has it now. */
+static int track_camera(XPLMCameraPosition_t *out, int losing, void *refcon) {
+    struct pose q;
+    double lat, lon, alt, hdg, x, y, z, rad;
+    (void)refcon;
+    if (losing || !out || state != FLYING || !n_track) {
+        camera_on = 0;
+        return 0;
+    }
+    track_at(path_t, &q);
+    if (!q.ext) {
+        camera_on = 0;
+        return 0; /* inside: X-Plane's cockpit, the head set each frame (replay_camera) */
+    }
+    target(path_t, &lat, &lon, &alt, &hdg);
+    XPLMWorldToLocal(lat, lon, alt, &x, &y, &z);
+    rad = hdg * M_PI / 180.0;
+    out->x = (float)(x + q.a * sin(rad) + q.b * cos(rad));
+    out->y = (float)(y + q.c);
+    out->z = (float)(z - q.a * cos(rad) + q.b * sin(rad));
+    out->heading = (float)(hdg + q.h);
+    out->pitch = (float)q.p;
+    out->roll = (float)q.r;
+    out->zoom = 1.0f;
+    return 1;
+}
+
+/* Each frame of a replay: outside, the camera the plugin holds; inside, the 3D cockpit and the
+   pilot's head where the user had it; the field of view either way. */
+static void replay_camera(void) {
+    struct pose q;
+    track_at(path_t, &q);
+    if (q.fov > 1.0) XPLMSetDataf(r_fov, (float)q.fov);
+    if (q.ext) {
+        inside_set = 0;
+        if (!camera_on) {
+            XPLMCommandOnce(XPLMFindCommand("sim/view/circle"));
+            XPLMControlCamera(XPLM_CONTROL_CAMERA_FOREVER, track_camera, NULL);
+            camera_on = 1;
+        }
+        return;
+    }
+    if (camera_on) {
+        XPLMDontControlCamera();
+        camera_on = 0;
+    }
+    if (!inside_set) {
+        XPLMCommandOnce(XPLMFindCommand("sim/view/3d_cockpit_cmnd_look"));
+        inside_set = 1;
+    }
+    XPLMSetDataf(r_head[0], (float)q.a), XPLMSetDataf(r_head[1], (float)q.b), XPLMSetDataf(r_head[2], (float)q.c);
+    XPLMSetDataf(r_head[3], (float)q.h), XPLMSetDataf(r_head[4], (float)q.p), XPLMSetDataf(r_head[5], (float)q.r);
 }
 
 static const struct camera *camera_at(double t) {
@@ -360,6 +514,9 @@ static void begin(void) {
     free(path);
     path = NULL;
     state = WAITING, placed_frames = 0, ready_since = -1.0, camera_on = 0, cockpit_set = -1, loading = 0;
+    inside_set = 0, cam_last = -1.0;
+    if (camfile) fclose(camfile);
+    camfile = NULL;
     if (!read_scenario(file)) {
         active = 0;
         say("scenario.txt read: no start or no leg");
@@ -367,6 +524,12 @@ static void begin(void) {
         return;
     }
     make_path();
+    read_track();
+    if (camera_record) {
+        path_of(file, sizeof file, "camera.csv");
+        camfile = fopen(file, "w");
+        if (camfile) fprintf(camfile, "path_s,external,a,b,c,h,p,r,fov\n");
+    }
     path_of(file, sizeof file, "events.txt");
     events = fopen(file, "w");
     path_of(file, sizeof file, "frames.csv");
@@ -377,6 +540,8 @@ static void begin(void) {
     }
     say("scenario read: start %.4f %.4f, %d legs, %d cameras, %d screenshots", start_lat, start_lon, n_legs,
         n_cameras, n_shots);
+    if (camera_record) say("the user's camera recorded: the view is theirs");
+    if (track_file[0]) say("a recorded camera replayed: %d poses from %s", n_track, track_file);
 }
 
 static double wall_now(void) {
@@ -420,6 +585,8 @@ static void finish(void) {
     say("done");
     if (frames) fclose(frames);
     frames = NULL;
+    if (camfile) fclose(camfile);
+    camfile = NULL;
     rename_scenario();
     if (end_quit) {
         say("quitting X-Plane");
@@ -479,8 +646,14 @@ static float every_frame(float since_call, float since_loop, int counter, void *
         return -1.0f;
     }
     place(path_t);
-    cockpit_view(path_t);
-    if (!camera_on && camera_at(path_t)) {
+    if (camera_record) {
+        record_camera(); /* the view is the user's */
+    } else if (n_track) {
+        replay_camera();
+    } else {
+        cockpit_view(path_t);
+    }
+    if (!camera_record && !n_track && !camera_on && camera_at(path_t)) {
         /* an outside view first: X-Plane then draws the aircraft, not its cockpit round the camera */
         XPLMCommandOnce(XPLMFindCommand("sim/view/circle"));
         XPLMControlCamera(XPLM_CONTROL_CAMERA_FOREVER, chase_camera, NULL);
@@ -519,6 +692,17 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     r_view_y = XPLMFindDataRef("sim/graphics/view/view_y");
     r_view_z = XPLMFindDataRef("sim/graphics/view/view_z");
     r_loading = XPLMFindDataRef("sim/graphics/scenery/async_scenery_load_in_progress");
+    r_ext = XPLMFindDataRef("sim/graphics/view/view_is_external");
+    r_vhdg = XPLMFindDataRef("sim/graphics/view/view_heading");
+    r_vpitch = XPLMFindDataRef("sim/graphics/view/view_pitch");
+    r_vroll = XPLMFindDataRef("sim/graphics/view/view_roll");
+    r_fov = XPLMFindDataRef("sim/graphics/view/field_of_view_deg");
+    r_head[0] = XPLMFindDataRef("sim/graphics/view/pilots_head_x");
+    r_head[1] = XPLMFindDataRef("sim/graphics/view/pilots_head_y");
+    r_head[2] = XPLMFindDataRef("sim/graphics/view/pilots_head_z");
+    r_head[3] = XPLMFindDataRef("sim/graphics/view/pilots_head_psi");
+    r_head[4] = XPLMFindDataRef("sim/graphics/view/pilots_head_the");
+    r_head[5] = XPLMFindDataRef("sim/graphics/view/pilots_head_phi");
     XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1); /* on the Mac, "/Users/..." rather than "Macintosh HD:..." */
     XPLMGetSystemPath(dir);
     snprintf(box, sizeof box, "%sOutput/osxp_test_pilot/", dir);
@@ -529,7 +713,10 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
 PLUGIN_API void XPluginStop(void) {
     if (frames) fclose(frames);
     if (events) fclose(events);
-    frames = events = NULL;
+    if (camfile) fclose(camfile);
+    frames = events = camfile = NULL;
+    free(track);
+    track = NULL;
     free(path);
     path = NULL;
 }

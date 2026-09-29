@@ -91,12 +91,18 @@ def options() -> dict[str, Any]:
         except scenarios.ScenarioError as e:
             scs.append({"name": path.stem, "error": str(e)})
             continue
+        camera = fly.camera_file(fly.RESULTS, sc.name)
         scs.append(
             {
                 "name": sc.name,
                 "title": sc.title or sc.name,
                 "minutes": round(sc.duration / 60, 1),
                 "about": _lead(path),
+                "camera": (
+                    when(datetime.fromtimestamp(camera.stat().st_mtime).strftime("%Y-%m-%d %H%M%S"))
+                    if camera.is_file()
+                    else None
+                ),
             }
         )
     camps = []
@@ -141,11 +147,24 @@ def parser_for_labels() -> Any:
     p.add_argument("--ao-settings", choices=("mine", "default"), default="mine")
     p.add_argument("--zooms", type=fly.zooms_of)
     p.add_argument("--keep-open", action="store_true")
+    p.add_argument("--record-camera", action="store_true")
+    p.add_argument("--camera", choices=("scenario", "mine"), default="scenario")
     return p
 
 
 def fly_args(choice: dict[str, Any]) -> list[str]:
     """``fly.py``'s arguments for what the window chose; BenchError when they make no sense."""
+    camera = choice.get("camera", "scenario")
+    if camera not in ("scenario", "mine"):
+        raise BenchError(f"caméra inconnue : {camera}")
+    mine = ["--camera", "mine"] if camera == "mine" else []
+    if choice.get("record_camera"):
+        names = [str(n) for n in choice.get("scenarios") or []]
+        if len(names) != 1:
+            raise BenchError("pour enregistrer ta caméra, coche un seul scénario")
+        if names[0] not in {p.stem for p in scenarios.SCENARIOS.glob("*.txt")}:
+            raise BenchError(f"pas de scénario « {names[0]} »")
+        return ["--record-camera", "--streamer", "none", names[0]]
     campaign = choice.get("campaign") or ""
     if campaign:
         known = {p.stem for p in fly.CAMPAIGNS.glob("*.txt")}
@@ -159,8 +178,8 @@ def fly_args(choice: dict[str, Any]) -> list[str]:
         if any(not 1 <= k <= count for k in pick):
             raise BenchError(f"comparaisons de 1 à {count}")
         if pick and len(pick) < count:
-            return ["--campaign", campaign, "--pick", ",".join(map(str, pick))]
-        return ["--campaign", campaign]
+            return ["--campaign", campaign, "--pick", ",".join(map(str, pick)), *mine]
+        return ["--campaign", campaign, *mine]
     names = [str(n) for n in choice.get("scenarios") or []]
     if not names:
         raise BenchError("choisis au moins un scénario")
@@ -192,7 +211,7 @@ def fly_args(choice: dict[str, Any]) -> list[str]:
         args.append("--cold")
     if choice.get("keep_open"):
         args.append("--keep-open")
-    return [*args, *names]
+    return [*args, *mine, *names]
 
 
 # ---- the flight under way ---------------------------------------------------------------------
@@ -320,6 +339,79 @@ def _inside(results: Path, rel: str) -> Path:
     return path
 
 
+MONTHS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.",
+          "nov.", "déc.")  # fmt: skip
+
+
+def when(stamp: str) -> str:
+    """``2026-09-29 162429`` as ``29 sept. 16:24``."""
+    m = re.match(r"^(\d{4})-(\d\d)-(\d\d) (\d\d)(\d\d)", stamp)
+    return f"{int(m[3])} {MONTHS[int(m[2]) - 1]} {m[4]}:{m[5]}" if m else stamp
+
+
+def setup_label(run: dict[str, Any]) -> str:
+    """What a flight flew with, in the window's words, from its ``run.json``."""
+    streamer = run.get("streamer", "")
+    parts = [{"none": "X-Plane seul", "live": "Live", "autoortho": "AutoOrtho"}.get(streamer, "?")]
+    if streamer == "autoortho" and run.get("ao_settings"):
+        parts.append(
+            "ses réglages par défaut" if run["ao_settings"] == "default" else "tes réglages"
+        )
+    if run.get("zooms"):
+        parts.append("ZL{}/{}".format(*run["zooms"]))
+    if run.get("cold"):
+        parts.append("à froid")
+    return ", ".join(parts)
+
+
+def _flights(series: Path) -> list[Path]:
+    return sorted(p for p in series.iterdir() if p.is_dir() and re.match(r"^\d+-", p.name))
+
+
+def _first_run(series: Path) -> dict[str, Any]:
+    for flight in _flights(series):
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads((flight / "run.json").read_text())
+    return {}
+
+
+def compare_view(rels: list[str], results: Path = fly.RESULTS) -> dict[str, Any]:
+    """Series side by side: their figures in one table a scenario (``report.campaign_table``),
+    and their screenshots taken at the same moment of the same scenario, in rows."""
+    import report
+
+    if len(rels) < 2:
+        raise BenchError("coche au moins deux résultats")
+    series = []
+    for rel in rels:
+        path = _inside(results, rel)
+        if not path.is_dir():
+            raise BenchError(f"pas une série de vols : {rel}")
+        series.append(path)
+    labels = [f"{setup_label(_first_run(s))} ({when(s.name)})" for s in series]
+    table = report.campaign_table(list(zip(labels, series, strict=True)))
+    shots: dict[tuple[str, float], list[str | None]] = {}
+    for k, s in enumerate(series):
+        for flight in _flights(s):
+            name = flight.name.split("-", 1)[1]
+            files = (
+                sorted((flight / "screenshots").glob("*.png"))
+                if (flight / "screenshots").is_dir()
+                else []
+            )
+            for t, f in zip(report._shots_of(flight), files, strict=False):
+                row = shots.setdefault((name, t), [None] * len(series))
+                row[k] = f"results/{s.name}/{flight.name}/screenshots/{f.name}"
+    return {
+        "labels": labels,
+        "html": markdown_html(table),
+        "shots": [
+            {"scenario": name, "t": t, "images": images}
+            for (name, t), images in sorted(shots.items(), key=lambda kv: (kv[0][0], kv[0][1]))
+        ],
+    }
+
+
 def results_list(results: Path = fly.RESULTS) -> list[dict[str, Any]]:
     """The series and campaigns flown, newest first."""
     items = []
@@ -341,7 +433,7 @@ def results_list(results: Path = fly.RESULTS) -> list[dict[str, Any]]:
                     "kind": "series",
                     "when": path.name,
                     "what": what,
-                    "with": first.get("streamer", ""),
+                    "with": setup_label(first) if first else "",
                     "outcome": "done"
                     if outcomes == {"done"}
                     else ", ".join(sorted(map(str, outcomes))),
@@ -592,6 +684,14 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
             return result_view(path, results)
         except BenchError as e:
             raise HTTPException(404, str(e)) from None
+
+    @app.get("/api/bench/compare")
+    def compare(paths: str) -> dict[str, Any]:
+        """Series side by side (``paths``: theirs, separated by ``|``)."""
+        try:
+            return compare_view([p for p in paths.split("|") if p], results)
+        except BenchError as e:
+            raise HTTPException(409, str(e)) from None
 
     @app.get("/results/{rel:path}", include_in_schema=False)
     def result_file(rel: str) -> FileResponse:

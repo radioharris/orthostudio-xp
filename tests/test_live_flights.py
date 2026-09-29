@@ -616,3 +616,41 @@ def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
     assert (out / "live-home" / "live.toml").exists()
     assert not (scenery / "z_osxp_live").is_symlink()
     assert (scenery / "y_osxp_live_overlays").is_symlink() and users.is_dir()
+
+
+def test_a_scenario_sent_to_record_or_replay_the_users_camera(tmp_path: Path) -> None:
+    sc = scenario.parse(
+        "start 43.63 1.37 3000 320 230\ncamera 0 30 cockpit\ncamera 30 60 chase 150 30 180\n"
+        "leg 60 0 0\nscreenshot 20\n",
+        "cams",
+    )
+    plain = sc.for_the_pilot()
+    assert "camera 30 60 chase" in plain and "camera-" not in plain
+    record = sc.for_the_pilot(record_camera=True)
+    assert "camera 0 30" not in record and "camera-record" in record
+    assert "screenshot 20" in record  # the same moments, for the photos compared
+    track = tmp_path / "my cams.csv"
+    replay = sc.for_the_pilot(track=track)
+    assert "camera 0 30" not in replay
+    assert f"camera-track {track.resolve()}" in replay  # a path with a space, whole
+
+
+def test_a_camera_recorded_is_kept_the_one_before_set_aside(tmp_path: Path) -> None:
+    results = tmp_path / "flights"
+    recorded = tmp_path / "camera.csv"
+    recorded.write_text(
+        "path_s,external,a,b,c,h,p,r,fov\n0.00,0,0,0,0,0,0,0,60\n0.05,1,-150,0,30,0,-10,0,60\n"
+    )
+    kept = fly.keep_camera(recorded, results, "toulouse-low")
+    assert (
+        kept == fly.camera_file(results, "toulouse-low")
+        and kept.read_text() == recorded.read_text()
+    )
+    recorded.write_text(recorded.read_text() + "0.10,1,-151,0,30,0,-10,0,60\n")
+    fly.keep_camera(recorded, results, "toulouse-low")
+    names = sorted(p.name for p in (results / "cameras").iterdir())
+    assert names[-1] == "toulouse-low.csv" and len(names) == 2  # the one before, dated
+    assert fly.camera_file(results, "toulouse-low").read_text().count("\n") == 4
+    empty = tmp_path / "empty.csv"
+    empty.write_text("path_s,external,a,b,c,h,p,r,fov\n")
+    assert fly.keep_camera(empty, results, "camera-check") is None

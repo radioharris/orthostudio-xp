@@ -62,6 +62,7 @@ PILOT_NAME = "OrthoStudio XP Test Pilot"
 PILOT_SOURCE = REPO / "native" / "xplane_test_pilot" / "test_pilot.c"
 PILOT_BUILD = REPO / "native" / "xplane_test_pilot" / "build" / PILOT_NAME / "mac_x64"
 RESULTS = REPO / "build" / "flights"
+CAMERAS = "cameras"  # in the results: the user's camera recorded for each scenario
 CAMPAIGNS = HERE / "campaigns"
 READY = f"{report.PILOT}ready"
 START_TIMEOUT_S = 20 * 60  # X-Plane's start, and Live's plugin holding it while the ortho is built
@@ -531,10 +532,35 @@ def clear_box(xp: Path) -> None:
             os.replace(p, aside / p.name)
 
 
-def send(xp: Path, sc: scenarios.Scenario) -> None:
+def camera_file(results: Path, name: str) -> Path:
+    """Where the user's camera recorded for the scenario ``name`` is kept."""
+    return results / CAMERAS / f"{name}.csv"
+
+
+def keep_camera(recorded: Path, results: Path, name: str) -> Path | None:
+    """A camera just recorded kept as the scenario's (the one before set aside, its date in its
+    name); None when it holds no pose."""
+    try:
+        lines = recorded.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    if len(lines) < 3:
+        return None
+    dest = camera_file(results, name)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        stamp = datetime.fromtimestamp(dest.stat().st_mtime).strftime("%Y-%m-%d %H%M%S")
+        os.replace(dest, dest.with_name(f"{name} {stamp}.csv"))
+    shutil.copy2(recorded, dest)
+    return dest
+
+
+def send(
+    xp: Path, sc: scenarios.Scenario, record_camera: bool = False, track: Path | None = None
+) -> None:
     b = box(xp)
     tmp = b / "scenario.tmp"
-    tmp.write_text(sc.for_the_pilot(), encoding="utf-8")
+    tmp.write_text(sc.for_the_pilot(record_camera, track), encoding="utf-8")
     os.replace(tmp, b / "scenario.txt")
 
 
@@ -622,6 +648,7 @@ def collect(
         ("frames.csv", "frames.csv"),
         ("scenario.done", "scenario.txt"),
         ("scenario.txt", "scenario.txt"),  # not flown: never flown later either
+        ("camera.csv", "camera.csv"),  # the user's camera, recorded
     ):
         if (b / name).exists():
             shutil.move(str(b / name), str(folder / dest))
@@ -737,7 +764,11 @@ def run(a: argparse.Namespace) -> int:
             recorder = sampler.Sampler(folder / "system.csv", proc.pid if proc else None)
             recorder.start()
             recorder.first.wait(30)  # the computer before the scenario, then the scenario
-            send(xp, sc)
+            track = camera_file(a.results, sc.name) if a.camera == "mine" else None
+            if track is not None and not track.is_file():
+                say(f"  no camera of yours for {sc.name}: its own cameras")
+                track = None
+            send(xp, sc, a.record_camera, track)
             sent_at = time.time()
             started = "running already, the aircraft placed by the test pilot"
             if not up:
@@ -752,12 +783,26 @@ def run(a: argparse.Namespace) -> int:
             collect(xp, folder, log_from, shots_before, live_from, out)
             if a.streamer == "live" and not a.cold:
                 keep_record(out)
+            if a.record_camera:
+                kept = keep_camera(folder / "camera.csv", a.results, sc.name)
+                say(
+                    f"  your camera kept for {sc.name}: {kept}"
+                    if kept
+                    else f"  no camera recorded for {sc.name}"
+                )
             info = {
                 "scenario": sc.name,
                 "streamer": a.streamer,
                 "ao_settings": a.ao_settings if a.streamer == "autoortho" else None,
                 "zooms": list(a.zooms) if a.zooms else None,
                 "cold": a.cold,
+                "camera": (
+                    "recorded"
+                    if a.record_camera
+                    else f"yours ({datetime.fromtimestamp(track.stat().st_mtime):%Y-%m-%d %H:%M})"
+                    if track is not None
+                    else "the scenario's"
+                ),
                 "xplane_start": started,
                 "outcome": outcome,
                 "sent_wall": sent_at,
@@ -907,6 +952,8 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
     extra = ["--results", str(base.results)] + (
         ["--xplane", str(base.xplane)] if base.xplane else []
     )
+    if base.camera == "mine":
+        extra += ["--camera", "mine"]  # each run replays the user's camera, where recorded
     done: dict[str, tuple[str, Path]] = {}  # run id: (what ran, its series' folder)
     stamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
     table = base.results / f"{stamp} {camp.name}.md"
@@ -972,6 +1019,17 @@ def main(argv: list[str] | None = None) -> int:
         help="the streamer's max_zoom and near airports for this series, e.g. 17/19",
     )
     p.add_argument("--keep-open", action="store_true", help="X-Plane stays up after the series")
+    p.add_argument(
+        "--record-camera",
+        action="store_true",
+        help="the view left to you, your camera recorded as the scenario's (build/flights/cameras)",
+    )
+    p.add_argument(
+        "--camera",
+        choices=("scenario", "mine"),
+        default="scenario",
+        help="the scenario's cameras, or yours where you recorded one (--record-camera)",
+    )
     p.add_argument("--xplane", type=Path, help="X-Plane 12's folder (default: detected)")
     p.add_argument("--results", type=Path, default=RESULTS)
     p.add_argument("--campaign", help="the runs of campaigns/<name>.txt, each in turn")
@@ -985,6 +1043,8 @@ def main(argv: list[str] | None = None) -> int:
         after_series(a.after_series, a.clean, a.xplane)
         return 0
     if a.campaign:
+        if a.record_camera:
+            p.error("--record-camera is for a scenario, not a campaign")
         try:
             return campaign(a.campaign, p, a)
         except (RefusedError, scenarios.ScenarioError) as e:
@@ -994,6 +1054,8 @@ def main(argv: list[str] | None = None) -> int:
         p.error("a scenario at least")
     if a.cold and a.streamer == "none":
         p.error("--cold is for a streamer")
+    if a.record_camera and a.camera == "mine":
+        p.error("--record-camera records a camera: it replays none")
     try:
         return run(a)
     except (RefusedError, scenarios.ScenarioError) as e:

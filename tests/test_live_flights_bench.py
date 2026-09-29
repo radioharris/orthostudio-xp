@@ -76,6 +76,16 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
         "--campaign",
         "ao-vs-live",
     ]
+    assert bench.fly_args({"record_camera": True, "scenarios": ["toulouse-low"]}) == [
+        "--record-camera",
+        "--streamer",
+        "none",
+        "toulouse-low",
+    ]
+    mine = bench.fly_args({"scenarios": ["toulouse-low"], "streamer": "live", "camera": "mine"})
+    assert mine == ["--streamer", "live", "--camera", "mine", "toulouse-low"]
+    camp = bench.fly_args({"campaign": "ao-vs-live", "pick": [1], "camera": "mine"})
+    assert camp == ["--campaign", "ao-vs-live", "--pick", "1", "--camera", "mine"]
     every = bench.fly_args({"campaign": "ao-vs-live", "pick": [1, 2, 3, 4]})
     assert every == ["--campaign", "ao-vs-live"]
     some = bench.fly_args({"campaign": "ao-vs-live", "pick": [3, 1]})
@@ -94,6 +104,12 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
         ({"scenarios": ["camera-check"], "zooms": "17/19"}, "Live ou AutoOrtho"),
         ({"scenarios": ["camera-check"], "cold": True}, "Live ou AutoOrtho"),
         ({"scenarios": ["camera-check"], "streamer": "live", "zooms": "19/17"}, "zooms"),
+        ({"scenarios": ["camera-check"], "camera": "theirs"}, "caméra inconnue"),
+        ({"record_camera": True, "scenarios": []}, "un seul scénario"),
+        (
+            {"record_camera": True, "scenarios": ["camera-check", "toulouse-low"]},
+            "un seul scénario",
+        ),
     ],
 )
 def test_a_choice_the_runner_would_refuse(choice: dict, why: str) -> None:
@@ -196,7 +212,7 @@ def test_the_results_newest_first(tmp_path: Path) -> None:
         "kind": "series",
         "when": "2026-09-29 142654",
         "what": "scandinavia-columns",
-        "with": "none",
+        "with": "X-Plane seul",
         "outcome": "done",
     }
     view = bench.result_view("2026-09-29 142654", tmp_path)

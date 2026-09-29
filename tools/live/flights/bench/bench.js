@@ -63,7 +63,8 @@ function showOptions(opts) {
     if (s.error) box.disabled = true;
     const label = el("span", { class: "choice-label", text: s.title || s.name },
       s.minutes !== undefined ? el("span", { class: "num", text: minutes(s.minutes) }) : null);
-    scs.append(choice(box, label, s.error || s.name, null, s.about));
+    const note = s.error || (s.camera ? `${s.name} · ta caméra enregistrée le ${s.camera}` : s.name);
+    scs.append(choice(box, label, note, null, s.about));
   }
   const camps = $("campaign-list");
   camps.replaceChildren();
@@ -98,11 +99,12 @@ function showOptions(opts) {
 
 function picked() {
   const mode = document.querySelector("input[name=mode]:checked").value;
+  const camera = document.querySelector("input[name=camera]:checked").value;
   if (mode === "campaign") {
     const c = document.querySelector("input[name=campaign]:checked");
-    if (!c) return { campaign: "" };
+    if (!c) return { campaign: "", camera };
     const pick = [...document.querySelectorAll(`input[name="pick-${c.value}"]:checked`)].map((b) => Number(b.value));
-    return { campaign: c.value, pick };
+    return { campaign: c.value, pick, camera };
   }
   const streamer = document.querySelector("input[name=streamer]:checked").value;
   return {
@@ -112,6 +114,7 @@ function picked() {
     zooms: streamer === "none" ? "" : $("zooms").value,
     cold: streamer !== "none" && $("cold").checked,
     keep_open: $("keep-open").checked,
+    camera,
   };
 }
 
@@ -121,6 +124,10 @@ function refreshChoice() {
   $("campaign-list").hidden = mode !== "campaign";
   $("with-card").hidden = mode !== "scenarios";
   $("keep-open-q").hidden = mode !== "scenarios"; // a campaign starts X-Plane again for each run
+  const ticked = mode === "scenarios" ? picked().scenarios || [] : [];
+  $("record-btn").disabled = ticked.length !== 1;
+  $("record-btn").hidden = mode !== "scenarios";
+  $("record-note").hidden = mode !== "scenarios";
   const streamer = document.querySelector("input[name=streamer]:checked").value;
   $("ao-settings-q").hidden = streamer !== "autoortho";
   $("zooms-q").hidden = streamer === "none";
@@ -164,6 +171,19 @@ async function start() {
   }
 }
 
+async function recordCamera() {
+  $("start-error").hidden = true;
+  try {
+    await api("/api/bench/start", { record_camera: true, scenarios: picked().scenarios });
+    since = 0;
+    $("run-log").textContent = "";
+    await poll();
+  } catch (e) {
+    $("start-error").textContent = e.message;
+    $("start-error").hidden = false;
+  }
+}
+
 async function stop() {
   $("stop-btn").disabled = true;
   try {
@@ -177,6 +197,9 @@ async function stop() {
 
 function describe(args) {
   if (args.includes("--campaign")) return `campagne ${args[args.indexOf("--campaign") + 1]}`;
+  if (args.includes("--record-camera")) {
+    return "Ta caméra est enregistrée : bouge-la comme tu veux pendant tout le vol (cockpit, Shift+4, zoom, loin, près).";
+  }
   return "";
 }
 
@@ -322,7 +345,12 @@ async function loadResults(openNewest) {
   const body = $("results");
   body.replaceChildren();
   for (const it of items) {
+    const box = el("input", { type: "checkbox", "aria-label": "à comparer", value: it.path });
+    if (it.kind !== "series") box.disabled = true; // a campaign's table: its runs are compared already
+    box.addEventListener("click", (e) => e.stopPropagation());
+    box.addEventListener("change", refreshCompare);
     const row = el("tr", {},
+      el("td", { class: "bench-pick" }, box),
       el("td", { class: "num", text: when(it.when) }),
       el("td", { text: it.what }),
       el("td", { text: WITH[it.with] || it.with }),
@@ -330,7 +358,49 @@ async function loadResults(openNewest) {
     row.addEventListener("click", () => openResult(it.path, row));
     body.append(row);
   }
+  refreshCompare();
   if (openNewest && items.length) openResult(items[0].path, body.firstChild);
+}
+
+function checkedResults() {
+  return [...document.querySelectorAll("#results input[type=checkbox]:checked")].map((b) => b.value);
+}
+
+function refreshCompare() {
+  $("compare-btn").disabled = checkedResults().length < 2;
+}
+
+/** The results checked side by side: their figures, then their photos at the same moments. */
+async function compareResults() {
+  const view = $("result-view");
+  view.hidden = false;
+  view.textContent = "…";
+  for (const r of document.querySelectorAll("#results tr")) r.classList.remove("is-open");
+  try {
+    const c = await api(`/api/bench/compare?paths=${encodeURIComponent(checkedResults().join("|"))}`);
+    const parts = [el("h2", { text: "Comparaison" }), el("div", { html: c.html })];
+    if (c.shots.length) parts.push(el("h3", { text: "Les photos, au même moment du même vol" }));
+    for (const row of c.shots) {
+      const cells = row.images.map((src, k) => {
+        const fig = el("figure", { class: "bench-compare-cell" }, el("figcaption", { text: c.labels[k] }));
+        if (src) {
+          const img = el("img", { src, alt: c.labels[k], loading: "lazy" });
+          img.addEventListener("click", () => { $("shot-img").src = src; $("shot").hidden = false; });
+          fig.append(img);
+        } else {
+          fig.append(el("p", { class: "question-help", text: "pas de photo" }));
+        }
+        return fig;
+      });
+      const grid = el("div", { class: "bench-compare-grid" }, ...cells);
+      grid.style.gridTemplateColumns = `repeat(${row.images.length}, minmax(0, 1fr))`;
+      parts.push(el("div", { class: "bench-part" },
+        el("p", { class: "question-help", text: `${row.scenario}, à ${Math.round(row.t)} s de vol` }), grid));
+    }
+    view.replaceChildren(...parts);
+  } catch (e) {
+    view.textContent = e.message;
+  }
 }
 
 async function openResult(path, row) {
@@ -369,6 +439,8 @@ document.addEventListener("change", (e) => {
 });
 $("start-btn").addEventListener("click", start);
 $("stop-btn").addEventListener("click", stop);
+$("compare-btn").addEventListener("click", compareResults);
+$("record-btn").addEventListener("click", recordCamera);
 $("shot").addEventListener("click", () => { $("shot").hidden = true; });
 
 (async () => {

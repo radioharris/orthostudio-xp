@@ -86,6 +86,22 @@
             <span class="choice-note">rien de construit, rien de téléchargé, comme une première fois : ses fichiers dans les résultats, les tiens jamais touchés</span></span></label>
       </fieldset>
 
+      <fieldset class="question">
+        <legend class="question-title">Caméra</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="camera" value="scenario" checked>
+            <span class="choice-text"><span class="choice-label">Celle du scénario</span>
+              <span class="choice-note">le cockpit, et les vues extérieures que le scénario prévoit</span></span></label>
+          <label class="choice"><input type="radio" name="camera" value="mine">
+            <span class="choice-text"><span class="choice-label">La tienne</span>
+              <span class="choice-note">rejouée à l'identique, pour les scénarios où tu l'as enregistrée ; les autres gardent la leur</span></span></label>
+        </div>
+        <div class="bench-go">
+          <button type="button" class="btn btn-small" id="record-btn">Enregistrer ma caméra</button>
+          <span class="question-help" id="record-note">coche un seul scénario : X-Plane vole seul, et tu bouges la caméra comme tu veux pendant tout le vol</span>
+        </div>
+      </fieldset>
+
       <section class="question">
         <label class="choice" id="keep-open-q"><input type="checkbox" id="keep-open">
           <span class="choice-text"><span class="choice-label">Laisser X-Plane ouvert à la fin</span>
@@ -137,11 +153,14 @@
   </div>
 
   <section class="question bench-results">
-    <h2 class="question-title">Résultats</h2>
-    <p class="question-help">Clique une ligne pour lire son bilan et voir ses photos.</p>
+    <div class="bench-results-head">
+      <h2 class="question-title">Résultats</h2>
+      <button type="button" class="btn btn-small" id="compare-btn" disabled>Comparer les résultats cochés</button>
+    </div>
+    <p class="question-help">Clique une ligne pour lire son bilan et voir ses photos. Coche-en deux ou plus pour les comparer : leurs chiffres côte à côte, et leurs photos prises au même moment du même vol.</p>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Quand</th><th>Quoi</th><th>Avec</th><th>Issue</th></tr></thead>
+        <thead><tr><th></th><th>Quand</th><th>Quoi</th><th>Avec</th><th>Issue</th></tr></thead>
         <tbody id="results"></tbody>
       </table>
     </div>
