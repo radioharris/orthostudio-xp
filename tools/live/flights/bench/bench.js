@@ -221,6 +221,7 @@ async function poll() {
   } catch (e) {
     $("run-text").textContent = e.message;
   }
+  updateRunMap();
 }
 
 async function pollMachine() {
@@ -230,6 +231,88 @@ async function pollMachine() {
   } catch (e) {
     /* the next poll says it again */
   }
+}
+
+// ---- Live's map -------------------------------------------------------------------------------------
+// Live's own (livemap.js, as Live's window draws it), fed by the window's engine from the test's
+// Live (benchmap.py): while Live flies, and for a Live flight's result.
+
+let mapModule = null;
+let runMap = null;
+let runRoute = "";
+let resultMap = null;
+
+async function liveMapModule() {
+  if (typeof L === "undefined") return null; // Leaflet did not load: the rest of the page works
+  if (!mapModule) {
+    const [m, strings] = await Promise.all([import("/live/livemap.js"), import("/live/strings.js")]);
+    strings.setLanguage("fr");
+    mapModule = m;
+  }
+  return mapModule;
+}
+
+/** The map's own requests (map/built, map/texture...), to the test's Live `src`. */
+function mapApi(src) {
+  return (path) => api(`/api/bench/${path}${path.includes("?") ? "&" : "?"}src=${encodeURIComponent(src)}`);
+}
+
+async function updateRunMap() {
+  let state;
+  try {
+    state = await api("/api/bench/map/state?src=current");
+  } catch (e) {
+    return;
+  }
+  $("run-map-box").hidden = !state.live;
+  if (!state.live) return;
+  const m = await liveMapModule();
+  if (!m) return;
+  if (!runMap) {
+    runMap = m.createLiveMap($("run-map"), { api: mapApi("current"), info: $("run-map-info") });
+    runMap.setDetails(true);
+    $("run-map-follow").addEventListener("change", (e) => runMap.setFollow(e.target.checked));
+    $("run-map").addEventListener("live-map-follow", (e) => { $("run-map-follow").checked = e.detail; });
+    runMap.shown();
+  }
+  runMap.update(state.status);
+  const key = `${state.route.length}:${JSON.stringify(state.route[0] || [])}`;
+  if (key !== runRoute) { // a new scenario: its path, the map framed on it once
+    runRoute = key;
+    runMap.showRoute(state.route);
+  }
+}
+
+/** A Live flight's result: what its Live built, and the path flown. */
+async function resultMapBlock(path) {
+  let state;
+  try {
+    state = await api(`/api/bench/map/state?src=${encodeURIComponent(path)}`);
+  } catch (e) {
+    return null;
+  }
+  if (!state.live || !state.record) return null;
+  const m = await liveMapModule();
+  if (!m) return null;
+  const mapEl = el("div", { class: "live-map" });
+  const info = el("div", { class: "live-map-bar is-hint", "aria-live": "polite" });
+  const block = el("div", { class: "bench-map" },
+    el("div", { class: "bench-map-head" },
+      el("h3", { class: "sub-question-title", text: "La carte de Live : ce qu'il a construit pendant le vol" })),
+    el("div", { class: "live-map-wrap" }, mapEl, info),
+    $("map-legend").content.cloneNode(true));
+  return {
+    block,
+    start() {
+      if (resultMap) resultMap.map.remove();
+      resultMap = m.createLiveMap(mapEl, { api: mapApi(path), info });
+      resultMap.setDetails(true);
+      resultMap.setFollow(false);
+      resultMap.update(state.status);
+      resultMap.showRoute(state.route);
+      resultMap.shown();
+    },
+  };
 }
 
 // ---- the results ------------------------------------------------------------------------------------
@@ -256,7 +339,10 @@ async function openResult(path, row) {
   view.hidden = false;
   view.textContent = "…";
   try {
-    const r = await api(`/api/bench/result?path=${encodeURIComponent(path)}`);
+    const [r, liveMap] = await Promise.all([
+      api(`/api/bench/result?path=${encodeURIComponent(path)}`),
+      resultMapBlock(path),
+    ]);
     view.replaceChildren(...r.parts.map((part) => {
       const shots = (part.screenshots || []).map((src) => {
         const img = el("img", { src, alt: part.title, loading: "lazy" });
@@ -267,6 +353,10 @@ async function openResult(path, row) {
         el("div", { html: part.html }),
         shots.length ? el("div", { class: "bench-shots" }, ...shots) : null);
     }));
+    if (liveMap) {
+      view.prepend(liveMap.block);
+      liveMap.start();
+    }
   } catch (e) {
     view.textContent = e.message;
   }

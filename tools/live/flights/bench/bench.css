@@ -48,3 +48,11 @@
 .bench-shot { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
 .bench-shot[hidden] { display: none; }
 .bench-shot img { max-width: 96vw; max-height: 94vh; border-radius: var(--radius); }
+
+/* Live's own map (livemap.js), in its card, and in a Live flight's result */
+.bench-map { margin-top: var(--block-gap); }
+.bench-map-head { display: flex; align-items: center; gap: 12px; }
+.bench-map-head .sub-question-title { margin: 0; }
+.bench-map-head .live-map-toggle { margin-left: auto; }
+.bench-map .live-map-wrap { min-height: 360px; height: 360px; }
+.bench-report .bench-map .live-map-wrap { min-height: 460px; height: 460px; }

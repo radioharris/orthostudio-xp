@@ -33,6 +33,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import benchmap  # noqa: E402
 import fly  # noqa: E402
 import scenario as scenarios  # noqa: E402
 
@@ -277,6 +278,20 @@ class Runner:
             os.kill(int(pid), signal.SIGINT)
         return True
 
+    def lines(self) -> list[str]:
+        cur = self._current() or {}
+        with contextlib.suppress(OSError, KeyError):
+            return Path(cur["log"]).read_text(errors="replace").splitlines()
+        return []
+
+    def series(self) -> Path | None:
+        """The series folder of the flight under way, or of the last one."""
+        for line in reversed(self.lines()):
+            m = re.search(r" series of \d+ in (.+)$", line)
+            if m:
+                return Path(m[1])
+        return None
+
     def status(self, since: int = 0) -> dict[str, Any]:
         cur = self._current() or {}
         lines: list[str] = []
@@ -439,6 +454,15 @@ def result_view(rel: str, results: Path = fly.RESULTS) -> dict[str, Any]:
 # ---- the window ---------------------------------------------------------------------------------
 
 
+def _xplane() -> Path | None:
+    from orthostudio.live import session
+
+    try:
+        return session.xplane_dir(None)
+    except session.RefusedError:
+        return None
+
+
 def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
     from fastapi import Body, FastAPI, HTTPException
     from fastapi.responses import FileResponse
@@ -455,6 +479,36 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
     app.add_middleware(_GuardMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS)
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/bench", _RevalidatedStaticFiles(directory=PAGE_DIR), name="bench")
+    # Live's own map, its modules and styles as Live's window serves them (benchmap.py)
+    from orthostudio.live.web import UI_DIR, _airports_router, _map_router
+
+    app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
+    app.include_router(_map_router())
+    app.include_router(_airports_router())
+    records = benchmap.Records()
+    xp_dir: list[Path | None] = []
+
+    def xp() -> Path | None:
+        if not xp_dir:
+            xp_dir.append(_xplane())
+        return xp_dir[0]
+
+    def series_of(src: str) -> tuple[Path | None, bool]:
+        """The series a map shows (``current``: the flight under way), and whether it flies."""
+        if src == "current":
+            flying = runner.running()
+            return (runner.series() if flying else None), flying
+        try:
+            return _inside(results, src), False
+        except BenchError:
+            return None, False
+
+    def record_of(src: str) -> Path:
+        series, flying = series_of(src)
+        path = benchmap.record_file(series, flying) if series is not None else None
+        if path is None:
+            raise HTTPException(404, "no Live here")
+        return path
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -486,6 +540,47 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
     @app.post("/api/bench/stop")
     def stop() -> dict[str, bool]:
         return {"stopped": runner.stop()}
+
+    @app.get("/api/bench/map/state")
+    def map_state(src: str = "current") -> dict[str, Any]:
+        """Whether Live flies (or flew) there, its status as livemap.js reads it, and the route:
+        the scenario's path while it flies, the path flown afterwards."""
+        series, flying = series_of(src)
+        if series is None or not (series / "live.txt").is_file():
+            return {"live": False}
+        if flying:
+            aircraft = benchmap.last_position(fly.box(xp()) / "frames.csv") if xp() else None
+            name = runner.status()["progress"].get("scenario")
+            route = benchmap.planned(name) if name else []
+        else:
+            route = benchmap.flown(series)
+            end = route[-1] if route else None
+            aircraft = {"lat": end[0], "lon": end[1], "hdg": 0.0} if end else None
+        return {
+            "live": True,
+            "record": benchmap.record_file(series, flying) is not None,
+            "status": benchmap.status(aircraft, flying),
+            "route": route,
+        }
+
+    @app.get("/api/bench/map/built")
+    def map_built(
+        west: float, south: float, east: float, north: float, known: int = -1, src: str = "current"
+    ) -> dict[str, Any]:
+        covered = {(t["lat"], t["lon"]) for t in benchmap.own_tiles(xp())}
+        return benchmap.built(records, record_of(src), west, south, east, north, known, covered)
+
+    @app.get("/api/bench/map/texture")
+    def map_texture(lat: float, lon: float, src: str = "current") -> dict[str, Any]:
+        return {"textures": benchmap.textures_at(records, record_of(src), lat, lon)}
+
+    @app.get("/api/bench/map/own")
+    def map_own(src: str = "current") -> list[dict[str, Any]]:
+        return benchmap.own_tiles(xp())
+
+    @app.get("/api/bench/map/regions")
+    def map_regions(src: str = "current") -> dict[str, Any]:
+        return benchmap.regions(xp())
 
     @app.get("/api/bench/results")
     def get_results() -> list[dict[str, Any]]:

@@ -255,3 +255,109 @@ def test_the_dock_apps_icon() -> None:
     img = bench_app.draw_bench_icon(64)
     assert img.size == (64, 64)
     assert img.getpixel((47, 47))[:3] != img.getpixel((16, 16))[:3]  # the badge in its corner
+
+
+# ---- Live's map ---------------------------------------------------------------------------------
+
+
+def write_track(path: Path, points: list[tuple[float, float]]) -> None:
+    lines = ["run_s,path_s,frame_ms,lat,lon,ele_m,state,view_x,view_y,view_z,loading"]
+    lines += [
+        f"{i / 60:.4f},{i / 60:.2f},16.0,{la:.6f},{lo:.6f},914.4,2,0,0,0,0"
+        for i, (la, lo) in enumerate(points)
+    ]
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_the_aircraft_and_its_heading_from_the_last_frames(tmp_path: Path) -> None:
+    import benchmap
+
+    frames = tmp_path / "frames.csv"
+    write_track(frames, [(43.6 + i * 1e-4, 1.4) for i in range(200)])  # due north
+    at = benchmap.last_position(frames)
+    assert at["lat"] == pytest.approx(43.6199) and at["lon"] == 1.4
+    assert at["hdg"] == pytest.approx(0.0, abs=0.01)
+    write_track(frames, [(43.6, 1.4 + i * 1e-4) for i in range(200)])  # due east
+    assert benchmap.last_position(frames)["hdg"] == pytest.approx(90.0, abs=0.01)
+    assert benchmap.last_position(tmp_path / "none.csv") is None
+    assert len(benchmap.planned("toulouse-low")) <= benchmap.ROUTE_POINTS
+    assert benchmap.planned("toulouse-low")[0] == [43.63, 1.37]
+
+
+def make_live_series(root: Path, cold: bool) -> Path:
+    series = root / "2026-09-29 173000"
+    flight = series / "1-camera-check"
+    flight.mkdir(parents=True)
+    (series / "live.txt").write_text("Live started")
+    (flight / "run.json").write_text(json.dumps({"scenario": "camera-check", "streamer": "live"}))
+    write_track(flight / "frames.csv", [(43.63 + i * 1e-4, 1.37) for i in range(600)])
+    record = {"textures": {"23904_32992_BI16.dds": -1, "23920_32992_BI16.dds": 3}, "seen": {}}
+    if cold:
+        pack = series / "live-home" / "live" / "pack" / "_live"
+        pack.mkdir(parents=True)
+        (pack / "ortho.json").write_text(json.dumps(record))
+    else:
+        (series / "live-built.json").write_text(json.dumps(record))
+    return series
+
+
+@pytest.mark.parametrize("cold", [True, False])
+def test_live_s_map_of_a_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cold: bool
+) -> None:
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(bench, "_xplane", lambda: None)
+    series = make_live_series(tmp_path, cold)
+    runner = bench.Runner(results=tmp_path, command=[sys.executable, "-c", "pass"])
+    client = TestClient(bench.create_app(runner, tmp_path), base_url="http://127.0.0.1:8661")
+    assert client.get("/live/livemap.js").status_code == 200  # Live's own map module
+    src = {"src": series.name}
+    state = client.get("/api/bench/map/state", params=src).json()
+    assert state["live"] and state["record"] and state["status"]["state"] == "idle"
+    assert state["route"][0] == [43.63, 1.37] and len(state["route"]) >= 2
+    view = {"west": 1.0, "south": 43.0, "east": 2.0, "north": 44.5, **src}
+    built = client.get("/api/bench/map/built", params=view).json()
+    assert [t[4] for t in built["textures"]] == [17, 13]  # photos of ZL17 (8192 px) and ZL13
+    again = client.get("/api/bench/map/built", params={**view, "known": built["version"]}).json()
+    assert again["same"] is True
+    under = client.get("/api/bench/map/texture", params={"lat": 43.7, "lon": 1.3, **src}).json()
+    assert under["textures"][0]["px"] == 8192
+    assert client.get("/api/bench/map/own", params=src).json() == []
+    nothing = client.get("/api/bench/map/state", params={"src": "current"}).json()
+    assert nothing == {"live": False}  # no flight under way
+    no_live = client.get("/api/bench/map/built", params={**view, "src": "elsewhere"})
+    assert no_live.status_code == 404
+
+
+def test_live_s_map_while_live_flies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import fly
+    from fastapi.testclient import TestClient
+
+    xp = tmp_path / "X-Plane 12"
+    fly.box(xp).mkdir(parents=True)
+    write_track(fly.box(xp) / "frames.csv", [(43.63, 1.37 + i * 1e-4) for i in range(120)])
+    monkeypatch.setattr(bench, "_xplane", lambda: xp)
+    results = tmp_path / "results"
+    series = make_live_series(results, cold=True)
+    script = tmp_path / "fake_fly.py"
+    script.write_text(
+        "import time\n"
+        f"print('17:30:00 series of 1 in {series}', flush=True)\n"
+        "print('17:30:00 1/1 camera-check: 3.0 min of path', flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    runner = bench.Runner(results=results, command=[sys.executable, str(script)])
+    runner.start(["camera-check"])
+    try:
+        wait_for(lambda: runner.series() == series)
+        client = TestClient(bench.create_app(runner, results), base_url="http://127.0.0.1:8661")
+        state = client.get("/api/bench/map/state", params={"src": "current"}).json()
+        assert state["live"] and state["status"]["state"] == "streaming"
+        aircraft = state["status"]["stream"]["aircraft"]
+        assert aircraft["lat"] == 43.63 and aircraft["hdg"] == pytest.approx(90.0, abs=0.01)
+        assert state["route"][0] == [43.63, 1.37]  # the scenario's path, planned
+        view = {"west": 1.0, "south": 43.0, "east": 2.0, "north": 44.5, "src": "current"}
+        assert len(client.get("/api/bench/map/built", params=view).json()["textures"]) == 2
+    finally:
+        runner.stop()

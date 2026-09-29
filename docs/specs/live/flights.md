@@ -122,7 +122,14 @@ of its own (8661), apart from Live's window, which is for its users and never sp
 - the flight under way: the campaign's run, the scenario, a bar of the path's time, the runner's
   output, and a Stop button (the runner's Ctrl-C: it writes what it has and quits X-Plane);
 - the results, newest first: a click shows a series' summary, each flight's report and its
-  screenshots, or a campaign's table.
+  screenshots, or a campaign's table;
+- Live's own map (`livemap.js`, as Live's window draws it, its tooltips in French) while Live
+  flies: the aircraft at the test pilot's last frame, its heading from the frames a second before,
+  the scenario's path, and the textures Live built, by the zoom of their photos; and in a Live
+  flight's result, what it built and the path flown. `benchmap.py` feeds it from the test's Live
+  rather than from a streamer of the window's own: Live's record of what it built (the pack's
+  `_live/ortho.json`, saved every 30 s: the cold home's pack, the user's own for a run with the
+  user's folder, else the copy kept in the series' folder, `live-built.json`).
 
 It runs `fly.py` with the options chosen, in a process of its own: a flight goes on when the window
 is closed, and the window finds it again (`build/flights/bench-current.json`). `bench_app.py` makes

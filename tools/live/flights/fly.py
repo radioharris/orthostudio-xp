@@ -438,6 +438,16 @@ def quit_xplane_udp() -> None:
         sock.close()
 
 
+def keep_record(out: Path) -> None:
+    """The user's own Live's record of what it built, as it stands after the flight, into the
+    series' folder: the window's map of the flight (``benchmap.py``) reads it later."""
+    from orthostudio.live.pack import default_pack_dir
+
+    record = default_pack_dir() / "_live" / "ortho.json"
+    with contextlib.suppress(OSError):
+        shutil.copy2(record, out / "live-built.json")
+
+
 def clean_cold(out: Path, xp: Path | None = None) -> None:
     """A cold run's heavy files deleted once its streamer has stopped: Live's own folder there (its
     pack, the textures it built, its downloaded imagery), AutoOrtho's cache and DSFs. A cold
@@ -740,6 +750,8 @@ def run(a: argparse.Namespace) -> int:
                 say(f"  X-Plane's log still without the flight's end after {LOG_LATE_S} s")
             recorder.stop()
             collect(xp, folder, log_from, shots_before, live_from, out)
+            if a.streamer == "live" and not a.cold:
+                keep_record(out)
             info = {
                 "scenario": sc.name,
                 "streamer": a.streamer,
