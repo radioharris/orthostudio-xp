@@ -56,6 +56,7 @@ from pathlib import Path
 from . import dds, machine, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
+from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, pick, usage
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import haversine_m, parse_texture_name
@@ -252,6 +253,9 @@ class Streamer:
         self.max_zoom_airports = max_zoom_airports
         self.margin = margin
         self.reach_km = reach_km  # how far from the aircraft an external view may take the camera
+        # textures an external view's camera reached before Live built the level X-Plane reads
+        # there: the neutral colour on the screen, or a far level's copy (_read_now)
+        self.outran: dict[str, int] = {}
         self.workers = workers
         # this computer's share while X-Plane flies, and of 8192 px builds (live.machine)
         self.flight_encodes = flight_encodes
@@ -480,6 +484,18 @@ class Streamer:
         read = ring_km(level + (1 if ahead else 0), zoom) if level < LOAD_LEVEL else LOAD_KM
         return level, read * self.margin
 
+    def _read_now(self, distance_km: float, zoom: int, top: int, finest: int) -> int | None:
+        """The level X-Plane reads now of a texture ``distance_km`` from the camera (three
+        dimensions, in X-Plane's image), counted from the file's top as X-Plane does, no sharper
+        than ``finest``. None past the far ring (72 km at ZL16), where the level read at load
+        serves, and for an 8192 px level, whose late photos get the copy of the 4096 px one
+        (:attr:`copied_up`)."""
+        for index in range(LOAD_LEVEL):
+            if distance_km <= ring_km(index, zoom):
+                level = max(top + index, finest)
+                return level if level >= 0 else None
+        return None
+
     def _sharpest(self, zoom: int, s: float, s_now: float, starting: bool) -> float | None:
         """Whether an 8192 px file gets the photos of its 8192 px level now, and how urgent they
         are (as :meth:`plan` counts it); None: the copy of its 4096 px level stays there for now.
@@ -522,6 +538,19 @@ class Streamer:
         camera = (fix.cam_lat, fix.cam_lon) if fix.cam_lat is not None else None
         reach = self.reach_km
         now = time.time()
+        # an external view: textures its camera reaches before Live, noted as the reach's test
+        cam_along = cam_up = 0.0
+        if camera is not None:
+            cam_along = haversine_m(fix.lat, fix.lon, camera[0], camera[1]) / 1000.0
+            cam_up = 0.0 if fix.cam_agl_m is None else (fix.cam_agl_m - fix.agl_m) / 1000.0
+        away = (  # not while X-Plane waits on a start, nor with a reload to come (a jump)
+            camera is not None
+            and x_plane_there
+            and not starting
+            and not (jumped or self.reload_pending)
+            and math.hypot(cam_along, cam_up) * 1000.0 >= AWAY_M
+        )
+        outran: dict[str, int] = {}
         # heights above the ground: X-Plane measures from the camera in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
         h = max(0.0, fix.agl_m) / 1000.0
@@ -556,6 +585,11 @@ class Streamer:
                 d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
                 s_cam = math.hypot(d_cam, h_cam)
                 s, s_now = min(s, s_cam), min(s_now, s_cam)
+                if away:
+                    reads = self._read_now(s_cam / self.scale, zoom, top, finest)
+                    unbuilt = reads is not None and self.level_of(name) > reads
+                    if unbuilt and name not in self.outran:
+                        outran[name] = reads
                 level_cam, read_cam = self._level(s_cam / self.scale, zoom, top, finest)
                 if level_cam <= level and level_cam != LOAD_LEVEL:
                     urgency_cam = s_cam - read_cam * self.scale
@@ -579,6 +613,15 @@ class Streamer:
                 # built without pieces that did not come: again, as sharp, never waited for
                 level, urgency = self.level_of(name), max(urgency, 1.0)
             jobs[name] = (urgency, level)
+        if outran:
+            self.outran.update(outran)
+            counts = Counter(outran.values())
+            self.log(
+                f"  camera ahead of Live: {len(outran)} textures read sharper than built ("
+                + ", ".join(f"{dds.size_of(lv)} px: {n}" for lv, n in sorted(counts.items()))
+                + f"), the camera {cam_along:.1f} km from the aircraft, "
+                f"{max(0.0, fix.cam_agl_m or 0.0) / 1000.0:.1f} km up, the reach {reach:.0f} km"
+            )
         with (
             self.lock
         ):  # the queue and the reload flag together: the builder must not see one without the other
@@ -1337,7 +1380,10 @@ def run(
 
     from .cameralog import CameraLog
 
-    camera = CameraLog(streamer.pack_dir / "_live" / "camera.json")  # how far external views go
+    camera = CameraLog(  # how far external views go, and the reach they needed
+        streamer.pack_dir / "_live" / "camera.json",
+        first_ring=1 if 16 in streamer.reads_8192 else 0,
+    )
     # Nothing guessed: the start is the one the user chooses in X-Plane (the click, or the plugin
     # as the flight loads), or gives with --from. X-Plane's last start was built at once, and the
     # last SimBrief plan asked for and drawn, as if the user meant to fly them again (a user,
@@ -1439,7 +1485,7 @@ def run(
                 last_plan = now
                 streamer.set_screen(values.get("win_w"), values.get("fov"))
                 if now - last_packet < FRESH_S and arrival is None:  # flying, not loading
-                    camera.note(values, now)
+                    camera.note(values, now, streamer.scale)
                 fix = None
                 if values.get("lat") and values.get("lon"):
                     fix = Fix(
@@ -1532,3 +1578,8 @@ def run(
         camera.save()
         for line in camera.summary():
             log(f"  {line}")
+        if streamer.outran:
+            log(
+                f"  camera ahead of Live: {len(streamer.outran)} textures in this run, "
+                f"with a reach of {streamer.reach_km:.0f} km"
+            )

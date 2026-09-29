@@ -20,21 +20,41 @@ import os
 import time
 from pathlib import Path
 
+from .rings import DEFAULT_MARGIN, LOAD_LEVEL, RINGS_ZL16_KM
+
 HIGH_M = 3000.0  # the aircraft this high above the ground: cruise, or near it
 AWAY_M = 200.0  # the camera this far from the aircraft: an external view, not the cockpit
 KEEP = 20  # flights kept in the file
 
 
+def reach_needed(
+    along_km: float, height_km: float, scale: float = 1.0, first_ring: int = 0
+) -> float:
+    """The camera's reach a camera ``along_km`` from the aircraft and ``height_km`` above the
+    ground needs: how much farther from the aircraft than its own rings X-Plane reads each level
+    there, on ZL16 terrain, in three dimensions, ``scale`` its image's (``rings.screen_scale``).
+    ``first_ring`` 1: the terrain's files are 8192 px, whose 4096 px level X-Plane reads at the
+    2048 px ring; their 8192 px level has no reach (``orthostudio.live.streamer``)."""
+    need = 0.0
+    for index in range(first_ring, LOAD_LEVEL):
+        ring = RINGS_ZL16_KM[index] * scale
+        if height_km < ring:
+            reads = along_km + math.sqrt(ring * ring - height_km * height_km)
+            need = max(need, reads - ring * DEFAULT_MARGIN)
+    return need
+
+
 class CameraLog:
     """What one run of Live saw of the camera."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, first_ring: int = 0) -> None:
         self.path = path
+        self.first_ring = first_ring  # reach_needed's
         self.started = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         self.phases: dict[str, dict] = {}
         self.last: float | None = None
 
-    def note(self, values: dict, now: float) -> None:
+    def note(self, values: dict, now: float, scale: float = 1.0) -> None:
         """One reading of X-Plane's datarefs (streamer.DATAREFS): the aircraft's and the camera's
         positions in its OpenGL frame (metres), the aircraft's height above the ground."""
         if not all(k in values for k in ("px", "py", "pz", "vx", "vy", "vz")):
@@ -55,10 +75,13 @@ class CameraLog:
         if math.sqrt(east * east + up * up + south * south) < AWAY_M:
             return  # the cockpit, or a view hugging the aircraft
         phase["away_minutes"] += dt / 60.0
-        phase["farthest_km"] = max(phase["farthest_km"], math.hypot(east, south) / 1000.0)
+        along = math.hypot(east, south) / 1000.0
+        phase["farthest_km"] = max(phase["farthest_km"], along)
         height = max(0.0, agl + up) / 1000.0
         if phase["lowest_km"] is None or height < phase["lowest_km"]:
             phase["lowest_km"] = height
+        need = reach_needed(along, height, scale, self.first_ring)  # far and low at once
+        phase["reach_km"] = max(phase.get("reach_km", 0.0), need)
 
     def summary(self) -> list[str]:
         """What the log says of it."""
@@ -73,7 +96,8 @@ class CameraLog:
             out.append(
                 f"camera {label}: external views {phase['away_minutes']:.0f} of "
                 f"{phase['minutes']:.0f} min, {phase['farthest_km']:.1f} km from the aircraft "
-                f"at most, {phase['lowest_km']:.1f} km above the ground at the lowest"
+                f"at most, {phase['lowest_km']:.1f} km above the ground at the lowest, "
+                f"a reach of {phase.get('reach_km', 0.0):.1f} km needed"
             )
         return out
 

@@ -688,6 +688,43 @@ class ReachTest(unittest.TestCase):
             self.assertEqual(s.plan(zoomed, x_plane_there=False)[name][1], 0)  # what it reads
             cache.close()
 
+    def test_a_camera_ahead_of_live_is_logged(self):
+        """An external view's camera that reaches textures before Live built the level X-Plane
+        reads there: the neutral colour on the screen, so the log says it (the reach's test,
+        2026-09-29). In the cockpit, or while X-Plane waits on a start, nothing is said."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "stream_pack"
+            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+            cache = ChunkCache(root / "c.sqlite")
+            said: list[str] = []
+            s = Streamer(
+                pack,
+                cache,
+                lambda on_piece: None,
+                finest_quality=0,
+                reach_km=10.0,
+                log=said.append,
+            )
+            lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
+            name = f"{NAMES[0]}.dds"
+            cockpit = Fix(lat - 0.25, lon, cam_lat=lat - 0.2499, cam_lon=lon)
+            s.plan(cockpit)  # the first fix: a jump, with a reload to come
+            self.assertTrue(s.reload_pending)
+            s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon))
+            s.reload_pending = False  # X-Plane reloaded
+            s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon), starting=True)
+            s.plan(cockpit)
+            self.assertEqual((s.outran, said), ({}, []))
+            zoomed = Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon)  # 26 km out, low
+            s.plan(zoomed)
+            self.assertEqual(s.outran[name], 0)  # X-Plane reads its 4096 px, not built
+            self.assertTrue(said[-1].startswith("  camera ahead of Live: "))
+            self.assertIn("the camera 25.6 km from the aircraft", said[-1])
+            s.plan(zoomed)
+            self.assertEqual(len([line for line in said if "ahead of Live" in line]), 1)  # once
+            cache.close()
+
     def test_a_camera_far_up_needs_only_the_small_levels(self):
         """X-Plane reads from the camera in three dimensions: a camera high above a texture needs
         only its small levels, however near the point below it; one low down, its sharpest. No

@@ -281,7 +281,7 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert stream.options is not None
     assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
     assert stream.options.cache_budget_gb == 33
-    assert stream.options.camera_reach_km == 20.0  # sharp that much farther for external views
+    assert stream.options.camera_reach_km == 10.0  # sharp that much farther for external views
     c.stop()
     assert c.wait_idle(5)
     assert stream.finished == [Path("/X-Plane 12")]  # the pack comes out

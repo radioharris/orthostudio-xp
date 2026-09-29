@@ -73,7 +73,8 @@ class Options:
     overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
     language: str = "en"  # the Live window's: the plugin's words in X-Plane
     margin: float = 1.25
-    camera_reach_km: float = 20.0
+    # the user's test, 2026-09-29: 10 km, then 15, else back to 20 (25 until 2026-09-28)
+    camera_reach_km: float = 10.0
     workers: int = field(default_factory=default_workers)
     port: int = 49000  # X-Plane's UDP port
     source: Path | None = None  # None: every AutoOrtho region installed, AutoOrtho's or Live's
