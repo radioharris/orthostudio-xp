@@ -487,11 +487,20 @@ def test_the_campaigns_of_the_repository_read(tmp_path: Path) -> None:
         ["ao-mine-1618", "live-1618"],
         ["ao-mine-1719", "live-1719"],
     ]
-    comps, flights = camp.picked(None)
-    assert len(comps) == 4 and len(flights) == 6
-    comps, flights = camp.picked([1, 3])
-    assert [i for i, _ in flights] == ["ao-default-1618", "live-1618", "ao-mine-1618"]
-    assert [i for i, _ in camp.picked([4])[1]] == ["ao-mine-1719", "live-1719"]
+    comps, runs = camp.picked(None)
+    assert len(comps) == 4 and len(runs) == 6
+    assert all(flights == ["toulouse-low"] for _, _, flights in runs)
+    comps, runs = camp.picked([(1, None), (3, None)])
+    assert [i for i, _, _ in runs] == ["ao-default-1618", "live-1618", "ao-mine-1618"]
+    assert [c.number for c in comps] == [1, 3]  # their own numbers, for the tables
+    assert [i for i, _, _ in camp.picked([(4, None)])[1]] == ["ao-mine-1719", "live-1719"]
+    # each comparison on its own flights: a run two share flies both's, in one X-Plane
+    comps, runs = camp.picked([(1, ["toulouse-low"]), (3, ["scandinavia-columns"])])
+    flights = {i: f for i, _, f in runs}
+    assert flights["live-1618"] == ["toulouse-low", "scandinavia-columns"]
+    assert flights["ao-default-1618"] == ["toulouse-low"]
+    assert flights["ao-mine-1618"] == ["scandinavia-columns"]
+    assert comps[1].scenarios == ["scandinavia-columns"]
     bad = tmp_path / "bad.txt"
     bad.write_text("scenarios toulouse-low\nfly --streamer live\n")
     with pytest.raises(fly.RefusedError, match="line 2"):
@@ -508,8 +517,13 @@ def test_a_campaign_without_comparisons_picks_its_runs(tmp_path: Path) -> None:
     path.write_text("scenarios camera-check\nrun --streamer live\nrun --streamer autoortho\n")
     camp = fly.read_campaign(str(path))
     assert [i for i, _ in camp.runs] == ["run1", "run2"]
-    assert camp.picked([2]) == ([], [("run2", ["--streamer", "autoortho"])])
-    assert fly.picks_of("1, 3") == [1, 3] and fly.picks_of("") is None
+    _, runs = camp.picked([(2, None)])
+    assert runs == [("run2", ["--streamer", "autoortho"], ["camera-check"])]
+    assert fly.picks_of("1, 3") == [(1, None), (3, None)] and fly.picks_of("") is None
+    assert fly.picks_of("1:toulouse-low+camera-check,3") == [
+        (1, ["toulouse-low", "camera-check"]),
+        (3, None),
+    ]
     with pytest.raises(fly.RefusedError):
         fly.picks_of("one")
 

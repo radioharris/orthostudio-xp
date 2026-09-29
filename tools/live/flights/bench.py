@@ -130,6 +130,7 @@ def options() -> dict[str, Any]:
                     for n, comp in enumerate(camp.comparisons, 1)
                 ],
                 "run_minutes": round(flight + RUN_EXTRA_S / 60, 1),
+                "flight_minutes": round(flight, 1),
             }
         )
     ao = fly.AO_PYTHON.is_file() and (fly.AO_SOURCES / "__main__.py").is_file()
@@ -172,14 +173,29 @@ def fly_args(choice: dict[str, Any]) -> list[str]:
             raise BenchError(f"pas de campagne « {campaign} »")
         camp = fly.read_campaign(campaign)
         count = len(camp.comparisons) or len(camp.runs)
-        pick = sorted({int(k) for k in choice.get("pick") or []})
-        if "pick" in choice and not pick:
+        known = {p.stem for p in scenarios.SCENARIOS.glob("*.txt")}
+        picks: dict[int, list[str]] = {}
+        for item in choice.get("pick") or []:  # {index, scenarios}, or an index alone
+            index = int(item["index"] if isinstance(item, dict) else item)
+            names = list(item.get("scenarios") or []) if isinstance(item, dict) else []
+            if not 1 <= index <= count:
+                raise BenchError(f"comparaisons de 1 à {count}")
+            if isinstance(item, dict) and not names:
+                raise BenchError(f"comparaison {index} : coche au moins un vol")
+            unknown = [n for n in names if n not in known]
+            if unknown:
+                raise BenchError(f"pas de scénario « {unknown[0]} »")
+            picks[index] = names or list(camp.scenarios)
+        if "pick" in choice and not picks:
             raise BenchError("coche au moins une comparaison")
-        if any(not 1 <= k <= count for k in pick):
-            raise BenchError(f"comparaisons de 1 à {count}")
-        if pick and len(pick) < count:
-            return ["--campaign", campaign, "--pick", ",".join(map(str, pick)), *mine]
-        return ["--campaign", campaign, *mine]
+        default = list(camp.scenarios)
+        if not picks or (len(picks) == count and all(v == default for v in picks.values())):
+            return ["--campaign", campaign, *mine]
+        text = ",".join(
+            str(k) if names == default else f"{k}:{'+'.join(names)}"
+            for k, names in sorted(picks.items())
+        )
+        return ["--campaign", campaign, "--pick", text, *mine]
     names = [str(n) for n in choice.get("scenarios") or []]
     if not names:
         raise BenchError("choisis au moins un scénario")

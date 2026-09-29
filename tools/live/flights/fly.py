@@ -850,6 +850,15 @@ def label(a: argparse.Namespace) -> str:
 
 
 @dataclass
+class Pick:
+    """A comparison chosen (or a run, in a campaign without comparisons)."""
+
+    number: int  # its own, in the campaign, from 1
+    ids: list[str]  # the runs it compares
+    scenarios: list[str]  # the flights it is flown on
+
+
+@dataclass
 class Campaign:
     """A campaign file (``campaigns/<name>.txt``). Its lines: ``title WORDS`` for the window,
     ``scenarios NAME...``, ``run [ID] OPTIONS...`` (the runner's own options, a flight's setup),
@@ -863,19 +872,25 @@ class Campaign:
     comparisons: list[list[str]]  # the ids compared, in the file's order
 
     def picked(
-        self, picks: list[int] | None
-    ) -> tuple[list[list[str]], list[tuple[str, list[str]]]]:
-        """The comparisons ``picks`` (from 1; all when None) and the runs they need, each once,
-        in the order they are first needed. Without comparisons, ``picks`` are runs."""
-        if not self.comparisons:
-            chosen = [self.runs[k - 1] for k in picks] if picks else list(self.runs)
-            return [], chosen
-        comps = [self.comparisons[k - 1] for k in picks] if picks else list(self.comparisons)
+        self, picks: list[tuple[int, list[str] | None]] | None
+    ) -> tuple[list[Pick], list[tuple[str, list[str], list[str]]]]:
+        """The comparisons ``picks`` (from 1, each with its own flights or the campaign's; all when
+        None), and the runs they need, each once, in the order first needed, with its options and
+        the flights of every comparison that needs it: one X-Plane flies them in turn. Without
+        comparisons, ``picks`` are runs."""
+        groups = self.comparisons or [[i] for i, _ in self.runs]
+        wanted = picks or [(k, None) for k in range(1, len(groups) + 1)]
+        chosen = [Pick(k, groups[k - 1], list(names or self.scenarios)) for k, names in wanted]
         by_id = dict(self.runs)
         order: list[str] = []
-        for comp in comps:
-            order += [i for i in comp if i not in order]
-        return comps, [(i, by_id[i]) for i in order]
+        flights: dict[str, list[str]] = {}
+        for pick in chosen:
+            for i in pick.ids:
+                if i not in order:
+                    order.append(i)
+                got = flights.setdefault(i, [])
+                got += [name for name in pick.scenarios if name not in got]
+        return chosen, [(i, by_id[i], flights[i]) for i in order]
 
 
 def read_campaign(ref: str) -> Campaign:
@@ -924,14 +939,20 @@ def wait_quiet(timeout_s: float = 600.0) -> None:
     raise RefusedError("X-Plane or a streamer still runs 10 min after the run before")
 
 
-def picks_of(text: str | None) -> list[int] | None:
-    """``1,3``: the campaign's comparisons (or runs) chosen, counted from 1."""
+def picks_of(text: str | None) -> list[tuple[int, list[str] | None]] | None:
+    """``1,3``: the campaign's comparisons (or runs) chosen, counted from 1, on the campaign's
+    flights; ``1:toulouse-low,3:scandinavia-columns+scandinavia-rows``: each on its own."""
     if not text:
         return None
-    try:
-        picks = [int(w) for w in text.split(",") if w.strip()]
-    except ValueError:
-        raise RefusedError(f"--pick {text!r}: numbers, e.g. 1,3") from None
+    picks: list[tuple[int, list[str] | None]] = []
+    for item in (w.strip() for w in text.split(",")):
+        if not item:
+            continue
+        number, _, names = item.partition(":")
+        try:
+            picks.append((int(number), [n for n in names.split("+") if n] or None))
+        except ValueError:
+            raise RefusedError(f"--pick {text!r}: e.g. 1,3 or 1:toulouse-low,3") from None
     return picks or None
 
 
@@ -942,10 +963,10 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
     camp = read_campaign(ref)
     picks = picks_of(base.pick)
     count = len(camp.comparisons) or len(camp.runs)
-    if picks and any(not 1 <= k <= count for k in picks):
+    if picks and any(not 1 <= k <= count for k, _ in picks):
         raise RefusedError(f"--pick: from 1 to {count}")
     comps, runs = camp.picked(picks)
-    for s in camp.scenarios:
+    for s in {name for _, _, names in runs for name in names}:
         scenarios.load(s)  # a wrong name said now, not after an hour of flights
     if xplane_up() or live_runs() or autoortho_runs():
         raise RefusedError("X-Plane, Live or AutoOrtho runs: quit them, the campaign starts each")
@@ -958,8 +979,8 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
     stamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
     table = base.results / f"{stamp} {camp.name}.md"
     code = 0
-    for k, (run_id, options) in enumerate(runs, 1):
-        a = parser.parse_args([*options, *extra, *camp.scenarios])
+    for k, (run_id, options, flights) in enumerate(runs, 1):
+        a = parser.parse_args([*options, *extra, *flights])
         if a.cold and a.streamer == "none":
             raise RefusedError(f"run {run_id}: --cold is for a streamer")
         if k > 1:
@@ -978,11 +999,11 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
         text = f"# {camp.title or camp.name}, {stamp}\n\n" + report.campaign_table(
             list(done.values())
         )
-        for n, comp in enumerate(comps, 1):
-            if all(i in done for i in comp):
-                names = " against ".join(done[i][0] for i in comp)
-                text += f"\n# Comparison {n}: {names}\n\n"
-                text += report.campaign_table([done[i] for i in comp])
+        for pick in comps if camp.comparisons else []:
+            if all(i in done for i in pick.ids):
+                names = " against ".join(done[i][0] for i in pick.ids)
+                text += f"\n# Comparison {pick.number}: {names}\n\n"
+                text += report.campaign_table([done[i] for i in pick.ids], only=set(pick.scenarios))
         table.write_text(text)
     say(f"campaign done: {table}")
     print(table.read_text())

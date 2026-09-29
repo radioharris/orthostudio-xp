@@ -39,6 +39,7 @@ def test_the_window_offers_every_scenario_and_campaign_with_its_title() -> None:
     }
     assert len(camp["comparisons"]) == 4
     assert camp["run_minutes"] == 28.0  # its 20 min flight and a cold start
+    assert camp["flight_minutes"] == 20.0
     assert camp["scenarios"] == ["toulouse-low"]
     assert isinstance(opts["autoortho"], bool)
 
@@ -86,6 +87,23 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
     assert mine == ["--streamer", "live", "--camera", "mine", "toulouse-low"]
     camp = bench.fly_args({"campaign": "ao-vs-live", "pick": [1], "camera": "mine"})
     assert camp == ["--campaign", "ao-vs-live", "--pick", "1", "--camera", "mine"]
+    own = bench.fly_args(
+        {
+            "campaign": "ao-vs-live",
+            "pick": [
+                {"index": 1, "scenarios": ["toulouse-low"]},
+                {"index": 3, "scenarios": ["scandinavia-columns", "scandinavia-rows"]},
+            ],
+        }
+    )
+    assert own == [
+        "--campaign",
+        "ao-vs-live",
+        "--pick",
+        "1,3:scandinavia-columns+scandinavia-rows",
+    ]
+    every = [{"index": k, "scenarios": ["toulouse-low"]} for k in (1, 2, 3, 4)]
+    assert bench.fly_args({"campaign": "ao-vs-live", "pick": every}) == ["--campaign", "ao-vs-live"]
     every = bench.fly_args({"campaign": "ao-vs-live", "pick": [1, 2, 3, 4]})
     assert every == ["--campaign", "ao-vs-live"]
     some = bench.fly_args({"campaign": "ao-vs-live", "pick": [3, 1]})
@@ -100,6 +118,8 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
         ({"campaign": "nowhere"}, "pas de campagne"),
         ({"campaign": "ao-vs-live", "pick": []}, "au moins une comparaison"),
         ({"campaign": "ao-vs-live", "pick": [5]}, "de 1 à 4"),
+        ({"campaign": "ao-vs-live", "pick": [{"index": 1, "scenarios": []}]}, "au moins un vol"),
+        ({"campaign": "ao-vs-live", "pick": [{"index": 1, "scenarios": ["nowhere"]}]}, "pas de"),
         ({"scenarios": ["camera-check"], "streamer": "ao"}, "streamer inconnu"),
         ({"scenarios": ["camera-check"], "zooms": "17/19"}, "Live ou AutoOrtho"),
         ({"scenarios": ["camera-check"], "cold": True}, "Live ou AutoOrtho"),

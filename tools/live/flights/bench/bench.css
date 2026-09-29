@@ -16,6 +16,10 @@
 .bench-list .choice-label .num { color: var(--fg-3); font-weight: 400; margin-left: 6px; }
 .bench-runs { margin: 2px 0 0; padding-left: 16px; font-size: var(--fs-2); color: var(--fg-2); }
 .bench-picks { margin: 0 0 var(--gap) 24px; }
+.bench-flights { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin: 0 0 6px 32px; font-size: var(--fs-2); color: var(--fg-2); }
+.bench-flights-title { color: var(--fg-3); }
+.bench-flight { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.bench-flight input { accent-color: var(--accent); margin: 0; }
 .bench-select { width: auto; min-width: 20em; }
 .bench-cold { margin-top: var(--gap); }
 .bench-go { display: flex; align-items: center; gap: 10px; margin-top: var(--gap); flex-wrap: wrap; }

@@ -150,7 +150,10 @@ A campaign flies the same scenarios under several setups, one after the other, a
 by side: `fly.py --campaign ao-vs-live` reads `tools/live/flights/campaigns/ao-vs-live.txt`, whose
 lines are `title WORDS` (for the window), `scenarios NAME...`, `run [ID] OPTIONS...` (the runner's
 own options) and `compare ID ID...` (runs read side by side). `--pick 1,3` flies only those
-comparisons (without comparisons, those runs); a run two of them share is flown once. Each run
+comparisons (without comparisons, those runs), on the campaign's flights;
+`--pick 1:toulouse-low,3:scandinavia-columns+scandinavia-rows` gives each its own. A run two of
+them share is flown once, its X-Plane flying the flights of both in turn; each comparison's table
+keeps to its own flights. The window ticks the comparisons and, under each, its flights. Each run
 starts its streamer and X-Plane again (X-Plane reads the scenery packs at its start), and waits for
 the X-Plane and the streamer of the run before to have quit; a run that cannot start is said and
 the next ones fly. After each run, `<date time> <campaign>.md` in the results gets the table of the

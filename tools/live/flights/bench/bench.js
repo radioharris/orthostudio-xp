@@ -84,8 +84,19 @@ function showOptions(opts) {
     for (const it of items) {
       const box = el("input", { type: "checkbox", name: `pick-${c.name}`, value: String(it.value) });
       box.checked = true;
-      list.append(el("label", { class: "choice" }, box, el("span", { class: "choice-text" },
-        el("span", { class: "choice-label", text: it.text }))));
+      // its flights: the campaign's, or others ticked here
+      const flights = el("div", { class: "bench-flights", "data-pick": `${c.name}:${it.value}` },
+        el("span", { class: "bench-flights-title", text: "vols :" }),
+        ...opts.scenarios.filter((sc) => !sc.error).map((sc) => {
+          const f = el("input", { type: "checkbox", value: sc.name });
+          f.checked = c.scenarios.includes(sc.name);
+          const lab = el("label", { class: "bench-flight", title: sc.title || sc.name }, f, el("span", { text: sc.name }));
+          return lab;
+        }));
+      list.append(el("div", { class: "bench-pick-item" },
+        el("label", { class: "choice" }, box, el("span", { class: "choice-text" },
+          el("span", { class: "choice-label", text: it.text }))),
+        flights));
     }
     camps.append(list);
   });
@@ -103,7 +114,10 @@ function picked() {
   if (mode === "campaign") {
     const c = document.querySelector("input[name=campaign]:checked");
     if (!c) return { campaign: "", camera };
-    const pick = [...document.querySelectorAll(`input[name="pick-${c.value}"]:checked`)].map((b) => Number(b.value));
+    const pick = [...document.querySelectorAll(`input[name="pick-${c.value}"]:checked`)].map((b) => ({
+      index: Number(b.value),
+      scenarios: [...document.querySelectorAll(`[data-pick="${c.value}:${b.value}"] input:checked`)].map((f) => f.value),
+    }));
     return { campaign: c.value, pick, camera };
   }
   const streamer = document.querySelector("input[name=streamer]:checked").value;
@@ -142,15 +156,26 @@ function refreshChoice() {
     const c = options.campaigns.find((x) => x.name === p.campaign);
     for (const list of document.querySelectorAll(".bench-picks")) list.hidden = !c || list.dataset.campaign !== c.name;
     if (c && !c.error) {
-      const flights = new Set(); // a flight two comparisons share is flown once
-      if (c.comparisons.length) {
-        for (const k of c.comparisons) if (p.pick.includes(k.index)) k.runs.forEach((r) => flights.add(r));
-      } else {
-        c.runs.forEach((r, n) => { if (p.pick.includes(n + 1)) flights.add(r.id); });
+      // each run once, flying the flights of every comparison it serves (fly.py Campaign.picked)
+      const runFlights = new Map();
+      for (const pk of p.pick) {
+        const ids = c.comparisons.length ? c.comparisons.find((k) => k.index === pk.index).runs : [c.runs[pk.index - 1].id];
+        for (const id of ids) {
+          if (!runFlights.has(id)) runFlights.set(id, new Set());
+          pk.scenarios.forEach((name) => runFlights.get(id).add(name));
+        }
       }
-      const n = flights.size;
-      note = n ? `${n} vol${n > 1 ? "s" : ""} différent${n > 1 ? "s" : ""}, environ ${minutes(n * c.run_minutes)}, personne aux commandes`
-        : "coche au moins une comparaison";
+      const length = (name) => (options.scenarios.find((sc) => sc.name === name) || {}).minutes || 0;
+      let total = 0;
+      let flights = 0;
+      for (const names of runFlights.values()) {
+        total += [...names].reduce((sum, name) => sum + length(name), 0) + (c.run_minutes - c.flight_minutes);
+        flights += names.size;
+      }
+      const runs = runFlights.size;
+      note = !p.pick.length ? "coche au moins une comparaison"
+        : p.pick.some((pk) => !pk.scenarios.length) ? "chaque comparaison cochée a besoin d'au moins un vol"
+        : `${runs} réglage${runs > 1 ? "s" : ""}, ${flights} vol${flights > 1 ? "s" : ""}, environ ${minutes(total)}, personne aux commandes`;
     }
   }
   $("start-note").textContent = note;

@@ -371,13 +371,15 @@ def _frames(m: dict, fmt: Callable[[Frames], str]) -> str:
     return fmt(m["frames"]) if m["frames"] else "?"
 
 
-def campaign_table(runs: list[tuple[str, Path]]) -> str:
+def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -> str:
     """The runs of a campaign side by side, a table per scenario: ``runs`` is (what ran, the
-    series' folder)."""
+    series' folder); ``only``: those scenarios alone (a comparison's, where a run flew others)."""
     by_scenario: dict[str, list[tuple[str, dict]]] = {}
     for label, series in runs:
         for folder in sorted(p for p in series.iterdir() if p.is_dir() and "-" in p.name):
             name = folder.name.split("-", 1)[1]
+            if only is not None and name not in only:
+                continue
             if (folder / "run.json").is_file():
                 by_scenario.setdefault(name, []).append((label, metrics(folder)))
     out = []
