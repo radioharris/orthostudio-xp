@@ -645,7 +645,7 @@ def test_a_scenario_sent_to_record_or_replay_the_users_camera(tmp_path: Path) ->
     assert "screenshot 20" in record  # the same moments, for the photos compared
     track = tmp_path / "my cams.csv"
     replay = sc.for_the_pilot(track=track)
-    assert "camera 0 30" not in replay
+    assert "camera 0 30" not in replay  # the user's, looped when shorter than the flight
     assert f"camera-track {track.resolve()}" in replay  # a path with a space, whole
 
 

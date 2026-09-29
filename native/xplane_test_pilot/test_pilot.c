@@ -41,7 +41,9 @@
  *                                        BEARING degrees from its heading, looking at it
  *   camera-record                        the user's camera recorded, 20 times a second of path, into
  *                                        camera.csv: the plugin leaves the view to the user
- *   camera-track FILE                    a camera recorded so replayed, as the user moved it
+ *   camera-track FILE                    a camera recorded so replayed, as the user moved it, and
+ *                                        again from its start when shorter than the path (a loop:
+ *                                        the user's wish, 2026-09-29)
  *   screenshot T                         a screenshot at T seconds of path
  *   end quit|stay                        what then (stay: X-Plane stays up, paused, for the next)
  *   aircraft PATH                        for the runner, which starts X-Plane with it (--load_acf)
@@ -131,6 +133,7 @@ static int n_legs = 0;
 static struct camera cameras[MAX_CAMERAS];
 static int n_cameras = 0, camera_on = 0, cockpit_set = -1; /* the cockpit camera last set */
 static int camera_record = 0, inside_set = 0; /* recording the user's camera; the cockpit set */
+static int replaying = 0; /* a recorded camera replayed */
 static FILE *camfile = NULL;
 static double cam_last = -1.0;
 static struct pose *track = NULL; /* a camera recorded, replayed */
@@ -338,6 +341,13 @@ static void track_at(double t, struct pose *out) {
     out->r = angle_between(a->r, b->r, f), out->fov = a->fov + (b->fov - a->fov) * f;
 }
 
+/* The recorded camera's time for the path's: looped, a recording shorter than the path played again
+   from its start. */
+static double track_clock(void) {
+    double period = track[n_track - 1].t + TRACK_EVERY;
+    return period > 0.0 ? fmod(path_t, period) : 0.0;
+}
+
 /* The user's camera, as X-Plane shows it now: a pose (struct pose). */
 static void camera_pose(struct pose *q) {
     double psi = XPLMGetDataf(r_psi), rad = psi * M_PI / 180.0;
@@ -370,11 +380,11 @@ static int track_camera(XPLMCameraPosition_t *out, int losing, void *refcon) {
     struct pose q;
     double lat, lon, alt, hdg, x, y, z, rad;
     (void)refcon;
-    if (losing || !out || state != FLYING || !n_track) {
+    if (losing || !out || state != FLYING || !replaying) {
         camera_on = 0;
         return 0;
     }
-    track_at(path_t, &q);
+    track_at(track_clock(), &q);
     if (!q.ext) {
         camera_on = 0;
         return 0; /* inside: X-Plane's cockpit, the head set each frame (replay_camera) */
@@ -396,7 +406,7 @@ static int track_camera(XPLMCameraPosition_t *out, int losing, void *refcon) {
    pilot's head where the user had it; the field of view either way. */
 static void replay_camera(void) {
     struct pose q;
-    track_at(path_t, &q);
+    track_at(track_clock(), &q);
     if (q.fov > 1.0) XPLMSetDataf(r_fov, (float)q.fov);
     if (q.ext) {
         inside_set = 0;
@@ -514,7 +524,7 @@ static void begin(void) {
     free(path);
     path = NULL;
     state = WAITING, placed_frames = 0, ready_since = -1.0, camera_on = 0, cockpit_set = -1, loading = 0;
-    inside_set = 0, cam_last = -1.0;
+    inside_set = 0, cam_last = -1.0, replaying = 0;
     if (camfile) fclose(camfile);
     camfile = NULL;
     if (!read_scenario(file)) {
@@ -646,14 +656,15 @@ static float every_frame(float since_call, float since_loop, int counter, void *
         return -1.0f;
     }
     place(path_t);
+    replaying = n_track > 0;
     if (camera_record) {
         record_camera(); /* the view is the user's */
-    } else if (n_track) {
+    } else if (replaying) {
         replay_camera();
     } else {
         cockpit_view(path_t);
     }
-    if (!camera_record && !n_track && !camera_on && camera_at(path_t)) {
+    if (!camera_record && !replaying && !camera_on && camera_at(path_t)) {
         /* an outside view first: X-Plane then draws the aircraft, not its cockpit round the camera */
         XPLMCommandOnce(XPLMFindCommand("sim/view/circle"));
         XPLMControlCamera(XPLM_CONTROL_CAMERA_FOREVER, chase_camera, NULL);

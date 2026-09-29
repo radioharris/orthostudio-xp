@@ -56,8 +56,9 @@ class Scenario:
     def for_the_pilot(self, record_camera: bool = False, track: Path | None = None) -> str:
         """The file sent to the plugin: its own ``end`` lines out, X-Plane left up after it (the
         runner says when X-Plane quits, once the series is flown). ``record_camera``: the user's
-        camera recorded, the view left to them; ``track``: a camera they recorded, replayed. Either
-        way without the scenario's own cameras."""
+        camera recorded, the view left to them; ``track``: a camera they recorded, replayed, and
+        again from its start when shorter than the flight. Either way without the scenario's own
+        cameras."""
         own_cameras = record_camera or track is not None
         lines = [
             ln
