@@ -68,9 +68,9 @@ export function textureInfo(x) {
   return parts.join(" · ");
 }
 
-/** The aircraft, pointing along its track. */
-function planeIcon(track) {
-  const svg = `<svg viewBox="0 0 24 24" width="26" height="26" style="transform: rotate(${Math.round(track)}deg)">`
+/** The aircraft, pointing along its heading, as X-Plane's. */
+function planeIcon(heading) {
+  const svg = `<svg viewBox="0 0 24 24" width="26" height="26" style="transform: rotate(${Math.round(heading)}deg)">`
     + '<path d="M12 2l1.4 7 7.6 4.2v1.9l-7.6-2.3-.5 5.6 2.5 1.9V22l-3.4-.9-3.4.9v-1.7l2.5-1.9-.5-5.6-7.6 2.3v-1.9L10.6 9z" '
     + 'fill="#ffffff" stroke="#1d1c1a" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   return L.divIcon({ className: "live-plane", html: svg, iconSize: [26, 26], iconAnchor: [13, 13] });
@@ -337,10 +337,10 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       const a = stream?.data === "fresh" ? stream.aircraft : null;
       if (a) {
         const at = [a.lat, a.lon];
-        if (!plane) plane = L.marker(at, { icon: planeIcon(a.trk || 0), interactive: false, zIndexOffset: 1000 }).addTo(map);
+        if (!plane) plane = L.marker(at, { icon: planeIcon(a.hdg ?? a.trk ?? 0), interactive: false, zIndexOffset: 1000 }).addTo(map);
         else {
           plane.setLatLng(at);
-          plane.setIcon(planeIcon(a.trk || 0));
+          plane.setIcon(planeIcon(a.hdg ?? a.trk ?? 0));
         }
         if (follow) map.panTo(at, { animate: false });
       } else if (plane) {

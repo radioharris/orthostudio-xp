@@ -409,9 +409,13 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
         assert "queue empty (urgent 0)" in s.status()
         assert "built 4096 px: 1 |" in s.status()
         arrival = Arrival(45.5, 6.5, "LFLL runway 17R", "click", time.time() - 12, held=True)
-        values = {"lat": 45.7, "lon": 5.1, "alt_m": 250.0, "gs_ms": 0.0}
+        values = {"lat": 45.7, "lon": 5.1, "alt_m": 250.0, "gs_ms": 0.0, "trk_deg": 275.5}
         now = time.time()
         report = progress_report(s, values, arrival, now, last_packet=now - 60, mbs=15.5)
+        assert report["aircraft"]["hdg"] == 275.5  # no heading said: the track
+        values["hdg_deg"] = 90.0  # a drone's aircraft: no speed, its track left behind
+        report = progress_report(s, values, arrival, now, last_packet=now - 60, mbs=15.5)
+        assert report["aircraft"]["hdg"] == 90.0  # the map points it as X-Plane does
         json.dumps(report)  # what the page gets
         assert report["data"] == "stale"  # X-Plane stopped sending: it loads the flight
         assert report["start"]["held"] and report["start"]["name"] == "LFLL runway 17R"

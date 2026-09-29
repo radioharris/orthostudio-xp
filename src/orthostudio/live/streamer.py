@@ -129,6 +129,9 @@ DATAREFS = [
     ("win_w", "sim/graphics/view/window_width"),  # X-Plane's image: what the rings scale with
     ("fov", "sim/graphics/view/field_of_view_deg"),
     ("scenery_loading", "sim/graphics/scenery/async_scenery_load_in_progress"),
+    # the aircraft's true heading, for the window's map: as X-Plane's, where its track leaves it
+    # (wind, the ground, a position set from outside that gives it no speed: a user, 2026-09-29)
+    ("hdg_deg", "sim/flightmodel/position/psi"),
 ]
 # X-Plane loading scenery in flight (its flag above), and this long after: Live starts no encoding
 # but for textures X-Plane already reads, and evicts nothing. The mountain test pair's hitches fell
@@ -1294,6 +1297,7 @@ def progress_report(
             "alt_ft": values.get("alt_m", 0.0) * 3.28084,
             "gs_kt": values.get("gs_ms", 0.0) * 1.94384,
             "trk": values.get("trk_deg", 0.0),
+            "hdg": values.get("hdg_deg", values.get("trk_deg", 0.0)),
         }
     fix = streamer.last_fix
     camera_km = None
