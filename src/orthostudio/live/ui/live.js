@@ -352,19 +352,39 @@ function drawDisk(status) {
   $("delete-help").textContent = idle ? "" : t("disk.delete_streaming");
 }
 
-/** Live's folder now, and the Finder's button beside it. */
-function drawFolder(status) {
-  const line = $("folder-now");
-  const path = status.checks.folder;
+/** The file manager's name for a Show button: Finder, File Explorer, or the Linux folder. */
+export function revealLabel(platform) {
+  if (platform === "mac") return t("reveal.mac");
+  if (platform === "win") return t("reveal.win");
+  return t("reveal.lin");
+}
+
+/** A line of text with a Show button that shows ``path`` in the file manager. */
+function pathLine(line, text, path, platform) {
   if (line.dataset.path === `${language()}:${path}`) return; // drawn already: keep the button
   line.dataset.path = `${language()}:${path}`;
   const show = document.createElement("button");
   show.type = "button";
   show.className = "btn btn-small reveal-btn";
-  show.textContent = t("folder.show");
+  show.textContent = revealLabel(platform);
   show.addEventListener("click", () => act("reveal", { path }));
-  line.replaceChildren(document.createTextNode(`${t("folder.now", { path })} `), show);
+  line.replaceChildren(document.createTextNode(`${text} `), show);
+}
+
+/** Live's folder now, and the Finder's button beside it. */
+function drawFolder(status) {
+  const path = status.checks.folder;
+  pathLine($("folder-now"), t("folder.now", { path }), path, status.platform);
   $("set-folder").placeholder = status.checks.folder_default;
+}
+
+/** The log's file, LogLive.txt beside X-Plane's Log.txt (orthostudio/live/logfile.py). */
+function drawLogFile(status) {
+  const line = $("log-file");
+  line.hidden = !status.log_file;
+  if (status.log_file) {
+    pathLine(line, t("log.file", { path: status.log_file }), status.log_file, status.platform);
+  }
 }
 
 /** OrthoStudio XP's SimBrief name, offered to take: never asked of SimBrief until it is. */
@@ -509,6 +529,7 @@ function draw(status) {
   drawMemory();
   drawDisk(status);
   drawFolder(status);
+  drawLogFile(status);
   drawRegions(status);
   liveMap?.update({ ...status, providers });
   if (saved === null) {

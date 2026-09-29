@@ -357,6 +357,11 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
 
 ## If something goes wrong
 
+- OrthoStudio XP Live keeps its log in `LogLive.txt`, at the top of your X-Plane folder, beside
+  X-Plane's own `Log.txt`: the one to send when something went wrong. It is written again each
+  time Live's window opens, as X-Plane's is, so send it before opening Live again. The ten before
+  are kept in the `log` folder of Live's folder. The window's Log shows where it is, with a button
+  that shows it in the Finder (File Explorer on Windows).
 - If OrthoStudio XP Live stops, X-Plane goes on flying over what is on the disk.
 - If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring. It
   never freezes waiting for it.

@@ -286,7 +286,9 @@ export const STRINGS = {
     "folder.help":
       "Where Live keeps its textures and its downloaded imagery, on an APFS disk. An SSD is best: on a hard drive, the region's first setup takes over an hour (Europe, against three minutes on an SSD).",
     "folder.now": "Now: {path}",
-    "folder.show": "Show in the Finder",
+    "reveal.mac": "Show in Finder",
+    "reveal.win": "Show in File Explorer",
+    "reveal.lin": "Open the folder",
     "folder.other": "Another folder",
     "folder.choose": "Choose…",
     "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its imagery",
@@ -300,6 +302,7 @@ export const STRINGS = {
     "country.United States": "United States",
 
     "log.title": "Log",
+    "log.file": "Kept as a file too: {path}",
     "unit.gb": "GB",
     "error.api": "Live does not answer: {error}",
   },
@@ -590,7 +593,9 @@ export const STRINGS = {
     "folder.help":
       "Où Live garde ses textures et les images téléchargées, sur un disque APFS. Un SSD est préférable : sur un disque dur, la première préparation de la région prend plus d'une heure (Europe, contre trois minutes sur un SSD).",
     "folder.now": "En ce moment : {path}",
-    "folder.show": "Afficher dans le Finder",
+    "reveal.mac": "Afficher dans le Finder",
+    "reveal.win": "Afficher dans l'Explorateur de fichiers",
+    "reveal.lin": "Ouvrir le dossier",
     "folder.other": "Un autre dossier",
     "folder.choose": "Choisir…",
     "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses images",
@@ -604,6 +609,7 @@ export const STRINGS = {
     "country.United States": "États-Unis",
 
     "log.title": "Journal",
+    "log.file": "Gardé aussi dans un fichier : {path}",
     "unit.gb": "Go",
     "error.api": "Live ne répond pas : {error}",
   },

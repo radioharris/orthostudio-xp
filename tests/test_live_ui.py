@@ -282,6 +282,10 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
     assert stream.options.cache_budget_gb == 33
     assert stream.options.camera_reach_km == 10.0  # sharp that much farther for external views
+    assert status["log_file"] is None  # no LogLive.txt for this window
+    assert status["platform"] in ("mac", "win", "lin")
+    c.log_file = Path("/X-Plane 12/LogLive.txt")
+    assert c.status()["log_file"] == str(Path("/X-Plane 12/LogLive.txt"))
     c.stop()
     assert c.wait_idle(5)
     assert stream.finished == [Path("/X-Plane 12")]  # the pack comes out
@@ -656,6 +660,22 @@ def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer() -> None:
         check=True,
     )
     assert json.loads(out.stdout) == [False, True, True, False, False, False]
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_file_manager_s_name() -> None:
+    """Show buttons (Live's folder, LogLive.txt) name the file manager of this computer."""
+    script = (
+        f"import {{ revealLabel }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "console.log(JSON.stringify(['mac', 'win', 'lin'].map(revealLabel)));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == ["Show in Finder", "Show in File Explorer", "Open the folder"]
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.live.control import IDLE, LiveControl
+from orthostudio.live.logfile import LogFile, archive_folder, log_path
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 TITLE = "OrthoStudio XP Live"
@@ -131,7 +132,8 @@ def open_window(port: int, *, browser: bool = False, start: str | None = None) -
     from orthostudio.live import pools
 
     pools.start_server()  # before the engine's API loads PROJ (orthostudio.live.pools)
-    control = LiveControl()
+    log = LogFile(log_path(), archive=archive_folder())  # LogLive.txt, beside X-Plane's Log.txt
+    control = LiveControl(echo=log.echo, log_file=log.path if log.open else None)
     server, thread = _serve(create_live_app(control), port)
     url = f"http://127.0.0.1:{port}/" + ("welcome" if start == "welcome" else "")
     try:
@@ -142,6 +144,7 @@ def open_window(port: int, *, browser: bool = False, start: str | None = None) -
     finally:
         server.should_exit = True
         thread.join(5)
+        log.close()
     return control.leaving_for
 
 

@@ -197,6 +197,7 @@ class LiveControl:
         echo: Callable[[str], None] = print,
         catalog: Callable[..., dict] | None = None,
         installer: Callable[..., Any] | None = None,
+        log_file: Path | None = None,
     ) -> None:
         self._prepare = prepare
         self._follow = follow
@@ -208,6 +209,7 @@ class LiveControl:
         self._checks = checks
         self._settings = settings
         self._echo = echo
+        self.log_file = log_file  # where the log is kept as a file too (orthostudio.live.logfile)
         self._lock = threading.Lock()
         self._state = IDLE
         self._error: str | None = None
@@ -260,6 +262,8 @@ class LiveControl:
         return got
 
     def status(self) -> dict[str, Any]:
+        from orthostudio.fsutil import platform_name
+
         with self._lock:
             state, error, report, seq = self._state, self._error, self._report, self._seq
         return {
@@ -268,6 +272,8 @@ class LiveControl:
             "error": error,
             "stream": report,
             "log_seq": seq,
+            "log_file": None if self.log_file is None else str(self.log_file),
+            "platform": platform_name(),  # mac, win or lin: what the file manager is called
             "checks": self.checks(),
             "settings": self._settings().model_dump(),
             "regions": self.regions(),
