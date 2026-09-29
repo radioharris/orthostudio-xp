@@ -99,7 +99,12 @@ AutoOrtho's group alone left it running, its region mounted (2026-09-29).
 - `--zooms 17/19`: the streamer's max_zoom and max_zoom near airports for the series (AutoOrtho's
   settings file, Live's `--max-zoom` and `--max-zoom-airports`), whatever the settings say.
 
-The user's own settings files, Live's and AutoOrtho's, are only ever read. The runner refuses to
+A cold run's heavy files are deleted once its streamer has stopped: Live's folder in its home (its
+pack, the textures it built, its downloaded imagery) and AutoOrtho's cache and DSFs. A cold
+AutoOrtho run of 2 minutes left 3.1 GB, with 77 GB free on the disk (2026-09-29). What stays is
+small: the settings, the logs, and Live's record of what it built (`live-built.json` in the
+series' folder), which its map reads. The user's own settings files, Live's and AutoOrtho's, are
+only ever read. The runner refuses to
 start when X-Plane runs without the test pilot, when a streamer is asked for but X-Plane already
 runs without it (its scenery would not be read), and when Live or AutoOrtho runs already (their
 windows'). With `--keep-open`, a next series goes on with the X-Plane and the streamer left
@@ -139,9 +144,9 @@ streamer's and X-Plane's cores and memory, and X-Plane's scenery loads.
 
 `ao-vs-live`, over `toulouse-low` (20 min at 3,000 to 10,000 ft over Toulouse, turns, a climb and
 a descent, a close and two far external views), all cold, the user's four comparisons
-(2026-09-29): AutoOrtho with its defaults at 17/19 against Live at 16/18, and against Live at
-17/19; AutoOrtho with the user's settings at 16/18 against Live at 16/18, and at 17/19 against
-Live at 17/19. Five flights, about 2 h 20, nobody at the controls.
+(2026-09-29), each at the same zooms on both sides: AutoOrtho with its defaults at 16/18 and at
+17/19, then with the user's settings at 16/18 and at 17/19, each against Live at those zooms.
+Six flights (each Live flight serves two comparisons), about 2 h 50, nobody at the controls.
 
 ## Results
 

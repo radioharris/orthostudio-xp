@@ -256,7 +256,7 @@ def start_live(
         if proc.poll() is not None:
             tail = "\n".join(text.splitlines()[-15:])
             raise RefusedError(f"Live stopped before it was ready:\n{tail}")
-    quit_in_background(proc)
+    quit_in_background(proc, out if cold else None, xp)
     raise RefusedError("Live not ready after 20 min")
 
 
@@ -376,7 +376,7 @@ def start_autoortho(
         if proc.poll() is not None:
             tail = "\n".join(log.read_text(errors="replace").splitlines()[-15:])
             raise RefusedError(f"AutoOrtho stopped before it mounted its regions:\n{tail}")
-    quit_in_background(proc)
+    quit_in_background(proc, out if cold else None, xp)
     raise RefusedError("AutoOrtho's regions not mounted after 5 min")
 
 
@@ -438,7 +438,32 @@ def quit_xplane_udp() -> None:
         sock.close()
 
 
-def after_series(pid: int) -> None:
+def clean_cold(out: Path, xp: Path | None = None) -> None:
+    """A cold run's heavy files deleted once its streamer has stopped: Live's own folder there (its
+    pack, the textures it built, its downloaded imagery), AutoOrtho's cache and DSFs. A cold
+    AutoOrtho run of 2 min left 3.1 GB, and the disk had 77 GB free (2026-09-29). What stays is
+    small: the settings, the logs, and Live's record of what it built, as ``live-built.json`` in the
+    series' folder, for its map. Only the homes the runner made under ``out``; X-Plane's link to a
+    pack there taken out first, if the streamer left it."""
+    out = out.resolve()
+    record = out / "live-home" / "live" / "pack" / "_live" / "ortho.json"
+    if record.is_file():
+        shutil.copy2(record, out / "live-built.json")
+    if xp is not None:
+        from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
+
+        for name in (LINK_NAME, OVERLAY_LINK_NAME):
+            link = xp / "Custom Scenery" / name
+            with contextlib.suppress(OSError):
+                if link.is_symlink() and out in Path(os.readlink(link)).resolve().parents:
+                    link.unlink()
+    data = out / "ao-home" / ".autoortho-data"
+    for heavy in (out / "live-home" / "live", data / "cache", data / "dsf"):
+        if heavy.is_dir() and out in heavy.resolve().parents:
+            shutil.rmtree(heavy, ignore_errors=True)
+
+
+def after_series(pid: int, clean: Path | None = None, xp: Path | None = None) -> None:
     """In a process of its own, left running by the runner. X-Plane asks "Quit the simulator?" at
     the test pilot's quit and waits for a click, plugins stopped meanwhile; a second quit over UDP
     is its answer, and X-Plane shuts down at once, cleanly (2026-09-29). So: quit over UDP every
@@ -454,14 +479,24 @@ def after_series(pid: int) -> None:
         time.sleep(2.0)
     if pid > 0:
         stop_tree(pid)
+    if clean is not None:
+        clean_cold(clean, xp)
 
 
-def quit_in_background(proc: subprocess.Popen | None) -> None:
-    """X-Plane quit, then the streamer stopped, by ``after_series`` in a process of its own; the
-    streamer only, at once, when X-Plane is not running."""
+def quit_in_background(
+    proc: subprocess.Popen | None, clean: Path | None = None, xp: Path | None = None
+) -> None:
+    """X-Plane quit, then the streamer stopped and a cold run's heavy files deleted (``clean``, its
+    series' folder), by ``after_series`` in a process of its own; the streamer only, at once, when
+    X-Plane is not running."""
     pid = proc.pid if proc is not None and proc.poll() is None else 0
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)]
+    if clean is not None:
+        cmd += ["--clean", str(clean)]
+    if xp is not None:
+        cmd += ["--xplane", str(xp)]
     subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)],
+        cmd,
         cwd=REPO,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -732,11 +767,11 @@ def run(a: argparse.Namespace) -> int:
         if still_up and not a.keep_open:
             (box(xp) / "quit").write_text("")
             say("X-Plane quits by itself, in the background")
-            quit_in_background(proc)
+            quit_in_background(proc, out if a.cold else None, xp)
         elif still_up:
             say("X-Plane stays up (--keep-open)")
         else:
-            quit_in_background(proc)
+            quit_in_background(proc, out if a.cold else None, xp)
         print((out / "summary.md").read_text())
     return (
         0
@@ -932,9 +967,10 @@ def main(argv: list[str] | None = None) -> int:
         "--pick", help="with --campaign: its comparisons chosen, e.g. 1,3 (all by default)"
     )
     p.add_argument("--after-series", type=int, help=argparse.SUPPRESS)
+    p.add_argument("--clean", type=Path, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     if a.after_series is not None:
-        after_series(a.after_series)
+        after_series(a.after_series, a.clean, a.xplane)
         return 0
     if a.campaign:
         try:

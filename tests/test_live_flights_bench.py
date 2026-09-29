@@ -30,11 +30,12 @@ def test_the_window_offers_every_scenario_and_campaign_with_its_title() -> None:
     camp = next(c for c in opts["campaigns"] if c["name"] == "ao-vs-live")
     labels = {r["id"]: r["label"] for r in camp["runs"]}
     assert labels["ao-default-1719"] == "AutoOrtho, ses réglages par défaut, ZL17/19, à froid"
+    assert labels["live-1618"] == "Live, ZL16/18, à froid"
     assert labels["ao-mine-1618"] == "AutoOrtho, tes réglages, ZL16/18, à froid"
     assert camp["comparisons"][0] == {
         "index": 1,
-        "runs": ["ao-default-1719", "live-1618"],
-        "title": "AutoOrtho, ses réglages par défaut, ZL17/19 contre Live, ZL16/18",
+        "runs": ["ao-default-1618", "live-1618"],
+        "title": "AutoOrtho, ses réglages par défaut, ZL16/18 contre Live, ZL16/18",
     }
     assert len(camp["comparisons"]) == 4
     assert camp["run_minutes"] == 28.0  # its 20 min flight and a cold start

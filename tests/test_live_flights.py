@@ -476,21 +476,21 @@ def test_the_campaigns_of_the_repository_read(tmp_path: Path) -> None:
     assert camp.scenarios == ["toulouse-low"]
     assert camp.title.startswith("AutoOrtho contre Live")
     runs = dict(camp.runs)
-    assert runs["ao-default-1719"] == [
-        "--streamer", "autoortho", "--ao-settings", "default", "--zooms", "17/19", "--cold",
+    assert runs["ao-default-1618"] == [
+        "--streamer", "autoortho", "--ao-settings", "default", "--zooms", "16/18", "--cold",
     ]  # fmt: skip
     assert all(options[0] == "--streamer" for options in runs.values())
-    # the user's four comparisons (2026-09-29), five flights: the shared ones flown once
+    # the user's four comparisons (2026-09-29), like against like, six flights: Live's flown once
     assert camp.comparisons == [
-        ["ao-default-1719", "live-1618"],
+        ["ao-default-1618", "live-1618"],
         ["ao-default-1719", "live-1719"],
         ["ao-mine-1618", "live-1618"],
         ["ao-mine-1719", "live-1719"],
     ]
     comps, flights = camp.picked(None)
-    assert len(comps) == 4 and len(flights) == 5
+    assert len(comps) == 4 and len(flights) == 6
     comps, flights = camp.picked([1, 3])
-    assert [i for i, _ in flights] == ["ao-default-1719", "live-1618", "ao-mine-1618"]
+    assert [i for i, _ in flights] == ["ao-default-1618", "live-1618", "ao-mine-1618"]
     assert [i for i, _ in camp.picked([4])[1]] == ["ao-mine-1719", "live-1719"]
     bad = tmp_path / "bad.txt"
     bad.write_text("scenarios toulouse-low\nfly --streamer live\n")
@@ -584,3 +584,35 @@ def test_a_streamer_stops_with_every_process_it_started(tmp_path: Path) -> None:
     while fly._still(worker, dict(fly.process_tree(worker)).get(worker, "?")):
         assert time.time() < end, "the worker in its own group is still there"
         time.sleep(0.1)
+
+
+def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
+    """A cold run's own homes, under its series' folder: the heavy files deleted once its streamer
+    stopped (a 2 min cold AutoOrtho run left 3.1 GB), Live's record kept for the map."""
+    out = tmp_path / "build" / "flights" / "2026-09-29 170000"
+    pack = out / "live-home" / "live" / "pack"
+    (pack / "_live").mkdir(parents=True)
+    (pack / "_live" / "ortho.json").write_text('{"textures": {"a": 0}}')
+    (pack / "textures").mkdir()
+    (pack / "textures" / "big.dds").write_bytes(b"x" * 1000)
+    (out / "live-home" / "live.toml").write_text("enabled = true\n")
+    cache = out / "ao-home" / ".autoortho-data" / "cache"
+    cache.mkdir(parents=True)
+    (cache / "chunk.jpg").write_bytes(b"x")
+    logs = out / "ao-home" / ".autoortho-data" / "logs"
+    logs.mkdir()
+    (logs / "autoortho.log").write_text("log")
+    xp = tmp_path / "X-Plane 12"
+    scenery = xp / "Custom Scenery"
+    scenery.mkdir(parents=True)
+    (scenery / "z_osxp_live").symlink_to(pack)  # the test's Live left its link
+    users = tmp_path / "users-pack"
+    users.mkdir()
+    (scenery / "y_osxp_live_overlays").symlink_to(users)  # not the test's: untouched
+    fly.clean_cold(out, xp)
+    assert (out / "live-built.json").read_text() == '{"textures": {"a": 0}}'
+    assert not (out / "live-home" / "live").exists()
+    assert not cache.exists() and (logs / "autoortho.log").exists()
+    assert (out / "live-home" / "live.toml").exists()
+    assert not (scenery / "z_osxp_live").is_symlink()
+    assert (scenery / "y_osxp_live_overlays").is_symlink() and users.is_dir()
