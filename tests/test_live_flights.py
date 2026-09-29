@@ -690,3 +690,61 @@ def test_the_photos_sharpness_where_their_ground_differs(tmp_path: Path) -> None
     assert report.sharpness([tmp_path / "ao.png", tmp_path / "ao.png"]) is None  # nothing differs
     assert report.sharpness([tmp_path / "ao.png"]) is None
     assert report.sharpness([tmp_path / "ao.png", None]) is None
+
+
+def test_a_campaign_writes_one_table_for_one_comparison_and_more_for_more(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each run flown by a stand-in for fly.run; the tables written after each (the user saw the
+    same table twice for one comparison, 2026-09-29)."""
+    import argparse
+
+    camp = tmp_path / "duo.txt"
+    camp.write_text(
+        "title Duo\nscenarios camera-check\n"
+        "run ao --streamer autoortho --cold\nrun live --streamer live --cold\n"
+        "run live2 --streamer live --zooms 17/19 --cold\n"
+        "compare ao live\ncompare ao live2\n"
+    )
+    flown: list[list[str]] = []
+    made = [0]
+
+    def fake_run(a: argparse.Namespace) -> int:
+        made[0] += 1
+        a.out = tmp_path / "results" / f"2026-09-29 1700{made[0]:02d}"
+        folder = a.out / "1-camera-check"
+        folder.mkdir(parents=True)
+        (folder / "run.json").write_text(json.dumps({"outcome": "done"}))
+        flown.append([a.streamer, *a.scenarios])
+        return 0
+
+    for name in ("xplane_up", "live_runs", "autoortho_runs"):
+        monkeypatch.setattr(fly, name, lambda: False)
+    monkeypatch.setattr(fly, "wait_quiet", lambda: None)
+    monkeypatch.setattr(fly, "run", fake_run)
+
+    def campaign(pick: str | None) -> str:
+        flown.clear()
+        results = tmp_path / "results"
+        for old in results.glob("*.md") if results.exists() else []:
+            old.unlink()
+        args = argparse.Namespace(results=results, xplane=None, camera="scenario", pick=pick)
+        parser = argparse.ArgumentParser()
+        parser.add_argument("scenarios", nargs="*")
+        parser.add_argument("--streamer", default="none")
+        parser.add_argument("--cold", action="store_true")
+        parser.add_argument("--ao-settings", default="mine")
+        parser.add_argument("--zooms", type=fly.zooms_of)
+        parser.add_argument("--results", type=Path)
+        parser.add_argument("--xplane", type=Path)
+        parser.add_argument("--camera", default="scenario")
+        assert fly.campaign(str(camp), parser, args) == 0
+        return next(results.glob("*.md")).read_text()
+
+    one = campaign("1")
+    assert flown == [["autoortho", "camera-check"], ["live", "camera-check"]]
+    assert one.count("| outcome |") == 1 and "# Comparison 1:" in one
+    both = campaign(None)
+    assert len(flown) == 3  # "ao" flown once for both comparisons
+    assert both.count("| outcome |") == 3  # every flight, then each comparison
+    assert "# Comparison 2:" in both

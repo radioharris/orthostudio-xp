@@ -996,10 +996,11 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
                 continue
         done[run_id] = (label(a), a.out)
         base.results.mkdir(parents=True, exist_ok=True)
-        text = f"# {camp.title or camp.name}, {stamp}\n\n" + report.campaign_table(
-            list(done.values())
-        )
-        for pick in comps if camp.comparisons else []:
+        text = f"# {camp.title or camp.name}, {stamp}\n\n"
+        each = comps if camp.comparisons else []
+        if len(each) != 1:  # one comparison is the whole campaign: its table alone
+            text += report.campaign_table(list(done.values()))
+        for pick in each:
             if all(i in done for i in pick.ids):
                 names = " against ".join(done[i][0] for i in pick.ids)
                 text += f"\n# Comparison {pick.number}: {names}\n\n"
