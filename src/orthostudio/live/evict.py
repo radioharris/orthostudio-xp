@@ -8,12 +8,16 @@ nothing can show it.
 
 X-Plane 12 holds a window of DSF tiles round the aircraft: 4 columns of longitude by 3 rows of
 latitude, its columns centred on the tile boundary nearest the aircraft, its rows on the aircraft's
-own row. It moves them 0.15 degree past a column's middle in the direction of travel, and lets go of
-the tiles left behind at once. The measurement flight (2026-09-29) went from LFBO to LFMT and back
-at FL300: X-Plane moved at 1.65 and 3.65 east, then at 3.35 and 2.35 back west, loading again the
-columns it had let go of. The starts at LEMD, LEBL and LFBO showed the same window. So behind the
-aircraft X-Plane holds 1.65 to 2.65 columns, 133 to 213 km at 43.6 N; the 300 km kept until then
-held about twice that.
+own row. It moves its columns 0.15 degree past a column's middle in the direction of travel, its
+rows 0.1 degree past a row's edge, and lets go of the tiles left behind at once. The measurement
+flight (2026-09-29) went from LFBO to LFMT and back at FL300: X-Plane moved at 1.65 and 3.65 east,
+then at 3.35 and 2.35 back west, loading again the columns it had let go of. The starts at LEMD,
+LEBL and LFBO showed the same window. So behind the aircraft X-Plane holds 1.65 to 2.65 columns,
+133 to 213 km at 43.6 N; the 300 km kept until then held about twice that. The replayable test
+flights over Norway (``docs/specs/live/flights.md``, the same day) found the same window at 60.5 N,
+in degrees, not kilometres: its columns moved at 10.65, 11.65 and 12.65 east and at 12.35, 11.35 and
+10.35 back west, each new one 1.35 degree ahead (74 km there, 108 at 43.6 N), and its rows at 61.1
+north and 60.9 back south.
 
 - A sharp texture goes back to 256 px (its small levels are in the file: nothing to download) when
   no tile it lies on is in the window X-Plane may hold round the aircraft or the camera
@@ -42,8 +46,8 @@ from .geo import Texture
 from .region import NEUTRAL_LEVEL
 
 EVICT_SAFE_KM = 300.0  # beyond: a 256 px texture may go back to the neutral clone
-# X-Plane's window of DSF tiles (the module's docstring), and how far past a column's middle it may
-# be left: 0.15 degree measured on columns, rows not measured
+# X-Plane's window of DSF tiles (the module's docstring), and how far past where it moves it may be
+# left: 0.15 degree measured on columns (43.6 and 60.5 N), 0.1 on rows (60.5 N)
 XPLANE_COLUMNS = 4
 XPLANE_ROWS = 3
 HYSTERESIS_DEG = 0.25
