@@ -201,6 +201,7 @@ CREATE TABLE artifacts (
 CREATE INDEX artifacts_rule ON artifacts (rule);
 CREATE INDEX artifacts_rule_digest ON artifacts (rule, digest);    -- early-cutoff witnesses
 CREATE INDEX artifacts_lru ON artifacts (last_used_at);
+CREATE INDEX artifacts_rule_created ON artifacts (rule, created_at); -- rows since the durable point
 CREATE TABLE edges (                 -- child consumed input `name` with this digest
     child      TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     name       TEXT NOT NULL,

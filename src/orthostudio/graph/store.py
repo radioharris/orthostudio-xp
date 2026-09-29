@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX IF NOT EXISTS artifacts_rule ON artifacts (rule);
 CREATE INDEX IF NOT EXISTS artifacts_rule_digest ON artifacts (rule, digest);
 CREATE INDEX IF NOT EXISTS artifacts_lru ON artifacts (last_used_at);
+CREATE INDEX IF NOT EXISTS artifacts_rule_created ON artifacts (rule, created_at);
 CREATE TABLE IF NOT EXISTS edges (
     child      TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     name       TEXT NOT NULL,
@@ -483,6 +484,10 @@ class Store:
             _fsync_dir(self.root)
 
     def _deferred_since(self, since: float | None) -> list[sqlite3.Row]:
+        """The rows of :data:`DEFERRED_RULES` indexed after ``since``, oldest first, read through
+        ``artifacts_rule_created``: without it every texture row of the store was visited, in no
+        order, at each point and each start, some 2 000 pages for 10 000 artefacts, seconds to a
+        minute on a hard disk that had not read them yet (review of 0.1.19, 2026-09-29)."""
         marks = ",".join("?" * len(DEFERRED_RULES))
         with self._lock:
             return self._db.execute(
