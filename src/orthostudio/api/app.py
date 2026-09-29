@@ -848,6 +848,8 @@ def create_app(
         "doctor_at": 0.0,
         # the measure of GET /api/sizes under way, shared by the pages that ask meanwhile
         "sizes": None,
+        # and GET /api/disk's, minutes long on a hard disk
+        "disk": None,
         # values of config.toml this version could not read, said by the status
         "settings_problems": [],
         # the first run reads what is installed once, then the file answers (see settings())
@@ -1947,21 +1949,29 @@ def create_app(
     async def disk() -> Any:
         """What the Library's "Free space" would give back, measured without deleting anything:
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
-        image pieces, the map background, and the relief downloaded and kept."""
+        image pieces, the map background, and the relief downloaded and kept.
 
-        def run() -> dict[str, Any]:
-            report = collect(images=True, relief=True, dry_run=True)
-            return {
-                "store_bytes": _store_bytes(default_store_root()),
-                "unused_bytes": report.freed_bytes,
-                "images_bytes": report.images_bytes - report.mapcache_bytes,
-                "mapcache_bytes": report.mapcache_bytes,
-                "relief_bytes": report.relief_bytes,
-                "tiles": len(report.packs),
-                "building": manager.active() is not None or bool(other_builds()),
-            }
+        Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
+        takes minutes, and the Library asked again every five seconds while sizes were pending,
+        each ask a new measure, until they took every thread and nothing else answered (review of
+        0.1.19, 2026-09-29)."""
+        task = state["disk"]
+        if task is None or task.done():
+            task = state["disk"] = asyncio.ensure_future(asyncio.to_thread(measure_disk))
+        return await asyncio.shield(task)
 
-        return await asyncio.to_thread(run)
+    def measure_disk() -> dict[str, Any]:
+        """``GET /api/disk``'s figures, measured once for every page waiting on them."""
+        report = collect(images=True, relief=True, dry_run=True)
+        return {
+            "store_bytes": _store_bytes(default_store_root()),
+            "unused_bytes": report.freed_bytes,
+            "images_bytes": report.images_bytes - report.mapcache_bytes,
+            "mapcache_bytes": report.mapcache_bytes,
+            "relief_bytes": report.relief_bytes,
+            "tiles": len(report.packs),
+            "building": manager.active() is not None or bool(other_builds()),
+        }
 
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:

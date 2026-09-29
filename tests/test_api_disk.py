@@ -111,3 +111,49 @@ async def test_free_space_waits_for_builds_here_and_in_a_terminal(home: Path) ->
             assert r.status_code == 200 and not files["chunks"].exists()
     finally:
         mgr.close()
+
+
+@pytest.mark.anyio
+async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Library asked for "Free space"'s figures every five seconds while sizes were pending,
+    each ask a new measure that a hard disk takes minutes over, until they took every thread and
+    nothing else answered (review of 0.1.19, 2026-09-29). An ask that comes while a measure runs
+    shares it; one that comes after it ends measures again."""
+    import asyncio
+    import threading
+    from types import SimpleNamespace
+
+    from orthostudio.api import app as api_app
+
+    started, release = threading.Event(), threading.Event()
+    measured: list[bool] = []
+
+    def slow_clean(*args: object, **kw: object) -> SimpleNamespace:
+        measured.append(bool(kw.get("dry_run")))
+        started.set()
+        release.wait(10)
+        return SimpleNamespace(
+            freed_bytes=1, images_bytes=5, mapcache_bytes=2, relief_bytes=4, packs=[]
+        )
+
+    monkeypatch.setattr(api_app, "clean", slow_clean)
+    app, mgr = _app(home)
+    try:
+        async with client_for(app) as c:
+            asks = [asyncio.ensure_future(c.get("/api/disk")) for _ in range(3)]
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(0.2)  # the other asks arrive while the measure runs
+            release.set()
+            answers = [(await ask).json() for ask in asks]
+            assert measured == [True], "one measure for the three asks"
+            assert all(a == answers[0] for a in answers) and answers[0]["images_bytes"] == 3
+            assert (await c.get("/api/disk")).status_code == 200
+            assert measured == [True, True], "an ask after it ends measures again"
+    finally:
+        release.set()
+        mgr.close()

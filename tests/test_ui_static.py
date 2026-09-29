@@ -576,9 +576,17 @@ def test_the_library_asks_again_for_sizes_and_measures_the_disk_only_when_shown(
     the page asks again while any is pending; and the disk space is measured only when the
     Library shows."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    load = _function_body(app_js, "loadLibrary")
-    assert "sizesPending(state.library)" in load
-    assert "setTimeout(loadLibrary, SIZES_RETRY_MS)" in load
+    assert "askSizesAgain();" in _function_body(app_js, "loadLibrary")
+    again = _function_body(app_js, "askSizesAgain")
+    assert "sizesPending(state.library)" in again
+    assert "setTimeout(loadLibrarySizes, SIZES_RETRY_MS)" in again
+    # asked again for the sizes alone: the whole list ran "Free space"'s measure every five
+    # seconds, minutes long on a hard disk, and rebuilt the Plan's colour sliders under the hand
+    # (review of 0.1.19, 2026-09-29)
+    sizes = _function_body(app_js, "loadLibrarySizes")
+    assert "renderLibrary();" in sizes and "askSizesAgain();" in sizes
+    for elsewhere in ("loadDisk(", "renderStatus(", "renderTileColours(", "planMap", "toast("):
+        assert elsewhere not in sizes, elsewhere
     assert 'state.screen !== "library"' in _function_body(app_js, "loadDisk")
     got = _node_json(
         "app.js",
