@@ -205,7 +205,7 @@ class CrashTest(unittest.TestCase):
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
 class StreamerTest(unittest.TestCase):
-    def test_builds_what_xplane_will_read_then_asks_for_a_reload(self):
+    def test_builds_what_xplane_will_read_then_says_so(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = make_source(root, tile=(45, 6), textures=NAMES)
@@ -226,15 +226,15 @@ class StreamerTest(unittest.TestCase):
             self.assertEqual(
                 {n: lv for n, (_, lv) in jobs.items()}, {f"{NAMES[0]}.dds": 1, f"{NAMES[1]}.dds": 1}
             )
-            self.assertTrue(s.reload_pending)
+            self.assertTrue(s.read_early)
             s.start()
             deadline = time.time() + 60
-            while (s.urgent_left() or s.reload_pending) and time.time() < deadline:
+            while (s.urgent_left() or s.read_early) and time.time() < deadline:
                 time.sleep(0.1)
             s.close()
             s.cache.close()
             self.assertEqual(s.built, {f"{NAMES[0]}.dds": 1, f"{NAMES[1]}.dds": 1})
-            self.assertEqual(xp.commands, ["sim/operation/reload_scenery"])
+            self.assertEqual(xp.commands, [])  # no reload: X-Plane's keeps what it holds
             path = pack / "textures" / f"{NAMES[0]}.dds"
             self.assertGreater(os.stat(path).st_blocks * 512, 2_000_000)  # 2048 px written
             self.assertEqual(

@@ -20,6 +20,7 @@ from pathlib import Path
 from unittest import mock
 
 from live_helpers import NAMES, FakeDownloader, Image, make_source
+from orthostudio.live import gate as gate_module
 from orthostudio.live import plugin
 from orthostudio.live import streamer as streamer_module
 from orthostudio.live.cache import ChunkCache
@@ -140,6 +141,41 @@ class GateTest(unittest.TestCase):
                 self.assertTrue(p.recv(100).endswith(b"lang=fr at=LFBZ piste 09"))  # in French
                 gate.answer(got[1][3], True, 0)
                 self.assertEqual(p.recv(100), b"LIVE1 GO 0")
+        finally:
+            gate.close()
+
+    def test_the_gate_answers_for_a_busy_loop(self):
+        """The plugin lets X-Plane go when a HOLD gets no answer within a second. While the loop
+        is late reading the plugin's lines, the gate answers for it with the loop's last WAIT,
+        and keeps the lines for the loop (LGAV and LCLK, 2026-09-29)."""
+        gate = Gate(self.xplane, lambda icao: None, port=self.port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+                p.connect(("127.0.0.1", self.port))
+                p.settimeout(1.0)  # the plugin's second
+                p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
+                self.assertEqual(p.recv(100), b"LIVE1 WAIT n=0 p=0 s=0 mbs=0.0")
+                gate.hold_at("LGAV parking B17", "fr")  # the start the loop plans next
+                p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
+                self.assertTrue(p.recv(100).endswith(b"lang=fr at=LGAV parking B17"))
+                got = gate.requests()  # the loop back: both kept for it
+                self.assertEqual([k for k, *_ in got], ["HOLD", "HOLD"])
+                self.assertEqual(len(gate.stood_in()), 2)
+                self.assertEqual(gate.stood_in(), [])
+                gate.answer(got[0][3], False, 1565, "LGAV parking B17", 0.1, 5.0, 12.0)
+                self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT n=1565 "))
+                p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
+                p.settimeout(0.3)
+                with self.assertRaises(TimeoutError):  # the loop answers, it has just read
+                    p.recv(100)
+                p.settimeout(1.0)
+                self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT n=1565 "))  # its last WAIT
+                self.assertEqual(len(gate.requests()), 1)
+                with mock.patch.object(gate_module, "ALIVE_S", 0.8):  # a loop gone: no answer
+                    time.sleep(0.9)
+                    p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
+                    with self.assertRaises(TimeoutError):
+                        p.recv(100)
         finally:
             gate.close()
 
@@ -709,10 +745,10 @@ class ReachTest(unittest.TestCase):
             lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
             name = f"{NAMES[0]}.dds"
             cockpit = Fix(lat - 0.25, lon, cam_lat=lat - 0.2499, cam_lon=lon)
-            s.plan(cockpit)  # the first fix: a jump, with a reload to come
-            self.assertTrue(s.reload_pending)
+            s.plan(cockpit)  # the first fix: a jump, X-Plane there before anything was built
+            self.assertTrue(s.read_early)
             s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon))
-            s.reload_pending = False  # X-Plane reloaded
+            s.read_early = False  # everything built since
             s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon), starting=True)
             s.plan(cockpit)
             self.assertEqual((s.outran, said), ({}, []))
@@ -915,13 +951,18 @@ class RunTest(unittest.TestCase):
         self.xp.position = (self.lat, self.lon)  # the flight runs
         time.sleep(1.0)
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
-        self.assertFalse(self.streamer.reload_pending)
+        self.assertFalse(self.streamer.read_early)
         self.assertTrue(any("X-Plane goes on" in m for m in self.log))
 
-    def test_without_the_plugin_a_reload(self):
+    def test_without_the_plugin_no_reload(self):
+        """X-Plane did not wait: once everything is built the log says so, and no reload of the
+        scenery is asked, which keeps the textures X-Plane holds (2026-09-27, 2026-09-29)."""
         self.click()
         self.xp.position = (self.lat, self.lon)  # X-Plane did not wait
-        self.assertTrue(self.wait_for(lambda: self.xp.commands == ["sim/operation/reload_scenery"]))
+        self.assertTrue(
+            self.wait_for(lambda: any("what it read before stays" in m for m in self.log))
+        )
+        self.assertEqual(self.xp.commands, [])
 
     def test_a_new_flight_while_flying(self):
         """Start Flight clicked while X-Plane runs elsewhere: its position is still the old one,
@@ -930,12 +971,12 @@ class RunTest(unittest.TestCase):
         self.xp.position = (home[0] - 2.0, home[1])  # flying 220 km south
         self.assertTrue(
             self.wait_for(
-                lambda: self.streamer.last_fix is not None and not self.streamer.reload_pending
+                lambda: self.streamer.last_fix is not None and not self.streamer.read_early
             )
         )
         before = len(
             self.xp.commands
-        )  # the streamer came after X-Plane: it may have reloaded there
+        )  # the streamer came after X-Plane: X-Plane may have read early there
         self.click()  # X-Plane runs: a flight change, or X-Plane quitting, as far as anyone knows
         self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
         old = self.xp.position
@@ -958,7 +999,7 @@ class RunTest(unittest.TestCase):
         self.xp.position = (home[0] - 2.0, home[1])  # flying 220 km south
         self.assertTrue(
             self.wait_for(
-                lambda: self.streamer.last_fix is not None and not self.streamer.reload_pending
+                lambda: self.streamer.last_fix is not None and not self.streamer.read_early
             )
         )
         before = len(self.xp.commands)
@@ -969,14 +1010,35 @@ class RunTest(unittest.TestCase):
         time.sleep(1.0)
         self.assertEqual(self.xp.commands[before:], [])
 
+    def test_a_busy_loop_still_holds_xplane(self):
+        """The loop planning a new start for 2 s (3 s at LGAV under a start's load, 2026-09-29):
+        the plugin, which lets X-Plane go when a HOLD gets no answer within a second, gets the
+        gate's WAIT meanwhile, then GO once everything is built."""
+        plan = self.streamer.plan
+
+        def slow(fix, *args, **kw):
+            if kw.get("starting"):
+                time.sleep(2.0)
+            return plan(fix, *args, **kw)
+
+        self.streamer.plan = slow  # type: ignore[method-assign]
+        self.click()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+            p.connect(("127.0.0.1", self.port))
+            p.settimeout(1.0)  # the plugin's second
+            p.send(f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} flight".encode())
+            self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT"))
+        answers = self.hold(self.lat, self.lon, why="flight")
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
+        self.assertTrue(any(m.startswith("  Live was busy ") for m in self.log))
+
     def test_quitting_is_not_a_start(self):
         """X-Plane writes Freeflight.prf as it quits: while it runs there, that is no new flight."""
         self.xp.position = (self.lat, self.lon)
         self.assertTrue(self.wait_for(lambda: self.streamer.last_fix is not None))
         self.assertTrue(
-            self.wait_for(
-                lambda: not self.streamer.reload_pending and not self.streamer.urgent_left()
-            )
+            self.wait_for(lambda: not self.streamer.read_early and not self.streamer.urgent_left())
         )
         before = len(self.xp.commands)
         self.click()  # the same start, written again, X-Plane never stopping

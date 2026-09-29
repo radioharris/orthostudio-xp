@@ -5,6 +5,7 @@ layout."""
 
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from orthostudio.live.rings import (
     top_level_for,
     zoom_for,
 )
-from orthostudio.live.route import Route, airport_positions
+from orthostudio.live.route import AirportIndex, Route, airport_positions
 from orthostudio.live.texture import chunk_grid, parent_keys, piece_keys, pieces_of, write_sparse
 
 APT = b"""I
@@ -90,6 +91,23 @@ class RouteTest(unittest.TestCase):
         self.assertIn((43, 7), tiles)
         self.assertIn((46, 6), tiles)
         self.assertNotIn((43, 0), tiles)
+
+    def test_every_airport_read_once(self):
+        """The airports' positions read once in a thread of their own: a click on Start Flight is
+        placed at once (one pass for one airport kept the streamer's loop 3 s, 2026-09-29)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            apt = Path(tmp) / "apt.dat"
+            apt.write_bytes(APT)
+            every = airport_positions(apt, None)
+            self.assertEqual(set(every) >= {"LFMN", "LSGG"}, True)
+            index = AirportIndex(apt)
+            end = time.time() + 5
+            while index._all is None and time.time() < end:
+                time.sleep(0.01)
+            self.assertEqual(index._all, every)
+            self.assertEqual(index("lfmn"), every["LFMN"])
+            self.assertIsNone(index("ZZZZ"))
+            self.assertIsNone(AirportIndex(Path(tmp) / "none.dat")("LFMN"))  # no file: none
 
 
 class CacheTest(unittest.TestCase):

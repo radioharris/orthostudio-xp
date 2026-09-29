@@ -126,9 +126,9 @@ Global Forests needs nothing: it hides the forests of every pack below it, Live'
 keeps their roads and buildings. The setting "Never" leaves the overlays out altogether.
 
 There is no setting for the texture quality or for how far outside views reach: Live reads the
-texture quality X-Plane is set to, and builds sharp 20 km beyond the aircraft for outside views
-(25 km until 2026-09-28). Less, and X-Plane could show the neutral colour, green-grey, around a
-distant camera.
+texture quality X-Plane is set to, and builds sharp 10 km beyond the aircraft for outside views
+(a test from 2026-09-29, then 15, else back to 20 km as before; 25 km until 2026-09-28). Less,
+and X-Plane could show the neutral colour, green-grey, around a distant camera.
 
 The zoom is set as in AutoOrtho: a maximum zoom (14 to 17, 16 by default) and a zoom near airports
 (16 to 19, 18 by default, for the package's ZL18 textures, which are its airports' surroundings).
@@ -231,7 +231,12 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
   running. At a start it holds X-Plane as long as the ortho keeps arriving, with no time limit:
   sharp zooms can take more than five minutes in a new area. It lets X-Plane go when nothing has
   downloaded for a minute (no internet), or when you click Stop in the Live window; X-Plane then
-  shows the neutral colour where nothing was built, and gets its scenery reloaded once it is.
+  shows the neutral colour where nothing was built, until it loads that place again (a new
+  flight there, or X-Plane restarted). Live asks for no reload of the scenery: X-Plane's keeps
+  the textures it holds.
+- Live answers the plugin at once even while it is busy: the plugin lets X-Plane go when a
+  question gets no answer within a second, and a busy Live let X-Plane start at LGAV and LCLK
+  with nothing built (2026-09-29).
 - In flight, the plugin asks the streamer every second whether it has a notice for you (no mesh
   under the aircraft: the region to install), and shows it in a small panel with its cross.
 - While X-Plane flies, Live encodes at most four textures at once, at a low priority: X-Plane's
@@ -244,8 +249,8 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
   for it; Live asks for it again later and builds the texture again once it comes.
 
 Without the plugin (`--no-plugin`), X-Plane does not wait. Where a texture is not built yet, it shows
-a plain placeholder colour (never black). Once everything it shows is built, OrthoStudio XP Live asks it
-to reload the scenery, once.
+a plain placeholder colour (never black), until it loads that place again: X-Plane's reload of the
+scenery keeps the textures it holds, so Live asks for none.
 
 ## What happens while you fly
 
@@ -269,8 +274,9 @@ picks the new file up by itself the next time it wants that texture sharper.
 
 External views need more than that. With Shift+4 the camera can go kilometres away in a second,
 much faster than anything downloads. X-Plane reads whatever is in the files there at once, and it
-does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 20 km
-farther around the aircraft than the aircraft alone needs (`--camera-reach-km`), and an external
+does not read a level again once it has it. So OrthoStudio XP Live keeps the sharp levels built 10 km
+(under test; 20 km before) farther around the aircraft than the aircraft alone needs, in the
+cockpit too (`--camera-reach-km`), and an external
 view shows the right imagery as soon as you switch to it, as with AutoOrtho. A camera taken farther
 than that may find a placeholder, which X-Plane keeps until it loads that area again. The 8192 px
 level has no reach: 15 km around the camera wherever it is.
@@ -306,7 +312,7 @@ OrthoStudio XP Live has no wait to manage, and X-Plane itself says how sharp it 
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | Optional caps (`--max-zoom`, `--max-zoom-airports`) to save bandwidth. By default, as sharp as X-Plane will display, where it will display it. |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and OrthoStudio XP Live follows it. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 20 km more for external views. |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 10 km more for external views (under test; 20 km before). |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. A texture that comes late is shown at the sharpness X-Plane already has and gets sharper at the next ring. |
 | Cache sizes, workers, pipelines | Internal. |
 
@@ -363,16 +369,15 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
 
 ## Not yet
 
-- When X-Plane is let go before its textures are built (no internet for a minute, Stop, or no
-  plugin), Live asks it to reload the scenery once they are. The pink test showed that the reload
-  does not read again the textures X-Plane holds: what that reload still brings is to check.
-
-- The 20 km for external views are always kept, cockpit or not. The plugin could tell which view
-  is in use and widen it only when needed, to download less at cruise.
+- The camera's reach is kept in the cockpit too: an external view comes without warning, and
+  X-Plane reads a texture once (widening it only in external views was tried and undone on
+  2026-09-29). Its size is under test, 10 km, then 15, else back to 20: Live logs when a camera
+  gets ahead of it ("camera ahead of Live") and keeps the reach each run's camera needed in
+  `pack/_live/camera.json`.
 
 - Distances are measured along the ground, but for the 8192 px level: counting the altitude
-  at every level would download little less at cruise, where most is for external views (20 km
-  around), which a shorter reach at cruise would save. To set it on how pilots really fly, Live
+  at every level would download little less at cruise, where most is for external views (the
+  camera's reach around), which a shorter reach at cruise would save. To set it on how pilots really fly, Live
   notes how far and how low external views take the camera, at cruise and below, says it in its
   log when it stops, and keeps the last 20 flights in `pack/_live/camera.json`.
 - Only where AutoOrtho has a mesh: the six regions cover the land of the planet, the islands AutoOrtho

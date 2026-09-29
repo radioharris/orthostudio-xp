@@ -90,7 +90,6 @@ PATCH_RETRY_MAX_S = 1800.0  # each time they still do not come, up to this
 LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
-RELOAD_COMMAND = "sim/operation/reload_scenery"
 EVICT_EVERY_S = 10.0
 # textures encoded at once while X-Plane flies, all workers while it waits: by default the share of
 # a computer of 14 cores, each computer's own from its cores (orthostudio.live.machine)
@@ -325,7 +324,7 @@ class Streamer:
         self.queue: dict[str, tuple[float, int]] = {}  # name -> (urgency km, level)
         self.in_flight: dict[str, tuple[float, int]] = {}
         self.stop = threading.Event()
-        self.reload_pending = False
+        self.read_early = False
         self.last_fix: Fix | None = None
         self.done = Counter()
         self.errors = 0
@@ -543,11 +542,11 @@ class Streamer:
         if camera is not None:
             cam_along = haversine_m(fix.lat, fix.lon, camera[0], camera[1]) / 1000.0
             cam_up = 0.0 if fix.cam_agl_m is None else (fix.cam_agl_m - fix.agl_m) / 1000.0
-        away = (  # not while X-Plane waits on a start, nor with a reload to come (a jump)
+        away = (  # not while X-Plane waits on a start, nor after it read early (a jump)
             camera is not None
             and x_plane_there
             and not starting
-            and not (jumped or self.reload_pending)
+            and not (jumped or self.read_early)
             and math.hypot(cam_along, cam_up) * 1000.0 >= AWAY_M
         )
         outran: dict[str, int] = {}
@@ -637,7 +636,7 @@ class Streamer:
             ) in self.in_flight.items():  # urgent as this plan says, not as the one that took it
                 self.in_flight[n] = (jobs[n][0] if n in jobs else max(u, 1.0), lv)
             if jumped:
-                self.reload_pending = True
+                self.read_early = True
                 self.refresh_flight_plan()  # X-Plane flying somewhere new: its plan may be new
             self.last_fix = fix
         return jobs
@@ -717,16 +716,20 @@ class Streamer:
         """How long pieces have been awaited with none arriving (0 while they arrive)."""
         return time.monotonic() - self.last_progress
 
-    def maybe_reload(self) -> bool:
+    def maybe_say_built(self) -> bool:
+        """X-Plane read the area before its textures were built (a start it did not wait for, a
+        jump): once they are, the log says what shows. No reload of the scenery is asked: X-Plane's
+        keeps the textures it holds (2026-09-27; the user, 2026-09-29: "ça ne fait rien")."""
         with self.lock:  # the queue and the flag as one plan left them
             urgent = len(self._urgent_locked())
-            due = self.reload_pending and self.last_fix is not None and urgent == 0
+            due = self.read_early and self.last_fix is not None and urgent == 0
             if due:
-                self.reload_pending = False
+                self.read_early = False
         if due:
-            if self.xp is not None:
-                self.xp.command(RELOAD_COMMAND)
-            self.log("everything X-Plane may show is built: asked it to reload the scenery")
+            self.log(
+                "everything X-Plane may show is built; what it read before stays the neutral "
+                "colour until it loads that place again (a new flight there, or X-Plane restarted)"
+            )
         return due
 
     def built_now(self, known: int = -1) -> tuple[int, dict[str, int] | None]:
@@ -1005,7 +1008,7 @@ class Streamer:
                         self.cache.put_many(self.provider, to_cache)
                         to_cache.clear()
                         last_flush = time.monotonic()
-                    self.maybe_reload()
+                    self.maybe_say_built()
                     if time.monotonic() - last_evict > EVICT_EVERY_S and not self.yielding():
                         self.evict()
                         last_evict = time.monotonic()
@@ -1129,7 +1132,7 @@ class Streamer:
             "failed": getattr(dl, "failed", 0),
             "disk_bytes": usage(built, self.top_of),
             "disk_budget": self.disk_budget,
-            "reload_pending": self.reload_pending,
+            "read_early": self.read_early,
             "at_8192": sum(1 for level in built.values() if level < 0),  # their 8192 px photos
             "tint_8192": self.tint_8192,
             "flight_plan": None
@@ -1162,13 +1165,13 @@ class Streamer:
             f"{s['from_cache']} from cache"
             + (f", {s['failed']} failed" if s["failed"] else "")
             + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
-            + (" | reload pending" if s["reload_pending"] else "")
+            + (" | X-Plane read early" if s["read_early"] else "")
         )
 
 
-def reload_after_prepared_start(ready_at: float | None, xplane_started: float | None) -> bool:
+def read_before_ready(ready_at: float | None, xplane_started: float | None) -> bool:
     """With ``--from``, whether X-Plane may have read textures before they were built: it started
-    before the area was ready (or we cannot tell). Then it gets a reload once everything is."""
+    before the area was ready (or we cannot tell). Then the log says so once everything is."""
     return ready_at is None or xplane_started is None or xplane_started < ready_at
 
 
@@ -1216,14 +1219,14 @@ def longest_frame(said: str) -> int | None:
     return None
 
 
-def needs_reload(arrival: Arrival, xplane_started: float | None) -> bool:
+def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
     """Whether X-Plane, now there, may have read textures of the start before they were built."""
     if arrival.released:
         return False  # the plugin held it until everything was built
     if arrival.ready_at is not None and arrival.ready_at - arrival.since < 1.0:
         return False  # already built when X-Plane was told to start there
     if arrival.how == "from" and not arrival.held:
-        return reload_after_prepared_start(arrival.ready_at, xplane_started)
+        return read_before_ready(arrival.ready_at, xplane_started)
     return True
 
 
@@ -1367,6 +1370,8 @@ def run(
             time.time(),
             loading=not ("lat" in values and time.time() - last_packet < FRESH_S),
         )
+        if gate is not None:  # the gate's word to a waiting X-Plane while this start is planned
+            gate.hold_at(name, language())
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         streamer.refresh_flight_plan()  # a new flight may have a new plan
@@ -1404,7 +1409,14 @@ def run(
                 if clicked is not None:
                     expect(*clicked, "click")
                 running = "lat" in values and now - last_packet < FRESH_S
-                for kind, lat, lon, addr, why in gate.requests():
+                requests = gate.requests()
+                late = gate.stood_in()
+                if late:
+                    log(
+                        f"  Live was busy {max(late):.1f} s: the gate told X-Plane to wait "
+                        f"meanwhile ({len(late)} times)"
+                    )
+                for kind, lat, lon, addr, why in requests:
                     if kind == "ASK":  # the plugin, every second of a flight: a notice for it?
                         frame = longest_frame(why)  # and its longest frame that second
                         if frame is not None and frame >= STUTTER_MS:
@@ -1452,7 +1464,7 @@ def run(
                             log(
                                 f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
                                 f"{left} textures to build around {arrival.name} (is the internet "
-                                f"there?); the scenery is reloaded once they are built"
+                                f"there?)"
                             )
                         elif left == 0 and not arrival.released:
                             arrival.released = True
@@ -1512,12 +1524,10 @@ def run(
                     if fix is not None:
                         streamer.plan(
                             fix
-                        )  # a jump is a new start: X-Plane gets a reload once it is built
+                        )  # a jump is a new start: X-Plane read it before it was built
                 elif running and arrival.near(fix.lat, fix.lon):  # X-Plane is there
-                    if arrival.loading and needs_reload(arrival, xplane_started_at()):
-                        streamer.reload_pending = (
-                            True  # (never loading: X-Plane was there all along)
-                        )
+                    if arrival.loading and may_have_read_early(arrival, xplane_started_at()):
+                        streamer.read_early = True  # (never loading: X-Plane was there all along)
                     streamer.plan(fix, x_plane_there=False)
                     arrival = None
                 elif running:  # X-Plane runs somewhere else

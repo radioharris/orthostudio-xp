@@ -12,6 +12,7 @@ import contextlib
 import itertools
 import math
 import re
+import threading
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,9 +27,10 @@ def apt_dat(xplane: Path) -> Path:
     return xplane / "Global Scenery" / "Global Airports" / "Earth nav data" / "apt.dat"
 
 
-def airport_positions(apt: Path, icaos: Iterable[str]) -> dict:
-    """{ICAO: (lat, lon)} of the airports found in ``apt`` (one pass over the file)."""
-    wanted = {i.upper() for i in icaos}
+def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
+    """{ICAO: (lat, lon)} of the airports found in ``apt`` (one pass over the file); every
+    airport's with ``icaos`` None."""
+    wanted = None if icaos is None else {i.upper() for i in icaos}
     found: dict = {}
     current: str | None = None
     datum: dict = {}
@@ -48,10 +50,10 @@ def airport_positions(apt: Path, icaos: Iterable[str]) -> dict:
                 close()
                 parts = line.split()
                 current = parts[4].decode("ascii", "replace").upper() if len(parts) > 4 else None
-                if current not in wanted:
+                if wanted is not None and current not in wanted:
                     current = None
                 datum, runway = {}, None
-                if len(found) == len(wanted):
+                if wanted is not None and len(found) == len(wanted):
                     break
             elif current is None:
                 continue
@@ -69,6 +71,31 @@ def airport_positions(apt: Path, icaos: Iterable[str]) -> dict:
         else:
             close()
     return found
+
+
+class AirportIndex:
+    """Every airport's position in X-Plane's apt.dat, read once in a thread of its own when Live
+    starts: a click on Start Flight is then placed at once. One pass over the file for one airport
+    took 3 s in the streamer's loop under a start's load, and the plugin, unanswered for a second,
+    let X-Plane go (LGAV and LCLK, 2026-09-29). Until the index is read, one pass as before."""
+
+    def __init__(self, apt: Path) -> None:
+        self.apt = apt
+        self._all: dict | None = None
+        threading.Thread(target=self._read, name="live-airports", daemon=True).start()
+
+    def _read(self) -> None:
+        with contextlib.suppress(OSError):
+            self._all = airport_positions(self.apt, None)
+
+    def __call__(self, icao: str) -> tuple[float, float] | None:
+        icao = icao.upper()
+        if self._all is not None:
+            return self._all.get(icao)
+        try:
+            return airport_positions(self.apt, [icao]).get(icao)
+        except OSError:
+            return None
 
 
 _LATLON = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")

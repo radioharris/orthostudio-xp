@@ -88,16 +88,12 @@ class CacheEvictTest(unittest.TestCase):
 
 class PreparedStartTest(unittest.TestCase):
     def test_reload_only_if_xplane_came_first(self):
-        from orthostudio.live.streamer import reload_after_prepared_start
+        from orthostudio.live.streamer import read_before_ready
 
-        self.assertFalse(reload_after_prepared_start(ready_at=100.0, xplane_started=150.0))
-        self.assertTrue(reload_after_prepared_start(ready_at=100.0, xplane_started=90.0))
-        self.assertTrue(
-            reload_after_prepared_start(ready_at=None, xplane_started=150.0)
-        )  # never ready
-        self.assertTrue(
-            reload_after_prepared_start(ready_at=100.0, xplane_started=None)
-        )  # cannot tell
+        self.assertFalse(read_before_ready(ready_at=100.0, xplane_started=150.0))
+        self.assertTrue(read_before_ready(ready_at=100.0, xplane_started=90.0))
+        self.assertTrue(read_before_ready(ready_at=None, xplane_started=150.0))  # never ready
+        self.assertTrue(read_before_ready(ready_at=100.0, xplane_started=None))  # cannot tell
 
 
 class ResetTest(unittest.TestCase):

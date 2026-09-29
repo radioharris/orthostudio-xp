@@ -31,6 +31,14 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
 
 Lines go out in UTF-8, never cut inside a character: the plugin shows French with its accents.
 
+The plugin lets X-Plane go when its first ``HOLD`` gets no answer within a second: no streamer.
+The streamer's loop, which answers, can be busy longer than that: a new start planned under a
+start's load kept it 3 s, and X-Plane went on at LGAV and LCLK with nothing built (2026-09-29).
+So while the loop is late reading the plugin's lines (``STAND_IN_S``), the gate reads them itself,
+keeps them for the loop and answers a ``HOLD`` with the loop's last ``WAIT`` (the start's name
+and figures as the loop last said them): X-Plane waits on. Never for a loop gone more than
+``ALIVE_S``: then X-Plane goes on, as without a streamer.
+
 The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
 it in ``Output/preferences/Freeflight.prf`` (``_last_start``, a JSON object), and the streamer
 starts building right then (hold test, docs/specs/live/hold-test.md).
@@ -43,14 +51,18 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 GATE_PORT = 49250
+STAND_IN_S = 0.5  # the loop this late reading the plugin's lines: the gate answers for it
+ALIVE_S = 60.0  # ... but not for a loop gone this long
 
 Airports = Callable[[str], tuple[float, float] | None]
 Start = tuple[float, float, str]  # latitude, longitude, a name for it
+Request = tuple[str, float, float, tuple, str]  # what, lat, lon, where to answer, why
 
 
 def read_last_start(prefs: Path) -> dict | None:
@@ -107,6 +119,13 @@ def place_in(name: str, lang: str) -> str:
     return name
 
 
+def _wait_line(left: int, name: str, done: float, took: float, mbs: float, lang: str) -> str:
+    return (
+        f"LIVE1 WAIT n={left} p={round(max(0.0, min(1.0, done)) * 1000)} s={round(took)} "
+        f"mbs={mbs:.1f} lang={lang} at={_fitted(place_in(name, lang), 100)}"
+    )
+
+
 def _fitted(text: str, limit: int) -> str:
     """``text`` cut to ``limit`` bytes of UTF-8 at a character's end: the plugin's own buffer."""
     return text.encode("utf-8")[:limit].decode("utf-8", "ignore")
@@ -133,6 +152,13 @@ class Gate:
             raise
         self.sock.setblocking(False)
         self._mtime = self._prefs_mtime()
+        self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
+        self._inbox: list[Request] = []  # read for the loop while it was busy
+        self._polled = time.monotonic()  # the loop's last read of the plugin's lines
+        self._wait = "LIVE1 WAIT n=0 p=0 s=0 mbs=0.0"  # what the gate says for the loop
+        self._stood_in: list[float] = []  # how late the loop was, each time
+        self._closed = threading.Event()
+        threading.Thread(target=self._stand_in, name="live-gate", daemon=True).start()
 
     def _prefs_mtime(self) -> float | None:
         try:
@@ -151,10 +177,28 @@ class Gate:
         self._mtime = mtime
         return start_position(start, self.airports) if start else None
 
-    def requests(self) -> list[tuple[str, float, float, tuple, str]]:
+    def requests(self) -> list[Request]:
         """The plugin's lines since the last call: (LOAD, HOLD or ASK, lat, lon, where to answer,
         why); ASK has no position (0, 0), and its why is what it measured of X-Plane's frames."""
-        out: list[tuple[str, float, float, tuple, str]] = []
+        with self._lock:
+            self._polled = time.monotonic()
+            out, self._inbox = self._inbox, []
+            out.extend(self._read())
+        return out
+
+    def stood_in(self) -> list[float]:
+        """How late the loop was each time the gate answered a HOLD for it, since the last call."""
+        with self._lock:
+            late, self._stood_in = self._stood_in, []
+        return late
+
+    def hold_at(self, name: str, lang: str = "en") -> None:
+        """A start just known, which the loop plans next: what the gate says for it meanwhile."""
+        self._wait = _wait_line(0, name, 0.0, 0.0, 0.0, lang)
+
+    def _read(self) -> list[Request]:
+        """Every line waiting on the socket (the caller holds the lock)."""
+        out: list[Request] = []
         while True:
             try:
                 data, addr = self.sock.recvfrom(512)
@@ -176,6 +220,24 @@ class Gate:
                     )
         return out
 
+    def _stand_in(self) -> None:
+        """While the loop is late reading the plugin's lines, read them for it, and tell a
+        waiting X-Plane to wait on (the module's docstring)."""
+        while not self._closed.wait(0.1):
+            with self._lock:
+                late = time.monotonic() - self._polled
+                if not STAND_IN_S < late < ALIVE_S or self._closed.is_set():
+                    continue
+                for request in self._read():
+                    self._inbox.append(request)
+                    if request[0] == "HOLD":
+                        self._send(self._wait, request[3])
+                        self._stood_in.append(late)
+
+    def _send(self, line: str, addr: tuple) -> None:
+        with contextlib.suppress(OSError):
+            self.sock.sendto(_encoded(line), addr)
+
     def answer(
         self,
         addr: tuple,
@@ -190,12 +252,8 @@ class Gate:
         if go:
             line = f"LIVE1 GO {left}"
         else:
-            line = (
-                f"LIVE1 WAIT n={left} p={round(max(0.0, min(1.0, done)) * 1000)} s={round(took)} "
-                f"mbs={mbs:.1f} lang={lang} at={_fitted(place_in(name, lang), 100)}"
-            )
-        with contextlib.suppress(OSError):
-            self.sock.sendto(_encoded(line), addr)
+            line = self._wait = _wait_line(left, name, done, took, mbs, lang)
+        self._send(line, addr)
 
     def note(
         self,
@@ -211,8 +269,9 @@ class Gate:
             line = f"LIVE1 NOTE {notice['id']} lang={lang} {note}"
         else:
             line = f"LIVE1 NONE lang={lang}"
-        with contextlib.suppress(OSError):
-            self.sock.sendto(_encoded(line), addr)
+        self._send(line, addr)
 
     def close(self) -> None:
-        self.sock.close()
+        self._closed.set()
+        with self._lock:
+            self.sock.close()

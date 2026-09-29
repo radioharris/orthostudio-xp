@@ -181,7 +181,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         relayout,
         setup_region,
     )
-    from orthostudio.live.route import Route, airport_positions, apt_dat
+    from orthostudio.live.route import AirportIndex, Route, apt_dat
     from orthostudio.live.streamer import Fix
 
     xp_dir = xplane_dir(options.xplane)
@@ -258,9 +258,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
     ):
         try:
-            gate = Gate(
-                xp_dir, lambda icao: airport_positions(apt_dat(xp_dir), [icao]).get(icao.upper())
-            )
+            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir)))
             log(
                 "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
                 "around the start is built"
