@@ -2,26 +2,76 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Which built textures to make coarser when the pack goes over its disk budget.
 
-Only textures more than 300 km from the aircraft and from the camera: beyond what X-Plane has
-loaded, where it reads nothing. Even there nothing is lost that X-Plane could miss: the probe flight
-saw it open a texture again 1,276 times for a sharper level and never for a coarser one, and a
-texture that comes back within reach is rebuilt by the planner before X-Plane wants it sharp.
+Only when it goes over (the user's choice, 2026-09-29: textures kept serve the next flights there, a
+way back and a hold, at no work and no disk writes), the least recently seen first, and only where
+nothing can show it.
 
-The least recently seen go first: a sharp texture back to 256 px (its small levels are in the file:
-nothing to download), and if that is not enough, 256 px ones back to the neutral clone.
+X-Plane 12 holds a window of DSF tiles round the aircraft: 4 columns of longitude by 3 rows of
+latitude, its columns centred on the tile boundary nearest the aircraft, its rows on the aircraft's
+own row. It moves them 0.15 degree past a column's middle in the direction of travel, and lets go of
+the tiles left behind at once. The measurement flight (2026-09-29) went from LFBO to LFMT and back
+at FL300: X-Plane moved at 1.65 and 3.65 east, then at 3.35 and 2.35 back west, loading again the
+columns it had let go of. The starts at LEMD, LEBL and LFBO showed the same window. So behind the
+aircraft X-Plane holds 1.65 to 2.65 columns, 133 to 213 km at 43.6 N; the 300 km kept until then
+held about twice that.
+
+- A sharp texture goes back to 256 px (its small levels are in the file: nothing to download) when
+  no tile it lies on is in the window X-Plane may hold round the aircraft or the camera
+  (:func:`xplane_tiles`, with HYSTERESIS_DEG either way for where X-Plane moves it). The planner
+  checks too that X-Plane reads only its 256 px level from there, beyond its 512 px ring and the
+  camera's reach, so that a window other than measured (another latitude, another X-Plane) still
+  shows nothing. X-Plane reads 256 px of a tile when it loads it again, and the planner builds the
+  texture sharp again before X-Plane wants it so, as any texture ahead.
+- A 256 px texture goes back to the neutral clone only beyond 300 km (EVICT_SAFE_KM): within that
+  distance the planner keeps every texture at its 256 px level (X-Plane loads tiles up to 230 km
+  out).
+
+Nothing is lost that X-Plane could miss: the probe flight saw it open a texture again 1,276 times
+for a sharper level and never for a coarser one.
 """
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Callable, Mapping
 from functools import cache
 
 from . import dds
+from .geo import Texture
 from .region import NEUTRAL_LEVEL
 
-EVICT_SAFE_KM = 300.0
+EVICT_SAFE_KM = 300.0  # beyond: a 256 px texture may go back to the neutral clone
+# X-Plane's window of DSF tiles (the module's docstring), and how far past a column's middle it may
+# be left: 0.15 degree measured on columns, rows not measured
+XPLANE_COLUMNS = 4
+XPLANE_ROWS = 3
+HYSTERESIS_DEG = 0.25
 TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction at every step
+
+
+def xplane_tiles(lat: float, lon: float) -> set[tuple[int, int]]:
+    """The DSF tiles, (latitude, longitude) of their south-west corners, that X-Plane may hold
+    with the aircraft at (``lat``, ``lon``): its window wherever its lag may have left it."""
+    columns: set[int] = set()
+    for at in (lon - HYSTERESIS_DEG, lon + HYSTERESIS_DEG):
+        middle = math.floor(at + 0.5)  # the tile boundary nearest
+        columns.update(range(middle - XPLANE_COLUMNS // 2, middle + XPLANE_COLUMNS // 2))
+    rows: set[int] = set()
+    for at in (lat - HYSTERESIS_DEG, lat + HYSTERESIS_DEG):
+        middle = math.floor(at)  # the row itself
+        rows.update(range(middle - XPLANE_ROWS // 2, middle + XPLANE_ROWS // 2 + 1))
+    return {(row, (column + 180) % 360 - 180) for row in rows for column in columns}
+
+
+def tiles_of(texture: Texture) -> set[tuple[int, int]]:
+    """The DSF tiles a texture lies on: two or four where it crosses a tile's edge."""
+    south, west, north, east = texture.bounds
+    return {
+        (row, column)
+        for row in range(math.floor(south), math.floor(north - 1e-9) + 1)
+        for column in range(math.floor(west), math.floor(east - 1e-9) + 1)
+    }
 
 
 @cache
@@ -53,19 +103,23 @@ def levels_usage(levels: Mapping[int, int]) -> int:
 def pick(
     built: dict[str, int],
     seen: dict[str, float],
-    far: Callable[[str], bool],
+    coarsen: Callable[[str], bool],
     budget: int,
     top_of: Callable[[str], int] = lambda _: 0,
+    neutral: Callable[[str], bool] | None = None,
 ) -> list[tuple[str, int]]:
-    """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can;
-    ``top_of``: each texture's file size, as :func:`usage` takes it."""
+    """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
+    sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
+    when not given) back to the neutral clone, the least recently seen first. ``top_of``: each
+    texture's file size, as :func:`usage` takes it."""
     total = usage(built, top_of)
     if total <= budget:
         return []
+    neutral = coarsen if neutral is None else neutral
     target = budget * TARGET
     out: list[tuple[str, int]] = []
     sharp = sorted(
-        (n for n, lv in built.items() if lv < 4 and far(n)), key=lambda n: seen.get(n, 0.0)
+        (n for n, lv in built.items() if lv < 4 and coarsen(n)), key=lambda n: seen.get(n, 0.0)
     )
     for name in sharp:
         top = top_of(name)
@@ -74,7 +128,7 @@ def pick(
         if total <= target:
             return out
     small = sorted(
-        (n for n, lv in built.items() if lv == 4 and far(n)), key=lambda n: seen.get(n, 0.0)
+        (n for n, lv in built.items() if lv == 4 and neutral(n)), key=lambda n: seen.get(n, 0.0)
     )
     for name in small:
         total -= texture_bytes(4, top_of(name))

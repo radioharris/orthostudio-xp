@@ -339,10 +339,12 @@ is never made on the computer's own disk instead: Live says so and does not star
 They share one disk space, as AutoOrtho's and XPME's cache is one: set in the window (40 GB by
 default; `--disk-gb` in a terminal, where the window's setting is the default), half for the pack's
 textures, half for the imagery (two spaces, set apart, left a user wondering which to raise). Over
-its half, OrthoStudio XP Live makes the textures seen longest ago coarser, only those more than 300
-km from the aircraft and the camera, where X-Plane reads nothing: first back to 256 px (their small
-levels are in the file, nothing to download), then to the placeholder; and it drops the imagery
-downloaded longest ago. A texture that comes back within reach is built again before X-Plane wants
+its half, OrthoStudio XP Live makes the textures seen longest ago coarser, only where nothing can
+show it: first back to 256 px (their small levels are in the file, nothing to download) where
+X-Plane no longer holds them, then to the placeholder more than 300 km away; and it drops the
+imagery downloaded longest ago. X-Plane holds a window of 4 by 3 scenery tiles round the aircraft
+and lets go of the tiles it leaves behind, about 130 to 210 km behind the aircraft in France: a
+measurement flight showed it, and Live keeps its hands off that window. A texture that comes back within reach is built again before X-Plane wants
 it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk.
 
 ## What it costs

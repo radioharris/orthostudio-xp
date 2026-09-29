@@ -59,7 +59,7 @@ from . import dds, machine, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
-from .evict import EVICT_SAFE_KM, TARGET, pick, usage
+from .evict import EVICT_SAFE_KM, TARGET, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
@@ -1048,8 +1048,29 @@ class Streamer:
                         if job.stage != "encoding":
                             self.in_flight.pop(name, None)
 
+    def may_coarsen(self, name: str) -> bool:
+        """Whether a sharp texture may go back to 256 px (orthostudio.live.evict): X-Plane holds
+        none of the tiles it lies on round the aircraft or the camera, and reads only its 256 px
+        level from there, beyond its 512 px ring and the camera's reach."""
+        fix = self.last_fix
+        if fix is None:
+            return True
+        tex = parse_texture_name(name)
+        if tex is None:
+            return False
+        points = [(fix.lat, fix.lon)] + (
+            [(fix.cam_lat, fix.cam_lon)] if fix.cam_lat is not None else []
+        )
+        held = set().union(*(xplane_tiles(lat, lon) for lat, lon in points))
+        if tiles_of(tex) & held:
+            return False
+        lat, lon = tex.center
+        read_km = ring_km(3, tex.zoom) * self.margin * self.scale + self.reach_km
+        return all(haversine_m(p[0], p[1], lat, lon) > read_km * 1000 for p in points)
+
     def far(self, name: str) -> bool:
-        """Beyond anything X-Plane has loaded: more than 300 km from the aircraft and the camera."""
+        """Beyond anything X-Plane has loaded: more than 300 km from the aircraft and the camera.
+        A 256 px texture may go back to the neutral clone there (orthostudio.live.evict)."""
         fix = self.last_fix
         if fix is None:
             return True
@@ -1072,9 +1093,10 @@ class Streamer:
         picks = pick(
             self.built,
             self.seen,
-            lambda n: n not in busy and self.far(n),
+            lambda n: n not in busy and self.may_coarsen(n),
             self.disk_budget,
             self.top_of,
+            neutral=lambda n: n not in busy and self.far(n),
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name

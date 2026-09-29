@@ -13,8 +13,8 @@ from pathlib import Path
 from live_helpers import file_extents, make_source
 from orthostudio.live import dds
 from orthostudio.live.cache import IMAGE, ChunkCache
-from orthostudio.live.evict import pick, texture_bytes, usage
-from orthostudio.live.geo import parse_texture_name
+from orthostudio.live.evict import pick, texture_bytes, tiles_of, usage, xplane_tiles
+from orthostudio.live.geo import Texture, parse_texture_name
 from orthostudio.live.region import NEUTRAL_FILE, NEUTRAL_LEVEL, setup_region
 from orthostudio.live.streamer import Fix, Streamer, camera_position
 from orthostudio.live.texture import downgrade, write_sparse
@@ -44,6 +44,62 @@ class PickTest(unittest.TestCase):
             pick(built, {"x": 2.0, "y": 1.0}, lambda n: True, 1),
             [("y", NEUTRAL_LEVEL), ("x", NEUTRAL_LEVEL)],
         )
+
+
+class XPlaneWindowTest(unittest.TestCase):
+    """The DSF tiles X-Plane holds, as the measurement flight and three starts showed them
+    (2026-09-29)."""
+
+    def window(self, rows, columns):
+        return {(r, c) for r in rows for c in columns}
+
+    def test_the_starts(self):
+        for lat, lon, rows, columns in (
+            (43.637, 1.358, range(42, 45), range(-1, 3)),  # LFBO: -1..2, 42..44
+            (40.472, -3.561, range(39, 42), range(-6, -2)),  # LEMD
+            (41.297, 2.078, range(40, 43), range(0, 4)),  # LEBL
+        ):
+            self.assertLessEqual(self.window(rows, columns), xplane_tiles(lat, lon), (lat, lon))
+
+    def test_the_flight_east_and_back(self):
+        # east: column 3 loaded at 1.65, column 5 at 3.65; columns 0 and 1 let go on the way
+        self.assertIn((43, 3), xplane_tiles(43.637, 1.651))
+        at_3_65 = xplane_tiles(43.63, 3.65)
+        self.assertLessEqual(self.window(range(42, 45), range(2, 6)), at_3_65)
+        self.assertNotIn((43, 0), at_3_65)  # let go of at 2.65: loaded again at 2.35
+        # back west: column 1 loaded again at 3.35, column 0 at 2.35
+        self.assertIn((43, 1), xplane_tiles(43.52, 3.349))
+        at_2_2 = xplane_tiles(43.52, 2.2)
+        self.assertIn((43, 0), at_2_2)
+        self.assertNotIn((43, 5), at_2_2)
+        self.assertNotIn((43, -1), xplane_tiles(43.52, 2.9))  # far behind: let go of
+        # behind, at 43.6 N, 213 km at most: 2.65 columns
+        self.assertNotIn((43, 0), xplane_tiles(43.6, 3.2))
+
+    def test_the_rows(self):
+        self.assertLessEqual(self.window(range(42, 45), [1]), xplane_tiles(43.5, 1.2))
+        self.assertNotIn((45, 1), xplane_tiles(43.5, 1.2))
+        self.assertIn((45, 1), xplane_tiles(43.9, 1.2))  # its lag, near a row's edge
+
+    def test_a_texture_across_a_tile_edge(self):
+        across = Texture(23904, 33120, "BI", 16)  # 1.934 to 2.021 E
+        self.assertEqual(tiles_of(across), {(43, 1), (43, 2)})
+        inside = parse_texture_name("23904_33232_BI16.dds")
+        self.assertEqual(len(tiles_of(inside)), 1)
+
+
+class TwoStepPickTest(unittest.TestCase):
+    def test_coarser_where_x_plane_holds_nothing_neutral_only_far(self):
+        built = {"behind": 0, "far_small": 4, "near_small": 4}
+        seen = {"behind": 1.0, "far_small": 2.0, "near_small": 0.5}
+        got = pick(
+            built,
+            seen,
+            lambda n: n != "near_small",
+            1,
+            neutral=lambda n: n == "far_small",
+        )
+        self.assertEqual(got, [("behind", 4), ("far_small", NEUTRAL_LEVEL)])
 
 
 class DowngradeTest(unittest.TestCase):
@@ -198,6 +254,23 @@ class StreamerTest(unittest.TestCase):
         finally:
             stop.set()
             thread.join()
+
+    def test_what_may_go_back_to_256_px(self):
+        """Nothing on a tile X-Plane may hold, round the aircraft or the camera; nothing X-Plane
+        reads sharper than 256 px from there."""
+        s = self.streamer()
+        name = f"{NAMES[0]}.dds"
+        lat, lon = parse_texture_name(name).center
+        s.last_fix = Fix(lat, lon - 1.5)  # the texture two columns away: X-Plane holds its tile
+        self.assertFalse(s.may_coarsen(name))
+        s.last_fix = Fix(lat, lon - 3.6)  # four columns away, 280 km: let go of
+        self.assertTrue(s.may_coarsen(name))
+        self.assertTrue(s.far(name) is False)  # yet within 300 km: 256 px, not the neutral clone
+        s.last_fix = Fix(lat, lon - 3.6, cam_lat=lat, cam_lon=lon - 1.0)  # the camera there
+        self.assertFalse(s.may_coarsen(name))
+        s.reach_km = 400.0  # a window other than measured: the 256 px guard still holds
+        s.last_fix = Fix(lat, lon - 3.6)
+        self.assertFalse(s.may_coarsen(name))
 
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:
