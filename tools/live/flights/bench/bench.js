@@ -71,11 +71,22 @@ function showOptions(opts) {
     const radio = el("input", { type: "radio", name: "campaign", value: c.name });
     if (i === 0) radio.checked = true;
     if (c.error) radio.disabled = true;
-    const label = el("span", { class: "choice-label", text: c.title || c.name },
-      c.minutes !== undefined ? el("span", { class: "num", text: `environ ${minutes(c.minutes)}` }) : null);
-    const runs = c.runs ? el("ol", { class: "bench-runs" }, ...c.runs.map((r) => el("li", { text: r }))) : null;
+    const label = el("span", { class: "choice-label", text: c.title || c.name });
     const about = c.error || `${c.name}, sur ${(c.scenarios || []).join(", ")}`;
-    camps.append(choice(radio, label, about, runs, c.about));
+    camps.append(choice(radio, label, about, null, c.about));
+    if (c.error) return;
+    // its comparisons, each to tick; without any, its runs
+    const items = c.comparisons && c.comparisons.length
+      ? c.comparisons.map((k) => ({ value: k.index, text: `${k.index}. ${k.title}` }))
+      : c.runs.map((r, n) => ({ value: n + 1, text: `${n + 1}. ${r.label}` }));
+    const list = el("div", { class: "choices bench-picks", "data-campaign": c.name });
+    for (const it of items) {
+      const box = el("input", { type: "checkbox", name: `pick-${c.name}`, value: String(it.value) });
+      box.checked = true;
+      list.append(el("label", { class: "choice" }, box, el("span", { class: "choice-text" },
+        el("span", { class: "choice-label", text: it.text }))));
+    }
+    camps.append(list);
   });
   if (!opts.autoortho) {
     $("ao-choice").classList.add("is-disabled");
@@ -89,7 +100,9 @@ function picked() {
   const mode = document.querySelector("input[name=mode]:checked").value;
   if (mode === "campaign") {
     const c = document.querySelector("input[name=campaign]:checked");
-    return { campaign: c ? c.value : "" };
+    if (!c) return { campaign: "" };
+    const pick = [...document.querySelectorAll(`input[name="pick-${c.value}"]:checked`)].map((b) => Number(b.value));
+    return { campaign: c.value, pick };
   }
   const streamer = document.querySelector("input[name=streamer]:checked").value;
   return {
@@ -120,7 +133,18 @@ function refreshChoice() {
     note = chosen.length ? `environ ${minutes(m + 1)} : X-Plane s'ouvre, vole, puis se ferme tout seul` : "coche au moins un scénario";
   } else if (options) {
     const c = options.campaigns.find((x) => x.name === p.campaign);
-    note = c && c.minutes ? `environ ${minutes(c.minutes)}, personne aux commandes` : "";
+    for (const list of document.querySelectorAll(".bench-picks")) list.hidden = !c || list.dataset.campaign !== c.name;
+    if (c && !c.error) {
+      const flights = new Set(); // a flight two comparisons share is flown once
+      if (c.comparisons.length) {
+        for (const k of c.comparisons) if (p.pick.includes(k.index)) k.runs.forEach((r) => flights.add(r));
+      } else {
+        c.runs.forEach((r, n) => { if (p.pick.includes(n + 1)) flights.add(r.id); });
+      }
+      const n = flights.size;
+      note = n ? `${n} vol${n > 1 ? "s" : ""} différent${n > 1 ? "s" : ""}, environ ${minutes(n * c.run_minutes)}, personne aux commandes`
+        : "coche au moins une comparaison";
+    }
   }
   $("start-note").textContent = note;
 }

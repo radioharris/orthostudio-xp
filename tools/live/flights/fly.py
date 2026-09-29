@@ -45,6 +45,7 @@ import socket
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -756,32 +757,69 @@ def label(a: argparse.Namespace) -> str:
     return ", ".join(parts)
 
 
-def read_campaign(ref: str) -> tuple[list[str], list[list[str]]]:
-    """A campaign's scenarios, and the options of each of its runs: ``campaigns/<ref>.txt``, or a
-    file. Its lines: ``scenarios NAME...``, ``run OPTIONS...`` (the runner's own options), and
-    ``title WORDS`` for the window."""
+@dataclass
+class Campaign:
+    """A campaign file (``campaigns/<name>.txt``). Its lines: ``title WORDS`` for the window,
+    ``scenarios NAME...``, ``run [ID] OPTIONS...`` (the runner's own options, a flight's setup),
+    and ``compare ID ID...``: runs to read side by side. A run two comparisons share is flown
+    once."""
+
+    name: str
+    title: str
+    scenarios: list[str]
+    runs: list[tuple[str, list[str]]]  # (its id, its options), in the file's order
+    comparisons: list[list[str]]  # the ids compared, in the file's order
+
+    def picked(
+        self, picks: list[int] | None
+    ) -> tuple[list[list[str]], list[tuple[str, list[str]]]]:
+        """The comparisons ``picks`` (from 1; all when None) and the runs they need, each once,
+        in the order they are first needed. Without comparisons, ``picks`` are runs."""
+        if not self.comparisons:
+            chosen = [self.runs[k - 1] for k in picks] if picks else list(self.runs)
+            return [], chosen
+        comps = [self.comparisons[k - 1] for k in picks] if picks else list(self.comparisons)
+        by_id = dict(self.runs)
+        order: list[str] = []
+        for comp in comps:
+            order += [i for i in comp if i not in order]
+        return comps, [(i, by_id[i]) for i in order]
+
+
+def read_campaign(ref: str) -> Campaign:
     path = Path(ref)
     if not path.suffix and not path.exists():
         path = CAMPAIGNS / f"{ref}.txt"
     if not path.is_file():
         known = ", ".join(sorted(p.stem for p in CAMPAIGNS.glob("*.txt")))
         raise RefusedError(f"no campaign {ref!r} (the campaigns: {known})")
-    names, runs = [], []
+    title, names, runs, comparisons = "", [], [], []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if line.startswith("title "):
+            title = line[len("title ") :].split("#", 1)[0].strip()
+            continue
         words = shlex.split(line.split("#", 1)[0])
         if not words:
             continue
         if words[0] == "scenarios":
             names += words[1:]
-        elif words[0] == "title":
-            continue  # for the window (bench.py)
         elif words[0] == "run":
-            runs.append(words[1:])
+            rest = words[1:]
+            run_id = rest.pop(0) if rest and not rest[0].startswith("--") else f"run{len(runs) + 1}"
+            if any(run_id == i for i, _ in runs):
+                raise RefusedError(f"{path.name}, line {number}: a second run {run_id!r}")
+            runs.append((run_id, rest))
+        elif words[0] == "compare":
+            ids = {i for i, _ in runs}
+            unknown = [w for w in words[1:] if w not in ids]
+            if unknown or len(words) < 3:
+                raise RefusedError(f"{path.name}, line {number}: compare two runs named before")
+            comparisons.append(words[1:])
         else:
-            raise RefusedError(f"{path.name}, line {number}: neither scenarios nor run")
+            raise RefusedError(f"{path.name}, line {number}: not title, scenarios, run or compare")
     if not names or not runs:
         raise RefusedError(f"{path.name}: a scenarios line and a run line at least")
-    return names, runs
+    return Campaign(path.stem, title, names, runs, comparisons)
 
 
 def wait_quiet(timeout_s: float = 600.0) -> None:
@@ -794,33 +832,64 @@ def wait_quiet(timeout_s: float = 600.0) -> None:
     raise RefusedError("X-Plane or a streamer still runs 10 min after the run before")
 
 
+def picks_of(text: str | None) -> list[int] | None:
+    """``1,3``: the campaign's comparisons (or runs) chosen, counted from 1."""
+    if not text:
+        return None
+    try:
+        picks = [int(w) for w in text.split(",") if w.strip()]
+    except ValueError:
+        raise RefusedError(f"--pick {text!r}: numbers, e.g. 1,3") from None
+    return picks or None
+
+
 def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace) -> int:
-    """Each run of the campaign in turn, X-Plane started again for each (its streamer must be
-    there before it), then the runs side by side in ``<date time> <campaign>.md``."""
-    names, runs = read_campaign(ref)
-    for s in names:
+    """The runs the comparisons chosen need, each in turn and once, X-Plane started again for each
+    (its streamer must be there before it); then ``<date time> <campaign>.md``: every run side by
+    side, then each comparison's."""
+    camp = read_campaign(ref)
+    picks = picks_of(base.pick)
+    count = len(camp.comparisons) or len(camp.runs)
+    if picks and any(not 1 <= k <= count for k in picks):
+        raise RefusedError(f"--pick: from 1 to {count}")
+    comps, runs = camp.picked(picks)
+    for s in camp.scenarios:
         scenarios.load(s)  # a wrong name said now, not after an hour of flights
     if xplane_up() or live_runs() or autoortho_runs():
         raise RefusedError("X-Plane, Live or AutoOrtho runs: quit them, the campaign starts each")
     extra = ["--results", str(base.results)] + (
         ["--xplane", str(base.xplane)] if base.xplane else []
     )
-    done: list[tuple[str, Path]] = []
+    done: dict[str, tuple[str, Path]] = {}  # run id: (what ran, its series' folder)
     stamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
-    table = base.results / f"{stamp} {Path(ref).stem}.md"
+    table = base.results / f"{stamp} {camp.name}.md"
     code = 0
-    for k, options in enumerate(runs, 1):
-        a = parser.parse_args([*options, *extra, *names])
+    for k, (run_id, options) in enumerate(runs, 1):
+        a = parser.parse_args([*options, *extra, *camp.scenarios])
         if a.cold and a.streamer == "none":
-            raise RefusedError(f"run {k}: --cold is for a streamer")
+            raise RefusedError(f"run {run_id}: --cold is for a streamer")
         if k > 1:
             say("waiting for X-Plane and the streamer of the run before to quit")
             wait_quiet()
-        say(f"campaign {Path(ref).stem}, run {k} of {len(runs)}: {label(a)}")
-        code = max(code, run(a))
-        done.append((label(a), a.out))
+        say(f"campaign {camp.name}, run {k} of {len(runs)}: {label(a)}")
+        try:
+            code = max(code, run(a))
+        except RefusedError as e:  # this run could not fly: the next ones still can
+            say(f"run {run_id} refused: {e}")
+            code = max(code, 1)
+            if getattr(a, "out", None) is None:
+                continue
+        done[run_id] = (label(a), a.out)
         base.results.mkdir(parents=True, exist_ok=True)
-        table.write_text(f"# {Path(ref).stem}, {stamp}\n\n" + report.campaign_table(done))
+        text = f"# {camp.title or camp.name}, {stamp}\n\n" + report.campaign_table(
+            list(done.values())
+        )
+        for n, comp in enumerate(comps, 1):
+            if all(i in done for i in comp):
+                names = " against ".join(done[i][0] for i in comp)
+                text += f"\n# Comparison {n}: {names}\n\n"
+                text += report.campaign_table([done[i] for i in comp])
+        table.write_text(text)
     say(f"campaign done: {table}")
     print(table.read_text())
     return code
@@ -859,6 +928,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--xplane", type=Path, help="X-Plane 12's folder (default: detected)")
     p.add_argument("--results", type=Path, default=RESULTS)
     p.add_argument("--campaign", help="the runs of campaigns/<name>.txt, each in turn")
+    p.add_argument(
+        "--pick", help="with --campaign: its comparisons chosen, e.g. 1,3 (all by default)"
+    )
     p.add_argument("--after-series", type=int, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     if a.after_series is not None:

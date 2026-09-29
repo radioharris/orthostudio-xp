@@ -15,6 +15,7 @@
 .bench-list { margin-top: var(--gap); padding-top: var(--gap); border-top: 1px solid var(--line); }
 .bench-list .choice-label .num { color: var(--fg-3); font-weight: 400; margin-left: 6px; }
 .bench-runs { margin: 2px 0 0; padding-left: 16px; font-size: var(--fs-2); color: var(--fg-2); }
+.bench-picks { margin: 0 0 var(--gap) 24px; }
 .bench-select { width: auto; min-width: 20em; }
 .bench-cold { margin-top: var(--gap); }
 .bench-go { display: flex; align-items: center; gap: 10px; margin-top: var(--gap); flex-wrap: wrap; }

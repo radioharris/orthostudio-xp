@@ -472,16 +472,46 @@ def test_what_the_start_and_the_path_cost() -> None:
 
 
 def test_the_campaigns_of_the_repository_read(tmp_path: Path) -> None:
-    names, runs = fly.read_campaign("ao-vs-live")
-    assert names == ["toulouse-low"]
-    assert ["--streamer", "autoortho", "--ao-settings", "default", "--cold"] in runs
-    assert all(options[0] == "--streamer" for options in runs)
+    camp = fly.read_campaign("ao-vs-live")
+    assert camp.scenarios == ["toulouse-low"]
+    assert camp.title.startswith("AutoOrtho contre Live")
+    runs = dict(camp.runs)
+    assert runs["ao-default-1719"] == [
+        "--streamer", "autoortho", "--ao-settings", "default", "--zooms", "17/19", "--cold",
+    ]  # fmt: skip
+    assert all(options[0] == "--streamer" for options in runs.values())
+    # the user's four comparisons (2026-09-29), five flights: the shared ones flown once
+    assert camp.comparisons == [
+        ["ao-default-1719", "live-1618"],
+        ["ao-default-1719", "live-1719"],
+        ["ao-mine-1618", "live-1618"],
+        ["ao-mine-1719", "live-1719"],
+    ]
+    comps, flights = camp.picked(None)
+    assert len(comps) == 4 and len(flights) == 5
+    comps, flights = camp.picked([1, 3])
+    assert [i for i, _ in flights] == ["ao-default-1719", "live-1618", "ao-mine-1618"]
+    assert [i for i, _ in camp.picked([4])[1]] == ["ao-mine-1719", "live-1719"]
     bad = tmp_path / "bad.txt"
     bad.write_text("scenarios toulouse-low\nfly --streamer live\n")
     with pytest.raises(fly.RefusedError, match="line 2"):
         fly.read_campaign(str(bad))
+    bad.write_text("scenarios toulouse-low\nrun a --streamer live\ncompare a b\n")
+    with pytest.raises(fly.RefusedError, match="line 3: compare two runs named before"):
+        fly.read_campaign(str(bad))
     with pytest.raises(fly.RefusedError, match="no campaign"):
         fly.read_campaign("nowhere")
+
+
+def test_a_campaign_without_comparisons_picks_its_runs(tmp_path: Path) -> None:
+    path = tmp_path / "plain.txt"
+    path.write_text("scenarios camera-check\nrun --streamer live\nrun --streamer autoortho\n")
+    camp = fly.read_campaign(str(path))
+    assert [i for i, _ in camp.runs] == ["run1", "run2"]
+    assert camp.picked([2]) == ([], [("run2", ["--streamer", "autoortho"])])
+    assert fly.picks_of("1, 3") == [1, 3] and fly.picks_of("") is None
+    with pytest.raises(fly.RefusedError):
+        fly.picks_of("one")
 
 
 def test_what_ran_in_a_few_words() -> None:

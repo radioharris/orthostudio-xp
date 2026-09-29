@@ -43,6 +43,9 @@ SIZE = (1240, 900)
 CURRENT = "bench-current.json"  # in the results: the flight under way, for a window opened again
 LOGS = "bench-logs"
 START_S = 60.0  # X-Plane's start and the runner's own steps, for the time a choice will take
+RUN_EXTRA_S = (
+    8 * 60
+)  # a campaign's run beyond its flights: a cold start (AutoOrtho's took 4 min), the quits
 STREAMERS = ("none", "live", "autoortho")
 ZOOMS = ("", "16/18", "17/19")
 
@@ -66,13 +69,6 @@ class BenchError(ValueError):
 
 
 # ---- what there is to fly ---------------------------------------------------------------------
-
-
-def campaign_title(path: Path) -> str:
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("title "):
-            return line[len("title ") :].split("#", 1)[0].strip()
-    return ""
 
 
 def _lead(path: Path) -> str:
@@ -105,21 +101,28 @@ def options() -> dict[str, Any]:
     camps = []
     for path in sorted(fly.CAMPAIGNS.glob("*.txt")):
         try:
-            names, runs = fly.read_campaign(str(path))
-        except fly.RefusedError as e:
+            camp = fly.read_campaign(str(path))
+            flight = sum(scenarios.load(n).duration for n in camp.scenarios) / 60
+        except (fly.RefusedError, scenarios.ScenarioError) as e:
             camps.append({"name": path.stem, "error": str(e)})
             continue
-        minutes = sum(scenarios.load(n).duration for n in names) / 60
         parser = parser_for_labels()
-        labels = [in_french(fly.label(parser.parse_args([*r, *names]))) for r in runs]
+        args = {i: parser.parse_args([*opts, *camp.scenarios]) for i, opts in camp.runs}
+        all_cold = all(a.cold for a in args.values())
+        labels = {i: in_french(fly.label(a)) for i, a in args.items()}
+        short = {i: lb.removesuffix(", à froid") if all_cold else lb for i, lb in labels.items()}
         camps.append(
             {
-                "name": path.stem,
-                "title": campaign_title(path) or path.stem,
+                "name": camp.name,
+                "title": camp.title or camp.name,
                 "about": _lead(path),
-                "scenarios": names,
-                "runs": labels,
-                "minutes": round(len(runs) * (minutes + START_S / 60 + 1), 0),
+                "scenarios": camp.scenarios,
+                "runs": [{"id": i, "label": labels[i]} for i, _ in camp.runs],
+                "comparisons": [
+                    {"index": n, "runs": comp, "title": " contre ".join(short[i] for i in comp)}
+                    for n, comp in enumerate(camp.comparisons, 1)
+                ],
+                "run_minutes": round(flight + RUN_EXTRA_S / 60, 1),
             }
         )
     ao = fly.AO_PYTHON.is_file() and (fly.AO_SOURCES / "__main__.py").is_file()
@@ -147,6 +150,15 @@ def fly_args(choice: dict[str, Any]) -> list[str]:
         known = {p.stem for p in fly.CAMPAIGNS.glob("*.txt")}
         if campaign not in known:
             raise BenchError(f"pas de campagne « {campaign} »")
+        camp = fly.read_campaign(campaign)
+        count = len(camp.comparisons) or len(camp.runs)
+        pick = sorted({int(k) for k in choice.get("pick") or []})
+        if "pick" in choice and not pick:
+            raise BenchError("coche au moins une comparaison")
+        if any(not 1 <= k <= count for k in pick):
+            raise BenchError(f"comparaisons de 1 à {count}")
+        if pick and len(pick) < count:
+            return ["--campaign", campaign, "--pick", ",".join(map(str, pick))]
         return ["--campaign", campaign]
     names = [str(n) for n in choice.get("scenarios") or []]
     if not names:
@@ -500,26 +512,29 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The window; ``--serve``: the page and its API only, until Ctrl-C (a browser of one's own)."""
+    """The window; ``--serve``: the page and its API only, until Ctrl-C (a browser of one's own);
+    ``--port N``: another port than PORT."""
     import uvicorn
 
     from orthostudio import window
 
-    serve_only = "--serve" in (sys.argv[1:] if argv is None else argv)
+    args = sys.argv[1:] if argv is None else argv
+    serve_only = "--serve" in args
+    port = int(args[args.index("--port") + 1]) if "--port" in args else PORT
     app = create_app(Runner())
     server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="warning", lifespan="off")
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off")
     )
     thread = threading.Thread(target=server.run, name="bench-web", daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
     while not server.started:
         if not thread.is_alive() or time.monotonic() > deadline:
-            print(f"nothing could listen on 127.0.0.1:{PORT} (the window open already?)")
-            webbrowser.open(f"http://127.0.0.1:{PORT}/")
+            print(f"nothing could listen on 127.0.0.1:{port} (the window open already?)")
+            webbrowser.open(f"http://127.0.0.1:{port}/")
             return 1
         time.sleep(0.05)
-    url = f"http://127.0.0.1:{PORT}/"
+    url = f"http://127.0.0.1:{port}/"
     try:
         if serve_only:
             print(f"{TITLE}: {url} (Ctrl-C here to stop)", flush=True)

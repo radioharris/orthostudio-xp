@@ -28,8 +28,16 @@ def test_the_window_offers_every_scenario_and_campaign_with_its_title() -> None:
     assert names["toulouse-low"]["minutes"] == 20.0
     assert "Toulouse" in names["toulouse-low"]["about"]
     camp = next(c for c in opts["campaigns"] if c["name"] == "ao-vs-live")
-    assert camp["runs"][0] == "AutoOrtho, ses réglages par défaut, à froid"
-    assert "AutoOrtho, tes réglages, ZL17/19, à froid" in camp["runs"]
+    labels = {r["id"]: r["label"] for r in camp["runs"]}
+    assert labels["ao-default-1719"] == "AutoOrtho, ses réglages par défaut, ZL17/19, à froid"
+    assert labels["ao-mine-1618"] == "AutoOrtho, tes réglages, ZL16/18, à froid"
+    assert camp["comparisons"][0] == {
+        "index": 1,
+        "runs": ["ao-default-1719", "live-1618"],
+        "title": "AutoOrtho, ses réglages par défaut, ZL17/19 contre Live, ZL16/18",
+    }
+    assert len(camp["comparisons"]) == 4
+    assert camp["run_minutes"] == 28.0  # its 20 min flight and a cold start
     assert camp["scenarios"] == ["toulouse-low"]
     assert isinstance(opts["autoortho"], bool)
 
@@ -67,6 +75,10 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
         "--campaign",
         "ao-vs-live",
     ]
+    every = bench.fly_args({"campaign": "ao-vs-live", "pick": [1, 2, 3, 4]})
+    assert every == ["--campaign", "ao-vs-live"]
+    some = bench.fly_args({"campaign": "ao-vs-live", "pick": [3, 1]})
+    assert some == ["--campaign", "ao-vs-live", "--pick", "1,3"]
 
 
 @pytest.mark.parametrize(
@@ -75,6 +87,8 @@ def test_a_choice_becomes_the_runners_arguments() -> None:
         ({"scenarios": []}, "au moins un scénario"),
         ({"scenarios": ["nowhere"]}, "pas de scénario"),
         ({"campaign": "nowhere"}, "pas de campagne"),
+        ({"campaign": "ao-vs-live", "pick": []}, "au moins une comparaison"),
+        ({"campaign": "ao-vs-live", "pick": [5]}, "de 1 à 4"),
         ({"scenarios": ["camera-check"], "streamer": "ao"}, "streamer inconnu"),
         ({"scenarios": ["camera-check"], "zooms": "17/19"}, "Live ou AutoOrtho"),
         ({"scenarios": ["camera-check"], "cold": True}, "Live ou AutoOrtho"),

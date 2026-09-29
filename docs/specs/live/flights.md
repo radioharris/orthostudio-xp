@@ -127,17 +127,21 @@ is closed, and the window finds it again (`build/flights/bench-current.json`). `
 
 A campaign flies the same scenarios under several setups, one after the other, and puts them side
 by side: `fly.py --campaign ao-vs-live` reads `tools/live/flights/campaigns/ao-vs-live.txt`, whose
-lines are `scenarios NAME...` and `run OPTIONS...` (the runner's own options). Each run starts its
-streamer and X-Plane again (X-Plane reads the scenery packs at its start), and waits for the X-Plane
-and the streamer of the run before to have quit. After each run, `<date time> <campaign>.md` in the
-results gets the table of the runs so far, a column a run: the start's time, downloads and writes,
-the path's frames a second, frame times and frames over 50 and 100 ms, its downloads and writes,
-the streamer's and X-Plane's cores and memory, and X-Plane's scenery loads.
+lines are `title WORDS` (for the window), `scenarios NAME...`, `run [ID] OPTIONS...` (the runner's
+own options) and `compare ID ID...` (runs read side by side). `--pick 1,3` flies only those
+comparisons (without comparisons, those runs); a run two of them share is flown once. Each run
+starts its streamer and X-Plane again (X-Plane reads the scenery packs at its start), and waits for
+the X-Plane and the streamer of the run before to have quit; a run that cannot start is said and
+the next ones fly. After each run, `<date time> <campaign>.md` in the results gets the table of the
+runs so far, a column a run, then each comparison's: the start's time, downloads and writes, the
+path's frames a second, frame times and frames over 50 and 100 ms, its downloads and writes, the
+streamer's and X-Plane's cores and memory, and X-Plane's scenery loads.
 
 `ao-vs-live`, over `toulouse-low` (20 min at 3,000 to 10,000 ft over Toulouse, turns, a climb and
-a descent, a close and two far external views), all cold: AutoOrtho with its defaults and Live at
-the same zooms (16/18), then AutoOrtho with the user's settings, the user's settings at 17/19, and
-Live with the user's Live settings (17/19). About two hours, nobody at the controls.
+a descent, a close and two far external views), all cold, the user's four comparisons
+(2026-09-29): AutoOrtho with its defaults at 17/19 against Live at 16/18, and against Live at
+17/19; AutoOrtho with the user's settings at 16/18 against Live at 16/18, and at 17/19 against
+Live at 17/19. Five flights, about 2 h 20, nobody at the controls.
 
 ## Results
 
