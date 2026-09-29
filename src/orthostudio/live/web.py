@@ -9,8 +9,12 @@ the guard of its API (the ``Host`` allow-list, no request from another website, 
 its page's style sheet, served under ``/static`` as OrthoStudio XP serves it. The page itself,
 under ``/live``, is Live's (``orthostudio/live/ui``).
 
-Closing the window while a stream runs asks first, then stops it, and the window stays until X-Plane
-has quit and the pack is out of it (:class:`orthostudio.live.control.LiveControl`).
+The window goes as OrthoStudio XP's does (the user asked, 2026-09-29): on macOS the close button
+and Cmd+W put it away, the app staying in the Dock, a stream going on, and a click on its icon or
+Cmd+1 brings it back; Quit (Cmd+Q, the app's menu, the Dock's) ends the app. On Windows and Linux
+closing the window is quitting. Quitting while a stream runs asks first, in the window's language,
+the window in front, then stops it, and the app stays until X-Plane has quit and the pack is out of
+it (:class:`orthostudio.live.control.LiveControl`).
 """
 
 from __future__ import annotations
@@ -28,11 +32,29 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 TITLE = "OrthoStudio XP Live"
 SIZE = (1180, 860)
 STARTS_WITHIN_S = 10.0
-CLOSE_WHILE_STREAMING = (
-    "OrthoStudio XP Live is streaming. Stop it and close the window?\n\n"
-    "If X-Plane is still running, the window stays until X-Plane quits: X-Plane reads its "
-    "textures from Live's pack, which comes out of X-Plane then."
-)
+QUIT_WHILE_STREAMING = {
+    "en": (
+        "OrthoStudio XP Live is streaming. Stop it and quit?\n\n"
+        "If X-Plane is still running, Live stays until X-Plane quits: X-Plane reads its "
+        "textures from Live's pack, which comes out of X-Plane then."
+    ),
+    "fr": (
+        "OrthoStudio XP Live est en marche. L'arrêter et quitter ?\n\n"
+        "Si X-Plane tourne encore, Live reste jusqu'à ce que X-Plane quitte : X-Plane lit ses "
+        "textures dans le pack de Live, qui sort de X-Plane à ce moment-là."
+    ),
+}
+
+
+def quit_question() -> str:
+    """The question asked before quitting while a stream runs, in the window's language."""
+    from orthostudio.live.settings import load_settings
+
+    try:
+        language = load_settings().language
+    except Exception:  # a settings file that cannot be read: the question is asked all the same
+        language = "en"
+    return QUIT_WHILE_STREAMING.get(language, QUIT_WHILE_STREAMING["en"])
 
 
 def _map_router(fetch: Any = None) -> Any:
@@ -169,28 +191,38 @@ def _in_a_window(url: str, control: LiveControl) -> None:
     from orthostudio import window
     from orthostudio.live.pack import default_live_root
 
-    closing = [False]  # asked, and the answer was yes: the window goes once the stream is out
+    closing = [False]  # asked, and the answer was yes: the app goes once the stream is out
 
-    def may_close() -> bool:
+    def may_quit() -> bool:
+        """Quit, wherever it is asked (and the close button where closing is quitting): at once
+        when nothing streams; else the question first, the window in front even when it was put
+        away, and the app goes once the stream is out (``closes_when``)."""
         if control.state == IDLE or control.leaving_for:
             return True
         if closing[0]:
-            return False  # already asked: it closes by itself, once the pack is out
+            return False  # already asked: it goes by itself, once the pack is out
+        window.to_the_front()
 
         def aside() -> None:
             """The box cannot be drawn by the thread waiting for this answer."""
-            if window.ask(TITLE, CLOSE_WHILE_STREAMING):
+            if window.ask(TITLE, quit_question()):
                 closing[0] = True
                 control.stop()
 
-        threading.Thread(target=aside, name="live-ask-before-closing", daemon=True).start()
+        threading.Thread(target=aside, name="live-ask-before-quitting", daemon=True).start()
+        return False
+
+    def put_away() -> bool:
+        """macOS: the close button and Cmd+W put the window away, as OrthoStudio XP's; the app and
+        a stream go on, and the Dock's icon brings the window back."""
+        window.away()
         return False
 
     window.show(
         url,
         title=TITLE,
-        on_close=may_close,
-        may_quit=may_close,
+        on_close=put_away if window.puts_away_on_close() else may_quit,
+        may_quit=may_quit,
         closes_when=lambda: (
             (closing[0] and control.state == IDLE) or control.leaving_for == "build"
         ),
