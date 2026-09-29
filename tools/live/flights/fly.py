@@ -729,7 +729,8 @@ def label(a: argparse.Namespace) -> str:
 
 def read_campaign(ref: str) -> tuple[list[str], list[list[str]]]:
     """A campaign's scenarios, and the options of each of its runs: ``campaigns/<ref>.txt``, or a
-    file. Its lines: ``scenarios NAME...`` and ``run OPTIONS...`` (the runner's own options)."""
+    file. Its lines: ``scenarios NAME...``, ``run OPTIONS...`` (the runner's own options), and
+    ``title WORDS`` for the window."""
     path = Path(ref)
     if not path.suffix and not path.exists():
         path = CAMPAIGNS / f"{ref}.txt"
@@ -743,6 +744,8 @@ def read_campaign(ref: str) -> tuple[list[str], list[list[str]]]:
             continue
         if words[0] == "scenarios":
             names += words[1:]
+        elif words[0] == "title":
+            continue  # for the window (bench.py)
         elif words[0] == "run":
             runs.append(words[1:])
         else:

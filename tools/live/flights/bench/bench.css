@@ -1,0 +1,49 @@
+/* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+   Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
+/* The test flights' window: OrthoStudio XP's styles.css, and these few parts of its own, made of
+   its tokens. */
+
+.bench { max-width: 1240px; }
+.bench-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--block-gap); align-items: start; }
+@media (max-width: 900px) { .bench-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* what runs on the computer, in the top bar */
+.bench-machine { display: flex; gap: 12px; align-items: center; font-size: var(--fs-2); color: var(--fg-2); }
+.bench-chip { display: inline-flex; align-items: center; gap: 5px; }
+
+/* the lists of scenarios and campaigns, under the choice between them */
+.bench-list { margin-top: var(--gap); padding-top: var(--gap); border-top: 1px solid var(--line); }
+.bench-list .choice-label .num { color: var(--fg-3); font-weight: 400; margin-left: 6px; }
+.bench-runs { margin: 2px 0 0; padding-left: 16px; font-size: var(--fs-2); color: var(--fg-2); }
+.bench-select { width: auto; min-width: 20em; }
+.bench-cold { margin-top: var(--gap); }
+.bench-go { display: flex; align-items: center; gap: 10px; margin-top: var(--gap); flex-wrap: wrap; }
+.bench-go .question-help { margin: 0; }
+
+/* the flight under way */
+.bench-state-head { display: flex; align-items: center; gap: 8px; }
+.bench-state-head .question-title { margin: 0; }
+.bench-progress { height: 10px; border-radius: 5px; margin-top: var(--gap); }
+.bench-now .log pre { max-height: 420px; }
+
+/* the results: a row to click, then its report */
+.bench-results { margin-top: 0; }
+.bench-results tbody tr { cursor: pointer; }
+.bench-results td.num { text-align: left; white-space: nowrap; }
+.bench-results tbody tr:hover td { background: var(--bg-3); }
+.bench-results tbody tr.is-open td { background: var(--accent-soft); }
+.bench-report { margin-top: var(--block-gap); }
+.bench-report h2 { font-size: var(--fs-title-2); margin: var(--block-gap) 0 var(--gap); }
+.bench-report h3 { font-size: var(--fs); margin: var(--block-gap) 0 var(--label-gap); }
+.bench-report ul { margin: 0 0 var(--gap); padding-left: 18px; }
+.bench-report li.sub { margin-left: 18px; list-style: circle; color: var(--fg-2); }
+.bench-report pre { font-family: var(--mono); font-size: var(--fs-3); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; overflow: auto; }
+.bench-report .table-wrap { margin: var(--gap) 0; }
+.bench-part { border-top: 1px solid var(--line); padding-top: var(--gap); }
+.bench-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: var(--gap) 0; }
+.bench-shots img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); cursor: zoom-in; }
+
+/* a screenshot, the whole window */
+.bench-shot { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
+.bench-shot[hidden] { display: none; }
+.bench-shot img { max-width: 96vw; max-height: 94vh; border-radius: var(--radius); }

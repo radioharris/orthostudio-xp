@@ -4,6 +4,7 @@
 #
 # East from 10.40 E to 13.03 E (the columns move at 10.65, 11.65, 12.65 if as at 43.6 N), a U-turn
 # to the right, west to 9.96 E (at 12.35, 11.35, 10.35): 21.5 min at FL300, 480 kt over the ground.
+title Rectangle de X-Plane en Norvège : ses colonnes, vers l'est puis l'ouest
 start 60.50 10.40 30000 90 480
 weather clear
 zulu 11 271          # 13:00 in Norway on 29 September

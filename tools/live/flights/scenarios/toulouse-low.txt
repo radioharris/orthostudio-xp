@@ -1,6 +1,7 @@
 # AutoOrtho against Live, like against like: low over Toulouse, where the ground's textures are
 # seen closest, with turns, a climb and a descent, and external views as a pilot takes them:
 # behind the aircraft, then zoomed far out (Shift+4). 20 min at 230 kt over the ground.
+title AutoOrtho contre Live : bas au-dessus de Toulouse, virages, montée, vues extérieures
 start 43.63 1.37 3000 320 230
 weather clear
 zulu 11 271                            # 13:00 in France on 29 September

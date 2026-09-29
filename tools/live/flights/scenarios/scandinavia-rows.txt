@@ -3,6 +3,7 @@
 #
 # North from 60.44 N to 61.76 N, a U-turn to the right, south to 60.28 N, between 9.88 and 10.06 E
 # (no column moves there): 21.8 min at FL300, 480 kt over the ground.
+title Rectangle de X-Plane en Norvège : ses rangées, vers le nord puis le sud
 start 60.415 9.964 30000 270 480
 weather clear
 zulu 11.4 271

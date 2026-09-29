@@ -103,6 +103,24 @@ runs without it (its scenery would not be read), and when Live or AutoOrtho runs
 windows'). With `--keep-open`, a next series goes on with the X-Plane and the streamer left
 running.
 
+## The window
+
+`tools/live/flights/bench.py` opens a window ("Vols de test", in French: the developer's own tool),
+made as Live's window is (OrthoStudio XP's window, its API's guard and its style sheet), on a port
+of its own (8661), apart from Live's window, which is for its users and never speaks of AutoOrtho:
+
+- what to fly: scenarios, ticked (each with its title, the `title` line of its file, and its
+  length), or a campaign; with X-Plane alone, Live or AutoOrtho, AutoOrtho's settings (the user's or
+  its defaults), the zooms, cold, and X-Plane left open;
+- the flight under way: the campaign's run, the scenario, a bar of the path's time, the runner's
+  output, and a Stop button (the runner's Ctrl-C: it writes what it has and quits X-Plane);
+- the results, newest first: a click shows a series' summary, each flight's report and its
+  screenshots, or a campaign's table.
+
+It runs `fly.py` with the options chosen, in a process of its own: a flight goes on when the window
+is closed, and the window finds it again (`build/flights/bench-current.json`). `bench_app.py` makes
+`dist/Vols de test Live.app` for the Dock, OrthoStudio XP's icon with an orange badge.
+
 ## Campaigns
 
 A campaign flies the same scenarios under several setups, one after the other, and puts them side

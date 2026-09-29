@@ -1,5 +1,6 @@
 # The test pilot's cameras, checked by eye on its screenshots: the cockpit, just behind, 8 km
 # behind and 2 km up, 20 km to the right and 3 km up, the cockpit again. 3 min over Toulouse.
+title Vérifier les vues extérieures, 3 min au-dessus de Toulouse
 start 43.63 1.37 3000 320 230
 weather clear
 zulu 11 271

@@ -46,6 +46,7 @@ class Scenario:
     legs: list[Leg]
     aircraft: str = DEFAULT_AIRCRAFT
     screenshots: list[float] = field(default_factory=list)
+    title: str = ""  # what it is for, in a few words, for the window (the plugin skips it)
 
     @property
     def duration(self) -> float:
@@ -86,6 +87,7 @@ def parse(text: str, name: str = "scenario") -> Scenario:
     legs: list[Leg] = []
     aircraft = DEFAULT_AIRCRAFT
     shots: list[float] = []
+    title = ""
     for number, line in enumerate(text.splitlines(), 1):
         words = _words(line)
         if not words:
@@ -99,13 +101,15 @@ def parse(text: str, name: str = "scenario") -> Scenario:
                 aircraft = line.split("#", 1)[0].strip()[len("aircraft") :].strip()
             elif words[0] == "screenshot":
                 shots.append(float(words[1]))
+            elif words[0] == "title":
+                title = line.split("#", 1)[0].strip()[len("title") :].strip()
         except (TypeError, ValueError, IndexError) as e:
             raise ScenarioError(f"{name}, line {number}: {line.strip()!r}: {e}") from e
     if start is None:
         raise ScenarioError(f"{name}: no start line")
     if not legs:
         raise ScenarioError(f"{name}: no leg")
-    return Scenario(name, text, start, legs, aircraft, shots)
+    return Scenario(name, text, start, legs, aircraft, shots, title)
 
 
 def load(ref: str | Path) -> Scenario:
