@@ -173,6 +173,30 @@ def test_the_window_lines_say_what_came_again_and_what_the_model_misses() -> Non
     )
 
 
+def at(stamp: str, line: str) -> str:
+    """A line of Log.txt at another moment of X-Plane's clock."""
+    return line.replace("0:09:05.591", stamp, 1)
+
+
+def test_the_tiles_of_a_load_as_they_came() -> None:
+    """Norway, 2026-09-30: two tiles of a column within 10 s, the third 7.5 minutes later, and
+    X-Plane's log says nothing of why: the report says when each came, and the gap."""
+    loads = report.scenery_loads(
+        [
+            mark(60.5, 12.65, 498.9),
+            at("0:10:29.620", dsf(61, 14, "Custom Scenery/Global_Forests_v2")),
+            at("0:10:40.697", dsf(61, 14, "Custom Scenery/z_osxp_live")),
+            at("0:10:50.590", dsf(59, 14, "Custom Scenery/z_osxp_live")),
+            at("0:18:19.013", dsf(60, 14, "Custom Scenery/z_osxp_live")),
+        ]
+    )
+    assert report.arrival_lines(loads[1]) == [
+        "  - tiles as they came, from the first: +61+014 0 s, +59+014 10 s, +60+014 458 s",
+        "  - NO TILE FOR 448 s, then +60+014",
+    ]
+    assert report.arrival_lines(loads[0]) == []  # none, or a single tile: nothing to say
+
+
 def test_the_live_model_holds_the_window_measured_at_43_6_north() -> None:
     """The start of the 60 s test flight over Toulouse (2026-09-29): 4 columns by 3 rows."""
     model = report.xplane_window_model()
@@ -435,6 +459,8 @@ def test_the_samplers_readings(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(sampler, "_run", lambda cmd: ioreg)
     assert sampler.disk_writes() == {"disk0": 179092750336, "disk4": 75561712640}
+    reads = ioreg.replace('"Bytes (Write)"=179092750336', '"Bytes (Write)"=7,"Bytes (Read)"=9')
+    assert sampler.disk_bytes(reads) == {"disk0": (7, 9), "disk4": (75561712640, 0)}
     netstat = (
         "Name  Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts\n"
         "lo0   16384 <Link#1>                       1195148     0  509149045  1195148\n"
@@ -469,6 +495,120 @@ def test_what_the_start_and_the_path_cost() -> None:
 
 
 # ---- campaigns ----------------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="libproc, sysctl and notify: macOS")
+def test_a_process_and_the_mac_read_from_outside() -> None:
+    """What the sampler reads of X-Plane without attaching to it, tried on this test's own
+    process: its threads, its whole memory and disk reads; the Mac's memory and heat."""
+    import os
+
+    import sampler
+
+    threads = sampler.threads(os.getpid())
+    assert threads and all(
+        cpu >= 0 and state in sampler.THREAD_STATES for _, _, cpu, state, _ in threads
+    )
+    use = sampler.usage(os.getpid())
+    assert use["footprint"] > 1_000_000 and use["read"] >= 0 and use["pageins"] >= 0
+    mem = sampler.memory()
+    assert 0 <= mem["free_pct"] <= 100 and mem["pressure"] in sampler.PRESSURE
+    assert mem["compressed_mb"] >= 0 and mem["swapped_mb"] >= 0
+    assert sampler.heat() in sampler.HEAT
+    assert sampler.usage(999_999_999) == {} and sampler.threads(999_999_999) == []
+
+
+def write_system(path: Path, rows: list[dict]) -> None:
+    """``system.csv`` with 2026-09-30's readings, as sampler.Sampler writes it."""
+    import csv
+
+    import sampler
+
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=sampler.FIELDS)
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k, "") for k in sampler.FIELDS})
+
+
+def test_x_plane_and_the_mac_during_a_load(tmp_path: Path) -> None:
+    """A load of 100 s in a path of 400: X-Plane's texture thread works harder, its scenery thread
+    stops, it reads much more; the Mac's memory runs short. The report says each."""
+    flying, done, t0, t1 = 1000.0, 1400.0, 1100.0, 1200.0
+
+    def cpu(outside: float, during: float, t: float) -> float:  # cumulative, at moment t
+        before = max(0.0, min(t, t0) - 995.0) * outside
+        inside = max(0.0, min(t, t1) - t0) * during
+        after = max(0.0, t - t1) * outside
+        return before + inside + after
+
+    threads = {
+        "a1": ("SceneryLoader", 1.0, 0.0),
+        "b2": ("TexturePager", 0.5, 3.0),
+        "1f00": ("", 2, 2),
+    }
+    moments = [995.0 + 5 * k for k in range(83)]  # to 1405
+    lines = ["wall,thread,name,cpu_s,state,priority"]
+    for t in moments:
+        for handle, (name, out_rate, in_rate) in threads.items():
+            lines.append(f"{t:.1f},{handle},{name},{cpu(out_rate, in_rate, t):.3f},3,31")
+    (tmp_path / "threads.csv").write_text("\n".join(lines) + "\n")
+    loading = lambda t: t0 < t < t1  # noqa: E731
+    write_system(
+        tmp_path / "system.csv",
+        [
+            {
+                "wall": t,
+                "xplane_rss_mb": 9000,
+                "xplane_cpu_s": sum(cpu(o, i, t) for _, o, i in threads.values()),
+                "streamer_rss_mb": 4000,
+                "streamer_cpu_s": 0.5 * t,
+                "net_in": int(t * 1e6),
+                "disks": f"disk0={int(t * 1e7)}",
+                "xplane_footprint_mb": 20000 if loading(t) else 15000,
+                "xplane_read_mb": cpu(1.0, 50.0, t),  # 1 MB/s, 50 during the load
+                "xplane_pageins": cpu(10, 400, t),
+                "mem_free_pct": 40 if loading(t) else 60,
+                "pressure": 2 if loading(t) else 1,
+                "compressed_mb": 3072,
+                "swapped_mb": 0,
+                "heat": 2,
+                "disk_reads": f"disk0={int(t * 1e8)}",
+            }
+            for t in moments
+        ],
+    )
+    run = {
+        "flying_wall": flying,
+        "done_wall": done,
+        "sent_wall": 990.0,
+        "disks": {"X-Plane": "disk0"},
+    }
+    (tmp_path / "run.json").write_text(json.dumps({**run, "scenario": "s", "outcome": "done"}))
+    (tmp_path / "Log.txt").write_text(
+        "\n".join(
+            [mark(60.5, 12.65, 100.0), dsf(60, 14), f"{report.PILOT}scenery loaded in 100.0 s"]
+        )
+    )
+    text = report.report(tmp_path)
+    during = text.split("## X-Plane and the Mac during the loads")[1]
+    assert (
+        "- **load 1** at path 100 s: 100 s, X-Plane 5.00 cores, read 50.0 MB/s, 400 page-ins/s"
+        in during
+    )
+    assert (
+        "memory free at least 40 %, pressure WARNING" in during and "heat heavy at worst" in during
+    )
+    assert (
+        "busiest threads: `TexturePager` 3.00 cores (0.50 outside the loads); thread …1f00 2.00"
+        in during
+    )
+    assert "slowed the most: `SceneryLoader` 0.00 cores (1.00 outside the loads)\n" in during
+    path = next(ln for ln in text.splitlines() if ln.startswith("- **path**"))
+    assert "X-Plane 3.88 core, 8.8 GB (most 8.8), 14.6 GB with its GPU's (most 19.5)" in path
+    assert (
+        "the Mac: memory free at least 40 %, pressure WARNING" in path and "nothing swapped" in path
+    )
 
 
 def test_the_campaigns_of_the_repository_read(tmp_path: Path) -> None:

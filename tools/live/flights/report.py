@@ -9,12 +9,16 @@
 - ``run.json``, the runner's: how long X-Plane took to start and fly;
 - ``system.csv``, the computer every few seconds (``sampler.py``): what the start and the path
   cost in downloads, disk writes, processor and memory;
+- ``threads.csv``, X-Plane's threads at the same moments (``sampler.py``, since 2026-09-30);
 - ``live.txt`` or ``autoortho.txt``, the streamer's output, when one ran.
 
-The report says, for each load, where the aircraft was, which tiles came, which of them X-Plane had
-loaded before in the flight (so had let go of since), and whether Live's model of X-Plane's window
-(``orthostudio.live.evict.xplane_tiles``) held them: a tile X-Plane loads outside it could have its
-texture made coarser while X-Plane shows it.
+The report says, for each load, where the aircraft was, which tiles came and when, which of them
+X-Plane had loaded before in the flight (so had let go of since), and whether Live's model of
+X-Plane's window (``orthostudio.live.evict.xplane_tiles``) held them: a tile X-Plane loads outside
+it could have its texture made coarser while X-Plane shows it. Then what X-Plane and the Mac did
+during each load: X-Plane's busiest threads against their pace outside the loads, what it read from
+the disks, the Mac's memory and heat (a tile of Norway came 7.5 minutes after the two others of
+its column, 2026-09-30, and X-Plane's log says nothing of why).
 
     uv run python tools/live/flights/report.py <a flight's folder>
 """
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import itertools
 import json
 import math
 import re
@@ -39,9 +44,11 @@ LOADED = re.compile(r"scenery loaded in (\d+(?:\.\d+)?) s")
 DSF = re.compile(
     r"DSF load time: \d+ for file (.*?)/Earth nav data/[^/]+/([+-]\d\d)([+-]\d\d\d)\.dsf"
 )
+STAMP = re.compile(r"^(\d+):(\d\d):(\d\d(?:\.\d+)?) ")  # X-Plane's clock, at a line's start
 FLYING = 2  # the test pilot's state, in frames.csv
 KM_DEG = 111.195
 SHOT_S = 1.0  # a screenshot's own long frame, and the frames just after it: left out
+GAP_S = 60.0  # X-Plane loading no tile this long within a load: said
 
 Tile = tuple[int, int]  # (latitude, longitude) of its south-west corner
 
@@ -56,10 +63,16 @@ class Load:
     path_s: float | None = None  # the path's time; None before the path began
     packs: dict[str, set[Tile]] = field(default_factory=dict)
     seconds: float | None = None  # how long X-Plane took, from the test pilot's end mark
+    came: dict[Tile, float] = field(default_factory=dict)  # a tile's last DSF, X-Plane's clock
 
     @property
     def tiles(self) -> set[Tile]:
         return set().union(*self.packs.values()) if self.packs else set()
+
+
+def _stamp(line: str) -> float | None:
+    m = STAMP.match(line)
+    return int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else None
 
 
 def scenery_loads(lines: Iterable[str], launched: bool = True) -> list[Load]:
@@ -83,8 +96,29 @@ def scenery_loads(lines: Iterable[str], launched: bool = True) -> list[Load]:
         m = DSF.search(line)
         if m and reading:
             pack = m[1].rstrip("/").split("/")[-1]
-            loads[-1].packs.setdefault(pack, set()).add((int(m[2]), int(m[3])))
+            tile = (int(m[2]), int(m[3]))
+            loads[-1].packs.setdefault(pack, set()).add(tile)
+            t = _stamp(line)
+            if t is not None:
+                loads[-1].came[tile] = max(t, loads[-1].came.get(tile, t))
     return loads
+
+
+def arrival_lines(ld: Load) -> list[str]:
+    """When each tile of a load came, from its first (X-Plane's clock: its last DSF logged), and
+    the gaps of more than GAP_S where X-Plane loaded none."""
+    if len(ld.came) < 2:
+        return []
+    order = sorted(ld.came.items(), key=lambda kv: kv[1])
+    first = order[0][1]
+    out = [
+        "  - tiles as they came, from the first: "
+        + ", ".join(f"{_fmt_tiles([tile])} {t - first:.0f} s" for tile, t in order)
+    ]
+    for (_, before), (tile, t) in itertools.pairwise(order):
+        if t - before > GAP_S:
+            out.append(f"  - NO TILE FOR {t - before:.0f} s, then {_fmt_tiles([tile])}")
+    return out
 
 
 def span(values: Iterable[int]) -> str:
@@ -203,6 +237,7 @@ def window_lines(loads: list[Load], model: Callable[[float, float], set[Tile]] |
             out.append(f"  - columns {span(lo for _, lo in tiles)}{ahead}")
             out.append(f"  - rows {span(rows)}{row_note}")
             out.append(f"  - tiles {_fmt_tiles(tiles)}")
+            out += arrival_lines(ld)
         if again:
             out.append(f"  - LOADED AGAIN (X-Plane had let go of them): {_fmt_tiles(again)}")
         if model is not None and tiles:
@@ -230,31 +265,96 @@ def _streamer_lines(path: Path) -> list[str]:
     return [f"{len(lines)} lines of output", *keep[:40]]
 
 
+def _number(text: str | None) -> float | None:
+    """A reading of 2026-09-30's (``sampler.py``): none in an older file, or where it failed."""
+    try:
+        return float(text) if text not in (None, "") else None
+    except ValueError:
+        return None
+
+
+# system.csv's readings of 2026-09-30 (sampler.FIELDS), under their names here
+LATER_FIELDS = {
+    "xp_footprint": "xplane_footprint_mb",
+    "xp_read": "xplane_read_mb",
+    "xp_pageins": "xplane_pageins",
+    "free_pct": "mem_free_pct",
+    "pressure": "pressure",
+    "compressed": "compressed_mb",
+    "swapped": "swapped_mb",
+    "heat": "heat",
+}
+
+
 def _system_rows(path: Path) -> list[dict]:
     rows = []
     try:
         with path.open(newline="") as f:
             for r in csv.DictReader(f):
                 try:
-                    rows.append(
-                        {
-                            "wall": float(r["wall"]),
-                            "xp_mb": float(r["xplane_rss_mb"]),
-                            "xp_cpu": float(r["xplane_cpu_s"]),
-                            "s_mb": float(r["streamer_rss_mb"]),
-                            "s_cpu": float(r["streamer_cpu_s"]),
-                            "net": int(r["net_in"]),
-                            "disks": dict(
-                                (k, int(v))
-                                for k, v in (d.split("=") for d in r["disks"].split(";") if d)
-                            ),
-                        }
-                    )
+                    row = {
+                        "wall": float(r["wall"]),
+                        "xp_mb": float(r["xplane_rss_mb"]),
+                        "xp_cpu": float(r["xplane_cpu_s"]),
+                        "s_mb": float(r["streamer_rss_mb"]),
+                        "s_cpu": float(r["streamer_cpu_s"]),
+                        "net": int(r["net_in"]),
+                        "disks": dict(
+                            (k, int(v))
+                            for k, v in (d.split("=") for d in r["disks"].split(";") if d)
+                        ),
+                    }
                 except (KeyError, ValueError):
                     continue
+                for key, name in LATER_FIELDS.items():
+                    row[key] = _number(r.get(name))
+                rows.append(row)
     except OSError:
         return []
     return rows
+
+
+def _around(rows: list[dict], t0: float, t1: float) -> tuple[dict, dict, list[dict]] | None:
+    """The samples round a moment's span, a few seconds apart: the nearest before its start, the
+    nearest after its end, and those between."""
+    if not rows:
+        return None
+    a = ([r for r in rows if r["wall"] <= t0] or rows[:1])[-1]
+    b = ([r for r in rows if r["wall"] >= t1] or rows[-1:])[0]
+    if b["wall"] <= a["wall"]:
+        return None
+    return a, b, [r for r in rows if a["wall"] <= r["wall"] <= b["wall"]]
+
+
+def mac_words(within: list[dict]) -> list[str]:
+    """What the Mac went through meanwhile (2026-09-30's readings): its least free memory, its
+    memory's worst pressure, the most compressed and swapped out, its worst heat."""
+
+    def most(key: str, lowest: bool = False) -> float | None:
+        values = [r[key] for r in within if r.get(key) is not None]
+        return (min(values) if lowest else max(values)) if values else None
+
+    out = []
+    free = most("free_pct", lowest=True)
+    if free is not None:
+        out.append(f"memory free at least {free:.0f} %")
+    pressure = most("pressure")
+    if pressure is not None:
+        out.append(f"pressure {PRESSURE_WORDS.get(int(pressure), int(pressure))}")
+    compressed = most("compressed")
+    if compressed is not None:
+        out.append(f"compressed at most {compressed / 1024:.1f} GB")
+    swapped = most("swapped")
+    if swapped is not None:
+        out.append(f"swapped out at most {swapped / 1024:.1f} GB" if swapped else "nothing swapped")
+    heat = most("heat")
+    if heat is not None:
+        out.append(f"heat {HEAT_WORDS.get(int(heat), int(heat))} at worst")
+    return out
+
+
+PRESSURE_WORDS = {1: "normal", 2: "WARNING", 4: "CRITICAL"}  # as sampler.PRESSURE
+HEAT_WORDS = {0: "nominal", 1: "moderate", 2: "heavy", 3: "trapping", 4: "sleeping"}  # sampler.HEAT
 
 
 def costs(rows: list[dict], run: dict) -> dict[str, dict]:
@@ -269,19 +369,23 @@ def costs(rows: list[dict], run: dict) -> dict[str, dict]:
     ):
         if t0 is None or t1 is None:
             continue
-        if not rows:
-            continue
         # the samples round the phase, a few seconds apart: the nearest there are
-        before = [r for r in rows if r["wall"] <= t0] or rows[:1]
-        after = [r for r in rows if r["wall"] >= t1] or rows[-1:]
-        a, b = before[-1], after[0]
-        within = [r for r in rows if a["wall"] <= r["wall"] <= b["wall"]]
-        if b["wall"] <= a["wall"]:
+        around = _around(rows, t0, t1)
+        if around is None:
             continue
+        a, b, within = around
         span = max(b["wall"] - a["wall"], 1e-9)
         xp_mem = sorted(r["xp_mb"] for r in within)
         s_mem = sorted(r["s_mb"] for r in within)
+        whole = sorted(r["xp_footprint"] for r in within if r.get("xp_footprint") is not None)
+        read = None
+        if b.get("xp_read") is not None:  # X-Plane started meanwhile: what it read since
+            read = (b["xp_read"] - (a.get("xp_read") or 0)) / 1024
         out[name] = {
+            "xplane_whole_gb": whole[len(whole) // 2] / 1024 if whole else None,
+            "xplane_whole_gb_most": whole[-1] / 1024 if whole else None,
+            "xplane_read_gb": read if read is None or read >= 0 else None,
+            "mac": mac_words(within),
             "minutes": (t1 - t0) / 60,
             "downloaded_gb": (b["net"] - a["net"]) / 1e9,
             "written_gb": {
@@ -310,12 +414,124 @@ def computer_lines(rows: list[dict], run: dict) -> list[str]:
             f"X-Plane {c['xplane_cores']:.2f} core, "
             f"{c['xplane_gb']:.1f} GB (most {c['xplane_gb_most']:.1f})"
         )
+        if c.get("xplane_whole_gb") is not None:
+            parts[-1] += (
+                f", {c['xplane_whole_gb']:.1f} GB with its GPU's "
+                f"(most {c['xplane_whole_gb_most']:.1f})"
+            )
+        if c.get("xplane_read_gb") is not None:
+            parts[-1] += f", read {c['xplane_read_gb']:.2f} GB"
         if c["streamer"]:
             parts.append(
                 f"streamer {c['streamer_cores']:.2f} core, "
                 f"{c['streamer_gb']:.1f} GB (most {c['streamer_gb_most']:.1f})"
             )
+        if c.get("mac"):
+            parts.append("the Mac: " + ", ".join(c["mac"]))
         out.append(f"- **{name}** ({c['minutes']:.1f} min): " + ", ".join(parts))
+    return out
+
+
+def _thread_samples(path: Path) -> tuple[dict[str, str], dict[str, list[tuple[float, float, str]]]]:
+    """``threads.csv``: each thread's name, and its (moment, processor s, state) samples."""
+    names: dict[str, str] = {}
+    samples: dict[str, list[tuple[float, float, str]]] = {}
+    try:
+        with path.open(newline="") as f:
+            for r in csv.DictReader(f):
+                try:
+                    wall, cpu = float(r["wall"]), float(r["cpu_s"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                thread = r.get("thread") or "?"
+                names[thread] = r.get("name") or names.get(thread, "")
+                samples.setdefault(thread, []).append((wall, cpu, r.get("state") or ""))
+    except OSError:
+        return {}, {}
+    return names, samples
+
+
+def _cores(points: list[tuple[float, float, str]], t0: float, t1: float) -> tuple[float, float]:
+    """(processor s, seconds) a thread used over a span, from its samples nearest round it: the
+    last at or before its start, the first at or after its end (a thread born or ended within: its
+    first or its last)."""
+    if len(points) < 2:
+        return 0.0, 0.0
+    a = ([p for p in points if p[0] <= t0] or points[:1])[-1]
+    b = ([p for p in points if p[0] >= t1] or points[-1:])[0]
+    if b[0] <= a[0]:
+        return 0.0, 0.0
+    return max(0.0, b[1] - a[1]), b[0] - a[0]
+
+
+THREADS_SAID = 6  # busiest threads said for each load
+SLOWED_BY = 0.1  # cores: a thread this much slower during a load than outside is said
+
+
+def _thread_label(thread: str, name: str) -> str:
+    return f"`{name}`" if name else f"thread …{thread[-4:]}"
+
+
+def load_lines(folder: Path, loads: list[Load], run: dict) -> list[str]:
+    """What X-Plane and the Mac did during each load of the path (``threads.csv`` and 2026-09-30's
+    readings of ``system.csv``), against the rest of the path: X-Plane's cores, its busiest threads
+    and those slowed the most, what it read from the disks, the Mac's memory and heat."""
+    names, samples = _thread_samples(folder / "threads.csv")
+    rows = _system_rows(folder / "system.csv")
+    flying, done = run.get("flying_wall"), run.get("done_wall")
+    if not samples or flying is None or done is None:
+        return []
+    spans = []
+    for k, ld in enumerate([ld for ld in loads if ld.path_s is not None], 1):
+        t0 = flying + ld.path_s
+        spans.append((k, ld, t0, min(done, t0 + ld.seconds) if ld.seconds is not None else done))
+
+    def rates(thread: str) -> tuple[float, list[float]]:
+        """A thread's cores outside the loads, and during each."""
+        points = samples[thread]
+        cpu_path, path_s = _cores(points, flying, done)
+        during = [_cores(points, t0, t1) for _, _, t0, t1 in spans]
+        outside_s = path_s - sum(s for _, s in during)
+        outside = max(0.0, cpu_path - sum(c for c, _ in during)) / outside_s if outside_s > 0 else 0
+        return outside, [c / s if s > 0 else 0.0 for c, s in during]
+
+    all_rates = {thread: rates(thread) for thread in samples}
+    out = []
+    for i, (k, ld, t0, t1) in enumerate(spans):
+        length = max(t1 - t0, 1e-9)
+        words = [f"{length:.0f} s" + ("" if ld.seconds is not None else ", to the path's end")]
+        around = _around(rows, t0, t1)
+        if around is not None:
+            a, b, within = around
+            span = max(b["wall"] - a["wall"], 1e-9)
+            words.append(f"X-Plane {(b['xp_cpu'] - a['xp_cpu']) / span:.2f} cores")
+            if a.get("xp_read") is not None and b.get("xp_read") is not None:
+                words.append(f"read {(b['xp_read'] - a['xp_read']) / span:.1f} MB/s")
+            if a.get("xp_pageins") is not None and b.get("xp_pageins") is not None:
+                words.append(f"{(b['xp_pageins'] - a['xp_pageins']) / span:.0f} page-ins/s")
+            words += mac_words(within)
+        out.append(f"- **load {k}** at path {ld.path_s:.0f} s: " + ", ".join(words))
+
+        def said(chosen: list[tuple[str, tuple[float, list[float]]]], i: int = i) -> str:
+            return "; ".join(
+                f"{_thread_label(t, names.get(t, ''))} {r[1][i]:.2f} cores "
+                f"({r[0]:.2f} outside the loads)"
+                for t, r in chosen
+            )
+
+        busiest = [
+            (t, r)
+            for t, r in sorted(all_rates.items(), key=lambda kv: -kv[1][1][i])[:THREADS_SAID]
+            if r[1][i] > 0
+        ]
+        if busiest:
+            out.append("  - busiest threads: " + said(busiest))
+        slowed = sorted(
+            ((t, r) for t, r in all_rates.items() if r[1][i] < r[0] - SLOWED_BY),
+            key=lambda kv: kv[1][1][i] - kv[1][0],
+        )[:3]
+        if slowed:
+            out.append("  - slowed the most: " + said(slowed))
     return out
 
 
@@ -559,12 +775,17 @@ def report(folder: Path) -> str:
         lines.append("- none recorded")
     lines += ["", "## X-Plane's scenery loads"]
     log = folder / "Log.txt"
+    loads: list[Load] = []
     if log.is_file():
         launched = str(run.get("xplane_start", "started")).startswith("started")
         loads = scenery_loads(log.read_text(errors="replace").splitlines(), launched)
         lines += window_lines(loads, xplane_window_model())
     else:
         lines.append("- no Log.txt")
+    during = load_lines(folder, loads, run)
+    if during:
+        lines += ["", "## X-Plane and the Mac during the loads (cores: processor time a second)"]
+        lines += during
     events = _events(folder / "events.txt")
     if events:
         lines += ["", "## The test pilot (X-Plane's clock, s)", "", "```", *events, "```"]

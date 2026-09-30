@@ -195,7 +195,15 @@ from X-Plane's `Output/screenshots`), the streamer's output, `system.csv`, `run.
 (`tools/live/flights/sampler.py`) is the computer every 5 s: X-Plane's and the streamer's memory
 and processor time (the streamer with every process it started, those ended included: `ps -S`),
 the bytes received from the network, and the bytes written to each disk (`ioreg`'s counters, as in
-the AutoOrtho and Live comparisons of 2026-09-28). The report gives:
+the AutoOrtho and Live comparisons of 2026-09-28). Since 2026-09-30, to see why X-Plane loaded a
+tile of Norway 7.5 minutes after the two others of its column while its log says nothing: X-Plane's
+whole memory (`phys_footprint`, its GPU's allocations included), the bytes it read from the disks
+and its page-ins (`proc_pid_rusage`); the Mac's free memory, memory pressure, memory compressed and
+swapped (`sysctl`) and heat (`com.apple.system.thermalpressurelevel`, "heavy" through every flight
+of 2026-09-29 and 30, X-Plane alone's too); the bytes read from each disk; and `threads.csv`,
+each of X-Plane's threads at each sample: its name, processor time, state and priority
+(`proc_pidinfo`). All read from outside, as Activity Monitor does: `sample` cannot attach to
+X-Plane, signed with the hardened runtime. The report gives:
 
 - the frames of the path: their count, the mean, median, 99th percentile and worst frame time, how
   many took over 50 and 100 ms, and the worst five, with whether X-Plane was loading scenery. The
@@ -204,10 +212,15 @@ the AutoOrtho and Live comparisons of 2026-09-28). The report gives:
   during the path, where the aircraft was, the tiles it brought, those X-Plane had loaded before in
   the flight (so had let go of), and whether they lie in Live's model of X-Plane's window
   (`orthostudio.live.evict.xplane_tiles`). A tile outside it is one whose texture Live could make
-  coarser while X-Plane holds it;
+  coarser while X-Plane holds it. When each tile came, from the load's first (X-Plane's clock, its
+  last DSF logged), and every gap of more than a minute where none came;
+- what X-Plane and the Mac did during each load, against the rest of the path: X-Plane's cores,
+  its busiest threads and those slowed the most, what it read from the disks a second, its
+  page-ins, the Mac's least free memory, worst pressure, memory compressed and swapped, worst heat;
 - what the start (from the scenario sent to the path's start) and the path cost the computer:
   downloads, writes to X-Plane's disk and the streamer's, processor cores and memory (median and
-  most) of X-Plane and of the streamer;
+  most) of X-Plane and of the streamer; X-Plane's whole memory and its reads, and the Mac's
+  memory and heat;
 - the test pilot's events, the streamer's errors, the screenshots.
 
 ## Limits
