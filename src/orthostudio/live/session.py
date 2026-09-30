@@ -348,7 +348,7 @@ def follow(
                 streamer = Streamer(
                     prepared.pack,
                     cache,
-                    lambda on_piece: Downloader(options.provider, on_piece),
+                    lambda on_piece: Downloader(options.provider, on_piece, log=log),
                     prepared.finest,
                     options.max_zoom,
                     options.max_zoom_airports,

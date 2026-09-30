@@ -505,6 +505,47 @@ class DownloaderTest(unittest.TestCase):
         self.assertEqual(order[-1], (15, 3, 3))  # the slow one did not hold the others back
         self.assertEqual(d.downloaded, 22)
 
+    def test_an_unexpected_error_fails_its_piece_only(self):
+        """An error that is not the network's (a source's address that cannot be made) fails that
+        piece; the request it ran in goes on with the next pieces, where it died with it until
+        2026-09-30, one of the 128 fewer each time."""
+        import queue
+        from unittest import mock
+
+        from orthostudio.live import downloader as downloader_module
+        from orthostudio.live.cache import IMAGE
+        from orthostudio.live.downloader import FAILED, Downloader
+        from orthostudio.live.providers import Provider
+
+        body = jpeg_body()
+        server = _Server(body)
+        p = Provider(
+            code="LOCAL",
+            url_template=f"http://127.0.0.1:{server.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+        )
+        real_url = downloader_module.tile_url
+
+        def tile_url(provider, x, y, z, server_index):
+            if (z, x, y) == (15, 7, 7):
+                raise KeyError("a bug")
+            return real_url(provider, x, y, z, server_index)
+
+        got, logged = queue.Queue(), []
+        with mock.patch.object(downloader_module, "tile_url", tile_url):
+            d = Downloader(p, lambda k, st, b: got.put((k, st)), max_in_flight=1, log=logged.append)
+            try:
+                for i, k in enumerate([(15, 7, 7), (15, 8, 8), (15, 9, 9)]):
+                    d.submit(k, float(i))
+                answers = dict(got.get(timeout=20) for _ in range(3))
+            finally:
+                d.close()
+                server.close()
+        self.assertEqual(answers[(15, 7, 7)], FAILED)
+        self.assertEqual(answers[(15, 8, 8)], IMAGE)  # the one request left went on
+        self.assertEqual(answers[(15, 9, 9)], IMAGE)
+        self.assertEqual(len(logged), 1)
+
     def test_a_stuck_piece_is_asked_again_elsewhere(self):
         import queue
         from unittest import mock

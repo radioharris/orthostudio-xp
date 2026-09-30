@@ -49,11 +49,15 @@ class Downloader:
         timeout_s: float = 8.0,
         attempts: int = 4,
         fallback: Provider | bool | None = True,
+        log: Callable[[str], None] | None = None,
     ):
         """``provider``: a code of ``orthostudio.live.providers``, or a Provider. ``on_piece(key,
         status, body)``
         is called from the downloader's thread for every piece asked for. ``fallback``: the
-        source beyond a country's (True: Bing Maps, :func:`.providers.fallback_for`)."""
+        source beyond a country's (True: Bing Maps, :func:`.providers.fallback_for`). ``log``:
+        told once of each kind of unexpected error."""
+        self.log = log
+        self._said: set[str] = set()
         self.p: Provider = provider_named(provider) if isinstance(provider, str) else provider
         self.fallback: Provider | None = (
             fallback_for(self.p) if fallback is True else (fallback or None)
@@ -128,7 +132,18 @@ class Downloader:
     async def _worker(self) -> None:
         while True:
             _, _, key = await self._queue.get()
-            status, body = await self._fetch(key)
+            try:
+                status, body = await self._fetch(key)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # not the network's (handled below): the piece fails, the
+                # worker goes on; it died with it until 2026-09-30, one request fewer each time
+                self.failed += 1
+                status, body = FAILED, None
+                said = f"{type(e).__name__}: {e}"
+                if self.log is not None and said not in self._said:
+                    self._said.add(said)
+                    self.log(f"  a piece could not be asked for ({said}): it counts as failed")
             with contextlib.suppress(Exception):  # the caller's problem, not the downloader's
                 self.on_piece(key, status, body)
 
