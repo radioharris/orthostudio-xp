@@ -3,8 +3,12 @@
 """Which built textures to make coarser when the pack goes over its disk budget.
 
 Only when it goes over (the user's choice, 2026-09-29: textures kept serve the next flights there, a
-way back and a hold, at no work and no disk writes), the least recently seen first, and only where
-nothing can show it.
+way back and a hold, at no work and no disk writes), those behind the aircraft first, then the least
+recently needed at their sharpness, and only where nothing can show it. A texture counts as needed
+while X-Plane will read it as sharp as it is built (``Streamer.plan``); until 2026-09-30 every
+texture within 300 km counted, so the oldest built went first, which on a flight's way back were
+those ahead of the aircraft (the Norway flight of 2026-09-29, found by the review of 2026-09-30).
+The pack may also take the room the imagery cache leaves (``Streamer.texture_budget``).
 
 X-Plane 12 holds a window of DSF tiles round the aircraft: 4 columns of longitude by 3 rows of
 latitude, its columns centred on the tile boundary nearest the aircraft, its rows on the aircraft's
@@ -111,29 +115,30 @@ def pick(
     budget: int,
     top_of: Callable[[str], int] = lambda _: 0,
     neutral: Callable[[str], bool] | None = None,
+    behind: Callable[[str], bool] = lambda _: False,
 ) -> list[tuple[str, int]]:
     """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
     sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
-    when not given) back to the neutral clone, the least recently seen first. ``top_of``: each
-    texture's file size, as :func:`usage` takes it."""
+    when not given) back to the neutral clone; those ``behind`` the aircraft first, then the least
+    recently seen. ``top_of``: each texture's file size, as :func:`usage` takes it."""
     total = usage(built, top_of)
     if total <= budget:
         return []
     neutral = coarsen if neutral is None else neutral
     target = budget * TARGET
     out: list[tuple[str, int]] = []
-    sharp = sorted(
-        (n for n, lv in built.items() if lv < 4 and coarsen(n)), key=lambda n: seen.get(n, 0.0)
-    )
+
+    def first(name: str) -> tuple[bool, float]:
+        return not behind(name), seen.get(name, 0.0)
+
+    sharp = sorted((n for n, lv in built.items() if lv < 4 and coarsen(n)), key=first)
     for name in sharp:
         top = top_of(name)
         total -= texture_bytes(built[name], top) - texture_bytes(4, top)
         out.append((name, 4))
         if total <= target:
             return out
-    small = sorted(
-        (n for n, lv in built.items() if lv == 4 and neutral(n)), key=lambda n: seen.get(n, 0.0)
-    )
+    small = sorted((n for n, lv in built.items() if lv == 4 and neutral(n)), key=first)
     for name in small:
         total -= texture_bytes(4, top_of(name))
         out.append((name, NEUTRAL_LEVEL))

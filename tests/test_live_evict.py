@@ -38,6 +38,14 @@ class PickTest(unittest.TestCase):
         self.assertEqual([n for n, _ in everything], ["c", "b", "a"])  # then nothing small is left
         self.assertNotIn("near", [n for n, _ in everything])
 
+    def test_behind_the_aircraft_first(self):
+        """On a way back the oldest built are ahead of the aircraft: those behind go first."""
+        built = {"ahead_old": 0, "behind_new": 0}
+        seen = {"ahead_old": 1.0, "behind_new": 9.0}
+        budget = usage(built) - texture_bytes(0) // 2  # one must go
+        picked = pick(built, seen, lambda n: True, budget, behind=lambda n: n.startswith("behind"))
+        self.assertEqual(picked[0], ("behind_new", 4))
+
     def test_small_ones_go_to_neutral_last(self):
         built = {"x": 4, "y": 4}
         self.assertEqual(
@@ -255,6 +263,38 @@ class StreamerTest(unittest.TestCase):
             stop.set()
             thread.join()
 
+    def test_needed_only_while_read_as_sharp_as_built(self):
+        """A texture counts as seen while X-Plane will read it as sharp as it is built, not merely
+        within 300 km: else the oldest built go first, ahead of the aircraft on a way back."""
+        s = self.streamer()
+        name = f"{NAMES[0]}.dds"
+        lat, lon = parse_texture_name(name).center
+        s.built = {name: 0}
+        s.plan(Fix(lat, lon), x_plane_there=False)  # right there: its 4096 px level is read
+        self.assertIn(name, s.seen)
+        s.seen.clear()
+        s.plan(Fix(lat, lon + 1.5), x_plane_there=False)  # 116 km off: only its far levels are
+        self.assertNotIn(name, s.seen)
+
+    def test_the_textures_take_the_room_the_imagery_leaves(self):
+        """One disk space: the textures may use what the imagery cache does not."""
+        s = self.streamer(disk_budget=20 * 10**9, cache_budget=20 * 10**9)
+        s._cache_size = 2 * 10**9
+        self.assertEqual(s.texture_budget(), 38 * 10**9)
+        s._cache_size = 25 * 10**9  # the cache over its own share: nothing to borrow
+        self.assertEqual(s.texture_budget(), 20 * 10**9)
+
+    def test_behind_the_aircraft(self):
+        s = self.streamer()
+        name = f"{NAMES[0]}.dds"
+        lat, lon = parse_texture_name(name).center
+        s.last_fix = Fix(lat, lon - 1.0, gs_ms=200.0, trk_deg=90.0)  # flying east, towards it
+        self.assertFalse(s.behind(name))
+        s.last_fix = Fix(lat, lon + 1.0, gs_ms=200.0, trk_deg=90.0)  # past it
+        self.assertTrue(s.behind(name))
+        s.last_fix = Fix(lat, lon + 1.0)  # not moving: nothing is behind
+        self.assertFalse(s.behind(name))
+
     def test_what_may_go_back_to_256_px(self):
         """Nothing on a tile X-Plane may hold, round the aircraft or the camera; nothing X-Plane
         reads sharper than 256 px from there."""
@@ -275,8 +315,11 @@ class StreamerTest(unittest.TestCase):
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:
             write_sparse(self.pack / "textures" / f"{n}.dds", 0, levels_from(0))
-        # over budget by one sharp texture, 90 % of the budget reached once it is made small
-        s = self.streamer(disk_budget=int((texture_bytes(0) + texture_bytes(4)) / 0.9) + 1)
+        # over budget by one sharp texture, 90 % of the budget reached once it is made small;
+        # no room of the imagery cache's to borrow
+        s = self.streamer(
+            disk_budget=int((texture_bytes(0) + texture_bytes(4)) / 0.9) + 1, cache_budget=0
+        )
         s.built = {f"{NAMES[0]}.dds": 0, f"{NAMES[1]}.dds": 0}
         s.seen = {f"{NAMES[0]}.dds": 1.0, f"{NAMES[1]}.dds": 2.0}
         lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center

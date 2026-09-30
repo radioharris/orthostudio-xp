@@ -329,6 +329,7 @@ class Streamer:
         )  # when a built texture was last in reach
         self.disk_budget = disk_budget
         self.cache_budget = cache_budget
+        self._cache_size = 0  # the imagery cache's disk, as the last eviction round measured it
         self.evicted = 0
         self.cache_freed = 0
         # the region's textures, from its regions' terrain folders: the pack makes their files per
@@ -679,8 +680,6 @@ class Streamer:
             d_now = haversine_m(fix.lat, fix.lon, lat, lon) / 1000.0
             if d_now > PLACEHOLDER_KM:
                 continue
-            if name in self.built:
-                self.seen[name] = now
             d = path.distance_km(lat, lon)
             if route is not None:
                 d = min(d, route.distance_km(lat, lon))
@@ -722,6 +721,8 @@ class Streamer:
                         and s_now <= ring_km(0, zoom) * self.scale * COPY_UP_AT
                     ):
                         late.append(name)
+            if name in self.built and level <= self.built[name]:
+                self.seen[name] = now  # X-Plane will read it as sharp as it is: still needed so
             if self.level_of(name) <= level:
                 patch = self.patchy.get(name)
                 if patch is None or patch[0] > now:
@@ -1195,6 +1196,23 @@ class Streamer:
         )
         return all(haversine_m(p[0], p[1], lat, lon) > EVICT_SAFE_KM * 1000 for p in points)
 
+    def behind(self, name: str) -> bool:
+        """Whether a texture lies behind the aircraft, its track taken as ahead: what the disk
+        budget makes coarser first. Nothing is behind an aircraft that does not move."""
+        fix = self.last_fix
+        tex = parse_texture_name(name)
+        if fix is None or tex is None or fix.gs_ms <= MOVING_MS:
+            return False
+        lat, lon = tex.center
+        turn = (bearing_deg(fix.lat, fix.lon, lat, lon) - fix.trk_deg + 180.0) % 360.0 - 180.0
+        return abs(turn) > 90.0
+
+    def texture_budget(self) -> int:
+        """The textures' share of Live's disk space, with the room the imagery cache leaves in its
+        own: one space, as the user sets it (the imagery held 1.7 GB of its 20 when the textures
+        filled theirs over Norway, 2026-09-29)."""
+        return self.disk_budget + max(0, self.cache_budget - self._cache_size)
+
     def evict(self) -> int:
         """Keep the pack under its disk budget and the imagery cache under its own. Builder
         thread."""
@@ -1202,13 +1220,15 @@ class Streamer:
 
         with self.lock:
             busy = set(self.in_flight) | set(self.queue)
+        self._cache_size = self.cache.size_bytes()
         picks = pick(
             self.built,
             self.seen,
             lambda n: n not in busy and self.may_coarsen(n),
-            self.disk_budget,
+            self.texture_budget(),
             self.top_of,
             neutral=lambda n: n not in busy and self.far(n),
+            behind=self.behind,
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
@@ -1238,11 +1258,12 @@ class Streamer:
             self.log(
                 f"  disk budget: {min(len(picks), EVICT_BATCH)} textures made coarser, "
                 f"{usage(self.built, self.top_of) / 1e9:.1f} GB of "
-                f"{self.disk_budget / 1e9:.0f} GB now"
+                f"{self.texture_budget() / 1e9:.0f} GB now"
             )
-        size = self.cache.size_bytes()
-        if size > self.cache_budget:
-            self.cache_freed += self.cache.evict_oldest(size - int(self.cache_budget * TARGET))
+        if self._cache_size > self.cache_budget:
+            self.cache_freed += self.cache.evict_oldest(
+                self._cache_size - int(self.cache_budget * TARGET)
+            )
         return len(picks)
 
     def start(self) -> None:
@@ -1299,7 +1320,7 @@ class Streamer:
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
             "disk_bytes": usage(built, self.top_of),
-            "disk_budget": self.disk_budget,
+            "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
             "at_8192": sum(1 for level in built.values() if level < 0),  # their 8192 px photos
             "tint_8192": self.tint_8192,
