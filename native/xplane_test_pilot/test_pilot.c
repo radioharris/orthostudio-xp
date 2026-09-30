@@ -36,7 +36,8 @@
  *   leg SECONDS DEG_PER_S FEET_PER_MIN   the path, from the start, one leg after the other
  *   weather clear                        no cloud, no wind, no turbulence, the weather static
  *   zulu HOURS [DAY]                     the time of day, UTC, and the day of the year (0: 1 January)
- *   camera T0 T1 cockpit                 the 3D cockpit between T0 and T1 seconds of path
+ *   camera T0 T1 cockpit [PITCH]         the 3D cockpit between T0 and T1 seconds of path, looking
+ *                                        straight ahead, PITCH degrees down (COCKPIT_PITCH)
  *   camera T0 T1 chase METRES UP BEARING a camera METRES from the aircraft, UP above it, at
  *                                        BEARING degrees from its heading, looking at it
  *   camera-record                        the user's camera recorded, 20 times a second of path, into
@@ -121,7 +122,13 @@ struct leg { double seconds, turn, climb; };
    head, a b c its x y z (metres, the aircraft's axes), h p r its psi the phi. fov: X-Plane's
    field of view, degrees. */
 struct pose { double t, a, b, c, h, p, r, fov; int ext; };
-struct camera { double t0, t1, dist, up, bearing; int chase; };
+struct camera { double t0, t1, dist, up, bearing, pitch; int chase; };
+/* The head's pitch in a scenario's cockpit, unless it gives one, held every frame with the eye
+   point X-Plane gives and straight ahead: X-Plane left the view of one run on the panel and of
+   three others on the horizon, and their frames and memory differed with it (the review of the
+   Norway flights, 2026-09-30). */
+#define COCKPIT_PITCH -10.0
+#define HEAD_SETTLE_FRAMES 2 /* after the cockpit view's command, before its eye point is kept */
 
 static char dir[1024], box[1100]; /* X-Plane's folder, and the runner's: Output/osxp_test_pilot/ */
 static long scenario_time = 0; /* the scenario flown last: its file's time */
@@ -133,6 +140,8 @@ static int n_legs = 0;
 static struct camera cameras[MAX_CAMERAS];
 static int n_cameras = 0, camera_on = 0, cockpit_set = -1; /* the cockpit camera last set */
 static int camera_record = 0, inside_set = 0; /* recording the user's camera; the cockpit set */
+static int head_frames = 0; /* frames since a cockpit camera started (HEAD_SETTLE_FRAMES: held) */
+static float head_xyz[3];   /* the eye point X-Plane gave it, kept */
 static int replaying = 0; /* a recorded camera replayed */
 static FILE *camfile = NULL;
 static double cam_last = -1.0;
@@ -189,8 +198,10 @@ static int read_scenario(const char *file) {
         } else if (strcmp(word, "camera") == 0 && n_cameras < MAX_CAMERAS) {
             struct camera cam = {0};
             char mode[32];
-            if (sscanf(line, "camera %lf %lf %31s %lf %lf %lf", &cam.t0, &cam.t1, mode, &cam.dist, &cam.up, &cam.bearing) >= 3) {
+            int n = sscanf(line, "camera %lf %lf %31s %lf %lf %lf", &cam.t0, &cam.t1, mode, &cam.dist, &cam.up, &cam.bearing);
+            if (n >= 3) {
                 cam.chase = strcmp(mode, "chase") == 0;
+                cam.pitch = !cam.chase && n >= 4 ? cam.dist : COCKPIT_PITCH;
                 cameras[n_cameras++] = cam;
             }
         } else if (strcmp(word, "camera-record") == 0) {
@@ -436,15 +447,29 @@ static const struct camera *camera_at(double t) {
     return NULL;
 }
 
-/* The 3D cockpit at the start of each of the scenario's cockpit cameras: the same view every run,
-   whatever view X-Plane was left in. */
+/* The 3D cockpit during each of the scenario's cockpit cameras, the same view every run and every
+   frame, whatever view X-Plane was left in or the mouse gives it: X-Plane's eye point, kept once
+   the view has settled, straight ahead, the camera's pitch (COCKPIT_PITCH). */
 static void cockpit_view(double t) {
-    int i;
-    for (i = 0; i < n_cameras; i++)
-        if (t >= cameras[i].t0 && t < cameras[i].t1 && !cameras[i].chase && cockpit_set != i) {
+    int i, k;
+    for (i = 0; i < n_cameras; i++) {
+        if (!(t >= cameras[i].t0 && t < cameras[i].t1 && !cameras[i].chase)) continue;
+        if (cockpit_set != i) {
             cockpit_set = i;
+            head_frames = 0;
             XPLMCommandOnce(XPLMFindCommand("sim/view/3d_cockpit_cmnd_look"));
         }
+        if (head_frames < HEAD_SETTLE_FRAMES) {
+            if (++head_frames == HEAD_SETTLE_FRAMES)
+                for (k = 0; k < 3; k++) head_xyz[k] = XPLMGetDataf(r_head[k]);
+            return;
+        }
+        for (k = 0; k < 3; k++) XPLMSetDataf(r_head[k], head_xyz[k]);
+        XPLMSetDataf(r_head[3], 0.0f);
+        XPLMSetDataf(r_head[4], (float)cameras[i].pitch);
+        XPLMSetDataf(r_head[5], 0.0f);
+        return;
+    }
 }
 
 static int chase_camera(XPLMCameraPosition_t *out, int losing, void *refcon) {
@@ -524,7 +549,7 @@ static void begin(void) {
     free(path);
     path = NULL;
     state = WAITING, placed_frames = 0, ready_since = -1.0, camera_on = 0, cockpit_set = -1, loading = 0;
-    inside_set = 0, cam_last = -1.0, replaying = 0;
+    inside_set = 0, cam_last = -1.0, replaying = 0, head_frames = 0;
     if (camfile) fclose(camfile);
     camfile = NULL;
     if (!read_scenario(file)) {

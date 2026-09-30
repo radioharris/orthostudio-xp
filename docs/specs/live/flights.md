@@ -126,7 +126,12 @@ of its own (8661), apart from Live's window, which is for its users and never sp
   went to its end); two series or more ticked are compared: their figures in one table a scenario,
   then their screenshots of each same moment side by side, each with its sharpness against the
   first's (below);
-- the camera: the scenario's, or the user's own. "Enregistrer ma caméra" flies one scenario with
+- the camera: the scenario's, or the user's own. A scenario's cockpit (`camera T0 T1 cockpit
+  [PITCH]`) is held every frame: X-Plane's eye point, straight ahead, 10 degrees down unless the
+  scenario says otherwise. Until 2026-09-30 X-Plane's own view stayed, and it was not the same from
+  one run to the next: one Norway run looked at the panel, three at the horizon, and X-Plane's
+  frames and memory differed with it (the review of the flights of 2026-09-29), so runs before that
+  do not compare on those figures. "Enregistrer ma caméra" flies one scenario with
   X-Plane alone and leaves the view to the user; the test pilot records it 20 times a second of
   path (`camera-record`): outside, the camera's place ahead of, right of and above the aircraft,
   its heading from the aircraft's, its pitch and roll; inside, the pilot's head; and X-Plane's field
