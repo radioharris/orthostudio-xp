@@ -123,3 +123,13 @@ def test_a_zone_another_zone_covers_is_named_too(caplog) -> None:  # type: ignor
     assert _idle_by_the_build([(wide, 18, "BI"), (covered, 17, "BI")], caplog) == {1}
     said = [r.getMessage() for r in caplog.records if "takes no mesh cell" in r.getMessage()]
     assert "level 17" in said[0] and " m here" in said[0], said
+
+
+def test_a_dsf_assigned_at_the_cell_centres_is_built_again() -> None:
+    """The rule's version enters the DSF's key. Left at 1, a tile built with zones before kept
+    its DSF from the store at the next build, and the new rule never reached it (found checking
+    the change, 2026-09-30); the DSF of a tile without zones comes out the same, so its textures
+    and pack are taken again from the store."""
+    from orthostudio.pipeline.build import TILE_DSF
+
+    assert TILE_DSF.version >= 2

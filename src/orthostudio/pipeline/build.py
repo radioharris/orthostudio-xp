@@ -1207,7 +1207,11 @@ XP12_RASTERS: Rule = rule(
 )(_xp12_rasters)
 TILE_DSF: Rule = rule(
     name="tile.dsf",
-    version=1,
+    # 2: a zone takes every mesh cell it covers a part of (``dsf/zones.cells_touched``), where 1
+    # read each cell at its centre: a tile built with zones kept its DSF from the store, and the
+    # rule never reached it. A DSF of a tile without zones comes out the same, so what follows it
+    # is taken again from the store.
+    version=2,
     params=TileDsfParams,
     inputs=("mesh", "masks", "rasters", "vectors"),
     ram_mb=3000,
