@@ -6,14 +6,11 @@ OrthoStudio XP Live's X-Plane plugin (``native/xplane_plugin/live_gate.c``, put 
 ``orthostudio.live.plugin``) talks to this gate while X-Plane loads a flight's aircraft, before
 X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:GATE_PORT:
 
-- ``LIVE1 LOAD lat lon msl=m agl=m``: a flight is loading there (PLANE_LOADED); no answer is
-  expected. ``msl`` and ``agl``: the aircraft's altitude and height above the ground in metres, as
-  X-Plane says them while it loads (since 2026-10-01; none from an older plugin): a start in the
-  air is planned from there (``streamer.start_height``).
-- ``LIVE1 HOLD lat lon why msl=m agl=m``: X-Plane waits for the answer. ``why`` is ``flight`` at
-  message 115, where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or
-  livery, which a livery changed in flight also sends. The gate sends ``LIVE1 GO n`` once every
-  texture X-Plane will read there is built. Otherwise it sends, for instance,
+- ``LIVE1 LOAD lat lon``: a flight is loading there (PLANE_LOADED); no answer is expected.
+- ``LIVE1 HOLD lat lon why``: X-Plane waits for the answer. ``why`` is ``flight`` at message 115,
+  where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or livery, which a
+  livery changed in flight also sends. The gate sends ``LIVE1 GO n`` once every texture X-Plane
+  will read there is built. Otherwise it sends, for instance,
   ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
   - n is how many textures are left;
   - p is the progress in thousandths, counted from the first moment the start was known;
@@ -65,8 +62,7 @@ ALIVE_S = 60.0  # ... but not for a loop gone this long
 
 Airports = Callable[[str], tuple[float, float] | None]
 Start = tuple[float, float, str]  # latitude, longitude, a name for it
-# what, lat, lon, where to answer, why (with a LOAD's or HOLD's heights after it: "flight msl=..")
-Request = tuple[str, float, float, tuple, str]
+Request = tuple[str, float, float, tuple, str]  # what, lat, lon, where to answer, why
 
 
 def read_last_start(prefs: Path) -> dict | None:
@@ -211,9 +207,7 @@ class Gate:
             parts = data.decode("ascii", "replace").split()
             if parts[:2] == ["LIVE1", "ASK"]:  # its frames of the second after: "max=123 n=45"
                 out.append(("ASK", 0.0, 0.0, addr, " ".join(parts[2:])))
-            elif len(parts) >= 4 and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
-                words = [w for w in parts[4:] if "=" not in w]
-                said = [w for w in parts[4:] if "=" in w]  # its heights: "msl=9144 agl=9144"
+            elif len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
                 with contextlib.suppress(ValueError):
                     out.append(
                         (
@@ -221,7 +215,7 @@ class Gate:
                             float(parts[2]),
                             float(parts[3]),
                             addr,
-                            " ".join([words[0] if words else "aircraft", *said]),
+                            parts[4] if len(parts) == 5 else "aircraft",
                         )
                     )
         return out

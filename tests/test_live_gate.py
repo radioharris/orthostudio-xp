@@ -122,8 +122,6 @@ class GateTest(unittest.TestCase):
                 p.send(b"LIVE1 LOAD 43.438210 5.212888")
                 p.send(b"nonsense")
                 p.send(b"LIVE1 HOLD 43.438210 5.212888 flight")
-                p.send(b"LIVE1 HOLD 43.438210 5.212888 flight msl=9144 agl=9144")  # its heights
-                p.send(b"LIVE1 LOAD 43.438210 5.212888 msl=40 agl=2")
                 time.sleep(0.1)
                 got = gate.requests()
                 self.assertEqual(
@@ -131,8 +129,6 @@ class GateTest(unittest.TestCase):
                     [
                         ("LOAD", 43.43821, 5.212888, "aircraft"),
                         ("HOLD", 43.43821, 5.212888, "flight"),
-                        ("HOLD", 43.43821, 5.212888, "flight msl=9144 agl=9144"),
-                        ("LOAD", 43.43821, 5.212888, "aircraft msl=40 agl=2"),
                     ],
                 )
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
@@ -364,12 +360,8 @@ class PluginTest(unittest.TestCase):
             took, logged = self.xplane(43.4382, 5.2129, "102:0", "112:0", "112:1", "108:1", "108:0")
             sock.close()
         heard = [h for h in heard if h != "LIVE1 HELLO"]  # the plugin's start: is Live there?
-        # PLANE_LOADED tells where, and how high: the stand-in's aircraft at FL300, X-Plane with
-        # no ground under it yet (its height above the ground its altitude)
-        self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900 msl=9144 agl=9144")
-        self.assertTrue(
-            all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft msl=9144 agl=9144" for h in heard[1:])
-        )
+        self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900")  # PLANE_LOADED tells where
+        self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft" for h in heard[1:]))
         self.assertGreater(took["112:1"], 0.6)  # three waits of 0.25 s before the go
         self.assertLess(took["112:1"], 3.0)
         for other in (
