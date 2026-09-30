@@ -227,8 +227,10 @@ class FakeStream:
         stop_hint,
         language,
         attach,
+        departure=lambda: None,
     ) -> None:
         self.language = language
+        self.departure = departure  # what the window asks to prepare, taken by the loop
         report(self.report)
         if self.crash:
             raise RuntimeError(self.crash)
@@ -247,6 +249,8 @@ class FakeStream:
 
 def control_for(stream: FakeStream, **changed: Any) -> LiveControl:
     return LiveControl(
+        resolve=lambda text: {"LFMN": (43.6584, 7.2159)}.get(text) or _unknown(text),
+        simbrief=lambda user: (fakes_plan("LFMN-LFPG"), ""),
         prepare=stream.prepare,
         follow=stream.follow,
         finish=stream.finish,
@@ -259,6 +263,16 @@ def control_for(stream: FakeStream, **changed: Any) -> LiveControl:
         echo=lambda _: None,
         catalog=lambda root: {},  # never GitHub from a test
     )
+
+
+def _unknown(text: str):
+    raise ValueError(f"X-Plane knows no airport {text}")
+
+
+def fakes_plan(name: str):
+    from orthostudio.live.flightplan import FlightPlan
+
+    return FlightPlan(name, [(43.6584, 7.2159), (49.0097, 2.5479)])
 
 
 def wait_for(predicate, timeout: float = 5.0) -> None:
@@ -503,6 +517,61 @@ async def test_the_buttons_of_the_page(
         assert revealed.status_code == 200 and shown == [tmp_path]
         gone = await client.post("/api/live/reveal", json={"path": str(tmp_path / "gone")})
         assert gone.status_code == 404
+
+
+def test_a_departure_prepared_before_x_plane_loads_it(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window's "Prepare" (the user's choice, 2026-09-30): Live started for it where idle, as
+    --from; told of it while it streams, once; an airport X-Plane does not know said so."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+    assert c.prepare_departure("  ") == ("empty", "no departure given")
+    assert c.prepare_departure("lfxx")[0] == "unknown"
+    assert c.prepare_departure(" lfmn ") is None  # idle: Live starts, building there
+    wait_for(lambda: c.state == STREAMING)
+    assert stream.options.start == "LFMN"
+    assert c.prepare_departure("LFMN") is None  # streaming: the loop takes it, once
+    assert stream.departure() == (43.6584, 7.2159, "LFMN")
+    assert stream.departure() is None
+    c.stop()
+    assert c.wait_idle(5.0)
+
+
+def test_the_departure_offered_is_the_last_simbrief_plan_s(home: Path) -> None:
+    """Asked of simbrief.com only with a SimBrief name in Live's settings, at most every
+    SUGGEST_S."""
+    asked: list[str] = []
+
+    def simbrief(user: str):
+        asked.append(user)
+        return fakes_plan("LFMN-LFPG"), ""
+
+    c = control_for(FakeStream())
+    c._simbrief = simbrief
+    assert c.departure_suggestion() == {}  # no SimBrief name: nothing asked
+    c._settings = lambda: LiveSettings(disk_gb=66, simbrief_user="pilot")
+    assert c.departure_suggestion() == {"icao": "LFMN", "plan": "LFMN-LFPG"}
+    assert c.departure_suggestion() == {"icao": "LFMN", "plan": "LFMN-LFPG"}
+    assert asked == ["pilot"]
+
+
+@pytest.mark.anyio
+async def test_the_window_prepares_a_departure(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+    async with client_for(create_live_app(c)) as client:
+        assert (await client.get("/api/live/departure")).json() == {}
+        unknown = await client.post("/api/live/prepare", json={"departure": "LFXX"})
+        assert unknown.status_code == 404 and "LFXX" in unknown.json()["detail"]
+        ok = await client.post("/api/live/prepare", json={"departure": "LFMN"})
+        assert ok.status_code == 202
+    wait_for(lambda: c.state == STREAMING)
+    assert stream.options.start == "LFMN"
+    c.stop()
+    assert c.wait_idle(5.0)
 
 
 @pytest.mark.anyio

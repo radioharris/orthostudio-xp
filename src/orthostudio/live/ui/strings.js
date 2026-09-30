@@ -50,6 +50,16 @@ export const STRINGS = {
     "action.fresh": "From scratch",
     "action.fresh_help": "Forgets every texture built and all imagery downloaded, as the very first time.",
 
+    "departure.title": "Prepare my departure",
+    "departure.placeholder": "ICAO code, e.g. LFMN",
+    "departure.prepare": "Prepare",
+    "departure.help":
+      "Live builds the ortho around this departure before you start the flight: X-Plane then passes its loading screen at once. Live starts for it if it is not running.",
+    "departure.from_plan": "From your last SimBrief plan: {plan}",
+    "departure.unknown": "X-Plane knows no airport {code}.",
+    "departure.empty": "Type an airport's ICAO code.",
+    "departure.busy": "Live is starting or stopping: prepare it again in a moment.",
+
     "flight.title": "Flight",
     "flight.xplane": "X-Plane",
     "flight.data_none": "no position yet",
@@ -231,7 +241,8 @@ export const STRINGS = {
     "welcome.lead": "Two ways to have ortho in X-Plane. You can go from one to the other at any time.",
     "welcome.live_title": "Fly now",
     "welcome.live_1": "The ortho is built as you fly, ahead of the aircraft.",
-    "welcome.live_2": "Nothing to prepare: choose your departure in X-Plane, and take off.",
+    "welcome.live_2":
+      "Choose your departure in X-Plane and take off; or prepare it ahead in Live, and X-Plane starts at once.",
     "welcome.live_3": "Needs the internet in flight, and AutoOrtho's mesh for now (Europe, North America…).",
     "welcome.live_choose": "Choose Live",
     "welcome.build_title": "Build my tiles",
@@ -249,7 +260,7 @@ export const STRINGS = {
       "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 90 seconds straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
     "plan.privacy":
-      "Only this name goes to simbrief.com, when a flight starts. Empty: nothing is asked.",
+      "Only this name goes to simbrief.com: when a flight starts, and when the Live window opens, to offer your departure. Empty: nothing is asked.",
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
@@ -352,6 +363,16 @@ export const STRINGS = {
     "action.fresh": "Repartir de zéro",
     "action.fresh_help":
       "Oublie toutes les textures construites et les images téléchargées, comme la toute première fois.",
+
+    "departure.title": "Préparer mon départ",
+    "departure.placeholder": "Code OACI, par ex. LFMN",
+    "departure.prepare": "Préparer",
+    "departure.help":
+      "Live construit l'ortho autour de ce départ avant que vous lanciez le vol : X-Plane passe alors son écran de chargement tout de suite. Live démarre pour lui s'il ne tourne pas.",
+    "departure.from_plan": "Tiré de votre dernier plan SimBrief : {plan}",
+    "departure.unknown": "X-Plane ne connaît pas d'aéroport {code}.",
+    "departure.empty": "Entrez le code OACI d'un aéroport.",
+    "departure.busy": "Live démarre ou s'arrête : réessayez dans un instant.",
 
     "flight.title": "Vol",
     "flight.xplane": "X-Plane",
@@ -537,7 +558,8 @@ export const STRINGS = {
       "Deux façons d'avoir de l'ortho dans X-Plane. Vous pourrez passer de l'une à l'autre à tout moment.",
     "welcome.live_title": "Voler tout de suite",
     "welcome.live_1": "L'ortho se construit pendant que vous volez, devant l'avion.",
-    "welcome.live_2": "Rien à préparer : choisissez votre départ dans X-Plane, et décollez.",
+    "welcome.live_2":
+      "Choisissez votre départ dans X-Plane et décollez ; ou préparez-le à l'avance dans Live, et X-Plane démarre aussitôt.",
     "welcome.live_3":
       "Il faut internet pendant le vol, et le maillage d'AutoOrtho pour l'instant (Europe, Amérique du Nord…).",
     "welcome.live_choose": "Choisir Live",
@@ -556,7 +578,7 @@ export const STRINGS = {
       "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 90 secondes tout droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
     "plan.privacy":
-      "Seul ce nom est envoyé à simbrief.com, au départ de chaque vol. Vide : rien n'est demandé.",
+      "Seul ce nom est envoyé à simbrief.com : au départ de chaque vol, et à l'ouverture de la fenêtre de Live pour proposer votre départ. Vide : rien n'est demandé.",
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "start.title": "Au démarrage d'un vol",

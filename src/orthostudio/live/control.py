@@ -59,6 +59,20 @@ OWN_S = 30.0  # the user's own tiles looked for again this often, or when X-Plan
 LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
 STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
+SUGGEST_S = 300.0  # the departure of the pilot's last SimBrief plan, asked at most this often
+
+
+def resolve_departure(text: str) -> tuple[float, float]:
+    """Where a departure the window asks to prepare is: an airport X-Plane knows (its ICAO code),
+    or "lat,lon". Raises ValueError, saying why, where there is none."""
+    from orthostudio.live.route import Route
+
+    try:
+        return Route.resolve(session.xplane_dir(None), [text]).points[0]
+    except (SystemExit, session.RefusedError) as e:
+        raise ValueError(str(e)) from e
+
+
 LEAVE_HINT = "Leave it installed, in the window, to stop waiting"
 STOP_HINT = "Stop in the window to end"
 
@@ -198,6 +212,8 @@ class LiveControl:
         catalog: Callable[..., dict] | None = None,
         installer: Callable[..., Any] | None = None,
         log_file: Path | None = None,
+        resolve: Callable[[str], tuple[float, float]] = resolve_departure,
+        simbrief: Callable[[str], tuple[Any, str]] | None = None,
     ) -> None:
         self._prepare = prepare
         self._follow = follow
@@ -231,6 +247,11 @@ class LiveControl:
         self._catalog_thread: threading.Thread | None = None
         self._installer: Any = None
         self._install_thread: threading.Thread | None = None
+        # the window's "Prepare": a departure for the running stream, and SimBrief's suggestion
+        self._resolve = resolve
+        self._simbrief = simbrief
+        self._departure: tuple[float, float, str] | None = None
+        self._suggested: tuple[float, str, dict[str, str]] = (0.0, "", {})
         # the running streamer, for the map: what it has built, from its memory
         self.streamer: Any = None
         self._map_rows: tuple[int, list] = (-1, [])
@@ -286,20 +307,73 @@ class LiveControl:
 
     # --- what the page asks ------------------------------------------------------------------
 
-    def start(self, *, fresh: bool = False) -> bool:
-        """Start streaming; False when a stream is already on its way (or on its way out)."""
+    def start(self, *, fresh: bool = False, departure: str | None = None) -> bool:
+        """Start streaming, building round ``departure`` straight away where given (an airport's
+        ICAO code, as ``--from``); False when a stream is already on its way (or on its way
+        out)."""
         with self._lock:
             if self._state != IDLE:
                 return False
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()
+            self._departure = None
         options = options_for(self._settings(), fresh=fresh)
+        if departure:
+            options.start = departure
         self._thread = threading.Thread(
             target=self._run, args=(options,), name="live-stream", daemon=True
         )
         self._thread.start()
         return True
+
+    def prepare_departure(self, text: str) -> tuple[str, str] | None:
+        """The window's "Prepare": the ortho round ``text`` (an airport's ICAO code, or lat,lon)
+        built before X-Plane loads that flight, which then passes its loading screen at once;
+        Live started for it where it does not run. None, or (why: "empty", "unknown" or "busy",
+        what to say)."""
+        text = " ".join(text.split()).upper()
+        if not text:
+            return "empty", "no departure given"
+        try:
+            lat, lon = self._resolve(text)
+        except ValueError as e:
+            return "unknown", str(e)
+        with self._lock:
+            state = self._state
+            if state == STREAMING:
+                self._departure = (lat, lon, text)
+                return None
+        if state == IDLE and self.start(departure=text):
+            return None
+        return "busy", "Live is starting or stopping: prepare it in a moment"
+
+    def _take_departure(self) -> tuple[float, float, str] | None:
+        """The departure the window asked for since the stream last looked, once."""
+        with self._lock:
+            wanted, self._departure = self._departure, None
+        return wanted
+
+    def departure_suggestion(self) -> dict[str, str]:
+        """The departure of the pilot's last SimBrief plan, which the window's "Prepare" box
+        offers: {"icao": "LFMN", "plan": "LFMN-LFPG"}; {} where no SimBrief name is set in Live's
+        settings (nothing is asked of simbrief.com then) or no plan came. Asked at most every
+        SUGGEST_S."""
+        user = self._settings().simbrief_user.strip()
+        if not user:
+            return {}
+        at, asked_for, got = self._suggested
+        if asked_for == user and time.monotonic() - at < SUGGEST_S:
+            return got
+        if self._simbrief is not None:
+            plan, _why = self._simbrief(user)
+        else:
+            from orthostudio.live.flightplan import last_plan
+
+            plan, _why = last_plan(user)
+        got = {} if plan is None else {"icao": plan.name.split("-")[0], "plan": plan.name}
+        self._suggested = (time.monotonic(), user, got)
+        return got
 
     def stop(self) -> None:
         """Stop streaming. The pack comes out of X-Plane once X-Plane has quit."""
@@ -568,6 +642,7 @@ class LiveControl:
                     stop_hint=STOP_HINT,
                     language=lambda: self.language,
                     attach=self._attach,
+                    departure=self._take_departure,
                 )
         except session.RefusedError as e:
             self._error = str(e)

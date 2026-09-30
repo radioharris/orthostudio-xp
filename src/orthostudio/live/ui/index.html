@@ -63,6 +63,18 @@
       <p class="question-help" id="source-saved" hidden></p>
       <p class="error-inline" id="source-error" role="alert" hidden></p>
     </div>
+    <!-- a departure built before X-Plane loads it: X-Plane then passes its loading screen at once -->
+    <div class="live-departure">
+      <label class="sub-question-title" for="departure" data-i18n="departure.title">Prepare my departure</label>
+      <div class="path-row">
+        <input type="text" id="departure" name="departure" class="question-path live-departure-input" spellcheck="false" autocomplete="off" maxlength="40"
+               data-i18n-placeholder="departure.placeholder" placeholder="ICAO code, e.g. LFMN">
+        <button type="button" class="btn" id="departure-btn" data-i18n="departure.prepare">Prepare</button>
+      </div>
+      <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
+      <p class="question-help" id="departure-plan" hidden></p>
+      <p class="error-inline" id="departure-error" role="alert" hidden></p>
+    </div>
     <div class="actions">
       <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
       <label class="switch" id="fresh-row" hidden>

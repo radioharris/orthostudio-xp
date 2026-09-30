@@ -322,12 +322,14 @@ def follow(
     stop_hint: str = "Ctrl-C here to stop",
     language: Callable[[], str] | None = None,
     attach: Callable[[Any], None] | None = None,
+    departure: Callable[[], tuple[float, float, str] | None] | None = None,
 ) -> None:
     """Follow X-Plane and keep the textures ahead of the aircraft built, until ``should_stop``
     (or Ctrl-C). The pack stays installed: :func:`finish` takes it out. ``language``: the Live
     window's, asked each time the plugin is answered (``options.language`` by default).
     ``attach``: told of the streamer once it runs, and of None once it stops (the window's map
-    reads what it builds from its memory)."""
+    reads what it builds from its memory). ``departure``: a start the window asks to prepare
+    before X-Plane loads it (``streamer.run``)."""
     from orthostudio.live import machine
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
@@ -387,6 +389,7 @@ def follow(
                     log=log,
                     report=report,
                     language=language or (lambda: options.language),
+                    departure=departure or (lambda: None),
                 )
             finally:
                 if attach is not None:

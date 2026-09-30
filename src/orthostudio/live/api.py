@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl
@@ -70,6 +70,10 @@ class RevealBody(BaseModel):
     path: str
 
 
+class PrepareBody(BaseModel):
+    departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
+
+
 def live_router(control: LiveControl) -> APIRouter:
     router = APIRouter(prefix="/api/live")
 
@@ -85,6 +89,20 @@ def live_router(control: LiveControl) -> APIRouter:
     def start(body: StartBody | None = None) -> dict[str, Any]:
         if not control.start(fresh=body.fresh if body else False):
             raise HTTPException(409, "a stream is already on its way, or on its way out")
+        return {"state": control.state}
+
+    @router.get("/departure")
+    def departure() -> dict[str, str]:
+        """What the "Prepare" box offers: the departure of the pilot's last SimBrief plan."""
+        return control.departure_suggestion()
+
+    @router.post("/prepare", status_code=202)
+    def prepare(body: PrepareBody) -> dict[str, Any]:
+        """The ortho round a departure built before X-Plane loads it (404: X-Plane knows no
+        such airport; 409: Live is starting or stopping)."""
+        refused = control.prepare_departure(body.departure)
+        if refused is not None:
+            raise HTTPException(409 if refused[0] == "busy" else 404, refused[1])
         return {"state": control.state}
 
     @router.post("/stop", status_code=202)

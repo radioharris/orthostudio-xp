@@ -165,6 +165,8 @@ function drawState(status) {
   $("xplane-btn").hidden = checks.xplane_running || !["idle", "starting", "streaming"].includes(state);
   $("leave-btn").hidden = state !== "leaving";
   $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
+  // a departure prepared: Live started for it when idle, told of it while it streams
+  $("departure-btn").disabled = !(state === "streaming" || (idle && !blocking(checks)));
   let help = "";
   if (idle && $("fresh").checked) help = t("action.fresh_help");
   else if ((idle || state === "starting") && !checks.xplane_running) help = t("action.xplane_wait");
@@ -788,6 +790,41 @@ async function act(path, body) {
   }
 }
 
+// --- a departure prepared before X-Plane loads it ------------------------------------------------
+
+/** The departure of the pilot's last SimBrief plan, offered in the box while it is empty. */
+async function suggestDeparture() {
+  try {
+    const got = await api("departure");
+    if (got.icao && !$("departure").value) $("departure").value = got.icao;
+    $("departure-plan").hidden = !got.plan;
+    $("departure-plan").textContent = got.plan ? t("departure.from_plan", { plan: got.plan }) : "";
+  } catch (_e) {
+    // no suggestion: the box stays as it is
+  }
+}
+
+async function prepareDeparture() {
+  const departure = $("departure").value.trim();
+  $("departure-error").hidden = true;
+  try {
+    await api("prepare", { method: "POST", body: { departure } });
+  } catch (error) {
+    $("departure-error").hidden = false;
+    $("departure-error").textContent =
+      error.status === 404
+        ? t(departure ? "departure.unknown" : "departure.empty", { code: departure })
+        : error.status === 409
+          ? t("departure.busy")
+          : error.message;
+  }
+  try {
+    draw(await api("status"));
+  } catch (_e) {
+    // the loop says it
+  }
+}
+
 async function showSimbriefRoute() {
   $("map-error").hidden = true;
   try {
@@ -1040,6 +1077,10 @@ function boot() {
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
+  $("departure-btn").addEventListener("click", prepareDeparture);
+  $("departure").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") prepareDeparture();
+  });
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));
@@ -1077,6 +1118,7 @@ function boot() {
   bindPageTools();
   bindSearch();
   loadProviders();
+  suggestDeparture();
   tellLanguage();
   askRegions();
   setInterval(askRegions, 60_000); // read again only when old (orthostudio/live/control.py)

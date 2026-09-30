@@ -32,6 +32,10 @@
 .live-source .sub-question-title { display: inline; margin: 0; }
 .live-source-select { width: auto; min-width: 16em; max-width: 100%; }
 .live-source > p { flex: 1 0 100%; margin: 0; }
+.live-departure { margin: var(--gap) 0; }
+.live-departure .path-row { max-width: 32em; }
+.live-departure-input { text-transform: uppercase; }
+.live-departure > p { margin: 4px 0 0; }
 
 /* a button to the regions, beside what asks for one */
 .live-go { margin-left: 6px; vertical-align: baseline; }
