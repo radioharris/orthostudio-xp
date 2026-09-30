@@ -228,12 +228,20 @@ def cold_home(home: Path) -> Path:
 
 
 def start_live(
-    xp: Path, out: Path, cold: bool, zooms: tuple[int, int] | None = None
+    xp: Path,
+    out: Path,
+    cold: bool,
+    zooms: tuple[int, int] | None = None,
+    hold_whole_load: bool = False,
 ) -> subprocess.Popen:
-    """Live's streamer, before X-Plane, as the user starts it; back once it is ready."""
+    """Live's streamer, before X-Plane, as the user starts it; back once it is ready.
+    ``hold_whole_load``: Live idle for the whole of each X-Plane load in flight, a test of
+    2026-09-30 (orthostudio.live.streamer.HOLD_WHOLE_LOAD)."""
     env = dict(os.environ)
     if cold:
         env["OSXP_HOME"] = str(cold_home(out / "live-home"))
+    if hold_whole_load:
+        env["OSXP_LIVE_HOLD_WHOLE_LOAD"] = "1"
     cmd = [sys.executable, "-m", "orthostudio.live", "stream", "--xplane", str(xp)]
     if zooms:
         cmd += ["--max-zoom", str(zooms[0]), "--max-zoom-airports", str(zooms[1])]
@@ -732,7 +740,7 @@ def run(a: argparse.Namespace) -> int:
                 "its own"
             )
         if a.streamer == "live":
-            proc = start_live(xp, out, a.cold, a.zooms)
+            proc = start_live(xp, out, a.cold, a.zooms, a.hold_whole_load)
             folder_of_streamer = live_folder(out, a.cold)
         else:
             home = out / "ao-home"
@@ -796,6 +804,7 @@ def run(a: argparse.Namespace) -> int:
                 "ao_settings": a.ao_settings if a.streamer == "autoortho" else None,
                 "zooms": list(a.zooms) if a.zooms else None,
                 "cold": a.cold,
+                "hold_whole_load": a.hold_whole_load if a.streamer == "live" else None,
                 "camera": (
                     "recorded"
                     if a.record_camera
@@ -846,6 +855,8 @@ def label(a: argparse.Namespace) -> str:
         parts.append(f"ZL{a.zooms[0]}/{a.zooms[1]}")
     if a.cold:
         parts.append("cold")
+    if getattr(a, "hold_whole_load", False):
+        parts.append("idle during X-Plane's loads")
     return ", ".join(parts)
 
 
@@ -1029,6 +1040,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("scenarios", nargs="*", help="names in tools/live/flights/scenarios, or files")
     p.add_argument("--streamer", choices=("none", "live", "autoortho"), default="none")
     p.add_argument("--cold", action="store_true", help="the streamer from a home of its own, empty")
+    p.add_argument(
+        "--hold-whole-load",
+        action="store_true",
+        help="Live idle for the whole of each X-Plane load in flight (a test of 2026-09-30)",
+    )
     p.add_argument(
         "--ao-settings",
         choices=("mine", "default"),

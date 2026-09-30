@@ -74,6 +74,9 @@ class Downloader:
         ) = 0
         self.in_flight = 0
         self._paused_until = 0.0
+        # nothing asked while it says so: a test flight's Live idle during X-Plane's loads
+        # (orthostudio.live.streamer.HOLD_WHOLE_LOAD)
+        self.hold: Callable[[], bool] = lambda: False
         self._seq = itertools.count()
         self._loop = asyncio.new_event_loop()
         self._ready = threading.Event()
@@ -132,6 +135,8 @@ class Downloader:
     async def _worker(self) -> None:
         while True:
             _, _, key = await self._queue.get()
+            while self.hold():
+                await asyncio.sleep(0.25)
             try:
                 status, body = await self._fetch(key)
             except asyncio.CancelledError:

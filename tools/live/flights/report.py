@@ -740,6 +740,8 @@ def report(folder: Path) -> str:
             settings.append("ZL{}/{}".format(*run["zooms"]))
         if run.get("cold"):
             settings.append("cold: nothing built, nothing downloaded")
+        if run.get("hold_whole_load"):
+            settings.append("Live idle during X-Plane's loads")
         lines += [
             f"- streamer: {run.get('streamer', '?')}"
             + (f" ({', '.join(settings)})" if settings else ""),

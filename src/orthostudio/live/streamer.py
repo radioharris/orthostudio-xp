@@ -155,6 +155,11 @@ DATAREFS = [
 # over 40 ms (2026-09-28). At most YIELD_MAX_S of each load, so that a long one starves nothing.
 YIELD_AFTER_S = 5.0
 YIELD_MAX_S = 30.0
+# A test flight's (2026-09-30, docs/specs/live/flights.md): Live idle for the whole of each load,
+# nothing downloaded, encoded or copied up, only the squares' files X-Plane needs made; to see
+# whether Live's work delays the tiles X-Plane loads (a tile of Norway came minutes after the two
+# others of its column). Set by the test flights alone (fly.py --hold-whole-load).
+HOLD_WHOLE_LOAD = os.environ.get("OSXP_LIVE_HOLD_WHOLE_LOAD") == "1"
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
 # it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
 # reads now
@@ -566,7 +571,7 @@ class Streamer:
         the rest not while X-Plane loads scenery (:meth:`yielding`) nor while the computer is very
         short of memory, an 8192 px level ahead of time not while it is short of it."""
         if urgency <= 0:
-            return True
+            return not self.holding_all()
         if self.yielding() or self.pressure >= machine.VERY_SHORT:
             return False
         return not (level < 0 and self.pressure >= machine.SHORT)
@@ -582,14 +587,18 @@ class Streamer:
                 took = now - self._load_since
                 self.log(
                     f"  X-Plane loaded scenery in {took:.0f} s: Live held back "
-                    + ("meanwhile" if took < YIELD_MAX_S else f"its first {YIELD_MAX_S:.0f} s only")
+                    + (
+                        "meanwhile"
+                        if took < YIELD_MAX_S or HOLD_WHOLE_LOAD
+                        else f"its first {YIELD_MAX_S:.0f} s only"
+                    )
                 )
             self._load_since = None
             self._load_long = False
             return
         if self._load_since is None:
             self._load_since = now
-        if now - self._load_since < YIELD_MAX_S:
+        if HOLD_WHOLE_LOAD or now - self._load_since < YIELD_MAX_S:
             self.yield_until = now + YIELD_AFTER_S
         elif not self._load_long:
             self._load_long = True
@@ -601,6 +610,10 @@ class Streamer:
     def yielding(self) -> bool:
         """Whether Live holds back for X-Plane's scenery load (:meth:`x_plane_loads`)."""
         return time.monotonic() < self.yield_until
+
+    def holding_all(self) -> bool:
+        """Whether Live is idle for X-Plane's load, a test flight's (HOLD_WHOLE_LOAD)."""
+        return HOLD_WHOLE_LOAD and self.yielding()
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
@@ -941,6 +954,8 @@ class Streamer:
         self.downloader = self.downloader_factory(
             lambda key, status, body: answers.put((key, status, body))
         )
+        if HOLD_WHOLE_LOAD and hasattr(self.downloader, "hold"):
+            self.downloader.hold = self.holding_all  # the test's: nothing asked during a load
         jobs: dict[str, _Job] = {}
         waiting: dict[Key, set[str]] = defaultdict(set)
         requested: set[Key] = set()
@@ -1133,7 +1148,7 @@ class Streamer:
         ):
             try:
                 while not self.stop.is_set() or encoding:
-                    if not self.stop.is_set():
+                    if not self.stop.is_set() and not self.holding_all():
                         held = sum(len(j.keys) for j in jobs.values())
                         room = WINDOW_PIECES - len(requested)
                         if room > 0:
@@ -1159,7 +1174,8 @@ class Streamer:
                         pass
                     give_up_stuck(pool)
                     copies_done()
-                    copy_late(pool)
+                    if not self.holding_all():
+                        copy_late(pool)
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)

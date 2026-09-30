@@ -595,6 +595,28 @@ def test_live_holds_back_while_x_plane_loads_scenery(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_a_test_flights_live_idle_for_the_whole_of_a_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test of 2026-09-30 (fly.py --hold-whole-load): Live idle for all of X-Plane's load, not
+    its first YIELD_MAX_S alone, even for what X-Plane shows; and as always once it is over."""
+    from orthostudio.live import streamer as st
+
+    monkeypatch.setattr(st, "HOLD_WHOLE_LOAD", True)
+    s = row_streamer(tmp_path)
+    s.flying = True
+    s.log = lambda _: None
+    monkeypatch.setattr(st.time, "monotonic", lambda: 1000.0)
+    s.x_plane_loads(True, now=1000.0 - 10 * st.YIELD_MAX_S)
+    s.x_plane_loads(True, now=1000.0)  # long past YIELD_MAX_S: still held
+    assert s.yielding() and s.holding_all()
+    assert not s.may_encode(-1.0, 0)  # not even what X-Plane shows
+    s.x_plane_loads(False, now=1000.0)
+    monkeypatch.setattr(st.time, "monotonic", lambda: 1000.0 + st.YIELD_AFTER_S + 1)
+    assert not s.holding_all() and s.may_encode(-1.0, 0)
+    s.cache.close()
+
+
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:
     """Its file is the last build's: a sharper one waits for the one on its way."""
     s = row_streamer(tmp_path)
