@@ -17,13 +17,40 @@ from dataclasses import dataclass
 from orthostudio.graph.rule import Rule
 from orthostudio.graph.store import Store
 
-__all__ = ["DEFAULT_ALPHA", "DEFAULT_COST_S", "CostEntry", "CostModel", "cost_name"]
+__all__ = [
+    "DEFAULT_ALPHA",
+    "DEFAULT_COST_S",
+    "OVERRUN_SHARE",
+    "CostEntry",
+    "CostModel",
+    "cost_name",
+    "timed_fraction",
+]
 
 log = logging.getLogger("orthostudio.sched.costs")
 
 DEFAULT_COST_S = 1.0
 DEFAULT_ALPHA = 0.3
 _PREFIX = "sched.cost."
+OVERRUN_SHARE = 0.15
+"""A node running past its expected time is still given this share of it as time left
+(``api/progress``'s time remaining, and :func:`timed_fraction`)."""
+
+
+def timed_fraction(elapsed_s: float, expected_s: float) -> float:
+    """How far a node that reports nothing has got: the time it has run over that time plus the
+    time it has left, ``max(expected - elapsed, expected x OVERRUN_SHARE)``, which is the time
+    remaining ``api/progress`` gives such a node.
+
+    The bar then moves with the time alone and agrees with the time remaining: the share of the
+    usual time up to 85 % of it, slower and slower past it (87 % at the usual time, 93 % at
+    twice, 97 % at five times), and never 100 % before the node ends. The mesh of a tile
+    (Triangle4XP), its masks and its DSF report nothing: their steps sat still, then jumped, and
+    Terrain stayed at 56 % for forty seconds of meshing (a user, 2026-09-29)."""
+    if expected_s <= 0 or elapsed_s <= 0:
+        return 0.0
+    left = max(expected_s - elapsed_s, expected_s * OVERRUN_SHARE)
+    return elapsed_s / (elapsed_s + left)
 
 
 def cost_name(rule: Rule) -> str:

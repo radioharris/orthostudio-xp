@@ -521,8 +521,8 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | Step status | Bar | Words |
   |---|---|---|
   | `pending` (no row runs and none did real work; hits alone do not start a step) | empty | *pending* (*not started* once the job ended) |
-  | `running` (a row runs) | accent colour, the step's `fraction`; the dot pulses | `42 %` (*running* at 0), then the download rate when the running row's line carries one (`21.6 MB/s`: Imagery's textures, the OSM layers of Data, a relief file as it arrives, `downloadRate`), else, on Relief, *downloading* before a file's first second and *reading the relief* while the files are read (`reliefPhase`: the rate of the finished download stayed there the 45 s a USGS file took to read, a user, 2026-09-29), else the last `message` -- which says "nothing to download (the image pieces are in the cache)" when a tile is built again with no fetching, since the counts of a step called Imagery read like a download (a user, 2026-09-18); the line of a row that ended is dropped |
-  | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting · 42 %*; tooltip: partly done, the rest waits for its turn |
+  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0); what it does is said in the tile's line under its steps (below), the engine's `message` in the tooltip |
+  | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting*; tooltip: its share, partly done, the rest waits for its turn (*waiting · 36 %* was cut in the narrowest window, 2026-09-30) |
   | `done` | full, green | *done · 12 s* (the time from 1 s) |
   | `hit` | full, the dimmer `--hit` colour | *already done*; tooltip: kept from an earlier build, nothing to redo |
   | `failed` | full, red | *failed*; tooltip: the error's code and words |
@@ -530,6 +530,31 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | `cancelled` | dashed, grey, as far as its rows got | *cancelled* |
   | install of a build without install | empty, dashed | *no install* |
   | `running` or `waiting` in a job that ended (an older engine only: the current one says `skipped` or `cancelled` then) | dashed, grey, as far as its rows got | *stopped* |
+
+  **What the tile is doing, in words** (a user, 2026-09-30: the cells are too narrow for a
+  phrase, and "waits for the ..." was cut): a line under the tile's seven cells, across the row,
+  `tileActivity`. For each step that runs, its name and what its running rows do: the OSM layers
+  received out of the tile's (*layers received: 2 of 4*) and the download rate; a relief file as
+  it arrives (*downloading, 210 of 430 MB, 16.2 MB/s*, `dem_downloading_message`), *downloading*
+  before its first second, then *reading the relief*; the images done out of the tile's (*412 of
+  1,347 images, 15.2 MB/s*, `textures_progress_message`), *from the cache* when nothing is
+  downloaded; for the rows that report nothing, what they do (*tracing the roads, the water and
+  the airports*, *meshing the terrain*, *coast masks*, *X-Plane 12 layers*, *writing the X-Plane
+  terrain*, *X-Plane's objects*, *putting the tile together*, *installing in X-Plane*) and *about
+  10 s to go* while three seconds or more are left of their usual time, *longer than usual* once
+  they ran half as long again. Nothing runs: why its Imagery waits, when it does (*waits for the
+  DSF (Assembly)*, *waits for the images of +46+006*: one tile downloads at a time). A finished
+  tile, a tile still to start and a job that ended have no line, so a batch shows three or four
+  lines at most.
+
+  **Bars that move with the work.** A running row that has said how far it is shows it; one that
+  has said nothing moves by the time since it started against its `weight_s`, the seconds its
+  rule takes on this computer (`timedFraction`, the engine's `sched.costs.timed_fraction`, api.md
+  5.4): its start is the `started` entry's arrival, or a read's `running_s`, the earliest the page
+  saw (`keepStarts`: a read that answered late moved bars back by the time it took). Every second
+  the running steps move on (`advanceSteps`), never back. A downloaded relief says how far it is
+  itself, the download filling its share of the bar as the bytes arrive, the reading the rest
+  (`pipeline-build.md`).
 
   "As far as its rows got" counts rows: 1 for a row that ended with a result (done or hit), its
   fraction for one that ran until it was stopped. The percent is rounded down, and the engine's

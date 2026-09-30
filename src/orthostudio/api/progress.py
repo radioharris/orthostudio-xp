@@ -65,6 +65,7 @@ from typing import Any, Protocol
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.grid import TEXTURE_TILES, TextureId, texture_at
 from orthostudio.pipeline.build import BuildSpec
+from orthostudio.sched.costs import OVERRUN_SHARE, timed_fraction
 from orthostudio.zones import zone_list_textures
 
 __all__ = [
@@ -86,6 +87,7 @@ __all__ = [
     "read_line_history",
     "texture_cost",
     "texture_seconds",
+    "timed_fraction",
     "weight_of",
     "weighted_progress",
 ]
@@ -227,8 +229,6 @@ QUEUE_TRUST_AFTER_S = 45.0
 after this much movement, fully at the second value: a cold tile downloads at 400 req/s while
 the fetcher opens its connections, which read as the speed of the four tiles behind it
 added two minutes to the estimate for ten seconds."""
-OVERRUN_SHARE = 0.15
-"""A node running past its expected time is still given this share of it."""
 FAILED_COUNTS_FROM = 0.9
 """A failed node informs its group's speed when it had reported this much done (the textures
 node fails at the very end, when a few chunks are missing, after doing all the work)."""
@@ -481,20 +481,27 @@ def weight_of(n: NodeLike) -> float:
     return max(0.0, n.weight_s)
 
 
-def weighted_progress(nodes: Sequence[NodeLike]) -> float:
+def weighted_progress(nodes: Sequence[NodeLike], now: float | None = None) -> float:
     """Weighted share of the work **done** (1 for a node that finished, else how far it got);
-    by count when nothing weighs (every node a hit)."""
+    by count when nothing weighs (every node a hit). With ``now``, a running node that reports
+    nothing has got as far as its time says (:func:`timed_fraction`)."""
     total = sum(weight_of(n) for n in nodes)
     if total <= 0:
-        return sum(_fraction(n) for n in nodes) / len(nodes) if nodes else 0.0
-    return sum(weight_of(n) * _fraction(n) for n in nodes) / total
+        return sum(_fraction(n, now) for n in nodes) / len(nodes) if nodes else 0.0
+    return sum(weight_of(n) * _fraction(n, now) for n in nodes) / total
 
 
-def _fraction(n: NodeLike) -> float:
+def _fraction(n: NodeLike, now: float | None = None) -> float:
     if n.status in FINISHED:
         return 1.0
-    if n.status in ENDED or n.status == "running":
-        return min(1.0, max(0.0, n.fraction))  # how far it got, and no further
+    if n.status == "running":
+        reported = min(1.0, max(0.0, n.fraction))  # how far it got, and no further
+        # a node that has said how far it is is measured; one that has not is timed
+        if reported > 0 or now is None or n.started_at is None:
+            return reported
+        return timed_fraction(now - n.started_at, n.weight_s)
+    if n.status in ENDED:
+        return min(1.0, max(0.0, n.fraction))
     return 0.0
 
 
@@ -713,7 +720,7 @@ def estimate(
     rows = list(nodes)
     if not rows:
         return Estimate(0.0, None, None, None)
-    progress = weighted_progress(rows)
+    progress = weighted_progress(rows, now)
     speeds, observed = _speeds(rows, now, prior)
     osm_left = 0.0
     # The downloads a build runs in its graph wait on their lane, one tile after the other; a

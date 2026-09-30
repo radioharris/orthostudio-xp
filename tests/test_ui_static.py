@@ -1475,11 +1475,14 @@ function run(mode, lag) {
     fresh.log = job.log;
     fresh.logSeq = job.logSeq;
     for (const e of buffer.splice(0)) if (e.event !== "log") m.applyEvent(fresh, e.event, e, nowMs);
+    m.keepStarts(fresh, job, nowMs);
     job = fresh;
   };
   for (const e of doc.journal) {
     const nowMs = e.ts * 1000;
     const changed = m.applyEvent(job, e.event, e, nowMs);
+    // the page's clock: the steps that report nothing move by their time between two entries
+    m.advanceSteps(job, nowMs);
     if (late) buffer.push(e);
     observe(e.seq);
     if (mode === "local" && doc.states[String(e.seq)]) {
@@ -1919,7 +1922,9 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     with_rate = build_mod.textures_progress_message("BI16", snapshot, 21.64)
     without = build_mod.textures_progress_message("BI16", snapshot)
     job = {"status": "running", "install": True, "tiles": []}
-    imagery = {"status": "running", "fraction": 0.42, "message": with_rate, "nodes": {}}
+    textures = {"role": "textures", "status": "running", "fraction": 0.42}
+    imagery = {"status": "running", "fraction": 0.42, "message": with_rate,
+               "nodes": {"+46+006/BI16/textures": textures}}  # fmt: skip
     tile = {"tile": "+46+006", "steps": {"imagery": imagery}}
     osm_line = osm_progress_message(
         TileRef(46, 6),
@@ -1931,20 +1936,29 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
     relief_line = build_mod.dem_downloading_message(
         TileRef(46, 6), 2, 4_000_000, 9_000_000, 9_300_000, 3.0
     )
-    data = {"status": "running", "fraction": 0.3, "message": osm_line, "nodes": {}}
+    osm = {"role": "osm", "status": "running", "fraction": 0.3}
+    data = {"status": "running", "fraction": 0.3, "message": osm_line,
+            "nodes": {"+46+006/osm": osm}}  # fmt: skip
     tile["steps"]["osm"] = data
     got = _node_json(
         "app.js",
         f"[m.downloadRate({json.dumps(with_rate)}), m.downloadRate({json.dumps(without)}), "
         f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'imagery'), "
         f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'osm'), "
-        f"m.downloadRate({json.dumps(relief_line)})]",
+        f"m.downloadRate({json.dumps(relief_line)}), "
+        f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]",
     )
     assert got[0] == 21.6 and got[1] is None
-    assert got[2]["text"] == "42%" and got[2]["detail"] == "21.6 MB/s"
+    # the cell holds a word; the rate is said in the tile's line (a user found the cells too
+    # narrow for a phrase, 2026-09-30)
+    assert got[2]["text"] == "42%" and got[2]["detail"] == ""
     assert got[2]["help"] == with_rate  # the whole line stays in the tooltip
-    assert got[3]["detail"] == "1.4 MB/s" and got[3]["help"] == osm_line
+    assert got[3]["detail"] == "" and got[3]["help"] == osm_line
     assert got[4] == 3.1  # a downloaded relief
+    assert got[5] == [
+        {"step": "osm", "words": "layers received: 1 of 4, 1.4 MB/s"},
+        {"step": "imagery", "words": "2 of 4 images, 21.6 MB/s"},
+    ]
 
 
 def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
@@ -1965,14 +1979,24 @@ def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
     job = {"status": "running", "install": True, "tiles": []}
     views = []
     for message in lines:
-        relief = {"status": "running", "fraction": 0, "message": message, "nodes": {}}
+        dem = {"role": "dem", "status": "running", "fraction": 0}
+        relief = {"status": "running", "fraction": 0, "message": message,
+                  "nodes": {"+46+006/dem": dem}}  # fmt: skip
         tile = {"tile": "+46+006", "steps": {"relief": relief}}
-        views.append(f"m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'relief')")
+        views.append(
+            f"[m.stepView({json.dumps(job)}, {json.dumps(tile)}, 'relief'), "
+            f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]"
+        )
     got = _node_json("app.js", "[" + ", ".join(views) + "]")
-    assert [view["detail"] for view in got] == [
-        "reading the relief", "downloading", "16.2 MB/s", "reading the relief"
-    ]  # fmt: skip
-    assert got[3]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
+    # said in the tile's line under its steps, the cell holding a word (2026-09-30)
+    assert [act[0]["words"] for _view, act in got] == [
+        "reading the relief",
+        "downloading",
+        "downloading, 210 of 430 MB, 16.2 MB/s",
+        "reading the relief",
+    ]
+    assert all(view["detail"] == "" for view, _ in got)
+    assert got[3][0]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:
@@ -3869,6 +3893,49 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert "legend-row" not in map_js
 
 
+def test_a_step_that_reports_nothing_moves_by_its_time() -> None:
+    """The mesh, the masks, the DSF report nothing but their end: Terrain sat at 56 % for forty
+    seconds, then jumped (a user, 2026-09-29). A running node that has said nothing moves by the
+    time since it started against its weight, the seconds its rule takes on this computer, by the
+    engine's rule (``sched.costs.timed_fraction``); the tile's line says the time it has left,
+    or that it is longer than usual. A read that answers late keeps the start the page saw."""
+    from orthostudio.sched.costs import timed_fraction
+
+    samples = [(0, 10), (5, 10), (8.5, 10), (10, 10), (20, 10), (50, 10), (3, 0)]
+    mesh = {"role": "mesh", "status": "running", "fraction": 0, "weight": 20, "startedMs": 1000}
+    vectors = {"role": "vectors", "status": "done", "fraction": 1, "weight": 10}
+    terrain = {"status": "running", "fraction": 0.3, "message": "",
+               "nodes": {"+46+006/vectors": vectors, "+46+006/mesh": mesh}}  # fmt: skip
+    tile = {"tile": "+46+006", "steps": {"terrain": terrain}}
+    job = {"status": "running", "install": True, "tiles": [tile]}
+    old = {"tiles": [{"tile": "+46+006", "steps": {"terrain": {"nodes": {
+        "+46+006/mesh": {**mesh, "startedMs": 500}}}}}]}  # fmt: skip
+    fresh = {"tiles": [{"tile": "+46+006", "steps": {"terrain": {"status": "running",
+        "fraction": 0.2, "nodes": {"+46+006/mesh": {**mesh, "startedMs": 4000}}}}}]}  # fmt: skip
+    got = _node_json(
+        "app.js",
+        f"(() => {{ const job = {json.dumps(job)}; const tile = job.tiles[0];"
+        f" const out = {{ timed: {json.dumps(samples)}.map(([e, w]) => m.timedFraction(e, w)) }};"
+        " out.at11 = m.stepTotals(tile.steps.terrain, 11000).fraction;"
+        " m.advanceSteps(job, 11000); out.step11 = tile.steps.terrain.fraction;"
+        " out.line11 = m.tileActivity(job, tile, 11000);"
+        " out.line51 = m.tileActivity(job, tile, 51000);"
+        f" const fresh = {json.dumps(fresh)}; m.keepStarts(fresh, {json.dumps(old)}, 11000);"
+        " out.kept = fresh.tiles[0].steps.terrain.nodes['+46+006/mesh'].startedMs;"
+        " out.moved = fresh.tiles[0].steps.terrain.fraction;"
+        " return out; })()",
+    )
+    assert got["timed"] == pytest.approx([timed_fraction(e, w) for e, w in samples])
+    # vectors done (10 of 30 s), the mesh 10 s into its 20: half of it
+    assert got["at11"] == pytest.approx((10 + 20 * 0.5) / 30)
+    assert got["step11"] == pytest.approx(got["at11"])  # the clock moves the step
+    assert got["line11"] == [{"step": "terrain", "words": "meshing the terrain, about 10 s to go"}]
+    assert got["line51"] == [{"step": "terrain", "words": "meshing the terrain, longer than usual"}]
+    # the read came late, its start 3.5 s after the one the page saw: the page's stays
+    assert got["kept"] == 500
+    assert got["moved"] == pytest.approx(timed_fraction(10.5, 20.0))
+
+
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     """Both tiles were done up to Coast, and the first Imagery said "pending" for a long while on
     Windows: it waited for its DSF, shown under Assembly, and the second waits for the first's
@@ -3902,14 +3969,20 @@ def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     alone = {"tile": "+46+008", "steps": {"imagery": {"status": "pending", "nodes": {}}}}
     got = _node_json(
         "app.js",
-        f"[m.stepView({json.dumps(job)}, {json.dumps(first)}, 'imagery').text, "
-        f"m.stepView({json.dumps(job2)}, {json.dumps(second)}, 'imagery').text, "
+        f"[m.stepView({json.dumps(job)}, {json.dumps(first)}, 'imagery'), "
+        f"m.stepView({json.dumps(job2)}, {json.dumps(second)}, 'imagery'), "
         f"m.stepView({json.dumps(job)}, {json.dumps(alone)}, 'imagery').text, "
-        f"m.stepView({json.dumps(job)}, {json.dumps(first)}, 'assembly').text]",
+        f"m.tileActivity({json.dumps(job)}, {json.dumps(first)}), "
+        f"m.tileActivity({json.dumps(job2)}, {json.dumps(second)}), "
+        f"m.tileActivity({json.dumps(job)}, {json.dumps(alone)})]",
     )
-    assert got[0] == "waits for the DSF (Assembly)"
-    assert got[1] == "waits for the images of +46+006"
-    assert got[2] == "pending" and got[3] != got[0]
+    # the cell says "pending" and its tooltip why; the tile's line says what runs, or why it waits
+    assert got[0]["text"] == "pending" and got[0]["help"] == "waits for the DSF (Assembly)"
+    assert got[1]["help"] == "waits for the images of +46+006"
+    assert got[2] == "pending"
+    assert got[3] == [{"step": "assembly", "words": "writing the X-Plane terrain"}]
+    assert got[4] == [{"step": "imagery", "words": "waits for the images of +46+006"}]
+    assert got[5] == []
 
 
 def test_two_squares_with_the_same_answer_are_not_called_different() -> None:

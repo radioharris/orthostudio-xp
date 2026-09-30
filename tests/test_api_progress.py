@@ -23,6 +23,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -586,6 +587,54 @@ def test_declared_graph_replaces_the_predicted_rows(tmp_path: Path) -> None:
     assert [n["role"] for n in tile["stages"]["terrain"]["nodes"]] == ["vectors", "mesh"]
 
 
+def test_the_job_weighs_a_node_by_the_time_this_computer_learnt(tmp_path: Path) -> None:
+    """A node's weight is the time its rule takes on this computer when the scheduler has learnt it
+    (``Phase.learned``), not the reference Mac's: the page moves the bar of a node that reports
+    nothing by it, and a mesh that takes 25 s here would have filled its bar in 2.6. A textures
+    row stays weighed by its images."""
+    clock = Clock()
+    spec = _spec("+43+005", zl=14, install=False, overlay=False)
+    job = _job([spec], clock, tmp_path)
+    nodes = (
+        ("+43+005/vectors", "subprocess", "orthostudio.vectors"),
+        ("+43+005/mesh", "subprocess", "orthostudio.mesh"),
+        ("+43+005/BI14/textures", "net", "tile.textures"),
+    )
+    textures_before = job._tiles["+43+005"].nodes["+43+005/BI14/textures"].weight_s
+    clock.t = 1.0
+    learned = (("+43+005/mesh", 25.0), ("+43+005/BI14/textures", 999.0))
+    job.on_event(Phase("build", nodes=nodes, learned=learned))
+    rows = job._tiles["+43+005"].nodes
+    assert rows["+43+005/mesh"].weight_s == 25.0
+    assert rows["+43+005/vectors"].weight_s == pytest.approx(progress.ROLE_SECONDS["vectors"])
+    assert rows["+43+005/BI14/textures"].weight_s == textures_before
+    # the mesh runs and says nothing: its time moves its step, and the page is told that time
+    job.on_event(Started("+43+005/mesh", "subprocess", KEY))
+    clock.t = 11.0
+    terrain = job.state()["tiles"][0]["stages"]["terrain"]
+    mesh = next(n for n in terrain["nodes"] if n["role"] == "mesh")
+    assert mesh["running_s"] == pytest.approx(10.0) and mesh["weight_s"] == 25.0
+    share = 25.0 * progress.timed_fraction(10.0, 25.0) / (25.0 + rows["+43+005/vectors"].weight_s)
+    assert terrain["fraction"] == pytest.approx(share, abs=1e-4)
+    assert "running_s" not in next(n for n in terrain["nodes"] if n["role"] == "vectors")
+
+
+def test_the_build_says_the_times_its_scheduler_learnt() -> None:
+    """``Phase.learned`` holds the rules the scheduler has seen run three times at least, never the
+    textures (weighed by their images)."""
+    from orthostudio.sched.costs import CostModel, cost_name
+
+    costs = CostModel()
+    mesh = SimpleNamespace(id="+43+005/mesh", rule=build_mod.TILE_DSF)
+    textures = SimpleNamespace(id="+43+005/BI14/textures", rule=build_mod.TILE_TEXTURES)
+    overlay = SimpleNamespace(id="+43+005/overlay", rule=build_mod.TILE_OVERLAY)
+    costs.set(cost_name(build_mod.TILE_DSF), 7.5, n=3)
+    costs.set(cost_name(build_mod.TILE_TEXTURES), 80.0, n=9)
+    costs.set(cost_name(build_mod.TILE_OVERLAY), 4.0, n=2)  # seen twice: not yet its time
+    fake = SimpleNamespace(nodes={n.id: n for n in (mesh, textures, overlay)}, costs=costs)
+    assert build_mod._learned(cast(Any, fake)) == (("+43+005/mesh", 7.5),)
+
+
 def test_a_second_pass_runs_skipped_rows_again_and_keeps_what_it_built(tmp_path: Path) -> None:
     clock = Clock()
     job = _job([_spec("+43+005", zl=14, install=False)], clock, tmp_path)
@@ -1072,9 +1121,13 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
 
     monkeypatch.setattr(build_mod.dem_sources, "http_download", fetched)
     monkeypatch.setattr(build_mod, "run_p0_rule", rule)
+    monkeypatch.setattr(build_mod, "RELIEF_TICK_S", 60.0)  # the reading's ticks: the next test
     build_mod._dem_run(cast(Any, None), _spec("+46+006", zl=14))(Ctx())
     assert answers and answers[0].ok
-    assert {fraction for fraction, _ in seen} == {0.0}
+    # the bar moves with the bytes (the download's share of it), then stays while it is read
+    fractions = [fraction for fraction, _ in seen]
+    assert fractions[:3] == [0.0, 0.0, 0.0] and 0.0 < fractions[3] < 1.0
+    assert fractions[4] == fractions[3]
     said = [message for _, message in seen]
     assert said[:3] == [
         "+46+006: elevation, reading",  # a relief on disk is read at once
@@ -1087,6 +1140,76 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
     assert said[4].endswith(" MB/s, reading") and "MB/s)" not in said[4]  # no rate for the page
     unsized = build_mod.dem_downloading_message(TileRef(46, 6), 2, 5_000_000, None, 8_000_000, 2.0)
     assert unsized == "+46+006: elevation, downloading file 2, 5 MB (4.0 MB/s)"
+
+
+def test_a_downloaded_relief_moves_its_bar_while_it_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The file in, the relief is read for as long as a file of its size takes (45 s for USGS's
+    430 MB): the bar goes on from the download's share by that time, never back and never full
+    before the node ends. It sat at nothing for 48 to 80 s, and a user saw no progress
+    (2026-09-29)."""
+    from orthostudio.dem import rule as dem_rule
+    from orthostudio.dem.sources import Download
+
+    seen: list[tuple[float, str]] = []
+
+    class Ctx:
+        cancel_event = None
+
+        def progress(self, fraction: float, message: str) -> None:
+            seen.append((fraction, message))
+
+    def fetched(url: str, **kw: Any) -> Download:
+        kw["on_bytes"](3_000_000, 3_000_000)
+        return Download(url, body=b"x" * 3_000_000, status=200)
+
+    def rule(ctx: Any) -> None:
+        dem_rule._job().download("http://viewfinderpanoramas.org/dem3/L32.zip")
+        time.sleep(0.4)  # reading: 3 MB at 10 MB/s should take 0.3 s
+
+    monkeypatch.setattr(build_mod.dem_sources, "http_download", fetched)
+    monkeypatch.setattr(build_mod, "run_p0_rule", rule)
+    monkeypatch.setattr(build_mod, "RELIEF_TICK_S", 0.02)
+    monkeypatch.setattr(build_mod, "RELIEF_READ_MB_S", 10.0)
+    build_mod._dem_run(cast(Any, None), _spec("+46+006", zl=14))(Ctx())
+    fractions = [fraction for fraction, _ in seen]
+    assert fractions == sorted(fractions) and fractions[-1] < 1.0
+    reading = [(f, m) for f, m in seen if m.endswith(", reading")]
+    assert len(reading) > 5  # it ticked while the relief was read
+    assert reading[-1][0] > reading[0][0] and reading[-1][0] > 0.85  # past the usual time
+
+
+def test_a_relief_download_takes_the_share_of_the_bar_its_time_does() -> None:
+    """USGS's file of +34-116 (430 MB) came in 27 s and was read in 45: the download is about 37 %
+    of the relief's bar (2026-09-29)."""
+    size = 430_000_000
+    share = build_mod.dem_share(size, size, 27.0)
+    assert 0.35 < share < 0.40
+    assert build_mod.dem_share(size, 0, 3.0) == 0.0  # nothing came yet: no share to say
+    assert build_mod.dem_share(size, size // 10, 10.0) > share  # 4.3 MB/s: more of the bar
+
+
+def test_a_silent_node_moves_with_its_time() -> None:
+    """A node that reports nothing (the mesh, the DSF) has got as far as its time says: the share
+    of its usual time up to 85 % of it, slower past it, never 1 before it ends."""
+    timed = progress.timed_fraction
+    assert timed(0.0, 10.0) == 0.0 and timed(3.0, 0.0) == 0.0
+    assert timed(5.0, 10.0) == pytest.approx(0.5)
+    assert timed(8.5, 10.0) == pytest.approx(0.85)
+    assert timed(10.0, 10.0) == pytest.approx(1 / 1.15)
+    assert timed(20.0, 10.0) == pytest.approx(2 / 2.15)
+    values = [timed(t / 4, 10.0) for t in range(0, 400)]
+    assert values == sorted(values) and values[-1] < 1.0
+    # the job's bar moves with it, and so does its step's
+    from orthostudio.api.jobs import _NodeState
+
+    mesh = _NodeState(node="+46+006/BI16/mesh", role="mesh", stage="terrain", kind="subprocess")
+    mesh.status, mesh.weight_s, mesh.started_at = "running", 10.0, 100.0
+    assert progress.weighted_progress([mesh]) == 0.0  # without the time, as before
+    assert progress.weighted_progress([mesh], now=105.0) == pytest.approx(0.5)
+    mesh.fraction = 0.2  # a node that says how far it is is measured, not timed
+    assert progress.weighted_progress([mesh], now=109.0) == pytest.approx(0.2)
 
 
 # -- weights -------------------------------------------------------------------------------

@@ -131,6 +131,7 @@ from orthostudio.sched import (
     Scheduler,
     run_p0_rule,
 )
+from orthostudio.sched.costs import cost_name, timed_fraction
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
@@ -1361,26 +1362,80 @@ def dem_reading_message(
     return f"{text}, reading"
 
 
+RELIEF_READ_MB_S = 9.5
+"""How fast a downloaded relief is read on the reference Mac (M4 Pro): the USGS 1/3" file of
++34-116, 430 MB, in 45 s (2026-09-29)."""
+RELIEF_TICK_S = 1.0
+"""How often the bar of a relief being read moves."""
+
+
+def dem_share(size: int, received: int, elapsed_s: float) -> float:
+    """The share of a downloaded relief's time its download takes: the file at the rate it
+    arrives, against reading it at :data:`RELIEF_READ_MB_S`. A USGS file of 430 MB came in 27 s
+    and was read in 45 (2026-09-29): the download is 38 % of the bar, the reading the rest."""
+    if size <= 0 or received <= 0 or elapsed_s <= 0:
+        return 0.0
+    download_s = size / (received / elapsed_s)
+    read_s = size / (RELIEF_READ_MB_S * 1e6)
+    return download_s / (download_s + read_s)
+
+
 def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
     """Bind the elevation job (where the cells live, how to download) for ``orthostudio.dem@1``.
     The node says what it does: reading, or downloading a file with the rate as it arrives, then
-    reading what came (X-Plane's relief downloads nothing)."""
+    reading what came (X-Plane's relief downloads nothing).
+
+    A downloaded relief says how far it is as well, so that its bar moves (a user watched it sit
+    at nothing for 48 to 80 s, 2026-09-29): the download fills its share of the bar
+    (:func:`dem_share`) as the bytes arrive, then the reading the rest, by the time it takes
+    against the time a file of that size usually takes (``sched.costs.timed_fraction``). A relief
+    that downloads nothing says nothing, and the page moves its bar by the time the relief took
+    on the last builds."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
         start = time.perf_counter()
         got = [0, 0]  # files, bytes
+        said = [0.0]  # the fraction said last: a bar never goes back
+        share = [0.0]  # the downloads' share of the bar (dem_share)
+        reading_from: list[float | None] = [None]  # when the files that came began to be read
+        read_s = [0.0]  # how long reading them should take
+        stop = threading.Event()
+
+        def say(fraction: float, message: str) -> None:
+            said[0] = max(said[0], min(0.99, fraction))
+            ctx.progress(said[0], message)
 
         def reading() -> None:
             elapsed = time.perf_counter() - start
-            ctx.progress(0.0, dem_reading_message(spec.tile, got[0], got[1], elapsed))
+            if got[1] > 0:
+                reading_from[0] = time.perf_counter()
+                read_s[0] = got[1] / (RELIEF_READ_MB_S * 1e6)
+            say(said[0], dem_reading_message(spec.tile, got[0], got[1], elapsed))
+
+        def tick() -> None:
+            while not stop.wait(RELIEF_TICK_S):
+                since = reading_from[0]
+                if since is None:
+                    continue
+                read = timed_fraction(time.perf_counter() - since, read_s[0])
+                elapsed = time.perf_counter() - start
+                say(
+                    share[0] + (1.0 - share[0]) * read,
+                    dem_reading_message(spec.tile, got[0], got[1], elapsed),
+                )
 
         def download(url: str) -> Download:
             number = got[0] + 1
+            reading_from[0] = None  # a second file: its bytes move the bar, not the time
 
             def arriving(in_file: int, size: int | None) -> None:
                 elapsed = time.perf_counter() - start
-                ctx.progress(
-                    0.0,
+                fraction = said[0]
+                if size and in_file > 0:
+                    share[0] = dem_share(size, got[1] + in_file, elapsed)
+                    fraction = share[0] * min(1.0, in_file / size)
+                say(
+                    fraction,
                     dem_downloading_message(
                         spec.tile, number, in_file, size, got[1] + in_file, elapsed
                     ),
@@ -1402,9 +1457,8 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             # ANADEM is read part by part: each part received counts like a file's bytes, so the
             # Works line shows the rate of a square as it does for a source served whole.
             elapsed = time.perf_counter() - start
-            ctx.progress(
-                0.0, dem_downloading_message(spec.tile, got[0] + 1, 0, None, got[1], elapsed)
-            )
+            reading_from[0] = None
+            say(said[0], dem_downloading_message(spec.tile, got[0] + 1, 0, None, got[1], elapsed))
             answers = dem_sources.http_ranges(url, parts)
             body = sum(len(b) for b in answers)
             if body:
@@ -1421,8 +1475,14 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             cancel=cast(Any, ctx.cancel_event),
         )
         reading()  # a relief already on disk is read at once: the page says so from the start
-        with dem_job(job):
-            return run_p0_rule(ctx)
+        ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
+        ticker.start()
+        try:
+            with dem_job(job):
+                return run_p0_rule(ctx)
+        finally:
+            stop.set()
+            ticker.join(timeout=2 * RELIEF_TICK_S)
 
     return run
 
@@ -2348,6 +2408,12 @@ class Phase:
     name: Literal["data", "build"]
     nodes: tuple[tuple[str, NodeKind, str], ...] | None = None
     reused: tuple[tuple[str, str | None], ...] = ()
+    learned: tuple[tuple[str, float], ...] = ()
+    """``(node id, seconds)``: how long the node's rule takes on this computer, the average the
+    scheduler learnt over its last runs (``sched.costs``), for the rules it has seen run
+    :data:`LEARNED_MIN` times at least; the textures are weighed by their images instead. What a
+    step that reports nothing shows while it runs is its time against this one
+    (``sched.costs.timed_fraction``)."""
 
 
 BuildEvent = Event | Phase
@@ -2361,6 +2427,23 @@ def _emit_phase(on_event: Callable[[BuildEvent], None] | None, phase: Phase) -> 
 
 def _declared(scheduler: Scheduler) -> tuple[tuple[str, NodeKind, str], ...]:
     return tuple((n.id, n.kind, n.rule.name) for n in scheduler.nodes.values())
+
+
+LEARNED_MIN = 3
+"""Runs of a rule on this computer before the scheduler's average stands for its time: one run
+may have been a first, cold one."""
+
+
+def _learned(scheduler: Scheduler) -> tuple[tuple[str, float], ...]:
+    """:attr:`Phase.learned` of the nodes ``scheduler`` declared."""
+    out: list[tuple[str, float]] = []
+    for n in scheduler.nodes.values():
+        if n.rule is TILE_TEXTURES:
+            continue
+        entry = scheduler.costs.entry(cost_name(n.rule))
+        if entry is not None and entry.n >= LEARNED_MIN and entry.ewma > 0:
+            out.append((n.id, round(entry.ewma, 3)))
+    return tuple(out)
 
 
 async def _run_phase0(
@@ -2839,7 +2922,15 @@ def build_tiles(
     graphs = declare(
         runnable, scheduler, env, osm_artefacts=osm_refs, choices=choices, fetch_osm=True
     )
-    _emit_phase(on_event, Phase("build", nodes=_declared(scheduler), reused=_reused_osm_rows(osm)))
+    _emit_phase(
+        on_event,
+        Phase(
+            "build",
+            nodes=_declared(scheduler),
+            reused=_reused_osm_rows(osm),
+            learned=_learned(scheduler),
+        ),
+    )
     targets = [g.target.id for g in graphs]
     collector = _Collector(on_event)
 
@@ -2924,7 +3015,10 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
-            _emit_phase(on_event, Phase("build", nodes=_declared(scheduler2)))
+            _emit_phase(
+                on_event,
+                Phase("build", nodes=_declared(scheduler2), learned=_learned(scheduler2)),
+            )
             try:
                 asyncio.run(scheduler2.run([g.target.id for g in redone], on_event=collector))
             except asyncio.CancelledError:

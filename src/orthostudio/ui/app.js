@@ -598,15 +598,21 @@ function mockJobId(n) {
   return `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}-${(0xa000 + n).toString(16)}`;
 }
 
-/** The nodes of a tile: those of the one tile of mock/job.json, their ids renamed. */
-function mockTileNodes(template, name, level, install) {
+/** The nodes of a tile: those of the one tile of mock/job.json, their ids renamed, each weighing
+ * what its entries of mock/job_events.json give it (the time it takes in the demo, at its speed). */
+function mockTileNodes(template, name, level, install, script) {
   const src = template.tiles[0];
   const srcLevel = `/${template.provider}${template.zl}/`;
+  const took = {};
+  for (const e of [...(script?.osm || []), ...(script?.tile || [])]) {
+    if (e.event === "started" && typeof e.weight_s === "number" && !Object.hasOwn(took, e.role)) took[e.role] = e.weight_s;
+  }
   const nodes = [];
   for (const stage of STEPS) {
     for (const n of src.stages[stage]?.nodes || []) {
       if (n.role === "install" && !install) continue;
-      nodes.push({ node: n.node.replace(src.tile, name).replace(srcLevel, `/${level}/`), role: n.role, stage, status: "pending", key: null, hit: null, wall_s: 0, fraction: 0, error: null, cause: null, weight_s: n.weight_s ?? 1, started: false });
+      const weight = round((took[n.role] ?? n.weight_s ?? 1) / MOCK_SPEED, 3);
+      nodes.push({ node: n.node.replace(src.tile, name).replace(srcLevel, `/${level}/`), role: n.role, stage, status: "pending", key: null, hit: null, wall_s: 0, fraction: 0, error: null, cause: null, weight_s: weight, started: false });
     }
   }
   return nodes;
@@ -626,10 +632,13 @@ function mockEngineApply(doc, entry) {
     n = { node: entry.node, role: entry.role, stage: entry.stage, status: "pending", key: null, hit: null, wall_s: 0, fraction: 0, error: null, cause: null, weight_s: entry.weight_s ?? 1, started: false };
     tile.nodes.push(n);
   }
+  // each entry carries the node's weight as the engine gives it then (the time it takes here)
+  if (typeof entry.weight_s === "number" && entry.event !== "done" && entry.event !== "failed") n.weight_s = entry.weight_s;
   if (entry.event === "started") {
     n.status = "running";
     n.key = entry.key;
     n.started = true;
+    n.startedAt = Date.now();
   } else if (entry.event === "progress") {
     n.fraction = entry.fraction;
   } else if (entry.event === "done") {
@@ -658,9 +667,12 @@ function mockWeight(n) {
   return Math.max(0, n.weight_s);
 }
 
-/** The node as the engine's journal and state show it (`weight_s` included). */
+/** The node as the engine's journal and state show it (`weight_s` included, and `running_s` while
+ * it runs). */
 function mockNodeView(n) {
-  return { node: n.node, role: n.role, status: n.status, key: n.key, hit: n.hit, wall_s: n.wall_s, fraction: n.fraction, weight_s: round(mockWeight(n), 3) };
+  const view = { node: n.node, role: n.role, status: n.status, key: n.key, hit: n.hit, wall_s: n.wall_s, fraction: n.fraction, weight_s: round(mockWeight(n), 3) };
+  if (n.status === "running" && n.startedAt != null) view.running_s = round((Date.now() - n.startedAt) / 1000, 3);
+  return view;
 }
 
 /** GET /api/jobs/{id} of a mock job: the engine's `Job.state()`. */
@@ -712,10 +724,11 @@ function mockStats(run) {
   const count = (...statuses) => nodes.filter((n) => statuses.includes(n.status)).length;
   let weights = 0;
   let sum = 0;
+  const now = Date.now();
   for (const n of nodes) {
     const w = mockWeight(n);
     weights += w;
-    sum += w * nodeFraction(n);
+    sum += w * nodeFraction({ ...n, weight: n.weight_s, startedMs: n.startedAt }, now);
   }
   run.peak = Math.max(run.peak, weights ? sum / weights : 0);
   const elapsed = mockElapsed(run);
@@ -789,6 +802,8 @@ export function mockTimeline(doc, script, reuse = new Set()) {
   const level = `${doc.provider}${doc.zl}`;
   const fill = (e, name) => {
     const { delay_ms: _delay, only: _only, ...entry } = JSON.parse(JSON.stringify(e).replaceAll("{tile}", name).replaceAll("{level}", level));
+    // a node weighs the time it takes, and a demo run slower or faster takes that much more or less
+    if (typeof entry.weight_s === "number") entry.weight_s = round(entry.weight_s / MOCK_SPEED, 3);
     return entry;
   };
   const names = doc.tiles.map((x) => x.tile);
@@ -953,7 +968,7 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
     provider,
     zl,
     request: { ...template.request, tiles: [...(body.tiles || [])], provider, zoom_level: zl, zones: body.zones || [], install },
-    tiles: (body.tiles || []).map((name) => ({ tile: name, provider, zl, install, nodes: mockTileNodes(template, name, `${provider}${zl}`, install) })),
+    tiles: (body.tiles || []).map((name) => ({ tile: name, provider, zl, install, nodes: mockTileNodes(template, name, `${provider}${zl}`, install, script) })),
     stats: null,
     last_seq: 0,
     report: null,
@@ -1499,11 +1514,32 @@ function emptyStep() {
   return { status: "pending", fraction: 0, message: "", wall_s: 0, nodes: {} };
 }
 
+/** The engine's `sched.costs.OVERRUN_SHARE`. */
+const OVERRUN_SHARE = 0.15;
+
+/** The engine's `sched.costs.timed_fraction`: how far a node that reports nothing has got, the time
+ * it has run over that time plus the time it has left. The share of its usual time up to 85 % of
+ * it, slower and slower past it, never 100 % before it ends. The mesh, the masks and the DSF report
+ * nothing, and Terrain sat at 56 % for forty seconds, then jumped (a user, 2026-09-29). */
+export function timedFraction(elapsedS, expectedS) {
+  if (!(expectedS > 0) || !(elapsedS > 0)) return 0;
+  const left = Math.max(expectedS - elapsedS, expectedS * OVERRUN_SHARE);
+  return elapsedS / (elapsedS + left);
+}
+
 /** A node's share of its step's work: 1 once it is done, else how far it got (the engine's
- * `progress._fraction`). One that failed, was skipped or was cancelled ended without finishing. */
-function nodeFraction(n) {
+ * `progress._fraction`). One that failed, was skipped or was cancelled ended without finishing. A
+ * running node that has said how far it is is measured; one that has not is timed: its time since
+ * it started (`startedMs`) against its weight, the seconds its rule takes on this computer. */
+function nodeFraction(n, nowMs = Date.now()) {
   if (NODE_FINISHED.has(n.status)) return 1;
-  return NODE_ENDED.has(n.status) || n.status === "running" ? clamp01(n.fraction) : 0;
+  if (n.status === "running") {
+    const reported = clamp01(n.fraction);
+    const started = finite(n.startedMs);
+    if (reported > 0 || started == null) return reported;
+    return timedFraction((nowMs - started) / 1000, finite(n.weight) ?? 0);
+  }
+  return NODE_ENDED.has(n.status) ? clamp01(n.fraction) : 0;
 }
 
 /**
@@ -1516,7 +1552,7 @@ function nodeFraction(n) {
  * started), by count when nothing weighs. An older engine sends no weights: every node the same,
  * as it computed then.
  */
-export function stepTotals(step) {
+export function stepTotals(step, nowMs = Date.now()) {
   const nodes = Object.values(step?.nodes || {});
   const statuses = nodes.map((n) => n.status);
   let status = "pending";
@@ -1532,7 +1568,7 @@ export function stepTotals(step) {
   let count = 0;
   let wall = 0;
   for (const n of nodes) {
-    const f = nodeFraction(n);
+    const f = nodeFraction(n, nowMs);
     const w = weighted && n.status !== "hit" ? Math.max(0, n.weight) : 0;
     total += w;
     sum += w * f;
@@ -1548,21 +1584,25 @@ export function stepTotals(step) {
  * statuses by older rules (a step with rows done and rows waiting was "pending"): the status then
  * follows the current rules from its nodes, as the page's own recompute does, so that a read and
  * the next event agree. */
-function stepFromStage(stage) {
+function stepFromStage(stage, nowMs = Date.now()) {
   const st = stage && typeof stage === "object" ? stage : {};
   const step = emptyStep();
   for (const n of Array.isArray(st.nodes) ? st.nodes : []) {
     if (!n || typeof n !== "object" || typeof n.node !== "string" || !tileOfNode(n.node)) continue;
+    const status = typeof n.status === "string" ? n.status : "pending";
+    const running = finite(n.running_s);
     step.nodes[n.node] = {
       role: typeof n.role === "string" ? n.role : nodeName(n.node),
-      status: typeof n.status === "string" ? n.status : "pending",
+      status,
       fraction: clamp01(n.fraction),
       hit: typeof n.hit === "boolean" ? n.hit : null,
       wall_s: finite(n.wall_s) || 0,
       weight: finite(n.weight_s) ?? finite(n.weight),
+      // when it started, from how long it has run: the bar of a node that reports nothing moves by it
+      startedMs: status === "running" && running != null ? nowMs - running * 1000 : null,
     };
   }
-  const totals = stepTotals(step);
+  const totals = stepTotals(step, nowMs);
   const rows = Object.values(step.nodes);
   const known = rows.length > 0;
   const weighted = known && rows.every((n) => n.weight != null);
@@ -1581,8 +1621,8 @@ const PARTIAL_STEPS = new Set(["pending", "waiting", "running"]);
  * recomputes between two reads of the engine never moves a bar back (without weights it cannot
  * weigh the rows as the engine does, and the rows no event touched keep the weights of the last
  * read); the next read may. */
-function refreshStep(step) {
-  const totals = stepTotals(step);
+function refreshStep(step, nowMs = Date.now()) {
+  const totals = stepTotals(step, nowMs);
   const before = clamp01(step.fraction);
   step.status = totals.status;
   step.wall_s = totals.wall_s;
@@ -1605,7 +1645,7 @@ export function normalizeJob(job, nowMs = Date.now()) {
     const source = out.stages && typeof out.stages === "object" ? out.stages : null;
     const steps = {};
     for (const s of STEPS) {
-      if (source) steps[s] = stepFromStage(source[s]);
+      if (source) steps[s] = stepFromStage(source[s], nowMs);
       else {
         // An answer of the P2b contract: steps without nodes.
         const old = out.steps?.[s];
@@ -1721,6 +1761,7 @@ export function applyEvent(job, event, data, nowMs = Date.now()) {
         if (node.status === "done" || node.status === "hit") return false;
         node.status = "running";
         node.fraction = 0;
+        node.startedMs = nowMs;
         if (tile.status === "pending" || tile.status == null) tile.status = "running";
         if (job.status === "pending" || job.status === "queued") job.status = "running";
       } else if (event === "progress") {
@@ -1752,7 +1793,7 @@ export function applyEvent(job, event, data, nowMs = Date.now()) {
         step.message = "";
         step.messageNode = null;
       }
-      refreshStep(step);
+      refreshStep(step, nowMs);
       return true;
     }
     case "stats": {
@@ -2043,6 +2084,7 @@ async function watchJob(jobId) {
         fresh.log = state.job.log;
         fresh.logSeq = state.job.logSeq;
         for (const entry of pending) if (entry.event !== "log") applyEvent(fresh, entry.event, entry.data);
+        keepStarts(fresh, state.job);
         const statusChanged = fresh.status !== state.job.status;
         state.job = fresh;
         scheduleRenderJob();
@@ -4138,7 +4180,11 @@ function renderJob() {
   updateJobView(jobView, job);
   if (!clockTimer) {
     clockTimer = setInterval(() => {
-      if (state.screen === "works" && state.job && jobView?.id === state.job.id && jobView.root.isConnected && jobActive(state.job)) updateClock(jobView, state.job);
+      if (state.screen === "works" && state.job && jobView?.id === state.job.id && jobView.root.isConnected && jobActive(state.job)) {
+        updateClock(jobView, state.job);
+        advanceSteps(state.job);
+        updateTileRows(jobView, state.job);
+      }
     }, 1000);
   }
 }
@@ -4151,7 +4197,7 @@ function buildJobView(box, job, previous) {
   // The same job drawn again (another language, the job clicked again): the log stays as it was.
   const same = previous && previous.id === job.id;
   const carry = same ? { open: previous.logDetails.open, follow: previous.logFollow, top: previous.logPre.scrollTop } : null;
-  const v = { id: job.id, lang: language(), status: null, cells: new Map(), tileRows: new Map(), tileNames: null, errorsKey: null, report: undefined, logLines: [], logFollow: carry ? carry.follow : true, logTop: carry && !carry.follow ? carry.top : null, elapsedShown: null };
+  const v = { id: job.id, lang: language(), status: null, cells: new Map(), tileRows: new Map(), activity: new Map(), tileNames: null, errorsKey: null, report: undefined, logLines: [], logFollow: carry ? carry.follow : true, logTop: carry && !carry.follow ? carry.top : null, elapsedShown: null };
 
   v.pill = h("span", { class: "job-pill" });
   v.meta = h("span", { class: "help num" });
@@ -4294,6 +4340,7 @@ function updateTileRows(v, job) {
     clear(v.rows);
     v.cells.clear();
     v.tileRows = new Map();
+    v.activity = new Map();
     v.tileNames = names;
     for (const tile of tiles) {
       const steps = h("div", { class: "steps" });
@@ -4302,8 +4349,10 @@ function updateTileRows(v, job) {
         v.cells.set(`${tile.tile}|${s}`, cell);
         steps.append(cell.root);
       }
-      const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps);
+      const activity = h("div", { class: "tile-activity", hidden: true });
+      const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps, activity);
       v.tileRows.set(tile.tile, row);
+      v.activity.set(tile.tile, activity);
       v.rows.append(row);
     }
   }
@@ -4318,7 +4367,23 @@ function updateTileRows(v, job) {
   v.rowsNote.hidden = !(query.trim() && tiles.length && !kept);
   for (const tile of tiles) {
     for (const s of STEPS) updateStepCell(v.cells.get(`${tile.tile}|${s}`), job, tile, s);
+    updateActivity(v.activity.get(tile.tile), job, tile);
   }
+}
+
+/** The line under a tile's steps: "Terrain: meshing the terrain, about 10 s to go". */
+function updateActivity(line, job, tile) {
+  if (!line) return;
+  const parts = tileActivity(job, tile);
+  const key = parts.map((p) => `${p.step}|${p.words}`).join("\n");
+  if (line.dataset.key === key) return;
+  line.dataset.key = key;
+  clear(line);
+  parts.forEach((p, i) => {
+    if (i) line.append(" · ");
+    line.append(h("span", { class: "activity-step" }, STEP_KEYS[p.step]()), t("works.activity_sep"), p.words);
+  });
+  line.hidden = !parts.length;
 }
 
 function buildStepCell(tileName, s) {
@@ -4338,9 +4403,10 @@ function buildStepCell(tileName, s) {
  * tooltip line (`help`). Exported for the tests.
  *
  * - pending: empty; `not_started` once the job ended;
- * - running: the step's fraction, "42 %" (or "running" at 0) and the engine's message;
- * - waiting: the step's fraction, "waiting · 42 %": some of its rows did their work, the others
- *   wait for their turn (the dot does not pulse);
+ * - running: the step's fraction, "42 %" (or "running" at 0); what it does is said in the tile's
+ *   line (`tileActivity`), the engine's message in the tooltip;
+ * - waiting: the step's fraction in the bar, "waiting" (its share in the tooltip): some of its rows
+ *   did their work, the others wait for their turn (the dot does not pulse);
  * - done, hit, failed: full;
  * - skipped, cancelled: how far its rows got (by count: 1 for a row that ended with a result, its
  *   fraction for one stopped while running), dashed;
@@ -4365,23 +4431,18 @@ export function stepView(job, tile, s) {
   } else if (status === "running") {
     width = clamp01(step.fraction);
     text = width > 0 ? fmtPercent(width) : word();
-    // A step that downloads shows its rate (a user asked for it wherever the network works:
-    // Imagery, the OSM layers of Data); the engine's whole line stays in the tooltip.
-    const rate = downloadRate(step.message);
-    detail = rate ? fmtMbps(rate) : reliefPhase(step.message) || step.message || "";
+    // What it is doing, its rate among it, is said in the tile's line under its steps
+    // (tileActivity): a cell holds a word, and its phrase was cut (a user, 2026-09-30). The
+    // engine's whole line stays in the tooltip.
     help = step.message || "";
   } else if (status === "pending" && s === "imagery") {
-    // Coast is done and Imagery waits: for the tile's DSF, which lists its images (Assembly), or
-    // for the images of another tile (one tile downloads at a time). "pending" alone said nothing
-    // for a long while (a user on Windows, 2026-09-15).
-    const dsf = Object.values(tile?.steps?.assembly?.nodes || {}).find((n) => n?.role === "dsf");
-    const other = (job?.tiles || []).find((x) => x && x.tile !== tile?.tile && x.steps?.imagery?.status === "running");
-    if (dsf && (dsf.status === "running" || dsf.status === "waiting")) text = t("works.waits_dsf");
-    else if (other) text = t("works.waits_images", { tile: other.tile });
+    // why it waits is said in the tile's line (tileActivity), and in the tooltip
+    help = imageryWait(job, tile) || "";
   } else if (status === "waiting") {
+    // the word alone, its share in the bar and the tooltip: "waiting · 36 %" was cut in the
+    // narrowest window (2026-09-30)
     width = clamp01(step.fraction);
-    if (width > 0) detail = fmtPercent(width);
-    help = t("works.waiting_help");
+    help = width > 0 ? `${fmtPercent(width)} · ${t("works.waiting_help")}` : t("works.waiting_help");
   } else if (status === "done") {
     width = 1;
     if (step.wall_s >= 1) detail = fmtDuration(step.wall_s);
@@ -4399,6 +4460,133 @@ export function stepView(job, tile, s) {
   // The engine rounds what it sends to four decimals: that noise never shows as a percent less.
   const pct = Math.min(100, Math.floor(width * 100 + 0.01));
   return { status, pct, text: text ?? word(), detail, help };
+}
+
+/** Why a tile's Imagery waits once its Coast is done: for the tile's DSF, which lists its images
+ * (Assembly), or for the images of another tile (one tile downloads at a time). "pending" alone
+ * said nothing for a long while (a user on Windows, 2026-09-15). Null when it does not wait. */
+function imageryWait(job, tile) {
+  if (tile?.steps?.imagery?.status !== "pending") return null;
+  const dsf = Object.values(tile?.steps?.assembly?.nodes || {}).find((n) => n?.role === "dsf");
+  const other = (job?.tiles || []).find((x) => x && x.tile !== tile?.tile && x.steps?.imagery?.status === "running");
+  if (dsf && (dsf.status === "running" || dsf.status === "waiting")) return t("works.waits_dsf");
+  if (other) return t("works.waits_images", { tile: other.tile });
+  return null;
+}
+
+/** The words of a running node: what it does, from its role, and from the engine's line where it
+ * counts something (OSM layers, relief bytes, images). The lines are the engine's
+ * (`osm_progress_message`, `dem_downloading_message`, `textures_progress_message`). */
+function nodeWords(n, message) {
+  const line = String(message || "");
+  switch (n.role) {
+    case "osm": {
+      const back = /: (\d+) of (\d+) back\b/.exec(line);
+      if (back) return t("works.act_osm_layers", { n: back[1], total: back[2] });
+      if (/waiting for the map data server/.test(line)) return t("works.act_osm_waiting");
+      return t("works.act_osm");
+    }
+    case "dem": {
+      const got = /downloading file \d+, (\d+)(?: of (\d+))? MB/.exec(line);
+      if (got && got[2]) return t("works.act_relief_downloading_of", { got: fmtInt(Number(got[1])), size: fmtInt(Number(got[2])) });
+      if (got) return t("works.act_relief_downloading_got", { got: fmtInt(Number(got[1])) });
+      return reliefPhase(line) || t("works.relief_reading");
+    }
+    case "textures": {
+      const count = /textures (\d+)\/(\d+)/.exec(line);
+      if (!count) return t("works.act_images");
+      const words = t("works.act_images_count", { done: fmtInt(Number(count[1])), total: fmtInt(Number(count[2])) });
+      return /nothing to download/.test(line) ? `${words}, ${t("works.act_images_cache")}` : words;
+    }
+    default:
+      return Object.hasOwn(ROLE_WORDS, n.role) ? ROLE_WORDS[n.role]() : "";
+  }
+}
+
+/** The words of the nodes that report nothing but their end (their bar moves by their time). */
+const ROLE_WORDS = {
+  coastline: () => t("works.act_coastline"),
+  vectors: () => t("works.act_vectors"),
+  mesh: () => t("works.act_mesh"),
+  masks: () => t("works.act_masks"),
+  xp12: () => t("works.act_xp12"),
+  dsf: () => t("works.act_dsf"),
+  overlay: () => t("works.act_overlay"),
+  pack: () => t("works.act_pack"),
+  install: () => t("works.act_install"),
+};
+
+/**
+ * What a tile is doing now, in words, for the line under its steps: `[{ step, words }]`, one per
+ * step that runs, what it does and how far (the rate of a download, the time left of a step that
+ * reports nothing). The cells hold a word each: a phrase was cut in them (a user, 2026-09-30).
+ * Nothing runs: why its images wait, when they do. Empty once the job is over. Exported for the
+ * tests.
+ */
+export function tileActivity(job, tile, nowMs = Date.now()) {
+  if (!jobActive(job) || !tile?.steps) return [];
+  const out = [];
+  for (const s of STEPS) {
+    const step = tile.steps[s];
+    if (!step || step.status !== "running") continue;
+    const parts = [];
+    for (const [id, n] of Object.entries(step.nodes || {})) {
+      if (n.status !== "running") continue;
+      let words = nodeWords(n, step.messageNode === id || !step.messageNode ? step.message : "");
+      const rate = n.role === "osm" || n.role === "dem" || n.role === "textures" ? downloadRate(step.messageNode === id || !step.messageNode ? step.message : "") : null;
+      if (rate) words += `, ${fmtMbps(rate)}`;
+      const started = finite(n.startedMs);
+      const weight = finite(n.weight) ?? 0;
+      if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
+        const elapsed = (nowMs - started) / 1000;
+        if (weight - elapsed >= 3) words += `, ${t("works.act_left", { time: fmtDuration(weight - elapsed) })}`;
+        else if (elapsed > 1.5 * weight && elapsed >= 5) words += `, ${t("works.act_longer")}`;
+      }
+      if (words) parts.push(words);
+    }
+    if (parts.length) out.push({ step: s, words: parts.join(" · ") });
+  }
+  if (!out.length) {
+    const wait = imageryWait(job, tile);
+    if (wait) out.push({ step: "imagery", words: wait });
+  }
+  return out;
+}
+
+/** The running steps move on the clock between two events: a step that reports nothing moves by
+ * its time, and the words say the time it has left. Exported for the tests. */
+export function advanceSteps(job, nowMs = Date.now()) {
+  for (const tile of job?.tiles || []) {
+    for (const s of STEPS) {
+      const step = tile?.steps?.[s];
+      if (step && step.status === "running") refreshStep(step, nowMs);
+    }
+  }
+}
+
+/** A read answers with what the engine knew when it computed it: a node that runs keeps the start
+ * the page saw first (its `started` entry, or an earlier read), and the running steps move on to
+ * now. An answer that came late moved their bars back by the time it took (the tests' replay,
+ * 2026-09-30). Exported for the tests. */
+export function keepStarts(fresh, previous, nowMs = Date.now()) {
+  const known = new Map();
+  for (const tile of previous?.tiles || []) {
+    for (const s of STEPS) {
+      for (const [id, n] of Object.entries(tile?.steps?.[s]?.nodes || {})) {
+        if (n.status === "running" && finite(n.startedMs) != null) known.set(id, n.startedMs);
+      }
+    }
+  }
+  for (const tile of fresh?.tiles || []) {
+    for (const s of STEPS) {
+      for (const [id, n] of Object.entries(tile?.steps?.[s]?.nodes || {})) {
+        const before = known.get(id);
+        if (n.status !== "running" || before == null) continue;
+        n.startedMs = finite(n.startedMs) == null ? before : Math.min(n.startedMs, before);
+      }
+    }
+  }
+  advanceSteps(fresh, nowMs);
 }
 
 /** What a step holds, where its name says less than it does. Data held the map data, the relief and
