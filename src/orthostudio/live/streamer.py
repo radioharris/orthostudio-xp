@@ -101,6 +101,11 @@ PATCH_RETRY_MAX_S = 1800.0  # each time they still do not come, up to this
 LEVELS = range(MIN_LEVEL, LOAD_LEVEL + 1)  # -1 (8192 px) to 4 (256 px)
 BATCH_PIECES = 1024
 WINDOW_PIECES = 1024  # pieces asked for and not answered yet, across textures
+# pieces the builder holds for textures on their way (their photos in memory): past this it takes
+# only textures X-Plane may be showing already. It counted textures until 2026-09-30: textures that
+# could not be encoded while X-Plane loaded scenery filled it, and urgent ones waited behind them
+# (Norway flights: 49 and 103 late 8192 px levels given the copy of their 4096 px one)
+HELD_PIECES = 8 * BATCH_PIECES
 EVICT_EVERY_S = 10.0
 # textures encoded at once while X-Plane flies, all workers while it waits: by default the share of
 # a computer of 14 cores, each computer's own from its cores (orthostudio.live.machine)
@@ -307,6 +312,7 @@ class Streamer:
         self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
         self._load_since: float | None = None
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
+        self.ready_now = 0  # textures with all their photos, waiting for an encoder
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
@@ -753,12 +759,17 @@ class Streamer:
         self._want_squares(fix, starting)
         return jobs
 
-    def take_batch(self, max_pieces: int = BATCH_PIECES) -> list[tuple[str, int, float]]:
-        """The most urgent queued textures, up to ``max_pieces`` pieces (at least one texture)."""
+    def take_batch(
+        self, max_pieces: int = BATCH_PIECES, urgent_only: bool = False
+    ) -> list[tuple[str, int, float]]:
+        """The most urgent queued textures, up to ``max_pieces`` pieces (at least one texture);
+        ``urgent_only``: only those X-Plane may be showing already (urgency <= 0)."""
         with self.lock:
             batch: list[tuple[str, int, float]] = []
             pieces = 0
             for name, (urgency, level) in sorted(self.queue.items(), key=lambda kv: kv[1][0]):
+                if urgent_only and urgency > 0:
+                    break  # sorted: none after it is urgent either
                 if name in self.in_flight:  # one build at a time: its file is the last one's
                     continue
                 n = pieces_of(level)
@@ -940,7 +951,12 @@ class Streamer:
             """The most urgent textures ready to encode, as many as the encoders may take now:
             all while X-Plane waits, this computer's share while it flies (``encode_cap``); an
             8192 px level in a process of its own (``sharp_pool``, ``sharp_builds`` of them), one
-            getting its copy only once it has it."""
+            getting its copy only once it has it. Urgent as the last plan says, not as when it was
+            taken: a texture far then may be read now (the planner updates ``in_flight``)."""
+            with self.lock:
+                now = {n: u for n, (u, _) in self.in_flight.items()}
+            for j in ready:
+                j.urgency = now.get(j.name, j.urgency)
             cap = self.encode_cap()  # the memory's state read with it (memory_state)
             while len(encoding) < cap:
                 free = [
@@ -1086,10 +1102,16 @@ class Streamer:
         ):
             try:
                 while not self.stop.is_set() or encoding:
-                    if not self.stop.is_set() and len(encoding) + len(ready) < self.workers * 4:
+                    if not self.stop.is_set():
+                        held = sum(len(j.keys) for j in jobs.values())
                         room = WINDOW_PIECES - len(requested)
                         if room > 0:
-                            for name, level, urgency in self.take_batch(room):
+                            batch = (
+                                self.take_batch(min(room, HELD_PIECES - held))
+                                if held < HELD_PIECES
+                                else self.take_batch(room, urgent_only=True)  # what X-Plane shows
+                            )
+                            for name, level, urgency in batch:
                                 keys = piece_keys(parse_texture_name(name), level)
                                 have = known(keys)
                                 job = _Job(
@@ -1113,6 +1135,7 @@ class Streamer:
                         self._finished(fut, job.name, job.level, bool(job.patched))
                     submit_ready(pool)
                     self.encoding_now = len(encoding)
+                    self.ready_now = len(ready)
                     self.pieces_pending = len(requested)
                     if not requested:  # nothing awaited: nothing stalled
                         self.last_progress = time.monotonic()
@@ -1268,6 +1291,7 @@ class Streamer:
             "queued": [queued.get(lv, 0) for lv in LEVELS],
             "urgent": urgent,
             "building": flying,
+            "ready": self.ready_now,  # of those, their photos in, waiting for an encoder
             "pieces_awaited": self.pieces_pending,
             "built": [done.get(lv, 0) for lv in LEVELS],  # since the streamer started
             "downloaded": getattr(dl, "downloaded", 0),
@@ -1303,7 +1327,8 @@ class Streamer:
         q = by_level(s["queued"]) or "empty"
         d = by_level(s["built"]) or "nothing yet"
         return (
-            f"queue {q} (urgent {s['urgent']}), building {s['building']}, "
+            f"queue {q} (urgent {s['urgent']}), building {s['building']} "
+            f"({s['ready']} ready to encode), "
             f"{s['pieces_awaited']} pieces awaited | built {d} | "
             f"pieces {s['downloaded']} downloaded ({s['downloaded_bytes'] / 1e6:.0f} MB), "
             f"{s['from_cache']} from cache"
