@@ -1,11 +1,12 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A zone that raises nothing says so.
+"""A zone takes every mesh cell it covers a part of, and one that raises nothing says so.
 
-A zone's level is read at the centre of each mesh cell, which is Ortho4XP's rule
-(``zone_list_to_ortho_dico``) and about 850 m at ``mesh_zl`` 19. A user drew a 300 m band over
-the darker edge of a tile, set it sharper, built, and saw no change and read no word: his zone
-held no cell centre (2026-09-23). The rule stays; the silence does not.
+Ortho4XP read a zone's level at the centre of each mesh cell (``zone_list_to_ortho_dico``), about
+1 km at ``mesh_zl`` 19: a user drew a 300 m band over the darker edge of a tile, set it sharper,
+built, and saw no change and read no word (2026-09-23); another drew eleven ZL18 zones, seven
+raised nothing and the rest ended in straight seams across what he drew (2026-09-29). A zone now
+takes every cell it covers a pixel of (``dsf/zones.cells_touched``).
 """
 
 from __future__ import annotations
@@ -46,14 +47,52 @@ def _between_two_cell_centres() -> list[float]:
     return _band(lat0 - gap / 2, mid - gap / 2, gap, gap)
 
 
-def test_a_zone_finer_than_a_mesh_cell_says_it_raises_nothing(caplog) -> None:  # type: ignore[no-untyped-def]
-    thin = _between_two_cell_centres()
+def test_a_zone_finer_than_a_mesh_cell_takes_the_cells_it_covers(caplog) -> None:  # type: ignore[no-untyped-def]
+    thin = _between_two_cell_centres()  # astride the edge of two cells, far from both centres
     with caplog.at_level(logging.WARNING, logger="orthostudio.dsf.zones"):
-        texture_map(TILE, _params([(thin, 18, "BI")]))
-    said = [r.getMessage() for r in caplog.records]
-    assert any("takes no mesh cell" in m for m in said), said
-    assert any("level 18" in m for m in said)
-    assert any(" m here" in m for m in said), "it says how big a cell is here"
+        tmap = texture_map(TILE, _params([(thin, 18, "BI")]))
+    assert not [r for r in caplog.records if "takes no mesh cell" in r.getMessage()]
+    assert int((tmap.zl == 18).sum()) == 2, "the two cells it covers a part of"
+
+
+def _corner(k: int, m: int) -> tuple[float, float]:
+    """``(lat, lon)`` of the corner shared by four mesh cells, ``k`` columns and ``m`` rows in."""
+    from orthostudio.imagery.grid import texture_at, tile_to_wgs84
+
+    first = texture_at(TILE.lat + 1, TILE.lon, 19, "")
+    return tile_to_wgs84(first.til_x + 16 * k, first.til_y + 16 * m, 19)
+
+
+def _box(north: float, west: float, south: float, east: float) -> list[float]:
+    return _band(south, west, north - south, east - west)
+
+
+def test_a_zone_on_the_corner_of_four_cells_takes_all_four() -> None:
+    """A helipad of some 150 m where four cells meet held none of their centres."""
+    lat, lon = _corner(30, 30)
+    pad = _box(lat + 0.0007, lon - 0.0007, lat - 0.0007, lon + 0.0007)
+    tmap = texture_map(TILE, _params([(pad, 18, "BI")]))
+    assert int((tmap.zl == 18).sum()) == 4
+
+
+def test_a_zone_drawn_on_the_cell_edges_takes_those_cells_and_no_more() -> None:
+    """A zone laid on the squares, as one draws them, does not spill into the next ones."""
+    north, west = _corner(20, 20)
+    south, east = _corner(23, 23)
+    tmap = texture_map(TILE, _params([(_box(north, west, south, east), 18, "BI")]))
+    assert int((tmap.zl == 18).sum()) == 9
+
+
+def test_where_two_zones_share_a_cell_the_first_of_the_list_wins() -> None:
+    lat, lon = _corner(30, 30)
+    pad = _box(lat + 0.0007, lon - 0.0007, lat - 0.0007, lon + 0.0007)  # four cells
+    north, west = _corner(29, 29)
+    south, east = _corner(32, 32)
+    block = _box(north, west, south, east)  # the nine cells around them
+    first = texture_map(TILE, _params([(pad, 18, "BI"), (block, 17, "BI")]))
+    assert (int((first.zl == 18).sum()), int((first.zl == 17).sum())) == (4, 5)
+    second = texture_map(TILE, _params([(block, 17, "BI"), (pad, 18, "BI")]))
+    assert (int((second.zl == 18).sum()), int((second.zl == 17).sum())) == (0, 9)
 
 
 def test_a_zone_that_does_raise_cells_says_nothing(caplog) -> None:  # type: ignore[no-untyped-def]
@@ -82,3 +121,5 @@ def test_a_zone_another_zone_covers_is_named_too(caplog) -> None:  # type: ignor
     wide = _band(46.4, 6.4, 0.2, 0.2)
     covered = _band(46.45, 6.45, 0.05, 0.05)
     assert _idle_by_the_build([(wide, 18, "BI"), (covered, 17, "BI")], caplog) == {1}
+    said = [r.getMessage() for r in caplog.records if "takes no mesh cell" in r.getMessage()]
+    assert "level 17" in said[0] and " m here" in said[0], said

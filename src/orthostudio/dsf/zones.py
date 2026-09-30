@@ -4,7 +4,9 @@
 
 Port of ``zone_list_to_ortho_dico`` (``O4_DSF_Utils.py:110-257``): a 4096² priority image of
 the zones, the airport upgrade to ``cover_zl``, the ``Existing`` mode, and the texture of a
-mesh-grid cell at its zoom level. Spec: ``docs/specs/dsf-terrain-assignment.md`` 3.4.
+mesh-grid cell at its zoom level. One departure: a cell takes the level of every zone that covers
+a pixel inside it, where Ortho4XP read the cell at its centre (:func:`cells_touched`). Spec:
+``docs/specs/dsf-terrain-assignment.md`` 3.4.
 """
 
 from __future__ import annotations
@@ -186,6 +188,53 @@ def cell_pixels(tile: TileRef, mesh_zl: int) -> tuple[np.ndarray, np.ndarray, ra
     return rows, cols, xs, ys
 
 
+def cell_edges(tile: TileRef, mesh_zl: int) -> tuple[np.ndarray, np.ndarray]:
+    """The pixels of the zone image on the edges of the mesh cells: ``(rows, cols)``, one more of
+    each than there are cells, north and west first, clamped into the tile like the centres of
+    :func:`cell_pixels`. Cell ``(row, col)`` lies between ``rows[row]`` and ``rows[row + 1]``,
+    ``cols[col]`` and ``cols[col + 1]``."""
+    lat, lon = tile.lat, tile.lon
+    first = texture_at(lat + 1, lon, mesh_zl, "")
+    last = texture_at(lat, lon + 1, mesh_zl, "")
+    side = float(2 ** (mesh_zl - 1))
+    til_x = np.arange(first.til_x, last.til_x + 17, 16, dtype=np.float64)
+    til_y = np.arange(first.til_y, last.til_y + 17, 16, dtype=np.float64)
+    lons = np.clip((til_x / side - 1.0) * 180.0, lon, lon + 1)
+    lats = np.clip(360.0 / pi * np.arctan(np.exp(pi * (1.0 - til_y / side))) - 90.0, lat, lat + 1)
+    cols = np.round((lons - lon) * 4095).astype(np.int64)
+    rows = np.round((lat + 1 - lats) * 4095).astype(np.int64)
+    return rows, cols
+
+
+def _inside(first: int, last: int) -> slice:
+    """The pixels strictly between two edges: a zone drawn up to a cell's edge, as one laid on
+    the squares is, reaches no further. A cell thinner than that, at the tile's border, keeps
+    both its edges."""
+    if last - first >= 2:
+        return slice(first + 1, last)
+    return slice(max(0, first), min(IMAGE_SIDE, last + 1))
+
+
+def cells_touched(zone_im: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
+    """``(ny, nx)``: the value of the first zone of the list that covers a pixel inside each
+    cell, else 1, the tile's own level (the image paints the first zone last, so it has the
+    highest value).
+
+    Ortho4XP reads each cell at its centre: a zone holding no centre raised nothing, and the part
+    of a zone around a cell whose centre it missed stayed at the tile's level. A user drew eleven
+    ZL18 zones over helipads and a hospital, seven of them raised nothing, and the rest ended in
+    straight seams across what he had drawn (2026-09-29). A zone now takes every cell it covers
+    a pixel of, about 25 m: whatever is drawn is at least at the zone's level."""
+    ny, nx = len(rows) - 1, len(cols) - 1
+    by_column = np.empty((zone_im.shape[0], nx), dtype=zone_im.dtype)
+    for col in range(nx):
+        by_column[:, col] = zone_im[:, _inside(int(cols[col]), int(cols[col + 1]))].max(axis=1)
+    touched = np.empty((ny, nx), dtype=np.int32)
+    for row in range(ny):
+        touched[row, :] = by_column[_inside(int(rows[row]), int(rows[row + 1])), :].max(axis=0)
+    return touched
+
+
 def _airport_array(
     tile: TileRef, params: DsfParams, airports: Sequence[AirportCover]
 ) -> np.ndarray:
@@ -221,13 +270,10 @@ def _say_the_zones_that_raise_nothing(
 ) -> None:
     """Name the zones that no mesh cell took, so they are not silently paid for.
 
-    A zone's level is read at the centre of each mesh cell, which is Ortho4XP's rule and about
-    850 m at ``mesh_zl`` 19. A zone thinner than that holds no centre and raises nothing, while
-    the page draws the shape the user drew and the estimate charges for the textures it covers: a
-    user set a 300 m band to a sharper level, built, and saw no change and no word (2026-09-23).
-
-    The rule is kept, because it is the one the whole terrain assignment is a port of. What was
-    missing was saying so.
+    A zone takes every cell it covers a pixel of (:func:`cells_touched`). One takes none only when
+    the zones above it in the list take every cell it covers, or when it is thinner than a pixel
+    of the zone image. When a cell's level was read at its centre, Ortho4XP's rule, a user set a
+    300 m band to a sharper level, built, and saw no change and no word (2026-09-23).
     """
     zones = list(params.zone_list)
     for value in range(2, len(values)):  # 0 unused, 1 is the tile itself, then the zones
@@ -238,20 +284,20 @@ def _say_the_zones_that_raise_nothing(
         zl, _provider = values[value]
         log.warning(
             "%s: the zone %d of the list (level %d) takes no mesh cell, so its level changes "
-            "nothing: either it is finer than a cell, about %d m here, or a zone above it in "
-            "the list covers the cells it would have taken. Its colours follow its shape either "
-            "way",
+            "nothing: the zones above it in the list take every cell it covers, or it is "
+            "thinner than a pixel of the zone image, about %d m here. Its colours follow its "
+            "shape either way",
             tile.name,
             position + 1,
             zl,
-            _mesh_cell_metres(tile, params.mesh_zl),
+            _pixel_metres(tile),
         )
 
 
-def _mesh_cell_metres(tile: TileRef, mesh_zl: int) -> int:
-    """The side of one mesh cell here, in metres: 16 tiles of ``mesh_zl`` at this latitude."""
+def _pixel_metres(tile: TileRef) -> int:
+    """The width of one pixel of the zone image here, in metres: a degree of longitude over 4095."""
     around = 2 * pi * EARTH_RADIUS * cos(pi * (tile.lat + 0.5) / 180.0)
-    return round(16 * around / 2**mesh_zl)
+    return round(around / 360.0 / (IMAGE_SIDE - 1))
 
 
 def texture_map(
@@ -270,7 +316,8 @@ def texture_map(
     zone_im, values = _zone_image(tile, params.zone_list, params.default_zl, params.default_website)
     upgrade = params.cover_airports_with_highres in ("True", "ICAO")
     apt_arr = _airport_array(tile, params, airports) if upgrade else None
-    rows, cols, xs, ys = cell_pixels(tile, mesh_zl)
+    rows, cols, xs, ys = cell_pixels(tile, mesh_zl)  # the airports are still read at the centre
+    touched = cells_touched(zone_im, *cell_edges(tile, mesh_zl))
     first = texture_at(lat + 1, lon, mesh_zl, "")
     ny, nx = len(ys), len(xs)
     tex_x = np.zeros((ny, nx), dtype=np.int32)
@@ -283,7 +330,7 @@ def texture_map(
         x = int(cols[col])
         for row, til_y in enumerate(ys):
             y = int(rows[row])
-            chosen = int(zone_im[y, x])
+            chosen = int(touched[row, col])
             claimed.add(chosen)
             zl, provider = values[chosen]
             if apt_arr is not None and apt_arr[y, x]:

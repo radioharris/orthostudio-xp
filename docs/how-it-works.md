@@ -23,7 +23,10 @@ the measurements, `docs/benchmarks/`.
 - **Zoom level (ZL)**: the sharpness of the imagery. Each level up halves the size of a pixel on the
   ground and multiplies the number of textures by four: ZL16 is about 2 m per pixel, ZL18 about
   40 cm. OrthoStudio XP builds a tile at one level and sharper *zones* where you draw them
-  (airports, places you fly low).
+  (airports, places you fly low). A zone sharpens whole squares of about 1 km, every one it
+  covers a part of: everything you draw is at least at its level, and the sharp area ends on
+  those squares' edges, up to a square beyond your outline (a small helipad where four squares
+  meet sharpens the four).
 - **Overlay**: roads, buildings, forests, power lines and night lighting. They live in the same
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,
