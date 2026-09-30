@@ -68,6 +68,7 @@ typedef float (*XPLMFlightLoop_f)(float inElapsedSinceLastCall, float inElapsedT
                                   int inCounter, void *inRefcon);
 extern XPLMDataRef XPLMFindDataRef(const char *inDataRefName);
 extern double XPLMGetDatad(XPLMDataRef inDataRef);
+extern float XPLMGetDataf(XPLMDataRef inDataRef);
 extern void XPLMDebugString(const char *inString);
 extern void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, float inInterval, void *inRefcon);
 extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void *inRefcon);
@@ -107,7 +108,7 @@ int live_note_closed(void); /* 1: its cross clicked since the last call */
 
 static int sock = -1;
 static int flights = 0; /* flights whose aircraft has loaded */
-static XPLMDataRef lat_ref, lon_ref;
+static XPLMDataRef lat_ref, lon_ref, msl_ref, agl_ref;
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
 static int french = 0; /* the Live window's language, which each answer says: its words in X-Plane */
 static char note[160]; /* its words */
@@ -214,11 +215,21 @@ static int position(double *lat, double *lon) {
     return !(*lat == 0.0 && *lon == 0.0); /* unset while X-Plane starts up */
 }
 
+/* The aircraft's altitude and height above the ground, in metres, as X-Plane says them while it
+   loads a flight: " msl=9144 agl=9144", none where X-Plane has no such data. A start in the air is
+   planned from there: X-Plane reads the textures under an aircraft at FL300 from 9 km away. */
+static void heights(char *out, size_t size) {
+    out[0] = 0;
+    if (msl_ref && agl_ref)
+        snprintf(out, size, " msl=%.0f agl=%.0f", XPLMGetDatad(msl_ref), (double)XPLMGetDataf(agl_ref));
+}
+
 static void tell_start(void) {
-    char line[96];
+    char line[128], h[48];
     double lat, lon;
     if (sock < 0 || !position(&lat, &lon)) return;
-    snprintf(line, sizeof line, "LIVE1 LOAD %.6f %.6f", lat, lon);
+    heights(h, sizeof h);
+    snprintf(line, sizeof line, "LIVE1 LOAD %.6f %.6f%s", lat, lon, h);
     drain();
     send(sock, line, strlen(line), 0);
 }
@@ -239,13 +250,14 @@ static void show(const struct state *st) {
 }
 
 static void hold(const char *at) {
-    char line[96];
+    char line[128], h[48];
     struct state st = {-1, 0, 0, 0.0, ""};
     const char *why = strcmp(at, "the start of a new flight") == 0 ? "flight" : "aircraft";
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock < 0 || !position(&lat, &lon)) return;
-    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s", lat, lon, why);
+    heights(h, sizeof h);
+    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s%s", lat, lon, why, h);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
     for (;;) {
@@ -384,6 +396,8 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outDesc, "Makes X-Plane wait, while a flight loads, until OrthoStudio XP Live has built the ortho around the start.");
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
+    msl_ref = XPLMFindDataRef("sim/flightmodel/position/elevation");
+    agl_ref = XPLMFindDataRef("sim/flightmodel/position/y_agl");
     take_out_if_alone();
     return 1;
 }

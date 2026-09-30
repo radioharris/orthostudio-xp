@@ -1442,6 +1442,8 @@ class Arrival:
     stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     work: int = 0  # the most image pieces seen to build for it: the progress bar's whole
+    height_m: float = 0.0  # above the ground, a start in the air's (start_height)
+    height_said: bool = False  # the log said it
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
@@ -1458,6 +1460,28 @@ class Arrival:
         there,
         even while it still runs where it was."""
         return self.how == "from" or (self.how == "click" and now - self.since < LOADING_S)
+
+
+# The ground a start in the air may have under it, where X-Plane gives no height above it while
+# it loads the flight: its altitude less this is the height the start is planned from, so that a
+# start at FL300 is planned high (no 8192 px level under it that X-Plane reads from 9 km away: 30
+# waited for at an air start where X-Plane read about 10, the review of 2026-09-30) and one low,
+# as on the ground.
+START_GROUND_M = 3000.0
+
+
+def start_height(said: str) -> float:
+    """The height above the ground a start is planned from, from the plugin's LOAD or HOLD
+    (``flight msl=9144 agl=9144``): X-Plane's own where it knows the ground under the aircraft
+    (below the altitude), else the altitude less START_GROUND_M; 0 from an older plugin."""
+    words = dict(w.split("=", 1) for w in said.split() if "=" in w)
+    try:
+        msl, agl = float(words.get("msl", "nan")), float(words.get("agl", "nan"))
+    except ValueError:
+        return 0.0
+    if 0.0 <= agl < msl - 1.0:
+        return agl
+    return max(0.0, msl - START_GROUND_M) if msl == msl else 0.0
 
 
 def longest_frame(said: str) -> int | None:
@@ -1611,7 +1635,7 @@ def run(
 
     rate = Rate()
 
-    def expect(lat: float, lon: float, name: str, how: str) -> None:
+    def expect(lat: float, lon: float, name: str, how: str, height_m: float = 0.0) -> None:
         nonlocal arrival
         # A click while X-Plane runs is a start only once X-Plane stops to load it: X-Plane also
         # writes Freeflight.prf when it quits.
@@ -1622,10 +1646,11 @@ def run(
             how,
             time.time(),
             loading=not ("lat" in values and time.time() - last_packet < FRESH_S),
+            height_m=height_m,
         )
         if gate is not None:  # the gate's word to a waiting X-Plane while this start is planned
             gate.hold_at(name, language())
-        streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
+        streamer.plan(Fix(lat, lon, agl_m=height_m), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         streamer.refresh_flight_plan()  # a new flight may have a new plan
         if streamer.covers(lat, lon):
@@ -1685,7 +1710,7 @@ def run(
                         continue
                     if (
                         running
-                        and why != "flight"
+                        and why.split()[0] != "flight"
                         and not (arrival is not None and arrival.certain(now))
                     ):
                         if kind == "HOLD":  # a livery changed in flight: nothing loads
@@ -1694,7 +1719,16 @@ def run(
                     if arrival is None or (
                         arrival.how not in ("click", "from") and not arrival.near(lat, lon)
                     ):
-                        expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin")
+                        expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin", start_height(why))
+                    elif "msl=" in why and arrival.height_m != start_height(why):
+                        arrival.height_m = start_height(why)  # X-Plane's word: where it loads
+                    if arrival.height_m > 100.0 and not arrival.height_said:
+                        arrival.height_said = True
+                        said = " ".join(w for w in why.split() if "=" in w)
+                        log(
+                            f"  a start {arrival.height_m:.0f} m above the ground ({said}): Live "
+                            "builds what X-Plane reads from there"
+                        )
                     arrival.loading = True
                     if kind == "HOLD":
                         streamer.hold_at(lat, lon)
@@ -1819,12 +1853,18 @@ def run(
                         now
                     ):  # it is about to leave for there
                         streamer.plan(
-                            Fix(arrival.lat, arrival.lon), x_plane_there=False, starting=True
+                            Fix(arrival.lat, arrival.lon, agl_m=arrival.height_m),
+                            x_plane_there=False,
+                            starting=True,
                         )
                     else:
                         streamer.plan(fix, x_plane_there=False)
                 else:  # X-Plane is loading the flight, or not there yet
-                    streamer.plan(Fix(arrival.lat, arrival.lon), x_plane_there=False, starting=True)
+                    streamer.plan(
+                        Fix(arrival.lat, arrival.lon, agl_m=arrival.height_m),
+                        x_plane_there=False,
+                        starting=True,
+                    )
             if now - last_status >= 10:
                 last_status = now
                 where = (

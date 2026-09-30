@@ -367,6 +367,30 @@ def test_what_a_start_waits_for(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_a_start_in_the_air_waits_for_what_x_plane_reads_from_there(tmp_path: Path) -> None:
+    """A start at FL300: X-Plane reads the textures under the aircraft from 9 km away, so only the
+    8192 px levels within 15 km of it in three dimensions wait (30 waited for at an air start
+    planned on the ground where X-Plane read about 10, the review of 2026-09-30): here the one
+    6.8 km off, not the one 13.6 km off; low, as on the ground."""
+    s = row_streamer(tmp_path)
+    assert sharp(s.plan(at(0, agl_m=9000.0), x_plane_there=False, starting=True)) == [0, 1]
+    assert sharp(s.plan(at(0, agl_m=300.0), x_plane_there=False, starting=True)) == [0, 1, 2]
+    s.cache.close()
+
+
+def test_the_height_a_start_is_planned_from() -> None:
+    """From the plugin's LOAD or HOLD: X-Plane's height above the ground where it knows the ground
+    under the aircraft, else its altitude less the highest ground that may be there."""
+    from orthostudio.live.streamer import START_GROUND_M, start_height
+
+    assert start_height("flight msl=9144 agl=8900") == 8900.0  # X-Plane knows the ground
+    assert start_height("flight msl=9144 agl=9144") == 9144.0 - START_GROUND_M  # it does not
+    assert start_height("aircraft msl=150 agl=1") == 1.0  # on a runway
+    assert start_height("flight msl=2500 agl=2500") == 0.0  # low: as on the ground
+    assert start_height("flight") == 0.0  # an older plugin: as before
+    assert start_height("flight msl=x agl=y") == 0.0
+
+
 def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
     """In flight: within 15 km of the path ahead, the aircraft and the camera, whatever the way it
     flies, nothing guessed of where it turns; urgent once X-Plane reads them (12 km). The path is

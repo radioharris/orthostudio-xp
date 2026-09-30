@@ -11,15 +11,19 @@
 #include <string.h>
 #include <time.h>
 
-static double lat, lon;
+static double lat, lon, msl = 9144.0;
+static float agl = 9144.0f;
 
 void *XPLMFindDataRef(const char *name) {
     if (strstr(name, "latitude")) return &lat;
     if (strstr(name, "longitude")) return &lon;
+    if (strstr(name, "elevation")) return &msl;
+    if (strstr(name, "y_agl")) return &agl;
     return NULL;
 }
 
 double XPLMGetDatad(void *ref) { return ref ? *(double *)ref : 0.0; }
+float XPLMGetDataf(void *ref) { return ref ? *(float *)ref : 0.0f; }
 
 /* X-Plane's folder: $FAKE_XPLANE with its separator, or none. */
 void XPLMGetSystemPath(char *out) {
