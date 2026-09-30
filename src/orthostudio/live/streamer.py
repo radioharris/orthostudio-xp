@@ -1592,6 +1592,8 @@ def run(
         while not should_stop():
             if streamer.crashed is not None:
                 raise SystemExit(f"the streamer stopped: {streamer.crashed!r}")
+            if streamer.names is not None and streamer.names.crashed is not None:
+                raise SystemExit(f"the squares' files stopped: {streamer.names.crashed!r}")
             now = time.time()
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
             # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)

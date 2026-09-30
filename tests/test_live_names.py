@@ -166,6 +166,71 @@ def test_nothing_taken_away_while_xplane_loads_scenery(tmp_path: Path) -> None:
         names.close()
 
 
+def test_a_file_that_fails_is_tried_again_and_stops_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file that cannot be made (a full disk, a file held open on Windows) no longer stops the
+    squares' files for the whole flight: its square is tried again later, the others are made."""
+    from orthostudio.live import names as names_module
+
+    pack = region(tmp_path)
+    logged: list[str] = []
+    names = live_names(pack, log=logged.append)
+    real_link, broken = os.link, {"on": True}
+
+    def link(src, dst, *args, **kwargs):
+        if broken["on"] and str(dst).endswith(f"{ROW[3]}.dds"):
+            raise OSError(errno.EPERM, "Operation not permitted", str(dst))
+        real_link(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", link)
+    monkeypatch.setattr(names_module, "FAIL_RETRY_S", 0.2)
+    names.start(own_process=False)
+    try:
+        names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))
+        assert names.wait_ready({EAST}, 10.0)  # the other square made all the same
+        assert not names.ready({HERE}) and HERE in names.failing
+        assert any("could not all be made" in line for line in logged)
+        assert (pack / "textures" / f"{ROW[4]}.dds").exists()  # its other files are there
+        broken["on"] = False  # the disk has room again
+        assert names.wait_ready({HERE}, 10.0)
+        assert HERE not in names.failing and names.crashed is None
+    finally:
+        names.close()
+
+
+def test_a_start_is_not_held_for_ever_by_a_failing_square(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.live import names as names_module
+
+    pack = region(tmp_path)
+    logged: list[str] = []
+    names = live_names(pack, log=logged.append)
+    names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
+    assert not names.ready({HERE})
+    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)
+    assert names.ready({HERE})
+    assert names.ready({HERE})
+    assert sum("X-Plane goes on without the files" in line for line in logged) == 1
+
+
+def test_a_texture_built_since_is_never_taken_away(tmp_path: Path) -> None:
+    """Taking a square away removes a texture's name only while it leads to the neutral texture:
+    one built in the meantime (renamed over it) stays, whatever was decided before."""
+    pack = region(tmp_path)
+    names = live_names(pack)  # nothing held by the streamer: every name may go
+    names.make(HERE)
+    names.done.add(HERE)
+    built = pack / "textures" / f"{ROW[2]}.dds"
+    tmp = built.with_name("built.tmp")
+    tmp.write_bytes(b"built for real")
+    os.replace(tmp, built)  # as the builder does
+    names.take_away(HERE)
+    assert built.read_bytes() == b"built for real"
+    assert not (pack / "textures" / f"{ROW[1]}.dds").exists()
+
+
 def test_the_squares_round_a_point() -> None:
     """X-Plane's window, 4 x 3 squares (more by a border), a ring round it made, two kept."""
     window = squares_round([(46.5, 2.5)], 0)
