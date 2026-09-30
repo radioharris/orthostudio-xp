@@ -1473,13 +1473,14 @@ START_GROUND_M = 3000.0
 def start_height(said: str) -> float:
     """The height above the ground a start is planned from, from the plugin's LOAD or HOLD
     (``flight msl=9144 agl=9144``): X-Plane's own where it knows the ground under the aircraft
-    (below the altitude), else the altitude less START_GROUND_M; 0 from an older plugin."""
+    (above it and below the altitude: a height of 0 is X-Plane's before it reckons one), else the
+    altitude less START_GROUND_M; 0 from an older plugin."""
     words = dict(w.split("=", 1) for w in said.split() if "=" in w)
     try:
         msl, agl = float(words.get("msl", "nan")), float(words.get("agl", "nan"))
     except ValueError:
         return 0.0
-    if 0.0 <= agl < msl - 1.0:
+    if 1.0 < agl < msl - 1.0:
         return agl
     return max(0.0, msl - START_GROUND_M) if msl == msl else 0.0
 
@@ -1617,13 +1618,15 @@ def run(
     start_name: str | None = None,
     report: Callable[[dict], None] | None = None,
     language: Callable[[], str] = lambda: "en",
+    departure: Callable[[], tuple[float, float, str] | None] = lambda: None,
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
     ``gate`` (``orthostudio.live.gate.Gate``) hears of a flight's start from Freeflight.prf and
     from the plugin,
     and holds X-Plane until everything it will read there is built. ``report`` is given every
-    second what the Live window shows (:func:`progress_report`)."""
+    second what the Live window shows (:func:`progress_report`). ``departure``: a start the Live
+    window asks to prepare before X-Plane loads it (lat, lon, its name), as ``--from``."""
     from .scenery import xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
@@ -1684,6 +1687,9 @@ def run(
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
             # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)
             streamer.flying = "lat" in values and now - last_packet < FRESH_S and arrival is None
+            wanted = departure()  # the window's Prepare: a start before X-Plane loads it
+            if wanted is not None:
+                expect(*wanted, "from")
             if gate is not None:
                 clicked = gate.new_start()
                 if clicked is not None:
@@ -1722,12 +1728,12 @@ def run(
                         expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin", start_height(why))
                     elif "msl=" in why and arrival.height_m != start_height(why):
                         arrival.height_m = start_height(why)  # X-Plane's word: where it loads
-                    if arrival.height_m > 100.0 and not arrival.height_said:
+                    if "msl=" in why and not arrival.height_said:  # once: what X-Plane said
                         arrival.height_said = True
                         said = " ".join(w for w in why.split() if "=" in w)
                         log(
-                            f"  a start {arrival.height_m:.0f} m above the ground ({said}): Live "
-                            "builds what X-Plane reads from there"
+                            f"  the start planned {arrival.height_m:.0f} m above the ground "
+                            f"(X-Plane: {said})"
                         )
                     arrival.loading = True
                     if kind == "HOLD":

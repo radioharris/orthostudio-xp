@@ -385,7 +385,9 @@ def test_the_height_a_start_is_planned_from() -> None:
 
     assert start_height("flight msl=9144 agl=8900") == 8900.0  # X-Plane knows the ground
     assert start_height("flight msl=9144 agl=9144") == 9144.0 - START_GROUND_M  # it does not
-    assert start_height("aircraft msl=150 agl=1") == 1.0  # on a runway
+    assert start_height("aircraft msl=150 agl=2") == 2.0  # on a runway
+    assert start_height("flight msl=9144 agl=0") == 9144.0 - START_GROUND_M  # none reckoned yet
+    assert start_height("aircraft msl=150 agl=0") == 0.0
     assert start_height("flight msl=2500 agl=2500") == 0.0  # low: as on the ground
     assert start_height("flight") == 0.0  # an older plugin: as before
     assert start_height("flight msl=x agl=y") == 0.0
