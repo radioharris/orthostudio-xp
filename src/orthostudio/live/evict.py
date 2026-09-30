@@ -55,6 +55,8 @@ EVICT_SAFE_KM = 300.0  # beyond: a 256 px texture may go back to the neutral clo
 XPLANE_COLUMNS = 4
 XPLANE_ROWS = 3
 HYSTERESIS_DEG = 0.25
+COLUMN_MOVE_DEG = 0.15  # X-Plane moves its columns this far past a column's middle...
+ROW_MOVE_DEG = 0.1  # ... and its rows this far past a row's edge, in the direction of travel
 TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction at every step
 
 
@@ -70,6 +72,54 @@ def xplane_tiles(lat: float, lon: float) -> set[tuple[int, int]]:
         middle = math.floor(at)  # the row itself
         rows.update(range(middle - XPLANE_ROWS // 2, middle + XPLANE_ROWS // 2 + 1))
     return {(row, (column + 180) % 360 - 180) for row in rows for column in columns}
+
+
+class XPlaneWindow:
+    """Where X-Plane's window is, followed as it moves it (the module's docstring), and when it
+    will move it next: the tile boundary its columns are centred on, the row its rows are centred
+    on. Taken again from the aircraft's position at a start or a jump."""
+
+    def __init__(self) -> None:
+        self.column: int | None = None  # the tile boundary nearest the aircraft when last moved
+        self.row: int | None = None
+
+    def follow(self, lat: float, lon: float) -> None:
+        if (
+            self.column is None
+            or self.row is None
+            or abs(lon - self.column) > 2
+            or (abs(lat - self.row - 0.5) > 2)
+        ):
+            self.column, self.row = math.floor(lon + 0.5), math.floor(lat)
+            return
+        while lon > self.column + 0.5 + COLUMN_MOVE_DEG:
+            self.column += 1
+        while lon < self.column - 0.5 - COLUMN_MOVE_DEG:
+            self.column -= 1
+        while lat > self.row + 1 + ROW_MOVE_DEG:
+            self.row += 1
+        while lat < self.row - ROW_MOVE_DEG:
+            self.row -= 1
+
+    def next_move_s(self, lat: float, lon: float, gs_ms: float, trk_deg: float) -> float | None:
+        """Seconds until X-Plane moves its window, the aircraft going on as it goes (its ground
+        speed and track); None when it does not move."""
+        if self.column is None or self.row is None or gs_ms <= 0:
+            return None
+        t = math.radians(trk_deg)
+        north = gs_ms * math.cos(t) / 111_195.0  # degrees a second
+        east = gs_ms * math.sin(t) / (111_195.0 * max(0.01, math.cos(math.radians(lat))))
+        times = []
+        if east > 0:
+            times.append((self.column + 0.5 + COLUMN_MOVE_DEG - lon) / east)
+        elif east < 0:
+            times.append((self.column - 0.5 - COLUMN_MOVE_DEG - lon) / east)
+        if north > 0:
+            times.append((self.row + 1 + ROW_MOVE_DEG - lat) / north)
+        elif north < 0:
+            times.append((self.row - ROW_MOVE_DEG - lat) / north)
+        times = [s for s in times if s >= 0]
+        return min(times) if times else None
 
 
 def tiles_of(texture: Texture) -> set[tuple[int, int]]:

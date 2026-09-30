@@ -59,7 +59,7 @@ from . import dds, machine, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
-from .evict import EVICT_SAFE_KM, TARGET, pick, tiles_of, usage, xplane_tiles
+from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
@@ -159,6 +159,13 @@ DATAREFS = [
 # so that one X-Plane would not end for another reason holds Live no longer.
 YIELD_AFTER_S = 5.0
 YIELD_MAX_S = 120.0
+# And before: X-Plane moves its window at lines Live knows (orthostudio.live.evict.XPlaneWindow),
+# so Live starts nothing new from this long before the aircraft reaches one, that X-Plane begins
+# its load with Live's work done (the idea of the user, 2026-09-30: a load Live met with 1,024
+# pieces asked for and 400 textures to encode took 74 s, the same one met quiet 17 s). At most
+# QUIET_MAX_S for one line, where X-Plane would not load.
+QUIET_S = 15.0
+QUIET_MAX_S = 45.0
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
 # it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
 # reads now
@@ -316,6 +323,8 @@ class Streamer:
         self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
         self._load_since: float | None = None
         self._load_long = False  # the load going on passed YIELD_MAX_S: said once
+        self._window = XPlaneWindow()  # where X-Plane's window is, and when it moves next
+        self._quiet_since: float | None = None  # quiet before a move of it (quiet_before_load)
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.ready_now = 0  # textures with all their photos, waiting for an encoder
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
@@ -607,6 +616,26 @@ class Streamer:
     def yielding(self) -> bool:
         """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`)."""
         return time.monotonic() < self.yield_until
+
+    def quiet_before_load(self, fix: Fix, now: float | None = None) -> None:
+        """In flight, Live paused from QUIET_S before the aircraft reaches a line where X-Plane
+        moves its window (orthostudio.live.evict.XPlaneWindow), for QUIET_MAX_S at most: X-Plane
+        then loads what comes with Live's work done. A turn away takes the line away."""
+        now = time.monotonic() if now is None else now
+        if not self.flying:
+            self._window = XPlaneWindow()  # a start: taken again from where X-Plane loads
+            self._quiet_since = None
+            return
+        self._window.follow(fix.lat, fix.lon)
+        to_move = self._window.next_move_s(fix.lat, fix.lon, fix.gs_ms, fix.trk_deg)
+        if to_move is None or to_move > QUIET_S:
+            self._quiet_since = None
+            return
+        if self._quiet_since is None:
+            self._quiet_since = now
+            self.log(f"  X-Plane loads more scenery in {to_move:.0f} s: Live quiet until it has")
+        if now - self._quiet_since < QUIET_MAX_S:
+            self.yield_until = max(self.yield_until, now + PLAN_EVERY_S + 1.0)
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
@@ -1779,6 +1808,7 @@ def run(
                         streamer.plan(
                             fix
                         )  # a jump is a new start: X-Plane read it before it was built
+                        streamer.quiet_before_load(fix)
                 elif running and arrival.near(fix.lat, fix.lon):  # X-Plane is there
                     if arrival.loading and may_have_read_early(arrival, xplane_started_at()):
                         streamer.read_early = True  # (never loading: X-Plane was there all along)
