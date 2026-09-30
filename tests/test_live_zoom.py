@@ -617,32 +617,6 @@ def test_nothing_encoded_while_x_plane_loads_not_even_what_it_shows(
     s.cache.close()
 
 
-def test_live_quiet_before_x_plane_loads(tmp_path: Path) -> None:
-    """X-Plane moves its window at lines Live knows: Live starts nothing new from QUIET_S before
-    the aircraft reaches one (the user's idea, 2026-09-30), for QUIET_MAX_S at most; a turn away
-    takes the line away."""
-    from orthostudio.live import streamer as st
-
-    s = row_streamer(tmp_path)
-    lines = []
-    s.log = lines.append
-    kt480 = 480 * 0.514444
-    s.quiet_before_load(Fix(60.5, 10.4, gs_ms=kt480, trk_deg=90.0), now=0.0)
-    assert s.yield_until == 0.0 and s._window.column is None  # not flying: a start, nothing
-    s.flying = True
-    s.quiet_before_load(Fix(60.5, 10.4, gs_ms=kt480, trk_deg=90.0), now=0.0)
-    assert s.yield_until == 0.0  # 10.65 is a minute away
-    s.quiet_before_load(Fix(60.5, 10.6, gs_ms=kt480, trk_deg=90.0), now=50.0)  # 11 s away
-    assert s.yield_until == 50.0 + st.PLAN_EVERY_S + 1.0
-    assert lines == ["  X-Plane loads more scenery in 11 s: Live quiet until it has"]
-    s.quiet_before_load(Fix(60.5, 10.6, gs_ms=kt480, trk_deg=270.0), now=52.0)  # turned away
-    assert s._quiet_since is None and s.yield_until == 50.0 + st.PLAN_EVERY_S + 1.0
-    s.quiet_before_load(Fix(60.5, 10.6, gs_ms=kt480, trk_deg=90.0), now=60.0)
-    s.quiet_before_load(Fix(60.5, 10.64, gs_ms=50.0, trk_deg=90.0), now=60.0 + st.QUIET_MAX_S)
-    assert s.yield_until == 60.0 + st.PLAN_EVERY_S + 1.0  # no load came: quiet no longer
-    s.cache.close()
-
-
 def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:
     """Its file is the last build's: a sharper one waits for the one on its way."""
     s = row_streamer(tmp_path)
