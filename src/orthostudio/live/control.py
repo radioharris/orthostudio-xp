@@ -9,8 +9,8 @@ keeps for the page what the terminal would have shown: the state, the figures of
 The states:
 
 - ``idle``: nothing streams;
-- ``starting``: the checks, the region set up (a couple of minutes, the first time), the pack and
-  the plugin put in X-Plane;
+- ``starting``: the checks, the region set up (seconds, the first time), the pack and the plugin
+  put in X-Plane;
 - ``streaming``: following X-Plane;
 - ``stopping``: asked to stop, the builder finishing its textures;
 - ``leaving``: stopped while X-Plane still runs; it reads its textures from the pack, which is

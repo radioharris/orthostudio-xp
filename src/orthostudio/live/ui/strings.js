@@ -48,7 +48,7 @@ export const STRINGS = {
     "action.leave": "Leave it installed",
     "action.uninstall": "Take the pack out of X-Plane",
     "action.fresh": "From scratch",
-    "action.fresh_help": "Forgets every texture built and all imagery downloaded, as the very first time.",
+    "action.fresh_help": "Forgets every texture built and all photos downloaded, as the very first time.",
 
     "departure.title": "Prepare my departure",
     "departure.placeholder": "ICAO code, e.g. LFMN",
@@ -106,7 +106,7 @@ export const STRINGS = {
     "checks.xplane_stopped": "X-Plane is not running",
     "checks.mesh": "Regions installed: {path}",
     "checks.own_tiles": "Your own tiles: {tiles}. X-Plane shows them, and Live downloads nothing there.",
-    "checks.own_squares": "{n} squares",
+    "checks.own_squares": "{n} tiles",
     "checks.mesh_missing": "No mesh yet: install the region you fly over.",
     "checks.region": "Region set up",
     "checks.region_todo": "The region is set up at the first start (a few seconds)",
@@ -207,7 +207,7 @@ export const STRINGS = {
     "find.next": "Next (Enter)",
     "find.close": "Close (Esc)",
 
-    "source.title": "Imagery source",
+    "source.title": "Photo source",
     "source.saved":
       "Saved. Textures already built keep their photos: “From scratch” builds them all again with this source.",
     "source.running": "It changes once Live is stopped.",
@@ -228,7 +228,7 @@ export const STRINGS = {
     "zoom.same": "ZL{zl}: the package's",
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
-      "A new zoom applies at the next start of Live, X-Plane closed: Live puts every texture at its new size, a couple of minutes, with nothing to download.",
+      "A new zoom applies at the next start of Live, X-Plane closed: Live puts the textures already built at their new size, with nothing to download.",
     "zoom.memory":
       "This computer has {ram} GB of memory, and ZL17 and ZL19 need {need} GB: X-Plane may stutter or run out of memory. ZL16 and ZL18, the package's, suit it better.",
     "home.title": "When the app starts",
@@ -243,7 +243,7 @@ export const STRINGS = {
     "welcome.live_1": "The ortho is built as you fly, ahead of the aircraft.",
     "welcome.live_2":
       "Choose your departure in X-Plane and take off; or prepare it ahead in Live, and X-Plane starts at once.",
-    "welcome.live_3": "Needs the internet in flight, and AutoOrtho's mesh for now (Europe, North America…).",
+    "welcome.live_3": "Needs the internet in flight, and a ready-made mesh for now (Europe, North America…).",
     "welcome.live_choose": "Choose Live",
     "welcome.build_title": "Build my tiles",
     "welcome.build_1": "Prepare the regions you fly over in advance, at the best quality.",
@@ -287,7 +287,7 @@ export const STRINGS = {
     "delete.title": "Delete what Live keeps?",
     "delete.textures_name": "The built textures ({gb} GB)",
     "delete.textures_note": "Back to the neutral texture: Live builds them again as you fly.",
-    "delete.imagery_name": "The downloaded imagery ({gb} GB)",
+    "delete.imagery_name": "The downloaded photos ({gb} GB)",
     "delete.imagery_note": "Downloaded again when needed.",
     "delete.xplane_running": "X-Plane is running and reads the textures: quit it to delete them.",
     "delete.keep": "Keep them",
@@ -295,16 +295,16 @@ export const STRINGS = {
 
     "folder.title": "Live's folder",
     "folder.help":
-      "Where Live keeps its textures and its downloaded imagery: on the computer's own disk, or on a disk of the same kind (APFS on a Mac, NTFS on Windows, ext4 on Linux). Not on a disk in Mac OS Extended, exFAT or FAT32.",
+      "Where Live keeps its textures and its downloaded photos: on the computer's own disk, or on a disk of the same kind (APFS on a Mac, NTFS on Windows, ext4 on Linux). Not on a disk in Mac OS Extended, exFAT or FAT32.",
     "folder.now": "Now: {path}",
     "reveal.mac": "Show in Finder",
     "reveal.win": "Show in File Explorer",
     "reveal.lin": "Open the folder",
     "folder.other": "Another folder",
     "folder.choose": "Choose…",
-    "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its imagery",
+    "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its photos",
     "folder.moved":
-      "In another folder, Live sets the region up again, about three minutes; what the old one holds stays there.",
+      "In another folder, Live sets the region up again, in a few seconds; what the old one holds stays there.",
 
     "country.Spain": "Spain",
     "country.Netherlands": "Netherlands",
@@ -362,7 +362,7 @@ export const STRINGS = {
     "action.uninstall": "Retirer le pack de X-Plane",
     "action.fresh": "Repartir de zéro",
     "action.fresh_help":
-      "Oublie toutes les textures construites et les images téléchargées, comme la toute première fois.",
+      "Oublie toutes les textures construites et les photos téléchargées, comme la toute première fois.",
 
     "departure.title": "Préparer mon départ",
     "departure.placeholder": "Code OACI, par ex. LFMN",
@@ -420,7 +420,7 @@ export const STRINGS = {
     "checks.xplane_stopped": "X-Plane n'est pas lancé",
     "checks.mesh": "Régions installées : {path}",
     "checks.own_tiles": "Vos propres tuiles : {tiles}. X-Plane les affiche, et Live n'y télécharge rien.",
-    "checks.own_squares": "{n} carrés",
+    "checks.own_squares": "{n} tuiles",
     "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez.",
     "checks.region": "Région préparée",
     "checks.region_todo": "La région sera préparée au premier démarrage (quelques secondes)",
@@ -464,7 +464,7 @@ export const STRINGS = {
     "regions.title": "Le mesh, par région",
     "regions.go": "Aller aux régions",
     "regions.help":
-      "Les sceneries sur lesquelles Live pose ses photos. Installez les régions que vous survolez, supprimez-les quand vous voulez.",
+      "Les scènes sur lesquelles Live pose ses photos. Installez les régions que vous survolez, supprimez-les quand vous voulez.",
     "regions.source":
       "Téléchargées depuis github.com/kubilus1/autoortho-scenery. Une fois décompressée, une région prend environ 1,7 fois sa taille sur le disque.",
     "regions.loading": "Liste demandée à GitHub…",
@@ -492,9 +492,9 @@ export const STRINGS = {
       "Là où Live affiche ses photos, X-Plane ne dessine plus ses propres routes, arbres et bâtiments. Chaque région les ramène avec elle (ses « overlays »).",
     "overlays.auto": "Oui, là où simHeaven X-World ne met pas les siens (recommandé)",
     "overlays.auto_note":
-      "Rangés sous vos autres sceneries : Global Forests efface leurs forêts là où il a les siennes. Pas sur vos propres tuiles, qui ont les leurs.",
+      "Rangés sous vos autres scènes : Global Forests efface leurs forêts là où il a les siennes. Pas sur vos propres tuiles, qui ont les leurs.",
     "overlays.off": "Jamais",
-    "overlays.off_note": "La photo seule, ou ce qu'ajoutent vos autres sceneries.",
+    "overlays.off_note": "La photo seule, ou ce qu'ajoutent vos autres scènes.",
     "checks.ao": "AutoOrtho n'est pas lancé",
     "checks.ao_mounted": "AutoOrtho est lancé : quittez-le d'abord, il sert les mêmes tuiles.",
     "checks.plugin": "Plugin X-Plane prêt : X-Plane attend l'ortho à chaque départ",
@@ -522,7 +522,7 @@ export const STRINGS = {
     "find.next": "Suivant (Entrée)",
     "find.close": "Fermer (Échap)",
 
-    "source.title": "Source des images",
+    "source.title": "Source des photos",
     "source.saved":
       "Enregistré. Les textures déjà construites gardent leurs photos : « Repartir de zéro » les reconstruit toutes avec cette source.",
     "source.running": "Elle se change quand Live est arrêté.",
@@ -544,7 +544,7 @@ export const STRINGS = {
     "zoom.higher":
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":
-      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live met chaque texture à sa nouvelle taille, deux minutes environ, sans rien télécharger.",
+      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live remet à leur nouvelle taille les textures déjà construites, sans rien télécharger.",
     "zoom.memory":
       "Cet ordinateur a {ram} Go de mémoire, et ZL17 et ZL19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. ZL16 et ZL18, ceux du package, lui conviennent mieux.",
     "home.title": "Au lancement de l'application",
@@ -561,7 +561,7 @@ export const STRINGS = {
     "welcome.live_2":
       "Choisissez votre départ dans X-Plane et décollez ; ou préparez-le à l'avance dans Live, et X-Plane démarre aussitôt.",
     "welcome.live_3":
-      "Il faut internet pendant le vol, et le maillage d'AutoOrtho pour l'instant (Europe, Amérique du Nord…).",
+      "Il faut internet pendant le vol, et un mesh déjà prêt pour l'instant (Europe, Amérique du Nord…).",
     "welcome.live_choose": "Choisir Live",
     "welcome.build_title": "Construire mes tuiles",
     "welcome.build_1": "Préparez à l'avance les régions que vous survolez, à la qualité maximale.",
@@ -605,7 +605,7 @@ export const STRINGS = {
     "delete.title": "Supprimer ce que Live garde ?",
     "delete.textures_name": "Les textures construites ({gb} Go)",
     "delete.textures_note": "Elles redeviennent neutres : Live les reconstruit pendant que vous volez.",
-    "delete.imagery_name": "Les images téléchargées ({gb} Go)",
+    "delete.imagery_name": "Les photos téléchargées ({gb} Go)",
     "delete.imagery_note": "Téléchargées à nouveau quand il le faut.",
     "delete.xplane_running": "X-Plane tourne et lit les textures : quittez-le pour les supprimer.",
     "delete.keep": "Les garder",
@@ -613,16 +613,16 @@ export const STRINGS = {
 
     "folder.title": "Dossier de Live",
     "folder.help":
-      "Où Live garde ses textures et les images téléchargées : sur le disque de l'ordinateur, ou sur un disque du même format (APFS sur Mac, NTFS sur Windows, ext4 sur Linux). Pas sur un disque en Mac OS étendu, exFAT ou FAT32.",
+      "Où Live garde ses textures et les photos téléchargées : sur le disque de l'ordinateur, ou sur un disque du même format (APFS sur Mac, NTFS sur Windows, ext4 sur Linux). Pas sur un disque en Mac OS étendu, exFAT ou FAT32.",
     "folder.now": "En ce moment : {path}",
     "reveal.mac": "Afficher dans le Finder",
     "reveal.win": "Afficher dans l'Explorateur de fichiers",
     "reveal.lin": "Ouvrir le dossier",
     "folder.other": "Un autre dossier",
     "folder.choose": "Choisir…",
-    "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses images",
+    "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses photos",
     "folder.moved":
-      "Dans un autre dossier, Live prépare la région à nouveau, trois minutes environ ; ce que l'ancien contient y reste.",
+      "Dans un autre dossier, Live prépare la région à nouveau, en quelques secondes ; ce que l'ancien contient y reste.",
 
     "country.Spain": "Espagne",
     "country.Netherlands": "Pays-Bas",
