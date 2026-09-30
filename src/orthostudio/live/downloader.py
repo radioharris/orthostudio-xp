@@ -74,8 +74,8 @@ class Downloader:
         ) = 0
         self.in_flight = 0
         self._paused_until = 0.0
-        # nothing asked while it says so: a test flight's Live idle during X-Plane's loads
-        # (orthostudio.live.streamer.HOLD_WHOLE_LOAD)
+        # nothing asked while it says so: Live paused while X-Plane loads scenery
+        # (orthostudio.live.streamer.Streamer.x_plane_loads)
         self.hold: Callable[[], bool] = lambda: False
         self._seq = itertools.count()
         self._loop = asyncio.new_event_loop()

@@ -567,8 +567,8 @@ def test_the_photos_of_the_sharp_levels_are_not_kept(
     assert len(held) == (len(keys) if kept else 0)
 
 
-def test_live_holds_back_while_x_plane_loads_scenery(tmp_path: Path) -> None:
-    """In flight, X-Plane's scenery load flag up: Live holds back, and YIELD_AFTER_S after; for
+def test_live_pauses_while_x_plane_loads_scenery(tmp_path: Path) -> None:
+    """In flight, X-Plane's scenery load flag up: Live pauses, and YIELD_AFTER_S after; for
     YIELD_MAX_S of a load at most; never at a start, where X-Plane waits for what Live builds."""
     from orthostudio.live import streamer as st
 
@@ -580,40 +580,40 @@ def test_live_holds_back_while_x_plane_loads_scenery(tmp_path: Path) -> None:
     assert s.yield_until == 100.0 + st.YIELD_AFTER_S
     lines = []
     s.log = lines.append
-    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 1)  # a load this long: no more held
+    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 1)  # a load this long: no more paused
     s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 2)
     assert s.yield_until == 100.0 + st.YIELD_AFTER_S
-    s.x_plane_loads(False, now=140.0)
-    assert lines == [  # the load's length, and what Live held back of it (Norway, 2026-09-30)
-        f"  X-Plane still loads scenery after {st.YIELD_MAX_S:.0f} s: Live builds again meanwhile",
-        f"  X-Plane loaded scenery in 40 s: Live held back its first {st.YIELD_MAX_S:.0f} s only",
+    s.x_plane_loads(False, now=100.0 + st.YIELD_MAX_S + 10)
+    took = st.YIELD_MAX_S + 10
+    assert lines == [  # the load's length, and what Live paused of it (Norway, 2026-09-30)
+        f"  X-Plane still loads scenery after {st.YIELD_MAX_S:.0f} s: Live works again meanwhile",
+        f"  X-Plane loaded scenery in {took:.0f} s: Live paused its first "
+        f"{st.YIELD_MAX_S:.0f} s only",
     ]
-    s.x_plane_loads(True, now=200.0)  # a new load: held again
-    assert s.yield_until == 200.0 + st.YIELD_AFTER_S
-    s.x_plane_loads(False, now=207.0)
-    assert lines[-1] == "  X-Plane loaded scenery in 7 s: Live held back meanwhile"
+    s.x_plane_loads(True, now=500.0)  # a new load: paused again
+    assert s.yield_until == 500.0 + st.YIELD_AFTER_S
+    s.x_plane_loads(False, now=507.0)
+    assert lines[-1] == "  X-Plane loaded scenery in 7 s: Live paused meanwhile"
     s.cache.close()
 
 
-def test_a_test_flights_live_idle_for_the_whole_of_a_load(
+def test_nothing_encoded_while_x_plane_loads_not_even_what_it_shows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The test of 2026-09-30 (fly.py --hold-whole-load): Live idle for all of X-Plane's load, not
-    its first YIELD_MAX_S alone, even for what X-Plane shows; and as always once it is over."""
+    """Live's work during X-Plane's loads delayed the third tile of a column by minutes over
+    Norway; paused for the whole load, none came late (2026-09-30)."""
     from orthostudio.live import streamer as st
 
-    monkeypatch.setattr(st, "HOLD_WHOLE_LOAD", True)
     s = row_streamer(tmp_path)
     s.flying = True
     s.log = lambda _: None
     monkeypatch.setattr(st.time, "monotonic", lambda: 1000.0)
-    s.x_plane_loads(True, now=1000.0 - 10 * st.YIELD_MAX_S)
-    s.x_plane_loads(True, now=1000.0)  # long past YIELD_MAX_S: still held
-    assert s.yielding() and s.holding_all()
-    assert not s.may_encode(-1.0, 0)  # not even what X-Plane shows
+    s.x_plane_loads(True, now=1000.0 - st.YIELD_MAX_S / 2)
+    s.x_plane_loads(True, now=1000.0)  # past the 30 s Live once held back: still paused
+    assert s.yielding() and not s.may_encode(-1.0, 0)
     s.x_plane_loads(False, now=1000.0)
     monkeypatch.setattr(st.time, "monotonic", lambda: 1000.0 + st.YIELD_AFTER_S + 1)
-    assert not s.holding_all() and s.may_encode(-1.0, 0)
+    assert not s.yielding() and s.may_encode(-1.0, 0)
     s.cache.close()
 
 

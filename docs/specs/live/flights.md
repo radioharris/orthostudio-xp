@@ -89,10 +89,7 @@ AutoOrtho's group alone left it running, its region mounted (2026-09-29).
 - `none`: X-Plane alone (the default).
 - `live`: Live's `stream` from this checkout, with the user's Live settings and folder. `--cold`
   gives it a home of its own under the series' results: nothing built, nothing downloaded, the
-  user's settings copied without their folder and SimBrief name. `--hold-whole-load`, a test of
-  2026-09-30: Live idle for the whole of each X-Plane load in flight (nothing downloaded, encoded or
-  copied up, only the squares' files X-Plane needs made), where it otherwise holds back its
-  encoding for the first 30 s: whether Live's work delays the tiles X-Plane loads.
+  user's settings copied without their folder and SimBrief name.
 - `autoortho`: AutoOrtho without its window (`-H`), from the sources the user's AutoOrtho Dev runs
   (`~/Desktop/Dev/autoortho4xplane`, its Python in `~/.autoortho-dev-venv`). AutoOrtho writes its
   settings file at every start, so it always runs from a home of its own under the results (`HOME`

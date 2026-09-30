@@ -149,17 +149,16 @@ DATAREFS = [
     # (wind, the ground, a position set from outside that gives it no speed: a user, 2026-09-29)
     ("hdg_deg", "sim/flightmodel/position/psi"),
 ]
-# X-Plane loading scenery in flight (its flag above), and this long after: Live starts no encoding
-# but for textures X-Plane already reads, and evicts nothing. The mountain test pair's hitches fell
-# as X-Plane loaded DSFs: Live 146 and 387 ms there while it encoded (and evicted), AutoOrtho none
-# over 40 ms (2026-09-28). At most YIELD_MAX_S of each load, so that a long one starves nothing.
+# X-Plane loading scenery in flight (its flag above), and this long after: Live pauses, nothing
+# downloaded, encoded, copied up or made coarser, only the squares' files X-Plane needs made (their
+# release waits too). Over Norway, Live's work during X-Plane's loads delayed the third tile of a
+# column by 1 to 7.5 minutes in each of five flights; paused, none came more than 24 s after the
+# first, near X-Plane alone's 19 s (2026-09-30). Until then Live held back only its encoding, for
+# 30 s, after the mountain test pair's hitches as X-Plane loaded DSFs (Live 146 and 387 ms while it
+# encoded and evicted, AutoOrtho none over 40 ms, 2026-09-28). At most YIELD_MAX_S of each load,
+# so that one X-Plane would not end for another reason holds Live no longer.
 YIELD_AFTER_S = 5.0
-YIELD_MAX_S = 30.0
-# A test flight's (2026-09-30, docs/specs/live/flights.md): Live idle for the whole of each load,
-# nothing downloaded, encoded or copied up, only the squares' files X-Plane needs made; to see
-# whether Live's work delays the tiles X-Plane loads (a tile of Norway came minutes after the two
-# others of its column). Set by the test flights alone (fly.py --hold-whole-load).
-HOLD_WHOLE_LOAD = os.environ.get("OSXP_LIVE_HOLD_WHOLE_LOAD") == "1"
+YIELD_MAX_S = 120.0
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
 # it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
 # reads now
@@ -567,53 +566,47 @@ class Streamer:
         return self.pressure
 
     def may_encode(self, urgency: float, level: int) -> bool:
-        """Whether a texture ready to encode may start now: what X-Plane reads already always;
-        the rest not while X-Plane loads scenery (:meth:`yielding`) nor while the computer is very
-        short of memory, an 8192 px level ahead of time not while it is short of it."""
+        """Whether a texture ready to encode may start now: none while X-Plane loads scenery in
+        flight (:meth:`yielding`); else what X-Plane reads already always, the rest not while the
+        computer is very short of memory, an 8192 px level ahead of time not while it is short."""
+        if self.yielding():
+            return False
         if urgency <= 0:
-            return not self.holding_all()
-        if self.yielding() or self.pressure >= machine.VERY_SHORT:
+            return True
+        if self.pressure >= machine.VERY_SHORT:
             return False
         return not (level < 0 and self.pressure >= machine.SHORT)
 
     def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
-        """X-Plane's scenery load flag, in flight: Live holds back while it is up and YIELD_AFTER_S
+        """X-Plane's scenery load flag, in flight: Live pauses while it is up and YIELD_AFTER_S
         after, for at most YIELD_MAX_S of each load (the constants). The log says how long X-Plane
-        loaded and how much of it Live held back: the load's length alone read as Live's, 597 s
-        where Live held back 35 (Norway, 2026-09-30)."""
+        loaded and how much of it Live paused: the load's length alone read as Live's pause, 597 s
+        where Live had held back 35 (Norway, 2026-09-30)."""
         now = time.monotonic() if now is None else now
         if not (loading and self.flying):
             if self._load_since is not None:
                 took = now - self._load_since
                 self.log(
-                    f"  X-Plane loaded scenery in {took:.0f} s: Live held back "
-                    + (
-                        "meanwhile"
-                        if took < YIELD_MAX_S or HOLD_WHOLE_LOAD
-                        else f"its first {YIELD_MAX_S:.0f} s only"
-                    )
+                    f"  X-Plane loaded scenery in {took:.0f} s: Live paused "
+                    + ("meanwhile" if took < YIELD_MAX_S else f"its first {YIELD_MAX_S:.0f} s only")
                 )
             self._load_since = None
             self._load_long = False
             return
         if self._load_since is None:
             self._load_since = now
-        if HOLD_WHOLE_LOAD or now - self._load_since < YIELD_MAX_S:
+        if now - self._load_since < YIELD_MAX_S:
             self.yield_until = now + YIELD_AFTER_S
         elif not self._load_long:
             self._load_long = True
             self.log(
-                f"  X-Plane still loads scenery after {YIELD_MAX_S:.0f} s: Live builds again "
+                f"  X-Plane still loads scenery after {YIELD_MAX_S:.0f} s: Live works again "
                 "meanwhile"
             )
 
     def yielding(self) -> bool:
-        """Whether Live holds back for X-Plane's scenery load (:meth:`x_plane_loads`)."""
+        """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`)."""
         return time.monotonic() < self.yield_until
-
-    def holding_all(self) -> bool:
-        """Whether Live is idle for X-Plane's load, a test flight's (HOLD_WHOLE_LOAD)."""
-        return HOLD_WHOLE_LOAD and self.yielding()
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
@@ -954,8 +947,8 @@ class Streamer:
         self.downloader = self.downloader_factory(
             lambda key, status, body: answers.put((key, status, body))
         )
-        if HOLD_WHOLE_LOAD and hasattr(self.downloader, "hold"):
-            self.downloader.hold = self.holding_all  # the test's: nothing asked during a load
+        if hasattr(self.downloader, "hold"):
+            self.downloader.hold = self.yielding  # nothing asked while X-Plane loads scenery
         jobs: dict[str, _Job] = {}
         waiting: dict[Key, set[str]] = defaultdict(set)
         requested: set[Key] = set()
@@ -1148,7 +1141,7 @@ class Streamer:
         ):
             try:
                 while not self.stop.is_set() or encoding:
-                    if not self.stop.is_set() and not self.holding_all():
+                    if not self.stop.is_set() and not self.yielding():
                         held = sum(len(j.keys) for j in jobs.values())
                         room = WINDOW_PIECES - len(requested)
                         if room > 0:
@@ -1174,7 +1167,7 @@ class Streamer:
                         pass
                     give_up_stuck(pool)
                     copies_done()
-                    if not self.holding_all():
+                    if not self.yielding():
                         copy_late(pool)
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
