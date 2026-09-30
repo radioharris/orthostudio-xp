@@ -311,6 +311,7 @@ class Streamer:
         self.flying = False
         self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
         self._load_since: float | None = None
+        self._load_long = False  # the load going on passed YIELD_MAX_S: said once
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.ready_now = 0  # textures with all their photos, waiting for an encoder
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
@@ -409,13 +410,20 @@ class Streamer:
         return name in self.built or name in self.queue or name in self.in_flight
 
     def _forget_missing(self, name: str) -> None:
-        """Under ``self.lock``: a texture recorded as built whose file is gone (taken away by
-        hand) is forgotten, so that the planner builds it again."""
-        if self.built.pop(name, None) is not None:
-            self.seen.pop(name, None)
-            self.patchy.pop(name, None)
-            self.built_version += 1
-            self.log(f"  {name} was built but its file is gone: built again")
+        """Under ``self.lock``: a texture recorded as built whose file was gone (taken away by
+        hand), its name made again from the neutral texture, is forgotten, so that the planner
+        builds it again. Not one the builder wrote over that new name meanwhile, its file its own:
+        at a start the names are made while the first textures are built, and 168 good ones were
+        built twice (Norway, 2026-09-30)."""
+        if name not in self.built:
+            return
+        if self.names is not None and not self.names.leads_to_neutral(name):
+            return
+        self.built.pop(name)
+        self.seen.pop(name, None)
+        self.patchy.pop(name, None)
+        self.built_version += 1
+        self.log(f"  {name} was built but its file is gone: built again")
 
     def _want_squares(self, fix: Fix, starting: bool) -> None:
         """The squares whose files the pack holds: X-Plane's window and a ring round the aircraft,
@@ -565,18 +573,30 @@ class Streamer:
 
     def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
         """X-Plane's scenery load flag, in flight: Live holds back while it is up and YIELD_AFTER_S
-        after, for at most YIELD_MAX_S of each load (the constants)."""
+        after, for at most YIELD_MAX_S of each load (the constants). The log says how long X-Plane
+        loaded and how much of it Live held back: the load's length alone read as Live's, 597 s
+        where Live held back 35 (Norway, 2026-09-30)."""
         now = time.monotonic() if now is None else now
         if not (loading and self.flying):
             if self._load_since is not None:
-                held = now - self._load_since
-                self.log(f"  X-Plane loaded scenery: Live held back for {held:.0f} s")
+                took = now - self._load_since
+                self.log(
+                    f"  X-Plane loaded scenery in {took:.0f} s: Live held back "
+                    + ("meanwhile" if took < YIELD_MAX_S else f"its first {YIELD_MAX_S:.0f} s only")
+                )
             self._load_since = None
+            self._load_long = False
             return
         if self._load_since is None:
             self._load_since = now
         if now - self._load_since < YIELD_MAX_S:
             self.yield_until = now + YIELD_AFTER_S
+        elif not self._load_long:
+            self._load_long = True
+            self.log(
+                f"  X-Plane still loads scenery after {YIELD_MAX_S:.0f} s: Live builds again "
+                "meanwhile"
+            )
 
     def yielding(self) -> bool:
         """Whether Live holds back for X-Plane's scenery load (:meth:`x_plane_loads`)."""

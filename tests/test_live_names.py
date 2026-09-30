@@ -98,6 +98,32 @@ def test_a_texture_built_whose_file_is_gone_is_built_again(tmp_path: Path) -> No
     assert sorted(forgotten) == sorted(f"{n}.dds" for n in NAMES)  # each asked about, once
 
 
+def test_a_texture_the_builder_wrote_as_its_name_was_made_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At a start the squares' names are made while the first textures are built: a texture the
+    builder wrote over its name just made is its own, kept (168 good ones were built twice, Norway,
+    2026-09-30); one whose name still leads to the neutral texture was gone, built again."""
+    s = streamer(tmp_path)
+    written, gone = f"{ROW[0]}.dds", f"{ROW[1]}.dds"
+    s.built[written] = s.built[gone] = 4
+    real_link = NeutralPool.link
+
+    def builder_writes_right_after(pool, top, dst):
+        made = real_link(pool, top, dst)
+        if made and dst.name == written:  # the builder's rename, just after the name was made
+            tmp = dst.with_name(".live-tmp-built")
+            tmp.write_bytes(b"built")
+            os.replace(tmp, dst)
+        return made
+
+    monkeypatch.setattr(NeutralPool, "link", builder_writes_right_after)
+    s.names.make(HERE)
+    assert s.built.get(written) == 4 and gone not in s.built
+    assert (s.pack_dir / "textures" / written).read_bytes() == b"built"
+    assert s.names.leads_to_neutral(gone) and not s.names.leads_to_neutral(written)
+
+
 def test_the_neutral_texture_gets_copies_past_the_names_a_file_may_have(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -141,7 +167,8 @@ def test_the_thread_makes_the_window_and_takes_away_behind(tmp_path: Path) -> No
         names.want({EAST}, {EAST}, (46.5, 3.5))  # the aircraft flew east
         assert names.wait_ready({EAST}, 10.0)
         deadline = time.monotonic() + 10.0
-        while (pack / "textures" / f"{ROW[0]}.dds").exists() and time.monotonic() < deadline:
+        # the files go first, the count of squares taken away just after them
+        while names.released < 1 and time.monotonic() < deadline:
             time.sleep(0.02)
         assert not (pack / "textures" / f"{ROW[0]}.dds").exists()
         assert (pack / "textures" / f"{ROW[10]}.dds").exists()  # on EAST too

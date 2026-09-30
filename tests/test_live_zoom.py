@@ -578,14 +578,20 @@ def test_live_holds_back_while_x_plane_loads_scenery(tmp_path: Path) -> None:
     s.flying = True
     s.x_plane_loads(True, now=100.0)
     assert s.yield_until == 100.0 + st.YIELD_AFTER_S
-    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 1)  # a load this long: no more held
-    assert s.yield_until == 100.0 + st.YIELD_AFTER_S
     lines = []
     s.log = lines.append
+    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 1)  # a load this long: no more held
+    s.x_plane_loads(True, now=100.0 + st.YIELD_MAX_S + 2)
+    assert s.yield_until == 100.0 + st.YIELD_AFTER_S
     s.x_plane_loads(False, now=140.0)
-    assert lines == [f"  X-Plane loaded scenery: Live held back for {40:.0f} s"]
+    assert lines == [  # the load's length, and what Live held back of it (Norway, 2026-09-30)
+        f"  X-Plane still loads scenery after {st.YIELD_MAX_S:.0f} s: Live builds again meanwhile",
+        f"  X-Plane loaded scenery in 40 s: Live held back its first {st.YIELD_MAX_S:.0f} s only",
+    ]
     s.x_plane_loads(True, now=200.0)  # a new load: held again
     assert s.yield_until == 200.0 + st.YIELD_AFTER_S
+    s.x_plane_loads(False, now=207.0)
+    assert lines[-1] == "  X-Plane loaded scenery in 7 s: Live held back meanwhile"
     s.cache.close()
 
 
