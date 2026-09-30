@@ -139,7 +139,16 @@ Every mesh cell `(til_x, til_y)` maps to `(til_x_text, til_y_text, zl, provider)
    rule; OrthoStudio XP calls the same function with the same integer polygon.
 2. The pixel of a cell is the clamped centre of the cell: `(latp, lonp) =
    gtile_to_wgs84(til_x + 8, til_y + 8, mesh_zl)` clamped to the tile, `x = round((lonp - lon)
-   * 4095)`, `y = round((lat + 1 - latp) * 4095)` (`:183-191`).
+   * 4095)`, `y = round((lat + 1 - latp) * 4095)` (`:183-191`). **OrthoStudio XP departs
+   here for the zones** (`zones.cells_touched`): a cell takes the highest value of the image over
+   the pixels strictly inside its edges (`gtile_to_wgs84` of its corners, clamped and rounded
+   the same way; both edges kept for a cell thinner than three pixels, at the tile's border),
+   so the first zone of the list that covers a pixel of it (about 25 m). A zone holding no
+   centre raised nothing in Ortho4XP, and a zone's border ran along the centres it missed: a
+   user's eleven ZL18 zones, seven of them helipads, raised four and ended in straight seams
+   across what he drew (2026-09-29). A zone laid on the cell edges takes those cells and no
+   more, since the edge pixels do not count. The airport upgrade (3) is still read at the
+   centre pixel. The transcription test compares with Ortho4XP's code given this one change.
 3. Airports (`cover_airports_with_highres` in `("True", "ICAO")`, `:114-173`): for each
    airport (all of them, or only `key_type == "icao"`), the bounds of its boundary
    (tile-relative degrees) are extended by `1000 * cover_extent * m_to_lon(lat)` in longitude

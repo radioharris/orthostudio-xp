@@ -20,7 +20,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **A page with a map.** Click the squares you want, or draw a rectangle over them with Shift
   held, see the tiles already in X-Plane and the ones built but not in it, draw
   sharper zones around airports or anywhere you fly low (one zone may cover several tiles, and
-  the list shows those of the squares you chose), check the size and the time before building,
+  the list shows those of the squares you chose; everything a zone covers is sharpened, by squares
+  of about 1 km), check the size and the time before building,
   then build and install in one click. The map shows the aerial imagery or, in one click, the
   OpenStreetMap street map, with the airports and their ICAO codes as you zoom in, to find what
   you fly over before you choose a square. The legend says what the view you are on is worth on

@@ -371,7 +371,26 @@ def _wgs84_to_orthogrid(lat, lon, zl):
     return (t.til_x, t.til_y)
 
 
-def reference_zone_dico(tile, dico_airports, existing_dds):  # O4_DSF_Utils.py:110-257
+def _touching_value(masks_im, tile, til_x, til_y):
+    """The highest value of the priority image strictly inside the cell's edge pixels (both edges
+    kept for a cell thinner than that, at the tile's border): the departure, derived here from the
+    cell's corners rather than from ``dsf/zones.cell_edges``."""
+    (lat_n, lon_w) = tile_to_wgs84(til_x, til_y, tile.mesh_zl)
+    (lat_s, lon_e) = tile_to_wgs84(til_x + 16, til_y + 16, tile.mesh_zl)
+    lon_w, lon_e = (max(min(v, tile.lon + 1), tile.lon) for v in (lon_w, lon_e))
+    lat_n, lat_s = (max(min(v, tile.lat + 1), tile.lat) for v in (lat_n, lat_s))
+    x0, x1 = round((lon_w - tile.lon) * 4095), round((lon_e - tile.lon) * 4095)
+    y0, y1 = round((tile.lat + 1 - lat_n) * 4095), round((tile.lat + 1 - lat_s) * 4095)
+    xs = range(x0 + 1, x1) if x1 - x0 >= 2 else range(max(0, x0), min(4096, x1 + 1))
+    ys = range(y0 + 1, y1) if y1 - y0 >= 2 else range(max(0, y0), min(4096, y1 + 1))
+    return max(masks_im.getpixel((x, y)) for x in xs for y in ys)
+
+
+def reference_zone_dico(
+    tile, dico_airports, existing_dds, touching=False
+):  # O4_DSF_Utils.py:110-257
+    # ``touching`` is OrthoStudio XP's one departure (``dsf/zones.cells_touched``): a cell takes
+    # the first zone of the list that covers a pixel inside it, not the zone at its centre
     from math import cos, pi
 
     m_to_lat = 1 / (pi * 6378137 / 180)
@@ -450,7 +469,10 @@ def reference_zone_dico(tile, dico_airports, existing_dds):  # O4_DSF_Utils.py:1
             latp = max(min(latp, tile.lat + 1), tile.lat)
             x = round((lonp - tile.lon) * 4095)
             y = round((tile.lat + 1 - latp) * 4095)
-            (zoomlevel, provider_code) = dico_tmp[masks_im.getpixel((x, y))]
+            value = masks_im.getpixel((x, y))
+            if touching:
+                value = _touching_value(masks_im, tile, til_x, til_y)
+            (zoomlevel, provider_code) = dico_tmp[value]
             if airport_array[y, x]:
                 zoomlevel = max(zoomlevel, tile.cover_zl)
             til_x_text = 16 * (int(til_x / 2 ** (tile.mesh_zl - zoomlevel)) // 16)
@@ -971,7 +993,10 @@ def compare_with_reference(
         for i, a in enumerate(airports)
     }
     dico = reference_zone_dico(
-        tile_ns, dico_airports, [f"{t.til_y}_{t.til_x}_{t.provider}{t.zl}.dds" for t in existing]
+        tile_ns,
+        dico_airports,
+        [f"{t.til_y}_{t.til_x}_{t.provider}{t.zl}.dds" for t in existing],
+        touching=True,
     )
     ref, ref_ter = reference_build_dsf(
         tile_ns,
@@ -1078,14 +1103,14 @@ def test_zone_map_matches_the_transcription(tmp_path: Path) -> None:
             cover_extent=0.7,
         )
         tmap = texture_map(TILE, params, airports=airports)
-        dico = reference_zone_dico(
-            reference_tile(params),
-            {
-                "LFA": {"key_type": "icao", "boundary": _box(airports[0])},
-                "X": {"key_type": "other", "boundary": _box(airports[1])},
-            },
-            [],
-        )
+        airports_dico = {
+            "LFA": {"key_type": "icao", "boundary": _box(airports[0])},
+            "X": {"key_type": "other", "boundary": _box(airports[1])},
+        }
+        dico = reference_zone_dico(reference_tile(params), airports_dico, [], touching=True)
+        at_centres = reference_zone_dico(reference_tile(params), airports_dico, [])
+        # the departure is exercised: cells the zones cover a part of, their centre outside
+        assert sum(dico[c] != at_centres[c] for c in dico) > 0
         for (til_x, til_y), (tx, ty, zl, prov) in dico.items():
             ours = tmap.lookup(np.array([til_x]), np.array([til_y]))
             assert (
@@ -1107,6 +1132,7 @@ def test_zone_map_matches_the_transcription(tmp_path: Path) -> None:
         reference_tile(params),
         {},
         [f"{t.til_y}_{t.til_x}_{t.provider}{t.zl}.dds" for t in existing],
+        touching=True,
     )
     ny, nx = tmap.shape
     for (til_x, til_y), (tx, ty, zl, prov) in dico.items():
