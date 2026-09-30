@@ -205,14 +205,19 @@ def prepare(options: Options, log: Log) -> Prepared:
     except FolderError as e:
         raise RefusedError(f"Live's folder: {e}. Choose another in the Live window.") from e
     sources = [options.source] if options.source else default_sources(xp_dir)
-    if not sources:  # AutoOrtho taken away: the pack holds the mesh it was set up with
-        sources = [Path(s) for s in _recorded_sources(pack_dir)]
-    if not sources or (
-        not region_ready(pack_dir, sources) and not all((s / "terrain").is_dir() for s in sources)
-    ):
+    if not sources or not all((s / "terrain").is_dir() for s in sources):
+        # the files the DSFs name come from the regions while Live streams, round the aircraft
+        # (orthostudio.live.names): a region taken away leaves nothing to make them from, where the
+        # pack once held every one of them (2026-09-30)
+        gone = [str(s) for s in sources if not (s / "terrain").is_dir()]
         raise RefusedError(
-            "no mesh yet: install the region you fly over, in the Live window (Settings, first "
-            "question) or with `python -m orthostudio.live regions install <region>`"
+            (
+                f"the AutoOrtho region {gone[0]} is gone or incomplete: install it again, "
+                if gone
+                else "no mesh yet: install the region you fly over, "
+            )
+            + "in the Live window (Settings, first question) or with "
+            "`python -m orthostudio.live regions install <region>`"
         )
     fix = None
     if options.start:

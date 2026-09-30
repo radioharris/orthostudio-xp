@@ -57,6 +57,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 
 #define PLUGIN_API __attribute__((visibility("default")))
@@ -70,6 +71,8 @@ extern double XPLMGetDatad(XPLMDataRef inDataRef);
 extern void XPLMDebugString(const char *inString);
 extern void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, float inInterval, void *inRefcon);
 extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void *inRefcon);
+extern void XPLMGetSystemPath(char *outSystemPath);
+extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 
 #define XPLM_PLUGIN_XPLANE 0
 #define XPLM_MSG_PLANE_LOADED 102
@@ -90,6 +93,9 @@ extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void
 #endif
 #ifndef SILENT_S
 #define SILENT_S 5.0 /* it answered, then stopped */
+#endif
+#ifndef ALONE_S
+#define ALONE_S 0.5 /* at X-Plane's start: how long a streamer may take to answer that it is there */
 #endif
 #define NOTE_EVERY_S 1.0f /* in flight: whether the streamer has a notice */
 
@@ -333,12 +339,52 @@ static float every_second(float since_call, float since_loop, int counter, void 
     return NOTE_EVERY_S;
 }
 
+/* Whether a streamer listens on Live's port: only a refusal says no (nothing bound there). */
+static int streamer_listens(void) {
+    char buf[64];
+    struct timeval tv;
+    ssize_t n;
+    int refused, s = open_socket();
+    if (s < 0) return 1; /* cannot tell: everything stays as it is */
+    tv.tv_sec = 0;
+    tv.tv_usec = (suseconds_t)(ALONE_S * 1e6);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    send(s, "LIVE1 HELLO", 11, 0);
+    n = recv(s, buf, sizeof buf, 0);
+    refused = n < 0 && errno == ECONNREFUSED;
+    close(s);
+    return !refused;
+}
+
+/* Live's scenery in Custom Scenery while no streamer is there: left behind (Live stopped without
+   taking it out, crashed, the computer restarted). X-Plane lists its scenery after it starts its
+   plugins (its Log.txt), so taken out now it is never read: Live makes the files its DSFs name only
+   round the aircraft while it runs, and elsewhere X-Plane would find none (2026-09-30). Only links
+   Live made, never a folder; Live puts them back at its next start. */
+static void take_out_if_alone(void) {
+    static const char *links[] = {"z_osxp_live", "y_osxp_live_overlays"};
+    char root[1024], path[1300];
+    struct stat st;
+    size_t i;
+    if (streamer_listens()) return;
+    XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1); /* on the Mac, "/Users/..." */
+    root[0] = 0;
+    XPLMGetSystemPath(root);
+    if (!root[0]) return;
+    for (i = 0; i < sizeof links / sizeof *links; i++) {
+        snprintf(path, sizeof path, "%sCustom Scenery/%s", root, links[i]);
+        if (lstat(path, &st) == 0 && S_ISLNK(st.st_mode) && unlink(path) == 0)
+            say("Live is not running: its scenery %s is out of X-Plane until Live starts again", links[i]);
+    }
+}
+
 PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outName, "OrthoStudio XP Live");
     strcpy(outSig, "orthostudio.live");
     strcpy(outDesc, "Makes X-Plane wait, while a flight loads, until OrthoStudio XP Live has built the ortho around the start.");
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
+    take_out_if_alone();
     return 1;
 }
 

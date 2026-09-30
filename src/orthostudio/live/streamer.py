@@ -431,15 +431,25 @@ class Streamer:
                 self._points["camera"] = (fix.cam_lat, fix.cam_lon)
             else:
                 self._points.pop("camera", None)
+        self._want((fix.lat, fix.lon))
+
+    def _want(self, center: tuple[float, float]) -> None:
         points = list(self._points.values())
-        self.names.want(
-            squares_round(points, RING), squares_round(points, KEEP), (fix.lat, fix.lon)
-        )
+        self.names.want(squares_round(points, RING), squares_round(points, KEEP), center)
+
+    def hold_at(self, lat: float, lon: float) -> None:
+        """Where X-Plane says it loads the flight it holds (the plugin's HOLD): its squares made
+        too, whatever start the click gave, which a start from the map or a saved situation may
+        miss (the review of 2026-09-30)."""
+        if self.names is not None:
+            self._points["hold"] = (lat, lon)
+            self._want((lat, lon))
 
     def arrived(self) -> None:
         """The start X-Plane loaded is where it flies now, or it did not go there: its squares are
         kept only as the aircraft's."""
         self._points.pop("start", None)
+        self._points.pop("hold", None)
 
     def squares_ready(self, lat: float, lon: float) -> bool:
         """Whether the files of X-Plane's window round (``lat``, ``lon``) are made: a start's, for
@@ -1636,6 +1646,7 @@ def run(
                         expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin")
                     arrival.loading = True
                     if kind == "HOLD":
+                        streamer.hold_at(lat, lon)
                         left, work = streamer.urgent_work()
                         done = arrival.progress(work)
                         took = now - arrival.since
@@ -1643,8 +1654,13 @@ def run(
                         # no time limit: X-Plane waits while pieces arrive, however long a start
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
-                        # and the files of its squares made (orthostudio.live.names)
-                        ready = left == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
+                        # and the files of its squares made (orthostudio.live.names), where the
+                        # start was chosen and where X-Plane says it loads it
+                        ready = (
+                            left == 0
+                            and streamer.squares_ready(arrival.lat, arrival.lon)
+                            and streamer.squares_ready(lat, lon)
+                        )
                         gate.answer(
                             addr,
                             ready or stalled,

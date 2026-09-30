@@ -267,6 +267,18 @@ def test_the_streamer_wants_the_squares_round_the_aircraft_and_a_start(tmp_path:
     assert s.names.target == squares_round([(50.0, 8.5)], RING)
 
 
+def test_where_x_plane_says_it_loads_is_made_too(tmp_path: Path) -> None:
+    """The plugin's HOLD says where X-Plane loads the flight: its squares are made too, whatever
+    start the click gave, until the flight is there."""
+    s = streamer(tmp_path)
+    s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)  # the click's start
+    s.hold_at(50.0, 8.5)  # X-Plane loads elsewhere
+    assert s.names.target == squares_round([(46.5, 2.5), (50.0, 8.5)], RING)
+    s.arrived()
+    s.plan(Fix(50.0, 8.5), x_plane_there=False)
+    assert s.names.target == squares_round([(50.0, 8.5)], RING)
+
+
 def test_a_start_is_ready_once_its_squares_are_made(tmp_path: Path) -> None:
     s = streamer(tmp_path)
     s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)

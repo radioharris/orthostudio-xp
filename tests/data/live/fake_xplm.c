@@ -21,6 +21,18 @@ void *XPLMFindDataRef(const char *name) {
 
 double XPLMGetDatad(void *ref) { return ref ? *(double *)ref : 0.0; }
 
+/* X-Plane's folder: $FAKE_XPLANE with its separator, or none. */
+void XPLMGetSystemPath(char *out) {
+    const char *root = getenv("FAKE_XPLANE");
+    if (root && *root) snprintf(out, 1024, "%s/", root);
+    else out[0] = 0;
+}
+
+void XPLMEnableFeature(const char *feature, int enable) {
+    (void)feature;
+    (void)enable;
+}
+
 void XPLMDebugString(const char *s) {
     printf("LOG %s", s);
     fflush(stdout);

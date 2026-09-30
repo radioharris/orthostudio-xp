@@ -428,6 +428,22 @@ def _shared_files(sources: Sequence[Path], textures: Path) -> tuple[int, int]:
     return placed, copied
 
 
+def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
+    """What changes when a region is installed again or updated: its folders' times. The pack
+    takes the files its DSFs name from the regions while Live streams (orthostudio.live.names),
+    so DSFs of before beside ``.ter`` files of now must not meet."""
+    out = {}
+    for source in sources:
+        times = []
+        for sub in ("Earth nav data", "terrain"):
+            try:
+                times.append(os.stat(source / sub).st_mtime_ns)
+            except OSError:
+                times.append(0)
+        out[str(source)] = times
+    return out
+
+
 def setup_region(
     source: Path | Sequence[Path],
     pack_dir: Path,
@@ -448,7 +464,20 @@ def setup_region(
     old: dict = json.loads(marker.read_text()) if marker.exists() else {}
     had = sources_of(old)
     version = old.get("version", 1) if old else REGION_VERSION
+    now = _fingerprints(sources)
+    changed = [k for k, v in old.get("fingerprints", {}).items() if k in now and now[k] != v]
+    if changed and xplane_running():  # X-Plane may be reading the DSFs of before
+        log(
+            f"the region {Path(changed[0]).name} changed since the pack was set up: it is set up "
+            f"again at Live's next start with X-Plane not running"
+        )
+    elif changed:
+        log(f"the region {Path(changed[0]).name} changed since the pack was set up: set up again")
+        force = True
     if old and not force and set(had) == set(keys):
+        if "fingerprints" not in old:  # a pack of before: what its regions are from now on
+            old["fingerprints"] = now
+            marker.write_text(json.dumps(old))
         if version < REGION_VERSION:
             if xplane_running():
                 log(
@@ -507,6 +536,7 @@ def setup_region(
         "version": REGION_VERSION,
         "zooms": asdict(zooms),
         "layout": layout,
+        "fingerprints": now,
     }
     meta.pop("textures", None)  # a count of before: the regions' own now (orthostudio.live.names)
     marker.write_text(json.dumps(meta))

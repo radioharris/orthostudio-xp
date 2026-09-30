@@ -225,6 +225,7 @@ class PluginTest(unittest.TestCase):
                 "-fobjc-arc",
                 f"-DLIVE_PORT={cls.port}",
                 "-DSILENT_S=1.0",
+                "-DALONE_S=0.05",
                 "-o",
                 str(cls.exe),
                 str(plugin.SOURCE),
@@ -242,13 +243,16 @@ class PluginTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def xplane(self, lat, lon, *messages):
-        """Run the fake X-Plane: {message: seconds it held X-Plane}, and what the plugin logged."""
+    def xplane(self, lat, lon, *messages, root=None):
+        """Run the fake X-Plane: {message: seconds it held X-Plane}, and what the plugin logged;
+        ``root``: its folder, which the plugin may look into as it starts."""
+        env = {**os.environ, "FAKE_XPLANE": str(root) if root else ""}
         out = subprocess.run(
             [str(self.exe), str(lat), str(lon), *messages],
             capture_output=True,
             text=True,
             timeout=30,
+            env=env,
         )
         took, logged, traced = {}, [], []
         for line in out.stdout.splitlines():
@@ -270,6 +274,36 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(
             self.traced, ["102 (0)", "112 (1)", "108 (0)", "115 (1)"]
         )  # every message, in Log.txt
+
+    def fake_xplane_with_live_s_links(self) -> Path:
+        root = Path(self.tmp.name) / f"X-Plane {time.monotonic_ns()}"
+        scenery = root / "Custom Scenery"
+        (root / "pack").mkdir(parents=True)
+        (scenery / "someone's own").mkdir(parents=True)
+        (scenery / "z_osxp_live").symlink_to(root / "pack")
+        (scenery / "y_osxp_live_overlays").symlink_to(root / "pack")
+        return root
+
+    def test_a_pack_left_behind_is_taken_out(self):
+        """Live stopped without taking its scenery out (a crash, a restart): X-Plane starting
+        without it must not read a pack whose files Live makes only while it runs. X-Plane starts
+        its plugins before it lists its scenery."""
+        root = self.fake_xplane_with_live_s_links()
+        _, logged = self.xplane(43.4382, 5.2129, root=root)
+        scenery = root / "Custom Scenery"
+        self.assertFalse(os.path.lexists(scenery / "z_osxp_live"))
+        self.assertFalse(os.path.lexists(scenery / "y_osxp_live_overlays"))
+        self.assertTrue((scenery / "someone's own").is_dir())  # never a folder of the user's
+        self.assertTrue((root / "pack").is_dir())  # the link went, not what it led to
+        self.assertTrue(any("Live is not running" in line for line in logged), logged)
+
+    def test_live_s_scenery_stays_while_live_runs(self):
+        root = self.fake_xplane_with_live_s_links()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("127.0.0.1", self.port))  # Live listens, answering nothing yet
+            _, logged = self.xplane(43.4382, 5.2129, root=root)
+        self.assertTrue((root / "Custom Scenery" / "z_osxp_live").is_symlink())
+        self.assertFalse(any("Live is not running" in line for line in logged))
 
     def test_a_new_flight_with_the_same_aircraft(self):
         """No aircraft loads, so no PLANE_LOADED, FMOD_BANK_LOADED or LIVERY_LOADED: the plugin
@@ -325,6 +359,7 @@ class PluginTest(unittest.TestCase):
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
             took, logged = self.xplane(43.4382, 5.2129, "102:0", "112:0", "112:1", "108:1", "108:0")
             sock.close()
+        heard = [h for h in heard if h != "LIVE1 HELLO"]  # the plugin's start: is Live there?
         self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900")  # PLANE_LOADED tells where
         self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft" for h in heard[1:]))
         self.assertGreater(took["112:1"], 0.6)  # three waits of 0.25 s before the go
@@ -425,8 +460,14 @@ class PluginTest(unittest.TestCase):
             sock.bind(("127.0.0.1", self.port))
             sock.settimeout(0.3)
             took, _ = self.xplane(0.0, 0.0, "102:0", "112:1")
-            with self.assertRaises(socket.timeout):
-                sock.recvfrom(100)
+            got = []
+            while True:
+                try:
+                    got.append(sock.recvfrom(100)[0])
+                except TimeoutError:
+                    break
+        # nothing but the start's question whether Live is there
+        self.assertEqual([g for g in got if g != b"LIVE1 HELLO"], [])
         self.assertLess(max(took.values()), 0.3)
 
 
