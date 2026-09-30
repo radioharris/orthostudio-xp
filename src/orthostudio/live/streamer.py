@@ -59,7 +59,7 @@ from . import dds, machine, pools
 from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
-from .evict import EVICT_SAFE_KM, TARGET, pick, tiles_of, usage, xplane_tiles
+from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
@@ -156,7 +156,9 @@ DATAREFS = [
 # first, near X-Plane alone's 19 s (2026-09-30). Until then Live held back only its encoding, for
 # 30 s, after the mountain test pair's hitches as X-Plane loaded DSFs (Live 146 and 387 ms while it
 # encoded and evicted, AutoOrtho none over 40 ms, 2026-09-28). At most YIELD_MAX_S of each load,
-# so that one X-Plane would not end for another reason holds Live no longer.
+# so that one X-Plane would not end for another reason holds Live no longer; counted again from
+# each move of X-Plane's window while its flag stays up: one flag of 519 s over three columns, Live
+# back at work after 120 s, the second column's last tile came after 237 s (2026-09-30).
 YIELD_AFTER_S = 5.0
 YIELD_MAX_S = 120.0
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
@@ -315,7 +317,10 @@ class Streamer:
         self.flying = False
         self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
         self._load_since: float | None = None
-        self._load_long = False  # the load going on passed YIELD_MAX_S: said once
+        self._load_long = False  # the pause going on passed YIELD_MAX_S: said once
+        self._load_cut = False  # the load going on outlasted a pause: said at its end
+        self._hold_from: float | None = None  # the pause's start: the flag up, or the window moved
+        self._window = XPlaneWindow()  # where X-Plane's window is (follow_window)
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.ready_now = 0  # textures with all their photos, waiting for an encoder
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
@@ -579,30 +584,47 @@ class Streamer:
 
     def x_plane_loads(self, loading: bool, now: float | None = None) -> None:
         """X-Plane's scenery load flag, in flight: Live pauses while it is up and YIELD_AFTER_S
-        after, for at most YIELD_MAX_S of each load (the constants). The log says how long X-Plane
-        loaded and how much of it Live paused: the load's length alone read as Live's pause, 597 s
-        where Live had held back 35 (Norway, 2026-09-30)."""
+        after, for at most YIELD_MAX_S from the flag going up or X-Plane's window moving
+        (:meth:`follow_window`). The log says how long X-Plane loaded and whether Live paused all
+        of it: the load's length alone read as Live's pause, 597 s where Live had held back 35
+        (Norway, 2026-09-30)."""
         now = time.monotonic() if now is None else now
         if not (loading and self.flying):
             if self._load_since is not None:
                 took = now - self._load_since
                 self.log(
                     f"  X-Plane loaded scenery in {took:.0f} s: Live paused "
-                    + ("meanwhile" if took < YIELD_MAX_S else f"its first {YIELD_MAX_S:.0f} s only")
+                    + (
+                        f"at most {YIELD_MAX_S:.0f} s from each move of its window"
+                        if self._load_cut
+                        else "meanwhile"
+                    )
                 )
-            self._load_since = None
-            self._load_long = False
+            self._load_since = self._hold_from = None
+            self._load_long = self._load_cut = False
             return
         if self._load_since is None:
-            self._load_since = now
-        if now - self._load_since < YIELD_MAX_S:
+            self._load_since = self._hold_from = now
+        if self._hold_from is not None and now - self._hold_from < YIELD_MAX_S:
             self.yield_until = now + YIELD_AFTER_S
         elif not self._load_long:
-            self._load_long = True
+            self._load_long = self._load_cut = True
             self.log(
-                f"  X-Plane still loads scenery after {YIELD_MAX_S:.0f} s: Live works again "
-                "meanwhile"
+                f"  X-Plane still loads scenery {YIELD_MAX_S:.0f} s on: Live works again until "
+                "its window moves"
             )
+
+    def follow_window(self, fix: Fix, now: float | None = None) -> None:
+        """In flight, X-Plane's window followed (orthostudio.live.evict.XPlaneWindow): moved while
+        its load flag is still up, Live pauses again, YIELD_MAX_S from there."""
+        now = time.monotonic() if now is None else now
+        if not self.flying:
+            self._window = XPlaneWindow()  # a start: taken again from where X-Plane loads
+            return
+        if self._window.follow(fix.lat, fix.lon) and self._load_since is not None:
+            self._hold_from = now
+            self._load_long = False
+            self.yield_until = max(self.yield_until, now + YIELD_AFTER_S)
 
     def yielding(self) -> bool:
         """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`)."""
@@ -1779,6 +1801,7 @@ def run(
                         streamer.plan(
                             fix
                         )  # a jump is a new start: X-Plane read it before it was built
+                        streamer.follow_window(fix)
                 elif running and arrival.near(fix.lat, fix.lon):  # X-Plane is there
                     if arrival.loading and may_have_read_early(arrival, xplane_started_at()):
                         streamer.read_early = True  # (never loading: X-Plane was there all along)

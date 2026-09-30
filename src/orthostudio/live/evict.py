@@ -55,6 +55,8 @@ EVICT_SAFE_KM = 300.0  # beyond: a 256 px texture may go back to the neutral clo
 XPLANE_COLUMNS = 4
 XPLANE_ROWS = 3
 HYSTERESIS_DEG = 0.25
+COLUMN_MOVE_DEG = 0.15  # X-Plane moves its columns this far past a column's middle...
+ROW_MOVE_DEG = 0.1  # ... and its rows this far past a row's edge, in the direction of travel
 TARGET = 0.9  # evict down to 90 % of the budget, not just under it: no eviction at every step
 
 
@@ -70,6 +72,38 @@ def xplane_tiles(lat: float, lon: float) -> set[tuple[int, int]]:
         middle = math.floor(at)  # the row itself
         rows.update(range(middle - XPLANE_ROWS // 2, middle + XPLANE_ROWS // 2 + 1))
     return {(row, (column + 180) % 360 - 180) for row in rows for column in columns}
+
+
+class XPlaneWindow:
+    """Where X-Plane's window is, followed as it moves it (the module's docstring): the tile
+    boundary its columns are centred on, the row its rows are centred on. Taken again from the
+    aircraft's position at a start or a jump."""
+
+    def __init__(self) -> None:
+        self.column: int | None = None  # the tile boundary nearest the aircraft when last moved
+        self.row: int | None = None
+
+    def follow(self, lat: float, lon: float) -> bool:
+        """The aircraft there: whether X-Plane has moved its window since (not at a start or a
+        jump, where it is taken again)."""
+        if (
+            self.column is None
+            or self.row is None
+            or abs(lon - self.column) > 2
+            or abs(lat - self.row - 0.5) > 2
+        ):
+            self.column, self.row = math.floor(lon + 0.5), math.floor(lat)
+            return False
+        before = (self.column, self.row)
+        while lon > self.column + 0.5 + COLUMN_MOVE_DEG:
+            self.column += 1
+        while lon < self.column - 0.5 - COLUMN_MOVE_DEG:
+            self.column -= 1
+        while lat > self.row + 1 + ROW_MOVE_DEG:
+            self.row += 1
+        while lat < self.row - ROW_MOVE_DEG:
+            self.row -= 1
+        return (self.column, self.row) != before
 
 
 def tiles_of(texture: Texture) -> set[tuple[int, int]]:

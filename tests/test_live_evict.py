@@ -13,7 +13,14 @@ from pathlib import Path
 from live_helpers import file_extents, make_source
 from orthostudio.live import dds
 from orthostudio.live.cache import IMAGE, ChunkCache
-from orthostudio.live.evict import pick, texture_bytes, tiles_of, usage, xplane_tiles
+from orthostudio.live.evict import (
+    XPlaneWindow,
+    pick,
+    texture_bytes,
+    tiles_of,
+    usage,
+    xplane_tiles,
+)
 from orthostudio.live.geo import Texture, parse_texture_name
 from orthostudio.live.region import NEUTRAL_FILE, NEUTRAL_LEVEL, setup_region
 from orthostudio.live.streamer import Fix, Streamer, camera_position
@@ -88,6 +95,30 @@ class XPlaneWindowTest(unittest.TestCase):
         self.assertLessEqual(self.window(range(42, 45), [1]), xplane_tiles(43.5, 1.2))
         self.assertNotIn((45, 1), xplane_tiles(43.5, 1.2))
         self.assertIn((45, 1), xplane_tiles(43.9, 1.2))  # its lag, near a row's edge
+
+    def test_where_x_plane_moves_its_window(self):
+        """Norway, 2026-09-30: columns moved at 10.65, 11.65, 12.65 east, 12.35, 11.35, 10.35
+        back west; rows at 61.1 north, 60.9 back south."""
+        w = XPlaneWindow()
+        self.assertFalse(w.follow(60.5, 10.4))  # the start: taken, not moved
+        self.assertEqual((w.column, w.row), (10, 60))
+        for lon, moved, column in ((10.64, False, 10), (10.66, True, 11), (11.66, True, 12)):
+            self.assertEqual(w.follow(60.5, lon), moved, lon)
+            self.assertEqual(w.column, column, lon)
+        for lon, moved, column in ((12.66, True, 13), (13.03, False, 13), (12.36, False, 13)):
+            self.assertEqual(w.follow(60.415, lon), moved, lon)
+            self.assertEqual(w.column, column, lon)
+        for lon, column in ((12.34, 12), (11.34, 11), (10.34, 10)):  # back west
+            self.assertTrue(w.follow(60.415, lon), lon)
+            self.assertEqual(w.column, column, lon)
+        self.assertFalse(w.follow(61.09, 10.34))
+        self.assertTrue(w.follow(61.11, 10.34))  # north
+        self.assertEqual(w.row, 61)
+        self.assertFalse(w.follow(60.91, 10.34))
+        self.assertTrue(w.follow(60.89, 10.34))  # back south
+        self.assertEqual(w.row, 60)
+        self.assertFalse(w.follow(45.0, 5.0))  # a jump: taken again from there
+        self.assertEqual((w.column, w.row), (5, 45))
 
     def test_a_texture_across_a_tile_edge(self):
         across = Texture(23904, 33120, "BI", 16)  # 1.934 to 2.021 E

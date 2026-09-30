@@ -586,14 +586,43 @@ def test_live_pauses_while_x_plane_loads_scenery(tmp_path: Path) -> None:
     s.x_plane_loads(False, now=100.0 + st.YIELD_MAX_S + 10)
     took = st.YIELD_MAX_S + 10
     assert lines == [  # the load's length, and what Live paused of it (Norway, 2026-09-30)
-        f"  X-Plane still loads scenery after {st.YIELD_MAX_S:.0f} s: Live works again meanwhile",
-        f"  X-Plane loaded scenery in {took:.0f} s: Live paused its first "
-        f"{st.YIELD_MAX_S:.0f} s only",
+        f"  X-Plane still loads scenery {st.YIELD_MAX_S:.0f} s on: Live works again until its "
+        "window moves",
+        f"  X-Plane loaded scenery in {took:.0f} s: Live paused at most "
+        f"{st.YIELD_MAX_S:.0f} s from each move of its window",
     ]
     s.x_plane_loads(True, now=500.0)  # a new load: paused again
     assert s.yield_until == 500.0 + st.YIELD_AFTER_S
     s.x_plane_loads(False, now=507.0)
     assert lines[-1] == "  X-Plane loaded scenery in 7 s: Live paused meanwhile"
+    s.cache.close()
+
+
+def test_a_move_of_x_plane_s_window_pauses_live_again(tmp_path: Path) -> None:
+    """X-Plane's flag up 519 s over three columns: Live back at work after 120 s, the second
+    column's last tile came after 237 s (Norway, 2026-09-30). Each move of its window while the
+    flag stays up pauses Live again, YIELD_MAX_S from there."""
+    from orthostudio.live import streamer as st
+
+    s = row_streamer(tmp_path)
+    s.log = lambda _: None
+    s.flying = True
+    kt480 = 480 * 0.514444
+    s.follow_window(Fix(60.415, 12.5, gs_ms=kt480, trk_deg=270.0), now=0.0)  # taken
+    s.x_plane_loads(True, now=0.0)
+    s.x_plane_loads(True, now=st.YIELD_MAX_S + 1)  # past the pause: Live works again
+    assert s.yield_until == st.YIELD_AFTER_S  # paused from the flag's start only
+    s.follow_window(Fix(60.415, 12.36, gs_ms=kt480, trk_deg=270.0), now=150.0)  # not yet 12.35
+    assert s.yield_until < 150.0
+    s.follow_window(Fix(60.415, 12.34, gs_ms=kt480, trk_deg=270.0), now=160.0)  # moved west
+    assert s.yield_until == 160.0 + st.YIELD_AFTER_S
+    s.x_plane_loads(True, now=161.0)  # the flag still up: paused, counted from the move
+    assert s.yield_until == 161.0 + st.YIELD_AFTER_S
+    s.x_plane_loads(True, now=160.0 + st.YIELD_MAX_S + 1)
+    assert s.yield_until == 161.0 + st.YIELD_AFTER_S  # its pause over too
+    s.x_plane_loads(False, now=300.0)
+    s.follow_window(Fix(60.415, 11.34, gs_ms=kt480, trk_deg=270.0), now=400.0)  # no load up
+    assert s.yield_until == 161.0 + st.YIELD_AFTER_S  # the flag will say when X-Plane loads
     s.cache.close()
 
 
