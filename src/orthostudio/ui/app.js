@@ -2084,7 +2084,7 @@ async function watchJob(jobId) {
         fresh.log = state.job.log;
         fresh.logSeq = state.job.logSeq;
         for (const entry of pending) if (entry.event !== "log") applyEvent(fresh, entry.event, entry.data);
-        keepStarts(fresh, state.job);
+        keepLive(fresh, state.job);
         const statusChanged = fresh.status !== state.job.status;
         state.job = fresh;
         scheduleRenderJob();
@@ -4564,26 +4564,33 @@ export function advanceSteps(job, nowMs = Date.now()) {
   }
 }
 
-/** A read answers with what the engine knew when it computed it: a node that runs keeps the start
- * the page saw first (its `started` entry, or an earlier read), and the running steps move on to
- * now. An answer that came late moved their bars back by the time it took (the tests' replay,
- * 2026-09-30). Exported for the tests. */
-export function keepStarts(fresh, previous, nowMs = Date.now()) {
+/** What a read does not carry, kept from the page's copy: a node that runs keeps the start the page
+ * saw first (its `started` entry, or an earlier read), and a step keeps the last line of its node
+ * that still runs, which the state does not hold; then the running steps move on to now. An answer
+ * that came late moved their bars back by the time it took (the tests' replay, 2026-09-30), and a
+ * read left "Imagery: images" until the next line. Exported for the tests. */
+export function keepLive(fresh, previous, nowMs = Date.now()) {
   const known = new Map();
+  const lines = new Map();
   for (const tile of previous?.tiles || []) {
     for (const s of STEPS) {
-      for (const [id, n] of Object.entries(tile?.steps?.[s]?.nodes || {})) {
+      const step = tile?.steps?.[s];
+      for (const [id, n] of Object.entries(step?.nodes || {})) {
         if (n.status === "running" && finite(n.startedMs) != null) known.set(id, n.startedMs);
       }
+      if (step?.message && step.messageNode) lines.set(`${tile.tile}|${s}`, [step.messageNode, step.message]);
     }
   }
   for (const tile of fresh?.tiles || []) {
     for (const s of STEPS) {
-      for (const [id, n] of Object.entries(tile?.steps?.[s]?.nodes || {})) {
+      const step = tile?.steps?.[s];
+      for (const [id, n] of Object.entries(step?.nodes || {})) {
         const before = known.get(id);
         if (n.status !== "running" || before == null) continue;
         n.startedMs = finite(n.startedMs) == null ? before : Math.min(n.startedMs, before);
       }
+      const line = lines.get(`${tile.tile}|${s}`);
+      if (step && !step.message && line && step.nodes?.[line[0]]?.status === "running") [step.messageNode, step.message] = line;
     }
   }
   advanceSteps(fresh, nowMs);

@@ -551,7 +551,8 @@ The selected job (default: the running one, else the newest) shows, from top to 
   has said nothing moves by the time since it started against its `weight_s`, the seconds its
   rule takes on this computer (`timedFraction`, the engine's `sched.costs.timed_fraction`, api.md
   5.4): its start is the `started` entry's arrival, or a read's `running_s`, the earliest the page
-  saw (`keepStarts`: a read that answered late moved bars back by the time it took). Every second
+  saw (`keepLive`: a read that answered late moved bars back by the time it took; the step keeps the
+  last line of its row that still runs, which a read does not carry). Every second
   the running steps move on (`advanceSteps`), never back. A downloaded relief says how far it is
   itself, the download filling its share of the bar as the bytes arrive, the reading the rest
   (`pipeline-build.md`).

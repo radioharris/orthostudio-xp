@@ -1475,7 +1475,7 @@ function run(mode, lag) {
     fresh.log = job.log;
     fresh.logSeq = job.logSeq;
     for (const e of buffer.splice(0)) if (e.event !== "log") m.applyEvent(fresh, e.event, e, nowMs);
-    m.keepStarts(fresh, job, nowMs);
+    m.keepLive(fresh, job, nowMs);
     job = fresh;
   };
   for (const e of doc.journal) {
@@ -3908,7 +3908,8 @@ def test_a_step_that_reports_nothing_moves_by_its_time() -> None:
                "nodes": {"+46+006/vectors": vectors, "+46+006/mesh": mesh}}  # fmt: skip
     tile = {"tile": "+46+006", "steps": {"terrain": terrain}}
     job = {"status": "running", "install": True, "tiles": [tile]}
-    old = {"tiles": [{"tile": "+46+006", "steps": {"terrain": {"nodes": {
+    old = {"tiles": [{"tile": "+46+006", "steps": {"terrain": {"message": "meshing",
+        "messageNode": "+46+006/mesh", "nodes": {
         "+46+006/mesh": {**mesh, "startedMs": 500}}}}}]}  # fmt: skip
     fresh = {"tiles": [{"tile": "+46+006", "steps": {"terrain": {"status": "running",
         "fraction": 0.2, "nodes": {"+46+006/mesh": {**mesh, "startedMs": 4000}}}}}]}  # fmt: skip
@@ -3920,9 +3921,10 @@ def test_a_step_that_reports_nothing_moves_by_its_time() -> None:
         " m.advanceSteps(job, 11000); out.step11 = tile.steps.terrain.fraction;"
         " out.line11 = m.tileActivity(job, tile, 11000);"
         " out.line51 = m.tileActivity(job, tile, 51000);"
-        f" const fresh = {json.dumps(fresh)}; m.keepStarts(fresh, {json.dumps(old)}, 11000);"
+        f" const fresh = {json.dumps(fresh)}; m.keepLive(fresh, {json.dumps(old)}, 11000);"
         " out.kept = fresh.tiles[0].steps.terrain.nodes['+46+006/mesh'].startedMs;"
         " out.moved = fresh.tiles[0].steps.terrain.fraction;"
+        " const t = fresh.tiles[0].steps.terrain; out.line = [t.messageNode, t.message];"
         " return out; })()",
     )
     assert got["timed"] == pytest.approx([timed_fraction(e, w) for e, w in samples])
@@ -3934,6 +3936,7 @@ def test_a_step_that_reports_nothing_moves_by_its_time() -> None:
     # the read came late, its start 3.5 s after the one the page saw: the page's stays
     assert got["kept"] == 500
     assert got["moved"] == pytest.approx(timed_fraction(10.5, 20.0))
+    assert got["line"] == ["+46+006/mesh", "meshing"]  # the line the read does not carry
 
 
 def test_a_waiting_imagery_says_what_it_waits_for() -> None:
