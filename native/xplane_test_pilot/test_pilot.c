@@ -37,7 +37,8 @@
  *   weather clear                        no cloud, no wind, no turbulence, the weather static
  *   zulu HOURS [DAY]                     the time of day, UTC, and the day of the year (0: 1 January)
  *   camera T0 T1 cockpit [PITCH]         the 3D cockpit between T0 and T1 seconds of path, looking
- *                                        straight ahead, PITCH degrees down (COCKPIT_PITCH)
+ *                                        straight ahead, PITCH degrees up: negative looks down
+ *                                        (COCKPIT_PITCH, -10)
  *   camera T0 T1 chase METRES UP BEARING a camera METRES from the aircraft, UP above it, at
  *                                        BEARING degrees from its heading, looking at it
  *   camera-record                        the user's camera recorded, 20 times a second of path, into
