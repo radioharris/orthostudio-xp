@@ -120,6 +120,17 @@ SHARP_WORKERS = 4
 # Built again after being made coarser, a texture downloads them again, as the first time.
 UNCACHED_FROM = 0
 COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads it: late
+# Above CRUISE_ON_M from the ground (the aircraft's height, or a camera's lower down), no 8192 px
+# level gets its photos (ZL17, ZL19 near airports), only the copy of its 4096 px one, as X-Plane is
+# about to read it; again below CRUISE_OFF_M. The screen cannot show that level from there: from
+# 18,000 ft a pixel of a 4K screen covers 1.2 to 2 m of the ground right below (45 to 65 degrees
+# of view), ZL17 0.84 m in France, ZL16 1.7; the graphics card samples the smaller levels. At
+# FL300 those levels were about half of what Live downloaded and encoded in flight, and with them
+# X-Plane's background workers were all busy 61 % of a flight on a hot Mac (the user's rule,
+# 2026-10-01). The copy, not the neutral colour: a 4K screen at 45 degrees still blends a little
+# of that level in just above 18,000 ft.
+CRUISE_ON_M = 18_500 * 0.3048
+CRUISE_OFF_M = 17_500 * 0.3048
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
 # textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
@@ -349,6 +360,7 @@ class Streamer:
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
         self.copied_up: set[str] = set()
+        self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         self.built_version = 0  # one more at each change of built: the window's map
@@ -748,6 +760,23 @@ class Streamer:
             return None
         return s_now - (built if starting else read)
 
+    def _cruise_height(self, fix: Fix, starting: bool) -> None:
+        """Whether the eye is so high above the ground that the screen cannot show an 8192 px level
+        (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, or a camera's lower down; until
+        it is below CRUISE_OFF_M. Never at a start: X-Plane gives no height while it loads one."""
+        eye = fix.agl_m if fix.cam_agl_m is None else min(fix.agl_m, fix.cam_agl_m)
+        if starting:
+            self.cruising = False
+        elif not self.cruising and eye > CRUISE_ON_M:
+            self.cruising = True
+            self.log(
+                "  above 18,500 ft from the ground: the 8192 px levels (ZL17, ZL19 near airports) "
+                "get the copy of the 4096 px one, not their photos: the screen cannot show them"
+            )
+        elif self.cruising and eye < CRUISE_OFF_M:
+            self.cruising = False
+            self.log("  below 17,500 ft from the ground: the 8192 px levels get their photos again")
+
     def plan(
         self, fix: Fix, x_plane_there: bool = True, starting: bool = False
     ) -> dict[str, tuple[float, int]]:
@@ -791,6 +820,7 @@ class Streamer:
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
         h = max(0.0, fix.agl_m) / 1000.0
         h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
+        self._cruise_height(fix, starting)
         jobs: dict[str, tuple[float, int]] = {}
         late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
         for name, lat, lon, zoom, *_ in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
@@ -832,8 +862,9 @@ class Streamer:
             if level == 0 and zoom in self.reads_8192:
                 sharp = self._sharpest(zoom, s, s_now, starting)
                 if sharp is not None:
-                    level, urgency = MIN_LEVEL, sharp
-                    if (  # its photos late, X-Plane about to read that level: the copy goes in
+                    if not self.cruising:  # at cruise height, the copy alone (CRUISE_ON_M)
+                        level, urgency = MIN_LEVEL, sharp
+                    if (  # photos late or not wanted, X-Plane about to read that level: the copy
                         not starting
                         and self.level_of(name) == 0
                         and name not in self.copied_up
