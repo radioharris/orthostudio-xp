@@ -435,6 +435,35 @@ def test_no_8192_px_photos_at_cruise_height(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_a_descent_gets_its_8192_px_photos_ahead_of_time(tmp_path: Path) -> None:
+    """Descending, the 8192 px photos come again three minutes before the aircraft is 13,000 ft
+    from the ground, where they begin to show, higher the faster it descends (the user's wish,
+    2026-10-01: after a switch at 17,500 ft, 17 were late, the last near 15,000 ft); level or
+    descending slowly, at 17,500 ft as before."""
+    s = row_streamer(tmp_path)
+    lines: list[str] = []
+    s.log = lines.append
+    ft, fpm = 0.3048, 0.3048 / 60  # metres in a foot, metres a second in a foot a minute
+    west = {"gs_ms": 150.0, "trk_deg": 270.0}
+
+    def high(feet: float, rate: float = 0.0) -> bool:
+        s.plan(at(0, agl_m=feet * ft, vs_ms=rate * fpm, **west), x_plane_there=False)
+        return s.cruising
+
+    assert high(30_000)
+    assert high(22_000, -2_500)  # 216 s from 13,000 ft
+    assert not high(20_000, -2_500)  # 168 s: the photos again
+    assert lines[-1].startswith("  descending at 2500 ft a minute, 20000 ft from the ground")
+    assert high(24_000)  # level again above 18,500 ft: no 8192 px photos up there
+    assert high(25_500, -4_000)  # 188 s
+    assert not high(24_500, -4_000)  # 173 s
+    assert high(30_000)
+    assert high(18_000, -1_000)  # 300 s: a slow descent, the rule as before
+    assert not high(17_000, -1_000)
+    assert lines[-1].startswith("  below 17,500 ft")
+    s.cache.close()
+
+
 def test_the_rings_grow_with_xplanes_image() -> None:
     """Probe flight 2: X-Plane reads each level farther on a wider image and with a narrower field
     of view, as the ground a pixel covers shrinks; never nearer than measured, whatever the

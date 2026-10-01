@@ -131,6 +131,15 @@ COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads
 # of that level in just above 18,000 ft.
 CRUISE_ON_M = 18_500 * 0.3048
 CRUISE_OFF_M = 17_500 * 0.3048
+# Descending, the photos come again CRUISE_AHEAD_S before the aircraft is CRUISE_SEEN_M from the
+# ground, where an 8192 px level begins to show on the most demanding screen reckoned (4K, 45
+# degrees of view): Live then has the time to catch up. After the switch at 17,500 ft on a descent
+# at 2,500 ft a minute, 17 levels were late, the last near 15,000 ft, none under 10,000 (Oslo,
+# 2026-10-01); at 4,000 ft a minute, 17,500 to 10,000 ft takes under two minutes. The user's
+# wish: higher, to anticipate. At 2,500 ft a minute about 20,500 ft, at 4,000 about 25,000; not
+# again until it is 1.5 times that far ahead, or level.
+CRUISE_SEEN_M = 13_000 * 0.3048
+CRUISE_AHEAD_S = 180.0
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
 # textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
@@ -159,6 +168,7 @@ DATAREFS = [
     # the aircraft's true heading, for the window's map: as X-Plane's, where its track leaves it
     # (wind, the ground, a position set from outside that gives it no speed: a user, 2026-09-29)
     ("hdg_deg", "sim/flightmodel/position/psi"),
+    ("vs_ms", "sim/flightmodel/position/vh_ind"),  # climbing or descending, m/s (_cruise_height)
 ]
 # X-Plane loading scenery in flight (its flag above), and this long after: Live pauses, nothing
 # downloaded, encoded, copied up or made coarser, only the squares' files X-Plane needs made (their
@@ -209,6 +219,7 @@ class Fix:
     cam_lon: float | None = None
     agl_m: float = 0.0  # the aircraft's height above the ground
     cam_agl_m: float | None = None  # the camera's
+    vs_ms: float = 0.0  # its vertical speed, negative descending
 
 
 def camera_position(lat: float, lon: float, plane_xyz, view_xyz) -> tuple[float, float]:
@@ -763,11 +774,14 @@ class Streamer:
     def _cruise_height(self, fix: Fix, starting: bool) -> None:
         """Whether the eye is so high above the ground that the screen cannot show an 8192 px level
         (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, or a camera's lower down; until
-        it is below CRUISE_OFF_M. Never at a start: X-Plane gives no height while it loads one."""
+        it is below CRUISE_OFF_M, or descending CRUISE_AHEAD_S from CRUISE_SEEN_M. Never at a
+        start: X-Plane gives no height while it loads one."""
         eye = fix.agl_m if fix.cam_agl_m is None else min(fix.agl_m, fix.cam_agl_m)
+        # seconds before the eye is where those levels begin to show, at the rate it descends
+        ahead = (eye - CRUISE_SEEN_M) / -fix.vs_ms if fix.vs_ms < -1.0 else math.inf
         if starting:
             self.cruising = False
-        elif not self.cruising and eye > CRUISE_ON_M:
+        elif not self.cruising and eye > CRUISE_ON_M and ahead > 1.5 * CRUISE_AHEAD_S:
             self.cruising = True
             self.log(
                 "  above 18,500 ft from the ground: the 8192 px levels (ZL17, ZL19 near airports) "
@@ -776,6 +790,13 @@ class Streamer:
         elif self.cruising and eye < CRUISE_OFF_M:
             self.cruising = False
             self.log("  below 17,500 ft from the ground: the 8192 px levels get their photos again")
+        elif self.cruising and ahead < CRUISE_AHEAD_S:
+            self.cruising = False
+            self.log(
+                f"  descending at {-fix.vs_ms / 0.3048 * 60:.0f} ft a minute, "
+                f"{eye / 0.3048:.0f} ft from the ground: the 8192 px levels get their photos "
+                f"again, {CRUISE_AHEAD_S / 60:.0f} min before 13,000 ft"
+            )
 
     def plan(
         self, fix: Fix, x_plane_there: bool = True, starting: bool = False
@@ -1900,6 +1921,7 @@ def run(
                         values.get("gs_ms", 0.0),
                         values.get("trk_deg", 0.0),
                         agl_m=values.get("agl_m", 0.0),
+                        vs_ms=values.get("vs_ms", 0.0),
                     )
                     if all(k in values for k in ("px", "pz", "vx", "vz")):
                         fix.cam_lat, fix.cam_lon = camera_position(
