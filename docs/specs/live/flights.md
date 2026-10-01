@@ -98,17 +98,22 @@ AutoOrtho's group alone left it running, its region mounted (2026-09-29).
   X-Plane is. Its cache is the user's, or with `--cold` one of its own. Its log is always its home's.
 - `--zooms 17/19`: the streamer's max_zoom and max_zoom near airports for the series (AutoOrtho's
   settings file, Live's `--max-zoom` and `--max-zoom-airports`), whatever the settings say.
+- `--freeze-in-flight` (Live, a test of 2026-10-01): Live builds nothing once the aircraft flies,
+  as if paused from the start's end to the path's (only the squares' files X-Plane needs made), to
+  see whether X-Plane still waits minutes for a column's third tile without Live's work
+  (`OSXP_LIVE_FROZEN_IN_FLIGHT`, set for Live's process by the runner alone).
 
-A cold run's heavy files are deleted once its streamer has stopped: Live's folder in its home (its
-pack, the textures it built, its downloaded imagery) and AutoOrtho's cache and DSFs. A cold
-AutoOrtho run of 2 minutes left 3.1 GB, with 77 GB free on the disk (2026-09-29). What stays is
-small: the settings, the logs, and Live's record of what it built (`live-built.json` in the
-series' folder), which its map reads. The user's own settings files, Live's and AutoOrtho's, are
-only ever read. The runner refuses to
-start when X-Plane runs without the test pilot, when a streamer is asked for but X-Plane already
-runs without it (its scenery would not be read), and when Live or AutoOrtho runs already (their
-windows'). With `--keep-open`, a next series goes on with the X-Plane and the streamer left
-running.
+A cold run's home for Live is `live-home.noindex` in the series' folder (`live-home` before
+2026-10-01): Spotlight leaves alone the hundreds of thousands of files Live makes there during a
+flight. A cold run's heavy files are deleted once its streamer has stopped: Live's folder in its
+home (its pack, the textures it built, its downloaded imagery) and AutoOrtho's cache and DSFs. A
+cold AutoOrtho run of 2 minutes left 3.1 GB, with 77 GB free on the disk (2026-09-29). What stays is
+small: the settings, the logs, and Live's record of what it built (`live-built.json` in the series'
+folder), which its map reads. The user's own settings files, Live's and AutoOrtho's, are only ever
+read. The runner refuses to start when X-Plane runs without the test pilot, when a streamer is asked
+for but X-Plane already runs without it (its scenery would not be read), and when Live or AutoOrtho
+runs already (their windows'). With `--keep-open`, a next series goes on with the X-Plane and the
+streamer left running.
 
 ## The window
 
@@ -203,7 +208,12 @@ swapped (`sysctl`) and heat (`com.apple.system.thermalpressurelevel`, "heavy" th
 of 2026-09-29 and 30, X-Plane alone's too); the bytes read from each disk; and `threads.csv`,
 each of X-Plane's threads at each sample: its name, processor time, state and priority
 (`proc_pidinfo`). All read from outside, as Activity Monitor does: `sample` cannot attach to
-X-Plane, signed with the hardened runtime. The report gives:
+X-Plane, signed with the hardened runtime. Since 2026-10-01, as the analysis of the late tiles
+asked: the cores the system lets work (`kern.sched_recommended_cores`, fewer when it is hot), in
+`system.csv`; every other process using more than 0.05 core between two samples, in
+`processes.csv` (Spotlight, a browser in front...); and X-Plane's telemetry of the series
+(`telemetry.tlm`, which X-Plane writes as it quits: its texture pager's counts, its GPU's memory),
+in the series' folder. The report gives:
 
 - the frames of the path: their count, the mean, median, 99th percentile and worst frame time, how
   many took over 50 and 100 ms, and the worst five, with whether X-Plane was loading scenery. The
@@ -222,6 +232,22 @@ X-Plane, signed with the hardened runtime. The report gives:
   most) of X-Plane and of the streamer; X-Plane's whole memory and its reads, and the Mac's
   memory and heat;
 - the test pilot's events, the streamer's errors, the screenshots.
+
+## X-Plane's stacks
+
+`tools/live/flights/stacks.py`, started once with the user's password before a series
+(`sudo /usr/bin/python3 tools/live/flights/stacks.py`): nothing else can see what X-Plane's
+threads compute, and the analysis of 2026-10-01 found its 7 background workers busy for up to 7
+minutes while a column's third tile waited (`build/flights/analyse-blocages-2026-10-01`). It waits
+for X-Plane, follows its log, and takes X-Plane's threads' stacks (`spindump`, 10 s every 10 ms,
+X-Plane alone) once in cruise and during each scenery load from 40 s after it began, every 75 s
+while it lasts, 12 a flight at most; once the series is over, the kernel's own light samples of
+each whole flight (`spindump -microstackshots`), where the system keeps them; and the processors'
+and the graphics' power and frequencies and the thermal pressure every 5 s for the whole session
+(`powermetrics`). It changes nothing, and stops when the series writes
+`build/flights/stacks/series-done`. Its files, in `build/flights/stacks/<date time>/`, are given to
+the user who ran `sudo`; `samples.csv` says when each was taken, at which point of which load, and
+which of the load's tiles had come.
 
 ## Limits
 

@@ -516,6 +516,23 @@ def test_a_process_and_the_mac_read_from_outside() -> None:
     assert mem["compressed_mb"] >= 0 and mem["swapped_mb"] >= 0
     assert sampler.heat() in sampler.HEAT
     assert sampler.usage(999_999_999) == {} and sampler.threads(999_999_999) == []
+    assert 1 <= sampler.cores_allowed() <= (os.cpu_count() or 1)
+
+
+def test_the_busy_processes_between_two_samples() -> None:
+    """processes.csv (2026-10-01): each process over OTHERS_MIN_CORES since the line before, the
+    others' share of a hot Mac's cores."""
+    import sampler
+
+    before: dict[int, tuple[float, float]] = {}
+    first = [(1, 0, 10.0, 100.0, "/usr/libexec/mds_stores"), (2, 0, 5.0, 50.0, "/bin/zsh")]
+    assert sampler.busy_processes(first, before, 1000.0) == []  # nothing to compare with yet
+    second = [
+        (1, 0, 10.0, 104.0, "/usr/libexec/mds_stores"),  # 4 s over 5 s
+        (2, 0, 5.0, 50.1, "/bin/zsh"),  # 0.02 core: not busy
+        (3, 0, 1.0, 9.0, "Google Chrome Helper"),  # new since: no rate yet
+    ]
+    assert sampler.busy_processes(second, before, 1005.0) == [["1005.0", 1, "mds_stores", "0.80"]]
 
 
 def write_system(path: Path, rows: list[dict]) -> None:
@@ -740,16 +757,44 @@ def test_a_streamer_stops_with_every_process_it_started(tmp_path: Path) -> None:
         time.sleep(0.1)
 
 
+def test_x_planes_telemetry_kept_when_written_during_the_series(tmp_path: Path) -> None:
+    """X-Plane writes telemetry_0.tlm as it quits (its pager's counts, its GPU's memory): kept in
+    the series' folder, not an older flight's."""
+    import os
+
+    xp = tmp_path / "X-Plane 12"
+    tlm = xp / fly.TELEMETRY / "telemetry_0.tlm"
+    tlm.parent.mkdir(parents=True)
+    tlm.write_bytes(b"tlm")
+    series = tmp_path / "flights" / "2026-10-01 090000"
+    series.mkdir(parents=True)
+    from datetime import datetime
+
+    began = datetime(2026, 10, 1, 9, 0, 0).timestamp()
+    os.utime(tlm, (began - 60, began - 60))  # the flight before's
+    assert fly.keep_telemetry(xp, series) is None
+    os.utime(tlm, (began + 1500, began + 1500))
+    assert fly.keep_telemetry(xp, series) == series / "telemetry.tlm"
+    assert (series / "telemetry.tlm").read_bytes() == b"tlm"
+    assert fly.keep_telemetry(xp, tmp_path / "not a series") is None
+
+
+def test_live_frozen_in_flight_is_a_live_test(capsys: pytest.CaptureFixture) -> None:
+    with pytest.raises(SystemExit):
+        fly.main(["--freeze-in-flight", "scandinavia-columns"])
+    assert "--freeze-in-flight is for Live" in capsys.readouterr().err
+
+
 def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
     """A cold run's own homes, under its series' folder: the heavy files deleted once its streamer
     stopped (a 2 min cold AutoOrtho run left 3.1 GB), Live's record kept for the map."""
     out = tmp_path / "build" / "flights" / "2026-09-29 170000"
-    pack = out / "live-home" / "live" / "pack"
+    pack = out / fly.LIVE_HOME / "live" / "pack"
     (pack / "_live").mkdir(parents=True)
     (pack / "_live" / "ortho.json").write_text('{"textures": {"a": 0}}')
     (pack / "textures").mkdir()
     (pack / "textures" / "big.dds").write_bytes(b"x" * 1000)
-    (out / "live-home" / "live.toml").write_text("enabled = true\n")
+    (out / fly.LIVE_HOME / "live.toml").write_text("enabled = true\n")
     cache = out / "ao-home" / ".autoortho-data" / "cache"
     cache.mkdir(parents=True)
     (cache / "chunk.jpg").write_bytes(b"x")
@@ -765,9 +810,9 @@ def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
     (scenery / "y_osxp_live_overlays").symlink_to(users)  # not the test's: untouched
     fly.clean_cold(out, xp)
     assert (out / "live-built.json").read_text() == '{"textures": {"a": 0}}'
-    assert not (out / "live-home" / "live").exists()
+    assert not (out / fly.LIVE_HOME / "live").exists()
     assert not cache.exists() and (logs / "autoortho.log").exists()
-    assert (out / "live-home" / "live.toml").exists()
+    assert (out / fly.LIVE_HOME / "live.toml").exists()
     assert not (scenery / "z_osxp_live").is_symlink()
     assert (scenery / "y_osxp_live_overlays").is_symlink() and users.is_dir()
 
@@ -888,3 +933,62 @@ def test_a_campaign_writes_one_table_for_one_comparison_and_more_for_more(
     assert len(flown) == 3  # "ao" flown once for both comparisons
     assert both.count("| outcome |") == 3  # every flight, then each comparison
     assert "# Comparison 2:" in both
+
+
+def test_the_watcher_follows_x_planes_log_and_samples_the_loads_that_last(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stacks.py (2026-10-01), run with sudo during a series: X-Plane's stacks once in cruise and
+    during each load from 40 s after it began, every 75 s while it lasts; never during the start,
+    nor after the path."""
+    import stacks
+
+    clock = [1000.0]
+    monkeypatch.setattr(stacks.time, "time", lambda: clock[0])
+    taken: list[tuple[str, list[str]]] = []
+
+    def fake_spindump(flight: stacks.Flight, label: str, session: stacks.Session) -> None:
+        taken.append((label, list(flight.load["meshes"]) if flight.load else []))
+        flight.samples += 1
+
+    monkeypatch.setattr(stacks, "spindump", fake_spindump)
+    session = stacks.Session(tmp_path / "stacks" / "2026-10-01 090000")
+    log = tmp_path / "Log.txt"
+    flight = stacks.Flight(1, 4242)
+    pilot = stacks.PILOT
+    mesh = (
+        "0:12:11.871 I/SCN: DSF load time: 29368088 for file /Users/u/X-Plane 12/Custom Scenery/"
+        "z_osxp_live/Earth nav data/+50+010/+59+014.dsf (995788 tris, 96 skipped for -25.3 m^2)\n"
+    )
+    overlay = mesh.replace("995788 tris", "0 tris").replace("+59+014", "+61+014")
+
+    def at(t: float, text: str = "") -> None:
+        clock[0] = t
+        with log.open("a") as f:
+            f.write(text)
+        stacks.read(flight, stacks.new_lines(log, flight), t, session)
+        stacks.maybe_sample(flight, session)
+
+    at(1000, f"{pilot}ready\n{pilot}scenery load at 60.5000 10.4000, path 0.0 s\n")
+    at(1050)  # no path yet: the start's loads are not sampled
+    assert taken == [] and flight.path_wall is None
+    flight.load = None
+    at(1100, f"{pilot}flying the path: 3 legs, 1288 s\n")
+    at(1155, f"{pilot}scenery load at 60.5000 10.6500, path 55.4 s\n")
+    at(1161, f"{pilot}scenery loaded in 6.2 s\n")  # a load over in 6 s: no sample
+    at(1350)  # path 250 s: not yet cruise
+    at(1400)  # path 300 s, no load for 239 s: the cruise sample
+    at(1599, f"{pilot}scenery load at 60.5000 12.6500, path 498.9 s\n{overlay}{mesh[:40]}")
+    at(1630, mesh[40:])  # the line ended: the outer tile's mesh
+    assert taken == [("cruise-300s", [])]
+    at(1640)
+    at(1700)
+    at(1715)
+    at(1716, f"{pilot}scenery loaded in 117.0 s\n")
+    at(1800)
+    assert taken == [("cruise-300s", []), ("load3-41s", ["+59+014"]), ("load3-116s", ["+59+014"])]
+    at(2400, f"{pilot}the path flown (1288 s)\n{pilot}scenery load at 60.4 10.3, path 1300 s\n")
+    at(2500)  # the path flown: no more samples
+    assert len(taken) == 3
+    log.write_text(f"{pilot}ready\n")  # X-Plane's next start writes a new log
+    assert stacks.new_lines(log, flight) == [f"{pilot}ready"]

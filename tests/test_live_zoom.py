@@ -598,6 +598,21 @@ def test_live_pauses_while_x_plane_loads_scenery(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_a_test_flight_freezes_live_once_the_aircraft_flies(tmp_path: Path, monkeypatch) -> None:
+    """fly.py --freeze-in-flight (2026-10-01): Live builds nothing once the aircraft flies, not
+    even what X-Plane shows; a start's textures still built, X-Plane waiting for them."""
+    from orthostudio.live import streamer as st
+
+    monkeypatch.setattr(st, "FROZEN_IN_FLIGHT", True)
+    s = row_streamer(tmp_path)
+    assert not s.yielding() and s.may_encode(-1.0, 0)  # a start
+    s.flying = True
+    assert s.yielding() and not s.may_encode(-1.0, 0)
+    s.flying = False  # X-Plane gone, or a new start
+    assert not s.yielding()
+    s.cache.close()
+
+
 def test_a_move_of_x_plane_s_window_pauses_live_again(tmp_path: Path) -> None:
     """X-Plane's flag up 519 s over three columns: Live back at work after 120 s, the second
     column's last tile came after 237 s (Norway, 2026-09-30). Each move of its window while the

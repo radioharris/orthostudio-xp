@@ -742,6 +742,8 @@ def report(folder: Path) -> str:
             settings.append("cold: nothing built, nothing downloaded")
         if run.get("hold_whole_load"):
             settings.append("Live idle during X-Plane's loads")
+        if run.get("frozen_in_flight"):
+            settings.append("Live frozen in flight: nothing built after the start")
         lines += [
             f"- streamer: {run.get('streamer', '?')}"
             + (f" ({', '.join(settings)})" if settings else ""),

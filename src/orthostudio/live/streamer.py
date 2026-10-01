@@ -158,9 +158,16 @@ DATAREFS = [
 # encoded and evicted, AutoOrtho none over 40 ms, 2026-09-28). At most YIELD_MAX_S of each load,
 # so that one X-Plane would not end for another reason holds Live no longer; counted again from
 # each move of X-Plane's window while its flag stays up: one flag of 519 s over three columns, Live
-# back at work after 120 s, the second column's last tile came after 237 s (2026-09-30).
+# back at work after 120 s, the second column's last tile came after 237 s (2026-09-30). The flight
+# paused had followed three hours of rest, the others minutes: the Mac's heat before a flight
+# foretells X-Plane's overload as well, so the pause's own share is not known yet (2026-10-01).
 YIELD_AFTER_S = 5.0
 YIELD_MAX_S = 120.0
+# A test flight's (fly.py --freeze-in-flight, 2026-10-01): Live builds nothing once the aircraft
+# flies, paused from the start's end to the path's, only the squares' files X-Plane needs made; to
+# see whether X-Plane still waits minutes for a column's third tile without Live's work. Set for
+# Live's process by the test flights alone (OSXP_LIVE_FROZEN_IN_FLIGHT).
+FROZEN_IN_FLIGHT = os.environ.get("OSXP_LIVE_FROZEN_IN_FLIGHT") == "1"
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
 # it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
 # reads now
@@ -627,8 +634,9 @@ class Streamer:
             self.yield_until = max(self.yield_until, now + YIELD_AFTER_S)
 
     def yielding(self) -> bool:
-        """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`)."""
-        return time.monotonic() < self.yield_until
+        """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`), or for the
+        whole flight in a test flight's freeze (FROZEN_IN_FLIGHT)."""
+        return (FROZEN_IN_FLIGHT and self.flying) or time.monotonic() < self.yield_until
 
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
@@ -1612,6 +1620,8 @@ def run(
     last_report = 0.0
 
     rate = Rate()
+    if FROZEN_IN_FLIGHT:
+        log("  a test flight's: Live builds nothing once the aircraft flies (frozen in flight)")
 
     def expect(lat: float, lon: float, name: str, how: str) -> None:
         nonlocal arrival

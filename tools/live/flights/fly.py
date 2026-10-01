@@ -78,6 +78,10 @@ STOP_TIMEOUT_S = 120  # a streamer given that long to stop after its Ctrl-C
 XPLANE_UDP = ("127.0.0.1", 49000)  # X-Plane's UDP port, as Live's stream --port's default
 QUIT_TRIES_S = 180  # X-Plane asked to quit over UDP this long, then left to the user
 POLL_S = 2.0
+# a cold run's home for Live, under the series' results: ".noindex", so that Spotlight does not
+# index the hundreds of thousands of files Live makes there during a flight (2026-10-01)
+LIVE_HOME = "live-home.noindex"
+TELEMETRY = Path("Output") / "diagnostic reports"  # X-Plane's telemetry_0.tlm, written as it quits
 
 
 class RefusedError(Exception):
@@ -228,12 +232,20 @@ def cold_home(home: Path) -> Path:
 
 
 def start_live(
-    xp: Path, out: Path, cold: bool, zooms: tuple[int, int] | None = None
+    xp: Path,
+    out: Path,
+    cold: bool,
+    zooms: tuple[int, int] | None = None,
+    frozen: bool = False,
 ) -> subprocess.Popen:
-    """Live's streamer, before X-Plane, as the user starts it; back once it is ready."""
+    """Live's streamer, before X-Plane, as the user starts it; back once it is ready. ``frozen``:
+    Live builds nothing once the aircraft flies, a test of 2026-10-01
+    (orthostudio.live.streamer.FROZEN_IN_FLIGHT)."""
     env = dict(os.environ)
     if cold:
-        env["OSXP_HOME"] = str(cold_home(out / "live-home"))
+        env["OSXP_HOME"] = str(cold_home(out / LIVE_HOME))
+    if frozen:
+        env["OSXP_LIVE_FROZEN_IN_FLIGHT"] = "1"
     cmd = [sys.executable, "-m", "orthostudio.live", "stream", "--xplane", str(xp)]
     if zooms:
         cmd += ["--max-zoom", str(zooms[0]), "--max-zoom-airports", str(zooms[1])]
@@ -264,7 +276,7 @@ def start_live(
 def live_folder(out: Path, cold: bool) -> Path:
     from orthostudio.live.pack import live_root
 
-    return out / "live-home" / "live" if cold else live_root()
+    return out / LIVE_HOME / "live" if cold else live_root()
 
 
 def autoortho_runs() -> bool:
@@ -457,7 +469,7 @@ def clean_cold(out: Path, xp: Path | None = None) -> None:
     series' folder, for its map. Only the homes the runner made under ``out``; X-Plane's link to a
     pack there taken out first, if the streamer left it."""
     out = out.resolve()
-    record = out / "live-home" / "live" / "pack" / "_live" / "ortho.json"
+    record = out / LIVE_HOME / "live" / "pack" / "_live" / "ortho.json"
     if record.is_file():
         shutil.copy2(record, out / "live-built.json")
     if xp is not None:
@@ -469,12 +481,30 @@ def clean_cold(out: Path, xp: Path | None = None) -> None:
                 if link.is_symlink() and out in Path(os.readlink(link)).resolve().parents:
                     link.unlink()
     data = out / "ao-home" / ".autoortho-data"
-    for heavy in (out / "live-home" / "live", data / "cache", data / "dsf"):
+    for heavy in (out / LIVE_HOME / "live", data / "cache", data / "dsf"):
         if heavy.is_dir() and out in heavy.resolve().parents:
             shutil.rmtree(heavy, ignore_errors=True)
 
 
-def after_series(pid: int, clean: Path | None = None, xp: Path | None = None) -> None:
+def keep_telemetry(xp: Path, series: Path) -> Path | None:
+    """X-Plane's telemetry of the series (``telemetry_0.tlm``, written as it quits: its texture
+    pager's counts, its GPU's memory) into the series' folder, when written since the series
+    began; None otherwise."""
+    try:
+        began = datetime.strptime(series.name, "%Y-%m-%d %H%M%S").timestamp()
+        src = xp / TELEMETRY / "telemetry_0.tlm"
+        if src.stat().st_mtime < began:
+            return None
+        dest = series / "telemetry.tlm"
+        shutil.copy2(src, dest)
+    except (OSError, ValueError):
+        return None
+    return dest
+
+
+def after_series(
+    pid: int, clean: Path | None = None, xp: Path | None = None, series: Path | None = None
+) -> None:
     """In a process of its own, left running by the runner. X-Plane asks "Quit the simulator?" at
     the test pilot's quit and waits for a click, plugins stopped meanwhile; a second quit over UDP
     is its answer, and X-Plane shuts down at once, cleanly (2026-09-29). So: quit over UDP every
@@ -488,6 +518,8 @@ def after_series(pid: int, clean: Path | None = None, xp: Path | None = None) ->
             with contextlib.suppress(OSError):
                 quit_xplane_udp()
         time.sleep(2.0)
+    if xp is not None and series is not None:
+        keep_telemetry(xp, series)
     if pid > 0:
         stop_tree(pid)
     if clean is not None:
@@ -495,15 +527,20 @@ def after_series(pid: int, clean: Path | None = None, xp: Path | None = None) ->
 
 
 def quit_in_background(
-    proc: subprocess.Popen | None, clean: Path | None = None, xp: Path | None = None
+    proc: subprocess.Popen | None,
+    clean: Path | None = None,
+    xp: Path | None = None,
+    series: Path | None = None,
 ) -> None:
-    """X-Plane quit, then the streamer stopped and a cold run's heavy files deleted (``clean``, its
-    series' folder), by ``after_series`` in a process of its own; the streamer only, at once, when
-    X-Plane is not running."""
+    """X-Plane quit, then its telemetry kept in ``series`` (its folder), the streamer stopped and a
+    cold run's heavy files deleted (``clean``, its series' folder), by ``after_series`` in a
+    process of its own; the streamer only, at once, when X-Plane is not running."""
     pid = proc.pid if proc is not None and proc.poll() is None else 0
     cmd = [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)]
     if clean is not None:
         cmd += ["--clean", str(clean)]
+    if series is not None:
+        cmd += ["--series", str(series)]
     if xp is not None:
         cmd += ["--xplane", str(xp)]
     subprocess.Popen(
@@ -732,7 +769,7 @@ def run(a: argparse.Namespace) -> int:
                 "its own"
             )
         if a.streamer == "live":
-            proc = start_live(xp, out, a.cold, a.zooms)
+            proc = start_live(xp, out, a.cold, a.zooms, a.freeze_in_flight)
             folder_of_streamer = live_folder(out, a.cold)
         else:
             home = out / "ao-home"
@@ -796,6 +833,7 @@ def run(a: argparse.Namespace) -> int:
                 "ao_settings": a.ao_settings if a.streamer == "autoortho" else None,
                 "zooms": list(a.zooms) if a.zooms else None,
                 "cold": a.cold,
+                "frozen_in_flight": a.freeze_in_flight,
                 "camera": (
                     "recorded"
                     if a.record_camera
@@ -824,11 +862,11 @@ def run(a: argparse.Namespace) -> int:
         if still_up and not a.keep_open:
             (box(xp) / "quit").write_text("")
             say("X-Plane quits by itself, in the background")
-            quit_in_background(proc, out if a.cold else None, xp)
+            quit_in_background(proc, out if a.cold else None, xp, out)
         elif still_up:
             say("X-Plane stays up (--keep-open)")
         else:
-            quit_in_background(proc, out if a.cold else None, xp)
+            quit_in_background(proc, out if a.cold else None, xp, out)
         print((out / "summary.md").read_text())
     return (
         0
@@ -846,6 +884,8 @@ def label(a: argparse.Namespace) -> str:
         parts.append(f"ZL{a.zooms[0]}/{a.zooms[1]}")
     if a.cold:
         parts.append("cold")
+    if getattr(a, "freeze_in_flight", False):
+        parts.append("frozen in flight")
     return ", ".join(parts)
 
 
@@ -1042,6 +1082,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--keep-open", action="store_true", help="X-Plane stays up after the series")
     p.add_argument(
+        "--freeze-in-flight",
+        action="store_true",
+        help="Live builds nothing once the aircraft flies (a test: X-Plane's loads without Live)",
+    )
+    p.add_argument(
         "--record-camera",
         action="store_true",
         help="the view left to you, your camera recorded as the scenario's (build/flights/cameras)",
@@ -1060,9 +1105,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--after-series", type=int, help=argparse.SUPPRESS)
     p.add_argument("--clean", type=Path, help=argparse.SUPPRESS)
+    p.add_argument("--series", type=Path, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     if a.after_series is not None:
-        after_series(a.after_series, a.clean, a.xplane)
+        after_series(a.after_series, a.clean, a.xplane, a.series)
         return 0
     if a.campaign:
         if a.record_camera:
@@ -1076,6 +1122,8 @@ def main(argv: list[str] | None = None) -> int:
         p.error("a scenario at least")
     if a.cold and a.streamer == "none":
         p.error("--cold is for a streamer")
+    if a.freeze_in_flight and a.streamer != "live":
+        p.error("--freeze-in-flight is for Live")
     if a.record_camera and a.camera == "mine":
         p.error("--record-camera records a camera: it replays none")
     try:

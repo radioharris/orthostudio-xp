@@ -4,9 +4,10 @@
 it, fed here from a test flight's Live rather than from a streamer of the window's own.
 
 What Live built is its record, ``_live/ortho.json`` in its pack, which the streamer saves every
-30 s (``orthostudio.live.mapdata`` draws from it): the cold home's pack (``live-home/live/pack`` in
-the series' folder), the user's own pack for a run with the user's folder, and once a cold run is
-cleaned, the copy the runner kept (``live-built.json``). The aircraft is the test pilot's last
+30 s (``orthostudio.live.mapdata`` draws from it): the cold home's pack
+(``live-home.noindex/live/pack`` in the series' folder, ``live-home`` before 2026-10-01), the
+user's own pack for a run with the user's folder, and once a cold run is cleaned, the copy the
+runner kept (``live-built.json``). The aircraft is the test pilot's last
 frame, its heading from the frames a second before; the route is the scenario's path while it
 flies, the path flown afterwards.
 """
@@ -34,9 +35,10 @@ def pack_record(pack: Path) -> Path:
 def record_file(series: Path, flying: bool = False) -> Path | None:
     """Where the record of the series' Live is; None when Live did not fly it. While it flies
     with the user's own folder, that folder's (the copy kept is a flight behind)."""
-    cold = pack_record(series / "live-home" / "live" / "pack")
-    if cold.is_file():
-        return cold
+    for home in ("live-home.noindex", "live-home"):  # the cold home, named so from 2026-10-01
+        cold = pack_record(series / home / "live" / "pack")
+        if cold.is_file():
+            return cold
     kept = series / RECORD
     if not (series / "live.txt").is_file():
         return kept if kept.is_file() else None

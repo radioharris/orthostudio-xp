@@ -10,7 +10,11 @@ says nothing: X-Plane's whole memory (its GPU's included), the bytes it read fro
 page-ins; the Mac's free memory, pressure, memory compressed and swapped, and heat; the bytes read
 from each disk; and, into ``threads.csv``, each of X-Plane's threads: its name, processor time and
 state. All read from outside, as Activity Monitor does, without attaching to X-Plane (``sample``
-cannot: X-Plane is signed with the hardened runtime)."""
+cannot: X-Plane is signed with the hardened runtime).
+
+Since 2026-10-01, as the analysis of the late tiles asked: the cores the system lets work
+(``kern.sched_recommended_cores``: fewer when it is hot), and into ``processes.csv`` every other
+process using more than OTHERS_MIN_CORES between two lines (Spotlight, a browser in front...)."""
 
 from __future__ import annotations
 
@@ -45,8 +49,12 @@ FIELDS = [
     "swapped_mb",
     "heat",
     "disk_reads",
+    # 2026-10-01: the cores the system lets work
+    "cores_allowed",
 ]
 THREAD_FIELDS = ["wall", "thread", "name", "cpu_s", "state", "priority"]
+PROCESS_FIELDS = ["wall", "pid", "name", "cores"]
+OTHERS_MIN_CORES = 0.05  # a process using more between two lines goes into processes.csv
 XPLANE_NAMES = ("X-Plane", "X-Plane-x86_64", "X-Plane.exe")
 # a thread's state, as the kernel says it (proc_threadinfo's pth_run_state)
 THREAD_STATES = {1: "running", 2: "stopped", 3: "waiting", 4: "uninterruptible", 5: "halted"}
@@ -337,6 +345,32 @@ def memory() -> dict[str, int | None]:
     }
 
 
+def cores_allowed() -> int | None:
+    """How many cores the system lets work now (``kern.sched_recommended_cores``, a mask: all of
+    them unless it takes some away, hot), None where it does not say."""
+    mask = sysctl_int("kern.sched_recommended_cores")
+    return None if mask is None else bin(mask).count("1")
+
+
+def busy_processes(
+    rows: Iterable[tuple[int, int, float, float, str]],
+    before: dict[int, tuple[float, float]],
+    wall: float,
+) -> list[list]:
+    """The lines of ``processes.csv``: each process that used more than OTHERS_MIN_CORES since the
+    line before (``before``: each pid's CPU s and when, updated here)."""
+    out = []
+    for pid, _, _, cpu, command in rows:
+        then = before.get(pid)
+        before[pid] = (cpu, wall)
+        if then is None or wall <= then[1]:
+            continue
+        cores = (cpu - then[0]) / (wall - then[1])
+        if cores > OTHERS_MIN_CORES:
+            out.append([f"{wall:.1f}", pid, Path(command).name, f"{cores:.2f}"])
+    return out
+
+
 def whole_disk(path: Path) -> str | None:
     """The physical disk a folder is on (disk0), as ``disk_writes`` names it."""
     lines = _run(["df", "-P", str(path)]).splitlines()
@@ -353,13 +387,16 @@ def _blank(value: object) -> object:
 
 
 class Sampler(threading.Thread):
-    """``system.csv``, one line every SAMPLE_S until stopped, and ``threads.csv`` beside it:
-    X-Plane's threads at each line (the module's docstring)."""
+    """``system.csv``, one line every SAMPLE_S until stopped, and ``threads.csv`` and
+    ``processes.csv`` beside it: X-Plane's threads and the busy processes at each line (the
+    module's docstring)."""
 
     def __init__(self, out: Path, streamer_pid: int | None = None):
         super().__init__(daemon=True)
         self.out, self.streamer_pid = out, streamer_pid
         self.threads_out = out.with_name("threads.csv")
+        self.processes_out = out.with_name("processes.csv")
+        self._before: dict[int, tuple[float, float]] = {}  # each process's CPU s, and when
         self._stop_event = threading.Event()
         self.first = threading.Event()  # its first line written: what follows is measured
 
@@ -367,8 +404,8 @@ class Sampler(threading.Thread):
         self._stop_event.set()
         self.join(timeout=15)
 
-    def sample(self) -> tuple[list, list[list]]:
-        """The line of ``system.csv``, and those of ``threads.csv``."""
+    def sample(self) -> tuple[list, list[list], list[list]]:
+        """The line of ``system.csv``, and those of ``threads.csv`` and ``processes.csv``."""
         wall = time.time()  # when it began: the counters are read after it
         rows = processes()
         xp = [r for r in rows if Path(r[4]).name in XPLANE_NAMES]
@@ -396,24 +433,32 @@ class Sampler(threading.Thread):
             _blank(mem["swapped_mb"]),
             _blank(heat()),
             ";".join(f"{k}={r}" for k, (_, r) in sorted(disks.items())),
+            _blank(cores_allowed()),
         ]
         thread_lines = [
             [f"{wall:.1f}", f"{handle:x}", name, f"{cpu:.3f}", state, priority]
             for handle, name, cpu, state, priority in (threads(pid) if pid else [])
         ]
-        return line, thread_lines
+        return line, thread_lines, busy_processes(rows, self._before, wall)
 
     def run(self) -> None:
-        with self.out.open("w", newline="") as f, self.threads_out.open("w", newline="") as t:
-            w, tw = csv.writer(f), csv.writer(t)
+        with (
+            self.out.open("w", newline="") as f,
+            self.threads_out.open("w", newline="") as t,
+            self.processes_out.open("w", newline="") as pr,
+        ):
+            w, tw, pw = csv.writer(f), csv.writer(t), csv.writer(pr)
             w.writerow(FIELDS)
             tw.writerow(THREAD_FIELDS)
+            pw.writerow(PROCESS_FIELDS)
             while True:
-                line, thread_lines = self.sample()
+                line, thread_lines, process_lines = self.sample()
                 w.writerow(line)
                 tw.writerows(thread_lines)
+                pw.writerows(process_lines)
                 f.flush()
                 t.flush()
+                pr.flush()
                 self.first.set()
                 if self._stop_event.is_set():
                     return  # a last line once stopped: the end of what was measured
