@@ -74,9 +74,9 @@ class Downloader:
         ) = 0
         self.in_flight = 0
         self._paused_until = 0.0
-        # nothing asked while it says so: Live paused while X-Plane loads scenery
-        # (orthostudio.live.streamer.Streamer.x_plane_loads)
-        self.hold: Callable[[], bool] = lambda: False
+        # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
+        # those ahead of what it shows while its workers are all busy (Streamer.holds)
+        self.hold: Callable[[float], bool] = lambda priority: False
         self._seq = itertools.count()
         self._loop = asyncio.new_event_loop()
         self._ready = threading.Event()
@@ -134,9 +134,11 @@ class Downloader:
 
     async def _worker(self) -> None:
         while True:
-            _, _, key = await self._queue.get()
-            while self.hold():
+            priority, seq, key = await self._queue.get()
+            if self.hold(priority):  # back in its place: a piece let through may come meanwhile
+                self._queue.put_nowait((priority, seq, key))
                 await asyncio.sleep(0.25)
+                continue
             try:
                 status, body = await self._fetch(key)
             except asyncio.CancelledError:

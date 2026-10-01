@@ -505,6 +505,38 @@ class DownloaderTest(unittest.TestCase):
         self.assertEqual(order[-1], (15, 3, 3))  # the slow one did not hold the others back
         self.assertEqual(d.downloaded, 22)
 
+    def test_while_x_plane_is_busy_only_what_it_shows_is_asked_for(self):
+        """Live stopped for X-Plane's background workers (Streamer.holds, 2026-10-01): a piece
+        ahead waits, put back in its place, and one X-Plane shows passes it, with a single
+        request at once."""
+        import queue
+
+        from orthostudio.live.downloader import Downloader
+        from orthostudio.live.providers import Provider
+
+        server = _Server(jpeg_body())
+        p = Provider(
+            code="LOCAL",
+            url_template=f"http://127.0.0.1:{server.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+        )
+        got: queue.Queue = queue.Queue()
+        busy = [True]
+        d = Downloader(p, lambda k, st, b: got.put(k), max_in_flight=1, fallback=None)
+        d.hold = lambda priority: busy[0] and priority > 0
+        try:
+            d.submit((15, 20, 20), 5.0)  # ahead of the aircraft
+            time.sleep(0.5)
+            d.submit((15, 21, 21), -1.0)  # X-Plane shows it
+            self.assertEqual(got.get(timeout=10), (15, 21, 21))
+            with self.assertRaises(queue.Empty):
+                got.get(timeout=1.0)
+            busy[0] = False  # X-Plane's workers free again
+            self.assertEqual(got.get(timeout=10), (15, 20, 20))
+        finally:
+            d.close()
+            server.close()
+
     def test_an_unexpected_error_fails_its_piece_only(self):
         """An error that is not the network's (a source's address that cannot be made) fails that
         piece; the request it ran in goes on with the next pieces, where it died with it until

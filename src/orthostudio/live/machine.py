@@ -21,6 +21,15 @@ and swap while X-Plane stalled, up to 370 ms (2026-09-28).
 
 ``OSXP_LIVE_MACHINE="8,16"`` makes Live take the share of a computer with 8 cores and 16 GB, to try
 a smaller one's on a larger one: X-Plane keeps the whole computer, only Live's own share changes.
+
+On a hot Mac in flight, X-Plane loads a column of scenery only once its 7 background workers have
+done what they were doing, placing trees above all; and the Mac gives X-Plane and Live together
+about 5 to 7 cores (2026-10-01). Live's encoders, niced, still took 0.4 to 1.2 core from those
+workers for each core they used: with Live at work X-Plane's workers were all busy before its
+loads (6 to 6.9 of 7 running), with Live idle at the same heat 3.1 to 4.5, and its tiles came
+minutes late or in seconds. So in flight Live watches X-Plane's workers (:func:`xplane_pool`) and
+stops all but what X-Plane shows while they are all busy (orthostudio.live.streamer). Encoders in
+the system's background band, on the efficiency cores, did not help: they only took longer there.
 """
 
 from __future__ import annotations
@@ -190,6 +199,76 @@ def _enter_background_io():
             return None
         return lambda: libc.syscall(number, 1, tid, before)
     return None
+
+
+# X-Plane 12's background workers, as it names its threads (Linux keeps 15 characters of a name)
+POOL_NAME = "Pool worker (background"
+LINUX_NAME = 15
+
+
+class _ThreadInfo(ctypes.Structure):  # struct proc_threadinfo (<sys/proc_info.h>)
+    _fields_ = [
+        ("user_ns", ctypes.c_uint64),
+        ("system_ns", ctypes.c_uint64),
+        ("cpu_usage", ctypes.c_int32),
+        ("policy", ctypes.c_int32),
+        ("run_state", ctypes.c_int32),
+        ("flags", ctypes.c_int32),
+        ("sleep_time", ctypes.c_int32),
+        ("curpri", ctypes.c_int32),
+        ("priority", ctypes.c_int32),
+        ("maxpriority", ctypes.c_int32),
+        ("name", ctypes.c_char * 64),
+    ]
+
+
+def xplane_pool(pid: int) -> tuple[int, int] | None:
+    """(running, all) of X-Plane's background workers now: those of its threads named POOL_NAME
+    that the system runs or has ready to run; None where that cannot be read (Windows for now, or
+    the process gone). Read from outside, as Activity Monitor does: nothing attached to X-Plane,
+    no privilege needed."""
+    with contextlib.suppress(OSError, AttributeError, TypeError, ValueError):
+        if MACOS:
+            return _darwin_pool(pid)
+        if sys.platform.startswith("linux"):
+            return _linux_pool(pid)
+    return None
+
+
+def _darwin_pool(pid: int) -> tuple[int, int] | None:
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+    listed, info_of = 6, 5  # PROC_PIDLISTTHREADS, PROC_PIDTHREADINFO
+    handles = (ctypes.c_uint64 * 4096)()
+    size = libproc.proc_pidinfo(pid, listed, ctypes.c_uint64(0), handles, ctypes.sizeof(handles))
+    if size <= 0:
+        return None
+    running = total = 0
+    info = _ThreadInfo()
+    for handle in handles[: size // 8]:
+        got = libproc.proc_pidinfo(
+            pid, info_of, ctypes.c_uint64(handle), ctypes.byref(info), ctypes.sizeof(info)
+        )
+        if got == ctypes.sizeof(info) and info.name.decode(errors="replace").startswith(POOL_NAME):
+            total += 1
+            running += info.run_state == 1  # TH_STATE_RUNNING: on a core or ready for one
+    return running, total
+
+
+def _linux_pool(pid: int) -> tuple[int, int] | None:
+    from pathlib import Path
+
+    tasks = Path(f"/proc/{pid}/task")
+    if not tasks.is_dir():
+        return None
+    running = total = 0
+    for task in tasks.iterdir():
+        with contextlib.suppress(OSError):
+            if (task / "comm").read_text().strip() != POOL_NAME[:LINUX_NAME]:
+                continue
+            stat = (task / "stat").read_text()
+            total += 1
+            running += stat[stat.rindex(")") + 2 :].startswith("R")  # the state after the name
+    return running, total
 
 
 def encoders(cores: int, ram_gb: float | None = None) -> int:

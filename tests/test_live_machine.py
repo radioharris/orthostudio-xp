@@ -201,3 +201,37 @@ def test_background_io_where_the_system_says_no(monkeypatch: pytest.MonkeyPatch)
     with machine.background_io():
         done = True
     assert done
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS's libproc")
+def test_x_plane_s_workers_read_from_outside() -> None:
+    """Live reads X-Plane's background workers from outside, no privilege needed (2026-10-01):
+    here a thread of the test's own, named as X-Plane names them, running or waiting."""
+    import ctypes
+    import ctypes.util
+    import os
+    import threading
+
+    libc = ctypes.CDLL(ctypes.util.find_library("c"))
+    stop, named = threading.Event(), threading.Event()
+
+    def worker(spin: bool) -> None:
+        libc.pthread_setname_np(b"Pool worker (background - 1)")
+        named.set()
+        while not stop.is_set():
+            if not spin:
+                stop.wait(0.05)
+
+    for spin, running in ((True, 1), (False, 0)):
+        stop.clear()
+        named.clear()
+        t = threading.Thread(target=worker, args=(spin,))
+        t.start()
+        try:
+            assert named.wait(5)
+            assert machine.xplane_pool(os.getpid()) == (running, 1)
+        finally:
+            stop.set()
+            t.join()
+    assert machine.xplane_pool(os.getpid()) == (0, 0)
+    assert machine.xplane_pool(999_999_999) is None

@@ -49,7 +49,7 @@ import os
 import queue
 import threading
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -168,6 +168,19 @@ YIELD_MAX_S = 120.0
 # see whether X-Plane still waits minutes for a column's third tile without Live's work. Set for
 # Live's process by the test flights alone (OSXP_LIVE_FROZEN_IN_FLIGHT).
 FROZEN_IN_FLIGHT = os.environ.get("OSXP_LIVE_FROZEN_IN_FLIGHT") == "1"
+# X-Plane's background workers (machine.xplane_pool), read every POOL_EVERY_S in flight: when on
+# average over the last POOL_WINDOW readings all but one of them run, Live stops all but what
+# X-Plane shows now: nothing downloaded, encoded or made coarser ahead of time. It starts again once
+# two and a half of them on average are idle, POOL_HOLD_S at least after it stopped, so that X-Plane
+# catches up. X-Plane loads a column only once its workers have done what they were doing (placing
+# trees above all): on a hot Mac with Live at work they were all busy 61 % of a flight and before
+# each load (6 to 6.9 of 7 running), its tiles 44 to 135 s after the loads began; with Live idle,
+# 16 % and 3.1 to 4.5 of 7, its tiles 16 to 85 s; X-Plane alone 13 % (Norway, 2026-10-01). Live
+# only holding back what was ahead, its downloads and its main process going on, left them all busy.
+# The pause during X-Plane's loads came too late: their backlog was there before the load began.
+POOL_EVERY_S = 1.0
+POOL_WINDOW = 5
+POOL_HOLD_S = 10.0
 # the system's word on its memory, read this often in flight (machine.memory_pressure): short of
 # it, one texture encoded at once and no 8192 px one ahead of time; very short, only what X-Plane
 # reads now
@@ -323,6 +336,8 @@ class Streamer:
         # X-Plane flies (not waiting on a start, not away): the encoders leave it its cores
         self.flying = False
         self.yield_until = 0.0  # monotonic: Live holds back until then (x_plane_loads)
+        self._pool: deque[int] = deque(maxlen=POOL_WINDOW)  # X-Plane's workers running, read
+        self._busy_since: float | None = None  # monotonic: Live stopped for them then
         self._load_since: float | None = None
         self._load_long = False  # the pause going on passed YIELD_MAX_S: said once
         self._load_cut = False  # the load going on outlasted a pause: said at its end
@@ -579,13 +594,14 @@ class Streamer:
 
     def may_encode(self, urgency: float, level: int) -> bool:
         """Whether a texture ready to encode may start now: none while X-Plane loads scenery in
-        flight (:meth:`yielding`); else what X-Plane reads already always, the rest not while the
-        computer is very short of memory, an 8192 px level ahead of time not while it is short."""
+        flight (:meth:`yielding`); else what X-Plane reads already always, the rest not while
+        X-Plane's background workers are all busy (:meth:`x_plane_busy`) nor while the computer
+        is very short of memory, an 8192 px level ahead of time not while it is short."""
         if self.yielding():
             return False
         if urgency <= 0:
             return True
-        if self.pressure >= machine.VERY_SHORT:
+        if self.x_plane_busy() or self.pressure >= machine.VERY_SHORT:
             return False
         return not (level < 0 and self.pressure >= machine.SHORT)
 
@@ -632,6 +648,43 @@ class Streamer:
             self._hold_from = now
             self._load_long = False
             self.yield_until = max(self.yield_until, now + YIELD_AFTER_S)
+
+    def x_plane_pool(self, reading: tuple[int, int] | None, now: float | None = None) -> None:
+        """X-Plane's background workers in flight (machine.xplane_pool: running, all), every
+        POOL_EVERY_S: all but one running on average over POOL_WINDOW readings, Live stops all but
+        what X-Plane shows (:meth:`x_plane_busy`) until two and a half of them are idle on average
+        again, POOL_HOLD_S at least after. The log says when, and how long. Never at a start, nor
+        where they cannot be read (Windows for now)."""
+        now = time.monotonic() if now is None else now
+        if not self.flying or reading is None or reading[1] < 2:
+            self._pool.clear()
+            self._busy_since = None
+            return
+        running, total = reading
+        self._pool.append(running)
+        if len(self._pool) < POOL_WINDOW:
+            return
+        mean = sum(self._pool) / len(self._pool)
+        if self._busy_since is None:
+            if mean >= total - 1:
+                self._busy_since = now
+                self.log("  X-Plane's background workers all busy: Live stops but what it shows")
+        elif mean <= total - 2.5 and now - self._busy_since >= POOL_HOLD_S:
+            self.log(
+                f"  X-Plane's background workers free again: Live works again after "
+                f"{now - self._busy_since:.0f} s"
+            )
+            self._busy_since = None
+
+    def x_plane_busy(self) -> bool:
+        """Whether Live stops for X-Plane's background workers (:meth:`x_plane_pool`)."""
+        return self._busy_since is not None
+
+    def holds(self, urgency: float) -> bool:
+        """Whether a piece of a texture this urgent waits (the downloader's ``hold``): every one
+        while X-Plane loads scenery in flight (:meth:`yielding`), those ahead of what X-Plane shows
+        while its background workers are all busy (:meth:`x_plane_busy`)."""
+        return self.yielding() or (urgency > 0 and self.x_plane_busy())
 
     def yielding(self) -> bool:
         """Whether Live pauses for X-Plane's scenery load (:meth:`x_plane_loads`), or for the
@@ -978,7 +1031,7 @@ class Streamer:
             lambda key, status, body: answers.put((key, status, body))
         )
         if hasattr(self.downloader, "hold"):
-            self.downloader.hold = self.yielding  # nothing asked while X-Plane loads scenery
+            self.downloader.hold = self.holds  # nothing while X-Plane loads, ahead while it is busy
         jobs: dict[str, _Job] = {}
         waiting: dict[Key, set[str]] = defaultdict(set)
         requested: set[Key] = set()
@@ -1177,7 +1230,7 @@ class Streamer:
                         if room > 0:
                             batch = (
                                 self.take_batch(min(room, HELD_PIECES - held))
-                                if held < HELD_PIECES
+                                if held < HELD_PIECES and not self.x_plane_busy()
                                 else self.take_batch(room, urgent_only=True)  # what X-Plane shows
                             )
                             for name, level, urgency in batch:
@@ -1214,7 +1267,11 @@ class Streamer:
                         to_cache.clear()
                         last_flush = time.monotonic()
                     self.maybe_say_built()
-                    if time.monotonic() - last_evict > EVICT_EVERY_S and not self.yielding():
+                    if (
+                        time.monotonic() - last_evict > EVICT_EVERY_S
+                        and not self.yielding()
+                        and not self.x_plane_busy()
+                    ):
                         self.evict()
                         last_evict = time.monotonic()
                     if self.stop.is_set() and not encoding:
@@ -1610,16 +1667,29 @@ def run(
     and holds X-Plane until everything it will read there is built. ``report`` is given every
     second what the Live window shows (:func:`progress_report`). ``departure``: a start the Live
     window asks to prepare before X-Plane loads it (lat, lon, its name), as ``--from``."""
-    from .scenery import xplane_started_at
+    from .scenery import xplane_pid, xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
     values: dict[str, float] = {}
     arrival: Arrival | None = None
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
+    last_pool = 0.0
     before: tuple[Fix, float] | None = None  # the last position planned, and when
     last_report = 0.0
 
     rate = Rate()
+    xplane: dict[str, int | None] = {"pid": None}
+
+    def pool_now() -> tuple[int, int] | None:
+        """X-Plane's background workers now (machine.xplane_pool), its process looked up again
+        when not known or when it shows none."""
+        pid = xplane["pid"]
+        reading = machine.xplane_pool(pid) if pid else None
+        if reading is None or reading[1] == 0:
+            pid = xplane["pid"] = xplane_pid()
+            reading = machine.xplane_pool(pid) if pid else None
+        return reading
+
     if FROZEN_IN_FLIGHT:
         log("  a test flight's: Live builds nothing once the aircraft flies (frozen in flight)")
 
@@ -1782,6 +1852,9 @@ def run(
                     if 0 <= idx < len(fields):
                         values[fields[idx]] = v
                 streamer.x_plane_loads(values.get("scenery_loading", 0.0) >= 0.5)
+            if now - last_pool >= POOL_EVERY_S:
+                last_pool = now
+                streamer.x_plane_pool(pool_now() if streamer.flying else None)
             if now - last_plan >= PLAN_EVERY_S and (values.get("lat") or arrival is not None):
                 last_plan = now
                 streamer.set_screen(values.get("win_w"), values.get("fov"))

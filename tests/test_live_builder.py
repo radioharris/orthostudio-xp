@@ -75,6 +75,30 @@ def test_an_urgent_texture_passes_a_full_builder(tmp_path: Path, monkeypatch) ->
         s.cache.close()
 
 
+def test_only_what_x_plane_shows_while_its_workers_are_all_busy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """X-Plane's background workers all busy (Streamer.x_plane_pool): nothing ahead of time is
+    even taken, what X-Plane shows is built; the rest once they are free again (2026-10-01)."""
+    s = flying_short_of_memory(tmp_path, monkeypatch)
+    s._memory_pressure = lambda: machine.NORMAL
+    s._busy_since = time.monotonic()  # X-Plane's workers all busy all along
+    ahead, shown = f"{ROW[0]}.dds", f"{ROW[1]}.dds"
+    with s.lock:
+        s.queue = {ahead: (30.0, LEVEL), shown: (-1.0, LEVEL)}
+    s.start()
+    try:
+        assert wait_for(lambda: shown in s.built)
+        time.sleep(0.3)
+        with s.lock:
+            assert ahead not in s.built and ahead in s.queue
+        s._busy_since = None  # X-Plane's workers free again
+        assert wait_for(lambda: ahead in s.built)
+    finally:
+        s.close()
+        s.cache.close()
+
+
 def test_a_texture_become_urgent_is_encoded_as_urgent(tmp_path: Path, monkeypatch) -> None:
     s = flying_short_of_memory(tmp_path, monkeypatch)
     name = f"{ROW[0]}.dds"

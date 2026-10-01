@@ -613,6 +613,46 @@ def test_a_test_flight_freezes_live_once_the_aircraft_flies(tmp_path: Path, monk
     s.cache.close()
 
 
+def test_live_stops_while_x_plane_s_workers_are_all_busy(tmp_path: Path) -> None:
+    """X-Plane's background workers all but one running on average over POOL_WINDOW readings, in
+    flight: Live stops all but what X-Plane shows, downloads included, until two and a half of
+    them are idle on average again, POOL_HOLD_S at least after (a hot Mac, 2026-10-01: with Live
+    at work they were all busy 61 % of a flight, its tiles minutes late)."""
+    from orthostudio.live import streamer as st
+
+    s = row_streamer(tmp_path)
+    lines: list[str] = []
+    s.log = lines.append
+    for t in range(st.POOL_WINDOW + 2):
+        s.x_plane_pool((7, 7), now=float(t))
+    assert not s.x_plane_busy()  # not flying: a start, X-Plane waits for what Live builds
+    s.flying = True
+    t = 100.0
+    for running in (7, 6, 5, 6, 6):  # 6 of 7 on average over five readings
+        assert not s.x_plane_busy()
+        s.x_plane_pool((running, 7), now=t)
+        t += 1
+    assert s.x_plane_busy()
+    assert lines == ["  X-Plane's background workers all busy: Live stops but what it shows"]
+    assert s.holds(5.0) and not s.holds(-1.0)  # its downloads: only what X-Plane shows
+    assert s.may_encode(-1.0, 0) and not s.may_encode(5.0, 2)
+    for _ in range(5):  # room again at once: X-Plane left POOL_HOLD_S at least to catch up
+        s.x_plane_pool((3, 7), now=t)
+        t += 1
+    assert s.x_plane_busy()
+    while s.x_plane_busy() and t < 130:
+        s.x_plane_pool((3, 7), now=t)
+        t += 1
+    assert lines[-1] == (
+        f"  X-Plane's background workers free again: Live works again after {st.POOL_HOLD_S:.0f} s"
+    )
+    for _ in range(st.POOL_WINDOW):
+        s.x_plane_pool(None, now=t)  # not readable (Windows for now): never stopped
+        t += 1
+    assert not s.x_plane_busy() and not s.holds(5.0)
+    s.cache.close()
+
+
 def test_a_move_of_x_plane_s_window_pauses_live_again(tmp_path: Path) -> None:
     """X-Plane's flag up 519 s over three columns: Live back at work after 120 s, the second
     column's last tile came after 237 s (Norway, 2026-09-30). Each move of its window while the
