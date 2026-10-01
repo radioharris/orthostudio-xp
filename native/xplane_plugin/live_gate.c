@@ -24,8 +24,11 @@
  * "Init dat_p0" and the DSF loads. X-Plane sends nothing when it starts reading the scenery.
  *
  * While it waits, X-Plane's window is not redrawn: at a flight change it still shows the Flight
- * Configuration screen. So the plugin shows its own loading window (live_panel.m) with what
- * the streamer says: where, and how many textures are left.
+ * Configuration screen. So the plugin shows its own loading window with what the streamer says:
+ * where, and how many textures are left. It is Cocoa on the Mac (live_panel.m), Win32 on Windows
+ * (live_panel_win.c), X11 on Linux (live_panel_x11.c), each with the functions declared below. On
+ * Windows the wait also tells the system, every ASK_EVERY_S, that X-Plane's thread is alive
+ * (live_panel_tick): without it Windows greys X-Plane's window as "Not Responding" after 5 s.
  *
  * It never holds X-Plane for nothing:
  * - no streamer: nothing answers and X-Plane goes on;
@@ -37,15 +40,22 @@
  *   when nothing has downloaded for a minute (no internet), and Stop in the Live window does too.
  *
  * In flight, every second, it asks whether the streamer has a notice for the pilot ("LIVE1 NOTE id
- * text": no mesh here, the region to install), which a small panel shows with its cross
- * (live_panel.m); "LIVE1 NONE": none. It offered a reload of the scenery too, for the 8192 px
- * textures built after a start, until a test showed that X-Plane's reload does not read again the
- * textures it holds (2026-09-27).
+ * text": no mesh here, the region to install), which a small panel shows with its cross (the
+ * loading window's file); "LIVE1 NONE": none. It offered a reload of the scenery too, for the
+ * 8192 px textures built after a start, until a test showed that X-Plane's reload does not read
+ * again the textures it holds (2026-09-27).
  *
- * orthostudio/live/plugin.py builds it against X-Plane's own XPLM framework. It declares the few XPLM functions
- * it uses itself, so the SDK is not needed.
+ * orthostudio/live/plugin.py builds it on the Mac against X-Plane's own XPLM framework; the Windows
+ * and Linux plugins are built ahead (tools/live/plugin_builds.py) and kept with the sources. It
+ * declares the few XPLM functions it uses itself, so the SDK is not needed: X-Plane gives them to
+ * the plugin as it loads it on Linux, and on Windows an import library made from XPLM_64.def does.
  */
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+#endif
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -53,14 +63,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
+#ifndef _WIN32
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/time.h>
+#include <unistd.h>
+#endif
 
+#ifdef _WIN32
+#define PLUGIN_API __declspec(dllexport)
+#else
 #define PLUGIN_API __attribute__((visibility("default")))
+#endif
 
 typedef void *XPLMDataRef;
 typedef int XPLMPluginID;
@@ -99,13 +116,45 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #endif
 #define NOTE_EVERY_S 1.0f /* in flight: whether the streamer has a notice */
 
-void live_panel_show(const char *what, const char *progress, double fraction); /* live_panel.m */
+/* The loading window and the notice (live_panel.m, live_panel_win.c, live_panel_x11.c). */
+void live_panel_show(const char *what, const char *progress, double fraction);
 void live_panel_hide(void);
 void live_note_show(const char *text, int french); /* the notice, with its cross */
 void live_note_hide(void);
 int live_note_closed(void); /* 1: its cross clicked since the last call */
+#ifdef __APPLE__
+static void live_panel_tick(void) {}
+static void live_panels_close(void) {
+    live_panel_hide();
+    live_note_hide();
+}
+#else
+void live_panel_tick(void);   /* while X-Plane waits, every ASK_EVERY_S at most */
+void live_panels_close(void); /* the plugin stops: both gone, and what drew them */
+#endif
 
-static int sock = -1;
+/* The socket to the streamer: Winsock's on Windows, where a UDP port nobody listens on comes back
+   as WSAECONNRESET at the next receive (ECONNREFUSED elsewhere). It never blocks: the waits are
+   timed by wait_for. */
+#ifdef _WIN32
+typedef SOCKET live_socket;
+#define NO_SOCKET INVALID_SOCKET
+#define close_socket closesocket
+static int refused(void) {
+    int e = WSAGetLastError();
+    return e == WSAECONNRESET || e == WSAECONNREFUSED;
+}
+static int winsock = 0; /* WSAStartup done */
+#else
+typedef int live_socket;
+#define NO_SOCKET (-1)
+#define close_socket close
+static int refused(void) { return errno == ECONNREFUSED; }
+#endif
+
+static live_socket sock = NO_SOCKET;
+static int holding = 0; /* hold() runs: on Windows X-Plane's window may be handed a message
+                           meanwhile (live_panel_tick), which may come back here */
 static int flights = 0; /* flights whose aircraft has loaded */
 static XPLMDataRef lat_ref, lon_ref;
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
@@ -113,9 +162,79 @@ static int french = 0; /* the Live window's language, which each answer says: it
 static char note[160]; /* its words */
 
 static double now(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER hz;
+    LARGE_INTEGER t;
+    if (hz.QuadPart == 0) QueryPerformanceFrequency(&hz);
+    QueryPerformanceCounter(&t);
+    return (double)t.QuadPart / (double)hz.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec / 1e9;
+#endif
+}
+
+static void pause_for(double s) {
+#ifdef _WIN32
+    if (s > 0) Sleep((DWORD)(s * 1000.0 + 0.5));
+#else
+    struct timespec ts;
+    if (s <= 0) return;
+    ts.tv_sec = (time_t)s;
+    ts.tv_nsec = (long)((s - (double)ts.tv_sec) * 1e9);
+    nanosleep(&ts, NULL);
+#endif
+}
+
+static int never_blocks(live_socket s) {
+#ifdef _WIN32
+    u_long on = 1;
+    return ioctlsocket(s, FIONBIO, &on) == 0;
+#else
+    int flags = fcntl(s, F_GETFL, 0);
+    return flags >= 0 && fcntl(s, F_SETFL, flags | O_NONBLOCK) == 0;
+#endif
+}
+
+/* Up to `seconds` for something to read, or an error to collect: > 0 then, 0 if none came. poll,
+   not select, off Windows: X-Plane may hold more files open than select's sets have room for. */
+static int wait_for(live_socket s, double seconds) {
+#ifdef _WIN32
+    fd_set readable, failed;
+    struct timeval tv;
+    FD_ZERO(&readable);
+    FD_ZERO(&failed);
+    FD_SET(s, &readable);
+    FD_SET(s, &failed);
+    tv.tv_sec = (long)seconds;
+    tv.tv_usec = (long)((seconds - (double)tv.tv_sec) * 1e6);
+    return select(0, &readable, NULL, &failed, &tv);
+#else
+    struct pollfd p;
+    int ms = (int)(seconds * 1000.0 + 0.999);
+    p.fd = s;
+    p.events = POLLIN;
+    p.revents = 0;
+    return poll(&p, 1, ms < 1 ? 1 : ms);
+#endif
+}
+
+/* What is there to read now, without waiting: its length, or < 0 (nothing, or an error). */
+static long recv_now(live_socket s, char *buf, size_t size) {
+#ifdef _WIN32
+    return recv(s, buf, (int)size, 0);
+#else
+    return (long)recv(s, buf, size, 0);
+#endif
+}
+
+static void send_line(live_socket s, const char *line) {
+#ifdef _WIN32
+    send(s, line, (int)strlen(line), 0);
+#else
+    send(s, line, strlen(line), 0);
+#endif
 }
 
 static void say(const char *fmt, ...) {
@@ -128,25 +247,25 @@ static void say(const char *fmt, ...) {
     XPLMDebugString(line);
 }
 
-static int open_socket(void) {
+static live_socket open_socket(void) {
     struct sockaddr_in addr;
-    int s = socket(AF_INET, SOCK_DGRAM, 0);
-    if (s < 0) return -1;
+    live_socket s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s == NO_SOCKET) return NO_SOCKET;
     memset(&addr, 0, sizeof addr);
     addr.sin_family = AF_INET;
     addr.sin_port = htons(LIVE_PORT);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    /* Connected: a port nobody listens on shows as ECONNREFUSED at once. */
-    if (connect(s, (struct sockaddr *)&addr, sizeof addr) < 0) {
-        close(s);
-        return -1;
+    /* Connected: a port nobody listens on shows as refused at once. */
+    if (connect(s, (struct sockaddr *)&addr, sizeof addr) != 0 || !never_blocks(s)) {
+        close_socket(s);
+        return NO_SOCKET;
     }
     return s;
 }
 
 static void drain(void) {
     char buf[256];
-    while (recv(sock, buf, sizeof buf, MSG_DONTWAIT) >= 0) {
+    while (recv_now(sock, buf, sizeof buf) >= 0) {
     }
 }
 
@@ -184,20 +303,16 @@ static void language_of(const char *answer) {
 
 static int ask(const char *line, double wait_s, struct state *st) {
     char buf[256];
-    struct timeval tv;
     double until = now() + wait_s;
     drain();
-    send(sock, line, strlen(line), 0);
+    send_line(sock, line);
     for (;;) {
         double rest = until - now();
-        ssize_t n;
+        long n;
         if (rest <= 0) return -1;
-        tv.tv_sec = (time_t)rest;
-        tv.tv_usec = (suseconds_t)((rest - (double)tv.tv_sec) * 1e6);
-        if (tv.tv_sec == 0 && tv.tv_usec == 0) tv.tv_usec = 1000;
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-        n = recv(sock, buf, sizeof buf - 1, 0);
-        if (n < 0) return errno == ECONNREFUSED ? -2 : -1;
+        if (wait_for(sock, rest) <= 0) continue; /* none yet: rest is over, or a signal came */
+        n = recv_now(sock, buf, sizeof buf - 1);
+        if (n < 0) return refused() ? -2 : -1;
         buf[n] = 0;
         if (sscanf(buf, "LIVE1 GO %d", &st->left) == 1) return 1;
         if (strncmp(buf, "LIVE1 WAIT ", 11) == 0) {
@@ -217,10 +332,10 @@ static int position(double *lat, double *lon) {
 static void tell_start(void) {
     char line[96];
     double lat, lon;
-    if (sock < 0 || !position(&lat, &lon)) return;
+    if (sock == NO_SOCKET || !position(&lat, &lon)) return;
     snprintf(line, sizeof line, "LIVE1 LOAD %.6f %.6f", lat, lon);
     drain();
-    send(sock, line, strlen(line), 0);
+    send_line(sock, line);
 }
 
 static void show(const struct state *st) {
@@ -244,12 +359,15 @@ static void hold(const char *at) {
     const char *why = strcmp(at, "the start of a new flight") == 0 ? "flight" : "aircraft";
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
-    if (sock < 0 || !position(&lat, &lon)) return;
+    if (sock == NO_SOCKET || !position(&lat, &lon)) return;
     snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s", lat, lon, why);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
+    holding = 1;
     for (;;) {
         double asked = now();
+        live_panel_tick();
+        if (sock == NO_SOCKET) break; /* the plugin disabled meanwhile (X-Plane quitting) */
         r = ask(line, ASK_EVERY_S, &st);
         t = now();
         if (r == 1) {
@@ -257,6 +375,7 @@ static void hold(const char *at) {
                 say("the ortho is built after %.0f s: X-Plane goes on", t - start);
                 live_panel_hide();
             }
+            holding = 0;
             return;
         }
         if (r == -2) { /* nothing listens: no streamer, or it stopped */
@@ -270,7 +389,7 @@ static void hold(const char *at) {
                 told = 1;
             }
             show(&st);
-            if (t - asked < ASK_EVERY_S) usleep((useconds_t)((ASK_EVERY_S - (t - asked)) * 1e6));
+            if (t - asked < ASK_EVERY_S) pause_for(ASK_EVERY_S - (t - asked));
         }
         if (answered == 0 && t - start > NO_STREAMER_S) break;
         if (answered > 0 && t - answered > SILENT_S) {
@@ -279,6 +398,7 @@ static void hold(const char *at) {
         }
     }
     live_panel_hide();
+    holding = 0;
 }
 
 #define FRAME_GAP_S 5.0 /* longer between two frames: X-Plane loaded or was held, no stutter */
@@ -307,15 +427,15 @@ static float every_frame(float since_call, float since_loop, int counter, void *
    second's frames: "LIVE1 ASK max=123 n=45", the longest in ms and how many. */
 static float every_second(float since_call, float since_loop, int counter, void *refcon) {
     char buf[256];
-    ssize_t n;
+    long n;
     int id, at;
     (void)since_call;
     (void)since_loop;
     (void)counter;
     (void)refcon;
-    if (sock < 0 || flights == 0) return NOTE_EVERY_S;
+    if (sock == NO_SOCKET || flights == 0) return NOTE_EVERY_S;
     if (live_note_closed() && noted) closed_note = noted; /* its cross */
-    while ((n = recv(sock, buf, sizeof buf - 1, MSG_DONTWAIT)) >= 0) {
+    while ((n = recv_now(sock, buf, sizeof buf - 1)) >= 0) {
         buf[n] = 0;
         at = 0;
         language_of(buf);
@@ -335,26 +455,51 @@ static float every_second(float since_call, float since_loop, int counter, void 
     snprintf(buf, sizeof buf, "LIVE1 ASK max=%d n=%d", (int)(frame_max * 1000.0 + 0.5), frames);
     frame_max = 0.0;
     frames = 0;
-    send(sock, buf, strlen(buf), 0);
+    send_line(sock, buf);
     return NOTE_EVERY_S;
 }
 
 /* Whether a streamer listens on Live's port: only a refusal says no (nothing bound there). */
 static int streamer_listens(void) {
     char buf[64];
-    struct timeval tv;
-    ssize_t n;
-    int refused, s = open_socket();
-    if (s < 0) return 1; /* cannot tell: everything stays as it is */
-    tv.tv_sec = 0;
-    tv.tv_usec = (suseconds_t)(ALONE_S * 1e6);
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    send(s, "LIVE1 HELLO", 11, 0);
-    n = recv(s, buf, sizeof buf, 0);
-    refused = n < 0 && errno == ECONNREFUSED;
-    close(s);
-    return !refused;
+    long n = 0;
+    int no;
+    live_socket s = open_socket();
+    if (s == NO_SOCKET) return 1; /* cannot tell: everything stays as it is */
+    send_line(s, "LIVE1 HELLO");
+    if (wait_for(s, ALONE_S) > 0) n = recv_now(s, buf, sizeof buf);
+    no = n < 0 && refused();
+    close_socket(s);
+    return !no;
 }
+
+/* Live's link in Custom Scenery taken out, never a folder: a symbolic link, or on Windows a
+   junction (or a symbolic link where Developer Mode allows it), removed as a link, what it leads
+   to untouched. 1 if it was there and went. */
+#ifdef _WIN32
+#define SEP "\\"
+static int remove_link(const char *path) {
+    wchar_t w[1300];
+    WIN32_FIND_DATAW found;
+    HANDLE h;
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, w, (int)(sizeof w / sizeof *w))) return 0;
+    h = FindFirstFileW(w, &found); /* the entry itself, not where it leads */
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    FindClose(h);
+    if (!(found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+        !(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        return 0;
+    if (found.dwReserved0 != IO_REPARSE_TAG_MOUNT_POINT && found.dwReserved0 != IO_REPARSE_TAG_SYMLINK)
+        return 0; /* another kind (a cloud file...): not Live's */
+    return RemoveDirectoryW(w) != 0;
+}
+#else
+#define SEP "/"
+static int remove_link(const char *path) {
+    struct stat st;
+    return lstat(path, &st) == 0 && S_ISLNK(st.st_mode) && unlink(path) == 0;
+}
+#endif
 
 /* Live's scenery in Custom Scenery while no streamer is there: left behind (Live stopped without
    taking it out, crashed, the computer restarted). X-Plane lists its scenery after it starts its
@@ -364,16 +509,15 @@ static int streamer_listens(void) {
 static void take_out_if_alone(void) {
     static const char *links[] = {"z_osxp_live", "y_osxp_live_overlays"};
     char root[1024], path[1300];
-    struct stat st;
     size_t i;
     if (streamer_listens()) return;
     XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1); /* on the Mac, "/Users/..." */
     root[0] = 0;
-    XPLMGetSystemPath(root);
+    XPLMGetSystemPath(root); /* with its separator at the end, in UTF-8 */
     if (!root[0]) return;
     for (i = 0; i < sizeof links / sizeof *links; i++) {
-        snprintf(path, sizeof path, "%sCustom Scenery/%s", root, links[i]);
-        if (lstat(path, &st) == 0 && S_ISLNK(st.st_mode) && unlink(path) == 0)
+        snprintf(path, sizeof path, "%sCustom Scenery" SEP "%s", root, links[i]);
+        if (remove_link(path))
             say("Live is not running: its scenery %s is out of X-Plane until Live starts again", links[i]);
     }
 }
@@ -384,15 +528,27 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outDesc, "Makes X-Plane wait, while a flight loads, until OrthoStudio XP Live has built the ortho around the start.");
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
+#ifdef _WIN32
+    {
+        WSADATA wsa;
+        winsock = WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+    }
+#endif
     take_out_if_alone();
     return 1;
 }
 
-PLUGIN_API void XPluginStop(void) {}
+PLUGIN_API void XPluginStop(void) {
+    live_panels_close();
+#ifdef _WIN32
+    if (winsock) WSACleanup();
+    winsock = 0;
+#endif
+}
 
 PLUGIN_API int XPluginEnable(void) {
     sock = open_socket();
-    if (sock < 0) say("no UDP socket: X-Plane will not wait for the ortho");
+    if (sock == NO_SOCKET) say("no UDP socket: X-Plane will not wait for the ortho");
     XPLMRegisterFlightLoopCallback(every_second, NOTE_EVERY_S, NULL);
     XPLMRegisterFlightLoopCallback(every_frame, -1.0f, NULL);
     return 1;
@@ -402,14 +558,15 @@ PLUGIN_API void XPluginDisable(void) {
     XPLMUnregisterFlightLoopCallback(every_second, NULL);
     XPLMUnregisterFlightLoopCallback(every_frame, NULL);
     live_note_hide();
-    if (sock >= 0) close(sock);
-    sock = -1;
+    if (sock != NO_SOCKET) close_socket(sock);
+    sock = NO_SOCKET;
 }
 
 PLUGIN_API void XPluginReceiveMessage(XPLMPluginID inFrom, int inMsg, void *inParam) {
     intptr_t param = (intptr_t)inParam;
     if (inFrom != XPLM_PLUGIN_XPLANE) return;
     say("message %d (%ld)", inMsg, (long)param);
+    if (holding) return; /* sent from within a hold (see `holding`): it holds already */
     if (inMsg == XPLM_MSG_PLANE_LOADED && param == 0) {
         flights++;
         tell_start();

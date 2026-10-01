@@ -14,10 +14,20 @@ from pathlib import Path
 
 import pytest
 
-from live_helpers import NAMES, FakeDownloader, Image, make_source, make_squares, make_xplane
+from live_helpers import (
+    NAMES,
+    FakeDownloader,
+    Image,
+    disk_clones,
+    make_source,
+    make_squares,
+    make_xplane,
+    unbuilt,
+)
 from orthostudio.live import dds, session
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.evict import texture_bytes
+from orthostudio.live.filesystem import folder_link
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.region import (
     LAYOUT_FIXED,
@@ -153,13 +163,13 @@ def test_an_8192_file_built_from_a_far_level_holds_its_copy(tmp_path: Path) -> N
     assert side_of(path) == 8192
     assert level_bytes(path, 2, -1) == double_bc1(levels_from(3, -1)[0], 512)
     for level in (-1, 0, 1):  # above the copy: the neutral colour, never read that early
-        assert level_bytes(path, level, -1) == level_bytes(neutral, level, -1)
+        assert level_bytes(path, level, -1) == unbuilt(level_bytes(neutral, level, -1), tmp_path)
     for level in (3, 4):
         assert level_bytes(path, level, -1) == levels_from(level, -1)[0]
 
     near = pack / "textures" / f"{NAMES[1]}.dds"
     write_sparse(near, 0, levels_from(0, -1), base=neutral, file_top=-1)
-    assert level_bytes(near, -1, -1) == level_bytes(neutral, -1, -1)
+    assert level_bytes(near, -1, -1) == unbuilt(level_bytes(neutral, -1, -1), tmp_path)
     copy_up(near, neutral, -1)  # its photos late: the 4096 px level copied up, nothing else
     assert level_bytes(near, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
     for level in range(5):
@@ -215,7 +225,7 @@ def test_a_new_zoom_keeps_what_is_built(tmp_path: Path) -> None:
     assert level_bytes(built, 2, -1) == levels_from(2, 0)[0]
     neutral = pack / neutral_file(-1)
     for level in (-1, 0, 1):
-        assert level_bytes(built, level, -1) == level_bytes(neutral, level, -1)
+        assert level_bytes(built, level, -1) == unbuilt(level_bytes(neutral, level, -1), tmp_path)
     assert other.read_bytes() == neutral.read_bytes()
     assert recorded(pack)["textures"] == {built.name: 2}
     assert not needs_relayout(pack, Zooms(17, 18))
@@ -251,7 +261,9 @@ def test_a_pack_whose_textures_grew(tmp_path: Path) -> None:
     assert relayout(pack, Zooms(17, 18), log=quiet) == 1
     assert grown.read_bytes() == before
     assert side_of(built) == 8192
-    assert level_bytes(built, -1, -1) == level_bytes(pack / neutral_file(-1), -1, -1)
+    assert level_bytes(built, -1, -1) == unbuilt(
+        level_bytes(pack / neutral_file(-1), -1, -1), tmp_path
+    )
     assert level_bytes(built, 0, -1) == levels_from(0, 0)[0]
     assert side_of(pack / "textures" / f"{AIRPORT}.dds") == 4096  # ZL18: the mesh's own
     assert "grown" not in recorded(pack)
@@ -292,7 +304,7 @@ def test_an_8192_texture_on_the_disk_and_made_coarser(tmp_path: Path) -> None:
     assert side_of(path) == 8192
     assert level_bytes(path, 4, -1) == levels_from(4, -1)[0]
     assert level_bytes(path, 3, -1) == double_bc1(levels_from(4, -1)[0], 256)
-    assert level_bytes(path, 0, -1) == level_bytes(neutral, 0, -1)
+    assert level_bytes(path, 0, -1) == unbuilt(level_bytes(neutral, 0, -1), tmp_path)
     downgrade(path, NEUTRAL_LEVEL, neutral, file_top=-1)
     assert path.read_bytes() == neutral.read_bytes()
 
@@ -306,7 +318,7 @@ def test_no_new_zoom_under_a_running_xplane(
     (tmp_path / "home").mkdir()
     xp = make_xplane(tmp_path)
     pack = region(tmp_path, Zooms(16, 18))
-    (xp / "Custom Scenery" / "z_osxp_live").symlink_to(pack)
+    folder_link(pack, xp / "Custom Scenery" / "z_osxp_live")  # as Live links it here
     monkeypatch.setattr(session, "xplane_running", lambda: True)
     monkeypatch.setattr(session, "is_installed", lambda *a: True)
     options = session.Options(
@@ -563,16 +575,19 @@ def test_the_builder_copies_up_while_the_photos_do_not_come(tmp_path: Path) -> N
 def test_a_sharper_build_writes_only_its_new_levels(tmp_path: Path) -> None:
     """Built to 4096 px, then to 8192: the 8192 px level written, those below kept as the file had
     them, built from their own photos, not written again; a build no sharper writes them all. A
-    far level's copy above is written with it, over the one the file had."""
+    far level's copy above is written with it, over the one the file had. On a disk that clones
+    nothing (NTFS, ext4) the file is written whole anyway: its coarser levels are the new
+    build's (tests/test_live_filesystem.py)."""
     pack = region(tmp_path, Zooms(17, 18), textures=ROW)
+    clones = disk_clones(tmp_path)
     neutral = ensure_neutral(pack, -1)
     path = pack / "textures" / f"{ROW[0]}.dds"
     write_sparse(path, 0, levels_from(0, -1), base=neutral, file_top=-1)
     new = [bytes([200 + k]) * len(b) for k, b in enumerate(levels_from(-1, -1))]
     write_sparse(path, -1, new, base=neutral, file_top=-1, keep_from=0)
     assert level_bytes(path, -1, -1) == new[0]
-    assert level_bytes(path, 0, -1) == levels_from(0, -1)[0]
-    assert level_bytes(path, 4, -1) == levels_from(4, -1)[0]
+    assert level_bytes(path, 0, -1) == (levels_from(0, -1)[0] if clones else new[1])
+    assert level_bytes(path, 4, -1) == (levels_from(4, -1)[0] if clones else new[5])
     write_sparse(path, -1, new, base=neutral, file_top=-1, keep_from=-1)  # no sharper: all
     assert level_bytes(path, 0, -1) == new[1]
 
@@ -582,8 +597,8 @@ def test_a_sharper_build_writes_only_its_new_levels(tmp_path: Path) -> None:
     write_sparse(far, 3, new3, base=neutral, file_top=-1, copy_above=True, keep_from=4)
     assert level_bytes(far, 3, -1) == new3[0]
     assert level_bytes(far, 2, -1) == double_bc1(new3[0], dds.size_of(3))  # its copy
-    assert level_bytes(far, 4, -1) == levels_from(4, -1)[0]  # kept
-    assert level_bytes(far, 1, -1) == level_bytes(neutral, 1, -1)
+    assert level_bytes(far, 4, -1) == (levels_from(4, -1)[0] if clones else new3[1])  # kept
+    assert level_bytes(far, 1, -1) == unbuilt(level_bytes(neutral, 1, -1), tmp_path)
 
 
 def test_a_copy_up_writes_only_the_copy(tmp_path: Path) -> None:

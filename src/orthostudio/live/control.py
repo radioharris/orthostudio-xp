@@ -391,7 +391,7 @@ class LiveControl:
         checks = self.checks(fresh=True)
         if self._state != IDLE or checks["xplane_running"] or not checks["xplane"]:
             return False
-        self._uninstall(session.xplane_dir(None), self.log)
+        self._uninstall(Path(checks["xplane"]), self.log)  # the X-Plane the window shows
         self.checks(fresh=True)
         return True
 

@@ -37,6 +37,16 @@ def test_the_share_follows_the_computer(
     assert (got.encoders, got.flight_encodes, got.sharp_builds) == (encoders, flight, sharp)
 
 
+def test_windows_pools_hold_61_processes_at_most(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Python's process pools take 61 processes at most on Windows: a computer of 128 threads and
+    384 GB gets 61 encoders there, every core but two elsewhere."""
+    monkeypatch.setattr(machine, "WINDOWS", False)
+    assert machine.encoders(128, 384) == 126
+    monkeypatch.setattr(machine, "WINDOWS", True)
+    assert machine.encoders(128, 384) == 61
+    assert machine.encoders(14, 48) == 12
+
+
 def test_the_encoders_set_by_hand_are_kept(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OSXP_LIVE_MACHINE", "8,16")
     assert machine.share(3).encoders == 3
@@ -84,7 +94,9 @@ def test_a_computer_whose_memory_cannot_be_read_counts_as_small(
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_windows_memory_for_real() -> None:
-    assert machine._windows_memory_gb() is not None
+    status = machine._windows_memory_status()
+    assert status is not None and status.ullTotalPhys > 0
+    assert machine.memory_gb() == status.ullTotalPhys / 2**30
 
 
 def test_the_log_says_the_share_and_warns_below_32_gb(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,20 +216,41 @@ def test_background_io_where_the_system_says_no(monkeypatch: pytest.MonkeyPatch)
     assert done
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="macOS's libproc")
+def _name_this_thread(name: str) -> None:
+    """This thread named as X-Plane names its own: macOS's and Linux's pthread_setname_np (Linux
+    keeps 15 characters), Windows' SetThreadDescription."""
+    import ctypes
+    import ctypes.util
+
+    if sys.platform == "win32":
+        kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]
+        kernel32.GetCurrentThread.restype = ctypes.c_void_p
+        kernel32.SetThreadDescription.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+        kernel32.SetThreadDescription(kernel32.GetCurrentThread(), name)
+        return
+    libc = ctypes.CDLL(ctypes.util.find_library("c"))
+    if sys.platform == "darwin":
+        libc.pthread_setname_np(name.encode())
+        return
+    libc.pthread_self.restype = ctypes.c_ulong
+    libc.pthread_setname_np.argtypes = [ctypes.c_ulong, ctypes.c_char_p]
+    assert libc.pthread_setname_np(libc.pthread_self(), name.encode()[: machine.LINUX_NAME]) == 0
+
+
+@pytest.mark.skipif(
+    sys.platform not in ("darwin", "win32") and not sys.platform.startswith("linux"),
+    reason="macOS's libproc, Linux's /proc, Windows' list of threads",
+)
 def test_x_plane_s_workers_read_from_outside() -> None:
     """Live reads X-Plane's background workers from outside, no privilege needed (2026-10-01):
     here a thread of the test's own, named as X-Plane names them, running or waiting."""
-    import ctypes
-    import ctypes.util
     import os
     import threading
 
-    libc = ctypes.CDLL(ctypes.util.find_library("c"))
     stop, named = threading.Event(), threading.Event()
 
     def worker(spin: bool) -> None:
-        libc.pthread_setname_np(b"Pool worker (background - 1)")
+        _name_this_thread("Pool worker (background - 1)")
         named.set()
         while not stop.is_set():
             if not spin:
@@ -260,9 +293,12 @@ def test_x_plane_s_workers_read_on_linux(tmp_path: Path) -> None:
     assert machine._linux_pool(43, proc) is None  # X-Plane gone
 
 
-def system_processes(entries: list[tuple[int, str, list[tuple[int, int]]]]):
+def system_processes(
+    entries: list[tuple[int, str, list[tuple[int, int]]]], created: dict[int, int] | None = None
+):
     """A buffer laid out as Windows' NtQuerySystemInformation(SystemProcessInformation) gives it
-    on a 64-bit system: (process, image name, [(thread, state)]) each."""
+    on a 64-bit system: (process, image name, [(thread, state)]) each, and ``created``, a
+    process's start in 100 ns since 1601."""
     import struct
 
     size = sum(0x100 + 0x50 * len(threads) for _, _, threads in entries)
@@ -277,6 +313,7 @@ def system_processes(entries: list[tuple[int, str, list[tuple[int, int]]]]):
         struct.pack_into("<HH", buffer, offset + 0x38, len(raw), len(raw) + 2)
         struct.pack_into("<Q", buffer, offset + 0x40, base + text)
         struct.pack_into("<Q", buffer, offset + 0x50, pid)
+        struct.pack_into("<q", buffer, offset + 0x20, (created or {}).get(pid, 0))
         for i, (tid, state) in enumerate(threads):
             at = offset + 0x100 + i * 0x50
             struct.pack_into("<QQ", buffer, at + 0x28, pid, tid)

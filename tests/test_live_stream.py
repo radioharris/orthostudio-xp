@@ -4,15 +4,23 @@
 
 import json
 import math
-import os
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-from live_helpers import NAMES, FakeDownloader, Image, jpeg_body, make_source, make_squares
+from live_helpers import (
+    NAMES,
+    FakeDownloader,
+    Image,
+    disk_clones,
+    jpeg_body,
+    make_source,
+    make_squares,
+)
 from orthostudio.live import dds
 from orthostudio.live.cache import ChunkCache
+from orthostudio.live.filesystem import allocated
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.region import NEUTRAL_FILE, REGION_MARKER, REGION_VERSION, setup_region
 from orthostudio.live.streamer import Fix, Streamer, TextureIndex, ahead
@@ -85,9 +93,10 @@ class RegionTest(unittest.TestCase):
             self.assertTrue((pack / "textures" / "water_transition.png").exists())
             layout = dds.mip_layout()
             upgraded = built.read_bytes()
-            self.assertNotEqual(
-                set(upgraded[layout[0][0] : layout[0][0] + 4096]), {0}
-            )  # neutral, not a hole
+            if disk_clones(Path(tmp)):  # a hole still where the disk clones nothing (NTFS, ext4)
+                self.assertNotEqual(
+                    set(upgraded[layout[0][0] : layout[0][0] + 4096]), {0}
+                )  # neutral, not a hole
             self.assertEqual(
                 set(upgraded[layout[2][0] : layout[2][0] + 4096]), {9}
             )  # its own level kept
@@ -267,7 +276,7 @@ class StreamerTest(unittest.TestCase):
             self.assertEqual(s.built, {f"{NAMES[0]}.dds": 1, f"{NAMES[1]}.dds": 1})
             self.assertEqual(xp.commands, [])  # no reload: X-Plane's keeps what it holds
             path = pack / "textures" / f"{NAMES[0]}.dds"
-            self.assertGreater(os.stat(path).st_blocks * 512, 2_000_000)  # 2048 px written
+            self.assertGreater(allocated(path), 2_000_000)  # 2048 px written
             self.assertEqual(
                 json.loads((pack / "_live" / "ortho.json").read_text())["textures"], s.built
             )
@@ -357,6 +366,11 @@ class MissingPieceTest(unittest.TestCase):
         return test()
 
     def test_a_stuck_piece_while_xplane_waits(self):
+        """A piece that does not come, for a texture X-Plane waits for: the texture is built without
+        it (from the zoom below) and X-Plane goes on; once it comes, the texture is built again
+        with it, at the same level. The piece comes when the test lets it: on a Windows on ARM
+        running Live's x64 Python, the first encoder took seconds to start (2026-10-01)."""
+        import threading
         from unittest import mock
 
         from orthostudio.live import streamer as streamer_module
@@ -364,27 +378,31 @@ class MissingPieceTest(unittest.TestCase):
         tex = parse_texture_name(f"{NAMES[0]}.dds")
         stuck = piece_keys(tex, 1)[0]
         name = f"{NAMES[0]}.dds"
+        released = threading.Event()
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(streamer_module, "STUCK_S", 0.5),
             mock.patch.object(streamer_module, "PATCH_RETRY_S", 1.0),
         ):
-            s = self.streamer(Path(tmp), lambda on: FakeDownloader(on, slow=[stuck], delay=3.0))
-            jobs = s.plan(Fix(*tex.center), x_plane_there=False, starting=True)
-            self.assertLessEqual(jobs[name][0], 0)  # what X-Plane waits for
-            t0 = time.time()
-            s.start()
-            self.assertTrue(self.wait(lambda: name in s.built))
-            self.assertLess(time.time() - t0, 2.5)  # not the 3 s the piece takes
-            self.assertIn(name, s.patchy)
-            self.assertEqual(s.urgent_left(), 0)  # X-Plane goes on
-            time.sleep(3.0 - (time.time() - t0) + 0.2)  # the piece comes, into the cache
-            self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
-            again = s.plan(Fix(*tex.center), x_plane_there=False)
-            self.assertEqual(again[name], (1.0, 1))  # the same level, never waited for
-            self.assertTrue(self.wait(lambda: name not in s.patchy))
-            s.close()
-            s.cache.close()
+            s = self.streamer(
+                Path(tmp), lambda on: FakeDownloader(on, slow=[stuck], released=released)
+            )
+            try:
+                jobs = s.plan(Fix(*tex.center), x_plane_there=False, starting=True)
+                self.assertLessEqual(jobs[name][0], 0)  # what X-Plane waits for
+                s.start()
+                self.assertTrue(self.wait(lambda: name in s.built))  # without the piece
+                self.assertIn(name, s.patchy)
+                self.assertEqual(s.urgent_left(), 0)  # X-Plane goes on
+                released.set()  # the piece comes, into the cache
+                self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
+                again = s.plan(Fix(*tex.center), x_plane_there=False)
+                self.assertEqual(again[name], (1.0, 1))  # the same level, never waited for
+                self.assertTrue(self.wait(lambda: name not in s.patchy))
+            finally:
+                released.set()
+                s.close()
+                s.cache.close()
             meta = json.loads((s.pack_dir / "_live" / "ortho.json").read_text())
             self.assertEqual(meta["patchy"], [])
 
@@ -449,7 +467,7 @@ class _Server:
                     self.end_headers()
                     return
                 if key == (15, 3, 3):
-                    time.sleep(2.0)
+                    time.sleep(3.0)  # well after the 429's second ask, even on a busy machine
                 if key == (15, 4, 4) and server.hits[key] == 1:
                     time.sleep(6.0)  # a stuck answer: a second server answers at once
                 self.send_response(200)

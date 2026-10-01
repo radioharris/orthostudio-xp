@@ -40,7 +40,7 @@ import ctypes.util
 import os
 import sys
 import threading
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -299,31 +299,57 @@ def _windows_snapshot() -> ctypes.Array | None:
     return None
 
 
-def windows_processes(buffer: ctypes.Array) -> Iterator[tuple[int, str, list[tuple[int, int]]]]:
-    """(process, image name, [(thread, state)]) of each process in a SystemProcessInformation
-    buffer (:func:`_windows_snapshot`)."""
+def _windows_blocks(buffer: ctypes.Array) -> Iterator[tuple[int, int, str]]:
+    """(address, process, image name) of each SYSTEM_PROCESS_INFORMATION in a
+    SystemProcessInformation buffer (:func:`_windows_snapshot`)."""
     # Windows' ULONG is 32 bits, where this Python's c_ulong may be 64 (off Windows)
     base, end, offset = ctypes.addressof(buffer), ctypes.sizeof(buffer), 0
     while offset + _PROCESS_SIZE <= end:
         at = base + offset
-        step = ctypes.c_uint32.from_address(at).value
-        count = ctypes.c_uint32.from_address(at + 4).value
         length = ctypes.c_ushort.from_address(at + 0x38).value
         text = ctypes.c_void_p.from_address(at + 0x40).value
         # UTF-16 as Windows writes it, whatever this Python's wchar_t (4 bytes off Windows)
         name = ctypes.string_at(text, length).decode("utf-16-le", "replace") if text else ""
-        pid = ctypes.c_void_p.from_address(at + 0x50).value or 0
+        yield at, ctypes.c_void_p.from_address(at + 0x50).value or 0, name
+        step = ctypes.c_uint32.from_address(at).value
+        if not step:
+            return
+        offset += step
+
+
+def windows_processes(buffer: ctypes.Array) -> Iterator[tuple[int, str, list[tuple[int, int]]]]:
+    """(process, image name, [(thread, state)]) of each process in a SystemProcessInformation
+    buffer (:func:`_windows_snapshot`)."""
+    end = ctypes.addressof(buffer) + ctypes.sizeof(buffer)
+    for at, pid, name in _windows_blocks(buffer):
         threads = []
-        for k in range(count):
+        for k in range(ctypes.c_uint32.from_address(at + 4).value):
             t = at + _PROCESS_SIZE + k * _THREAD_SIZE
-            if t + _THREAD_SIZE > base + end:
+            if t + _THREAD_SIZE > end:
                 break
             tid = ctypes.c_void_p.from_address(t + 0x30).value or 0
             threads.append((tid, ctypes.c_uint32.from_address(t + 0x44).value))
         yield pid, name, threads
-        if not step:
-            return
-        offset += step
+
+
+_FILETIME_UNIX = 11_644_473_600  # seconds from 1601, Windows' clock's start, to 1970
+
+
+def windows_starts(buffer: ctypes.Array) -> dict[int, tuple[str, float]]:
+    """(image name, start as Unix time) of each process in a SystemProcessInformation buffer:
+    its CreateTime, in 100 ns since 1601 (0 for the system's own first ones)."""
+    out = {}
+    for at, pid, name in _windows_blocks(buffer):
+        created = ctypes.c_int64.from_address(at + 0x20).value
+        out[pid] = (name, created / 1e7 - _FILETIME_UNIX if created > 0 else 0.0)
+    return out
+
+
+def windows_process_starts() -> dict[int, tuple[str, float]] | None:
+    """Each process running on Windows, its name and start, from the system's own list; None
+    where it does not give it."""
+    buffer = _windows_snapshot()
+    return None if buffer is None else windows_starts(buffer)
 
 
 def _windows_thread_name(pid: int, tid: int) -> str:
@@ -373,23 +399,16 @@ def _windows_pool(pid: int) -> tuple[int, int] | None:
     return windows_pool_in(buffer, pid, _windows_thread_name)
 
 
-def windows_xplane_pid(executables: Collection[str]) -> int | None:
-    """X-Plane's process on Windows, from the system's own list: None where it does not run."""
-    buffer = _windows_snapshot()
-    if buffer is None:
-        return None
-    wanted = {name.lower() for name in executables}
-    found = [p for p, name, _ in windows_processes(buffer) if name.lower() in wanted]
-    return min(found) if found else None
+WINDOWS_POOL_MAX = 61  # the processes a pool may have on Windows (Python's ProcessPoolExecutor)
 
 
 def encoders(cores: int, ram_gb: float | None = None) -> int:
     """Encoding processes: every core but two, all of them at work while X-Plane waits; one for
-    each 3 GB of memory at most, two at the least."""
+    each 3 GB of memory at most, two at the least; 61 at most on Windows."""
     n = max(1, cores - 2)
     if ram_gb is not None:
         n = min(n, max(2, int(ram_gb // GB_PER_ENCODER)))
-    return n
+    return min(n, WINDOWS_POOL_MAX) if WINDOWS else n
 
 
 def flight_encodes(cores: int, ram_gb: float | None = None) -> int:
@@ -451,8 +470,11 @@ class Share:
 
 def share(workers: int | None = None) -> Share:
     """This computer's share for Live; ``workers`` encoding processes when they are set
-    (``--workers``), else as its cores and memory allow (:func:`encoders`)."""
+    (``--workers``, 61 at most on Windows), else as its cores and memory allow
+    (:func:`encoders`)."""
     cores, ram = machine()
+    if workers and WINDOWS:
+        workers = min(workers, WINDOWS_POOL_MAX)
     return Share(
         cores,
         ram,

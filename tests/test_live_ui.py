@@ -380,7 +380,7 @@ def test_xplane_starts_only_once_live_is_ready(home: Path, monkeypatch: pytest.M
     assert c.start()
     wait_for(lambda: c.state == STREAMING)
     c.launch_xplane()
-    assert stream.done == ["launched /X-Plane 12"]
+    assert stream.done == [f"launched {Path('/X-Plane 12')}"]
     c.stop()
     assert c.wait_idle(5)
     running = control_for(FakeStream(), xplane_running=True)

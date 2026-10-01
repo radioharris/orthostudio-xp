@@ -95,7 +95,7 @@ export const STRINGS = {
     "build.none": "none",
 
     "checks.title": "Checks",
-    "checks.macos_no": "Live runs on macOS only for now: its X-Plane plugin and its handling of programs are macOS's.",
+    "checks.unsupported": "Live runs on macOS, Windows and Linux, not on this system.",
     "checks.folder": "Live's folder: {path}",
     "checks.folder_problem": "Live's folder: {problem}",
     "checks.xplane": "X-Plane 12: {path}",
@@ -409,7 +409,7 @@ export const STRINGS = {
     "build.none": "aucune",
 
     "checks.title": "Vérifications",
-    "checks.macos_no": "Live ne tourne que sur macOS pour l'instant : son plugin X-Plane et sa gestion des programmes sont ceux de macOS.",
+    "checks.unsupported": "Live tourne sur macOS, Windows et Linux, pas sur ce système.",
     "checks.folder": "Dossier de Live : {path}",
     "checks.folder_problem": "Dossier de Live : {problem}",
     "checks.xplane": "X-Plane 12 : {path}",

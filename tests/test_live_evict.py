@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The disk budget, and the camera away from the aircraft."""
 
-import os
+import sys
 import tempfile
 import threading
 import time
@@ -10,7 +10,7 @@ import unittest
 from concurrent.futures import Future
 from pathlib import Path
 
-from live_helpers import file_extents, make_source
+from live_helpers import disk_clones, file_extents, make_source
 from orthostudio.live import dds
 from orthostudio.live.cache import IMAGE, ChunkCache
 from orthostudio.live.evict import (
@@ -21,6 +21,7 @@ from orthostudio.live.evict import (
     usage,
     xplane_tiles,
 )
+from orthostudio.live.filesystem import allocated
 from orthostudio.live.geo import Texture, parse_texture_name
 from orthostudio.live.region import NEUTRAL_FILE, NEUTRAL_LEVEL, setup_region
 from orthostudio.live.streamer import Fix, Streamer, camera_position
@@ -148,17 +149,17 @@ class DowngradeTest(unittest.TestCase):
             neutral = Path(tmp) / "neutral.dds"
             write_sparse(neutral, 4, levels_from(4))
             write_sparse(path, 1, levels_from(1))
-            before = os.stat(path).st_blocks * 512
+            before = allocated(path)
             downgrade(path, 4, neutral)
             data = path.read_bytes()
-            after = os.stat(path).st_blocks * 512
+            after = allocated(path)
             layout = dds.mip_layout()
             self.assertEqual(
                 data[layout[4][0] :], b"".join(levels_from(4))
             )  # the small levels kept
             self.assertEqual(set(data[layout[1][0] : layout[4][0]]), {0})  # the large ones a hole
             self.assertGreater(before, 2_000_000)
-            self.assertLess(after, 100_000)
+            self.assertLess(after, 200_000)  # NTFS gives a sparse file 64 KB at a time: 110 KB
             downgrade(path, NEUTRAL_LEVEL, neutral)
             self.assertEqual(path.read_bytes(), neutral.read_bytes())
 
@@ -359,8 +360,16 @@ class StreamerTest(unittest.TestCase):
         s.last_fix = Fix(lat + 5, lon)  # 550 km away: the older one goes to 256 px
         self.assertEqual(s.evict(), 1)
         self.assertEqual(s.built, {f"{NAMES[0]}.dds": 4, f"{NAMES[1]}.dds": 0})
+        path = self.pack / "textures" / f"{NAMES[0]}.dds"
+        if not disk_clones(self.pack):  # NTFS, ext4: its larger levels a hole, which takes no disk
+            self.assertLess(allocated(path), texture_bytes(4) + 256 * 1024)
+            return
+        data = path.read_bytes()
+        self.assertNotEqual(set(data[dds.mip_layout()[0][0] : dds.mip_layout()[0][0] + 4096]), {0})
+        if sys.platform != "darwin":  # btrfs, xfs: their extents not read here
+            return
         # its larger levels are the neutral texture's own blocks, shared: no disk, and never black
-        small = file_extents(self.pack / "textures" / f"{NAMES[0]}.dds")
+        small = file_extents(path)
         neutral = file_extents(self.pack / NEUTRAL_FILE)
 
         def device_offset(extents, offset):
@@ -374,8 +383,6 @@ class StreamerTest(unittest.TestCase):
             0, tail, 256 * 1024
         ):  # every larger level: the neutral file's own blocks
             self.assertEqual(device_offset(small, offset), device_offset(neutral, offset), offset)
-        data = (self.pack / "textures" / f"{NAMES[0]}.dds").read_bytes()
-        self.assertNotEqual(set(data[dds.mip_layout()[0][0] : dds.mip_layout()[0][0] + 4096]), {0})
 
 
 if __name__ == "__main__":

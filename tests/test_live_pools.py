@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Live's process forks nothing while X-Plane runs (orthostudio.live.pools): its encoders are forked
-by a fork server, a pool that loses one starts again, X-Plane is found in macOS's list of processes
-and started by posix_spawn."""
+by a fork server (new Pythons on Windows, tests/test_live_systems.py), a pool that loses one starts
+again, X-Plane is found in the system's list of processes and started by posix_spawn on a Mac."""
 
 import os
 import subprocess
@@ -16,6 +16,7 @@ import pytest
 from orthostudio.live import pools, scenery
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot fork")
 def test_the_encoders_are_forked_by_a_fork_server():
     assert pools.context().get_start_method() == "forkserver"
 
@@ -65,7 +66,6 @@ def test_without_that_list_osxp_answers(monkeypatch):
     assert scenery.xplane_running()
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="macOS's list of processes")
 def test_the_list_of_processes_holds_this_one():
     name, started = scenery._processes()[os.getpid()]
     assert name

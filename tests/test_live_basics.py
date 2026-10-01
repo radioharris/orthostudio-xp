@@ -11,6 +11,7 @@ from pathlib import Path
 
 from orthostudio.live import dds
 from orthostudio.live.cache import IMAGE, NO_IMAGERY, ChunkCache
+from orthostudio.live.filesystem import allocated
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.rings import (
     file_top,
@@ -167,14 +168,14 @@ class SparseTest(unittest.TestCase):
             path.write_bytes(b"old")
             write_sparse(path, 4, levels)
             data = path.read_bytes()
-            st = os.stat(path)
+            taken = allocated(path)
             self.assertEqual(os.listdir(tmp), ["23520_33936_BI16.dds"])  # no temporary file left
         self.assertEqual(len(data), dds.file_size())
         self.assertEqual(data[:128], dds.header())
         self.assertEqual(data[layout[4][0]], 4)
         self.assertEqual(data[layout[12][0]], 12)
         self.assertEqual(set(data[128 : layout[4][0]]), {0})  # the hole reads as zeros
-        self.assertLess(st.st_blocks * 512, 256 * 1024)  # and takes no disk
+        self.assertLess(taken, 256 * 1024)  # and takes no disk
         with self.assertRaises(ValueError):
             write_sparse(Path(tmp) / "x.dds", 3, levels)
 

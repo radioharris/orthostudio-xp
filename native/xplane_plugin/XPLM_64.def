@@ -1,0 +1,11 @@
+; The XPLM functions the plugin calls, from which the Windows build makes its import library: X-Plane
+; gives them from Resources/plugins/XPLM_64.dll (live_gate.c declares them, so the SDK is not needed).
+LIBRARY XPLM_64.dll
+EXPORTS
+    XPLMDebugString
+    XPLMEnableFeature
+    XPLMFindDataRef
+    XPLMGetDatad
+    XPLMGetSystemPath
+    XPLMRegisterFlightLoopCallback
+    XPLMUnregisterFlightLoopCallback

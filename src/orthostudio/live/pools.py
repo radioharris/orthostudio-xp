@@ -6,19 +6,22 @@ when it loses one.
 A process started from Live's own may die before it runs anything (2026-09-28, a comparison flight
 from LFBO): OrthoStudio XP's engine, which Live's process loads, keeps PROJ's database open, PROJ
 closes it in every new process, and macOS's log crashed it there. The pool of the first 8192 px
-texture of the flight was broken for good, the builder stopped, and Live with it. So the encoders
-are forked by a fork server (:func:`context`): a bare Python, started from Live's process once, as
-early as it can (:func:`start_server`, before the engine is loaded), where forking is safe. And a
-pool that loses a process all the same, to a crash or to macOS short of memory, starts again
-(:class:`RenewingPool`): the textures it was encoding fail and are queued again, and Live goes on.
-Nor does Live's process fork commands while it streams: macOS's list of processes says whether
-X-Plane runs, and posix_spawn, which does not fork, launches it (orthostudio.live.scenery).
+texture of the flight was broken for good, the builder stopped, and Live with it. So on a Mac and
+on Linux the encoders are forked by a fork server (:func:`context`): a bare Python, started from
+Live's process once, as early as it can (:func:`start_server`, before the engine is loaded), where
+forking is safe. Windows forks nothing: each encoder is a new Python there, which imports what it
+runs and nothing of Live's process. And a pool that loses a process all the same, to a crash or to
+a system short of memory, starts again (:class:`RenewingPool`): the textures it was encoding fail
+and are queued again, and Live goes on. Nor does Live's process fork commands while it streams: the
+system's list of processes says whether X-Plane runs, and posix_spawn, which does not fork,
+launches it on a Mac (orthostudio.live.scenery).
 """
 
 from __future__ import annotations
 
 import contextlib
 import multiprocessing
+import sys
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -32,7 +35,10 @@ MAX_RENEWALS = 5  # pools lost within RENEW_WINDOW_S beyond which something else
 
 
 def context() -> BaseContext:
-    """The fork server's, with nothing loaded in it: each process it forks imports what it runs."""
+    """The fork server's, with nothing loaded in it: each process it forks imports what it runs.
+    On Windows, which has no fork, a new Python for each process, which does the same."""
+    if sys.platform == "win32":
+        return multiprocessing.get_context("spawn")
     ctx = multiprocessing.get_context("forkserver")
     ctx.set_forkserver_preload([])
     return ctx
@@ -40,7 +46,10 @@ def context() -> BaseContext:
 
 def start_server() -> None:
     """Start the fork server now, while Live's process is small: the first pool would start it
-    otherwise, from a process that may have loaded PROJ by then, and starts it again if it died."""
+    otherwise, from a process that may have loaded PROJ by then, and starts it again if it died.
+    Nothing to start on Windows."""
+    if sys.platform == "win32":
+        return
     context()
     with contextlib.suppress(OSError):
         forkserver.ensure_running()

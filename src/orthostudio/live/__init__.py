@@ -10,8 +10,10 @@ measurements behind it and the users' guide are in ``docs/specs/live.md``.
 It is switched off until its launch, and changes nothing in the rest of OrthoStudio XP: its own file
 ``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, turns it on with ``enabled = true``
 (:func:`enabled`). OrthoStudio XP's settings screen never saves that file, so the switch stays as
-set. macOS only for now: the plugin's window is Cocoa, and Live lists and starts programs as
-macOS does; its files work on every disk kind (``orthostudio.live.filesystem``).
+set. It runs on macOS (Apple Silicon and Intel), Windows and Linux: its X-Plane plugin is built for
+each (``orthostudio.live.plugin``), it reads each system's own list of programs and starts X-Plane
+as each does (``orthostudio.live.scenery``), and its files work on every disk kind
+(``orthostudio.live.filesystem``).
 """
 
 from __future__ import annotations
@@ -26,8 +28,9 @@ __all__ = ["enabled", "settings_file", "supported"]
 
 
 def supported() -> bool:
-    """Whether OrthoStudio XP Live can run here (macOS: the plugin's window, its programs)."""
-    return sys.platform == "darwin"
+    """Whether OrthoStudio XP Live can run here: where X-Plane 12 runs, macOS, Windows and Linux
+    (its plugin, its list of programs)."""
+    return sys.platform in ("darwin", "win32") or sys.platform.startswith("linux")
 
 
 def settings_file() -> Path:

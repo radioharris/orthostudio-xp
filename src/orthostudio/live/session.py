@@ -172,7 +172,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
     from orthostudio.live import plugin
     from orthostudio.live.covered import covered_squares
-    from orthostudio.live.gate import Gate
+    from orthostudio.live.gate import GATE_PORT, Gate
     from orthostudio.live.geo import dsf_tile_of
     from orthostudio.live.region import (
         LAYOUT_FIXED,
@@ -265,14 +265,18 @@ def prepare(options: Options, log: Log) -> Prepared:
     ):
         try:
             gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir)))
-            log(
-                "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
-                "around the start is built"
-            )
         except OSError as e:
-            log(
-                f"another streamer holds the plugin's port, X-Plane will not wait for this one: {e}"
-            )
+            # never streaming without it: the plugin, finding nobody there as X-Plane starts,
+            # would take Live's scenery out of X-Plane (the review of 2026-10-01)
+            raise RefusedError(
+                f"Live's port for its X-Plane plugin (UDP {GATE_PORT}) is taken: another Live "
+                "runs on this computer, or the system keeps the port for itself (on Windows, "
+                f"Hyper-V or WSL may): {e}"
+            ) from e
+        log(
+            "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
+            "around the start is built"
+        )
     finest = finest_quality(xp_dir, options.quality)
     log(
         f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
@@ -355,7 +359,7 @@ def follow(
                     options.max_zoom,
                     options.max_zoom_airports,
                     options.margin,
-                    options.workers,
+                    computer.encoders,  # --workers, 61 at most on Windows
                     xplane=xp,
                     provider=cache_key(options.provider),
                     disk_budget=int(options.disk_budget_gb * 1e9),
@@ -412,8 +416,13 @@ def uninstall(xplane: Path, log: Log) -> None:
     ):
         uninstall_link(xplane, OVERLAY_LINK_NAME, log=log)
     if plugin.installed(xplane):
-        plugin.uninstall(xplane)
-        log("uninstalled: the OrthoStudio XP Live plugin is out of X-Plane")
+        if plugin.uninstall(xplane):
+            log("uninstalled: the OrthoStudio XP Live plugin is out of X-Plane")
+        else:  # harmless: without Live, the plugin holds nothing
+            log(
+                "the OrthoStudio XP Live plugin stays in X-Plane for now: Windows still holds its "
+                "file; it goes at Live's next stop"
+            )
 
 
 def finish(

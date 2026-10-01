@@ -41,6 +41,8 @@ F_PUNCHHOLE = 99  # <sys/fcntl.h>: struct fpunchhole {uint flags, reserved; off_
 FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE = 1, 2  # <linux/falloc.h>
 FSCTL_SET_SPARSE = 0x000900C4  # <winioctl.h>
 FSCTL_SET_ZERO_DATA = 0x000980C8
+FSCTL_QUERY_ALLOCATED_RANGES = 0x000940CF
+ERROR_MORE_DATA = 234
 ERROR_TOO_MANY_LINKS = 1142  # what NTFS answers past 1,023 names a file
 NTFS_LINK_MAX = 1023
 REPLACE_TRIES_S = 2.0  # Windows: a file X-Plane holds open cannot be replaced; tried this long
@@ -100,6 +102,47 @@ def _windows_ioctl(fd: int, code: int, payload: bytes = b"") -> bool:
     )
 
 
+@cache
+def _kernel32():
+    import ctypes.wintypes as wt
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.SetFilePointerEx.argtypes = [
+        wt.HANDLE,
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_longlong),
+        wt.DWORD,
+    ]
+    kernel32.SetEndOfFile.argtypes = [wt.HANDLE]
+    kernel32.DeviceIoControl.argtypes = [
+        wt.HANDLE,
+        wt.DWORD,
+        ctypes.c_void_p,
+        wt.DWORD,
+        ctypes.c_void_p,
+        wt.DWORD,
+        ctypes.POINTER(wt.DWORD),
+        ctypes.c_void_p,
+    ]
+    return kernel32
+
+
+def extend(fd: int, size: int) -> None:
+    """The file made ``size`` bytes long, what is added read as zeros and written nowhere: a hole
+    of a sparse file. ``os.ftruncate`` does just that, but on Windows its C library writes the
+    zeros: 45 MB of them for an 8192 px texture, in 33 ms, against 0.1 ms with SetEndOfFile (a
+    Windows 11, 2026-10-01)."""
+    if not WINDOWS:
+        os.ftruncate(fd, size)
+        return
+    import msvcrt
+
+    kernel32 = _kernel32()
+    handle = msvcrt.get_osfhandle(fd)  # type: ignore[attr-defined]
+    if not (kernel32.SetFilePointerEx(handle, size, None, 0) and kernel32.SetEndOfFile(handle)):
+        raise ctypes.WinError(ctypes.get_last_error())  # type: ignore[attr-defined]
+
+
 def make_sparse(fd: int) -> bool:
     """Mark the file sparse, so that what is never written takes no disk: NTFS needs it asked;
     APFS, ext4, btrfs and xfs need nothing. False where it failed."""
@@ -151,13 +194,42 @@ def punch_hole(fd: int, start: int, end: int) -> bool:
 def allocated(path: str | Path) -> int:
     """The bytes a file takes on the disk (its holes not counted)."""
     if WINDOWS:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
-        high = ctypes.c_ulong(0)
-        size_fn = kernel32.GetCompressedFileSizeW
-        size_fn.restype = ctypes.c_ulong
-        low = size_fn(ctypes.c_wchar_p(str(path)), ctypes.byref(high))
-        return (high.value << 32) | low
+        return _windows_allocated(path)
     return os.stat(path).st_blocks * 512
+
+
+def _windows_allocated(path: str | Path) -> int:
+    """The sum of the parts NTFS has given a file (FSCTL_QUERY_ALLOCATED_RANGES): what fsutil
+    shows. GetCompressedFileSizeW and the file's AllocationSize said 0 or 64 KB of a file just
+    written with 2 MB in it (a Windows 11, 2026-10-01). Its size where the disk cannot say."""
+    import ctypes.wintypes as wt
+    import msvcrt
+
+    fd = os.open(path, os.O_RDONLY | BINARY)
+    try:
+        size = os.fstat(fd).st_size
+        handle = msvcrt.get_osfhandle(fd)  # type: ignore[attr-defined]
+        kernel32 = _kernel32()
+        out = ctypes.create_string_buffer(16 * 64)
+        total, start = 0, 0
+        while start < size:
+            returned = wt.DWORD(0)
+            query = ctypes.create_string_buffer(struct.pack("<qq", start, size - start))
+            ok = kernel32.DeviceIoControl(
+                handle, FSCTL_QUERY_ALLOCATED_RANGES, query, 16, out, len(out),
+                ctypes.byref(returned), None,
+            )  # fmt: skip
+            more = not ok and ctypes.get_last_error() == ERROR_MORE_DATA
+            if not ok and not more:
+                return size  # a disk that cannot say (FAT): all of it
+            runs = [struct.unpack_from("<qq", out, 16 * i) for i in range(returned.value // 16)]
+            total += sum(length for _, length in runs)
+            if not more or not runs:
+                break
+            start = runs[-1][0] + runs[-1][1]
+        return total
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True)
@@ -189,7 +261,7 @@ def _holes_work(path: Path) -> bool:
     fd = os.open(path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | BINARY, 0o644)
     try:
         make_sparse(fd)
-        os.ftruncate(fd, PROBE_BYTES)
+        extend(fd, PROBE_BYTES)
         pwrite(fd, b"x", PROBE_BYTES - 1)
         punch_hole(fd, 0, PROBE_BYTES - BLOCK)
         os.fsync(fd)

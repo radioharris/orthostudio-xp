@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+# the test flights fly X-Plane on a Mac (sudo, spindump, process groups): not on Windows,
+# where os.kill(pid, 0) even sends Ctrl-C to every program of the console
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the test flights run on a Mac")
 FLIGHTS = Path(__file__).resolve().parents[1] / "tools" / "live" / "flights"
 sys.path.insert(0, str(FLIGHTS))
 

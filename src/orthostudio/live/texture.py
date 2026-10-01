@@ -29,16 +29,18 @@ nothing beyond the standard library.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import errno
 import os
 import signal
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from . import dds
 from .cache import Key
 from .clone import NO_CLONE
-from .filesystem import BINARY, make_sparse, punch_hole, pwrite, replace
+from .filesystem import BINARY, extend, make_sparse, punch_hole, pwrite, replace
 from .geo import Texture, parse_texture_name
 
 __all__ = ["punch_hole", "write_sparse"]
@@ -56,9 +58,16 @@ COPY_FROM = 3  # the levels whose copy goes above them in an 8192 px file: 512 p
 def worker_ignores_ctrl_c() -> None:
     """Initializer of the encoding pools: Ctrl-C is for the main process, which winds the pool
     down. And a lower priority: X-Plane's threads go first, the encoders take the cores left (a
-    user saw stutters in flight while Live built, 2026-09-28)."""
-    with contextlib.suppress(OSError, AttributeError):  # no nice() on Windows
-        os.nice(10)
+    user saw stutters in flight while Live built, 2026-09-28). Windows has no nice(): its class
+    below normal there, as Windows' Task Manager names it."""
+    with contextlib.suppress(OSError, AttributeError):
+        if sys.platform == "win32":
+            kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x4000)  # BELOW_NORMAL
+        else:
+            os.nice(10)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
@@ -161,7 +170,7 @@ def write_sparse(
         fd = os.open(tmp, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | BINARY, 0o644)
         try:
             make_sparse(fd)
-            os.ftruncate(fd, dds.file_size(size))
+            extend(fd, dds.file_size(size))
             pwrite(fd, dds.header(size), 0)
             pwrite(fd, b"".join(levels), layout[first][0])
             punch_hole(fd, dds.HEADER_SIZE, layout[first][0])

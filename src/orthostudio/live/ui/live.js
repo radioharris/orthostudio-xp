@@ -113,7 +113,7 @@ function headline(status) {
 
 /** What keeps a stream from starting, in words, or null. */
 function blocking(checks) {
-  if (!checks.supported) return t("checks.macos_no");
+  if (!checks.supported) return t("checks.unsupported");
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
   if (checks.autoortho_mounted) return t("checks.ao_mounted");
@@ -279,7 +279,7 @@ function drawChecks(status) {
   const c = status.checks;
   const items = [];
   const add = (kind, text, go = false) => items.push([kind, text, go]);
-  if (!c.supported) add("failed", t("checks.macos_no"));
+  if (!c.supported) add("failed", t("checks.unsupported"));
   const m = c.machine;
   if (m) {
     const s = status.settings || {};

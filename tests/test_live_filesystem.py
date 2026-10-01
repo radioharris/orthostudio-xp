@@ -29,7 +29,9 @@ def refuse(code: int):
 def test_this_disk_holds_the_pack(tmp_path: Path) -> None:
     can = filesystem.abilities(tmp_path)
     assert can.links and (can.clones or can.holes) and can.holds_pack
-    assert can.link_max >= filesystem.NTFS_LINK_MAX
+    # glibc says 127 of a disk it does not know (a container's overlay, whose disk under it allows
+    # 65,000): Live does not go by it, it takes a refusal as it comes (names.py)
+    assert can.link_max >= 127
     assert [p.name for p in tmp_path.iterdir()] == []  # the probes gone
 
 
@@ -67,7 +69,8 @@ def test_a_file_placed_as_cheaply_as_the_disks_allow(
     assert filesystem.place_file(src, tmp_path / "linked.ter") == "linked"
     assert os.path.samefile(src, tmp_path / "linked.ter")
     monkeypatch.setattr(os, "link", refuse(errno.EXDEV))  # another disk
-    assert filesystem.place_file(src, tmp_path / "linked-far.ter", symlink=True) == "symlinked"
+    far = "copied" if filesystem.WINDOWS else "symlinked"  # a file's link: Developer Mode there
+    assert filesystem.place_file(src, tmp_path / "linked-far.ter", symlink=True) == far
     assert filesystem.place_file(src, tmp_path / "copied.ter") == "copied"
     monkeypatch.setattr(filesystem, "WINDOWS", True)  # a file's link needs Developer Mode there
     assert filesystem.place_file(src, tmp_path / "copied-win.ter", symlink=True) == "copied"
@@ -114,7 +117,7 @@ def test_pwrite_without_os_pwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     """Windows has no os.pwrite."""
     path = tmp_path / "f"
     path.write_bytes(b"." * 16)
-    monkeypatch.delattr(os, "pwrite")
+    monkeypatch.delattr(os, "pwrite", raising=False)
     fd = os.open(path, os.O_WRONLY | filesystem.BINARY)
     try:
         filesystem.pwrite(fd, b"abc", 5)
@@ -151,3 +154,19 @@ def test_a_texture_where_the_disk_clones_nothing(
         start, length = layout[level]
         assert data[start : start + length] == sharper[level - 1]
     assert neutral.read_bytes()[layout[0][0] : layout[0][0] + 8] == neutral_levels(0)[0][:8]
+
+
+@pytest.mark.skipif(not filesystem.WINDOWS, reason="Windows' C library writes the zeros")
+def test_a_file_extended_on_windows_takes_no_disk(tmp_path: Path) -> None:
+    """os.ftruncate wrote the zeros there, 45 MB for an 8192 px texture: SetEndOfFile writes none,
+    and the parts the disk gave are counted as fsutil counts them."""
+    path = tmp_path / "t.dds"
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | filesystem.BINARY, 0o644)
+    try:
+        assert filesystem.make_sparse(fd)
+        filesystem.extend(fd, 45_000_000)
+        filesystem.pwrite(fd, b"z" * 1_000_000, 44_000_000)
+    finally:
+        os.close(fd)
+    assert path.stat().st_size == 45_000_000
+    assert 1_000_000 <= filesystem.allocated(path) < 2_000_000

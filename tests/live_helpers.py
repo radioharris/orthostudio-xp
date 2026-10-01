@@ -160,12 +160,15 @@ def jpeg_body():
 
 
 class FakeDownloader:
-    """Answers every piece from a thread of its own; pieces in ``slow`` after ``delay`` seconds."""
+    """Answers every piece from a thread of its own; pieces in ``slow`` after ``delay`` seconds,
+    or once ``released`` is set (a threading.Event): when the test says, whatever the machine's
+    speed."""
 
-    def __init__(self, on_piece, slow=(), delay=0.0):
+    def __init__(self, on_piece, slow=(), delay=0.0, released=None):
         import threading
 
         self.on_piece, self.slow, self.delay = on_piece, set(slow), delay
+        self.released = released
         self.body = jpeg_body()
         self.downloaded = self.bytes = self.failed = 0
         self.asked = []
@@ -180,7 +183,10 @@ class FakeDownloader:
 
         def answer():
             if key in self.slow:
-                time.sleep(self.delay)
+                if self.released is not None:
+                    self.released.wait(60)
+                else:
+                    time.sleep(self.delay)
             self.downloaded += 1
             self.on_piece(key, 1, self.body)
 
@@ -190,6 +196,21 @@ class FakeDownloader:
 
     def close(self):
         pass
+
+
+def disk_clones(folder: Path) -> bool:
+    """Whether the disk of ``folder`` clones files (APFS, btrfs, xfs): a texture's unbuilt levels
+    are the neutral texture's there, and a hole elsewhere (NTFS, ext4), which reads as zeros
+    (orthostudio.live.filesystem)."""
+    from orthostudio.live.clone import clones_work
+
+    return clones_work(folder)
+
+
+def unbuilt(neutral_level: bytes, folder: Path) -> bytes:
+    """What a level of a texture that is not built reads as on the disk of ``folder``: the neutral
+    texture's own, or zeros where the disk clones nothing."""
+    return neutral_level if disk_clones(folder) else bytes(len(neutral_level))
 
 
 F_LOG2PHYS_EXT = 65

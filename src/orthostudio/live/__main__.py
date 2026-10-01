@@ -48,10 +48,7 @@ LEAVE_HINT = "Ctrl-C again to leave it installed; `python -m orthostudio.live un
 def _root() -> None:
     if not supported():
         raise typer.Exit(
-            _fail(
-                "OrthoStudio XP Live runs on macOS only for now (its X-Plane plugin and its "
-                "handling of programs are macOS's)."
-            )
+            _fail("OrthoStudio XP Live runs on macOS, Windows and Linux, not on this system.")
         )
     if not enabled():
         raise typer.Exit(

@@ -11,9 +11,9 @@ XP. It is switched on by its own file, `~/.orthostudio/live.toml`:
 enabled = true
 ```
 
-It runs on macOS only for now (its X-Plane plugin and its handling of programs are macOS's), from
-OrthoStudio XP's folder with `uv run python -m orthostudio.live <command>`. `ui` opens its window;
-the other commands do the same from the terminal.
+It runs on macOS (Apple Silicon and Intel Macs), Windows and Linux, from OrthoStudio XP's folder
+with `uv run python -m orthostudio.live <command>`. `ui` opens its window; the other commands do
+the same from the terminal. It has flown with X-Plane on a Mac only so far.
 
 ## One app with OrthoStudio XP
 

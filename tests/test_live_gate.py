@@ -6,12 +6,15 @@ The plugin is compiled for real, with a stand-in for X-Plane (tests/fake_xplm.c)
 gate over UDP as it does in X-Plane.
 """
 
+import contextlib
 import json
 import os
 import re
 import shutil
 import socket
+import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -24,6 +27,7 @@ from orthostudio.live import gate as gate_module
 from orthostudio.live import plugin
 from orthostudio.live import streamer as streamer_module
 from orthostudio.live.cache import ChunkCache
+from orthostudio.live.filesystem import folder_link, is_folder_link
 from orthostudio.live.gate import Gate, read_last_start, start_position
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.region import Zooms, setup_region
@@ -34,10 +38,80 @@ CLANG = shutil.which("clang")
 PLANE_LOADED, LIVERY_LOADED, FMOD_BANK_LOADED = 102, 108, 112
 
 
+def c_compiler() -> str | None:
+    """The compiler of this system for the stand-in X-Plane: clang on a Mac, gcc (MinGW) or clang
+    on Windows, cc on Linux."""
+    if sys.platform == "darwin":
+        return CLANG
+    if sys.platform == "win32":
+        return shutil.which("gcc") or shutil.which("clang")
+    return shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+
+
+def has_x11_headers(cc: str) -> bool:
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "x11.c"
+        probe.write_text("#include <X11/Xlib.h>\nint main(void) { return 0; }\n")
+        return (
+            subprocess.run([cc, "-fsyntax-only", str(probe)], capture_output=True).returncode == 0
+        )
+
+
+def harness_command(cc: str, exe: Path, defines: list[str]) -> list[str]:
+    """The plugin and its loading window for this system, around the stand-in X-Plane
+    (tests/data/live/fake_xplm.c), as one program."""
+    fake = str(HERE / "data" / "live" / "fake_xplm.c")
+    common = [cc, "-O1", "-Wall", "-Werror", *defines, "-o", str(exe), str(plugin.SOURCE)]
+    if sys.platform == "darwin":
+        return [*common[:3], "-fobjc-arc", *common[3:], str(plugin.PANEL), fake]
+    if sys.platform == "win32":
+        return [*common, str(plugin.WINDOWS_PANEL), fake, "-lws2_32", "-luser32", "-lgdi32"]
+    no_x11 = [] if has_x11_headers(cc) else ["-DLIVE_NO_X11"]
+    return [*common, *no_x11, str(plugin.LINUX_PANEL), fake, "-ldl"]
+
+
 def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def let_go(sock: socket.socket) -> None:
+    """Close a stand-in streamer's socket, waking first a thread that reads it: Linux keeps a
+    socket bound while a thread waits on it, closed or not, and the next test could not bind the
+    port (its read then gives no data)."""
+    with contextlib.suppress(OSError):
+        sock.shutdown(socket.SHUT_RDWR)
+    sock.close()
+
+
+@contextlib.contextmanager
+def live_port(port: int):
+    """Live's port, bound as the streamer binds it, let go of on the way out (:func:`let_go`)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", port))
+    try:
+        yield sock
+    finally:
+        let_go(sock)
+
+
+def read(sock: socket.socket) -> tuple[bytes, object]:
+    """A datagram for the stand-in streamer; OSError once its socket is let go of."""
+    data, addr = sock.recvfrom(100)
+    if not data:
+        raise OSError("let go of")
+    return data, addr
+
+
+def first_hold(sock: socket.socket) -> object:
+    """The plugin's address at its first HOLD, the datagrams before it read (its start's HELLO,
+    LOAD): answering one of those, the stand-in's answer could come before the plugin asks, and
+    the plugin drops what came before it asks (a slow machine, 2026-10-01)."""
+    while True:
+        data, addr = read(sock)
+        if data.startswith(b"LIVE1 HOLD"):
+            return addr
 
 
 def write_start(prefs: Path, start: dict) -> None:
@@ -206,38 +280,24 @@ class GateTest(unittest.TestCase):
             gate.close()
 
 
-@unittest.skipIf(CLANG is None, "needs clang")
+@unittest.skipIf(c_compiler() is None, "needs a C compiler")
 class PluginTest(unittest.TestCase):
-    """native/xplane_plugin/live_gate.c itself, driven by a fake X-Plane
-    (tests/data/live/fake_xplm.c)."""
+    """native/xplane_plugin/live_gate.c itself, with this system's loading window, driven by a
+    fake X-Plane (tests/data/live/fake_xplm.c)."""
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.port = free_port()
-        cls.exe = Path(cls.tmp.name) / "plugin_harness"
-        subprocess.run(
-            [
-                CLANG,
-                "-O1",
-                "-Wall",
-                "-Werror",
-                "-fobjc-arc",
-                f"-DLIVE_PORT={cls.port}",
-                "-DSILENT_S=1.0",
-                "-DALONE_S=0.05",
-                "-o",
-                str(cls.exe),
-                str(plugin.SOURCE),
-                str(plugin.PANEL),
-                str(HERE / "data" / "live" / "fake_xplm.c"),
-                "-framework",
-                "Cocoa",
-                "-framework",
-                "QuartzCore",
-            ],
-            check=True,
+        cls.exe = Path(cls.tmp.name) / (
+            "plugin_harness.exe" if sys.platform == "win32" else "plugin_harness"
         )
+        cmd = harness_command(
+            c_compiler(), cls.exe, [f"-DLIVE_PORT={cls.port}", "-DSILENT_S=1.0", "-DALONE_S=0.05"]
+        )
+        if sys.platform == "darwin":
+            cmd += ["-framework", "Cocoa", "-framework", "QuartzCore"]
+        subprocess.run(cmd, check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -280,8 +340,8 @@ class PluginTest(unittest.TestCase):
         scenery = root / "Custom Scenery"
         (root / "pack").mkdir(parents=True)
         (scenery / "someone's own").mkdir(parents=True)
-        (scenery / "z_osxp_live").symlink_to(root / "pack")
-        (scenery / "y_osxp_live_overlays").symlink_to(root / "pack")
+        folder_link(root / "pack", scenery / "z_osxp_live")  # as Live makes them on this system
+        folder_link(root / "pack", scenery / "y_osxp_live_overlays")
         return root
 
     def test_a_pack_left_behind_is_taken_out(self):
@@ -299,10 +359,9 @@ class PluginTest(unittest.TestCase):
 
     def test_live_s_scenery_stays_while_live_runs(self):
         root = self.fake_xplane_with_live_s_links()
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))  # Live listens, answering nothing yet
+        with live_port(self.port):  # Live listens, answering nothing yet
             _, logged = self.xplane(43.4382, 5.2129, root=root)
-        self.assertTrue((root / "Custom Scenery" / "z_osxp_live").is_symlink())
+        self.assertTrue(is_folder_link(root / "Custom Scenery" / "z_osxp_live"))
         self.assertFalse(any("Live is not running" in line for line in logged))
 
     def test_a_new_flight_with_the_same_aircraft(self):
@@ -311,17 +370,14 @@ class PluginTest(unittest.TestCase):
         holds = []
 
         def streamer(sock):
-            while True:
-                try:
-                    data, addr = sock.recvfrom(100)
-                except OSError:
-                    return
-                if data.startswith(b"LIVE1 HOLD"):
-                    holds.append(time.time())
-                    sock.sendto(b"LIVE1 WAIT 3" if len(holds) < 3 else b"LIVE1 GO 0", addr)
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    if data.startswith(b"LIVE1 HOLD"):
+                        holds.append(time.time())
+                        sock.sendto(b"LIVE1 WAIT 3" if len(holds) < 3 else b"LIVE1 GO 0", addr)
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
+        with live_port(self.port) as sock:
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
             took, _ = self.xplane(
                 46.2381, 6.1089, "115:1"
@@ -329,7 +385,7 @@ class PluginTest(unittest.TestCase):
             self.assertLess(took["115:1"], 0.3)
             self.assertEqual(holds, [])
             took, logged = self.xplane(46.2381, 6.1089, "102:0", "115:0", "115:1")
-            sock.close()
+            let_go(sock)
         self.assertGreater(took["115:1"], 0.4)  # held until the third answer
         self.assertLess(took["115:0"], 0.3)  # leaving a flight for the menus: nothing to wait for
         self.assertIn("waits at the start of a new flight", logged[0])
@@ -339,26 +395,23 @@ class PluginTest(unittest.TestCase):
 
         def streamer(sock):
             waits = 3
-            while True:
-                try:
-                    data, addr = sock.recvfrom(100)
-                except OSError:
-                    return
-                heard.append(data.decode())
-                if data.startswith(b"LIVE1 HOLD"):
-                    sock.sendto(
-                        b"LIVE1 WAIT n=7 p=350 s=12 mbs=5.2 at=LFMN runway 04R"
-                        if waits
-                        else b"LIVE1 GO 0",
-                        addr,
-                    )
-                    waits = max(0, waits - 1)
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    heard.append(data.decode())
+                    if data.startswith(b"LIVE1 HOLD"):
+                        sock.sendto(
+                            b"LIVE1 WAIT n=7 p=350 s=12 mbs=5.2 at=LFMN runway 04R"
+                            if waits
+                            else b"LIVE1 GO 0",
+                            addr,
+                        )
+                        waits = max(0, waits - 1)
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
+        with live_port(self.port) as sock:
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
             took, logged = self.xplane(43.4382, 5.2129, "102:0", "112:0", "112:1", "108:1", "108:0")
-            sock.close()
+            let_go(sock)
         heard = [h for h in heard if h != "LIVE1 HELLO"]  # the plugin's start: is Live there?
         self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900")  # PLANE_LOADED tells where
         self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft" for h in heard[1:]))
@@ -379,12 +432,10 @@ class PluginTest(unittest.TestCase):
 
     def test_a_streamer_that_stops_answering(self):
         def streamer(sock):
-            sock.recvfrom(100)  # LOAD
-            _, addr = sock.recvfrom(100)
-            sock.sendto(b"LIVE1 WAIT 50", addr)  # then silence
+            with contextlib.suppress(OSError):
+                sock.sendto(b"LIVE1 WAIT 50", first_hold(sock))  # then silence
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
+        with live_port(self.port) as sock:
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
             took, logged = self.xplane(45.0, 6.0, "102:0", "108:0")
         self.assertGreater(took["108:0"], 0.9)  # SILENT_S, 1 s in this build
@@ -398,16 +449,15 @@ class PluginTest(unittest.TestCase):
         sock.bind(("127.0.0.1", self.port))
 
         def streamer():
-            sock.recvfrom(100)  # LOAD
-            _, addr = sock.recvfrom(100)
-            sock.sendto(b"LIVE1 WAIT 50", addr)
-            sock.close()  # then gone
+            with contextlib.suppress(OSError):
+                sock.sendto(b"LIVE1 WAIT 50", first_hold(sock))
+                sock.close()  # then gone
 
         threading.Thread(target=streamer, daemon=True).start()
         try:
             took, logged = self.xplane(45.0, 6.0, "102:0", "108:0")
         finally:
-            sock.close()
+            let_go(sock)
         self.assertLess(took["108:0"], 0.9)  # not SILENT_S later
         self.assertIn("the streamer stopped: X-Plane goes on", logged[-1])
 
@@ -418,17 +468,14 @@ class PluginTest(unittest.TestCase):
         note = b"LIVE1 NOTE 9 Live: no mesh here: install North America in the Live window"
 
         def streamer(sock):
-            while True:
-                try:
-                    data, addr = sock.recvfrom(100)
-                except OSError:
-                    return
-                heard.append(data.decode())
-                if data.startswith(b"LIVE1 ASK"):
-                    sock.sendto(note, addr)
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    heard.append(data.decode())
+                    if data.startswith(b"LIVE1 ASK"):
+                        sock.sendto(note, addr)
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
+        with live_port(self.port) as sock:
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
             _, logged = self.xplane(
                 40.64,
@@ -444,7 +491,7 @@ class PluginTest(unittest.TestCase):
                 "sleep:150",
                 "loop",
             )
-            sock.close()
+            let_go(sock)
         asks = [line for line in heard if line.startswith("LIVE1 ASK")]
         self.assertGreaterEqual(len(asks), 3)
         # each ask says the second's frames, the longest in ms: what Live logs as a stutter
@@ -456,8 +503,7 @@ class PluginTest(unittest.TestCase):
         )
 
     def test_no_position_while_xplane_starts(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("127.0.0.1", self.port))
+        with live_port(self.port) as sock:
             sock.settimeout(0.3)
             took, _ = self.xplane(0.0, 0.0, "102:0", "112:1")
             got = []
@@ -551,7 +597,7 @@ class FlightStartTest(unittest.TestCase):
             self.assertEqual(self.xp.commands, [])  # never a reload
 
 
-@unittest.skipIf(CLANG is None, "needs clang")
+@unittest.skipUnless(sys.platform == "darwin" and CLANG, "the Mac's build, with clang")
 class BuildTest(unittest.TestCase):
     def test_build_install_uninstall(self):
         """The real build, against a stand-in XPLM framework in a stand-in X-Plane."""
@@ -620,6 +666,431 @@ class BuildTest(unittest.TestCase):
                 self.assertFalse(plugin.install(Path(tmp), log=said.append))
             self.assertIn("will not wait", said[0])
             self.assertFalse(plugin.installed(Path(tmp)))
+
+
+ENTRY_POINTS = {
+    "XPluginStart",
+    "XPluginStop",
+    "XPluginEnable",
+    "XPluginDisable",
+    "XPluginReceiveMessage",
+}
+
+
+def pe_exports_and_imports(data: bytes) -> tuple[int, set[str], set[str]]:
+    """A Windows DLL's machine, the names it exports, and the DLLs it imports from."""
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    assert data[pe : pe + 4] == b"PE\0\0"
+    machine, count = struct.unpack_from("<HH", data, pe + 4)
+    optional = pe + 24
+    directories = optional + (112 if struct.unpack_from("<H", data, optional)[0] == 0x20B else 96)
+    sections = optional + struct.unpack_from("<H", data, pe + 20)[0]
+
+    def at(rva: int) -> int:
+        for i in range(count):
+            size, address, raw_size, raw = struct.unpack_from("<IIII", data, sections + 40 * i + 8)
+            if address <= rva < address + max(size, raw_size):
+                return rva - address + raw
+        raise ValueError(f"no section holds {rva:#x}")
+
+    def text(rva: int) -> str:
+        start = at(rva)
+        return data[start : data.index(b"\0", start)].decode()
+
+    exports_rva = struct.unpack_from("<I", data, directories)[0]
+    names, names_rva = (
+        struct.unpack_from("<I", data, at(exports_rva) + 24)[0],
+        struct.unpack_from("<I", data, at(exports_rva) + 32)[0],
+    )
+    exports = {text(struct.unpack_from("<I", data, at(names_rva) + 4 * i)[0]) for i in range(names)}
+    imports, entry = set(), at(struct.unpack_from("<I", data, directories + 8)[0])
+    while struct.unpack_from("<I", data, entry + 12)[0]:
+        imports.add(text(struct.unpack_from("<I", data, entry + 12)[0]).lower())
+        entry += 20
+    return machine, exports, imports
+
+
+def elf_symbols(data: bytes) -> tuple[int, set[str], set[str]]:
+    """A Linux shared object's machine, and the dynamic symbols it defines and those it needs."""
+    assert data[:4] == b"\x7fELF" and data[4] == 2 and data[5] == 1  # 64 bits, little-endian
+    machine = struct.unpack_from("<H", data, 18)[0]
+    offset = struct.unpack_from("<Q", data, 0x28)[0]
+    size, count = struct.unpack_from("<HH", data, 0x3A)
+    sections = [struct.unpack_from("<IIQQQQIIQQ", data, offset + i * size) for i in range(count)]
+    defined: set[str] = set()
+    needed: set[str] = set()
+    for section in sections:
+        if section[1] != 11:  # SHT_DYNSYM
+            continue
+        strings = sections[section[6]][4]
+        for k in range(section[5] // 24):
+            name, info, _, index = struct.unpack_from("<IBBH", data, section[4] + 24 * k)
+            start = strings + name
+            symbol = data[start : data.index(b"\0", start)].decode()
+            if symbol and info >> 4 in (1, 2):  # global or weak
+                (needed if index == 0 else defined).add(symbol)
+    return machine, defined, needed
+
+
+class PrebuiltTest(unittest.TestCase):
+    """The Windows and Linux plugins, built ahead (tools/live/plugin_builds.py): from these very
+    sources, with what X-Plane calls, needing nothing a Windows or a Linux lacks."""
+
+    def xpl(self, platform: str) -> bytes:
+        return plugin._xpl(plugin.PREBUILT_DIR, platform).read_bytes()
+
+    def test_built_from_these_sources(self):
+        said = plugin.SOURCES.read_text().split()[0]
+        self.assertEqual(
+            said,
+            plugin.sources_digest(),
+            "the plugin's sources changed since the Windows and Linux plugins were built: "
+            "uv run python tools/live/plugin_builds.py",
+        )
+
+    def test_windows(self):
+        machine, exports, imports = pe_exports_and_imports(self.xpl("win32"))
+        self.assertEqual(machine, 0x8664)  # x86-64, as X-Plane 12
+        self.assertEqual(exports, ENTRY_POINTS)  # nothing else
+        self.assertLessEqual(
+            imports,
+            {"xplm_64.dll", "ws2_32.dll", "user32.dll", "gdi32.dll", "kernel32.dll", "msvcrt.dll"},
+        )
+        self.assertIn("xplm_64.dll", imports)
+
+    def test_linux(self):
+        machine, defined, needed = elf_symbols(self.xpl("linux"))
+        self.assertEqual(machine, 62)  # x86-64
+        self.assertEqual(defined, ENTRY_POINTS)
+        xplm = {n for n in needed if n.startswith("XPLM")}
+        self.assertEqual(
+            xplm,
+            {
+                "XPLMDebugString",
+                "XPLMEnableFeature",
+                "XPLMFindDataRef",
+                "XPLMGetDatad",
+                "XPLMGetSystemPath",
+                "XPLMRegisterFlightLoopCallback",
+                "XPLMUnregisterFlightLoopCallback",
+            },
+        )
+        self.assertFalse(
+            {n for n in needed if n.startswith("X") and not n.startswith("XPLM")}
+        )  # X11: opened
+
+    def test_installed_where_xplane_looks(self):
+        for platform, folder in (("win32", "win_x64"), ("linux", "lin_x64")):
+            with (
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.object(plugin.sys, "platform", platform),
+                mock.patch.object(plugin, "PREBUILT", Path(tmp) / "none.xpl"),
+            ):
+                xplane = Path(tmp) / "X-Plane 12"
+                self.assertEqual(plugin.availability(), "ready")
+                self.assertTrue(plugin.install(xplane, log=self.fail))
+                xpl = xplane / "Resources" / "plugins" / plugin.NAME / folder / f"{plugin.NAME}.xpl"
+                self.assertEqual(xpl.read_bytes(), self.xpl(platform))
+                self.assertTrue(plugin.uninstall(xplane))
+                self.assertFalse((xplane / "Resources" / "plugins" / plugin.NAME).exists())
+
+    def test_none_for_this_system(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(plugin.sys, "platform", "linux"),
+            mock.patch.object(plugin, "PREBUILT", Path(tmp) / "none.xpl"),
+            mock.patch.object(plugin, "PREBUILT_DIR", Path(tmp) / "prebuilt"),
+        ):
+            said = []
+            self.assertEqual(plugin.availability(), "missing")
+            self.assertFalse(plugin.install(Path(tmp) / "X-Plane 12", log=said.append))
+            self.assertIn("will not wait", said[0])
+
+    def test_windows_holds_a_loaded_plugin(self):
+        """Windows keeps the file of a plugin X-Plane has loaded until X-Plane has quit: it stays,
+        and says so."""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(plugin.sys, "platform", "win32"),
+        ):
+            xplane = Path(tmp)
+            xpl = plugin._xpl(plugin.plugin_dir(xplane))
+            xpl.parent.mkdir(parents=True)
+            xpl.write_bytes(b"MZ")
+            with mock.patch.object(Path, "unlink", side_effect=PermissionError("in use")):
+                self.assertFalse(plugin.uninstall(xplane))
+            self.assertTrue(xpl.exists())
+
+
+def runs_intel_code() -> bool:
+    """Whether this Mac runs Intel code: an Intel Mac, or Apple Silicon with Rosetta."""
+    if sys.platform != "darwin" or CLANG is None:
+        return False
+    return subprocess.run(["/usr/bin/arch", "-x86_64", "/usr/bin/true"]).returncode == 0
+
+
+@unittest.skipUnless(runs_intel_code(), "a Mac that runs Intel code")
+class IntelMacTest(unittest.TestCase):
+    """The Mac plugin's Intel half (one file holds both), run as on an Intel Mac: under Rosetta on
+    Apple Silicon. The other tests run the half of the Mac they run on."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.port = free_port()
+        cls.exe = Path(cls.tmp.name) / "plugin_harness_x86_64"
+        cmd = harness_command(
+            CLANG, cls.exe, [f"-DLIVE_PORT={cls.port}", "-DSILENT_S=1.0", "-DALONE_S=0.05"]
+        )
+        subprocess.run(
+            [*cmd, "-arch", "x86_64", "-framework", "Cocoa", "-framework", "QuartzCore"], check=True
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_intel_code(self):
+        kind = subprocess.run(["/usr/bin/file", str(self.exe)], capture_output=True, text=True)
+        self.assertIn("x86_64", kind.stdout)
+        self.assertNotIn("arm64", kind.stdout)
+
+    def test_x_plane_waits_until_live_says_go(self):
+        answers = []
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    if data.startswith(b"LIVE1 HOLD"):
+                        answers.append(data)
+                        sock.sendto(b"LIVE1 WAIT 3" if len(answers) < 3 else b"LIVE1 GO 0", addr)
+
+        with live_port(self.port) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            out = subprocess.run(
+                [str(self.exe), "43.4382", "5.2129", "102:0", "112:1"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        took = {
+            f"{msg}:{param}": float(secs)
+            for _, msg, param, secs in (
+                line.split() for line in out.stdout.splitlines() if line.startswith("MSG ")
+            )
+        }
+        self.assertGreater(took["112:1"], 0.4)  # held until the third answer
+        self.assertLess(took["112:1"], 3.0)
+        self.assertIn("X-Plane waits at the radio sounds", out.stdout)
+
+
+HOST_DIR = (
+    "OSXP_LIVE_XPL_HOST"  # a folder with xpl_host(.exe) built already (a Windows without gcc)
+)
+
+
+def built_ahead_host(tmp: Path) -> Path | None:
+    """A program that loads this system's plugin built ahead as X-Plane loads it
+    (tests/data/live/xpl_host.c), where this computer can run it: Linux or Windows on x86-64,
+    with a compiler (MinGW's gcc on Windows), or one built already in $OSXP_LIVE_XPL_HOST (with
+    its fake XPLM_64.dll on Windows); else None."""
+    import sysconfig
+
+    windows = sys.platform == "win32"
+    # this Python's own machine, x86-64 also where a Windows on ARM runs it as X-Plane, emulated
+    if sysconfig.get_platform() not in ("win-amd64", "linux-x86_64"):
+        return None
+    given = Path(os.environ.get(HOST_DIR, ".")) / ("xpl_host.exe" if windows else "xpl_host")
+    if os.environ.get(HOST_DIR) and given.is_file():
+        return given
+    cc = shutil.which("gcc") if windows else c_compiler()
+    if cc is None:
+        return None
+    data = HERE / "data" / "live"
+    if windows:  # the XPLM functions in a fake XPLM_64.dll, which the plugin imports from
+        implib = tmp / "libXPLM_64.a"
+        subprocess.run(
+            [
+                cc,
+                "-shared",
+                "-DNO_MAIN",
+                "-o",
+                str(tmp / "XPLM_64.dll"),
+                str(data / "fake_xplm.c"),
+                f"-Wl,--out-implib,{implib}",
+            ],
+            check=True,
+        )
+        host = tmp / "xpl_host.exe"
+        subprocess.run([cc, "-o", str(host), str(data / "xpl_host.c"), str(implib)], check=True)
+        return host
+    host = tmp / "xpl_host"
+    subprocess.run(
+        [
+            cc,
+            "-rdynamic",
+            "-DNO_MAIN",
+            "-o",
+            str(host),
+            str(data / "xpl_host.c"),
+            str(data / "fake_xplm.c"),
+            "-ldl",
+        ],
+        check=True,
+    )
+    return host
+
+
+class BuiltAheadTest(unittest.TestCase):
+    """The very file X-Plane loads on Windows or Linux (native/xplane_plugin/prebuilt), loaded as
+    X-Plane loads it, on such a computer only: its own port (49250) and waits, as built. One test,
+    its scenarios in turn: on that one port, two at once would hear each other's streamer."""
+
+    PORT = 49250
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.host = built_ahead_host(Path(cls.tmp.name))
+        if cls.host is None:
+            cls.tmp.cleanup()
+            raise unittest.SkipTest("the plugin built ahead runs on Linux and Windows, x86-64")
+        try:
+            with live_port(cls.PORT):
+                pass
+        except OSError:
+            cls.tmp.cleanup()
+            raise unittest.SkipTest("Live's port is taken: Live runs on this computer") from None
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def xplane(self, *commands, root=None):
+        env = {**os.environ, "FAKE_XPLANE": str(root) if root else ""}
+        out = subprocess.run(
+            [str(self.host), str(plugin._xpl(plugin.PREBUILT_DIR)), "43.4382", "5.2129", *commands],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("NAME OrthoStudio XP Live", out.stdout)
+        took, logged = {}, []
+        for line in out.stdout.splitlines():
+            if line.startswith("MSG "):
+                _, msg, param, secs = line.split()
+                took[f"{msg}:{param}"] = float(secs)
+            elif line.startswith("LOG "):
+                logged.append(line[4:])
+        return took, logged
+
+    def scenario_without_live_x_plane_goes_on(self):
+        took, logged = self.xplane("102:0", "112:1", "108:0")
+        self.assertLess(max(took.values()), 1.5)  # no streamer: no wait
+        self.assertIn("OrthoStudio XP Live: message 112 (1)", logged)
+
+    def scenario_x_plane_waits_until_live_says_go(self):
+        holds = []
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    if data.startswith(b"LIVE1 HOLD"):
+                        holds.append(data)
+                        answer = b"LIVE1 WAIT n=7 p=350 s=12 mbs=5.2 at=LFML runway 13L"
+                        sock.sendto(answer if len(holds) < 4 else b"LIVE1 GO 0", addr)
+
+        with live_port(self.PORT) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            took, logged = self.xplane("102:0", "112:1")
+        self.assertGreater(took["112:1"], 0.6)  # three waits of 0.25 s before the go
+        self.assertLess(took["112:1"], 5.0)
+        self.assertTrue(any("waits at the radio sounds" in line for line in logged), logged)
+
+    def scenario_live_s_links_left_behind_are_taken_out(self):
+        root = Path(self.tmp.name) / f"X-Plane {time.monotonic_ns()}"
+        scenery = root / "Custom Scenery"
+        (root / "pack").mkdir(parents=True)
+        (scenery / "someone's own").mkdir(parents=True)
+        folder_link(root / "pack", scenery / "z_osxp_live")
+        self.xplane(root=root)
+        self.assertFalse(os.path.lexists(scenery / "z_osxp_live"))
+        self.assertTrue((scenery / "someone's own").is_dir())
+        self.assertTrue((root / "pack").is_dir())
+
+    def scenario_x_plane_s_window_keeps_responding(self):
+        """X-Plane held 8 s, its window open: Windows never takes it for a program that does not
+        respond (IsHungAppWindow, after 5 s without a look at its messages), which would grey it
+        as "Not Responding". The loading window shows over it meanwhile."""
+        holds = []
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    if data.startswith(b"LIVE1 HOLD"):
+                        holds.append(time.monotonic())
+                        late = time.monotonic() - holds[0] > 8.0
+                        sock.sendto(b"LIVE1 GO 0" if late else b"LIVE1 WAIT n=5 at=LFMN", addr)
+
+        with live_port(self.PORT) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            out = subprocess.run(
+                [
+                    str(self.host),
+                    str(plugin._xpl(plugin.PREBUILT_DIR)),
+                    "43.6",
+                    "7.2",
+                    "window",
+                    "102:0",
+                    "112:1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        self.assertIn("WINDOW open", out.stdout)
+        self.assertIn("RESPONDED always", out.stdout)
+        self.assertNotIn("HUNG", out.stdout)
+        took = [
+            float(line.split()[3]) for line in out.stdout.splitlines() if line.startswith("MSG 112")
+        ]
+        self.assertGreater(took[0], 7.5)
+
+    def scenario_a_notice_in_flight(self):
+        heard = []
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    heard.append(data)
+                    if data.startswith(b"LIVE1 ASK"):
+                        sock.sendto(b"LIVE1 NOTE 4 lang=fr Live : pas de maillage ici", addr)
+
+        with live_port(self.PORT) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            _, logged = self.xplane("102:0", "loop", "sleep:200", "loop", "sleep:200", "loop")
+        self.assertGreaterEqual(len([h for h in heard if h.startswith(b"LIVE1 ASK")]), 2)
+        said = [line for line in logged if "pas de maillage" in line]
+        self.assertEqual(said, ["OrthoStudio XP Live: Live : pas de maillage ici"])
+
+    def test_the_plugin_as_x_plane_loads_it(self):
+        scenarios = [
+            self.scenario_without_live_x_plane_goes_on,
+            self.scenario_x_plane_waits_until_live_says_go,
+            self.scenario_live_s_links_left_behind_are_taken_out,
+            self.scenario_a_notice_in_flight,
+        ]
+        if sys.platform == "win32":  # Windows' Not Responding
+            scenarios.append(self.scenario_x_plane_s_window_keeps_responding)
+        for scenario in scenarios:
+            with self.subTest(scenario.__name__):
+                scenario()
 
 
 class EncodersTest(unittest.TestCase):

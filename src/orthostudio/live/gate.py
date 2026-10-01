@@ -56,6 +56,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .xpudp import no_port_unreachable
+
 GATE_PORT = 49250
 STAND_IN_S = 0.5  # the loop this late reading the plugin's lines: the gate answers for it
 ALIVE_S = 60.0  # ... but not for a loop gone this long
@@ -151,6 +153,7 @@ class Gate:
             self.sock.close()
             raise
         self.sock.setblocking(False)
+        no_port_unreachable(self.sock)  # Windows: an answer to a plugin gone with X-Plane
         self._mtime = self._prefs_mtime()
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
@@ -202,6 +205,8 @@ class Gate:
         while True:
             try:
                 data, addr = self.sock.recvfrom(512)
+            except ConnectionResetError:  # Windows: an answer found no plugin; the rest is there
+                continue
             except OSError:  # nothing more (or a stray error): look again next time
                 break
             parts = data.decode("ascii", "replace").split()

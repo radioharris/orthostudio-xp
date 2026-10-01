@@ -1,0 +1,57 @@
+OrthoStudio XP Live sur Windows : l'essai
+=========================================
+
+Ce paquet sert à essayer Live sur un PC Windows, ton Shadow par exemple. Il contient Live tel
+qu'il est sur le Mac, son plugin X-Plane pour Windows, et trois scripts à lancer dans l'ordre.
+
+Il faut : Windows 10 ou 11, X-Plane 12 installé, une connexion internet. Rien d'autre : le premier
+script installe ce qui manque, en te le demandant d'abord.
+
+
+0. Décompresse le paquet : clic droit sur le fichier .zip, puis « Extraire tout... ».
+   Si Windows avertit à l'ouverture d'un script (« Windows a protégé votre ordinateur »), clique
+   « Informations complémentaires » puis « Exécuter quand même ».
+
+
+1. Double-clique « 1 - Tests de Live.cmd ».
+
+   Il installe uv, l'outil qui fait tourner Live, s'il manque (il demande d'abord), puis il fait
+   tourner tous les tests de Live sur ce Windows : 5 à 10 minutes la première fois, le temps de
+   télécharger Python et ce dont Live a besoin.
+
+   Une petite fenêtre « Chargement de l'ortho » peut apparaître quelques secondes devant une
+   fenêtre grise : c'est un faux X-Plane, c'est normal.
+
+   À la fin : le fichier « resultats-tests.txt », à côté du script.
+
+
+2. Double-clique « 2 - Lancer Live.cmd » : la fenêtre de Live s'ouvre.
+
+   - Elle trouve X-Plane toute seule ; sinon, choisis son dossier dans ses réglages.
+   - Installe la région du monde où tu veux voler (l'Europe pour Nice, par exemple).
+   - Avec 16 Go de mémoire, garde les zooms qu'elle propose (ZL16 et ZL18).
+   - Clique Démarrer, puis « Lancer X-Plane » dans la fenêtre de Live.
+   - Dans X-Plane, lance un vol depuis un aéroport de cette région.
+
+   Ce que je veux savoir :
+   - Pendant le chargement, une fenêtre « Chargement de l'ortho autour de ... » apparaît-elle
+     devant X-Plane, avec sa barre qui avance ?
+   - X-Plane devient-il blanc ou gris, avec « (Ne répond pas) » dans son titre, pendant ce
+     chargement ?
+   - L'ortho est-elle là au départ, puis en vol ?
+
+
+3. Pendant le vol, double-clique « 3 - Fils d'X-Plane.cmd ».
+
+   Il note pendant 10 secondes comment X-Plane nomme ses fils de travail sur Windows, dans
+   « fils-xplane.txt ». Sur le Mac, Live s'en sert pour laisser la priorité à X-Plane quand il
+   charge le paysage.
+
+
+4. Quitte X-Plane, puis arrête Live dans sa fenêtre.
+
+
+À me renvoyer :
+- « resultats-tests.txt » et « fils-xplane.txt », à côté des scripts ;
+- dans le dossier d'X-Plane 12 : « Log.txt » et « LogLive.txt » ;
+- une photo d'écran de la fenêtre de chargement, si tu peux.
