@@ -2,15 +2,16 @@ OrthoStudio XP Live sur Windows : l'essai
 =========================================
 
 Ce paquet sert à essayer Live sur un PC Windows, ton Shadow par exemple. Il contient Live tel
-qu'il est sur le Mac, son plugin X-Plane pour Windows, et trois scripts à lancer dans l'ordre.
+qu'il est sur le Mac, son plugin X-Plane pour Windows, nos vols de test, et quatre scripts à lancer
+dans l'ordre.
 
-Il faut : Windows 10 ou 11, X-Plane 12 installé, une connexion internet. Rien d'autre : le premier
-script installe ce qui manque, en te le demandant d'abord.
+Il faut : Windows 10 ou 11, X-Plane 12 installé (sur le disque rapide, C:), une connexion
+internet. Rien d'autre : le premier script installe ce qui manque, en te le demandant d'abord.
 
 
-0. Décompresse le paquet : clic droit sur le fichier .zip, puis « Extraire tout... ».
-   Si Windows avertit à l'ouverture d'un script (« Windows a protégé votre ordinateur »), clique
-   « Informations complémentaires » puis « Exécuter quand même ».
+0. Décompresse le paquet sur C: (par exemple dans Documents) : clic droit sur le fichier .zip, puis
+   « Extraire tout... ». Si Windows avertit à l'ouverture d'un script (« Windows a protégé votre
+   ordinateur »), clique « Informations complémentaires » puis « Exécuter quand même ».
 
 
 1. Double-clique « 1 - Tests de Live.cmd ».
@@ -28,30 +29,40 @@ script installe ce qui manque, en te le demandant d'abord.
 2. Double-clique « 2 - Lancer Live.cmd » : la fenêtre de Live s'ouvre.
 
    - Elle trouve X-Plane toute seule ; sinon, choisis son dossier dans ses réglages.
-   - Installe la région du monde où tu veux voler (l'Europe pour Nice, par exemple).
-   - Avec 16 Go de mémoire, garde les zooms qu'elle propose (ZL16 et ZL18).
-   - Clique Démarrer, puis « Lancer X-Plane » dans la fenêtre de Live.
-   - Dans X-Plane, lance un vol depuis un aéroport de cette région.
-
-   Ce que je veux savoir :
-   - Pendant le chargement, une fenêtre « Chargement de l'ortho autour de ... » apparaît-elle
-     devant X-Plane, avec sa barre qui avance ?
-   - X-Plane devient-il blanc ou gris, avec « (Ne répond pas) » dans son titre, pendant ce
-     chargement ?
-   - L'ortho est-elle là au départ, puis en vol ?
+   - Installe la région Europe (17 Go à télécharger) : nos vols de test sont en France et en
+     Norvège. Note le temps que prend la préparation de son dossier la première fois.
+   - Si tu veux voler toi-même : Démarrer, puis « Lancer X-Plane » dans la fenêtre de Live, et un
+     vol depuis un aéroport d'Europe. Ce que je veux savoir :
+     . pendant le chargement, une fenêtre « Chargement de l'ortho autour de ... » apparaît-elle
+       devant X-Plane, avec sa barre qui avance ?
+     . X-Plane devient-il blanc ou gris, avec « (Ne répond pas) » dans son titre ?
+     . l'ortho est-elle là au départ, puis en vol ?
+   - Quitte X-Plane, puis arrête Live et ferme sa fenêtre.
 
 
-3. Pendant le vol, double-clique « 3 - Fils d'X-Plane.cmd ».
+3. Pendant un vol à toi, double-clique « 3 - Fils d'X-Plane.cmd ».
 
    Il note pendant 10 secondes comment X-Plane nomme ses fils de travail sur Windows, dans
-   « fils-xplane.txt ». Sur le Mac, Live s'en sert pour laisser la priorité à X-Plane quand il
-   charge le paysage.
+   « fils-xplane.txt ». Les vols de test le notent aussi : ce script n'est utile que si tu voles
+   toi-même.
 
 
-4. Quitte X-Plane, puis arrête Live dans sa fenêtre.
+4. Double-clique « 4 - Vol de test.cmd » : nos vols de test, comme sur le Mac.
+
+   X-Plane et Live doivent être fermés : le vol les démarre lui-même. X-Plane démarre en vol au-
+   dessus de Toulouse et vole tout seul 20 minutes (virages, montée, vues extérieures), puis il
+   se ferme et Live s'arrête. Ne touche pas à X-Plane pendant ce temps. Trois choix :
+   1 - avec Live, en ZL16/ZL18, à froid (rien de construit avant) ;
+   2 - X-Plane seul, sans Live, pour comparer ;
+   3 - les deux, l'un après l'autre (45 minutes).
+
+   À la fin : un fichier « resultats-vol-....zip » à côté du script. Il contient tout ce que
+   j'analyse sur le Mac : les mesures de chaque seconde, le journal de Live, celui d'X-Plane, les
+   captures d'écran.
 
 
-À me renvoyer :
-- « resultats-tests.txt » et « fils-xplane.txt », à côté des scripts ;
-- dans le dossier d'X-Plane 12 : « Log.txt » et « LogLive.txt » ;
+À me renvoyer (par iCloud Drive ou comme tu veux) :
+- « resultats-tests.txt », et les « resultats-vol-....zip » ;
+- « fils-xplane.txt » si tu as volé toi-même ;
+- dans le dossier d'X-Plane 12 : « Log.txt » et « LogLive.txt », si tu as volé toi-même ;
 - une photo d'écran de la fenêtre de chargement, si tu peux.

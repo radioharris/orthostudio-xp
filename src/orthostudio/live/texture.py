@@ -69,6 +69,8 @@ def worker_ignores_ctrl_c() -> None:
         else:
             os.nice(10)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    if hasattr(signal, "SIGBREAK"):  # Windows: Live's Ctrl-Break reaches its whole group
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
 def chunk_grid(tex: Texture, level: int) -> tuple[int, int, int, int]:

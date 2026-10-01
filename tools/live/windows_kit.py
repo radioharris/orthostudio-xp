@@ -4,11 +4,13 @@
 ``dist``, which the user unpacks there and runs in three steps (``tools/live/windows_kit``, its
 ``LISEZ-MOI.txt``):
 
-1. Live's tests on that Windows (``uv``, installed once asked, runs them), with the stand-in for
-   X-Plane built ahead here (``tests/data/live/xpl_host.c`` and its fake ``XPLM_64.dll``): a
-   Windows has no compiler, and with it the tests load the very plugin X-Plane will load;
+1. Live's tests on that Windows (``uv``, installed once asked, runs them), with the stand-ins for
+   X-Plane built ahead here (``tests/data/live/xpl_host.c``, ``fake_xplane.c`` and their fake
+   ``XPLM_64.dll``): a Windows has no compiler, and with them the tests load the very plugins
+   X-Plane will load, and fly a test flight's series from its start to its end;
 2. Live's window, for a flight;
-3. X-Plane's threads, as Live reads them, while it flies.
+3. X-Plane's threads, as Live reads them, while it flies;
+4. the replayable test flights (``tools/live/flights``), zipped to be sent back.
 
 The code is the commit given (``HEAD``), as git has it: nothing uncommitted, nothing ignored. The
 stand-in is built with Docker, as the plugins are (``tools/live/plugin_builds.py``).
@@ -32,19 +34,32 @@ REPO = Path(__file__).resolve().parents[2]
 KIT = Path(__file__).resolve().parent / "windows_kit"
 CODE = "OrthoStudio XP Live"  # the code's folder in the zip
 HELPERS = "essai-windows"  # the scripts' own files, and the stand-in
-STEPS = ("1 - Tests de Live.cmd", "2 - Lancer Live.cmd", "3 - Fils d'X-Plane.cmd", "LISEZ-MOI.txt")
+STEPS = (
+    "1 - Tests de Live.cmd",
+    "2 - Lancer Live.cmd",
+    "3 - Fils d'X-Plane.cmd",
+    "4 - Vol de test.cmd",
+    "LISEZ-MOI.txt",
+)
 NAME = "OrthoStudio XP Live - essai Windows"
 
 
+STAND_INS = ("xpl_host.exe", "fake_xplane.exe", "XPLM_64.dll")
+
+
 def stand_in(out: Path) -> None:
-    """``xpl_host.exe`` and its fake ``XPLM_64.dll`` into ``out``, built with MinGW-w64."""
+    """``xpl_host.exe``, ``fake_xplane.exe`` (X-Plane's stand-in for a test flight's series,
+    ``tests/test_live_flights_series.py``) and their fake ``XPLM_64.dll`` into ``out``, built with
+    MinGW-w64."""
     docker("build", "--platform", "linux/amd64", "-t", IMAGE, "-", stdin=DOCKERFILE)
     script = (
         "set -e; cd /out; "
         "x86_64-w64-mingw32-gcc -O2 -Wall -Werror -shared -DNO_MAIN -static-libgcc -s "
         "-o XPLM_64.dll /data/fake_xplm.c -Wl,--out-implib,/tmp/libXPLM_64.a; "
         "x86_64-w64-mingw32-gcc -O2 -Wall -Werror -static-libgcc -s "
-        "-o xpl_host.exe /data/xpl_host.c /tmp/libXPLM_64.a"
+        "-o xpl_host.exe /data/xpl_host.c /tmp/libXPLM_64.a; "
+        "x86_64-w64-mingw32-gcc -O2 -Wall -Werror -static-libgcc -s "
+        "-o fake_xplane.exe /data/fake_xplane.c /tmp/libXPLM_64.a -lws2_32"
     )
     data = REPO / "tests" / "data" / "live"
     docker(
@@ -79,12 +94,12 @@ def build(commit: str, dist: Path) -> Path:
                 z.writestr(item, source.read(item))
             for step in STEPS:
                 z.writestr(f"{NAME}/{step}", crlf((KIT / step).read_bytes()))
-            for helper in ("uv.cmd", "tests.py", "fils_xplane.py"):
+            for helper in ("uv.cmd", "tests.py", "fils_xplane.py", "vol.py"):
                 data = (KIT / helper).read_bytes()
                 z.writestr(
                     f"{NAME}/{HELPERS}/{helper}", crlf(data) if helper.endswith(".cmd") else data
                 )
-            for built in ("xpl_host.exe", "XPLM_64.dll"):
+            for built in STAND_INS:
                 z.write(work / built, f"{NAME}/{HELPERS}/{built}")
         shutil.move(tmp_zip, target)
     return target

@@ -56,9 +56,17 @@
  * keeps its own lines until a plugin writes one (2026-09-29: a row's DSFs still unwritten 5 min
  * after their load), so the end's mark also puts the load's DSFs in the file.
  *
- * Declares the few XPLM functions it uses itself, as live_gate.c: no SDK needed to build it.
+ * Declares the few XPLM functions it uses itself, as live_gate.c: no SDK needed to build it. The
+ * same file on a Mac, on Windows and on Linux: its files are named in UTF-8, as X-Plane gives its
+ * folder, which Windows' own calls take as UTF-16 there (open_file and the others below). Built
+ * where the runner runs on a Mac (tools/live/flights/fly.py), ahead for Windows and Linux
+ * (tools/live/plugin_builds.py, native/xplane_test_pilot/prebuilt).
  */
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -66,9 +74,18 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
+#ifdef _WIN32
+#define PLUGIN_API __declspec(dllexport)
+#else
 #define PLUGIN_API __attribute__((visibility("default")))
+#endif
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 typedef void *XPLMDataRef;
 typedef void *XPLMCommandRef;
@@ -161,6 +178,44 @@ static XPLMDataRef r_lat, r_lon, r_ele, r_run, r_paused, r_x, r_y, r_z, r_vx, r_
 static int loading = 0; /* X-Plane loading scenery, as the last frame saw it */
 static double load_began = 0.0; /* X-Plane's clock when that load began */
 
+/* Files by their UTF-8 names: Windows' calls take UTF-16, and its rename does not replace. */
+#ifdef _WIN32
+#define NAME_MAX_W 1200
+static int wide(const char *s, wchar_t *out, int size) { return MultiByteToWideChar(CP_UTF8, 0, s, -1, out, size) > 0; }
+
+static FILE *open_file(const char *path, const char *mode) {
+    wchar_t name[NAME_MAX_W], how[8];
+    return wide(path, name, NAME_MAX_W) && wide(mode, how, 8) ? _wfopen(name, how) : NULL;
+}
+
+static long modified(const char *path) {
+    wchar_t name[NAME_MAX_W];
+    struct _stat64 st;
+    return wide(path, name, NAME_MAX_W) && _wstat64(name, &st) == 0 ? (long)st.st_mtime : 0;
+}
+
+static void move_over(const char *from, const char *to) {
+    wchar_t a[NAME_MAX_W], b[NAME_MAX_W];
+    if (wide(from, a, NAME_MAX_W) && wide(to, b, NAME_MAX_W)) MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+}
+
+static void remove_file(const char *path) {
+    wchar_t name[NAME_MAX_W];
+    if (wide(path, name, NAME_MAX_W)) DeleteFileW(name);
+}
+#else
+static FILE *open_file(const char *path, const char *mode) { return fopen(path, mode); }
+
+static long modified(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 ? (long)st.st_mtime : 0;
+}
+
+static void move_over(const char *from, const char *to) { rename(from, to); }
+
+static void remove_file(const char *path) { unlink(path); }
+#endif
+
 static void say(const char *fmt, ...) {
     char text[400], line[440];
     va_list ap;
@@ -177,7 +232,7 @@ static void say(const char *fmt, ...) {
 
 static int read_scenario(const char *file) {
     char line[512], word[32];
-    FILE *f = fopen(file, "r");
+    FILE *f = open_file(file, "r");
     if (!f) return 0;
     active = 0, end_quit = 0, weather_clear = 0, n_legs = 0, n_cameras = 0, n_shots = 0, next_shot = 0;
     zulu_h = -1.0, day = -1.0, camera_record = 0, track_file[0] = 0;
@@ -310,7 +365,7 @@ static void read_track(void) {
     FILE *f;
     free(track);
     track = NULL, n_track = 0;
-    if (!track_file[0] || !(f = fopen(track_file, "r"))) return;
+    if (!track_file[0] || !(f = open_file(track_file, "r"))) return;
     track = malloc(sizeof(struct pose) * MAX_TRACK);
     while (track && n_track < MAX_TRACK && fgets(line, sizeof line, f)) {
         struct pose q;
@@ -529,15 +584,14 @@ static void rename_scenario(void) {
     char from[1200], to[1200];
     path_of(from, sizeof from, "scenario.txt");
     path_of(to, sizeof to, "scenario.done");
-    rename(from, to);
+    move_over(from, to); /* over the one before, if the runner left it */
     scenario_time = 0; /* the next scenario.txt is new, even written within the same second */
 }
 
 static long file_time(const char *name) {
     char file[1200];
-    struct stat st;
     path_of(file, sizeof file, name);
-    return stat(file, &st) == 0 ? (long)st.st_mtime : 0;
+    return modified(file);
 }
 
 /* A new scenario: read, its path made, its files opened, the flight started from the next frame. */
@@ -563,13 +617,13 @@ static void begin(void) {
     read_track();
     if (camera_record) {
         path_of(file, sizeof file, "camera.csv");
-        camfile = fopen(file, "w");
+        camfile = open_file(file, "wb"); /* "\n" ends a line on every system */
         if (camfile) fprintf(camfile, "path_s,external,a,b,c,h,p,r,fov\n");
     }
     path_of(file, sizeof file, "events.txt");
-    events = fopen(file, "w");
+    events = open_file(file, "wb");
     path_of(file, sizeof file, "frames.csv");
-    frames = fopen(file, "w");
+    frames = open_file(file, "wb");
     if (frames) {
         fprintf(frames, "run_s,path_s,frame_ms,lat,lon,ele_m,state,view_x,view_y,view_z,loading\n");
         fflush(frames);
@@ -581,9 +635,17 @@ static void begin(void) {
 }
 
 static double wall_now(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER hz;
+    LARGE_INTEGER t;
+    if (hz.QuadPart == 0) QueryPerformanceFrequency(&hz);
+    QueryPerformanceCounter(&t);
+    return (double)t.QuadPart / (double)hz.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec / 1e9;
+#endif
 }
 
 /* X-Plane asked to quit: it asks "Quit the simulator?" (the header). */
@@ -599,7 +661,7 @@ static void poll_box(void) {
     polled = wall;
     if (file_time("quit")) {
         path_of(file, sizeof file, "quit");
-        unlink(file);
+        remove_file(file);
         say("quitting X-Plane, as asked");
         quit_xplane();
         return;
@@ -619,15 +681,15 @@ static void finish(void) {
     XPLMSetDatavi(r_override, &zero, 0, 1);
     say("the path flown (%.0f s)", path_t);
     say("done");
+    if (end_quit) say("quitting X-Plane");
+    /* every file closed: the runner takes them away, which Windows refuses while one is open; what
+       is said after goes to X-Plane's log only */
     if (frames) fclose(frames);
-    frames = NULL;
+    if (events) fclose(events);
     if (camfile) fclose(camfile);
-    camfile = NULL;
+    frames = events = camfile = NULL;
     rename_scenario();
-    if (end_quit) {
-        say("quitting X-Plane");
-        quit_xplane();
-    }
+    if (end_quit) quit_xplane();
 }
 
 static float every_frame(float since_call, float since_loop, int counter, void *refcon) {

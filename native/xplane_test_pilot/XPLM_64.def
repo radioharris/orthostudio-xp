@@ -1,0 +1,24 @@
+; The XPLM functions the test pilot calls, from which the Windows build makes its import library:
+; X-Plane gives them from Resources/plugins/XPLM_64.dll (test_pilot.c declares them).
+LIBRARY XPLM_64.dll
+EXPORTS
+    XPLMCommandOnce
+    XPLMControlCamera
+    XPLMDebugString
+    XPLMDontControlCamera
+    XPLMEnableFeature
+    XPLMFindCommand
+    XPLMFindDataRef
+    XPLMGetDatad
+    XPLMGetDataf
+    XPLMGetDatai
+    XPLMGetSystemPath
+    XPLMPlaceUserAtLocation
+    XPLMRegisterFlightLoopCallback
+    XPLMSetDatad
+    XPLMSetDataf
+    XPLMSetDatai
+    XPLMSetDatavf
+    XPLMSetDatavi
+    XPLMUnregisterFlightLoopCallback
+    XPLMWorldToLocal

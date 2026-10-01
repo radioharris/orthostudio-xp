@@ -13,6 +13,7 @@ settings (:mod:`orthostudio.live.settings`) for the options it is not given.
 
 from __future__ import annotations
 
+import signal
 import traceback
 from pathlib import Path
 from typing import Annotated
@@ -46,6 +47,10 @@ LEAVE_HINT = "Ctrl-C again to leave it installed; `python -m orthostudio.live un
 
 @app.callback()
 def _root() -> None:
+    # Windows: a Ctrl-Break is a Ctrl-C to Live, which stops as after one; the test flights stop
+    # Live with one, a Ctrl-C not being sent to a process group there (tools/live/flights/fly.py)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
     if not supported():
         raise typer.Exit(
             _fail("OrthoStudio XP Live runs on macOS, Windows and Linux, not on this system.")

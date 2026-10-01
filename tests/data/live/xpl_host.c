@@ -3,7 +3,7 @@
    by name, the XPLM functions it calls given by fake_xplm.c (built into this program and exported,
    -rdynamic, on Linux; a fake XPLM_64.dll on Windows, which the plugin imports from). The command
    line: the plugin's file, a latitude and a longitude, then what fake_xplm.c's main() takes:
-   "102:0", "loop", "sleep:100" ("click" needs the plugin's own code). On Windows, "window" first
+   "102:0", "loop", "frames:5000", "sleep:100" ("click" needs the plugin's own code). On Windows, "window" first
    opens a window of this program's main thread, as X-Plane's, and a thread asks Windows every
    250 ms whether it responds (IsHungAppWindow): "HUNG" if ever it does not, while the plugin
    holds the thread. On Linux, built with -DHOST_X11 -lX11, "window" opens one as X-Plane's on the
@@ -165,6 +165,18 @@ int main(int argc, char **argv) {
             continue;
         }
 #endif
+        if (sscanf(argv[i], "frames:%d", &param) == 1) { /* X-Plane's frames, every 10 ms */
+            double until = seconds() + param / 1000.0;
+            while (seconds() < until) {
+                fake_loops(i);
+#ifdef _WIN32
+                Sleep(10);
+#else
+                usleep(10000);
+#endif
+            }
+            continue;
+        }
         if (sscanf(argv[i], "sleep:%d", &param) == 1) {
 #ifdef _WIN32
             Sleep((DWORD)param);

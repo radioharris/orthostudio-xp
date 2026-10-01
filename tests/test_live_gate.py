@@ -67,13 +67,24 @@ def harness_command(cc: str, exe: Path, defines: list[str]) -> list[str]:
     if sys.platform == "win32":
         return [*common, str(plugin.WINDOWS_PANEL), fake, "-lws2_32", "-luser32", "-lgdi32"]
     no_x11 = [] if has_x11_headers(cc) else ["-DLIVE_NO_X11"]
-    return [*common, *no_x11, str(plugin.LINUX_PANEL), fake, "-ldl"]
+    return [*common, *no_x11, str(plugin.LINUX_PANEL), fake, "-ldl", "-lm"]
 
 
 def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    """A UDP port free now, outside every system's ephemeral ports (Linux 32768-60999, Windows and
+    macOS 49152-65535): the harnesses have it built in and bind it later, and meanwhile the system
+    never gives it to another test's socket (a clash seen once on Linux, 2026-10-01)."""
+    import random
+
+    for _ in range(500):
+        port = random.randrange(20000, 32768)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+            except OSError:  # taken, or reserved (Windows)
+                continue
+            return port
+    raise OSError("no free UDP port between 20000 and 32767")
 
 
 def let_go(sock: socket.socket) -> None:
@@ -936,6 +947,7 @@ def built_ahead_host(tmp: Path) -> Path | None:
             str(data / "xpl_host.c"),
             str(data / "fake_xplm.c"),
             "-ldl",
+            "-lm",
         ],
         check=True,
     )

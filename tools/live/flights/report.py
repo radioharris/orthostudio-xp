@@ -427,7 +427,7 @@ def computer_lines(rows: list[dict], run: dict) -> list[str]:
                 f"{c['streamer_gb']:.1f} GB (most {c['streamer_gb_most']:.1f})"
             )
         if c.get("mac"):
-            parts.append("the Mac: " + ", ".join(c["mac"]))
+            parts.append("the computer: " + ", ".join(c["mac"]))
         out.append(f"- **{name}** ({c['minutes']:.1f} min): " + ", ".join(parts))
     return out
 
@@ -788,7 +788,10 @@ def report(folder: Path) -> str:
         lines.append("- no Log.txt")
     during = load_lines(folder, loads, run)
     if during:
-        lines += ["", "## X-Plane and the Mac during the loads (cores: processor time a second)"]
+        lines += [
+            "",
+            "## X-Plane and the computer during the loads (cores: processor time a second)",
+        ]
         lines += during
     events = _events(folder / "events.txt")
     if events:

@@ -3,7 +3,8 @@
 """The computer during a test flight, every SAMPLE_S, into ``system.csv``: X-Plane's and the
 streamer's memory and CPU time (the streamer with every process it started), the bytes received
 from the network, and the bytes written to each disk since the computer started. The report turns
-them into what the start and the path cost. macOS for now (``ps``, ``netstat``, ``ioreg``).
+them into what the start and the path cost. On a Mac with ``ps``, ``netstat`` and ``ioreg``; on
+Windows the same readings from the system's own lists (``sampler_windows.py``, 2026-10-01).
 
 Since 2026-09-30, to see why X-Plane took 7.5 minutes to load a tile over Norway, where its log
 says nothing: X-Plane's whole memory (its GPU's included), the bytes it read from the disks and its
@@ -84,8 +85,15 @@ def cpu_seconds(text: str) -> float:
     return days * 86400 + seconds
 
 
+WINDOWS = sys.platform == "win32"
+
+
 def processes() -> list[tuple[int, int, float, float, str]]:
     """(pid, parent, memory MB, CPU s, command) of every process."""
+    if WINDOWS:
+        import sampler_windows
+
+        return sampler_windows.processes()
     rows = []
     # -S: the time of the children that ended counted in their parent's (Live's 8192 px workers
     # end after each texture: without it, their work would be lost)
@@ -107,9 +115,8 @@ def processes() -> list[tuple[int, int, float, float, str]]:
     return rows
 
 
-def tree(rows: Iterable[tuple[int, int, float, float, str]], root: int) -> tuple[float, float]:
-    """Memory MB and CPU s of ``root`` and every process under it."""
-    rows = list(rows)
+def _members(rows: Iterable[tuple[int, int, float, float, str]], root: int) -> set[int]:
+    """``root`` and every process under it."""
     children: dict[int, list[int]] = {}
     for pid, parent, *_ in rows:
         children.setdefault(parent, []).append(pid)
@@ -119,6 +126,13 @@ def tree(rows: Iterable[tuple[int, int, float, float, str]], root: int) -> tuple
         if pid not in wanted:
             wanted.add(pid)
             todo += children.get(pid, [])
+    return wanted
+
+
+def tree(rows: Iterable[tuple[int, int, float, float, str]], root: int) -> tuple[float, float]:
+    """Memory MB and CPU s of ``root`` and every process under it."""
+    rows = list(rows)
+    wanted = _members(rows, root)
     mem = sum(r[2] for r in rows if r[0] in wanted)
     cpu = sum(r[3] for r in rows if r[0] in wanted)
     return mem, cpu
@@ -126,6 +140,12 @@ def tree(rows: Iterable[tuple[int, int, float, float, str]], root: int) -> tuple
 
 def net_in() -> int:
     """Bytes received by the network interfaces (en*), since they came up."""
+    if WINDOWS:
+        import sampler_windows
+
+        with contextlib.suppress(OSError, AttributeError):
+            return sampler_windows.net_in()
+        return 0
     total, seen = 0, set()
     for line in _run(["netstat", "-ibn"]).splitlines():
         parts = line.split()
@@ -143,7 +163,13 @@ def net_in() -> int:
 
 def disk_bytes(text: str | None = None) -> dict[str, tuple[int, int]]:
     """(bytes written, bytes read) through each disk driver since the computer started, under the
-    name of the first disk below it (disk0: the Mac's own SSD)."""
+    name of the first disk below it (disk0: the Mac's own SSD); on Windows each fixed volume's."""
+    if WINDOWS and text is None:
+        import sampler_windows
+
+        with contextlib.suppress(OSError, AttributeError):
+            return sampler_windows.disk_bytes()
+        return {}
     if text is None:
         text = _run(["ioreg", "-c", "IOBlockStorageDriver", "-r", "-w", "0", "-l"])
     out: dict[str, tuple[int, int]] = {}
@@ -236,6 +262,10 @@ PROC_PIDTHREADINFO, PROC_PIDLISTTHREADS, RUSAGE_INFO_V4 = 5, 6, 4
 def threads(pid: int) -> list[tuple[int, str, float, int, int]]:
     """(thread, name, processor s, state, priority) of each of a process's threads: libproc's
     word, as for Activity Monitor; [] where it cannot be read."""
+    if WINDOWS:
+        import sampler_windows
+
+        return sampler_windows.threads(pid)
     lib = _lib("proc")
     if lib is None:
         return []
@@ -270,6 +300,10 @@ def usage(pid: int) -> dict[str, int]:
     """A process's whole memory (phys_footprint: its GPU's allocations included, as Activity
     Monitor's Memory column), the bytes it read from and wrote to the disks, its page-ins; {} where
     they cannot be read."""
+    if WINDOWS:
+        import sampler_windows
+
+        return sampler_windows.usage(pid)
     lib = _lib("proc")
     if lib is None:
         return {}
@@ -327,6 +361,10 @@ def heat() -> int | None:
 def memory() -> dict[str, int | None]:
     """The Mac's memory: free (%, as the system reckons it), its pressure (PRESSURE), MB held
     compressed and MB swapped out to the disk."""
+    if WINDOWS:
+        import sampler_windows
+
+        return sampler_windows.memory()
     page = sysctl_int("vm.pagesize") or 16384
     compressed = sysctl_int("vm.compressor.pages_compressed")
     swap = _Swap()
@@ -372,7 +410,12 @@ def busy_processes(
 
 
 def whole_disk(path: Path) -> str | None:
-    """The physical disk a folder is on (disk0), as ``disk_writes`` names it."""
+    """The physical disk a folder is on (disk0), as ``disk_writes`` names it; its volume on
+    Windows ("C:")."""
+    if WINDOWS:
+        import sampler_windows
+
+        return sampler_windows.whole_disk(path)
     lines = _run(["df", "-P", str(path)]).splitlines()
     m = re.match(r"/dev/(disk\d+)", lines[-1]) if len(lines) > 1 else None
     if not m:
@@ -397,6 +440,10 @@ class Sampler(threading.Thread):
         self.threads_out = out.with_name("threads.csv")
         self.processes_out = out.with_name("processes.csv")
         self._before: dict[int, tuple[float, float]] = {}  # each process's CPU s, and when
+        # Windows: the streamer's processes that ended (an 8192 px texture's), their time kept, as
+        # a Mac's ps -S counts it in their parent's
+        self._tree_cpu: dict[int, float] = {}
+        self._ended_cpu = 0.0
         self._stop_event = threading.Event()
         self.first = threading.Event()  # its first line written: what follows is measured
 
@@ -412,6 +459,8 @@ class Sampler(threading.Thread):
         xp_mem = sum(r[2] for r in xp)
         xp_cpu = sum(r[3] for r in xp)
         s_mem, s_cpu = tree(rows, self.streamer_pid) if self.streamer_pid else (0.0, 0.0)
+        if WINDOWS and self.streamer_pid:
+            s_cpu += self._ended(rows)
         disks = disk_bytes()
         pid = max(xp, key=lambda r: r[2])[0] if xp else None  # X-Plane itself, not a helper
         use = usage(pid) if pid else {}
@@ -440,6 +489,18 @@ class Sampler(threading.Thread):
             for handle, name, cpu, state, priority in (threads(pid) if pid else [])
         ]
         return line, thread_lines, busy_processes(rows, self._before, wall)
+
+    def _ended(self, rows: list[tuple[int, int, float, float, str]]) -> float:
+        """The processor time of the streamer's processes that have ended since it started."""
+        under = {r[0]: r[3] for r in rows}  # each process's CPU s
+        members = _members(rows, self.streamer_pid) if self.streamer_pid else set()
+        for pid, cpu in list(self._tree_cpu.items()):
+            if pid not in under:  # ended
+                self._ended_cpu += cpu
+                del self._tree_cpu[pid]
+        for pid in members & under.keys():  # the streamer itself may have ended too
+            self._tree_cpu[pid] = under[pid]
+        return self._ended_cpu
 
     def run(self) -> None:
         with (

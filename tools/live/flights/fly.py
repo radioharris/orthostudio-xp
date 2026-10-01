@@ -23,12 +23,22 @@ under the results (it writes its settings file at every start): the user's setti
 (``--ao-settings mine``) or its own defaults (``--ao-settings default``), the user's cache. Either
 starts before X-Plane, as the user starts it, and stops once X-Plane has quit. ``--cold``: nothing
 built and nothing downloaded, the streamer's files in its home under the results (Live's settings
-less its folder and SimBrief name). ``--zooms 17/19``: the streamer's max_zoom and max_zoom near
-airports for the series. The user's own files are only ever read.
+less its folder and SimBrief name; without AutoOrtho's region in X-Plane, Live given the one it
+installed in the user's folder: ``cold_source``). ``--zooms 17/19``: the streamer's max_zoom and
+max_zoom near airports for the series. The user's own files are only ever read.
 
 Results: ``build/flights/<date time>/<n>-<scenario>/``: ``report.md``, the scenario's part of
 X-Plane's ``Log.txt``, the test pilot's ``frames.csv`` and ``events.txt``, ``screenshots/``, the
 computer's ``system.csv`` (``sampler.py``); and the series' ``summary.md``.
+
+On a Mac and on Windows (a user's Shadow PC, 2026-10-01); on Linux too, its sampler reading only
+``ps``. On Windows and Linux the test pilot is the one built ahead
+(``native/xplane_test_pilot/prebuilt``). On Windows Live is stopped with a Ctrl-Break to its own
+process group, which Live takes as a Ctrl-C (a Ctrl-C cannot be sent to a group there); and the
+runner waits itself for X-Plane to quit and for Live to stop, where a Mac's leaves that to a
+process of its own: on Windows that one could send Live no Ctrl-Break, nor outlive the console it
+was started from. AutoOrtho's runs: on a Mac only. Flown from its start to its end with a stand-in
+X-Plane on Windows and Linux (``tests/test_live_flights_series.py``).
 """
 
 from __future__ import annotations
@@ -53,14 +63,16 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import pilot_build  # noqa: E402
 import report  # noqa: E402
 import sampler  # noqa: E402
 import scenario as scenarios  # noqa: E402
 
 REPO = HERE.parents[2]
-PILOT_NAME = "OrthoStudio XP Test Pilot"
-PILOT_SOURCE = REPO / "native" / "xplane_test_pilot" / "test_pilot.c"
-PILOT_BUILD = REPO / "native" / "xplane_test_pilot" / "build" / PILOT_NAME / "mac_x64"
+WINDOWS = sys.platform == "win32"
+PILOT_NAME = pilot_build.NAME
+PILOT_SOURCE = pilot_build.SOURCE
+PILOT_BUILD = pilot_build.BUILD_DIR / "mac_x64"
 RESULTS = REPO / "build" / "flights"
 CAMERAS = "cameras"  # in the results: the user's camera recorded for each scenario
 CAMPAIGNS = HERE / "campaigns"
@@ -78,6 +90,8 @@ STOP_TIMEOUT_S = 120  # a streamer given that long to stop after its Ctrl-C
 XPLANE_UDP = ("127.0.0.1", 49000)  # X-Plane's UDP port, as Live's stream --port's default
 QUIT_TRIES_S = 180  # X-Plane asked to quit over UDP this long, then left to the user
 POLL_S = 2.0
+# Windows: a process group of its own (CREATE_NEW_PROCESS_GROUP), as a Mac's new session
+NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 # a cold run's home for Live, under the series' results: ".noindex", so that Spotlight does not
 # index the hundreds of thousands of files Live makes there during a flight (2026-10-01)
 LIVE_HOME = "live-home.noindex"
@@ -101,9 +115,13 @@ def box(xp: Path) -> Path:
 
 
 def build_pilot(xp: Path) -> Path:
-    """The plugin, compiled again when its source is newer (clang, against X-Plane's XPLM)."""
+    """The plugin, compiled again when its source is newer (clang, against X-Plane's XPLM); on
+    Windows and Linux the one built ahead (tools/live/plugin_builds.py)."""
     if sys.platform != "darwin":
-        raise RefusedError("the test pilot is built on macOS only for now")
+        ahead = pilot_build.xpl(pilot_build.PREBUILT_DIR)
+        if not ahead.is_file():
+            raise RefusedError(f"no test pilot built for this system ({ahead})")
+        return ahead
     out = PILOT_BUILD / f"{PILOT_NAME}.xpl"
     if out.exists() and out.stat().st_mtime >= PILOT_SOURCE.stat().st_mtime:
         return out
@@ -127,7 +145,7 @@ def install_pilot(xp: Path) -> bool:
     """The plugin in X-Plane's plugins, as a new file (never written over the one a running X-Plane
     has loaded); True when it changed."""
     src = build_pilot(xp)
-    dest = xp / "Resources" / "plugins" / PILOT_NAME / "mac_x64" / f"{PILOT_NAME}.xpl"
+    dest = pilot_build.xpl(xp / "Resources" / "plugins" / PILOT_NAME)
     if dest.is_file() and dest.read_bytes() == src.read_bytes():
         return False
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -191,13 +209,16 @@ def launch(xp: Path, sc: scenarios.Scenario) -> list[str]:
     if sys.platform == "darwin":
         subprocess.run(["open", "-a", str(xp / "X-Plane.app"), "--args", *args], check=True)
     else:
-        exe = xp / ("X-Plane.exe" if os.name == "nt" else "X-Plane-x86_64")
+        exe = xp / ("X-Plane.exe" if WINDOWS else "X-Plane-x86_64")
+        if not exe.is_file():
+            raise RefusedError(f"no {exe.name} in {xp}")
         subprocess.Popen(
             [str(exe), *args],
             cwd=xp,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            start_new_session=not WINDOWS,
+            creationflags=NEW_GROUP,  # a Ctrl-C in the runner's console never reaches it
         )
     return args
 
@@ -220,15 +241,45 @@ def live_runs() -> bool:
 
 
 def cold_home(home: Path) -> Path:
-    """A folder for Live of its own: the user's Live settings, less its folder and SimBrief name."""
+    """A folder for Live of its own: the user's Live settings, less its folder and SimBrief name
+    (Live's defaults where it has none)."""
     from orthostudio.live import settings_file
 
     home.mkdir(parents=True, exist_ok=True)
-    text = settings_file().read_text(encoding="utf-8")
+    try:
+        text = settings_file().read_text(encoding="utf-8")
+    except FileNotFoundError:
+        text = "enabled = true\n"
     text = re.sub(r"(?m)^folder\s*=.*$", 'folder = ""', text)
     text = re.sub(r"(?m)^simbrief\s*=.*$", 'simbrief = ""', text)
     (home / "live.toml").write_text(text, encoding="utf-8")
     return home
+
+
+def cold_source(xp: Path, series: list[scenarios.Scenario]) -> Path | None:
+    """The region a cold Live streams onto when X-Plane holds no AutoOrtho region of its own for
+    the scenarios: the one Live installed in the user's own folder, which the cold folder does not
+    hold (a Shadow PC without AutoOrtho, 2026-10-01). None where X-Plane holds AutoOrtho's, found
+    there as always (the developer's Mac), or where the scenarios start over no region's mesh."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+    from orthostudio.live.scenery import autoortho_regions
+
+    wanted = {aoregions.region_of(sc.start.lat, sc.start.lon) for sc in series} - {None}
+    theirs = {p.name.removeprefix("z_ao_") for p in autoortho_regions(xp)}
+    missing = sorted(r for r in wanted if r not in theirs)
+    if not missing:
+        return None
+    if len(missing) > 1:  # Live streams onto one region it was given
+        raise RefusedError(
+            f"a cold series over several regions ({', '.join(missing)}): one region a series"
+        )
+    mine = aoregions.mesh_dir(live_root(), missing[0])
+    if not (mine / "terrain").is_dir():
+        raise RefusedError(
+            f"the region {missing[0]} is not installed: install it in the Live window first"
+        )
+    return mine
 
 
 def start_live(
@@ -237,10 +288,12 @@ def start_live(
     cold: bool,
     zooms: tuple[int, int] | None = None,
     frozen: bool = False,
+    source: Path | None = None,
 ) -> subprocess.Popen:
     """Live's streamer, before X-Plane, as the user starts it; back once it is ready. ``frozen``:
     Live builds nothing once the aircraft flies, a test of 2026-10-01
-    (orthostudio.live.streamer.FROZEN_IN_FLIGHT)."""
+    (orthostudio.live.streamer.FROZEN_IN_FLIGHT). ``source``: the region it streams onto
+    (``cold_source``), else those it finds itself."""
     env = dict(os.environ)
     if cold:
         env["OSXP_HOME"] = str(cold_home(out / LIVE_HOME))
@@ -249,6 +302,8 @@ def start_live(
     cmd = [sys.executable, "-m", "orthostudio.live", "stream", "--xplane", str(xp)]
     if zooms:
         cmd += ["--max-zoom", str(zooms[0]), "--max-zoom-airports", str(zooms[1])]
+    if source is not None:
+        cmd += ["--source", str(source)]
     log = out / "live.txt"
     with log.open("ab") as f:
         proc = subprocess.Popen(
@@ -257,7 +312,8 @@ def start_live(
             env=env,
             stdout=f,
             stderr=subprocess.STDOUT,
-            start_new_session=True,  # it outlives the runner: it takes its pack out after X-Plane
+            start_new_session=not WINDOWS,  # it outlives the runner: its pack out after X-Plane
+            creationflags=NEW_GROUP,  # Windows: stopped by a Ctrl-Break to its group (stop_tree)
         )
     say(f"Live started{' (cold: a folder of its own)' if cold else ''}; its output in {log}")
     began = time.time()
@@ -280,7 +336,7 @@ def live_folder(out: Path, cold: bool) -> Path:
 
 
 def autoortho_runs() -> bool:
-    """AutoOrtho's port taken, or one of its regions mounted."""
+    """AutoOrtho's port taken, or one of its regions mounted (a Mac's ``mount``)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.settimeout(0.5)
@@ -288,6 +344,8 @@ def autoortho_runs() -> bool:
             return True
     finally:
         sock.close()
+    if WINDOWS:
+        return False
     return "z_ao_" in subprocess.run(["mount"], capture_output=True, text=True).stdout
 
 
@@ -414,6 +472,8 @@ def process_tree(pid: int) -> list[tuple[int, str]]:
 
 def _still(pid: int, command: str) -> bool:
     """The same process still there (its number not given to another since)."""
+    if WINDOWS:
+        return any(p == pid and c == command for p, _, _, _, c in sampler.processes())
     now = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True)
     return now.returncode == 0 and now.stdout.strip() == command
 
@@ -423,8 +483,11 @@ def stop_tree(pid: int, timeout_s: float = STOP_TIMEOUT_S) -> None:
     terminal (it takes its files out of X-Plane); SIGTERM to those still there ``timeout_s`` later.
     Only once X-Plane has quit: X-Plane reads its textures through it."""
     tree = process_tree(pid)
+    if WINDOWS:  # its group's Ctrl-Break, which Live takes as a Ctrl-C (the module's docstring)
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
     groups: list[int] = []
-    for p, _ in tree:
+    for p, _ in tree if not WINDOWS else ():
         with contextlib.suppress(OSError):
             group = os.getpgid(p)
             if group not in groups:
@@ -473,13 +536,14 @@ def clean_cold(out: Path, xp: Path | None = None) -> None:
     if record.is_file():
         shutil.copy2(record, out / "live-built.json")
     if xp is not None:
+        from orthostudio.live.filesystem import is_folder_link, link_target, remove_folder_link
         from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 
         for name in (LINK_NAME, OVERLAY_LINK_NAME):
-            link = xp / "Custom Scenery" / name
+            link = xp / "Custom Scenery" / name  # a symbolic link, or on Windows a junction
             with contextlib.suppress(OSError):
-                if link.is_symlink() and out in Path(os.readlink(link)).resolve().parents:
-                    link.unlink()
+                if is_folder_link(link) and out in link_target(link).resolve().parents:
+                    remove_folder_link(link)
     data = out / "ao-home" / ".autoortho-data"
     for heavy in (out / LIVE_HOME / "live", data / "cache", data / "dsf"):
         if heavy.is_dir() and out in heavy.resolve().parents:
@@ -534,8 +598,13 @@ def quit_in_background(
 ) -> None:
     """X-Plane quit, then its telemetry kept in ``series`` (its folder), the streamer stopped and a
     cold run's heavy files deleted (``clean``, its series' folder), by ``after_series`` in a
-    process of its own; the streamer only, at once, when X-Plane is not running."""
+    process of its own; the streamer only, at once, when X-Plane is not running. On Windows the
+    runner does it itself, and waits (the module's docstring)."""
     pid = proc.pid if proc is not None and proc.poll() is None else 0
+    if WINDOWS:
+        say("X-Plane quits, then Live stops: a few minutes at most")
+        after_series(pid, clean, xp, series)
+        return
     cmd = [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)]
     if clean is not None:
         cmd += ["--clean", str(clean)]
@@ -566,7 +635,10 @@ def clear_box(xp: Path) -> None:
         aside = b / "earlier"
         aside.mkdir(exist_ok=True)
         for p in old:
-            os.replace(p, aside / p.name)
+            # Windows: one still open in X-Plane (a flight not flown to its end) stays, and the
+            # test pilot starts it again at the next scenario
+            with contextlib.suppress(PermissionError):
+                os.replace(p, aside / p.name)
 
 
 def camera_file(results: Path, name: str) -> Path:
@@ -674,6 +746,15 @@ def wait_log(xp: Path, log_from: int, line: str) -> bool:
     return False
 
 
+def take(src: Path, dest: Path) -> None:
+    """``src`` moved to ``dest``; copied where X-Plane still has it open on Windows, which then
+    refuses its move: the test pilot's files of a flight not flown to its end."""
+    try:
+        shutil.move(str(src), str(dest))
+    except PermissionError:
+        shutil.copyfile(src, dest)
+
+
 def collect(
     xp: Path, folder: Path, log_from: int, shots_before: set[str], live_from: int, out: Path
 ) -> None:
@@ -688,7 +769,7 @@ def collect(
         ("camera.csv", "camera.csv"),  # the user's camera, recorded
     ):
         if (b / name).exists():
-            shutil.move(str(b / name), str(folder / dest))
+            take(b / name, folder / dest)
     try:
         with (xp / "Log.txt").open("rb") as f:
             f.seek(log_from)
@@ -704,7 +785,7 @@ def collect(
     if new:
         (folder / "screenshots").mkdir(exist_ok=True)
         for p in new:
-            shutil.move(str(p), str(folder / "screenshots" / p.name))
+            take(p, folder / "screenshots" / p.name)
     for name in ("live.txt", "autoortho.txt"):
         if (out / name).is_file():
             with (out / name).open("rb") as f:
@@ -746,6 +827,8 @@ def run(a: argparse.Namespace) -> int:
     from orthostudio.live import session
 
     series = [scenarios.load(s) for s in a.scenarios]
+    if WINDOWS and a.streamer == "autoortho":
+        raise RefusedError("AutoOrtho's runs: on a Mac only for now")
     xp = session.xplane_dir(a.xplane)
     out = a.results / datetime.now().strftime("%Y-%m-%d %H%M%S")
     out.mkdir(parents=True)
@@ -769,7 +852,8 @@ def run(a: argparse.Namespace) -> int:
                 "its own"
             )
         if a.streamer == "live":
-            proc = start_live(xp, out, a.cold, a.zooms, a.freeze_in_flight)
+            source = cold_source(xp, series) if a.cold else None
+            proc = start_live(xp, out, a.cold, a.zooms, a.freeze_in_flight, source)
             folder_of_streamer = live_folder(out, a.cold)
         else:
             home = out / "ao-home"

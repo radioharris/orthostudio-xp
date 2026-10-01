@@ -41,12 +41,23 @@ measurement of the scenery wants. A comparison of AutoOrtho and Live under an ai
   `Log.txt` ("scenery load at LAT LON, path T s", and "scenery loaded in S s" at its end): its lines
   fall in order among X-Plane's, so the DSFs X-Plane logs after a mark came with that load. X-Plane
   keeps its own lines until a plugin writes one (a row's DSFs were still not in the file 5 min after
-  their load): the end's mark puts them there.
+  their load): the end's mark puts them there. Once a flight is done it closes its files: the runner
+  takes them away, which Windows refuses while one is open (what it says after goes to `Log.txt`
+  only). The same source on every system, its files named in UTF-8 as X-Plane gives its folder
+  (Windows' own calls take them as UTF-16): built where the runner runs on a Mac (clang against
+  X-Plane's XPLM framework), ahead for Windows and Linux (`native/xplane_test_pilot/prebuilt`,
+  `tools/live/plugin_builds.py`, as Live's plugin).
 - `tools/live/flights/scenarios/*.txt`: the scenarios, in the plugin's statements (listed in
   `test_pilot.c`'s header): a start, legs of a duration, a turn rate and a climb rate at one ground
   speed, the weather, the time, cameras, screenshots.
 - `tools/live/flights/fly.py`: the runner (below).
 - `tools/live/flights/report.py`: the report of one flight, from its folder.
+- `tests/test_live_flights_series.py`: a series flown by the runner from its start to its end, on
+  Windows and Linux (x86-64), X-Plane a stand-in that does what the runner and the test pilot ask
+  of it (`tests/data/live/fake_xplane.c`): the test pilot installed and loaded, X-Plane started at
+  the scenario's start, the path flown, the computer sampled, the files taken, the report written,
+  X-Plane told to quit and gone. It found the test pilot's files still open at the flight's end,
+  which Windows would have refused to move (2026-10-01).
 
 A flight's steps in the plugin: waiting (10 frames, then the weather and the time set, and the
 aircraft placed at the start with `XPLMPlaceUserAtLocation` unless X-Plane is there already), placed
@@ -74,7 +85,9 @@ runner writes `quit` and does not wait for X-Plane. X-Plane asks "Quit the simul
 `sim/operation/quit`, and waits for a click (11 minutes, 2026-09-29; the "25 s quit" of the first
 test was the user's click), plugins' flight loops stopped meanwhile; a second one over UDP is its
 answer: X-Plane shuts down at once, cleanly. So a small process the runner leaves behind sends it
-every 2 s until X-Plane is gone, then stops the streamer. `--keep-open` leaves
+every 2 s until X-Plane is gone, then stops the streamer; on Windows the runner does it itself, and
+waits: a process left behind could send Live no Ctrl-Break, nor outlive the console it was started
+from. `--keep-open` leaves
 X-Plane up for the next series, which then starts at once. Never used: `XPLMReloadPlugins` (it
 crashed X-Plane through FlyWithLua), X-Plane's reload of the scenery, a kill of X-Plane. UDP's
 `sim/operation/quit`, AppleScript's quit and a SIGTERM do nothing at the main menu, where plugins'
@@ -84,12 +97,18 @@ Streamers, each started before X-Plane as the user starts it (X-Plane reads the 
 packs at start-up), and stopped only once X-Plane has quit: the runner's small process above then
 gives its Ctrl-C to the streamer and to every process under it, each process group once, and a
 SIGTERM to any still there 2 min later. AutoOrtho's mount worker has a group of its own: a Ctrl-C to
-AutoOrtho's group alone left it running, its region mounted (2026-09-29).
+AutoOrtho's group alone left it running, its region mounted (2026-09-29). On Windows, Live runs in a
+process group of its own and is given that group's Ctrl-Break, which it takes as a Ctrl-C (a
+Ctrl-C cannot be sent to a group there); its encoders ignore it, as they ignore a Ctrl-C.
 
 - `none`: X-Plane alone (the default).
 - `live`: Live's `stream` from this checkout, with the user's Live settings and folder. `--cold`
   gives it a home of its own under the series' results: nothing built, nothing downloaded, the
-  user's settings copied without their folder and SimBrief name.
+  user's settings copied without their folder and SimBrief name (Live's defaults where it has
+  none). Where X-Plane holds AutoOrtho's region of the scenarios, Live finds it there itself, as
+  on the developer's Mac; on a computer without AutoOrtho (a Shadow PC), the region is the one Live
+  installed in the user's folder, which the cold home does not hold: the runner gives it to Live
+  (`--source`, one region a series), and Live takes its overlays from beside it.
 - `autoortho`: AutoOrtho without its window (`-H`), from the sources the user's AutoOrtho Dev runs
   (`~/Desktop/Dev/autoortho4xplane`, its Python in `~/.autoortho-dev-venv`). AutoOrtho writes its
   settings file at every start, so it always runs from a home of its own under the results (`HOME`
@@ -213,7 +232,20 @@ asked: the cores the system lets work (`kern.sched_recommended_cores`, fewer whe
 `system.csv`; every other process using more than 0.05 core between two samples, in
 `processes.csv` (Spotlight, a browser in front...); and X-Plane's telemetry of the series
 (`telemetry.tlm`, which X-Plane writes as it quits: its texture pager's counts, its GPU's memory),
-in the series' folder. The report gives:
+in the series' folder.
+
+On Windows (`tools/live/flights/sampler_windows.py`, 2026-10-01) the same readings, from the
+system's own lists as the Task Manager reads them, nothing attached to X-Plane: each process's
+processor time, working set and private bytes (the closest to a Mac's footprint), its reads,
+writes and hard page faults; X-Plane's threads, their names, times, states (running for those on a
+processor or ready for one) and priorities; the free memory and the pressure as Live reckons it
+there (90 % used, 95 %), what Windows holds compressed and in its page files; the bytes received
+by the network adapters, and read and written on each fixed volume ("C:", which names the disks).
+No heat and no allowed cores: Windows tells neither. The time of the streamer's processes that
+ended is kept by the sampler itself, Windows having no `ps -S`. On Linux, only X-Plane's and the
+streamer's memory and processor time (`ps`).
+
+The report gives:
 
 - the frames of the path: their count, the mean, median, 99th percentile and worst frame time, how
   many took over 50 and 100 ms, and the worst five, with whether X-Plane was loading scenery. The
@@ -251,8 +283,11 @@ which of the load's tiles had come.
 
 ## Limits
 
-- macOS only for now: the plugin is built there (clang against X-Plane's XPLM framework); the
-  runner's launch on Windows and Linux is written but not tried.
+- Flown on a Mac, and on Windows from its kit (a user's Shadow PC, 2026-10-01: step 4 of
+  `tools/live/windows_kit.py`, three runs, Live cold at 16/18 over Toulouse, X-Plane alone, or
+  both, zipped to be sent back). Linux: the runner and the test pilot fly the stand-in's series, but
+  the sampler reads only `ps` there. AutoOrtho's runs, the window and the watcher of X-Plane's
+  stacks: a Mac's only.
 - The aircraft is the one X-Plane started with, for the whole series.
 - A screenshot costs a frame of about 100 ms: the report leaves the second after each out.
 - The network and the disks are counted for the whole computer: other programs' traffic and

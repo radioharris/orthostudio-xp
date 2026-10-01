@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-# the test flights fly X-Plane on a Mac (sudo, spindump, process groups): not on Windows,
-# where os.kill(pid, 0) even sends Ctrl-C to every program of the console
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the test flights run on a Mac")
+# the test flights fly X-Plane on a Mac and on Windows; a few of their parts are a Mac's only:
+# AutoOrtho's runs, the watcher (sudo, spindump), process groups stopped with a Ctrl-C (Windows:
+# tests/test_live_flights_windows.py)
+mac_only = pytest.mark.skipif(sys.platform == "win32", reason="a Mac's part of the test flights")
 FLIGHTS = Path(__file__).resolve().parents[1] / "tools" / "live" / "flights"
 sys.path.insert(0, str(FLIGHTS))
 
@@ -284,13 +285,13 @@ def test_the_runner_collects_a_flights_files(tmp_path: Path) -> None:
     folder.mkdir(parents=True)
     for name in ("events.txt", "frames.csv", "scenario.done"):
         (box / name).write_text(name)
-    (xp / "Log.txt").write_text("before the scenario\nits lines\n")
+    (xp / "Log.txt").write_bytes(b"before the scenario\nits lines\n")  # as X-Plane writes it
     shots = xp / "Output" / "screenshots"
     shots.mkdir(parents=True)
     (shots / "mine.png").write_bytes(b"the user's")
     before = fly.screenshots_now(xp)
     (shots / "b738_1.png").write_bytes(b"the flight's")
-    (out / "live.txt").write_text("earlier flight\nthis flight\n")
+    (out / "live.txt").write_bytes(b"earlier flight\nthis flight\n")
     fly.collect(xp, folder, len("before the scenario\n"), before, len("earlier flight\n"), out)
     assert (folder / "Log.txt").read_text() == "its lines\n"
     assert (folder / "scenario.txt").read_text() == "scenario.done"
@@ -356,6 +357,42 @@ def test_a_cold_live_keeps_the_users_settings_but_not_their_folder(
     assert "someone" in mine.read_text()  # the user's own file, untouched
 
 
+def test_a_cold_live_without_settings_has_live_s_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import orthostudio.live as live
+
+    monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
+    assert (fly.cold_home(tmp_path / "home") / "live.toml").read_text() == "enabled = true\n"
+
+
+def test_a_cold_live_streams_onto_the_region_live_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A computer without AutoOrtho (a Shadow PC): the region is the one Live installed in the
+    user's folder, which a cold Live's own folder does not hold; where X-Plane holds AutoOrtho's
+    (the developer's Mac), Live finds it itself, as always."""
+    from orthostudio.live import aoregions, pack
+
+    xp = tmp_path / "X-Plane 12"
+    (xp / "Custom Scenery").mkdir(parents=True)
+    users = tmp_path / "live"
+    monkeypatch.setattr(pack, "live_root", lambda: users)
+    toulouse = scenario.parse("start 43.63 1.37 3000 320 230\nleg 60 0 0\n", "toulouse")
+    oslo = scenario.parse("start 60.5 10.4 30000 90 480\nleg 60 0 0\n", "oslo")
+    new_york = scenario.parse("start 40.6 -73.8 3000 0 230\nleg 60 0 0\n", "new-york")
+    with pytest.raises(fly.RefusedError, match="the region eur is not installed"):
+        fly.cold_source(xp, [toulouse])
+    mesh = aoregions.mesh_dir(users, "eur")
+    (mesh / "terrain").mkdir(parents=True)
+    assert fly.cold_source(xp, [toulouse, oslo]) == mesh
+    with pytest.raises(fly.RefusedError, match="several regions"):
+        fly.cold_source(xp, [toulouse, new_york])
+    theirs = xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_eur"
+    (theirs / "terrain").mkdir(parents=True)
+    assert fly.cold_source(xp, [toulouse]) is None
+
+
 AO_SETTINGS = """[general]
 gui = True
 showconfig = True
@@ -385,6 +422,7 @@ def user_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
+@mac_only
 def test_autoortho_with_the_users_settings_at_other_zooms(user_home: Path, tmp_path: Path) -> None:
     home = fly.autoortho_home(tmp_path / "ao-home", "mine", cold=True, zooms=(17, 19))
     text = (home / ".autoortho").read_text()
@@ -398,6 +436,7 @@ def test_autoortho_with_the_users_settings_at_other_zooms(user_home: Path, tmp_p
     assert (user_home / ".autoortho").read_text() == AO_SETTINGS  # the user's own, untouched
 
 
+@mac_only
 def test_autoortho_with_the_users_settings_and_cache(user_home: Path, tmp_path: Path) -> None:
     home = fly.autoortho_home(tmp_path / "ao-home", "mine", cold=False, zooms=None)
     text = (home / ".autoortho").read_text()
@@ -406,6 +445,7 @@ def test_autoortho_with_the_users_settings_and_cache(user_home: Path, tmp_path: 
     assert fly.autoortho_folder(home) == Path("/Users/someone/.autoortho-data/cache")
 
 
+@mac_only
 def test_autoortho_with_its_own_defaults(user_home: Path, tmp_path: Path) -> None:
     home = fly.autoortho_home(tmp_path / "ao-home", "default", cold=True, zooms=None)
     text = (home / ".autoortho").read_text()
@@ -460,6 +500,7 @@ def test_the_samplers_readings(monkeypatch: pytest.MonkeyPatch) -> None:
         '    "Statistics" = {"Bytes (Write)"=75561712640}\n'
         '    "BSD Name" = "disk4"\n'
     )
+    monkeypatch.setattr(sampler, "WINDOWS", False)  # a Mac's commands, read on any system
     monkeypatch.setattr(sampler, "_run", lambda cmd: ioreg)
     assert sampler.disk_writes() == {"disk0": 179092750336, "disk4": 75561712640}
     reads = ioreg.replace('"Bytes (Write)"=179092750336', '"Bytes (Write)"=7,"Bytes (Read)"=9')
@@ -611,7 +652,7 @@ def test_x_plane_and_the_mac_during_a_load(tmp_path: Path) -> None:
         )
     )
     text = report.report(tmp_path)
-    during = text.split("## X-Plane and the Mac during the loads")[1]
+    during = text.split("## X-Plane and the computer during the loads")[1]
     assert (
         "- **load 1** at path 100 s: 100 s, X-Plane 5.00 cores, read 50.0 MB/s, 400 page-ins/s"
         in during
@@ -626,9 +667,8 @@ def test_x_plane_and_the_mac_during_a_load(tmp_path: Path) -> None:
     assert "slowed the most: `SceneryLoader` 0.00 cores (1.00 outside the loads)\n" in during
     path = next(ln for ln in text.splitlines() if ln.startswith("- **path**"))
     assert "X-Plane 3.88 core, 8.8 GB (most 8.8), 14.6 GB with its GPU's (most 19.5)" in path
-    assert (
-        "the Mac: memory free at least 40 %, pressure WARNING" in path and "nothing swapped" in path
-    )
+    assert "the computer: memory free at least 40 %, pressure WARNING" in path
+    assert "nothing swapped" in path
 
 
 def test_the_campaigns_of_the_repository_read(tmp_path: Path) -> None:
@@ -726,6 +766,7 @@ def test_a_campaigns_runs_side_by_side(tmp_path: Path) -> None:
     assert "| start | ? | ? |" in text  # no system.csv: the costs unknown, said so
 
 
+@mac_only
 def test_a_streamer_stops_with_every_process_it_started(tmp_path: Path) -> None:
     """AutoOrtho's mount worker has a process group of its own: a Ctrl-C to AutoOrtho's group left
     it running, its region mounted (2026-09-29). The whole tree gets it."""
@@ -791,6 +832,8 @@ def test_live_frozen_in_flight_is_a_live_test(capsys: pytest.CaptureFixture) -> 
 def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
     """A cold run's own homes, under its series' folder: the heavy files deleted once its streamer
     stopped (a 2 min cold AutoOrtho run left 3.1 GB), Live's record kept for the map."""
+    from orthostudio.live.filesystem import folder_link, is_folder_link
+
     out = tmp_path / "build" / "flights" / "2026-09-29 170000"
     pack = out / fly.LIVE_HOME / "live" / "pack"
     (pack / "_live").mkdir(parents=True)
@@ -807,17 +850,18 @@ def test_a_cold_runs_heavy_files_go_its_record_stays(tmp_path: Path) -> None:
     xp = tmp_path / "X-Plane 12"
     scenery = xp / "Custom Scenery"
     scenery.mkdir(parents=True)
-    (scenery / "z_osxp_live").symlink_to(pack)  # the test's Live left its link
+    folder_link(pack, scenery / "z_osxp_live")  # the test's Live left its link (Windows: junction)
     users = tmp_path / "users-pack"
-    users.mkdir()
-    (scenery / "y_osxp_live_overlays").symlink_to(users)  # not the test's: untouched
+    (users / "Earth nav data").mkdir(parents=True)
+    folder_link(users, scenery / "y_osxp_live_overlays")  # not the test's: untouched
     fly.clean_cold(out, xp)
     assert (out / "live-built.json").read_text() == '{"textures": {"a": 0}}'
     assert not (out / fly.LIVE_HOME / "live").exists()
     assert not cache.exists() and (logs / "autoortho.log").exists()
     assert (out / fly.LIVE_HOME / "live.toml").exists()
-    assert not (scenery / "z_osxp_live").is_symlink()
-    assert (scenery / "y_osxp_live_overlays").is_symlink() and users.is_dir()
+    assert not is_folder_link(scenery / "z_osxp_live")
+    assert is_folder_link(scenery / "y_osxp_live_overlays")
+    assert (users / "Earth nav data").is_dir()
 
 
 def test_a_scenario_sent_to_record_or_replay_the_users_camera(tmp_path: Path) -> None:
@@ -938,6 +982,7 @@ def test_a_campaign_writes_one_table_for_one_comparison_and_more_for_more(
     assert "# Comparison 2:" in both
 
 
+@mac_only
 def test_the_watcher_follows_x_planes_log_and_samples_the_loads_that_last(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
