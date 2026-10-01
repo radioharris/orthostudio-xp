@@ -666,7 +666,7 @@ class Streamer:
         POOL_EVERY_S: all but one running on average over POOL_WINDOW readings, Live stops all but
         what X-Plane shows (:meth:`x_plane_busy`) until two and a half of them are idle on average
         again, POOL_HOLD_S at least after. The log says when, and how long. Never at a start, nor
-        where they cannot be read (Windows for now)."""
+        where they cannot be read or X-Plane names none so."""
         now = time.monotonic() if now is None else now
         if not self.flying or reading is None or reading[1] < 2:
             self._pool.clear()

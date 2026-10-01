@@ -9,6 +9,7 @@ import ctypes
 import ctypes.util
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -233,6 +234,10 @@ def test_x_plane_s_workers_read_from_outside() -> None:
         finally:
             stop.set()
             t.join()
+    for _ in range(100):  # the thread may still be leaving the system's list a moment after
+        if machine.xplane_pool(os.getpid()) == (0, 0):
+            break
+        time.sleep(0.02)
     assert machine.xplane_pool(os.getpid()) == (0, 0)
     assert machine.xplane_pool(999_999_999) is None
 
@@ -253,3 +258,54 @@ def test_x_plane_s_workers_read_on_linux(tmp_path: Path) -> None:
         (task / "stat").write_text(f"{tid} ({name}) {state} 1 1 1 0 -1\n")
     assert machine._linux_pool(42, proc) == (1, 2)
     assert machine._linux_pool(43, proc) is None  # X-Plane gone
+
+
+def system_processes(entries: list[tuple[int, str, list[tuple[int, int]]]]):
+    """A buffer laid out as Windows' NtQuerySystemInformation(SystemProcessInformation) gives it
+    on a 64-bit system: (process, image name, [(thread, state)]) each."""
+    import struct
+
+    size = sum(0x100 + 0x50 * len(threads) for _, _, threads in entries)
+    names = sum(len(name.encode("utf-16-le")) + 2 for _, name, _ in entries)
+    buffer = ctypes.create_string_buffer(size + names)
+    base = ctypes.addressof(buffer)
+    offset, text = 0, size
+    for k, (pid, name, threads) in enumerate(entries):
+        block = 0x100 + 0x50 * len(threads)
+        struct.pack_into("<II", buffer, offset, block if k < len(entries) - 1 else 0, len(threads))
+        raw = name.encode("utf-16-le")
+        struct.pack_into("<HH", buffer, offset + 0x38, len(raw), len(raw) + 2)
+        struct.pack_into("<Q", buffer, offset + 0x40, base + text)
+        struct.pack_into("<Q", buffer, offset + 0x50, pid)
+        for i, (tid, state) in enumerate(threads):
+            at = offset + 0x100 + i * 0x50
+            struct.pack_into("<QQ", buffer, at + 0x28, pid, tid)
+            struct.pack_into("<I", buffer, at + 0x44, state)
+        buffer[text : text + len(raw)] = raw
+        offset, text = offset + block, text + len(raw) + 2
+    return buffer
+
+
+def test_x_plane_s_workers_read_on_windows() -> None:
+    """Windows (not tried on one with X-Plane, 2026-10-01): the system's list of processes and
+    their threads, here a buffer laid out as it gives it, each thread's name as
+    GetThreadDescription would give it; a thread ready or running counts. Where X-Plane names no
+    thread so, none is found and Live goes without (Streamer.x_plane_pool)."""
+    buffer = system_processes(
+        [
+            (4, "System", [(8, 5)]),
+            (42, "X-Plane.exe", [(100, 2), (101, 5), (102, 1), (103, 2), (104, 5)]),
+        ]
+    )
+    names = {
+        100: "Pool worker (background - 1)",  # running
+        101: "Pool worker (background - 2)",  # waiting
+        102: "Pool worker (background - 3)",  # ready
+        103: "Main Thread",
+        104: "",
+    }
+    listed = [(p, name, len(threads)) for p, name, threads in machine.windows_processes(buffer)]
+    assert listed == [(4, "System", 1), (42, "X-Plane.exe", 5)]
+    assert machine.windows_pool_in(buffer, 42, lambda pid, tid: names[tid]) == (2, 3)
+    assert machine.windows_pool_in(buffer, 4, lambda pid, tid: "") == (0, 0)
+    assert machine.windows_pool_in(buffer, 43, lambda pid, tid: "") is None

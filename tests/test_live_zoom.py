@@ -686,7 +686,7 @@ def test_live_stops_while_x_plane_s_workers_are_all_busy(tmp_path: Path) -> None
         f"  X-Plane's background workers free again: Live works again after {st.POOL_HOLD_S:.0f} s"
     )
     for _ in range(st.POOL_WINDOW):
-        s.x_plane_pool(None, now=t)  # not readable (Windows for now): never stopped
+        s.x_plane_pool(None, now=t)  # not readable: never stopped
         t += 1
     assert not s.x_plane_busy() and not s.holds(5.0)
     s.cache.close()

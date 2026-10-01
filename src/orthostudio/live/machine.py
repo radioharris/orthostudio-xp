@@ -40,7 +40,7 @@ import ctypes.util
 import os
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -225,14 +225,16 @@ class _ThreadInfo(ctypes.Structure):  # struct proc_threadinfo (<sys/proc_info.h
 
 def xplane_pool(pid: int) -> tuple[int, int] | None:
     """(running, all) of X-Plane's background workers now: those of its threads named POOL_NAME
-    that the system runs or has ready to run; None where that cannot be read (Windows for now, or
-    the process gone). Read from outside, as Activity Monitor does: nothing attached to X-Plane,
-    no privilege needed."""
+    that the system runs or has ready to run; None where that cannot be read (the process gone).
+    Read from outside, as Activity Monitor or the Task Manager do: nothing attached to X-Plane,
+    no privilege needed. Where X-Plane names no thread so (all 0), Live goes without."""
     with contextlib.suppress(OSError, AttributeError, TypeError, ValueError):
         if MACOS:
             return _darwin_pool(pid)
         if sys.platform.startswith("linux"):
             return _linux_pool(pid)
+        if WINDOWS:
+            return _windows_pool(pid)
     return None
 
 
@@ -268,6 +270,117 @@ def _linux_pool(pid: int, proc: Path = Path("/proc")) -> tuple[int, int] | None:
             total += 1
             running += stat[stat.rindex(")") + 2 :].startswith("R")  # the state after the name
     return running, total
+
+
+# Windows: the system's list of processes and their threads (ntdll's NtQuerySystemInformation,
+# SystemProcessInformation), 64-bit: each SYSTEM_PROCESS_INFORMATION of 0x100 bytes followed by its
+# threads' SYSTEM_THREAD_INFORMATION of 0x50; a thread's name from GetThreadDescription (Windows
+# 10 1607 and later). Not tried on a Windows with X-Plane (2026-10-01): where X-Plane names no
+# thread "Pool worker (background ...)" there, the reading finds none and Live goes without.
+_PROCESS_SIZE, _THREAD_SIZE = 0x100, 0x50
+_RUNNABLE = {1, 2, 3, 7}  # KTHREAD_STATE: Ready, Running, Standby, DeferredReady
+_names: dict[tuple[int, int], str] = {}  # (process, thread): its name, read once
+
+
+def _windows_snapshot() -> ctypes.Array | None:
+    """The system's list of processes and their threads, as it gives it; None if it does not."""
+    ntdll = ctypes.WinDLL("ntdll")  # type: ignore[attr-defined]
+    ntdll.NtQuerySystemInformation.restype = ctypes.c_uint32
+    size = 1 << 20
+    for _ in range(8):
+        buffer = ctypes.create_string_buffer(size)
+        needed = ctypes.c_uint32(0)
+        status = ntdll.NtQuerySystemInformation(5, buffer, size, ctypes.byref(needed))
+        if status == 0:
+            return buffer
+        if status != 0xC0000004:  # STATUS_INFO_LENGTH_MISMATCH: a larger buffer
+            return None
+        size = max(2 * size, needed.value + (1 << 16))
+    return None
+
+
+def windows_processes(buffer: ctypes.Array) -> Iterator[tuple[int, str, list[tuple[int, int]]]]:
+    """(process, image name, [(thread, state)]) of each process in a SystemProcessInformation
+    buffer (:func:`_windows_snapshot`)."""
+    # Windows' ULONG is 32 bits, where this Python's c_ulong may be 64 (off Windows)
+    base, end, offset = ctypes.addressof(buffer), ctypes.sizeof(buffer), 0
+    while offset + _PROCESS_SIZE <= end:
+        at = base + offset
+        step = ctypes.c_uint32.from_address(at).value
+        count = ctypes.c_uint32.from_address(at + 4).value
+        length = ctypes.c_ushort.from_address(at + 0x38).value
+        text = ctypes.c_void_p.from_address(at + 0x40).value
+        # UTF-16 as Windows writes it, whatever this Python's wchar_t (4 bytes off Windows)
+        name = ctypes.string_at(text, length).decode("utf-16-le", "replace") if text else ""
+        pid = ctypes.c_void_p.from_address(at + 0x50).value or 0
+        threads = []
+        for k in range(count):
+            t = at + _PROCESS_SIZE + k * _THREAD_SIZE
+            if t + _THREAD_SIZE > base + end:
+                break
+            tid = ctypes.c_void_p.from_address(t + 0x30).value or 0
+            threads.append((tid, ctypes.c_uint32.from_address(t + 0x44).value))
+        yield pid, name, threads
+        if not step:
+            return
+        offset += step
+
+
+def _windows_thread_name(pid: int, tid: int) -> str:
+    """A thread's name (GetThreadDescription), read once for each; "" where it has none."""
+    if (pid, tid) in _names:
+        return _names[(pid, tid)]
+    kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]
+    describe = getattr(kernel32, "GetThreadDescription", None)
+    name = ""
+    if describe is not None:
+        kernel32.OpenThread.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        describe.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+        handle = kernel32.OpenThread(0x0800, False, tid)  # THREAD_QUERY_LIMITED_INFORMATION
+        if handle:
+            try:
+                text = ctypes.c_void_p()
+                if describe(handle, ctypes.byref(text)) >= 0 and text.value:
+                    name = ctypes.wstring_at(text.value)
+                    kernel32.LocalFree(text)
+            finally:
+                kernel32.CloseHandle(handle)
+    _names[(pid, tid)] = name
+    return name
+
+
+def windows_pool_in(
+    buffer: ctypes.Array, pid: int, name_of: Callable[[int, int], str]
+) -> tuple[int, int] | None:
+    """(running, all) of the threads named POOL_NAME of process ``pid`` in a
+    SystemProcessInformation buffer, their names from ``name_of(process, thread)``; None where
+    the process is not."""
+    for p, _, threads in windows_processes(buffer):
+        if p == pid:
+            pool = [state for tid, state in threads if name_of(pid, tid).startswith(POOL_NAME)]
+            return sum(state in _RUNNABLE for state in pool), len(pool)
+    return None
+
+
+def _windows_pool(pid: int) -> tuple[int, int] | None:
+    buffer = _windows_snapshot()
+    if buffer is None:
+        return None
+    if any(p != pid for p, _ in _names):  # another X-Plane: the names read are its old ones
+        _names.clear()
+    return windows_pool_in(buffer, pid, _windows_thread_name)
+
+
+def windows_xplane_pid(executables: Collection[str]) -> int | None:
+    """X-Plane's process on Windows, from the system's own list: None where it does not run."""
+    buffer = _windows_snapshot()
+    if buffer is None:
+        return None
+    wanted = {name.lower() for name in executables}
+    found = [p for p, name, _ in windows_processes(buffer) if name.lower() in wanted]
+    return min(found) if found else None
 
 
 def encoders(cores: int, ram_gb: float | None = None) -> int:
