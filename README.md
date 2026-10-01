@@ -185,7 +185,10 @@ Python inside.
   `xattr -dr com.apple.quarantine "/Applications/OrthoStudio XP.app"`.
 - **Windows**: run `OrthoStudio-XP-<version>-windows-x64-setup.exe`. Not signed yet either: in the
   *Windows protected your PC* window, click *More info*, then *Run anyway*. It installs for your
-  user alone, without administrator rights, and adds OrthoStudio XP to the Start menu.
+  user alone, without administrator rights, and adds OrthoStudio XP to the Start menu. Its window
+  is drawn by Microsoft's WebView2 Runtime: the installer offers it when the PC lacks it, and offers
+  to update it when the PC's is too old (before version 101, of 2022), which Windows lets through
+  only with an administrator's permission. Turned down, OrthoStudio XP opens in your browser.
 - **Linux**: extract `OrthoStudio-XP-<version>-linux-x86_64.tar.gz` where you want to keep it, then
   run `./install.sh` in the extracted folder for an entry in the applications menu, or start
   `./orthostudio-xp` directly.

@@ -194,8 +194,11 @@ page closed, with no build running or waiting.
 The window is drawn by the web view your system already carries, so the page is the same one a
 browser would show. On Linux the page opens in your browser instead: the web view a
 window needs there is built for the distribution's own Python, and OrthoStudio XP carries its own,
-so nothing a user installs would reach it. The `window` line of *Checks*, at the foot of the page,
-says so, and the page says it once at the top. What the
+so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's WebView2,
+which must be version 101.0.1210.39 or later: with an older one, as on a cloud PC whose WebView2
+had not been updated since 2022, the page opens in your browser too, and says how to update it
+(Microsoft's installer, run as administrator), which the OrthoStudio XP installer also offers. The
+`window` line of *Checks*, at the foot of the page, says so, and the page says it once at the top. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
 holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each

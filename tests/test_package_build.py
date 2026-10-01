@@ -62,6 +62,33 @@ def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None
     assert "Tasks: webview2" in script
 
 
+def test_the_windows_installer_offers_the_update_when_webview2_is_too_old() -> None:
+    """A Shadow PC carried WebView2 100.0.1185.36 of 2022, on which the window opened empty; the
+    installer had offered nothing, since a runtime was there (2026-10-01). Microsoft's bootstrapper
+    answered "already installed" when run plainly and updated it when run as administrator."""
+    from orthostudio import window
+
+    script = build.inno_setup_script(
+        "0.1.20", Path("/b"), Path("/i.ico"), Path("/o"), "out", Path("/w") / build.WEBVIEW2_EXE
+    )
+    task = next(ln for ln in script.splitlines() if ln.startswith('Name: "webview2update"'))
+    # offered, ticked, only where the runtime is too old, and it says Windows will ask
+    assert "Check: WebView2TooOld" in task and "unchecked" not in task
+    assert "administrator" in task
+    code = script[script.index("\n[Code]\n") :]
+    assert "function WebView2TooOld" in code and "function WebView2Missing" in code
+    # the number the app holds, written into the Pascal, and nothing left to fill
+    assert build.WEBVIEW2_MINIMUM == window.WEBVIEW2_MINIMUM
+    assert f"VersionBefore(Found, '{build.WEBVIEW2_MINIMUM}')" in code
+    assert "%WEBVIEW2_MINIMUM%" not in script and "%WEBVIEW2_EXE%" not in script
+    # run as administrator, from the bootstrapper the installer carries, once the files are in
+    assert f"ExtractTemporaryFile('{build.WEBVIEW2_EXE}')" in code
+    assert "ShellExec('runas'" in code and "'/silent /install'" in code
+    assert "WizardIsTaskSelected('webview2update')" in code and "ssPostInstall" in code
+    carried = f'Source: "{Path("/w") / build.WEBVIEW2_EXE}"; Flags: dontcopy'
+    assert carried in script
+
+
 def test_the_windows_uninstaller_removes_the_program_and_nothing_else(tmp_path: Path) -> None:
     script = build.inno_setup_script(
         "0.1.9",

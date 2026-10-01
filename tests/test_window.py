@@ -40,6 +40,49 @@ def test_a_system_without_a_window_is_told_what_to_install(
     assert "http" in words
 
 
+@pytest.mark.parametrize(
+    ("found", "starts", "too_old"),
+    [
+        ("100.0.1185.36", False, "100.0.1185.36"),  # the Shadow PC's, of 2022
+        ("101.0.1210.38", False, "101.0.1210.38"),
+        ("101.0.1210.39", True, None),  # the first with what pywebview asks for at start
+        ("154.0.4258.48", True, None),
+        ("not a version", True, None),  # what cannot be read is given the benefit of the doubt
+        (None, False, None),  # none at all is missing, not too old
+    ],
+)
+def test_a_webview2_too_old_to_start_the_window_counts_as_none(
+    found: str | None, starts: bool, too_old: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pywebview's control asks WebView2 for ``ICoreWebView2Environment10`` as it starts: on a
+    Shadow PC that carried 100.0.1185.36, the window opened empty and said why nowhere
+    (2026-10-01). Such a runtime is no runtime for the window, and the app opens the browser."""
+    monkeypatch.setattr(window, "_webview2_version", lambda: found)
+    assert window._webview2_runtime() is starts
+    assert window.webview2_too_old() == too_old
+
+
+def test_a_pc_whose_webview2_is_too_old_is_told_to_update_it_as_administrator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Microsoft's installer answers "already installed" to a user who runs it plainly, and
+    updates the runtime when run as administrator (the Shadow PC, 2026-10-01)."""
+    monkeypatch.setattr(window.sys, "platform", "win32")
+    monkeypatch.setattr(window, "_webview2_version", lambda: "100.0.1185.36")
+    words = window.hint() or ""
+    assert "too old" in words and "100.0.1185.36" in words
+    assert window.WEBVIEW2_MINIMUM in words and "administrator" in words
+    assert window.WEBVIEW2_HELP in words
+    assert window.install() == window.WEBVIEW2_HELP
+
+
+def test_the_registry_is_not_asked_off_windows() -> None:
+    if sys.platform == "win32":
+        pytest.skip("this machine is Windows")
+    assert window._webview2_version() is None
+    assert window.webview2_too_old() is None
+
+
 def test_macos_is_told_nothing_because_it_carries_its_own_web_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -149,6 +192,43 @@ def test_the_engine_starts_even_when_the_window_trimmings_fail(
     )
     assert started == [True]  # the engine ran
     assert said and "no AppKit" in said[0]  # and the failure was said
+
+
+def test_what_pywebview_says_about_the_web_view_goes_to_the_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """pywebview writes its warnings and errors to standard error, which ``pythonw`` does not
+    have: a WebView2 that could not start left an empty window, and ``serve.log`` said nothing
+    (the Shadow PC, 2026-10-01). While the window is up, they go to its ``note``."""
+    import logging
+
+    said: list[str] = []
+    pywebview = logging.getLogger("pywebview")
+    handlers = list(pywebview.handlers)
+
+    def fake_start(func: object, **kw: object) -> None:
+        pywebview.error("WebView2 initialization failed with exception: E_NOINTERFACE")
+        pywebview.info("nothing worth a line")
+
+    fake = type(
+        "W",
+        (),
+        {"create_window": lambda *a, **k: object(), "start": fake_start, "screens": []},
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setitem(
+        sys.modules,
+        "webview.menu",
+        type("M", (), {"Menu": lambda *a, **k: None, "MenuAction": lambda *a, **k: None}),
+    )
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    window.show(
+        "http://127.0.0.1:8641/", title="OrthoStudio XP", note=said.append, storage=tmp_path
+    )
+    assert len(said) == 1 and "WebView2 initialization failed" in said[0]
+    assert "E_NOINTERFACE" in said[0]
+    # the window is gone, and so is what it listened with
+    assert pywebview.handlers == handlers
 
 
 def test_the_window_package_travels_everywhere() -> None:

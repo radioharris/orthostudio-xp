@@ -72,6 +72,10 @@ WEBVIEW2_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 WEBVIEW2_EXE = "MicrosoftEdgeWebview2Setup.exe"
 """The ``[Code]`` of the Windows installer: an OrthoStudio XP running from the installation folder
 is stopped before its files are replaced or removed."""
+WEBVIEW2_MINIMUM = "101.0.1210.39"
+"""The oldest WebView2 Runtime the window starts on, ``orthostudio.window.WEBVIEW2_MINIMUM``: an
+older one is offered the update (``webview2.pas``). Written here rather than imported, as
+:data:`ENGINE_PORT` is, and a test holds the two equal."""
 UV_OFFLINE: list[str] = []
 """``["--offline"]`` with ``--offline``: the packages come from uv's cache, nothing is downloaded
 but the standalone Python."""
@@ -319,15 +323,20 @@ def inno_setup_script(
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
-    user can turn down. Turned down, or on a machine that has the runtime already, nothing is
-    installed and nothing is downloaded (:data:`INNO_WEBVIEW2`).
+    user can turn down. On a machine whose runtime is older than :data:`WEBVIEW2_MINIMUM`, it
+    offers the update the same way, run as administrator since Microsoft's bootstrapper refuses
+    it otherwise: Windows asks for that permission first. Turned down, or on a machine whose
+    runtime will do, nothing is installed and nothing is downloaded (:data:`INNO_WEBVIEW2`).
 
     Uninstalling asks whether the settings and downloaded data, which live apart from the program
     and can weigh tens of gigabytes, should go too; no is where the question starts, and a data
     folder chosen on another disk is named, never taken (:data:`INNO_UNINSTALL`)."""
     parts = (INNO_CODE, INNO_WEBVIEW2, INNO_UNINSTALL)
-    code = "\n".join(p.read_text(encoding="utf-8") for p in parts).replace(
-        "%PORT%", str(ENGINE_PORT)
+    code = (
+        "\n".join(p.read_text(encoding="utf-8") for p in parts)
+        .replace("%PORT%", str(ENGINE_PORT))
+        .replace("%WEBVIEW2_MINIMUM%", WEBVIEW2_MINIMUM)
+        .replace("%WEBVIEW2_EXE%", WEBVIEW2_EXE)
     )
     run = r"{app}\python\pythonw.exe"
     return f"""; OrthoStudio XP installer (tools/package/build.py), for Inno Setup 6
@@ -364,10 +373,13 @@ RedirectionGuard=no
 [Tasks]
 Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"; Flags: unchecked
 Name: "webview2"; Description: "Install the Microsoft WebView2 Runtime, which {APP_NAME} shows its window in"; GroupDescription: "Missing Windows component:"; Check: WebView2Missing
+Name: "webview2update"; Description: "Update the Microsoft WebView2 Runtime, too old here to show {APP_NAME}'s window (Windows asks for an administrator's permission)"; GroupDescription: "Windows component too old:"; Check: WebView2TooOld
 
 [Files]
 Source: "{bundle}\\*"; DestDir: "{{app}}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{webview2}"; DestDir: "{{tmp}}"; Flags: deleteafterinstall; Tasks: webview2
+; the same bootstrapper for the update, which the [Code] runs as administrator (webview2.pas)
+Source: "{webview2}"; Flags: dontcopy
 
 [Icons]
 Name: "{{autoprograms}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"

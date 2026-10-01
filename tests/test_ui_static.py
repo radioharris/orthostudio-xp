@@ -3987,6 +3987,13 @@ def test_a_browser_only_system_is_told_at_the_top_of_the_page() -> None:
     assert "browser_only" in note and "details.install" in note  # what the doctor found
     assert "WINDOW_NOTE_KEY" in note and "localStorage.setItem" in note  # put away, it stays away
     assert "app.window_browser_only" in note
+    # a WebView2 too old to start the window is told so, with both versions: Microsoft's installer
+    # then has to be run as administrator (a Shadow PC, 2026-10-01)
+    assert "details?.webview2_found" in note and "app.window_webview2_old" in note
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    words = [ln for ln in i18n.splitlines() if '"app.window_webview2_old"' in ln]
+    assert len(words) == 2  # French and English
+    assert all("{found}" in w and "{needed}" in w for w in words)
     # put away it must still be findable, so it says where it stays before it goes
     assert "app.window_browser_only_again" in note
     # the banner of problems still has its say: this only shows when there is nothing else

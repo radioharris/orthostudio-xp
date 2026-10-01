@@ -454,14 +454,20 @@ def _window() -> Check:
     # nothing to do about it is not a warning: it is how this build works on this system, and an
     # orange pill nobody can ever clear is noise (measured in a container, 2026-09-20)
     nothing_to_do = window.install() is None
+    # the page puts its own words around "install" and shows it as a command or a link: the line
+    # at the foot of the page was the only place this was said, and it is a fold (a user asked,
+    # 2026-09-20)
+    details: dict[str, Any] = {"browser_only": True, "hint": hint, "install": window.install()}
+    old = window.webview2_too_old()
+    if old is not None:
+        # too old is not missing: Microsoft's installer then has to be run as administrator, and
+        # the page says so with the two versions (a Shadow PC, 2026-10-01)
+        details |= {"webview2_found": old, "webview2_needed": window.WEBVIEW2_MINIMUM}
     return Check(
         "window",
         "skip" if nothing_to_do else "warn",
         hint or "The browser opens instead of a window of its own",
-        # the page puts its own words around "install" and shows it as a command or a link: the
-        # line at the foot of the page was the only place this was said, and it is a fold (a user
-        # asked, 2026-09-20)
-        {"browser_only": True, "hint": hint, "install": window.install()},
+        details,
     )
 
 

@@ -18,6 +18,8 @@ installs nothing of its own on a system it does not own.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import sys
 import threading
 from collections.abc import Callable
@@ -32,6 +34,7 @@ __all__ = [
     "ROOM_FOR_THE_SYSTEM",
     "SIZE",
     "WEBVIEW2_HELP",
+    "WEBVIEW2_MINIMUM",
     "ask",
     "ask_the_page_to_quit",
     "away",
@@ -46,6 +49,7 @@ __all__ = [
     "storage_dir",
     "the_distributions_python",
     "to_the_front",
+    "webview2_too_old",
 ]
 
 POLL_S = 2.0
@@ -176,6 +180,14 @@ _window: Any = None
 LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
 WEBVIEW2_HELP = "https://developer.microsoft.com/microsoft-edge/webview2/"
 
+WEBVIEW2_MINIMUM = "101.0.1210.39"
+"""The oldest WebView2 Runtime the window starts on. pywebview's WebView2 control asks the runtime
+for ``ICoreWebView2Environment10`` as it starts, which came with 101.0.1210.39 (Microsoft's
+reference): on an older one the window opened empty, in its background colour, and said why
+nowhere (a Shadow PC that carried 100.0.1185.36 of 2022, 2026-10-01). On an older one the app opens
+the browser instead, and the installer offers the update (``tools/package/webview2.pas``, which is
+given this same number by ``tools/package/build.py``)."""
+
 
 def storage_dir() -> Path:
     """Where the web view keeps what the page stores (the theme, the language, the Experts panel).
@@ -233,6 +245,16 @@ def hint() -> str | None:
             f"For other systems: {LINUX_HELP}"
         )
     if sys.platform == "win32":
+        old = webview2_too_old()
+        if old is not None:
+            # it is there, so Microsoft's installer answers that it is installed already, unless
+            # it is run as administrator, which is how it updated the one of a Shadow PC
+            return (
+                "OrthoStudio XP opened in your browser: the WebView2 Runtime, which draws its "
+                f"window, is too old on this PC (version {old}; {WEBVIEW2_MINIMUM} or later is "
+                "needed). Microsoft's Evergreen Bootstrapper updates it when it is run as "
+                f"administrator: {WEBVIEW2_HELP}"
+            )
         return (
             "OrthoStudio XP opened in your browser: the WebView2 Runtime, which draws its window, "
             f"is not installed. Microsoft gives it here: {WEBVIEW2_HELP}"
@@ -250,15 +272,28 @@ def _here(name: str) -> bool:
         return False
 
 
-def _webview2_runtime() -> bool:
-    """Whether Windows carries the WebView2 Runtime, read the way Microsoft says to read it: the
-    ``pv`` value of the runtime's key, per machine or per user, present and above 0.0.0.0. The
-    installer offers it from the same two keys (``tools/package/webview2.pas``)."""
+def _version(text: str) -> tuple[int, ...] | None:
+    """``101.0.1210.39`` as numbers to compare, or ``None`` when it is not a dotted version."""
+    parts = text.strip().split(".")
+    if not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def _webview2_version() -> str | None:
+    """The version of the WebView2 Runtime Windows carries, read the way Microsoft says to read it:
+    the ``pv`` value of the runtime's key, per machine or per user, present and above 0.0.0.0, and
+    the newer of the two when both have one. ``None`` when neither has one, and off Windows. The
+    installer reads the same two keys (``tools/package/webview2.pas``)."""
     if sys.platform != "win32":
-        return False
-    import winreg
+        return None
+    try:
+        import winreg
+    except ImportError:  # a test that only says it is Windows
+        return None
 
     guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    found: list[str] = []
     for root, key in (
         (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{guid}"),
         (winreg.HKEY_CURRENT_USER, rf"Software\Microsoft\EdgeUpdate\Clients\{guid}"),
@@ -269,8 +304,29 @@ def _webview2_runtime() -> bool:
         except OSError:
             continue
         if isinstance(version, str) and version not in ("", "0.0.0.0"):
-            return True
-    return False
+            found.append(version)
+    return max(found, key=lambda v: _version(v) or ()) if found else None
+
+
+def _older_than_the_minimum(version: str) -> bool:
+    """Whether ``version`` is older than :data:`WEBVIEW2_MINIMUM`. A version written in a way this
+    cannot read is given the benefit of the doubt, as every version before 0.1.20 gave all."""
+    have = _version(version)
+    return have is not None and have < (_version(WEBVIEW2_MINIMUM) or ())
+
+
+def webview2_too_old() -> str | None:
+    """The version of the WebView2 Runtime this Windows carries when the window cannot start on it
+    (:data:`WEBVIEW2_MINIMUM`); ``None`` when it is recent enough, missing, or off Windows."""
+    found = _webview2_version()
+    return found if found is not None and _older_than_the_minimum(found) else None
+
+
+def _webview2_runtime() -> bool:
+    """Whether Windows carries a WebView2 Runtime the window starts on: one is there
+    (:func:`_webview2_version`), and it is not older than :data:`WEBVIEW2_MINIMUM`."""
+    found = _webview2_version()
+    return found is not None and not _older_than_the_minimum(found)
 
 
 def possible() -> bool:
@@ -290,7 +346,8 @@ def possible() -> bool:
     if sys.platform == "darwin":
         return _here("AppKit") and _here("WebKit")  # pyobjc, which travels inside the app
     if sys.platform == "win32":
-        return _here("clr") and _webview2_runtime()  # pythonnet, and Microsoft's own component
+        # pythonnet, and Microsoft's own component, recent enough to start the window on
+        return _here("clr") and _webview2_runtime()
     return _here("gi") or _here("PyQt6") or _here("PyQt5") or _here("PySide6")
 
 
@@ -482,6 +539,24 @@ def fits_the_screen(
     )
 
 
+class _ToNote(logging.Handler):
+    """pywebview's own warnings and errors, given to the ``note`` of :func:`show`.
+
+    pywebview writes them to standard error, which the app opened from the Start menu does not
+    have (``pythonw``): a WebView2 that could not start left an empty window, and its reason went
+    nowhere, not even into ``serve.log`` (a Shadow PC, 2026-10-01).
+    """
+
+    def __init__(self, note: Callable[[str], None]) -> None:
+        super().__init__(logging.WARNING)
+        self._note = note
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # a line that cannot be written must not take the window with it
+        with contextlib.suppress(Exception):
+            self._note(f"the window's web view: {record.getMessage()}")
+
+
 def show(
     url: str,
     *,
@@ -584,10 +659,20 @@ def show(
         else []
     )
     icon = icon_file()
-    webview.start(
-        start,
-        menu=menu,
-        private_mode=False,
-        storage_path=str(store),
-        **({"icon": icon} if icon else {}),
-    )
+    # what pywebview itself has to say about the web view goes to the app's log, for as long as the
+    # window is up (:class:`_ToNote`)
+    said = logging.getLogger("pywebview")
+    relay = _ToNote(note) if note is not None else None
+    if relay is not None:
+        said.addHandler(relay)
+    try:
+        webview.start(
+            start,
+            menu=menu,
+            private_mode=False,
+            storage_path=str(store),
+            **({"icon": icon} if icon else {}),
+        )
+    finally:
+        if relay is not None:
+            said.removeHandler(relay)

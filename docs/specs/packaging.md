@@ -80,7 +80,23 @@ own, ticked, that the user can turn down, shown only when Microsoft's own key sa
 missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
 vast majority of Windows 10 machines. The 2 MB Evergreen bootstrapper is downloaded at build time
 (`fetch_webview2`), so a Windows build reaches Microsoft once, as it already reaches PyPI; turned
-down, nothing is installed and the app opens the browser. Linux asks for packages that need root
+down, nothing is installed and the app opens the browser.
+
+Present is not enough: pywebview's WebView2 control asks the runtime for
+`ICoreWebView2Environment10` as it starts, which came with **101.0.1210.39**
+(`orthostudio.window.WEBVIEW2_MINIMUM`; `build.py` writes the same number into the Pascal, and a
+test holds the two equal). A Shadow PC carried 100.0.1185.36 of 2022, never updated though its
+Edge was current: the window opened empty, in its background colour, and pywebview's reason went
+to a standard error that `pythonw` does not have (2026-10-01). So the app counts a runtime older
+than that as none (`window.possible`, `webview2_too_old`): it opens the browser, the doctor's
+`window` check names both versions, and the page tells the reader to run Microsoft's bootstrapper
+as administrator. Run plainly it answers "already installed" and changes nothing; as administrator
+it updated that PC's. The installer offers that update as a task of its own (`webview2update`,
+ticked, `WebView2TooOld`), which its `[Code]` runs once the files are in, through
+`ShellExec('runas', ...)`: Windows asks for an administrator's permission, and turned down or
+failed, the setup goes on and says so in its log. Whatever pywebview itself warns about while the
+window is up goes to `serve.log` (`window._ToNote`), so that a web view that will not start is
+never again said to nobody. Linux asks for packages that need root
 and differ between distributions: nothing is offered there, and the `window` check names them.
 pywebview itself travels in the Linux archive like everywhere else, or naming those packages would
 be advice that leads nowhere: they are useless without the package that uses them.

@@ -2214,6 +2214,9 @@ function renderWindowNote() {
   const checks = Array.isArray(state.status?.doctor) ? state.status.doctor : [];
   const check = checks.find((c) => c && c.name === "window");
   const install = check?.details?.browser_only ? check.details.install || "" : "";
+  // a WebView2 too old to start the window is not a missing one: the page says which it is, since
+  // Microsoft's installer then answers "already installed" unless run as administrator
+  const old = check?.details?.webview2_found || "";
   let done = false;
   try {
     done = localStorage.getItem(WINDOW_NOTE_KEY) === "1";
@@ -2235,7 +2238,9 @@ function renderWindowNote() {
     note.remove();
   };
   note.append(
-    t("app.window_browser_only"),
+    old
+      ? t("app.window_webview2_old", { found: old, needed: check.details.webview2_needed || "" })
+      : t("app.window_browser_only"),
     " ",
     h("code", null, install),
     " ",

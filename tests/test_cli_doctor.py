@@ -176,6 +176,25 @@ def test_the_window_check_says_what_to_install_when_there_is_none(
     assert doctor._window().status == "ok"
 
 
+def test_the_window_check_gives_the_page_both_versions_when_webview2_is_too_old(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Too old is not missing: the page says which, with the two versions, since Microsoft's
+    installer then has to be run as administrator (a Shadow PC, 2026-10-01)."""
+    from orthostudio import doctor, window
+
+    monkeypatch.setattr(window, "possible", lambda: False)
+    monkeypatch.setattr(window, "webview2_too_old", lambda: "100.0.1185.36")
+    monkeypatch.setattr(window, "install", lambda: window.WEBVIEW2_HELP)
+    check = doctor._window()
+    assert check.status == "warn" and check.details["browser_only"] is True
+    assert check.details["webview2_found"] == "100.0.1185.36"
+    assert check.details["webview2_needed"] == window.WEBVIEW2_MINIMUM
+    # a runtime that is only missing says nothing of versions
+    monkeypatch.setattr(window, "webview2_too_old", lambda: None)
+    assert "webview2_found" not in doctor._window().details
+
+
 def test_the_chunks_check_reads_the_listings_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
