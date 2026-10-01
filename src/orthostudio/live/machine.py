@@ -42,6 +42,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 MAX_FLIGHT_ENCODES = 4
 MAX_SHARP_BUILDS = 4
@@ -254,10 +255,8 @@ def _darwin_pool(pid: int) -> tuple[int, int] | None:
     return running, total
 
 
-def _linux_pool(pid: int) -> tuple[int, int] | None:
-    from pathlib import Path
-
-    tasks = Path(f"/proc/{pid}/task")
+def _linux_pool(pid: int, proc: Path = Path("/proc")) -> tuple[int, int] | None:
+    tasks = proc / str(pid) / "task"
     if not tasks.is_dir():
         return None
     running = total = 0

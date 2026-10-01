@@ -235,3 +235,21 @@ def test_x_plane_s_workers_read_from_outside() -> None:
             t.join()
     assert machine.xplane_pool(os.getpid()) == (0, 0)
     assert machine.xplane_pool(999_999_999) is None
+
+
+def test_x_plane_s_workers_read_on_linux(tmp_path: Path) -> None:
+    """Linux: /proc/<pid>/task/<thread>/comm keeps 15 characters of a thread's name, its stat
+    says R for running after the name in brackets, which may hold brackets itself."""
+    proc = tmp_path / "proc"
+    for tid, name, state in (
+        (1, "X-Plane-x86_64", "S"),
+        (2, "Pool worker (ba", "R"),
+        (3, "Pool worker (ba", "S"),
+        (4, "Pool worker (re", "R"),  # a realtime worker: not counted
+    ):
+        task = proc / "42" / "task" / str(tid)
+        task.mkdir(parents=True)
+        (task / "comm").write_text(name + "\n")
+        (task / "stat").write_text(f"{tid} ({name}) {state} 1 1 1 0 -1\n")
+    assert machine._linux_pool(42, proc) == (1, 2)
+    assert machine._linux_pool(43, proc) is None  # X-Plane gone
