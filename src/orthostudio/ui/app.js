@@ -4409,8 +4409,9 @@ function updateActivity(line, job, tile) {
  * redraw: it blinked and could not be read, then, kept still under the pointer, it showed words
  * gone stale (a user, 2026-10-02). This one changes its words in place (updateStepCell). It shows
  * once the pointer has rested on a cell for TIP_DELAY_MS, as the system's does, and follows it
- * like the map's (map.js showTip). Two lines of a fixed size, the step then what it does
- * (stepTipLines): its size no longer follows its words (the same user).
+ * like the map's (map.js showTip). The step then what it does (stepTipLines), in two lines of a
+ * fixed size while the step is at work, its words changing; fitted to its words before the step
+ * starts and once it ends (fillStepTip, the same user).
  */
 const stepTip = { el: null, lines: [], cell: null, timer: 0, x: 0, y: 0 };
 const TIP_DELAY_MS = 500;
@@ -4429,6 +4430,14 @@ function placeStepTip() {
 function fillStepTip(c) {
   setText(stepTip.lines[0], c.tip[0]);
   setText(stepTip.lines[1], c.tip[1]);
+  // The fixed size is for a step at work, whose words change; the words of a step not started or
+  // ended stay put, and its bubble fits them (a user, 2026-10-02: it was as big then as while the
+  // step ran).
+  const atWork = c.status === "running" || c.status === "waiting";
+  if (stepTip.el.classList.contains("is-at-work") !== atWork) {
+    stepTip.el.classList.toggle("is-at-work", atWork);
+    if (!stepTip.el.hidden) placeStepTip();
+  }
 }
 
 function showStepTip(c) {

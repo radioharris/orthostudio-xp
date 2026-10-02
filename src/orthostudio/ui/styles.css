@@ -947,15 +947,19 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .step-failed .step-state { color: var(--fail); font-weight: 600; }
 .step-detail:not(:empty)::before { content: " · "; }
 /* The steps' own tooltip (app.js stepTip), drawn as the map's: the system's blinked at each change
-   of its words, four times a second (2026-10-02). Two lines of a fixed size, the step then what it
-   does (stepTipLines), so that it no longer grows and shrinks with its words: a longer line ends
-   in an ellipsis (the same user). */
+   of its words, four times a second (2026-10-02). The step then what it does (stepTipLines), a
+   longer line ending in an ellipsis. While the step is at work its words change, and the bubble
+   keeps one size, two lines 330 px wide, so as not to grow and shrink with them; before the step
+   starts and once it ends its words stay put, and the bubble fits them, its second line only when
+   it has one (the same user). */
 .step-tip {
-  position: fixed; z-index: 800; pointer-events: none; width: 330px;
+  position: fixed; z-index: 800; pointer-events: none; width: max-content; max-width: 330px;
   padding: 4px 8px; border-radius: var(--radius); font-size: var(--fs-2); line-height: 1.35;
   background: var(--fg); color: var(--bg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
+.step-tip.is-at-work { width: 330px; }
 .step-tip-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 1.35em; }
+.step-tip:not(.is-at-work) .step-tip-line:empty { display: none; }
 /* what the tile is doing, in words, set aside on 2026-10-02 (too much to read on every tile: see
    `updateTileRows`), kept for its return. The cells hold a word each, and a phrase was cut in them (a
    user, 2026-09-30). Under the tile's steps, across the row, in every row and always one line high, empty

@@ -607,9 +607,12 @@ could not be read; kept still under the pointer, it then showed words gone stale
 2026-10-02). The page's shows once the pointer has rested on a cell for half a second
 (`TIP_DELAY_MS`), under and right of the pointer and kept inside the window, follows the pointer,
 changes its words in place at every redraw (`updateStepCell`), and goes when the pointer leaves
-the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`. It
-holds two lines in a bubble of a fixed size, 330 px wide, so that it no longer grows and shrinks
-with its words (the same user): the step and how far it is, as its cell says it (*Imagery · 42 %
+the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`. While
+the step is at work (running or waiting) its words change, and the bubble keeps one size, two
+lines 330 px wide, so as not to grow and shrink with them (the same user); before the step starts
+and once it ends its words stay put, and the bubble fits them, up to 330 px, its second line only
+when it has one (the same user: it was as big then as while the step ran, `fillStepTip`). Its
+lines are the step and how far it is, as its cell says it (*Imagery · 42 %
 · 16.2 MB/s*), then what it is doing in the page's words, without the rate (*209 of 213 images*,
 *reading the relief*, *meshing the terrain, about 10 s to go*), or, when it does not run, why it
 waits, what went wrong, what was kept, and for OSM and Terrain what the step holds

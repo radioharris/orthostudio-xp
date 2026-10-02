@@ -2014,7 +2014,11 @@ class El {
   constructor(tag) {
     Object.assign(this, { tag, attrs: {}, kids: [], on: {}, style: {}, dataset: {} });
     Object.assign(this, { className: "", textContent: "", shown: 0, isConnected: true });
-    Object.assign(this, { offsetWidth: 220, offsetHeight: 48, _hidden: false });
+    Object.assign(this, { offsetWidth: 220, offsetHeight: 48, _hidden: false, classes: new Set() });
+    this.classList = {
+      contains: (name) => this.classes.has(name),
+      toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name), on),
+    };
   }
   get hidden() { return this._hidden; }
   set hidden(v) { if (this._hidden && !v) this.shown += 1; this._hidden = Boolean(v); }
@@ -2058,6 +2062,7 @@ c.root.fire("pointerenter", 300, 200);
 timers.shift()();
 const words = () => tip().kids.map((line) => line.textContent).join(" | ");
 const seen = [words()];
+const atWork = [tip().classList.contains("is-at-work")];
 m.updateStepCell(c, job, at(0.17, 1240, 15.9), "imagery");
 seen.push(words());
 m.updateStepCell(other, job, at(0.5, 1300, 16.0), "imagery");  // another cell leaves it alone
@@ -2065,12 +2070,13 @@ m.updateStepCell(c, job, at(0.26, 1302, 16.7), "imagery");
 seen.push(words());
 m.updateStepCell(c, job, done, "imagery");
 seen.push(words());
+atWork.push(tip().classList.contains("is-at-work"));
 const steady = [tip().hidden, tip().shown, tip().style.left, tip().style.top];
 c.root.fire("pointerleave");
 const gone = tip().hidden;
 m.updateStepCell(c, job, at(0.3, 1300, 16.1), "imagery");
 process.stdout.write(JSON.stringify({
-  first, seen, steady, gone, after: words(), title: c.root.getAttribute("title"),
+  first, seen, steady, gone, after: words(), title: c.root.getAttribute("title"), atWork,
 }));
 """
     got = _run_node(script)
@@ -2087,6 +2093,8 @@ process.stdout.write(JSON.stringify({
     assert got["gone"] is True
     assert got["after"] == "Imagery · done · 5 s | "  # once gone, the cell's words leave it
     assert got["title"] is None  # no system tooltip beside the page's own
+    # one size while the step works, fitted to its words once it has ended (a user, 2026-10-02)
+    assert got["atWork"] == [True, False]
 
 
 def test_a_step_tooltip_says_the_step_then_what_it_does() -> None:
@@ -2146,7 +2154,10 @@ def test_a_step_tooltip_says_the_step_then_what_it_does() -> None:
     assert got[7] == ["Install · done · 3 s", ""]
     css = (UI / "styles.css").read_text(encoding="utf-8")
     rules = dict(_css_rules(css))
-    assert "width: 330px;" in rules[".step-tip"] and "max-width" not in rules[".step-tip"]
+    # one size while the step is at work, its words changing; fitted to its words otherwise
+    assert "width: 330px;" in rules[".step-tip.is-at-work"]
+    assert "width: max-content; max-width: 330px;" in rules[".step-tip"]
+    assert "display: none;" in rules[".step-tip:not(.is-at-work) .step-tip-line:empty"]
     for prop in ("white-space: nowrap;", "text-overflow: ellipsis;", "height: 1.35em;"):
         assert prop in rules[".step-tip-line"], prop
 
