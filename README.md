@@ -66,7 +66,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), the USGS
   at 1 arc-second over North America (Canada and Mexico included, though its Canadian heights
   come from old map contours rather than measurement), Canada's lidar where it has been flown
-  (bare earth, laid over Copernicus, which answers elsewhere) or your own elevation file. Works
+  (bare earth, laid over Copernicus, which answers elsewhere) or your own elevation files, read at
+  their own resolution whatever their size (a 4 m lidar square included) as far as the memory
+  goes. Works
   says which one a build actually read, since a relief laid over another falls back where it has
   nothing. Outside a source's coverage the tile is refused, never built flat.
 - **The colours of the photos, seen on the map.** Aerial imagery as the source delivers it, or

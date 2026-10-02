@@ -352,6 +352,24 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "base relief answers for the rest.",
     ),
     _spec(
+        "DEM_FILE_TOO_LARGE",
+        _D,
+        _C,
+        "Elevation file {path} holds {points_m} million points, which take {need_gb} GB of memory "
+        "to read, more than half of this computer's {ram_gb} GB{advice}.",
+        "Use a computer with more memory for this tile, or a coarser copy of the file.",
+    ),
+    _spec(
+        "DEM_OVERLAY_NOT_REFINED",
+        _D,
+        _C,
+        "Your own file for cell {cell} ({own}, {own_m} m between two points) was laid on the "
+        "{base_m} m grid of {source}: at its own resolution the relief of this square would take "
+        "{need_gb} GB of memory, more than half of this computer's {ram_gb} GB.",
+        "Name the file itself as your own elevation file in Settings, which reads it at its own "
+        "resolution, or use a computer with more memory for this tile.",
+    ),
+    _spec(
         "DEM_OVERLAY_COARSER",
         _D,
         _C,

@@ -363,8 +363,11 @@ def test_the_ram_budget_is_found_on_windows_too(monkeypatch: pytest.MonkeyPatch)
         assert found is not None and found == buildmod._windows_memory_mb()
     else:
         assert buildmod.physical_memory_mb() is None
+    # the reader of the installed memory lives in orthostudio.machine since 0.1.20, where the
+    # reader of one's own relief files asks it too
     src = (SRC / "pipeline" / "build.py").read_text(encoding="utf-8")
-    assert "GlobalMemoryStatusEx" in src and "RAM budget" in src
+    machine = (SRC / "machine.py").read_text(encoding="utf-8")
+    assert "GlobalMemoryStatusEx" in machine and "RAM budget" in src
 
 
 # -- 3. the OSM phase and the coastline layer ------------------------------------------------

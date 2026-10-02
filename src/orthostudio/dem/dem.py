@@ -23,6 +23,7 @@ from numpy.typing import NDArray
 
 from orthostudio.dem.raster import (
     GEOMETRY,
+    MEMORY_SHARE,
     NODATA,
     UNREADABLE_CODES,
     CombinedRaster,
@@ -225,6 +226,9 @@ class Dem:
             # dropped: the scenery came out of the base alone (found 2026-09-19 on a build of
             # +46+006 whose lidar file changed nothing).
             _lay_into(dem, overlays, record)
+            # their rasters are in the base now: a lidar square is 3 GB, not to be held on to
+            # while the raster is saved
+            overlays.clear()
         return dem
 
     @classmethod
@@ -400,8 +404,11 @@ class Dem:
     # -- artefact ----------------------------------------------------------------------------
 
     def write_alt(self, path: Path) -> None:
-        """``Data<tile>.alt``: float32, row-major, no header (``DEM.write_to_file``, ``:174``)."""
-        self.alt_dem.astype(np.float32).tofile(path)
+        """``Data<tile>.alt``: float32, row-major, no header (``DEM.write_to_file``, ``:174``).
+
+        Written from the raster itself: ``astype`` made a whole copy of a raster already in
+        float32, 3 GB more for a lidar square of 27 468 points a side (2026-10-02)."""
+        np.asarray(self.alt_dem, dtype=np.float32).tofile(path)
 
     def meta(self) -> dict[str, object]:
         """The ``meta.json`` document of the artefact (spec section 9)."""
@@ -420,7 +427,7 @@ class Dem:
             "min": float(self.alt_dem.min()),
             "max": float(self.alt_dem.max()),
             "mean": float(self.alt_dem.mean()),
-            "nodata_pixels": int((self.alt_dem == self.nodata).sum()),
+            "nodata_pixels": _count_equal(self.alt_dem, self.nodata),
             "alt_layout": ALT_FILE_FORMAT,
             "laid_over": list(self.laid_over),
             "cells": [
@@ -465,10 +472,33 @@ class Dem:
         )
 
 
-MAX_COMPOSITE_SIDE = 12_000
-"""How fine a composite raster may become, in points a side: a 1/3" overlay over an assembled
-window lands just under it (11 013), and 12 000 points is 576 MB of float32, the size the USGS
-source already produces for one tile of the United States."""
+COUNT_ROWS = 1024
+"""Rows counted at a time by :func:`_count_equal`: a mask of a whole 27 468-point square is 0.75 GB,
+one of 1 024 of its rows 28 MB."""
+
+
+def _count_equal(alt: NDArray[np.float32], value: float) -> int:
+    """How many points of ``alt`` equal ``value``, a block of rows at a time."""
+    target = np.float32(value)
+    return sum(
+        int(np.count_nonzero(alt[row : row + COUNT_ROWS] == target))
+        for row in range(0, alt.shape[0], COUNT_ROWS)
+    )
+
+
+def _composite_memory(side: int, held_points: int) -> tuple[float, int | None]:
+    """MB a composite of ``side`` points a side takes while the overlays' ``held_points`` are
+    still in memory, and the installed memory in MB (``None`` where the platform does not say).
+
+    The window rises to the finest overlay's own grid as far as the memory allows
+    (:data:`orthostudio.dem.raster.MEMORY_SHARE`), and no further a fixed side: a cap of 12 000
+    points a side laid a lidar square of 4 m on the 30 m grid of the relief under it, in silence
+    (a user on La Réunion, 2026-10-01). 28 018 points a side is 3.1 GB, beside the 3 GB of the
+    file."""
+    from orthostudio.machine import physical_memory_mb
+
+    return (side * side + held_points) * 4 / 2**20, physical_memory_mb()
+
 
 ROWS_AT_A_TIME = 512
 """Rows of one block of the two grid walks below: a block of a 7 200-point raster is 15 MB."""
@@ -539,8 +569,28 @@ def _lay_into(
         base.laid_over = ()
         return
     finest = min(_file_step(dem) for _name, dem in overlays)
-    if finest < _step_of(base) and round((base.x1 - base.x0) / finest) + 1 <= MAX_COMPOSITE_SIDE:
-        _refine(base, finest)
+    if finest < _step_of(base):
+        side = round((base.x1 - base.x0) / finest) + 1
+        held = sum(int(dem.alt_dem.size) for _name, dem in overlays)
+        need_mb, installed_mb = _composite_memory(side, held)
+        if installed_mb is None or need_mb <= installed_mb * MEMORY_SHARE:
+            _refine(base, finest)
+        else:
+            name, over = min(overlays, key=lambda pair: _file_step(pair[1]))
+            record(
+                OsxpError(
+                    "DEM_OVERLAY_NOT_REFINED",
+                    context={
+                        "cell": hem_latlon(base.tile.lat, base.tile.lon),
+                        "own": _file_name(over) or Path(name).name,
+                        "own_m": f"{finest * 111_320:.0f}",
+                        "source": base.source,
+                        "base_m": f"{_step_of(base) * 111_320:.0f}",
+                        "need_gb": f"{need_mb / 1024:.1f}",
+                        "ram_gb": f"{installed_mb / 1024:.0f}",
+                    },
+                )
+            )
     laid: list[str] = []
     for name, over in overlays:
         points = _lay_one(base, over)
@@ -626,23 +676,25 @@ def _read_whole_file(
     the whole tile flat (or, for an overlay, the tile flattened under it), so OrthoStudio XP raises
     ``DEM_TILE_UNAVAILABLE`` instead (decision 0007).
     """
-    failures: list[str] = []
+    failures: list[OsxpError] = []
 
     def note(err: OsxpError) -> None:
         if err.code in UNREADABLE_CODES:
-            failures.append(err.code)
+            failures.append(err)
         record(err)
 
     read = read_elevation_from_file(
         path, tile.lat, tile.lon, base_if_error=base_if_error, on_event=note
     )
     if failures:
+        # what the reader found, in its own words: "the file is unreadable" was all a user read
+        # of a lidar square refused for its size (2026-10-01)
         raise OsxpError(
             "DEM_TILE_UNAVAILABLE",
             context={
                 "cell": hem_latlon(tile.lat, tile.lon),
                 "source": source,
-                "reason": f"the file is unreadable ({failures[0]}): {path}",
+                "reason": failures[0].message.rstrip("."),
             },
         )
     return read

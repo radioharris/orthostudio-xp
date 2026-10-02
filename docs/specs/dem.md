@@ -99,8 +99,9 @@ of that square (`write_geotiff`), which the rest of the engine reads like any ot
 Measured: a whole square of the Amazon in **9 s**, 33 MB kept. A one-degree square never straddles a
 zone, whose sides are multiples of six degrees of longitude and eight of latitude.
 
-The same reader opens a huge tiled GeoTIFF a user has on his disk, which Pillow would decode whole
-(`MAX_POINTS` refuses a zone of 671 million points).
+Since 0.1.20 the same reader opens every GeoTIFF of one's own it decodes (section 5.1): a lidar
+square of La Réunion, 27 468 points a side (754 million, 3 GB of floats), was refused for its size,
+and Pillow would have taken 10 GB to decode it (a user, 2026-10-01).
 
 ### 3.0a A folder of one's own files
 
@@ -129,8 +130,12 @@ projection is refused, `DEM_EPSG_UNSUPPORTED`, **before a pixel is read**: natio
 20 m come in a metric grid (Sonny's Switzerland at 10 m is UTM 32N, 851 million points, 914 MB),
 and decoding one only to turn it down would have filled 3.4 GB. Ortho4XP reads the same file, warns
 that "result is likely to be non sense" and builds it anyway (`O4_DEM_Utils.py:536-548`); it also
-needs GDAL for any GeoTIFF, which OrthoStudio XP does not. A raster of more than `MAX_POINTS`
-(400 million, 1.6 GB of floats) is refused with a plain reason rather than filling the memory.
+needs GDAL for any GeoTIFF, which OrthoStudio XP does not. **No size refuses a file**: it is
+read at its own resolution, as Ortho4XP reads it, as long as the read takes no more than half the
+installed memory (`raster.MEMORY_SHARE`, since the mesher then holds the raster twice); past that it
+is refused with the numbers, `DEM_FILE_TOO_LARGE`. Until 0.1.20 a fixed `MAX_POINTS` of 400 million
+refused the user's 754 million, and Pillow's own guard against image bombs, put back before the
+decode, refused everything above 179 million as a missing library.
 
 **What enters the key.** The folder's path alone would not do: replacing a file with a better
 version of itself leaves the path as it was, and the tile would come back from the store unchanged.
@@ -382,8 +387,23 @@ Window, identical to lines 545-549 and assuming `AREA_OR_POINT = Area`:
 `x1 = x0 + (nx - 1) * geo[1]`, `y0 = y1 + (ny - 1) * geo[5]`.
 Nodata pixels are rewritten to -32768 and `nodata` is then -32768, as in lines 517-524.
 
-A TIFF Pillow cannot decode (tiled, compressed with an exotic codec) raises
-`DEM_RASTER_LIBRARY_MISSING`, whose remedy already names the optional raster extra.
+**Piece by piece first** (0.1.20, `raster._read_in_pieces`): a GeoTIFF stored in tiles or in
+strips, uncompressed or deflated, is read one tile (or strip) at a time into the raster by
+`dem/cog.py`, out of a memory map of the file, so the read takes the raster's own memory: 3.1 GB
+and 2.8 s for the 754 million points above, where Pillow took 10.1 GB. Only the tile and
+`raster.MARGIN` (0.01°) around it are read out of a file that covers more. The reader undoes
+predictors 2 (horizontal differencing, on the integer each sample is stored as) and 3 (floating
+point: a row's bytes by significance, then differenced byte by byte), reads either byte order and
+samples of float32, float64, int16, uint16, int32 or uint32. Predictor 3 was taken and not undone
+until 0.1.20, which reads noise; the little-endian files are checked against libtiff in the tests,
+and Pillow reads none of the big-endian float32 ones right. The file's nodata becomes -32768 a block
+of rows at a time, without a mask of the whole raster.
+
+Anything else (LZW, JPEG, another layout) is read **by Pillow, whole**, its guard lifted for the
+decode too, after the memory it takes (about 18 bytes a point) has been weighed the same way; the
+refusal then says that a tiled, deflated copy is read in a fifth of that. A file that does not decode
+raises `DEM_FILE_UNREADABLE` with the decoder's words; `DEM_RASTER_LIBRARY_MISSING` is left to an
+image that is not a TIFF at all.
 
 ## 6. `upsample` 1201 -> 3601 (lines 910-956)
 
@@ -462,8 +482,12 @@ then quietly dropped: the tile came out of the base alone. Found on 2026-09-19 o
 `+46+006` whose lidar folder changed nothing at all, and true of `COP30;HRDEM` just the same.
 Each overlay is laid nearest-point where it has data, exactly as `alt_vec_strict` would have read
 it, and **the finest step in the room wins, both ways**: an overlay sharper than the base raises the
-whole window to its own grid first (bilinear, block by block, up to `MAX_COMPOSITE_SIDE = 12 000`
-points a side, which a 1/3" overlay over an assembled window stays under), and an overlay coarser
+whole window to its own grid first (bilinear, block by block, as far as the memory allows: the
+composite and the overlays still held must take no more than `raster.MEMORY_SHARE` of it, measured
+7.0 GB for a 4 m square, a composite of 28 011 points a side; past that the overlay is laid on the
+base's grid and `DEM_OVERLAY_NOT_REFINED` says so with the numbers. Until 0.1.20 a fixed
+`MAX_COMPOSITE_SIDE` of 12 000 points laid a 4 m file on the 30 m grid under it in silence), and the
+overlays' rasters are let go once laid, before the raster is saved. An overlay coarser
 than the base is left aside with `DEM_OVERLAY_COARSER`, which names the file and both steps (a user
 with Sonny's 1" sets and the USGS 1/3" relief asked which one answers, 2026-09-20; the American sets
 of one's own are made from that very source). Equal steps go to the overlay, which is what a file

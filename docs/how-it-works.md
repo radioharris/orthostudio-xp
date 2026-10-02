@@ -435,6 +435,13 @@ of one second, the relief answers and the report names the file it left aside. W
 a collection that covers one country is no trouble. Change a file and the tiles that use it are built again; the rest are not. A single file
 works too, under *My own elevation file*, and writing `{latlon}` in its path where the name of the
 square goes (`/my-relief/{latlon}.hgt`) makes it one file per tile without naming a folder.
+Whatever its size, a file is read at its own resolution, a lidar square at 4 m of 754 million points
+included, as long as the computer has the memory: the mesh holds the relief twice, so such a square
+asks about 6 GB, as it does of Ortho4XP. A file too big for this computer is refused with the
+numbers, and Works says when a file of your folder could not be used, or had to be laid on a
+coarser grid for want of memory, and which relief answered instead. A relief that fine also makes
+the mesh finer: if it reaches the budget of triangles (*Maximum triangles per tile*, in the
+advanced settings, 3 million by default, up to 5), Works says so.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch

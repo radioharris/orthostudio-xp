@@ -1782,3 +1782,88 @@ def test_only_a_source_that_really_pushed_back_is_reported_as_slowing_us_down() 
     said = "the source is asking us to slow down"
     assert said not in textures_progress_message("BI16", replace(busy, throttled=True), 18.4)
     assert said in textures_progress_message("BI16", replace(busy, pushed_back=True), 0.4)
+
+
+# -- what the relief and the mesh set aside, said in Works (0.1.20) ----------------------------
+
+
+def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A folder's lidar file refused for its size left a user with a tile built on another relief
+    and no word of it: the relief recorded it and nobody listened (a user on La Réunion,
+    2026-10-01). The node's last line says it now, in one line, and only what was set aside."""
+    from orthostudio.dem import rule as dem_rule
+
+    seen: list[str] = []
+
+    class Ctx:
+        cancel_event = None
+
+        def progress(self, fraction: float, message: str) -> None:
+            seen.append(message)
+
+    def rule(ctx: Any) -> None:
+        hear = dem_rule._job().on_event
+        assert hear is not None
+        hear(OsxpError("DEM_VOIDS_FILLED_WITH_ZERO", context={"count": 9, "cell": "S21E055"}))
+        hear(
+            OsxpError(
+                "DEM_FILE_TOO_LARGE",
+                context={
+                    "path": "E:/DEM-TIF/S21E055.tif",
+                    "points_m": "754",
+                    "need_gb": "2.8",
+                    "ram_gb": "4",
+                    "advice": "",
+                },
+            )
+        )
+        hear(OsxpError("DEM_OVERLAY_UNAVAILABLE", context={"cell": "S21E055", "source": "E:/x"}))
+
+    monkeypatch.setattr(build_mod, "run_p0_rule", rule)
+    monkeypatch.setattr(build_mod, "RELIEF_TICK_S", 60.0)
+    build_mod._dem_run(cast(Any, None), _spec("-21+055", zl=14))(Ctx())
+    last = seen[-1]
+    assert last.startswith("-21+055: ") and "754 million points" in last
+    assert "the relief laid under it is used alone there" in last  # what answered instead
+    assert "filled" not in last  # the sea of every coastal tile is not news
+
+
+def test_a_mesh_that_reached_its_budget_says_so(tmp_path: Path) -> None:
+    """The mesh found it had reached its triangle budget and kept it to itself. A relief of one's
+    own at 4 m makes it likely: the line says it, and where the budget is raised."""
+    (tmp_path / "stats.json").write_text(
+        json.dumps({"tile": "-21+055", "n_triangles": 2_990_000}), encoding="utf-8"
+    )
+    line = build_mod.mesh_budget_line(tmp_path, 3.0)
+    assert line is not None and line.startswith("-21+055: the mesh reached its budget of 3")
+    assert "2,990,000 triangles" in line and "Maximum triangles per tile" in line
+    assert build_mod.mesh_budget_line(tmp_path, 5.0) is None  # far from a budget of 5 million
+    assert build_mod.mesh_budget_line(tmp_path / "nowhere", 3.0) is None
+
+
+def test_the_scheduler_weighs_a_relief_of_ones_own(tmp_path: Path) -> None:
+    """A lidar square is ten times the rasters the rules declare their memory for: the nodes of
+    its tile say what they will take, from its header alone, so that two of them do not start
+    together on a machine that cannot hold both (measured: 3.8, 6.2 and 6.0 GB for 3 GB of
+    floats)."""
+    from PIL import Image, TiffImagePlugin
+
+    from orthostudio.dem.rule import DEM_RULE
+    from orthostudio.model import TileRef
+
+    folder = tmp_path / "lidar"
+    folder.mkdir()
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / 400, 1 / 400, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, 55.0, -20.0, 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    Image.new("F", (400, 400)).save(folder / "S21E055.tif", tiffinfo=info)
+    tile = TileRef(-21, 55)
+    mb = 400 * 400 * 4 / 2**20
+    assert build_mod.own_relief_mb(str(folder / "S21E055.tif"), tile) == (mb, False)
+    assert build_mod.own_relief_mb(f"COP30;{folder}", tile) == (mb, True)  # a folder: overlay
+    assert build_mod.own_relief_mb("XP12", tile) == (0.0, False)
+    assert build_mod.own_relief_mb(f"COP30;{folder}", TileRef(-22, 55)) == (0.0, False)
+    # nothing above what the rule declares changes, and a lidar square raises it
+    assert build_mod.relief_ram(DEM_RULE, mb, 1.3) == {}
+    assert build_mod.relief_ram(DEM_RULE, 3000.0, 1.3) == {"ram_mb": 3900}
