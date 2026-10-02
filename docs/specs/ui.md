@@ -521,7 +521,7 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | Step status | Bar | Words |
   |---|---|---|
   | `pending` (no row runs and none did real work; hits alone do not start a step) | empty | *pending* (*not started* once the job ended) |
-  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0); what it does is said in the tile's line under its steps (below), the engine's `message` in the tooltip |
+  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0); what it does is in the tooltip, the engine's `message` (the tile's line that said it in words, below, is set aside) |
   | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting*; tooltip: its share, partly done, the rest waits for its turn (*waiting · 36 %* was cut in the narrowest window, 2026-09-30) |
   | `done` | full, green | *done · 12 s* (the time from 1 s) |
   | `hit` | full, the dimmer `--hit` colour | *already done*; tooltip: kept from an earlier build, nothing to redo |
@@ -531,8 +531,11 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | install of a build without install | empty, dashed | *no install* |
   | `running` or `waiting` in a job that ended (an older engine only: the current one says `skipped` or `cancelled` then) | dashed, grey, as far as its rows got | *stopped* |
 
-  **What the tile is doing, in words** (a user, 2026-09-30: the cells are too narrow for a
-  phrase, and "waits for the ..." was cut): a line under the tile's seven cells, across the row,
+  **What the tile is doing, in words: set aside since 2026-10-02.** Too much to read on every
+  tile (a user, 2026-10-02): no row draws it, and the words of a running step stay in its cell's
+  tooltip. Its code stays, commented in `updateTileRows`, ready to come back; what follows is the
+  line as it was. It came from a user on 2026-09-30 (the cells are too narrow for a phrase, and
+  "waits for the ..." was cut): a line under the tile's seven cells, across the row,
   `tileActivity`. For each step that runs, its name and what its running rows do: the OSM layers
   received out of the tile's (*layers received: 2 of 4*) and the download rate; a relief file as
   it arrives (*downloading, 210 of 430 MB, 16.2 MB/s*, `dem_downloading_message`), *downloading*

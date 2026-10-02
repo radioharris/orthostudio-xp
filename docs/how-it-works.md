@@ -119,8 +119,7 @@ the meshing of the terrain, the coast masks, the writing of the X-Plane terrain,
 time they have run against the time they usually take on your computer, which OrthoStudio XP
 learns from your builds: steadily, then slower if one takes longer than usual, never full before
 it has ended. Terrain used to sit at 56 % for the forty seconds of a mesh, then jump (2026-09-29).
-Under the steps of each tile at work, a line says in words what it is doing and how far: *Terrain:
-meshing the terrain, about 10 s to go*, *Imagery: 412 of 1,347 images, 15.2 MB/s*.
+Hold the mouse over a step at work to read what it is doing.
 
 **Several builds.** One build runs at a time, and takes up to 500 tiles. A build started while
 another runs waits in a queue and starts as soon as the one before it ends; the Plan stays open

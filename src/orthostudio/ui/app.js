@@ -4354,13 +4354,16 @@ function updateTileRows(v, job) {
         v.cells.set(`${tile.tile}|${s}`, cell);
         steps.append(cell.root);
       }
-      // the line keeps its place in every row from the start, a no-break space while nothing of
-      // the tile runs: shown only while a step ran, it made each row grow and shrink, and the list
-      // jumped (2026-10-02)
-      const activity = h("div", { class: "tile-activity" }, "\u00a0");
-      const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps, activity);
+      // The line of what the tile is doing, under its steps (updateActivity, tileActivity), is set
+      // aside: too much to read on every tile (a user, 2026-10-02). To bring it back, take the two
+      // commented lines below instead of the row without it, and the commented updateActivity
+      // further down. It kept its place in every row, a no-break space while nothing of the tile
+      // ran: shown only while a step ran, it had made each row grow and shrink (2026-10-02).
+      // const activity = h("div", { class: "tile-activity" }, "\u00a0");
+      // const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps, activity);
+      const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps);
       v.tileRows.set(tile.tile, row);
-      v.activity.set(tile.tile, activity);
+      // v.activity.set(tile.tile, activity);
       v.rows.append(row);
     }
   }
@@ -4375,7 +4378,7 @@ function updateTileRows(v, job) {
   v.rowsNote.hidden = !(query.trim() && tiles.length && !kept);
   for (const tile of tiles) {
     for (const s of STEPS) updateStepCell(v.cells.get(`${tile.tile}|${s}`), job, tile, s);
-    updateActivity(v.activity.get(tile.tile), job, tile);
+    // updateActivity(v.activity.get(tile.tile), job, tile); (set aside, 2026-10-02: see above)
   }
 }
 
@@ -4414,8 +4417,8 @@ function buildStepCell(tileName, s) {
  * tooltip line (`help`). Exported for the tests.
  *
  * - pending: empty; `not_started` once the job ended;
- * - running: the step's fraction, "42 %" (or "running" at 0); what it does is said in the tile's
- *   line (`tileActivity`), the engine's message in the tooltip;
+ * - running: the step's fraction, "42 %" (or "running" at 0); what it does is in the tooltip, the
+ *   engine's message (the tile's line that said it, `tileActivity`, is set aside since 2026-10-02);
  * - waiting: the step's fraction in the bar, "waiting" (its share in the tooltip): some of its rows
  *   did their work, the others wait for their turn (the dot does not pulse);
  * - done, hit, failed: full;
@@ -4442,12 +4445,12 @@ export function stepView(job, tile, s) {
   } else if (status === "running") {
     width = clamp01(step.fraction);
     text = width > 0 ? fmtPercent(width) : word();
-    // What it is doing, its rate among it, is said in the tile's line under its steps
-    // (tileActivity): a cell holds a word, and its phrase was cut (a user, 2026-09-30). The
-    // engine's whole line stays in the tooltip.
+    // What it is doing is in the tooltip, the engine's whole line: a cell holds a word, and its
+    // phrase was cut (a user, 2026-09-30); the tile's line that said it in words (tileActivity) is
+    // set aside, too much to read on every tile (2026-10-02).
     help = step.message || "";
   } else if (status === "pending" && s === "imagery") {
-    // why it waits is said in the tile's line (tileActivity), and in the tooltip
+    // why it waits is said in the tooltip
     help = imageryWait(job, tile) || "";
   } else if (status === "waiting") {
     // the word alone, its share in the bar and the tooltip: "waiting · 36 %" was cut in the

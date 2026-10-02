@@ -28,8 +28,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   the ground, in the levels a build works in, so you can zoom until the photo looks the way you
   want your scenery to look and ask for the level it names.
 - **Works, as it happens.** A progress bar for every step of every tile, which moves with the
-  work even where a step counts nothing (by the time that step usually takes on your computer), a
-  line under each tile at work saying what it is doing, the time elapsed and a range for the time
+  work even where a step counts nothing (by the time that step usually takes on your computer),
+  what a step is doing when you hold the mouse over it, the time elapsed and a range for the time
   left over the whole build (starting from your connection's speed on your last builds), errors that say what happened and what to do, and a button to fetch again only
   what is missing. A build takes up to 500 tiles. Start more builds while one runs: they wait in a
   queue, and a tile being built cannot be chosen twice. A finished build leaves the list with the

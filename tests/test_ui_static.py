@@ -3988,14 +3988,22 @@ def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     assert got[5] == []
 
 
-def test_the_line_of_what_a_tile_does_keeps_its_place() -> None:
-    """Shown only while a step of the tile ran, the line under its steps made every row grow and
-    shrink, and the list of tiles jumped (a user, 2026-10-02). It is in every row from the start,
-    a no-break space while nothing of the tile runs, and one line high: a phrase longer than the
-    row ends in an ellipsis and is whole in the line's tooltip."""
+def test_the_line_of_what_a_tile_does_is_set_aside_ready_to_come_back() -> None:
+    """The line under a tile's steps that said in words what it was doing (``tileActivity``) was
+    too much to read on every tile (a user, 2026-10-02): no row draws it, and the words stay in
+    each running bar's tooltip. Its code stays, commented, as it was made the same day: in every
+    row, one line high, a no-break space while nothing of the tile runs (shown only while a step
+    ran, it had made the rows grow and shrink), a longer phrase ending in an ellipsis."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     rows = _function_body(app_js, "updateTileRows")
-    assert 'h("div", { class: "tile-activity" }, "\\u00a0")' in rows
+    live = [ln for ln in rows.splitlines() if not ln.strip().startswith("//")]
+    assert not [ln for ln in live if "tile-activity" in ln or "updateActivity(" in ln]
+    row = 'const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile)'
+    assert f"{row}, steps);" in rows
+    # ready to come back: the commented lines, and the function they call
+    assert '// const activity = h("div", { class: "tile-activity" }, "\\u00a0");' in rows
+    assert f"// {row}, steps, activity);" in rows
+    assert "// updateActivity(v.activity.get(tile.tile), job, tile);" in rows
     line = _function_body(app_js, "updateActivity")
     assert ".hidden" not in line
     assert 'if (!parts.length) line.append("\\u00a0");' in line

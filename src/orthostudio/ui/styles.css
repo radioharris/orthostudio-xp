@@ -946,8 +946,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .step-done .step-state { color: var(--ok); }
 .step-failed .step-state { color: var(--fail); font-weight: 600; }
 .step-detail:not(:empty)::before { content: " · "; }
-/* what the tile is doing, in words: the cells hold a word each, and a phrase was cut in them (a user,
-   2026-09-30). Under the tile's steps, across the row, in every row and always one line high, empty
+/* what the tile is doing, in words, set aside on 2026-10-02 (too much to read on every tile: see
+   `updateTileRows`), kept for its return. The cells hold a word each, and a phrase was cut in them (a
+   user, 2026-09-30). Under the tile's steps, across the row, in every row and always one line high, empty
    while nothing of the tile runs: shown only while a step ran, it made the rows grow and shrink and
    the list jumped (2026-10-02). A phrase longer than the row ends in an ellipsis, whole in the tooltip */
 .tile-activity {
