@@ -51,7 +51,12 @@ internet. Rien d'autre : le premier script installe ce qui manque, en te le dema
 
    X-Plane et Live doivent être fermés : le vol les démarre lui-même. X-Plane démarre en vol au-
    dessus de Toulouse et vole tout seul 20 minutes (virages, montée, vues extérieures), puis il
-   se ferme et Live s'arrête. Ne touche pas à X-Plane pendant ce temps. Trois choix :
+   se ferme et Live s'arrête. Ne touche pas à X-Plane pendant ce temps.
+
+   Avant chaque vol, le script attend que Windows ait fini son travail de fond (sa recherche, ses
+   mises à jour, son antivirus), pour que les vols se fassent dans les mêmes conditions : il
+   l'écrit (« Windows travaille en arrière-plan... le vol attend »), 15 minutes au plus.
+   Trois choix :
    1 - avec Live, en ZL16/ZL18, à froid (rien de construit avant) ;
    2 - X-Plane seul, sans Live, pour comparer ;
    3 - les deux, l'un après l'autre (45 minutes).

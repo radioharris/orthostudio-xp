@@ -834,6 +834,13 @@ def run(a: argparse.Namespace) -> int:
     out = a.results / datetime.now().strftime("%Y-%m-%d %H%M%S")
     out.mkdir(parents=True)
     a.out = out
+    if a.streamer == "live":
+        # Windows: the user's Live folder, its region Live streams onto, out of Windows Search,
+        # whose listing of their files kept half a core busy through the flights of 2026-10-02
+        from orthostudio.live import winsearch
+        from orthostudio.live.pack import live_root
+
+        winsearch.keep_out(live_root(), say)
     up = xplane_up()
     if up and READY not in log_text(xp):
         raise RefusedError("X-Plane runs without the test pilot: quit it, the series starts it")

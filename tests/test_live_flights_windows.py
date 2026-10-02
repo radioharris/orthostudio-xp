@@ -214,3 +214,45 @@ def test_a_streamer_s_ended_processes_keep_their_time(monkeypatch):
                      (12, 10, 50, 3.0, "python.exe")]) == 0.0  # fmt: skip
     assert s._ended([(10, 1, 100, 6.0, "python.exe"), (11, 10, 50, 2.5, "python.exe")]) == 3.0
     assert s._ended([]) == 3.0 + 6.0 + 2.5  # Live gone too: all of it kept, nothing broken
+
+
+def _kit_flight_script():
+    """The Windows kit's flight script (tools/live/windows_kit/vol.py), as a module."""
+    import importlib.util
+
+    path = FLIGHTS.parents[0] / "windows_kit" / "vol.py"
+    spec = importlib.util.spec_from_file_location("kit_vol", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_kit_reads_windows_background_work(monkeypatch):
+    vol = _kit_flight_script()
+
+    def process(pid: int, name: str, cpu_s: float):
+        return sampler_windows.Process(pid, 4, name, cpu_s, 0, 0, 0, 0, 0)
+
+    snapshots = iter(
+        [
+            [process(10, "SearchIndexer.exe", 10.0), process(11, "X-Plane.exe", 5.0)],
+            [process(10, "SearchIndexer.exe", 10.03), process(11, "X-Plane.exe", 9.0)],
+        ]
+    )
+    monkeypatch.setattr(vol.sampler_windows, "snapshot", lambda: next(snapshots))
+    used = vol.background_cores(window_s=0.1)
+    assert list(used) == ["SearchIndexer.exe"]  # X-Plane is not Windows' background work
+    assert abs(used["SearchIndexer.exe"] - 0.3) < 1e-6
+
+
+def test_the_kit_s_flights_wait_for_windows_background_work(monkeypatch, capsys):
+    """Each flight in the same conditions: begun once Windows' indexer, updates and antivirus
+    are quiet, as they were not on the Shadow on 2026-10-02."""
+    vol = _kit_flight_script()
+    readings = iter([{"SearchIndexer.exe": 0.6, "TiWorker.exe": 0.25}, {"SearchIndexer.exe": 0.05}])
+    monkeypatch.setattr(vol, "background_cores", lambda: next(readings))
+    assert vol.wait_quiet(max_s=60) is True
+    assert "SearchIndexer.exe 0.60, TiWorker.exe 0.25" in capsys.readouterr().out
+    assert vol.wait_quiet(max_s=0) is False  # it goes all the same, and says so
+    assert "le vol part quand meme" in capsys.readouterr().out
