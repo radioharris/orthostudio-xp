@@ -14,6 +14,36 @@ import { fmtNum, t } from "./i18n.js";
 
 export const PREVIEW_SIZE = 148;
 
+/** The images already asked for, by address: the image once it came, or that it failed (no photo
+ * there: Bing's placeholder over water). Every change of a setting draws the preview anew; with
+ * the image in hand it is painted at once, with no request and no empty frame for an instant, and
+ * a place with no photo keeps its frames hidden: the two came back at each change of the source
+ * or the colours, and the page jumped (a Windows VM, 2026-10-02). A failure is asked again after
+ * a minute, a server that did not answer being no proof that there is no photo. */
+const SEEN = new Map();
+const SEEN_MAX = 24;
+const FAILED_FOR_MS = 60_000;
+/** The requests under way, by address: a redraw while one is out waits for it, not for another. */
+const PENDING = new Map();
+/** What each preview showed last (Settings and the Plan apart, by their words): an image, or no
+ * photo. A new image, another source or another place, starts from it while it comes. */
+const LAST = new Map();
+
+function remember(url, entry) {
+  SEEN.delete(url);
+  SEEN.set(url, entry);
+  while (SEEN.size > SEEN_MAX) SEEN.delete(SEEN.keys().next().value);
+}
+
+function known(url) {
+  const entry = SEEN.get(url);
+  if (entry?.failed && Date.now() - entry.at > FAILED_FOR_MS) {
+    SEEN.delete(url);
+    return null;
+  }
+  return entry || null;
+}
+
 /**
  * The two images and their words, as one element.
  *
@@ -47,10 +77,8 @@ export function colourPreview(h, sample, look, options = {}) {
   const box = h("div", { class: wide ? "photo-preview is-wide" : "photo-preview", "data-version": JSON.stringify([sample.url, look, size]) },
     ...shots,
     h("div", { class: "photo-words" }, ...words));
-  // Same origin as the page (the engine, or a data: URL in the mock): no crossOrigin, which
-  // would only make the browser refuse a copy it already cached without it.
-  const image = new Image();
-  image.addEventListener("load", () => {
+  const slot = `${noteKey}|${whereKey}`;
+  const paint = (image) => {
     for (const [canvas, applied] of [[before, null], [after, look]]) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       ctx.drawImage(image, 0, 0, size, size);
@@ -58,18 +86,54 @@ export function colourPreview(h, sample, look, options = {}) {
         ctx.putImageData(adjustImageData(ctx.getImageData(0, 0, size, size), applied), 0, 0);
       }
     }
+  };
+  // The images hide themselves, and the box keeps the attributes it was drawn with: a redraw
+  // keeps a box only when it is the same as the one it draws anew (app.js morphNode). Marked on
+  // the box, a preview with no photo was replaced at every change of a setting, its two images
+  // back for an instant, the whole page growing then shrinking (the map over the Atlantic, in a
+  // Windows VM, 2026-10-02).
+  const quiet = (hidden) => {
+    for (const shot of shots) shot.classList[hidden ? "add" : "remove"]("is-quiet");
+  };
+  const shown = (image) => {
+    paint(image);
+    quiet(false);
     note.textContent = t(noteKey);
-  });
-  image.addEventListener("error", () => {
+    LAST.set(slot, { image });
+  };
+  const failed = () => {
+    quiet(true);
     note.textContent = t("settings.q.colours_preview_failed");
-    // The images hide themselves, and the box keeps the attributes it was drawn with: a redraw
-    // keeps a box only when it is the same as the one it draws anew (app.js morphNode), whose
-    // image has not failed yet. Marked on the box, a preview with no photo was replaced at every
-    // change of a setting, its two images back for an instant, the whole page growing then
-    // shrinking (the map over the Atlantic, in a Windows VM, 2026-10-02).
-    for (const shot of shots) shot.classList.add("is-quiet");
-  });
-  image.src = sample.url.startsWith("mock-photo:") ? mockPhoto(size, sample.url) : sample.url;
+    LAST.set(slot, { failed: true });
+  };
+  const seen = known(sample.url);
+  if (seen?.image) shown(seen.image);
+  else if (seen?.failed) failed();
+  else {
+    // not known yet: what the preview showed last stays until this image has come
+    const last = LAST.get(slot);
+    if (last?.image) paint(last.image);
+    else if (last?.failed) quiet(true);
+    let image = PENDING.get(sample.url);
+    if (!image) {
+      // Same origin as the page (the engine, or a data: URL in the mock): no crossOrigin, which
+      // would only make the browser refuse a copy it already cached without it.
+      image = new Image();
+      const url = sample.url;
+      PENDING.set(url, image);
+      image.addEventListener("load", () => {
+        PENDING.delete(url);
+        remember(url, { image });
+      });
+      image.addEventListener("error", () => {
+        PENDING.delete(url);
+        remember(url, { failed: true, at: Date.now() });
+      });
+      image.src = url.startsWith("mock-photo:") ? mockPhoto(size, url) : url;
+    }
+    image.addEventListener("load", () => shown(image));
+    image.addEventListener("error", failed);
+  }
   return box;
 }
 

@@ -933,7 +933,15 @@ has not drawn, or nothing came back) simply leaves the preview out. Where the so
 line under them says so. The mark sits on the images, not on the preview: a redraw keeps the
 preview only when it is the same as the one it draws anew, whose image has not failed yet, and a
 preview marked whole was replaced at every change of a setting, its images back for an instant,
-the whole page growing then shrinking (the map over the Atlantic, in a Windows VM, 2026-10-02). Under the two images, a line
+the whole page growing then shrinking (the map over the Atlantic, in a Windows VM, 2026-10-02).
+The preview remembers the images it asked for, by address (`preview.js` `SEEN`, the last 24): a
+change of the colours, which draws a new preview, paints the image in hand at once, with no
+request and no empty frame for an instant, and a place known to have no photo keeps its frames
+hidden; a failure is asked again after a minute, a server that did not answer being no proof that
+there is no photo. A new image, another source or another place, starts from what the preview
+showed last (`LAST`), the last image or no frames, until it comes; a redraw while it is under way
+waits for that request rather than sending another. The source and the colours made the frames
+come and go at each change, over water, and blink on land (same day). Under the two images, a line
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
 The two share the card's width, side by side, up to the photo's own 256 px (`wide`, drawn at
