@@ -947,10 +947,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .step-failed .step-state { color: var(--fail); font-weight: 600; }
 .step-detail:not(:empty)::before { content: " · "; }
 /* what the tile is doing, in words: the cells hold a word each, and a phrase was cut in them (a user,
-   2026-09-30). Under the tile's steps, across the row, only while something of it runs */
+   2026-09-30). Under the tile's steps, across the row, in every row and always one line high, empty
+   while nothing of the tile runs: shown only while a step ran, it made the rows grow and shrink and
+   the list jumped (2026-10-02). A phrase longer than the row ends in an ellipsis, whole in the tooltip */
 .tile-activity {
   grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 5px;
   font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 .tile-activity .activity-step { color: var(--fg); font-weight: 600; }
 

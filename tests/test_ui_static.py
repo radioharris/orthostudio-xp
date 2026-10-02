@@ -3988,6 +3988,26 @@ def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     assert got[5] == []
 
 
+def test_the_line_of_what_a_tile_does_keeps_its_place() -> None:
+    """Shown only while a step of the tile ran, the line under its steps made every row grow and
+    shrink, and the list of tiles jumped (a user, 2026-10-02). It is in every row from the start,
+    a no-break space while nothing of the tile runs, and one line high: a phrase longer than the
+    row ends in an ellipsis and is whole in the line's tooltip."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    rows = _function_body(app_js, "updateTileRows")
+    assert 'h("div", { class: "tile-activity" }, "\\u00a0")' in rows
+    line = _function_body(app_js, "updateActivity")
+    assert ".hidden" not in line
+    assert 'if (!parts.length) line.append("\\u00a0");' in line
+    assert 'line.title = parts.length ? line.textContent : "";' in line
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rule = re.search(r"\n\.tile-activity \{(.*?)\}", css, re.S)
+    assert rule is not None
+    for prop in ("white-space: nowrap;", "overflow: hidden;", "text-overflow: ellipsis;"):
+        assert prop in rule.group(1)
+    assert "min-width: 0;" in rule.group(1)  # a grid item would widen the row to the phrase
+
+
 def test_two_squares_with_the_same_answer_are_not_called_different() -> None:
     """The Plan said "the chosen squares differ" for squares that did not (a user, 2026-09-18).
 

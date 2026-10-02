@@ -544,8 +544,16 @@ The selected job (default: the running one, else the newest) shows, from top to 
   10 s to go* while three seconds or more are left of their usual time, *longer than usual* once
   they ran half as long again. Nothing runs: why its Imagery waits, when it does (*waits for the
   DSF (Assembly)*, *waits for the images of +46+006*: one tile downloads at a time). A finished
-  tile, a tile still to start and a job that ended have no line, so a batch shows three or four
-  lines at most.
+  tile, a tile still to start and a job that ended have no words, so a batch shows three or four
+  lines with words at most.
+
+  The line keeps its place in every row from the start, one line high, empty (a no-break space)
+  while nothing of the tile runs: shown only while a step ran, it made every row grow and shrink,
+  and the list jumped (a user, 2026-10-02). It never wraps: in the narrowest window the app allows
+  (1024 px, `window.MIN_SIZE`), the line has 683 px and the longest words that can occur at once,
+  in French, take 611 (a tile's DSF and its overlay together, one "longer than usual"; its images
+  cannot run beside its DSF, which lists them). A narrower browser ends it in an ellipsis, the
+  whole line in its tooltip.
 
   **Bars that move with the work.** A running row that has said how far it is shows it; one that
   has said nothing moves by the time since it started against its `weight_s`, the seconds its

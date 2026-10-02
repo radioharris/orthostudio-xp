@@ -4354,7 +4354,10 @@ function updateTileRows(v, job) {
         v.cells.set(`${tile.tile}|${s}`, cell);
         steps.append(cell.root);
       }
-      const activity = h("div", { class: "tile-activity", hidden: true });
+      // the line keeps its place in every row from the start, a no-break space while nothing of
+      // the tile runs: shown only while a step ran, it made each row grow and shrink, and the list
+      // jumped (2026-10-02)
+      const activity = h("div", { class: "tile-activity" }, "\u00a0");
       const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile), steps, activity);
       v.tileRows.set(tile.tile, row);
       v.activity.set(tile.tile, activity);
@@ -4388,7 +4391,10 @@ function updateActivity(line, job, tile) {
     if (i) line.append(" · ");
     line.append(h("span", { class: "activity-step" }, STEP_KEYS[p.step]()), t("works.activity_sep"), p.words);
   });
-  line.hidden = !parts.length;
+  // empty, it keeps its height; on one line, cut by an ellipsis in a narrow window, whole in the
+  // tooltip
+  if (!parts.length) line.append("\u00a0");
+  line.title = parts.length ? line.textContent : "";
 }
 
 function buildStepCell(tileName, s) {
