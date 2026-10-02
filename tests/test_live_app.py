@@ -95,6 +95,74 @@ def test_live_s_button_opens_osxp_s_window(home: Path, monkeypatch: pytest.Monke
     assert shown == []
 
 
+def test_osxp_s_button_opens_live_s_window_whatever_was_chosen(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a Mac, OrthoStudio XP's Live button opens a new instance of the app (``open -n``) asked
+    for Live's window: straight to its page, building chosen or the question not answered yet."""
+    monkeypatch.setenv(app_start.START_ENV, "live")
+    for chosen in ("build", None):
+        switch_on(chosen)
+        shown = windows(monkeypatch)
+        assert app_start.app_start(home / "log")
+        assert shown == [(app_start.LIVE_PORT, None)]
+
+
+def test_on_a_mac_the_other_window_is_this_app_s(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each window's button opens the other in a process of its own. On a Mac macOS opens it from
+    the app itself, so that the Dock shows it as this app and not as Python; elsewhere, from a
+    terminal, or when that fails, this Python is started aside."""
+    app = tmp_path / "OrthoStudio XP.app"
+    app.mkdir()
+    ran, aside = [], []
+    monkeypatch.setattr(app_start.sys, "platform", "darwin")
+    monkeypatch.setattr(app_start, "_detached", lambda args, env=None: aside.append((args, env)))
+    monkeypatch.setattr(app_start, "live_listening", lambda port=app_start.LIVE_PORT: False)
+
+    def run(cmd, **kw):
+        ran.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setenv(app_start.APP_ENV, str(app))
+    assert app_start.this_app() == app
+    assert app_start.open_live() == "started"
+    app_start.open_osxp()
+    passed = ["--env", f"OSXP_HOME={home}"]
+    assert ran == [
+        ["open", "-n", "-a", str(app), "--env", "OSXP_START=live", *passed],
+        ["open", "-n", "-a", str(app), "--env", "OSXP_START=build", *passed],
+    ]
+    assert aside == []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1))
+    app_start.open_osxp()  # macOS could not: started aside, as elsewhere
+    monkeypatch.delenv(app_start.APP_ENV)  # from a terminal
+    assert app_start.this_app() is None
+    app_start.open_live()
+    assert aside == [
+        (["-m", "orthostudio.desktop"], {"OSXP_START": "build"}),
+        (["-m", "orthostudio.live", "ui", "--quit-when-closed"], {"OSXP_START": "live"}),
+    ]
+    monkeypatch.setattr(app_start.sys, "platform", "linux")
+    monkeypatch.setenv(app_start.APP_ENV, str(app))
+    assert app_start.this_app() is None  # a Mac's only
+
+
+def test_the_mac_launchers_name_their_app() -> None:
+    """What ``this_app`` reads: the installed app's launcher, the checkout's and the preview's."""
+    tools = Path(__file__).resolve().parents[1] / "tools" / "package"
+    sys.path.insert(0, str(tools))
+    import build
+    import checkout_app
+    import live_preview_app
+
+    assert 'export OSXP_APP="$(dirname "$CONTENTS")"' in build.macos_launcher()
+    for launcher in (checkout_app.LAUNCHER, live_preview_app.LAUNCHER):
+        assert 'export OSXP_APP="$(cd "$(dirname "$0")/../.." && pwd)"' in launcher
+
+
 def test_a_live_window_open_already_comes_to_the_front(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

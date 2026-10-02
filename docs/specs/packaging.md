@@ -63,6 +63,10 @@ macOS" (the user's first installed app, 2026-09-14). Started from a terminal the
 natively, which is why only a launch by macOS shows it (section 6). The doctor's `architecture`
 check says it on any installation.
 
+The launcher also names the app (`OSXP_APP`): OrthoStudio XP Live's window and OrthoStudio XP's
+open each other as new instances of it (`open -n`), never as a Python started aside, which the
+Dock would show as Python (`orthostudio/live/app_start.py`).
+
 The app shows its page in a window of its own, through the web view the system already carries
 (`orthostudio/window.py`, pywebview): WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux.
 The launcher becomes that process rather than starting it aside, so that the window belongs to

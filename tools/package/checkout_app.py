@@ -43,6 +43,8 @@ LAUNCHER = """#!/bin/bash
 # opens its page, through the same entry as the installed app (orthostudio.desktop), which opens
 # the page of the one already running instead of starting a second and doing nothing visible.
 REPO={repo}
+# the app itself, which opens the other window as this app (orthostudio.live.app_start)
+export OSXP_APP="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO" || exit 1
 exec "$REPO/.venv/bin/python" -m orthostudio.desktop "$@"
 """

@@ -198,6 +198,8 @@ def macos_launcher() -> str:
         "# OrthoStudio XP (tools/package/build.py): the engine and its page, from the Python\n"
         "# inside the app. Its output goes to ~/Library/Logs/OrthoStudio XP/serve.log.\n"
         'CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"\n'
+        "# the app itself, which opens the other window as this app (orthostudio.live.app_start)\n"
+        'export OSXP_APP="$(dirname "$CONTENTS")"\n'
         f'exec "$CONTENTS/Resources/python/bin/python3" -m {ENTRY_MODULE} "$@"\n'
     )
 

@@ -34,6 +34,8 @@ LAUNCHER = """#!/bin/bash
 # OrthoStudio XP with OrthoStudio XP Live, the preview (tools/package/live_preview_app.py): this
 # checkout's engine on a port and a log of its own, beside the usual checkout's app.
 REPO={repo}
+# the app itself, which opens the other window as this app (orthostudio.live.app_start)
+export OSXP_APP="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO" || exit 1
 export OSXP_PORT={port}
 export OSXP_LOG_NAME={log}
