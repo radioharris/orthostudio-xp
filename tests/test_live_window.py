@@ -220,3 +220,76 @@ def test_in_the_browser_the_app_s_live_goes_a_while_after_its_page(
     assert gone.wait(5.0)  # the page gone, nothing streaming: it goes
     assert control.leaving_for == "quit" and "Live goes" in control.said[0]
     ended.set()
+
+
+def test_the_window_opens_at_once_and_live_is_set_up_behind_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window first, on OrthoStudio XP's opening page, Live set up behind it, as OrthoStudio
+    XP's window with its engine: it came only once Live was ready, after seconds of nothing on a
+    cloud PC (a user, 2026-10-03). The app's log says how long each part took."""
+    import urllib.request
+
+    from orthostudio.live import control as control_module
+
+    assert web.IDLE == control_module.IDLE
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path))
+    log = tmp_path / "serve.log"
+    control = FakeControl()
+    seen: dict = {}
+
+    def set_up(port: int, *, front: object) -> tuple:
+        time.sleep(0.2)  # Live's imports and setting up, behind the window
+        served = threading.Thread(target=lambda: None)
+        served.start()
+        took = (("its code", 0.1), ("setting up", 0.05), ("its page", 0.05))
+        live_log = SimpleNamespace(close=lambda: None)
+        return control, SimpleNamespace(should_exit=False), served, live_log, None, took
+
+    def show(url: str, **kw: object) -> None:
+        seen["url"] = url
+        with urllib.request.urlopen(url, timeout=5) as answer:
+            seen["page"] = answer.read().decode("utf-8")
+        assert control.state == IDLE and seen.get("ready") is None  # nothing set up yet
+        kw["on_shown"]()  # type: ignore[operator]
+        deadline = time.monotonic() + 5.0
+        while not kw["closes_when"]() and time.monotonic() < deadline:  # type: ignore[operator]
+            if seen.setdefault("ready", None) is None and "Live is ready" in log.read_text():
+                seen["ready"] = True
+                control.leaving_for = "build"  # the welcome's answer
+            time.sleep(0.02)
+
+    monkeypatch.setattr(window_module, "possible", lambda: True)
+    monkeypatch.setattr(window_module, "show", show)
+    monkeypatch.setattr(web, "_set_up", set_up)
+    assert web.open_window(1, start="welcome", log=log) == "build"
+    assert not seen["url"].endswith(":1/welcome")  # the opening page, on a port of its own
+    assert 'location.replace(ENGINE + "welcome")' in seen["page"]
+    assert "Opening OrthoStudio XP" in seen["page"]
+    said = log.read_text()
+    assert "Live's window opens" in said and "Live is ready: its code 0.1 s" in said
+
+
+def test_live_that_cannot_be_set_up_closes_its_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path))
+    log = tmp_path / "serve.log"
+    closed = []
+
+    def set_up(port: int, *, front: object) -> tuple:
+        raise OSError("nothing could listen on 127.0.0.1:1")
+
+    def show(url: str, **kw: object) -> None:
+        deadline = time.monotonic() + 5.0
+        while not kw["closes_when"]() and time.monotonic() < deadline:  # type: ignore[operator]
+            time.sleep(0.02)
+        closed.append(kw["closes_when"]())  # type: ignore[operator]
+
+    monkeypatch.setattr(window_module, "possible", lambda: True)
+    monkeypatch.setattr(window_module, "show", show)
+    monkeypatch.setattr(web, "_set_up", set_up)
+    with pytest.raises(web.LiveStartError):
+        web.open_window(1, log=log)
+    assert closed == [True]
+    assert "OrthoStudio XP Live could not start (OSError" in log.read_text()

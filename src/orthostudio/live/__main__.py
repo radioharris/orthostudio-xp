@@ -108,7 +108,7 @@ def ui(
     ] = False,
 ) -> None:
     """Open the Live window: start and stop the streaming, see what it builds, set it up."""
-    from orthostudio.live.web import open_window
+    from orthostudio.live.web import LiveStartError, open_window
 
     try:
         open_window(
@@ -117,7 +117,7 @@ def ui(
             show=not no_open,
             quit_when_closed=quit_when_closed,
         )
-    except OSError as e:
+    except (OSError, LiveStartError) as e:
         raise typer.Exit(_fail(f"the Live window could not start: {e}")) from e
 
 

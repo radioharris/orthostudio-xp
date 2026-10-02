@@ -221,10 +221,14 @@ def app_start(log: Path) -> bool:
     if live_listening():  # its window is open already, in a process of its own
         _ask_live("front", post=True)
         return True
-    from orthostudio.live.web import open_window
+    from orthostudio.live.web import LiveStartError, open_window
 
     start = "welcome" if home == "ask" and wanted != "live" else None
-    if open_window(LIVE_PORT, start=start, quit_when_closed=True) == "build":
+    try:
+        answer = open_window(LIVE_PORT, start=start, quit_when_closed=True, log=log)
+    except LiveStartError:
+        answer = "build"  # Live could not be set up behind its window: OrthoStudio XP's opens
+    if answer == "build":
         # OrthoStudio XP's window in a process of its own, as Live's button opens it: the window
         # library's loop starts once a process, and Live's has just ended
         open_osxp()

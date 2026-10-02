@@ -54,13 +54,32 @@ def windows(monkeypatch: pytest.MonkeyPatch, answer: str | None = None) -> list:
     def open_window(
         port: int, *, browser: bool = False, start: str | None = None, **kw: object
     ) -> str | None:
-        assert kw == {"quit_when_closed": True}  # the app's own start
+        assert kw.get("quit_when_closed") is True and "log" in kw  # the app's own start
         shown.append((port, start))
         return answer
 
     monkeypatch.setattr(web, "open_window", open_window)
     monkeypatch.setattr(app_start, "live_listening", lambda port=app_start.LIVE_PORT: False)
     return shown
+
+
+def test_live_that_cannot_start_leaves_osxp_s_window(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live's window opened at once, and Live could not be set up behind it: the window closed,
+    and OrthoStudio XP's opens in a process of its own (the window library's loop ran here)."""
+    import orthostudio.live.web as web
+
+    switch_on("live")
+    opened = []
+
+    def fails(port: int, **kw: object) -> str | None:
+        raise web.LiveStartError("its port was taken")
+
+    monkeypatch.setattr(web, "open_window", fails)
+    monkeypatch.setattr(app_start, "live_listening", lambda port=app_start.LIVE_PORT: False)
+    monkeypatch.setattr(app_start, "open_osxp", lambda: opened.append(1) or "started")
+    assert app_start.app_start(home / "log") is True and opened == [1]
 
 
 def test_osxp_as_ever_without_live(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:

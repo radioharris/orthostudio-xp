@@ -173,11 +173,18 @@ def roll_log(path: Path, limit: int = LOG_MAX_BYTES) -> None:
         path.replace(path.with_name(path.name + ".1"))
 
 
-def opening_page(port: int, log: Path) -> bytes:
+def opening_page(port: int, log: Path, *, path: str = "", name: str = APP_NAME) -> bytes:
     """The page the browser shows while the engine starts: it asks the engine's ``port`` again
-    every 0.4 s and goes to its page once it answers; after 45 s it names the ``log``."""
+    every 0.4 s and goes to its page once it answers; after 45 s it names the ``log``. ``path`` and
+    ``name``: another page of that port, and what opens, which OrthoStudio XP Live's window shows
+    the same way (:func:`orthostudio.live.web.open_window`)."""
     literal = json.dumps(str(log)).replace("</", "<\\/")
-    return _OPENING_PAGE.replace("%PORT%", str(port)).replace("%LOG%", literal).encode("utf-8")
+    page = _OPENING_PAGE.replace("OrthoStudio XP", name)
+    if path:
+        page = page.replace(
+            "location.replace(ENGINE)", f"location.replace(ENGINE + {json.dumps(path)})"
+        )
+    return page.replace("%PORT%", str(port)).replace("%LOG%", literal).encode("utf-8")
 
 
 def _listening(port: int) -> bool:
@@ -237,9 +244,12 @@ def open_while_starting(
     *,
     log: Path,
     browser: Callable[[str], object] = webbrowser.open,
+    path: str = "",
+    name: str = APP_NAME,
 ) -> bool:
-    """Show the opening page (:func:`opening_page`) at once, before the engine's long imports:
-    served from a free port of the loopback for :data:`OPENING_SERVED_S`, opened in ``browser``.
+    """Show the opening page (:func:`opening_page`, ``path`` and ``name`` its own) at once, before
+    the engine's long imports: served from a free port of the loopback for
+    :data:`OPENING_SERVED_S`, opened in ``browser``.
 
     ``False``, and nothing shown, when something already listens on the engine's ``port``: the
     usual start opens the running OrthoStudio XP, or asks an older one to stop first. The page is
@@ -247,7 +257,7 @@ def open_while_starting(
     """
     if _listening(port):
         return False
-    body = opening_page(port, log)
+    body = opening_page(port, log, path=path, name=name)
 
     class Opening(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:

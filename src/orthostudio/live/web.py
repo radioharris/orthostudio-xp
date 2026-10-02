@@ -21,17 +21,19 @@ it (:class:`orthostudio.live.control.LiveControl`).
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import webbrowser
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from orthostudio.live.control import IDLE, LiveControl
-from orthostudio.live.logfile import LogFile, archive_folder, log_path
+if TYPE_CHECKING:
+    from orthostudio.live.control import LiveControl
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
+IDLE = "idle"  # orthostudio.live.control.IDLE, read here without loading Live before its window
 TITLE = "OrthoStudio XP Live"
 SIZE = (1180, 860)
 STARTS_WITHIN_S = 10.0
@@ -156,6 +158,102 @@ def _serve(app: Any, port: int) -> tuple[Any, threading.Thread]:
     return server, thread
 
 
+class LiveStartError(RuntimeError):
+    """Live could not be set up behind its window, which then closed: the app opens OrthoStudio
+    XP's window instead, in a process of its own (:func:`orthostudio.live.app_start.app_start`)."""
+
+
+class _Starting:
+    """Live's control while Live is set up behind its window, which shows OrthoStudio XP's opening
+    page at once (:func:`open_window`): nothing streams yet and the window may go; every call
+    reaches the control once it is there. A failure (``error``) closes the window."""
+
+    def __init__(self) -> None:
+        self.control: Any = None
+        self.server: Any = None
+        self.thread: threading.Thread | None = None
+        self.log_file: Any = None
+        self.error: BaseException | None = None
+        self.cancelled = False  # the window went first: what is set up after is stopped
+
+    @property
+    def state(self) -> str:
+        return IDLE if self.control is None else self.control.state
+
+    @property
+    def closing(self) -> bool:
+        return self.control is not None and self.control.closing
+
+    @property
+    def leaving_for(self) -> str | None:
+        return None if self.control is None else self.control.leaving_for
+
+    def gone(self) -> bool:
+        return self.error is not None or (self.control is not None and self.control.gone())
+
+    def close(self) -> None:
+        if self.control is not None:
+            self.control.close()
+
+    def stop(self) -> None:
+        if self.control is not None:
+            self.control.stop()
+
+    def wait_idle(self) -> None:
+        if self.control is not None:
+            self.control.wait_idle()
+
+    def end(self) -> None:
+        """The window closed: its page served no more, its log closed."""
+        self.cancelled = True
+        if self.server is not None:
+            self.server.should_exit = True
+        if self.thread is not None:
+            self.thread.join(5)
+        if self.log_file is not None:
+            self.log_file.close()
+
+
+def _set_up(port: int, *, front: Callable[[], object] | None) -> tuple[Any, ...]:
+    """Live itself: its encoders' fork server, its log beside X-Plane's, its control, and its page
+    and API served on ``port``. Returns them with how long each part took, which the app's log
+    says (:func:`open_window`)."""
+    began = time.time()
+    from orthostudio.live import pools
+
+    pools.start_server()  # before the engine's API loads PROJ (orthostudio.live.pools)
+    from orthostudio.api.presence import Presence
+    from orthostudio.live.control import LiveControl
+    from orthostudio.live.logfile import LogFile, archive_folder, log_path
+
+    loaded = time.time()
+    log = LogFile(log_path(), archive=archive_folder())  # LogLive.txt, beside X-Plane's Log.txt
+    control = LiveControl(echo=log.echo, log_file=log.path if log.open else None)
+    seen = Presence()
+    made = time.time()
+    try:
+        server, thread = _serve(create_live_app(control, front=front, seen=seen.seen), port)
+    except BaseException:
+        log.close()
+        raise
+    took = (
+        ("its code", loaded - began),
+        ("setting up", made - loaded),
+        ("its page", time.time() - made),
+    )
+    return control, server, thread, log, seen, took
+
+
+def _say(log: Path | None, text: str) -> None:
+    """A line in the app's own log (``serve.log``), as its window writes them."""
+    if log is None:
+        return
+    from orthostudio.desktop import _note
+
+    with contextlib.suppress(OSError):
+        _note(log, text)
+
+
 def open_window(
     port: int,
     *,
@@ -163,42 +261,84 @@ def open_window(
     start: str | None = None,
     show: bool = True,
     quit_when_closed: bool = False,
+    log: Path | None = None,
 ) -> str | None:
     """Serve the page on ``port`` and show it; return once the window is closed and no stream is
     left behind. ``start="welcome"``: the app's question first. ``show=False``: served only, as in
     the browser but without opening it (the installers' checks, ``tools/package/build.py``).
     ``quit_when_closed``, the app's own start: in the browser, where no window closes, the process
     goes a while after its page last spoke (:func:`_quit_when_closed`). Returns ``"build"`` when
-    the welcome's answer was OrthoStudio XP's window, for the app to open it."""
-    from orthostudio import window
-    from orthostudio.api.presence import Presence
-    from orthostudio.live import pools
+    the welcome's answer was OrthoStudio XP's window, for the app to open it.
 
-    pools.start_server()  # before the engine's API loads PROJ (orthostudio.live.pools)
-    log = LogFile(log_path(), archive=archive_folder())  # LogLive.txt, beside X-Plane's Log.txt
-    control = LiveControl(echo=log.echo, log_file=log.path if log.open else None)
+    The window opens at once on OrthoStudio XP's opening page, and Live is set up behind it, as
+    OrthoStudio XP's window does with its engine: the window came only once Live was ready, after
+    seconds of nothing on a cloud PC (a user, 2026-10-03). ``log``, the app's own (``serve.log``):
+    where the window says how long its opening and Live's setting up took, as OrthoStudio XP's own
+    start says it. Raises :class:`LiveStartError` when Live could not be set up behind it."""
+    from orthostudio import window
+
     home = f"http://127.0.0.1:{port}/"
-    url = home + ("welcome" if start == "welcome" else "")
+    path = "welcome" if start == "welcome" else ""
+    url = home + path
     in_the_browser = browser or not show or not window.possible()
-    # the page again, where it is: the window brought back, or the page opened in the browser
-    # again, which a closed tab left nothing of (the app's icon, OrthoStudio XP's Live button)
-    front = (lambda: webbrowser.open(home)) if in_the_browser else None
-    seen = Presence()
-    ended = threading.Event()
-    server, thread = _serve(create_live_app(control, front=front, seen=seen.seen), port)
-    try:
-        if in_the_browser:
+    if in_the_browser:
+        # the page again, where it is: opened in the browser again, which a closed tab left
+        # nothing of (the app's icon, OrthoStudio XP's Live button)
+        control, server, thread, live_log, seen, _took = _set_up(
+            port, front=lambda: webbrowser.open(home)
+        )
+        ended = threading.Event()
+        try:
             if quit_when_closed:
                 _quit_when_closed(seen, control, ended)
             _in_the_browser(url, control, show=show)
-        else:
-            _in_a_window(url, control)
+        finally:
+            ended.set()
+            server.should_exit = True
+            thread.join(5)
+            live_log.close()
+        return control.leaving_for
+
+    from orthostudio import desktop
+    from orthostudio.startclock import parts, process_started_at, span
+
+    shown: list[str] = []
+    name = desktop.APP_NAME if path == "welcome" else TITLE
+    desktop.open_while_starting(
+        port, log=log or desktop.log_path(), browser=shown.append, path=path, name=name
+    )
+    live = _Starting()
+
+    def set_up() -> None:
+        try:
+            control, server, thread, live_log, _seen, took = _set_up(port, front=None)
+        except BaseException as exc:
+            _say(log, f"OrthoStudio XP Live could not start ({type(exc).__name__}: {exc})")
+            live.error = exc
+            return
+        live.server, live.thread, live.log_file = server, thread, live_log
+        live.control = control
+        if live.cancelled:  # its window went meanwhile
+            live.end()
+        _say(log, f"Live is ready: {parts(*took)}")
+
+    def opens() -> None:
+        from orthostudio import STARTED_AT
+
+        said = parts(
+            ("Python", span(process_started_at(), STARTED_AT)),
+            ("loading the window", span(STARTED_AT, time.time())),
+        )
+        _say(log, f"Live's window opens: {said}" if said else "Live's window opens")
+
+    threading.Thread(target=set_up, name="live-set-up", daemon=True).start()
+    try:
+        _in_a_window(shown[0] if shown else url, live, on_shown=opens)
     finally:
-        ended.set()
-        server.should_exit = True
-        thread.join(5)
-        log.close()
-    return control.leaving_for
+        live.end()
+    if live.error is not None:
+        raise LiveStartError(str(live.error)) from live.error
+    return live.leaving_for
 
 
 def _quit_when_closed(seen: Any, control: Any, ended: threading.Event) -> None:
@@ -249,7 +389,7 @@ def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> Non
         control.wait_idle()
 
 
-def _in_a_window(url: str, control: LiveControl) -> None:
+def _in_a_window(url: str, control: Any, *, on_shown: Callable[[], None] | None = None) -> None:
     from orthostudio import window
     from orthostudio.live.pack import default_live_root
 
@@ -293,6 +433,7 @@ def _in_a_window(url: str, control: LiveControl) -> None:
     window.show(
         url,
         title=TITLE,
+        on_shown=on_shown,
         on_close=put_away if window.puts_away_on_close() else close_asks,
         may_quit=may_quit,
         closes_when=control.gone,
