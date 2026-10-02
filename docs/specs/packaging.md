@@ -164,7 +164,10 @@ A checkout has no `orthostudio/bin`: nothing changes for it.
 `desktop.log_path()` gives -- `platformdirs.user_log_dir("OrthoStudio XP")` except on Linux, where
 it is `$OSXP_HOME/log` beside everything else of ours: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. A
-line gives the date and the arguments of each start. Started from the Finder, a menu or `pythonw`,
+line gives the date and the arguments of each start. The log is UTF-8, what the engine a window
+starts aside writes included (`PYTHONIOENCODING`, `desktop.start_engine`): on Windows a Python
+writing to a file uses the system's code page, and that engine's lines came out in cp1252 among
+the app's UTF-8 ones (a French Windows 11, 2026-10-02). Started from the Finder, a menu or `pythonw`,
 the engine has no terminal; without the log, uvicorn's output would have nowhere to go.
 `python -m orthostudio` runs the command itself (`__main__.py`), for a terminal.
 

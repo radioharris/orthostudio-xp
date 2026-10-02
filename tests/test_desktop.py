@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
+import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import pytest
 
@@ -285,6 +288,58 @@ def test_the_app_started_in_a_window_runs_no_command_of_its_own(
         return None
 
     assert main([], log=tmp_path / "serve.log", window=fake_show) == 0
+
+
+def test_the_window_starts_its_engine_writing_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a Python writing to a file uses the system's code page: the engine started beside
+    the window wrote ``serve.log`` in cp1252 among the app's UTF-8 lines, and Windows' "a dû être
+    fermée" (WinError 10054) left a byte no UTF-8 reader could read (a French Windows 11,
+    2026-10-02). The engine is told to write UTF-8, over a setting of the user's own, and the rest
+    of its environment and of its start is as it was."""
+    from orthostudio.fsutil import NO_CONSOLE_WINDOW
+
+    started: list[tuple[list[str], dict[str, Any]]] = []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kw: started.append((args, kw)))
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    log = tmp_path / "serve.log"
+
+    desktop.start_engine(log)
+
+    ((args, kw),) = started
+    assert args == [sys.executable, "-m", "orthostudio", *desktop.ENGINE_ARGS]
+    assert kw["env"] == {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    assert Path(kw["stdout"].name) == log and kw["stderr"] is kw["stdout"]
+    assert kw["stdin"] == subprocess.DEVNULL and kw["start_new_session"] is True
+    assert kw["creationflags"] == NO_CONSOLE_WINDOW  # no console window flashes on Windows
+
+
+def test_what_the_engine_writes_reaches_the_log_in_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real Python started as the window starts its engine, on a system whose code page is not
+    UTF-8: Windows' own on Windows, ISO 8859-1 elsewhere when the system has it (``LC_ALL``), which
+    writes "û" as the same byte as cp1252."""
+    said = "Une connexion existante a dû être fermée par l'hôte distant"
+    writes = f"import sys; print({said!a}); print({said!a}, file=sys.stderr)"
+    real_popen = subprocess.Popen
+
+    def as_the_engine(args: list[str], **kw: Any) -> subprocess.Popen[bytes]:
+        child = real_popen([sys.executable, "-c", writes], **kw)
+        child.wait(timeout=60)
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", as_the_engine)
+    monkeypatch.setenv("LC_ALL", "fr_FR.ISO8859-1")
+    monkeypatch.setenv("PYTHONUTF8", "0")  # whatever the runner sets, or a newer Python does
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    log = tmp_path / "serve.log"
+
+    desktop.start_engine(log)
+
+    text = log.read_bytes().decode("utf-8")  # one byte of another code page fails it
+    assert "(for its own window)" in text and text.count(said) == 2
 
 
 def test_the_window_closes_only_once_its_engine_has_answered_and_stopped(
