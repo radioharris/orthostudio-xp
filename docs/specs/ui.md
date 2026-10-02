@@ -521,7 +521,7 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | Step status | Bar | Words |
   |---|---|---|
   | `pending` (no row runs and none did real work; hits alone do not start a step) | empty | *pending* (*not started* once the job ended) |
-  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0); what it does is in the tooltip, the engine's `message` (the tile's line that said it in words, below, is set aside) |
+  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0), and the download rate its line gives in brackets beside it, `42 % · 16.2 MB/s` (OSM, Relief as a file arrives, Imagery: as in 0.1.19, which a user missed once the tile's line, below, was set aside, 2026-10-02); the rest of what it does is in the tooltip, the engine's `message` |
   | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting*; tooltip: its share, partly done, the rest waits for its turn (*waiting · 36 %* was cut in the narrowest window, 2026-09-30) |
   | `done` | full, green | *done · 12 s* (the time from 1 s) |
   | `hit` | full, the dimmer `--hit` colour | *already done*; tooltip: kept from an earlier build, nothing to redo |
@@ -599,7 +599,28 @@ The selected job (default: the running one, else the newest) shows, from top to 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus
 of *Stop* and the bars' width transition survive. Events redraw through a throttle: at most four
-times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then.
+times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then. A step cell's tooltip
+is the page's own (`stepTip`, `.step-tip`, drawn as the map's), not the system's `title`: its
+words hold a percentage and a rate that move at nearly every redraw, the system's bubble hides
+and shows again at each change of its words, and the tooltip of every running step blinked and
+could not be read; kept still under the pointer, it then showed words gone stale (a user,
+2026-10-02). The page's shows once the pointer has rested on a cell for half a second
+(`TIP_DELAY_MS`), under and right of the pointer and kept inside the window, follows the pointer,
+changes its words in place at every redraw (`updateStepCell`), and goes when the pointer leaves
+the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`. While
+the step is at work (running or waiting) its words change, and the bubble keeps one size, two
+lines 330 px wide, so as not to grow and shrink with them (the same user); before the step starts
+and once it ends its words stay put, and the bubble fits them, up to 330 px, its second line only
+when it has one (the same user: it was as big then as while the step ran, `fillStepTip`). Its
+lines are the step and how far it is, as its cell says it (*Imagery · 42 %
+· 16.2 MB/s*), then what it is doing in the page's words, without the rate (*209 of 213 images*,
+*reading the relief*, *meshing the terrain, about 10 s to go*), or, when it does not run, why it
+waits, what went wrong, what was kept, and for OSM and Terrain what the step holds
+(`stepTipLines`). The engine's own line, in English and up to some eighty characters, did not fit
+such a bubble; it stays in `serve.log`. A longer line ends in an ellipsis: measured at the page's
+size, the words of a running step take 92 to 307 px in French, and only the tracing of the roads
+with its time left (404 px), a step not done after a failure (324 px) and the two longer texts of
+what OSM and Terrain hold are cut.
 
 **Node to step mapping.** The journal gives each node entry its `stage`. Otherwise the page maps
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's

@@ -1958,11 +1958,11 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
         f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]",
     )
     assert got[0] == 21.6 and got[1] is None
-    # the cell holds a word; the rate is said in the tile's line (a user found the cells too
-    # narrow for a phrase, 2026-09-30)
-    assert got[2]["text"] == "42%" and got[2]["detail"] == ""
+    # the rate beside the percentage, as in 0.1.19: a user missed it once the tile's line that
+    # said it was set aside (2026-10-02); the rest of the line, a phrase, stays out of the cell
+    assert got[2]["text"] == "42%" and got[2]["detail"] == "21.6 MB/s"
     assert got[2]["help"] == with_rate  # the whole line stays in the tooltip
-    assert got[3]["detail"] == "" and got[3]["help"] == osm_line
+    assert got[3]["detail"] == "1.4 MB/s" and got[3]["help"] == osm_line
     assert got[4] == 3.1  # a downloaded relief
     assert got[5] == [
         {"step": "osm", "words": "layers received: 1 of 4, 1.4 MB/s"},
@@ -1997,15 +1997,178 @@ def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
             f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]"
         )
     got = _node_json("app.js", "[" + ", ".join(views) + "]")
-    # said in the tile's line under its steps, the cell holding a word (2026-09-30)
+    # said in the tile's line under its steps, set aside since 2026-10-02 (2026-09-30)
     assert [act[0]["words"] for _view, act in got] == [
         "reading the relief",
         "downloading",
         "downloading, 210 of 430 MB, 16.2 MB/s",
         "reading the relief",
     ]
-    assert all(view["detail"] == "" for view, _ in got)
+    # the cell shows the rate of the file as it arrives, never the last one over the reading
+    assert [view["detail"] for view, _ in got] == ["", "", "16.2 MB/s", ""]
     assert got[3][0]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
+
+
+def test_a_step_tooltip_changes_its_words_in_place() -> None:
+    """The system's tooltip cannot change its words without hiding and showing again. Written at
+    every redraw with a percentage and a rate that move, the tooltip of every running step blinked
+    and could not be read; kept still under the pointer, it then showed words gone stale (a user,
+    2026-10-02). The steps have the page's own tooltip: it shows once the pointer rests on a cell,
+    its two lines follow the cell in place without hiding, and it goes when the pointer leaves. No
+    cell carries a `title` any more, which would show the system's beside it."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    script = """
+class El {
+  constructor(tag) {
+    Object.assign(this, { tag, attrs: {}, kids: [], on: {}, style: {}, dataset: {} });
+    Object.assign(this, { className: "", textContent: "", shown: 0, isConnected: true });
+    Object.assign(this, { offsetWidth: 220, offsetHeight: 48, _hidden: false, classes: new Set() });
+    this.classList = {
+      contains: (name) => this.classes.has(name),
+      toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name), on),
+    };
+  }
+  get hidden() { return this._hidden; }
+  set hidden(v) { if (this._hidden && !v) this.shown += 1; this._hidden = Boolean(v); }
+  setAttribute(k, v) { if (k === "hidden") this.hidden = true; else this.attrs[k] = String(v); }
+  getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+  addEventListener(name, fn) { (this.on[name] ||= []).push(fn); }
+  append(...kids) { this.kids.push(...kids); }
+  fire(name, x = 0, y = 0) { for (const fn of this.on[name] || []) fn({ clientX: x, clientY: y }); }
+}
+globalThis.Node = El;
+const body = new El("body");
+globalThis.document = {
+  body,
+  documentElement: {},
+  getElementById: () => null,
+  createElement: (tag) => new El(tag),
+  createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+};
+Object.assign(globalThis, { innerWidth: 1440, innerHeight: 900 });
+const m = await import("./app.js");
+const timers = [];
+globalThis.setTimeout = (fn) => timers.push(fn);  // run by hand: the pointer has rested
+globalThis.clearTimeout = () => {};
+const job = { status: "running", install: true, tiles: [] };
+const node = (status, fraction) => ({
+  "+46+006/BI16/textures": { role: "textures", status, fraction },
+});
+const at = (fraction, req, rate) => ({ tile: "+46+006", steps: { imagery: {
+  status: "running", fraction, nodes: node("running", fraction),
+  message: `BI16: tiles 1/9, textures 1/9 (${req} req/s, ${rate} MB/s)`,
+} } });
+const done = { tile: "+46+006", steps: { imagery: {
+  status: "done", fraction: 1, wall_s: 5, nodes: node("done", 1),
+} } };
+const c = m.buildStepCell("+46+006", "imagery");
+const other = m.buildStepCell("+46+007", "imagery");
+m.updateStepCell(c, job, at(0.08, 1106, 14.2), "imagery");
+const tip = () => body.kids[0];
+const first = tip() === undefined;  // nothing shown before the pointer rests on a cell
+c.root.fire("pointerenter", 300, 200);
+timers.shift()();
+const words = () => tip().kids.map((line) => line.textContent).join(" | ");
+const seen = [words()];
+const atWork = [tip().classList.contains("is-at-work")];
+m.updateStepCell(c, job, at(0.17, 1240, 15.9), "imagery");
+seen.push(words());
+m.updateStepCell(other, job, at(0.5, 1300, 16.0), "imagery");  // another cell leaves it alone
+m.updateStepCell(c, job, at(0.26, 1302, 16.7), "imagery");
+seen.push(words());
+m.updateStepCell(c, job, done, "imagery");
+seen.push(words());
+atWork.push(tip().classList.contains("is-at-work"));
+const steady = [tip().hidden, tip().shown, tip().style.left, tip().style.top];
+c.root.fire("pointerleave");
+const gone = tip().hidden;
+m.updateStepCell(c, job, at(0.3, 1300, 16.1), "imagery");
+process.stdout.write(JSON.stringify({
+  first, seen, steady, gone, after: words(), title: c.root.getAttribute("title"), atWork,
+}));
+"""
+    got = _run_node(script)
+    assert got["first"] is True
+    # its words follow the cell in place, the status's change included, and only this cell's
+    assert got["seen"] == [
+        "Imagery · 8% · 14.2 MB/s | 1 of 9 images",
+        "Imagery · 17% · 15.9 MB/s | 1 of 9 images",
+        "Imagery · 26% · 16.7 MB/s | 1 of 9 images",
+        "Imagery · done · 5 s | ",
+    ]
+    # shown once, never hidden while they changed, under and right of the pointer
+    assert got["steady"] == [False, 1, "314px", "218px"]
+    assert got["gone"] is True
+    assert got["after"] == "Imagery · done · 5 s | "  # once gone, the cell's words leave it
+    assert got["title"] is None  # no system tooltip beside the page's own
+    # one size while the step works, fitted to its words once it has ended (a user, 2026-10-02)
+    assert got["atWork"] == [True, False]
+
+
+def test_a_step_tooltip_says_the_step_then_what_it_does() -> None:
+    """Two lines in a bubble of a fixed size (a user, 2026-10-02): the step and how far it is, as
+    its cell says it, then what it is doing in the page's words, or why it waits, what went wrong,
+    what the step holds. The engine's own line, in English and up to some eighty characters, did
+    not fit; the rate of a download is on the first line, once."""
+    now = 1_000_000
+    job = {"status": "running", "install": True, "tiles": [], "errors": []}
+
+    def tile(step: str, **state: Any) -> dict[str, Any]:
+        return {"tile": "+46+006", "steps": {step: state}}
+
+    textures = {"role": "textures", "status": "running", "fraction": 0.42}
+    imagery = tile(
+        "imagery", status="running", fraction=0.42, nodes={"+46+006/BI16/textures": textures},
+        message="BI16: tiles 4424/55296, textures 19/234 (1106 req/s, 14.2 MB/s)",
+    )  # fmt: skip
+    dem = {"role": "dem", "status": "running", "fraction": 0}
+    reading = tile(
+        "relief", status="running", fraction=0.8, nodes={"+46+006/dem": dem},
+        message="+46+006: elevation, reading",
+    )  # fmt: skip
+    mesh = {"role": "mesh", "status": "running", "fraction": 0, "startedMs": now - 5000,
+            "weight": 15}  # fmt: skip
+    meshing = tile("terrain", status="running", fraction=0.33, nodes={"+46+006/mesh": mesh})
+    waiting = tile("imagery", status="waiting", fraction=0.36, nodes={})
+    hit = tile("coast", status="hit", fraction=1, nodes={})
+    failed = tile("imagery", status="failed", fraction=1, nodes={})
+    failing = {**job, "errors": [{"tile": "+46+006", "step": "imagery", "code": "TEX_MISSING"}]}
+    pending = tile("osm", status="pending", nodes={})
+    installed = tile("install", status="done", fraction=1, wall_s=3, nodes={})
+    calls = [
+        (job, imagery, "imagery"), (job, reading, "relief"), (job, meshing, "terrain"),
+        (job, waiting, "imagery"), (job, hit, "coast"), (failing, failed, "imagery"),
+        (job, pending, "osm"), (job, installed, "install"),
+    ]  # fmt: skip
+    got = _node_json(
+        "app.js",
+        "["
+        + ", ".join(
+            f"m.stepTipLines({json.dumps(j)}, {json.dumps(t)}, '{s}', {now})" for j, t, s in calls
+        )
+        + "]",
+    )
+    assert got[0] == ["Imagery · 42% · 14.2 MB/s", "19 of 234 images"]
+    assert got[1] == ["Relief · 80%", "reading the relief"]
+    assert got[2] == ["Terrain · 33%", "meshing the terrain, about 10 s to go"]
+    assert got[3] == ["Imagery · waiting", "36% · Partly done: the rest waits for its turn."]
+    assert got[4] == ["Coast · already done", "Kept from an earlier build: nothing to redo."]
+    assert got[5][0] == "Imagery · failed" and got[5][1].startswith("TEX_MISSING: ")
+    assert got[6] == [
+        "OSM · pending",
+        "Airports, roads, coastline and water from OpenStreetMap, read from the prepared"
+        " library or asked of the public servers.",
+    ]  # what it holds, cut by the bubble's ellipsis
+    assert got[7] == ["Install · done · 3 s", ""]
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    # one size while the step is at work, its words changing; fitted to its words otherwise
+    assert "width: 330px;" in rules[".step-tip.is-at-work"]
+    assert "width: max-content; max-width: 330px;" in rules[".step-tip"]
+    assert "display: none;" in rules[".step-tip:not(.is-at-work) .step-tip-line:empty"]
+    for prop in ("white-space: nowrap;", "text-overflow: ellipsis;", "height: 1.35em;"):
+        assert prop in rules[".step-tip-line"], prop
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:
@@ -3546,7 +3709,8 @@ def test_osm_has_a_step_of_its_own() -> None:
         'terrain: () => t("step.terrain_help") };'
     )
     assert help_line in app_js
-    assert "const about = STEP_HELP[s]?.();" in _function_body(app_js, "updateStepCell")
+    # the second line of the step's tooltip, when the step says nothing else (2026-10-02)
+    assert "|| STEP_HELP[s]?.() ||" in _function_body(app_js, "stepTipLines")
     assert i18n.count('"step.osm": "OSM",') == 2 and '"step.relief": "Relief",' in i18n
     assert '"step.terrain_help": "Tracé des routes, de l\'eau et des aéroports, puis' in i18n
     assert '"step.terrain_help": "The roads, water and airports traced, then' in i18n

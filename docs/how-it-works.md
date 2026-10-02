@@ -48,16 +48,17 @@ about a second, because the same questions have already been answered for that s
 answers are files; at road level 5 a dense tile's small roads weigh tens of megabytes, and it
 takes up to ten seconds or so, two or three of them downloading (Switzerland, 2026-09-25).
 Elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile when they answer
-(measured 2026-09-14), with the layers received and the download rate shown in the step. The
+(measured 2026-09-14), with the download rate shown in the step and the layers received in its
+tooltip. The
 library's table of contents comes whole the first time only: after that a build just asks whether
 it changed, and the connections to the library stay open from one tile to the next. The relief
 and the tracing of the roads, water and airports for the mesh have steps of their own, Relief and
 Terrain: they take most of the time, 17 to 36 s of relief and 46 to 75 s of tracing on those
 Swiss tiles at road level 5, and with them in one Data step a map read in two seconds from the
 library read "Data 28 s" (2026-09-26). While a relief file downloads, Relief shows its speed as it
-arrives, then *reading the relief* while the file is read: a USGS square of 430 MB takes about half
-a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
-download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
+arrives; then the speed leaves the step and its tooltip says the file is being read: a USGS square
+of 430 MB takes about half a minute to arrive at 16 MB/s and some 45 s more to read, and the speed
+of the finished download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
 as it arrives, then goes on by the time the reading takes.
 
 Two places are looked in before those servers, in order: a folder of your own, if you named one in
@@ -119,7 +120,9 @@ the meshing of the terrain, the coast masks, the writing of the X-Plane terrain,
 time they have run against the time they usually take on your computer, which OrthoStudio XP
 learns from your builds: steadily, then slower if one takes longer than usual, never full before
 it has ended. Terrain used to sit at 56 % for the forty seconds of a mesh, then jump (2026-09-29).
-Hold the mouse over a step at work to read what it is doing.
+Hold the mouse over a step at work to read what it is doing, in a small bubble of two lines that
+keeps up with it: the step and how far it is, then what it does in words. The system's bubble
+blinked at each change of its words, four times a second (2026-10-02).
 
 **Several builds.** One build runs at a time, and takes up to 500 tiles. A build started while
 another runs waits in a queue and starts as soon as the one before it ends; the Plan stays open
@@ -210,8 +213,9 @@ had not been updated since 2022, the page opens in your browser too, and says ho
 `window` line of *Checks*, at the foot of the page, says so, and the page says it once at the top. What the
 engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
 `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
-holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each
-one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
+holds how long each start took, part by part, with anything the page waited for more than a
+second. It also holds what every stage of a build is doing, a line per tile every ten seconds, and
+the end of each one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
 `orthostudio-xp build --tile +50+008 --provider BI --zl 16` builds from the command line and writes
 the whole run to that same file. The
 app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app

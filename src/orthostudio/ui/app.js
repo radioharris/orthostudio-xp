@@ -2157,6 +2157,7 @@ function showScreen(name, arg) {
     toast(t("settings.left_unsaved"));
   }
   state.screen = name;
+  hideStepTip(); // the steps' tooltip belongs to Works
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   measureMapTop(); // the map can only be measured once its screen is shown
   findForget(); // an open Find looks in the screen now shown, not the one left behind
@@ -4263,6 +4264,8 @@ function reliefWords(relief) {
 
 function updateJobView(v, job) {
   const active = jobActive(job);
+  // a cell drawn anew (another job, another language) never says the pointer left the old one
+  if (stepTip.cell && !stepTip.cell.root.isConnected) hideStepTip();
   if (v.status !== job.status) {
     clear(v.pill).append(jobStatusPill(job.status));
     v.status = job.status;
@@ -4400,14 +4403,87 @@ function updateActivity(line, job, tile) {
   line.title = parts.length ? line.textContent : "";
 }
 
-function buildStepCell(tileName, s) {
-  const c = { status: null };
+/**
+ * The steps' own tooltip, one for the page. The system's cannot change its words without hiding
+ * and showing again, and a running step's words, a percentage and a rate, change at nearly every
+ * redraw: it blinked and could not be read, then, kept still under the pointer, it showed words
+ * gone stale (a user, 2026-10-02). This one changes its words in place (updateStepCell). It shows
+ * once the pointer has rested on a cell for TIP_DELAY_MS, as the system's does, and follows it
+ * like the map's (map.js showTip). The step then what it does (stepTipLines), in two lines of a
+ * fixed size while the step is at work, its words changing; fitted to its words before the step
+ * starts and once it ends (fillStepTip, the same user).
+ */
+const stepTip = { el: null, lines: [], cell: null, timer: 0, x: 0, y: 0 };
+const TIP_DELAY_MS = 500;
+
+function placeStepTip() {
+  const el = stepTip.el;
+  // under and right of the pointer, kept inside the window: above it near the bottom edge
+  const room = 8;
+  const x = Math.max(room, Math.min(stepTip.x + 14, innerWidth - el.offsetWidth - room));
+  const below = stepTip.y + 18;
+  const y = below + el.offsetHeight + room > innerHeight ? Math.max(room, stepTip.y - el.offsetHeight - 10) : below;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+}
+
+function fillStepTip(c) {
+  setText(stepTip.lines[0], c.tip[0]);
+  setText(stepTip.lines[1], c.tip[1]);
+  // The fixed size is for a step at work, whose words change; the words of a step not started or
+  // ended stay put, and its bubble fits them (a user, 2026-10-02: it was as big then as while the
+  // step ran).
+  const atWork = c.status === "running" || c.status === "waiting";
+  if (stepTip.el.classList.contains("is-at-work") !== atWork) {
+    stepTip.el.classList.toggle("is-at-work", atWork);
+    if (!stepTip.el.hidden) placeStepTip();
+  }
+}
+
+function showStepTip(c) {
+  if (!stepTip.el) {
+    stepTip.lines = [h("div", { class: "step-tip-line" }), h("div", { class: "step-tip-line" })];
+    stepTip.el = h("div", { class: "step-tip", role: "tooltip", hidden: true }, stepTip.lines);
+    document.body.append(stepTip.el);
+  }
+  fillStepTip(c);
+  stepTip.el.hidden = false;
+  placeStepTip();
+}
+
+function hideStepTip() {
+  clearTimeout(stepTip.timer);
+  stepTip.cell = null;
+  if (stepTip.el) stepTip.el.hidden = true;
+}
+
+export function buildStepCell(tileName, s) {
+  const c = { status: null, tip: ["", ""] };
   c.dot = h("span", { class: "dot dot-pending" });
   c.fill = h("span");
   c.bar = h("div", { class: "progress step-bar progress-pending", role: "progressbar", "aria-label": `${tileName} ${STEP_KEYS[s]()}`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, c.fill);
   c.state = h("span", { class: "step-state" });
   c.detail = h("span", { class: "step-detail" });
-  c.root = h("div", { class: "step step-pending" }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
+  const follow = (ev) => {
+    stepTip.x = ev.clientX;
+    stepTip.y = ev.clientY;
+  };
+  const enter = (ev) => {
+    follow(ev);
+    clearTimeout(stepTip.timer);
+    stepTip.cell = c;
+    stepTip.timer = setTimeout(() => {
+      if (stepTip.cell === c) showStepTip(c);
+    }, TIP_DELAY_MS);
+  };
+  const move = (ev) => {
+    follow(ev);
+    if (stepTip.cell === c && stepTip.el && !stepTip.el.hidden) placeStepTip();
+  };
+  const leave = () => {
+    if (stepTip.cell === c) hideStepTip();
+  };
+  c.root = h("div", { class: "step step-pending", onpointerenter: enter, onpointermove: move, onpointerleave: leave }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
   return c;
 }
 
@@ -4445,9 +4521,12 @@ export function stepView(job, tile, s) {
   } else if (status === "running") {
     width = clamp01(step.fraction);
     text = width > 0 ? fmtPercent(width) : word();
-    // What it is doing is in the tooltip, the engine's whole line: a cell holds a word, and its
-    // phrase was cut (a user, 2026-09-30); the tile's line that said it in words (tileActivity) is
-    // set aside, too much to read on every tile (2026-10-02).
+    // A step that downloads shows its rate beside it, as in 0.1.19: a user missed it once the
+    // tile's line that said it (tileActivity) was set aside (2026-10-02). The rest of what it is
+    // doing is in the tooltip, the engine's whole line: a cell holds a word and a rate, and a
+    // phrase was cut in it (a user, 2026-09-30).
+    const rate = downloadRate(step.message);
+    if (rate) detail = fmtMbps(rate);
     help = step.message || "";
   } else if (status === "pending" && s === "imagery") {
     // why it waits is said in the tooltip
@@ -4543,28 +4622,51 @@ export function tileActivity(job, tile, nowMs = Date.now()) {
   for (const s of STEPS) {
     const step = tile.steps[s];
     if (!step || step.status !== "running") continue;
-    const parts = [];
-    for (const [id, n] of Object.entries(step.nodes || {})) {
-      if (n.status !== "running") continue;
-      let words = nodeWords(n, step.messageNode === id || !step.messageNode ? step.message : "");
-      const rate = n.role === "osm" || n.role === "dem" || n.role === "textures" ? downloadRate(step.messageNode === id || !step.messageNode ? step.message : "") : null;
-      if (rate) words += `, ${fmtMbps(rate)}`;
-      const started = finite(n.startedMs);
-      const weight = finite(n.weight) ?? 0;
-      if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
-        const elapsed = (nowMs - started) / 1000;
-        if (weight - elapsed >= 3) words += `, ${t("works.act_left", { time: fmtDuration(weight - elapsed) })}`;
-        else if (elapsed > 1.5 * weight && elapsed >= 5) words += `, ${t("works.act_longer")}`;
-      }
-      if (words) parts.push(words);
-    }
-    if (parts.length) out.push({ step: s, words: parts.join(" · ") });
+    const words = stepActivity(step, nowMs);
+    if (words) out.push({ step: s, words });
   }
   if (!out.length) {
     const wait = imageryWait(job, tile);
     if (wait) out.push({ step: "imagery", words: wait });
   }
   return out;
+}
+
+/** What a running step is doing, in words: the words of its running rows, with the rate of a
+ * download when `rate` is asked and the time left of a row that reports nothing; "" when no row
+ * runs. The tile's line (tileActivity) and the step's tooltip (stepTipLines) say it. */
+function stepActivity(step, nowMs, rate = true) {
+  const parts = [];
+  for (const [id, n] of Object.entries(step?.nodes || {})) {
+    if (n.status !== "running") continue;
+    const line = step.messageNode === id || !step.messageNode ? step.message : "";
+    let words = nodeWords(n, line);
+    const mbps = rate && (n.role === "osm" || n.role === "dem" || n.role === "textures") ? downloadRate(line) : null;
+    if (mbps) words += `, ${fmtMbps(mbps)}`;
+    const started = finite(n.startedMs);
+    const weight = finite(n.weight) ?? 0;
+    if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
+      const elapsed = (nowMs - started) / 1000;
+      if (weight - elapsed >= 3) words += `, ${t("works.act_left", { time: fmtDuration(weight - elapsed) })}`;
+      else if (elapsed > 1.5 * weight && elapsed >= 5) words += `, ${t("works.act_longer")}`;
+    }
+    if (words) parts.push(words);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * The two lines of a step's tooltip (stepTip): the step and how far it is, as its cell says it,
+ * then what it is doing in words, or why it waits, what went wrong, what the step holds. A small
+ * bubble of two lines, of a fixed size (a user, 2026-10-02): the engine's own line, in English and
+ * up to some eighty characters, did not fit it, and stays in serve.log. Exported for the tests.
+ */
+export function stepTipLines(job, tile, s, nowMs = Date.now()) {
+  const { status, text, detail, help } = stepView(job, tile, s);
+  const first = `${STEP_KEYS[s]()} · ${text}${detail ? ` · ${detail}` : ""}`;
+  // the rate is on the first line already
+  const second = (status === "running" ? stepActivity(tile?.steps?.[s], nowMs, false) : help) || STEP_HELP[s]?.() || "";
+  return [first, second];
 }
 
 /** The running steps move on the clock between two events: a step that reports nothing moves by
@@ -4616,11 +4718,13 @@ export function keepLive(fresh, previous, nowMs = Date.now()) {
  * joining Terrain, which it feeds. */
 export const STEP_HELP = { osm: () => t("step.osm_help"), terrain: () => t("step.terrain_help") };
 
-/** One step of a tile: a thin bar for every status, then what it is doing in plain words. */
-function updateStepCell(c, job, tile, s) {
+/** One step of a tile: a thin bar for every status, then what it is doing in plain words.
+ * Exported, with buildStepCell, for the tests. */
+export function updateStepCell(c, job, tile, s) {
   if (!c) return;
-  const { status, pct, text, detail, help } = stepView(job, tile, s);
-  if (c.status !== status) {
+  const { status, pct, text, detail } = stepView(job, tile, s);
+  const changed = c.status !== status;
+  if (changed) {
     c.root.className = `step step-${status}`;
     c.dot.className = `dot dot-${status}`;
     c.bar.className = `progress step-bar progress-${status}`;
@@ -4631,8 +4735,10 @@ function updateStepCell(c, job, tile, s) {
   setAttr(c.bar, "aria-valuetext", detail ? `${text}, ${detail}` : text);
   setText(c.state, text);
   setText(c.detail, detail);
-  const about = STEP_HELP[s]?.();
-  setAttr(c.root, "title", `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}${about ? `\n${about}` : ""}`);
+  c.tip = stepTipLines(job, tile, s);
+  // The page's own tooltip (stepTip), not the system's `title`, which blinked: its words change in
+  // place while it shows.
+  if (stepTip.cell === c && stepTip.el && !stepTip.el.hidden) fillStepTip(c);
 }
 
 function updateErrors(v, job, active) {

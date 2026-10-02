@@ -151,6 +151,17 @@ path, its dates). The `.pyc` files are compiled at build time, their recorded pa
 the `python` folder, and the `_sysconfigdata` of the CPython gets back the `/install` prefix uv
 replaced: no path of the build machine is left in an installer.
 
+Every `.pyc` the app carries, the standard library's and every package's, is written by hash and
+never checked against its source (`build.py` `BYTECODE_MODE`, `compileall -f --invalidation-mode
+unchecked-hash`), so that no file time decides whether Python loads it. A timestamp `.pyc` holds
+its source's mtime, and the Windows setup restores the files' times as the build machine's local
+time, GitHub's runner being on UTC: at UTC+2 every `.py` was two hours older than its `.pyc` said,
+and the first start after each install or update compiled the app again. In a Windows VM the
+engine's imports wrote 969 `.pyc` in 12.6 s, then took 1.7 s; on a cloud PC, whose antivirus reads
+each new file, the opening page said "Starting takes long" past 45 s (a user, 2026-10-02). Every
+Windows version since 0.1.0 did so. The zip's times, local too, did the same, and the standard
+library's own `.pyc` were out of date on every system, its files copied after they were written.
+
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of
@@ -220,6 +231,29 @@ then starts with `--no-open --quit-when-closed`. Being on another port, it never
 already listens, the start is the usual one: `serve --open` opens the running OrthoStudio XP, or
 asks an older one to stop first. The data stay in `~/.orthostudio` (`$OSXP_HOME`): uninstalling the app leaves
 them.
+
+**How long a start took** (`startclock.py`). A cloud PC took more than 45 s to open the app after
+an install, and the log could not say where the time went: no line of it had a time between the
+window's and uvicorn's (2026-10-02). As the window starts its engine, it writes
+`its window opens: Python 0.9 s, loading the window 2.5 s`. That is Python's own start, from the
+creation of its process to `orthostudio.STARTED_AT` (the package's first import), known on
+Windows alone (`GetProcessTimes`), then the window's loading: pywebview, the toolkit under it and,
+on Windows, .NET and WebView2's own files. It hands the engine the time it starts it
+(`OSXP_LAUNCHED_AT`, which the engine takes out of its environment). Once its port is open, the
+engine writes `listening, 26.1 s after the window started it: Python 1.2 s, loading 24.3 s,
+setting up 0.4 s, opening its port 0.2 s` (`serve.listening_line`). The parts are Python's own
+start, the loading of its code (its imports), its setting up (`create_app`, an older engine asked
+to quit included) and uvicorn's start up to the open port. Started otherwise (a terminal, the
+browser's start), it counts from its own code. The page's first `POST /api/presence` then writes
+`its page is open, 1.9 s after its port opened`. What the page waits for longer than a second
+(`startclock.SLOW_S`) is named with its time:
+
+- an answer of the API, as in `GET /api/status answered in 12.3 s`. The base map's tiles are left
+  out, since their time is the network's;
+- a part of the status, as in `the status's checks took 3.1 s`;
+- a check of the doctor, as in `the doctor's triangle4xp check took 2.8 s`.
+
+`doctor --json` is as it was: the checks' times stay out of its document.
 
 ## 5. The build (`tools/package/build.py`)
 

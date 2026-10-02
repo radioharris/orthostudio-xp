@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import socket
 import threading
 import time
@@ -15,11 +16,13 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+from orthostudio import STARTED_AT
 from orthostudio.api import presence
 from orthostudio.codemark import code_mark
 from orthostudio.errors import OsxpError
 from orthostudio.home import make_patches_dir
 from orthostudio.logs import setup_logging
+from orthostudio.startclock import launched_at, parts, span
 
 __all__ = [
     "DEFAULT_PORT",
@@ -29,6 +32,7 @@ __all__ = [
     "STATUS_WAIT_S",
     "check",
     "default_ui_dir",
+    "listening_line",
     "main",
     "package_root",
     "running_osxp",
@@ -45,6 +49,26 @@ ENGINE_WAIT_S = 5.0
 STATUS_WAIT_S = 20.0
 """How long it waits for an engine older than ``/api/engine`` to give its ``/api/status``, which
 measures the store and lists the processes first."""
+
+log = logging.getLogger(__name__)
+
+
+def listening_line(launched: float | None, loaded: float, made: float, now: float) -> str:
+    """What the engine says once its port is open (``orthostudio.startclock``): how long after the
+    window started it (``launched``), or after its own code started without one, and the parts.
+    Those are Python's own start, the loading of its code (``loaded``: the imports done), its
+    setting up (``made``: the application made, an older engine asked to quit included) and the
+    opening of its port (``now``)."""
+    total = span(STARTED_AT if launched is None else launched, now)
+    since = "its code started" if launched is None else "the window started it"
+    head = "listening" if total is None else f"listening, {total:.1f} s after {since}"
+    said = parts(
+        ("Python", span(launched, STARTED_AT)),
+        ("loading", span(STARTED_AT, loaded)),
+        ("setting up", span(loaded, made)),
+        ("opening its port", span(made, now)),
+    )
+    return f"{head}: {said}" if said else head
 
 
 def default_ui_dir() -> Path:
@@ -206,6 +230,8 @@ def serve(
 
     from orthostudio.api.app import create_app
 
+    loaded = time.time()
+    launched = launched_at()
     # what the engine does goes to serve.log beside uvicorn's own lines: a build that stopped on
     # the Data stage left no trace there at all (a user on Linux, 2026-09-22)
     setup_logging(log_level)
@@ -233,6 +259,21 @@ def serve(
             server.should_exit = True
 
     app = create_app(ui_dir=ui if ui.is_dir() else None, shutdown=shutdown)
+    made = time.time()
+
+    def listening() -> None:
+        now = time.time()
+        app.state.orthostudio["listening_at"] = now  # the page's first word counts from here
+        log.info(listening_line(launched, loaded, made, now))
+
+    class Server(uvicorn.Server):
+        """uvicorn's server, which says when its port is open (``orthostudio.startclock``)."""
+
+        async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+            await super().startup(sockets=sockets)
+            if self.started:
+                listening()
+
     if open_browser:
         timer = threading.Timer(0.8, lambda: webbrowser.open(url))
         timer.daemon = True
@@ -248,7 +289,7 @@ def serve(
             daemon=True,
         ).start()
     try:
-        server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=port, log_level=log_level))
+        server = Server(uvicorn.Config(app, host=HOST, port=port, log_level=log_level))
         holder["server"] = server
         server.run()
     finally:
