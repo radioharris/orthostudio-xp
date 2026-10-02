@@ -24,7 +24,7 @@ Tile: +43+005 (Marseille), Ortho4XP configuration of the baseline (`road_level=1
    The `.node`/`.poly` it writes are byte-identical to the baseline's.
 2. **OrthoStudio XP `node_layers`** (`src/orthostudio/vectors/noding.py`),
    `tools/bench/noding/bench_noding.py`, `--repeat 3 --synthetic 200000`, results in
-   `bench_result.json` (scratchpad `p0/noding/`):
+   `bench_result.json` (a temporary folder, `p0/noding/`):
 
    | run | input | layers | wall s (3 runs) | best |
    |---|---|---|---|---|

@@ -43,7 +43,7 @@ uv run python tools/oracle/summarize_runs.py "$SCRATCH"/run_*.json
 
 Run-to-run spread is 4 % on the total (61.9 to 64.3 s). "Cores" is CPU time (self plus
 children) divided by wall time; the children are Triangle4XP (step 2), 7z and nvcompress
-(step 3). Raw reports: `run1.json`, `run2.json`, `run3.json` in the session scratchpad; the
+(step 3). Raw reports: `run1.json`, `run2.json`, `run3.json`, kept outside the repository; the
 outputs of run 3 are frozen in `fixtures/oracle/+43+005_zl14_BI/manifest.json`.
 
 Outputs: DSF 32.4 MB (atoms HEAD 92 B, DEFN 1.5 kB, GEOD 15.2 MB, CMDS 9.9 MB, DEMS 7.3 MB),

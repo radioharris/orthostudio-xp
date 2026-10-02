@@ -5,7 +5,8 @@ machine. Results and the commands that produced them are copied into
 `docs/benchmarks/network.md`; the requirements derived from them live in
 `docs/specs/net-download.md`. All scripts are stand-alone (run from this directory's path, they
 import `common.py` next to them), write their JSON/TSV into the scratch directory named by
-`OSXP_BENCH_SCRATCH` (default: the session scratchpad) and never touch the repository.
+`OSXP_BENCH_SCRATCH` (default: `.orthostudio/bench/network` at the top of the checkout, which git
+ignores) and change nothing git tracks.
 
 | Script | Step | What it measures |
 |---|---|---|

@@ -230,5 +230,5 @@ levels 0-4 (33.935 vs 33.932, 34.474 vs 34.461, 32.549 vs 32.550 dB) at 4.1 s pe
    50-100 ms with the same least-squares pass in a small native extension (rgbcx-style),
    to be written only if the 20 acceptance tiles show a visible difference.
 
-Raw data: `bench_full.json` (run 1) and `bench_run2.json` (run 2) with their logs, kept with
-the session's scratch files; regenerate with the command at the top.
+Raw data: `bench_full.json` (run 1) and `bench_run2.json` (run 2) with their logs, kept outside
+the repository; regenerate with the command at the top.
