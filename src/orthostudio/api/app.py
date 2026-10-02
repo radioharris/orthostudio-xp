@@ -125,6 +125,7 @@ from orthostudio.pipeline.pack import (
     take_back_overlay,
     uninstall_receipt,
 )
+from orthostudio.startclock import SLOW_S
 from orthostudio.zones import default_zones_path, read_saved_zones
 
 __all__ = [
@@ -341,6 +342,52 @@ class _GuardMiddleware(BaseHTTPMiddleware):
                 status=413,
             )
         return await call_next(request)
+
+
+class _SlowAnswers:
+    """Names in ``serve.log`` an answer of the API that took more than ``startclock.SLOW_S`` to
+    begin, with its time: the page waits for it, and an app slow to show its page after the
+    engine listens is slow there (``orthostudio.startclock``). The base map's tiles are left out:
+    their time is the network's."""
+
+    def __init__(self, app: Any, *, clock: Callable[[], float] = time.monotonic) -> None:
+        self.app = app
+        self.clock = clock
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        path = scope.get("path", "") if scope["type"] == "http" else ""
+        if not path.startswith("/api/") or path.startswith("/api/map/"):
+            await self.app(scope, receive, send)
+            return
+        began = self.clock()
+        timed = False
+
+        async def send_timed(message: Any) -> None:
+            nonlocal timed
+            if not timed and message["type"] == "http.response.start":
+                timed = True
+                took = self.clock() - began
+                if took > SLOW_S:
+                    log.info("%s %s answered in %.1f s", scope.get("method", "?"), path, took)
+            await send(message)
+
+        await self.app(scope, receive, send_timed)
+
+
+def _timed(name: str, fn: Callable[[], Any]) -> Callable[[], Any]:
+    """``fn``, which names itself in ``serve.log`` when it takes more than ``startclock.SLOW_S``:
+    a part of ``GET /api/status``, which the page waits for."""
+
+    def run() -> Any:
+        began = time.monotonic()
+        try:
+            return fn()
+        finally:
+            took = time.monotonic() - began
+            if took > SLOW_S:
+                log.info("the status's %s took %.1f s", name, took)
+
+    return run
 
 
 def _dir_bytes(path: Path, *, links: bool = True) -> int:
@@ -797,6 +844,8 @@ def create_app(
     """
     app = FastAPI(title="osxp", version=__version__, docs_url=None, redoc_url=None)
     app.add_middleware(_GuardMiddleware, allowed_hosts=tuple(allowed_hosts))
+    # the answers the page waits for long, named in serve.log; added last, so the guard is timed too
+    app.add_middleware(_SlowAnswers)
     # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
     # its own lifespan, which closes its upstream fetchers when the server stops.
     app.include_router(zones_router())
@@ -857,6 +906,10 @@ def create_app(
         "ui_dir": Path(ui_dir) if ui_dir is not None else None,
         # when a page last said it was open: the app stops a while after the last one closed
         "presence": Presence(),
+        # when the engine's port opened (osxp serve), and whether a page has said it is open
+        # since: serve.log says how long the page took to come (orthostudio.startclock)
+        "listening_at": None,
+        "page_came": False,
     }
     app.state.orthostudio = state
 
@@ -950,6 +1003,9 @@ def create_app(
         now = time.monotonic()
         if state["doctor"] is None or now - state["doctor_at"] > DOCTOR_TTL_S:
             report = run_doctor(offline=True, xplane=xplane_dir())
+            for name, took in report.took_s.items():
+                if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
+                    log.info("the doctor's %s check took %.1f s", name, took)
             state["doctor"] = [c.to_dict() for c in report.checks]
             state["doctor_at"] = now
         return list(state["doctor"])
@@ -983,7 +1039,7 @@ def create_app(
         held every other request of the page. The sizes of the store and of the downloaded images
         are ``GET /api/sizes``, measured apart: on Windows each file of the store is opened, and
         some users saw the menu alone while the page waited for them (2026-09-22)."""
-        xp = await asyncio.to_thread(xplane_dir)
+        xp = await asyncio.to_thread(_timed("X-Plane folder", xplane_dir))
 
         def library_count() -> int:
             # tiles, not rows: an installed OrthoStudio XP tile has an ortho row and an overlay row
@@ -994,12 +1050,16 @@ def create_app(
                 return len({r.tile for r in library.list(kind="ortho")})
 
         checks, running, others, own, missing, count = await asyncio.gather(
-            asyncio.to_thread(doctor_checks),
-            asyncio.to_thread(lambda: xp is not None and xplane_running()),
-            asyncio.to_thread(other_xplane_dirs, xp),
-            asyncio.to_thread(lambda: [] if xp is None else packs_of_their_own(xp)),
-            asyncio.to_thread(data_root_missing),
-            asyncio.to_thread(library_count),
+            asyncio.to_thread(_timed("checks", doctor_checks)),
+            asyncio.to_thread(
+                _timed("X-Plane running", lambda: xp is not None and xplane_running())
+            ),
+            asyncio.to_thread(_timed("other X-Planes", lambda: other_xplane_dirs(xp))),
+            asyncio.to_thread(
+                _timed("packs of their own", lambda: [] if xp is None else packs_of_their_own(xp))
+            ),
+            asyncio.to_thread(_timed("data folder", data_root_missing)),
+            asyncio.to_thread(_timed("library count", library_count)),
         )
         home = osxp_home()
         active = manager.active()
@@ -1060,8 +1120,14 @@ def create_app(
     @app.post("/api/presence")
     async def presence() -> dict[str, Any]:
         """A page is open. The app started from its icon stops a while after the last word from a
-        page, unless a build runs or waits (``orthostudio.api.presence``)."""
+        page, unless a build runs or waits (``orthostudio.api.presence``). The first word after
+        the engine started says in ``serve.log`` how long the page took to come once the port
+        was open (``orthostudio.startclock``)."""
         state["presence"].seen()
+        listened = state["listening_at"]
+        if not state["page_came"] and listened is not None:
+            state["page_came"] = True
+            log.info("its page is open, %.1f s after its port opened", time.time() - listened)
         return {"ok": True}
 
     @app.post("/api/quit")

@@ -31,6 +31,7 @@ from orthostudio.desktop import (
     opening_page,
 )
 from orthostudio.home import osxp_home
+from orthostudio.startclock import LAUNCHED_ENV
 
 
 def test_the_log_is_in_the_platform_log_folder() -> None:
@@ -309,7 +310,10 @@ def test_the_window_starts_its_engine_writing_utf8(
 
     ((args, kw),) = started
     assert args == [sys.executable, "-m", "orthostudio", *desktop.ENGINE_ARGS]
-    assert kw["env"] == {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env = dict(kw["env"])
+    # and the time it was started at, from which it counts its start (orthostudio.startclock)
+    assert abs(float(env.pop(LAUNCHED_ENV)) - time.time()) < 60
+    assert env == {**os.environ, "PYTHONIOENCODING": "utf-8"}
     assert kw["stderr"] is kw["stdout"]  # the log itself, which the header went into
     assert "orthostudio serve" in log.read_text(encoding="utf-8")
     assert kw["stdin"] == subprocess.DEVNULL and kw["start_new_session"] is True

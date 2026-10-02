@@ -52,6 +52,9 @@ class Check:
 @dataclass(slots=True)
 class DoctorReport:
     checks: list[Check] = field(default_factory=list)
+    took_s: dict[str, float] = field(default_factory=dict)
+    """How long each check took, by its name: the engine names the slow ones in ``serve.log``
+    (``orthostudio.startclock``). Not in :meth:`to_dict`: ``doctor --json`` stays what it was."""
 
     @property
     def ok(self) -> bool:
@@ -568,6 +571,7 @@ def run_doctor(
         lambda: _store(store_root),
         lambda: _chunks(chunks_root),
     ):
+        began = time.monotonic()
         try:
             report.checks.append(fn())
         except Exception as exc:  # a broken check is reported, not raised
@@ -578,6 +582,7 @@ def run_doctor(
                     f"{type(exc).__name__}: {exc}",
                 )
             )
+        report.took_s[report.checks[-1].name] = time.monotonic() - began
     return report
 
 

@@ -35,9 +35,10 @@ from typing import IO
 
 from platformdirs import user_log_dir
 
-from orthostudio import __version__
+from orthostudio import STARTED_AT, __version__
 from orthostudio.codemark import code_mark
 from orthostudio.home import osxp_home
+from orthostudio.startclock import LAUNCHED_ENV, parts, process_started_at, span
 
 __all__ = [
     "APP_NAME",
@@ -56,6 +57,7 @@ __all__ = [
     "opening_page",
     "start_engine",
     "time_to_close",
+    "window_opens",
 ]
 
 APP_NAME = "OrthoStudio XP"
@@ -305,6 +307,23 @@ def append_only(log: Path) -> IO[str]:
     return open(msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_APPEND), "a", encoding="utf-8")
 
 
+def window_opens(now: float | None = None) -> str:
+    """What the window says as it starts its engine: how long Python took to start (known on
+    Windows alone, :func:`orthostudio.startclock.process_started_at`), then how long the window
+    took to load up to ``now``. That is pywebview, the toolkit under it and, on Windows, .NET
+    and the web view's own files.
+
+    The time a start takes is in ``serve.log`` because a cloud PC took more than 45 s to open
+    after an install, and the log could not say where the time went (2026-10-02).
+    """
+    now = time.time() if now is None else now
+    said = parts(
+        ("Python", span(process_started_at(), STARTED_AT)),
+        ("loading the window", span(STARTED_AT, now)),
+    )
+    return f"its window opens: {said}" if said else "its window opens"
+
+
 def start_engine(log: Path) -> None:
     """Start the engine in a process of its own, apart from this one, its output in ``log``.
 
@@ -323,7 +342,9 @@ def start_engine(log: Path) -> None:
     change more: every file and every program's output the engine reads or writes without naming
     an encoding.
 
-    It writes at the log's end, whatever else writes there (:func:`append_only`).
+    It writes at the log's end, whatever else writes there (:func:`append_only`). It is handed the
+    time it was started at (:data:`orthostudio.startclock.LAUNCHED_ENV`), from which it counts its
+    own start once it listens, Python's included (``api/serve.py``).
     """
     import subprocess
 
@@ -340,8 +361,9 @@ def start_engine(log: Path) -> None:
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=out,
-            # the log's encoding, not the system's code page (cp1252 on a French Windows)
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            # the log's encoding, not the system's code page (cp1252 on a French Windows); and the
+            # time it is started at, from which it counts its start
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", LAUNCHED_ENV: repr(time.time())},
             start_new_session=True,
             # pythonw has no console, and a console program it starts flashes a window
             creationflags=NO_CONSOLE_WINDOW,
@@ -507,11 +529,19 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
         shown: list[str] = []
         if open_while_starting(ENGINE_PORT, log=log, browser=shown.append) and shown:
             url = shown[0]  # the opening page, which goes to the engine's by itself
+
+    def opens() -> None:
+        # what the window's start took; a line that cannot be written must not keep the engine
+        # from starting
+        with contextlib.suppress(Exception):
+            _note(log, window_opens())
+        start_engine(log)
+
     try:
         show(
             url,
             title=APP_NAME,
-            on_shown=None if running else lambda: start_engine(log),
+            on_shown=None if running else opens,
             closes_when=time_to_close(ENGINE_PORT),
             on_close=on_close(),
             may_quit=may_quit,

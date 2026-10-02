@@ -669,6 +669,13 @@ comes down at the smoothing's pace.
 `127.0.0.1:<port>` and opens `http://127.0.0.1:<port>/` in the browser (`webbrowser`) unless
 `--no-open`. The command is wired in `cli.py` (`orthostudio.api.serve:main` is the entry point).
 
+Once its port is open, the engine writes in `serve.log` how long it took to get there, and in
+what parts (`serve.listening_line`, `docs/specs/packaging.md` 4). The page's first
+`POST /api/presence` then writes how long the page took to come. An answer of the API that took
+more than a second to begin is named there with its time (`app._SlowAnswers`, the base map's tiles
+left out). So is a part of `GET /api/status` (`app._timed`) or a check of the doctor
+(`DoctorReport.took_s`) slower than that.
+
 `--quit-when-closed` (what the app runs, `desktop.py`): the engine stops by itself
 (`presence.quit_when_closed`, the same stop as `POST /api/quit`) once no page has said it is open
 (`POST /api/presence`) for 5 min and no build runs or waits. The watch checks every 15 s; a build
