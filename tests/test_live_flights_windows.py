@@ -256,3 +256,22 @@ def test_the_kit_s_flights_wait_for_windows_background_work(monkeypatch, capsys)
     assert "SearchIndexer.exe 0.60, TiWorker.exe 0.25" in capsys.readouterr().out
     assert vol.wait_quiet(max_s=0) is False  # it goes all the same, and says so
     assert "le vol part quand meme" in capsys.readouterr().out
+
+
+def test_the_kit_s_flights_are_the_runner_s(monkeypatch):
+    """Each of the kit's choices, as the runner takes it: the fourth, Live building nothing in
+    flight, to tell whether X-Plane's stutter at a load's start is Live's work or X-Plane's."""
+    import fly
+
+    vol = _kit_flight_script()
+    taken = []
+    monkeypatch.setattr(fly, "run", lambda a: taken.append(a) or 0)
+    for choice in ("1", "2", "3", "4"):
+        for args in vol.RUNS[choice]:
+            assert fly.main(args) == 0
+    frozen = taken[-1]
+    assert (frozen.streamer, frozen.cold, frozen.zooms, frozen.freeze_in_flight) == (
+        "live", True, (16, 18), True,
+    )  # fmt: skip
+    assert frozen.scenarios == ["toulouse-low"]
+    assert [a.freeze_in_flight for a in taken[:-1]] == [False] * 4

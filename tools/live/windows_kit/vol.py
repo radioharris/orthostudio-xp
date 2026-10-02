@@ -1,6 +1,7 @@
 """A replayable test flight on this Windows (the kit's fourth step): tools/live/flights/fly.py's
 series, as on the developer's Mac, then what they left zipped beside the kit's scripts, to send
-back. Usage: vol.py 1|2|3 (Live; X-Plane alone; both, one after the other) and the kit's folder.
+back. Usage: vol.py 1|2|3|4 (Live; X-Plane alone; both, one after the other; Live building
+nothing in flight) and the kit's folder.
 
 Each flight in the same conditions as the other: the kit's folder kept out of Windows Search (its
 Python, its results, a cold Live's folder), and each flight begun once Windows' own background
@@ -18,7 +19,10 @@ import sampler_windows
 
 LIVE = ["--streamer", "live", "--cold", "--zooms", "16/18", "toulouse-low"]
 ALONE = ["toulouse-low"]
-RUNS = {"1": [LIVE], "2": [ALONE], "3": [ALONE, LIVE]}
+# Live building nothing once the aircraft flies: whether X-Plane's stutter at a load's start
+# (0.12 s at 741 s of the path in both Shadow series of 2026-10-02) is Live's work or X-Plane's
+FROZEN = [*LIVE[:-1], "--freeze-in-flight", LIVE[-1]]
+RUNS = {"1": [LIVE], "2": [ALONE], "3": [ALONE, LIVE], "4": [FROZEN]}
 BIGGEST = 300 * 2**20  # a file larger is left out of the zip (none should be)
 # Windows' own background work: its search's indexer, its updates, its antivirus
 BACKGROUND = (

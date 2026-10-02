@@ -12,8 +12,9 @@ echo.
 echo   1 - avec Live (ZL16/ZL18, a froid : rien de construit avant)
 echo   2 - X-Plane seul, sans Live (pour comparer)
 echo   3 - les deux, l'un apres l'autre (45 min)
+echo   4 - avec Live qui ne construit rien en vol (le test de l'a-coup des chargements)
 echo.
-choice /c 123 /m "Lequel"
+choice /c 1234 /m "Lequel"
 set "WHICH=%ERRORLEVEL%"
 uv run --all-extras python "%~dp0essai-windows\vol.py" %WHICH% "%~dp0."
 :end

@@ -59,7 +59,9 @@ internet. Rien d'autre : le premier script installe ce qui manque, en te le dema
    Trois choix :
    1 - avec Live, en ZL16/ZL18, à froid (rien de construit avant) ;
    2 - X-Plane seul, sans Live, pour comparer ;
-   3 - les deux, l'un après l'autre (45 minutes).
+   3 - les deux, l'un après l'autre (45 minutes) ;
+   4 - avec Live qui ne construit rien une fois en vol : un test, pour savoir si le petit
+       à-coup au début d'un chargement de scène vient de Live ou d'X-Plane.
 
    À la fin : un fichier « resultats-vol-....zip » à côté du script. Il contient tout ce que
    j'analyse sur le Mac : les mesures de chaque seconde, le journal de Live, celui d'X-Plane, les
