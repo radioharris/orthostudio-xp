@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import plistlib
 import shutil
+import socket
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -192,6 +196,41 @@ def test_the_preview_s_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     launcher = (app / "Contents" / "MacOS" / "orthostudio").read_text()
     assert "export OSXP_PORT=8651" in launcher and "serve-live-preview.log" in launcher
     assert str(fake_repo) in launcher
+
+
+def test_live_s_process_goes_when_the_installer_asks(tmp_path: Path) -> None:
+    """Live's window served without its page opened (``ui --no-open``, as the Windows installer's
+    check starts it, tools/package/build.py) ends once asked to quit, as the installer asks it
+    before it replaces the app's files (stop_running.pas)."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    (tmp_path / "live.toml").write_text("enabled = true\n")
+    env = {**os.environ, "OSXP_HOME": str(tmp_path)}
+    args = ["-m", "orthostudio.live", "ui", "--no-open", "--port", str(port)]
+    live = subprocess.Popen([sys.executable, *args], env=env, stdout=subprocess.PIPE, text=True)
+    url = f"http://127.0.0.1:{port}/api/live"
+    try:
+        deadline = time.monotonic() + 60
+        while True:
+            assert live.poll() is None, live.stdout.read() if live.stdout else ""
+            try:
+                with urllib.request.urlopen(f"{url}/status", timeout=2) as answer:
+                    if answer.status == 200:
+                        break
+            except OSError:
+                assert time.monotonic() < deadline, "Live's window did not answer"
+                time.sleep(0.2)
+        asked = urllib.request.Request(
+            f"{url}/quit", data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(asked, timeout=5) as answer:
+            assert answer.status == 202
+        assert live.wait(timeout=30) == 0
+    finally:
+        if live.poll() is None:
+            live.kill()
+            live.wait()
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

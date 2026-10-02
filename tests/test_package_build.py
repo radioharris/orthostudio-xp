@@ -106,8 +106,13 @@ def test_the_windows_uninstaller_removes_the_program_and_nothing_else(tmp_path: 
     assert "DelTree" not in after and "DeleteFile" not in after
     assert "junctions" in after and ".orthostudio" in code
     assert "MsgBox" in after and "mbInformation" in after
-    # a data folder chosen on another disk is named too, so the room is not lost track of
-    assert "ChosenDataDir" in after
+    # a data folder chosen on another disk is named too, so the room is not lost track of, and
+    # OrthoStudio XP Live's
+    assert "ChosenDataDir" in after and "LiveFolder" in after
+    assert "TomlValue('live.toml', 'folder')" in code
+    # Live's pack and plugin out of X-Plane, where a Live that did not stop left them
+    removal = script[script.index("[UninstallRun]") : script.index("[Run]")]
+    assert '"-m orthostudio.live uninstall"' in removal and "RunOnceId" in removal
 
 
 def test_the_installers_pascal_is_commented_the_way_pascal_is(tmp_path: Path) -> None:
@@ -228,6 +233,7 @@ def test_the_windows_installer_stops_the_app_it_replaces(tmp_path: Path) -> None
     still running. The setup program and the uninstaller ask it to quit through the API the page
     quits with, on the engine's own port, then end what still runs from the folder."""
     from orthostudio.api.serve import DEFAULT_PORT
+    from orthostudio.live.app_start import LIVE_PORT
 
     script = build.inno_setup_script(
         "0.1.0",
@@ -240,13 +246,21 @@ def test_the_windows_installer_stops_the_app_it_replaces(tmp_path: Path) -> None
     code = script[script.index("\n[Code]\n") :]
     assert build.ENGINE_PORT == DEFAULT_PORT and "%PORT%" not in script
     assert f"'http://127.0.0.1:{DEFAULT_PORT}/api/quit'" in code
-    assert "Http.Open('POST', EngineQuitUrl, False)" in code and "'{\"force\": true}'" in code
+    assert "Http.Open('POST', Url, False)" in code and "'{\"force\": true}'" in code
+    # OrthoStudio XP Live's window first, on its own port, so that it takes its pack and its
+    # plugin out of X-Plane as it goes
+    assert build.LIVE_PORT == LIVE_PORT and "%LIVE_PORT%" not in script
+    assert f"'http://127.0.0.1:{LIVE_PORT}/api/live/quit'" in code
+    stop = code[code.index("function StopOrthoStudio") :]
+    assert stop.index("AskToQuit(LiveQuitUrl, False)") < stop.index("AskToQuit(EngineQuitUrl")
+    assert "AskToQuit(LiveQuitUrl, True)" in stop  # once the user said to go on
     assert "function PrepareToInstall(var NeedsRestart: Boolean): String;" in code
     assert "function InitializeUninstall(): Boolean;" in code
     assert code.count("StopOrthoStudio(ExpandConstant('{app}'))") == 2
     assert "Terminate()" in code and "python\\" in code  # only what runs from the folder
     check = build.check_installer.__code__.co_names
     assert "start_engine" in check and "engine_stopped" in check  # checked on Windows by CI
+    assert "start_live" in check  # Live's window too
 
 
 def test_the_linux_menu_entry_can_be_removed() -> None:

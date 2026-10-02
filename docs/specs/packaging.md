@@ -40,10 +40,19 @@ never shown (2026-09-20). The environment is read with `GetEnv`, and a test walk
 The Windows setup program and its uninstaller first stop an OrthoStudio XP running from the
 installation folder (`tools/package/stop_running.pas`, the `[Code]` of the script). A running
 engine holds `python\python3.dll`, and a user installing again read "DeleteFile failed; code 5"
-on it (2026-09-14). They ask the engine to quit with the page's own request, `POST /api/quit` on
-port 8641 (a build running: they ask first, then `force`), wait up to 20 s for the processes
-started from the folder's Python (the engine, Triangle4XP, DSFTool, found with WMI) to end, end
+on it (2026-09-14). They ask OrthoStudio XP Live's window to quit first, on its own port, 8642
+(`POST /api/live/quit`), so that it takes its pack and its plugin out of X-Plane as it goes, which
+a process ended does not: while it streams to a running X-Plane it answers 409, and they ask the
+user, who may let X-Plane fly on over what is built (`force`) or quit X-Plane first. Then they
+ask the engine to quit with the page's own request, `POST /api/quit` on port 8641 (a build
+running: they ask first, then `force`), wait up to 20 s for the processes started from the
+folder's Python (the engine, Live's window, Triangle4XP, DSFTool, found with WMI) to end, end
 those still running, and give up with a message only if something still runs.
+
+The uninstaller then takes Live's pack and plugin out of X-Plane, where a Live that did not stop
+left them (`python -m orthostudio.live uninstall`, `[UninstallRun]`; nothing while X-Plane runs,
+which reads the pack), and its message names Live's folder too when it was chosen elsewhere than
+in `%USERPROFILE%\.orthostudio`.
 
 The macOS app declares `LSArchitecturePriority = [arm64]` and `LSRequiresNativeExecution`. Its
 launcher is a script, which gives macOS no Mach-O to read the architectures from: without them the
@@ -250,9 +259,10 @@ with the app), Live's plugin (the one installed with the app) and `serve --check
   installed app shares, `open` starts the installed one), opened by macOS itself (`open -W -n
   --env HOME=...`, `doctor --json`), whose `architecture` check must be `ok`;
 - Windows: the setup program run silently into a temporary folder (`/VERYSILENT /DIR=`),
-  `python\pythonw.exe -m orthostudio.desktop`; then, with the installed engine started and left
-  running, the setup program run again over it, and the uninstaller, each of which must stop the
-  engine and succeed; the uninstaller must remove the app;
+  `python\pythonw.exe -m orthostudio.desktop`; then, with the installed engine and Live's window
+  (`python -m orthostudio.live ui --no-open`) started and left running, the setup program run
+  again over them, and the uninstaller, each of which must stop both and succeed; the uninstaller
+  must remove the app;
 - Linux: the archive extracted, `orthostudio-xp`, then `install.sh`, whose menu entry must name
   that launcher, and `install.sh --remove`, which must take it out.
 

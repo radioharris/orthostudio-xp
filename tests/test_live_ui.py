@@ -346,6 +346,32 @@ def test_stopped_while_xplane_runs(home: Path, monkeypatch: pytest.MonkeyPatch) 
     assert any("stays installed" in line["text"] for line in c.log_after(0)["lines"])
 
 
+def test_the_app_s_update_asks_live_to_quit(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Windows installer asks Live to go before it replaces or removes the files
+    (tools/package/stop_running.pas): at once while no stream feeds a running X-Plane, the pack
+    coming out; while one does, not unless forced, and then without waiting for X-Plane, which
+    flies on over what is built, the pack staying installed."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    c = control_for(FakeStream())
+    assert c.quit() and c.leaving_for == "quit"  # nothing streams
+    stream = FakeStream()
+    c = control_for(stream)
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    assert c.quit()  # X-Plane does not run
+    assert c.wait_idle(5) and stream.finished == [Path("/X-Plane 12")] and not stream.gave_up
+
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
+    stream = FakeStream()
+    c = control_for(stream, xplane_running=True, installed=True)
+    assert c.start()
+    wait_for(lambda: c.state == STREAMING)
+    assert not c.quit()  # X-Plane flies with it
+    assert c.state == STREAMING and c.leaving_for is None
+    assert c.quit(force=True) and c.leaving_for == "quit"
+    assert c.wait_idle(5) and stream.gave_up  # the pack stays installed
+
+
 def test_a_pack_left_installed_comes_out_once_xplane_has_quit(home: Path) -> None:
     c = control_for(FakeStream(), xplane_running=True, installed=True)
     assert not c.uninstall()  # X-Plane reads it
@@ -441,6 +467,22 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
 
 
 # --- the API ------------------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_the_installer_s_quit(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """What the Windows installer sends (stop_running.pas): ``{}``, then ``{"force": true}`` once
+    the user said to go on while X-Plane flies with Live."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
+    stream = FakeStream()
+    c = control_for(stream, xplane_running=True, installed=True)
+    async with client_for(create_live_app(c)) as client:
+        assert c.start()
+        wait_for(lambda: c.state == STREAMING)
+        assert (await client.post("/api/live/quit", json={})).status_code == 409
+        assert c.state == STREAMING
+        assert (await client.post("/api/live/quit", json={"force": True})).status_code == 202
+        assert c.wait_idle(5) and c.leaving_for == "quit" and stream.gave_up
 
 
 @pytest.mark.anyio

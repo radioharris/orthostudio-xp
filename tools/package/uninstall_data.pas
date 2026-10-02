@@ -5,9 +5,10 @@
 // It removes the program and nothing else. The settings and the data OrthoStudio XP downloaded
 // live apart, in %USERPROFILE%\.orthostudio (orthostudio.home.osxp_home), and can weigh tens of
 // gigabytes, so leaving them without a word leaves the user wondering where the room went. It
-// names the folder instead, and warns what removing it by hand would cost: the tiles installed
-// into X-Plane are junctions into that folder (orthostudio/install/packs.py), not copies, so
-// taking it away empties X-Plane's scenery of every tile built here and leaves dead links behind.
+// names the folder instead, with the data folder and OrthoStudio XP Live's when they were chosen
+// elsewhere, and warns what removing it by hand would cost: the tiles installed into X-Plane are
+// junctions into that folder (orthostudio/install/packs.py), not copies, so taking it away
+// empties X-Plane's scenery of every tile built here and leaves dead links behind.
 //
 // An offer to remove it was written and taken out again. A checkbox nobody reads twice cannot be
 // the thing standing between a user and hours of building.
@@ -25,20 +26,20 @@ begin
     Result := Profile + '\.orthostudio';
 end;
 
-function ChosenDataDir: String;
+// The value of Key in FileName, one of the TOML files in OsxpHome, read as a line rather than as
+// TOML: the answer is only ever shown, so a line this misreads costs a sentence and nothing else.
+function TomlValue(const FileName, Key: String): String;
 var
   Lines: TArrayOfString;
   I: Integer;
   Line, Value: String;
 begin
-  // essential.data_dir of config.toml, read as a line rather than as TOML: the answer is only
-  // ever shown, so a line this misreads costs a sentence and nothing else
   Result := '';
-  if (OsxpHome = '') or (not LoadStringsFromFile(OsxpHome + '\config.toml', Lines)) then
+  if (OsxpHome = '') or (not LoadStringsFromFile(OsxpHome + '\' + FileName, Lines)) then
     Exit;
   for I := 0 to GetArrayLength(Lines) - 1 do begin
     Line := Trim(Lines[I]);
-    if Pos('data_dir', Line) = 1 then begin
+    if Pos(Key, Line) = 1 then begin
       Value := Trim(Copy(Line, Pos('=', Line) + 1, Length(Line)));
       StringChangeEx(Value, '"', '', True);
       StringChangeEx(Value, '''', '', True);
@@ -49,6 +50,19 @@ begin
   end;
 end;
 
+// essential.data_dir of config.toml
+function ChosenDataDir: String;
+begin
+  Result := TomlValue('config.toml', 'data_dir');
+end;
+
+// OrthoStudio XP Live's folder, where it was chosen elsewhere than in OsxpHome: its pack and the
+// imagery it downloaded (live.toml's folder, orthostudio/live/pack.py live_root)
+function LiveFolder: String;
+begin
+  Result := TomlValue('live.toml', 'folder');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Data, Where, Note: String;
@@ -57,11 +71,13 @@ begin
     Exit;
   if (OsxpHome = '') or (not DirExists(OsxpHome)) then
     Exit;
+  Where := OsxpHome;
   Data := ChosenDataDir;
   if Data <> '' then
-    Where := OsxpHome + #13#10 + Data
-  else
-    Where := OsxpHome;
+    Where := Where + #13#10 + Data;
+  Data := LiveFolder;
+  if Data <> '' then
+    Where := Where + #13#10 + Data;
   Note :=
     'OrthoStudio XP is removed. Your settings, and the tiles and downloads it keeps, are left ' +
     'where they are:' + #13#10 + #13#10 + Where + #13#10 + #13#10 +

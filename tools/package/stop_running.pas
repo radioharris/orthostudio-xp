@@ -7,12 +7,19 @@
 // 2026-09-14). Before the files are replaced or removed, it is asked to quit through its API, as
 // an app asks an older engine or another installation (api/serve.py take_over); one that does
 // not end is ended.
-// build.py fills in the port of EngineQuitUrl.
+//
+// OrthoStudio XP Live's window is a process of its own, with an API of its own: it is asked
+// first, so that it takes its pack and its plugin out of X-Plane as it goes, which a process
+// ended does not (orthostudio/live/control.py quit). While it streams to a running X-Plane it
+// answers 409, and the user chooses: X-Plane then flies on over what is already built.
+// build.py fills in the ports of EngineQuitUrl and LiveQuitUrl.
 
 const
   EngineQuitUrl = 'http://127.0.0.1:%PORT%/api/quit';
+  LiveQuitUrl = 'http://127.0.0.1:%LIVE_PORT%/api/live/quit';
 
-function QuitEngine(Force: Boolean): Integer;
+// The status of a POST asking to quit, 0 when nothing answers.
+function AskToQuit(const Url: String; Force: Boolean): Integer;
 var
   Http: Variant;
 begin
@@ -20,7 +27,7 @@ begin
   try
     Http := CreateOleObject('WinHttp.WinHttpRequest.5.1');
     Http.SetTimeouts(2000, 2000, 5000, 5000);
-    Http.Open('POST', EngineQuitUrl, False);
+    Http.Open('POST', Url, False);
     Http.SetRequestHeader('Content-Type', 'application/json');
     if Force then
       Http.Send('{"force": true}')
@@ -32,7 +39,8 @@ begin
   end;
 end;
 
-// The processes started from the folder's Python: the engine, and Triangle4XP or DSFTool.
+// The processes started from the folder's Python: the engine, Live's window, and Triangle4XP or
+// DSFTool.
 function AppProcesses(const AppDir: String): Variant;
 var
   Locator, Service: Variant;
@@ -90,7 +98,18 @@ begin
   Result := '';
   if CountAppProcesses(AppDir) = 0 then
     exit;
-  if QuitEngine(False) = 409 then
+  if AskToQuit(LiveQuitUrl, False) = 409 then
+  begin
+    if SuppressibleMsgBox('OrthoStudio XP Live is streaming to X-Plane. Stop it and go on? ' +
+        'X-Plane flies on over what is already built.', mbConfirmation, MB_YESNO, IDYES) = IDNO then
+    begin
+      Result := 'OrthoStudio XP Live is streaming to X-Plane. Quit X-Plane, then start this ' +
+        'program again.';
+      exit;
+    end;
+    AskToQuit(LiveQuitUrl, True);
+  end;
+  if AskToQuit(EngineQuitUrl, False) = 409 then
   begin
     if SuppressibleMsgBox('OrthoStudio XP is building tiles. Stop the build and go on? ' +
         'What is already built is kept.', mbConfirmation, MB_YESNO, IDYES) = IDNO then
@@ -99,7 +118,7 @@ begin
         '(Quit, at the top right of its page), then start this program again.';
       exit;
     end;
-    QuitEngine(True);
+    AskToQuit(EngineQuitUrl, True);
   end;
   if not AppEnded(AppDir, 20) then
   begin

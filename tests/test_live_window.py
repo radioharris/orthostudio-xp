@@ -126,3 +126,32 @@ def test_asked_once(opened) -> None:
     assert stop.wait(5.0)
     assert given["may_quit"]() is False  # asked already: it goes by itself once the pack is out
     assert len(questions(done)) == 1
+
+
+def test_the_app_s_update_closes_the_window_without_a_question(opened) -> None:
+    """The Windows installer asked Live to go (``control.quit``, ``stop_running.pas``): the window
+    closes, streaming or not, and nothing is asked: the installer asked the user already."""
+    for mac in (True, False):
+        given, done, control = opened(mac=mac)
+        control.state = STREAMING
+        assert given["closes_when"]() is False
+        control.leaving_for = "quit"
+        assert given["closes_when"]() is True
+        assert given["may_quit"]() is True and questions(done) == []
+
+
+def test_the_app_s_update_ends_it_in_the_browser_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a window (a Linux without its libraries, ``--browser``), the page in the browser:
+    the process ends once asked to quit, as with a window."""
+    monkeypatch.setattr(web.webbrowser, "open", lambda url: True)
+    control = FakeControl()
+    ended = threading.Event()
+
+    def page() -> None:
+        web._in_the_browser("http://127.0.0.1:1/", control)
+        ended.set()
+
+    threading.Thread(target=page, daemon=True).start()
+    assert not ended.wait(1.5)
+    control.leaving_for = "quit"
+    assert ended.wait(5.0)

@@ -146,10 +146,13 @@ def _serve(app: Any, port: int) -> tuple[Any, threading.Thread]:
     return server, thread
 
 
-def open_window(port: int, *, browser: bool = False, start: str | None = None) -> str | None:
+def open_window(
+    port: int, *, browser: bool = False, start: str | None = None, show: bool = True
+) -> str | None:
     """Serve the page on ``port`` and show it; return once the window is closed and no stream is
-    left behind. ``start="welcome"``: the app's question first. Returns ``"build"`` when its
-    answer was OrthoStudio XP's window, for the app to open it."""
+    left behind. ``start="welcome"``: the app's question first. ``show=False``: served only, as in
+    the browser but without opening it (the installers' checks, ``tools/package/build.py``).
+    Returns ``"build"`` when its answer was OrthoStudio XP's window, for the app to open it."""
     from orthostudio import window
     from orthostudio.live import pools
 
@@ -159,8 +162,8 @@ def open_window(port: int, *, browser: bool = False, start: str | None = None) -
     server, thread = _serve(create_live_app(control), port)
     url = f"http://127.0.0.1:{port}/" + ("welcome" if start == "welcome" else "")
     try:
-        if browser or not window.possible():
-            _in_the_browser(url, control)
+        if browser or not show or not window.possible():
+            _in_the_browser(url, control, show=show)
         else:
             _in_a_window(url, control)
     finally:
@@ -170,13 +173,15 @@ def open_window(port: int, *, browser: bool = False, start: str | None = None) -
     return control.leaving_for
 
 
-def _in_the_browser(url: str, control: LiveControl) -> None:
-    """The page in the browser, the terminal holding it: Ctrl-C stops the stream, and waits for
-    X-Plane to quit as the command line does (Ctrl-C again leaves the pack installed)."""
-    webbrowser.open(url)
+def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> None:
+    """The page in the browser (opened unless not ``show``), the terminal holding it: Ctrl-C
+    stops the stream, and waits for X-Plane to quit as the command line does (Ctrl-C again leaves
+    the pack installed)."""
+    if show:
+        webbrowser.open(url)
     print(f"OrthoStudio XP Live: {url} (Ctrl-C here to close)")
     try:
-        while True:
+        while control.leaving_for != "quit":  # until the app's update or removal (control.quit)
             time.sleep(1)
     except KeyboardInterrupt:
         control.stop()
@@ -224,7 +229,7 @@ def _in_a_window(url: str, control: LiveControl) -> None:
         on_close=put_away if window.puts_away_on_close() else may_quit,
         may_quit=may_quit,
         closes_when=lambda: (
-            (closing[0] and control.state == IDLE) or control.leaving_for == "build"
+            (closing[0] and control.state == IDLE) or control.leaving_for in ("build", "quit")
         ),
         size=SIZE,
         storage=default_live_root() / "window",  # where the page keeps its language

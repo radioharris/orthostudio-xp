@@ -8,6 +8,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``POST /api/live/start`` ``{"fresh": bool}``: start streaming (409 while a stream is on);
 - ``POST /api/live/stop``: stop it; the pack comes out once X-Plane has quit;
 - ``POST /api/live/leave``: stop waiting for X-Plane: the pack stays installed;
+- ``POST /api/live/quit`` ``{"force": bool}``: the window goes, for the app's update or removal
+  (409 while a stream feeds a running X-Plane, unless ``force``);
 - ``POST /api/live/uninstall``: take out a pack left installed (409 while X-Plane runs);
 - ``POST /api/live/delete`` ``{"textures": bool, "imagery": bool}``: forget them (409 while a
   stream runs, or X-Plane for the textures);
@@ -70,6 +72,10 @@ class RevealBody(BaseModel):
     path: str
 
 
+class QuitBody(BaseModel):
+    force: bool = False
+
+
 class PrepareBody(BaseModel):
     departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
 
@@ -114,6 +120,17 @@ def live_router(control: LiveControl) -> APIRouter:
     @router.post("/leave", status_code=202)
     def leave() -> dict[str, Any]:
         control.leave()
+        return {"state": control.state}
+
+    @router.post("/quit", status_code=202)
+    def quit_live(body: QuitBody | None = None) -> dict[str, Any]:
+        """The app being updated or removed: the Windows installer asks it before it replaces or
+        removes the files (``tools/package/stop_running.pas``), as it asks OrthoStudio XP's
+        engine."""
+        if not control.quit(force=body is not None and body.force):
+            raise HTTPException(
+                409, "X-Plane is flying with Live: stopping it now leaves X-Plane on what is built"
+            )
         return {"state": control.state}
 
     @router.post("/uninstall")

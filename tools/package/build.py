@@ -59,6 +59,9 @@ ENTRY_MODULE = "orthostudio.desktop"
 ENGINE_PORT = 8641
 """The port the app's engine listens on (``orthostudio.api.serve.DEFAULT_PORT``; a test keeps the
 two equal): the Windows installer asks a running engine to quit there."""
+LIVE_PORT = 8642
+"""The port of OrthoStudio XP Live's window (``orthostudio.live.app_start.LIVE_PORT``; a test keeps
+the two equal): the Windows installer asks it to quit there first."""
 
 DMG_TRIES = 3
 DMG_RETRY_S = 20.0
@@ -327,8 +330,9 @@ def inno_setup_script(
 ) -> str:
     """The Inno Setup script of the Windows installer: for the current user only (no
     administrator), a Start menu entry, an optional desktop one, the app started at the end, and
-    an OrthoStudio XP running from the folder stopped before its files are replaced or removed
-    (:data:`INNO_CODE`).
+    an OrthoStudio XP running from the folder, its Live window first, stopped before its files are
+    replaced or removed (:data:`INNO_CODE`). Uninstalling also takes OrthoStudio XP Live's pack and
+    plugin out of X-Plane, where a Live that did not stop left them.
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
@@ -344,6 +348,7 @@ def inno_setup_script(
     code = (
         "\n".join(p.read_text(encoding="utf-8") for p in parts)
         .replace("%PORT%", str(ENGINE_PORT))
+        .replace("%LIVE_PORT%", str(LIVE_PORT))
         .replace("%WEBVIEW2_MINIMUM%", WEBVIEW2_MINIMUM)
         .replace("%WEBVIEW2_EXE%", WEBVIEW2_EXE)
     )
@@ -393,6 +398,11 @@ Source: "{webview2}"; Flags: dontcopy
 [Icons]
 Name: "{{autoprograms}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"
 Name: "{{autodesktop}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"; Tasks: desktopicon
+
+[UninstallRun]
+; OrthoStudio XP Live's pack and plugin out of X-Plane, where a Live that did not stop left them (it
+; takes them out as it stops); nothing while X-Plane runs, which reads the pack
+Filename: "{{app}}\\python\\python.exe"; Parameters: "-m orthostudio.live uninstall"; WorkingDir: "{{app}}"; Flags: runhidden; RunOnceId: "LiveOutOfXPlane"
 
 [Run]
 Filename: "{{tmp}}\\{WEBVIEW2_EXE}"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft WebView2 Runtime..."; Tasks: webview2
@@ -896,6 +906,29 @@ def start_engine(installed: Path, env: dict[str, str]) -> subprocess.Popen[bytes
     raise SystemExit("the installed engine did not answer within 60 s")
 
 
+def start_live(installed: Path, env: dict[str, str]) -> subprocess.Popen[bytes]:
+    """The installed app's OrthoStudio XP Live window on its own port, served without opening its
+    page (``ui --no-open``) and left running: what a user may have open, beside the engine, while
+    an update is installed over the app, or the app removed."""
+    home = Path(env["OSXP_HOME"])
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "live.toml").write_text("enabled = true\n", encoding="utf-8")
+    python = installed_python(installed)
+    args = [str(python), "-m", "orthostudio.live", "ui", "--no-open", "--port", str(LIVE_PORT)]
+    print("+", *args, "&", flush=True)
+    live = subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    url = f"http://127.0.0.1:{LIVE_PORT}/api/live/status"
+    for _ in range(120):
+        with contextlib.suppress(OSError), urllib.request.urlopen(url, timeout=2) as answer:
+            if answer.status == 200:
+                return live
+        if live.poll() is not None:
+            raise SystemExit(f"the installed Live window stopped at once ({live.returncode})")
+        time.sleep(0.5)
+    live.kill()
+    raise SystemExit("the installed Live window did not answer within 60 s")
+
+
 def engine_stopped(engine: subprocess.Popen[bytes], by: str) -> None:
     """Fails unless the engine left running has ended: ``by`` had to stop it."""
     try:
@@ -981,13 +1014,16 @@ def check_installer(target: Target, artefact: Path) -> None:
             setup = [artefact, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/DIR={folder}"]
             run([*setup, f"/LOG={tmp / 'setup.log'}"])
             check_launch([folder / "python" / "pythonw.exe", "-m", ENTRY_MODULE], folder, env)
-            # Installed again, then removed, while the app runs: its python3.dll is in use, and
-            # a setup program that does not stop it cannot replace the file (stop_running.pas).
-            engine = start_engine(folder, env)
+            # Installed again, then removed, while the app runs, its Live window too: its
+            # python3.dll is in use, and a setup program that does not stop them cannot replace
+            # the file (stop_running.pas).
+            engine, live = start_engine(folder, env), start_live(folder, env)
             run([*setup, f"/LOG={tmp / 'setup-over-running.log'}"])
+            engine_stopped(live, "installing over the app (Live's window)")
             engine_stopped(engine, "installing over the app")
-            engine = start_engine(folder, env)
+            engine, live = start_engine(folder, env), start_live(folder, env)
             run([folder / "unins000.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
+            engine_stopped(live, "the uninstaller (Live's window)")
             engine_stopped(engine, "the uninstaller")
             for _ in range(60):  # the uninstaller works from a copy of itself, after it returns
                 if not (folder / "python").exists():

@@ -235,7 +235,8 @@ class LiveControl:
         self._seq = 0
         self._stop = threading.Event()
         self._leave = threading.Event()
-        # the welcome page's answer: "build" closes this window for OrthoStudio XP's
+        # why this window goes: "build", the welcome page's answer, for OrthoStudio XP's window;
+        # "quit", the app being updated or removed (:meth:`quit`)
         self.leaving_for: str | None = None
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
@@ -395,6 +396,21 @@ class LiveControl:
     def leave(self) -> None:
         """Stop waiting for X-Plane to quit: the pack and the plugin stay installed."""
         self._leave.set()
+
+    def quit(self, *, force: bool = False) -> bool:
+        """The app is being updated or removed (the Windows installer, ``stop_running.pas``): stop,
+        and let the window and its process go (``leaving_for``). False, and nothing done, while
+        a stream feeds a running X-Plane, unless ``force``: the stream then stops without waiting
+        for X-Plane, which flies on over what is on the disk, and the pack stays installed; the
+        plugin takes Live's links out of Custom Scenery at X-Plane's next start."""
+        flying = self._state != IDLE and xplane_running()
+        if flying and not force:
+            return False
+        self.leaving_for = "quit"
+        self.stop()
+        if flying:
+            self.leave()
+        return True
 
     def uninstall(self) -> bool:
         """Take out a pack left installed; False while a stream runs, or while X-Plane does."""

@@ -92,12 +92,18 @@ def ui(
     browser: Annotated[
         bool, typer.Option("--browser", help="open the page in the browser, not in a window")
     ] = False,
+    no_open: Annotated[
+        bool,
+        typer.Option(
+            "--no-open", help="serve the page without opening it (the installers' checks)"
+        ),
+    ] = False,
 ) -> None:
     """Open the Live window: start and stop the streaming, see what it builds, set it up."""
     from orthostudio.live.web import open_window
 
     try:
-        open_window(port, browser=browser)
+        open_window(port, browser=browser or no_open, show=not no_open)
     except OSError as e:
         raise typer.Exit(_fail(f"the Live window could not start: {e}")) from e
 
