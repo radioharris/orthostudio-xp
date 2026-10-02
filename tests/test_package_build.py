@@ -321,6 +321,12 @@ def test_the_check_reads_the_last_start_of_the_log(tmp_path: Path) -> None:
     assert build.last_run(log) == '{"new": 2}'
     log.write_text("no header\n")
     assert build.last_run(log) == ""
+    # a machine's log written before in its code page (a French Windows' own messages)
+    log.write_bytes(
+        "--- 2026-10-01 old\nWinError 10054 a dû être fermée\n".encode("cp1252")
+        + '--- 2026-10-02 again\n{"new": "é"}\n'.encode()
+    )
+    assert build.last_run(log) == '{"new": "é"}'
 
 
 # Inno Setup's directory constants, from its documentation. Anything else it refuses at run time,

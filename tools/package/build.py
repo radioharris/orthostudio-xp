@@ -794,8 +794,13 @@ def check(python: Path) -> None:
 
 
 def last_run(log: Path) -> str:
-    """What the last start recorded in ``serve.log``: the lines after its last ``---`` header."""
-    lines = log.read_text(encoding="utf-8").splitlines()
+    """What the last start recorded in ``serve.log``: the lines after its last ``---`` header.
+
+    The log of a machine used before may hold other text than UTF-8: on a French Windows, the
+    engine started aside wrote Windows' own messages ("Une connexion existante a dû être
+    fermée...") in the system's code page, and a check of an installer in such a machine failed
+    on them (2026-10-02). Only the last start is read, and it is the app's own UTF-8."""
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
     starts = [i for i, line in enumerate(lines) if line.startswith("--- ")]
     return "\n".join(lines[starts[-1] + 1 :]) if starts else ""
 
@@ -924,7 +929,10 @@ def check_installer(target: Target, artefact: Path) -> None:
     """The installer itself, installed into a throw-away place and started from there: the image
     mounted read-only (macOS), the setup program run silently then its uninstaller (Windows), the
     archive extracted and its menu entry added then removed (Linux)."""
-    with tempfile.TemporaryDirectory() as tmp_name:
+    # what the antivirus still scans when the check ends is left to the system's own cleaning: a
+    # file it held (python\DLLs\pyexpat.pyd, a Windows machine's Defender, 2026-10-02) is no
+    # failure of the installer
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_name:
         tmp = Path(tmp_name)
         env = {k: v for k, v in clean_env().items() if k not in {"PYTHONPATH", "OSXP_TRIANGLE4XP"}}
         env |= {"OSXP_HOME": str(tmp / "home"), "PYTHONNOUSERSITE": "1"}
