@@ -432,7 +432,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A path typed, or chosen with the button beside it (the platform's own folder dialog). */
 /* Before and after, side by side: the ground where the map is looking (2026-09-18). */
 .photo-preview { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-.photo-preview.is-quiet .photo-shot { display: none; }
+.photo-shot.is-quiet { display: none; } /* no photo here: on the images, never on their box (preview.js) */
 .photo-shot { display: flex; flex-direction: column; gap: 4px; }
 .photo-canvas { width: 148px; height: 148px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-2); display: block; }
 .photo-label { font-size: var(--fs-3); color: var(--fg-2); }

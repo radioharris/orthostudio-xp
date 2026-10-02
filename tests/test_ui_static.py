@@ -5632,6 +5632,57 @@ def test_the_colour_previews_in_settings_use_the_room_they_have() -> None:
     assert "width: 110px; height: 110px;" in rules["#plan-preview .photo-canvas"]
 
 
+def test_a_preview_with_no_photo_is_kept_by_the_redraws() -> None:
+    """Over water the source has no photo, and the preview hides its two images. Marked on its
+    box, it differed from the twin a redraw draws anew, whose image has not failed yet, so every
+    change of a setting replaced it: the two images came back for an instant and the whole page
+    grew then shrank (the map over the Atlantic, in a Windows VM, 2026-10-02). The mark is now on
+    the images: the box is the same as its twin, which a redraw keeps (app.js morphNode)."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    script = """
+    globalThis.document = { documentElement: {} };
+    const images = [];
+    globalThis.Image = class {
+      constructor() { this.on = {}; images.push(this); }
+      addEventListener(name, fn) { this.on[name] = fn; }
+      set src(value) { this.url = value; }
+    };
+    // the page's h(), reduced to what a redraw compares: attributes, and the children
+    const h = (tag, attrs, ...kids) => {
+      const el = { tag, attrs: {}, kids: kids.flat(), classes: [] };
+      for (const [k, v] of Object.entries(attrs || {})) {
+        if (k === "class") el.classes.push(...String(v).split(" "));
+        else el.attrs[k] = String(v);
+      }
+      el.classList = { add: (c) => { if (!el.classes.includes(c)) el.classes.push(c); } };
+      Object.defineProperty(el, "textContent", {
+        set(v) { el.text = v; },
+        get() { return el.text; },
+      });
+      return el;
+    };
+    const attributes = (el) => JSON.stringify([el.classes.join(" "), el.attrs]);
+    const shots = (el) => el.kids.filter((k) => k.classes && k.classes.includes("photo-shot"));
+    const m = await import("./preview.js");
+    const sample = { url: "/api/photo-sample?provider=BI&lat=39.77477&lon=-56.07422",
+                     tile: "+39-057", lat: 39.77477, lon: -56.07422 };
+    const look = { brightness: 0, contrast: 0, saturation: 0 };
+    const shown = m.colourPreview(h, sample, look, { size: 256, wide: true });
+    images[0].on.error();  // the engine: no photo here (IMG_TILE_PLACEHOLDER)
+    const twin = m.colourPreview(h, sample, look, { size: 256, wide: true });
+    process.stdout.write(JSON.stringify({
+      same: attributes(shown) === attributes(twin),
+      hidden: shots(shown).map((s) => s.classes.includes("is-quiet")),
+      twin: shots(twin).map((s) => s.classes.includes("is-quiet")),
+    }));
+    """
+    assert _run_node(script) == {"same": True, "hidden": [True, True], "twin": [False, False]}
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "display: none;" in rules[".photo-shot.is-quiet"]
+    assert ".photo-preview.is-quiet .photo-shot" not in rules
+
+
 def test_the_map_goes_to_the_airport_chosen() -> None:
     """A code says nothing about where its airport is: a user chose one and the map stayed where
     it was, so the squares just added were somewhere off the screen (2026-09-24). Choosing from
