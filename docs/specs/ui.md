@@ -928,7 +928,12 @@ Under the answers, **the preview**: one image of the ground where the map is loo
 and as the answer would encode it. `ui/colour.js` computes it in the browser, with the arithmetic
 of `textures/colour.py`, and a test holds the two equal to within one step
 (`tests/test_ui_colour.py`), so the preview is what the build will write. No sample yet (the map
-has not drawn, or nothing came back) simply leaves the preview out. Under the two images, a line
+has not drawn, or nothing came back) simply leaves the preview out. Where the source has no photo
+(over water, Bing's placeholder: `IMG_TILE_PLACEHOLDER`), the two images hide themselves and the
+line under them says so. The mark sits on the images, not on the preview: a redraw keeps the
+preview only when it is the same as the one it draws anew, whose image has not failed yet, and a
+preview marked whole was replaced at every change of a setting, its images back for an instant,
+the whole page growing then shrinking (the map over the Atlantic, in a Windows VM, 2026-10-02). Under the two images, a line
 says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the centre of the map
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
 The two share the card's width, side by side, up to the photo's own 256 px (`wide`, drawn at

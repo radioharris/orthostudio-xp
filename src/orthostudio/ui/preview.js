@@ -38,11 +38,14 @@ export function colourPreview(h, sample, look, options = {}) {
       t(whereKey, { tile: sample.tile, lat: fmtNum(sample.lat, 3), lon: fmtNum(sample.lon, 3) })));
   }
   // what the canvases show, drawn once the image is there: compared by it (app.js sameNode)
-  const box = h("div", { class: wide ? "photo-preview is-wide" : "photo-preview", "data-version": JSON.stringify([sample.url, look, size]) },
+  const shots = [
     h("div", { class: "photo-shot" }, before,
       h("span", { class: "photo-label" }, t("settings.q.colours_preview_before"))),
     h("div", { class: "photo-shot" }, after,
       h("span", { class: "photo-label" }, t("settings.q.colours_preview_after"))),
+  ];
+  const box = h("div", { class: wide ? "photo-preview is-wide" : "photo-preview", "data-version": JSON.stringify([sample.url, look, size]) },
+    ...shots,
     h("div", { class: "photo-words" }, ...words));
   // Same origin as the page (the engine, or a data: URL in the mock): no crossOrigin, which
   // would only make the browser refuse a copy it already cached without it.
@@ -59,7 +62,12 @@ export function colourPreview(h, sample, look, options = {}) {
   });
   image.addEventListener("error", () => {
     note.textContent = t("settings.q.colours_preview_failed");
-    box.classList.add("is-quiet");
+    // The images hide themselves, and the box keeps the attributes it was drawn with: a redraw
+    // keeps a box only when it is the same as the one it draws anew (app.js morphNode), whose
+    // image has not failed yet. Marked on the box, a preview with no photo was replaced at every
+    // change of a setting, its two images back for an instant, the whole page growing then
+    // shrinking (the map over the Atlantic, in a Windows VM, 2026-10-02).
+    for (const shot of shots) shot.classList.add("is-quiet");
   });
   image.src = sample.url.startsWith("mock-photo:") ? mockPhoto(size, sample.url) : sample.url;
   return box;
