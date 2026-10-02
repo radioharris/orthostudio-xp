@@ -37,7 +37,7 @@ from pydantic import Field
 from orthostudio import __version__
 from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
-from orthostudio.dem.raster import read_elevation_from_file
+from orthostudio.dem.raster import read_elevation_from_file, readable_before
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
 from orthostudio.dem.sources import (
     Download,
@@ -1472,9 +1472,8 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
         heard: list[OsxpError] = []
 
         def hear(err: OsxpError) -> None:
-            if err.code in RELIEF_SAID:
+            if err.code in RELIEF_SAID or err.code == "DEM_OVERLAY_UNAVAILABLE":
                 heard.append(err)
-                log.warning("%s: %s", spec.tile.name, err.message)
 
         job = DemJob(
             tile=spec.tile,
@@ -1493,10 +1492,12 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
         finally:
             stop.set()
             ticker.join(timeout=2 * RELIEF_TICK_S)
-        if heard:
+        if any(e.code in RELIEF_SAID for e in heard):
             # the node's last line, which the Works log keeps: one line, since two lines in the
             # same second keep only the second
-            say(said[0], f"{spec.tile.name}: " + " ".join(e.message for e in heard))
+            line = f"{spec.tile.name}: " + " ".join(e.message for e in heard)
+            log.warning("%s", line)
+            say(said[0], line)
         return ref
 
     return run
@@ -1902,19 +1903,14 @@ def _by_its_contents(path: Path) -> str | None:
 
 
 RELIEF_SAID = frozenset(
-    {
-        "DEM_FILE_UNREADABLE",
-        "DEM_FILE_TOO_LARGE",
-        "DEM_EPSG_UNSUPPORTED",
-        "DEM_OVERLAY_UNAVAILABLE",
-        "DEM_OVERLAY_COARSER",
-        "DEM_OVERLAY_NOT_REFINED",
-    }
+    {"DEM_FILE_UNREADABLE", "DEM_FILE_TOO_LARGE", "DEM_EPSG_UNSUPPORTED", "DEM_OVERLAY_NOT_REFINED"}
 )
-"""What the relief node says in Works, as its last line: the files of one's own it set aside or
-laid otherwise than asked. The relief recorded them and nobody was told, so a folder's file refused
+"""What the relief node says in Works, as its last line: a file it could not use, or laid on a
+coarser grid than its own. The relief recorded them and nobody was told, so a folder's file refused
 for its size left a user with a tile built on another relief and no word of it (a user on La
-Réunion, 2026-10-01)."""
+Réunion, 2026-10-01). ``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with
+them and never alone: alone it is a folder or Canada's lidar with nothing for the square, which is
+how they are meant to be, and a build that said nothing before says nothing now."""
 
 RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
 """Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
@@ -1950,8 +1946,10 @@ def own_relief_mb(custom_dem: str, tile: TileRef) -> tuple[float, bool]:
 
 def relief_ram(rule_: Rule, relief_mb: float, factor: float, extra_mb: float = 0) -> dict[str, int]:
     """``ram_mb=`` for a node whose peak grows with a raster of one's own (:data:`RELIEF_RAM`),
-    when that is more than its rule declares; nothing for any other relief."""
-    if relief_mb <= 0:
+    when that is more than its rule declares. Only for a raster larger than 0.1.19 read
+    (:func:`orthostudio.dem.raster.readable_before`): the nodes of every build that ran before are
+    scheduled as they were."""
+    if relief_mb * 2**20 / 4 <= readable_before():
         return {}
     need = int(factor * relief_mb + extra_mb)
     return {"ram_mb": need} if need > rule_.ram_mb else {}

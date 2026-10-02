@@ -310,9 +310,9 @@ def _decode(blob: bytes, info: TiffInfo, path: str, rows: int) -> NDArray[Any]:
         raise _bad(path, f"compression {info.compression} is not read here")
     size = int(info.sample[1])
     expected = info.tile_width * rows * size
-    if len(blob) < expected:
+    if len(blob) != expected:
         raise _bad(path, f"a tile holds {len(blob)} bytes, not {expected}")
-    raw = np.frombuffer(blob, dtype=np.uint8, count=expected).reshape(rows, info.tile_width * size)
+    raw = np.frombuffer(blob, dtype=np.uint8).reshape(rows, info.tile_width * size)
     if info.predictor == 1:
         return raw.view(info.byte_order + info.sample).reshape(rows, info.tile_width)
     if info.predictor == 2:

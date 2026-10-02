@@ -386,9 +386,12 @@ def test_a_raster_whose_read_would_fill_the_memory_says_so(tmp_path: Path, monke
     "unreadable"; the header still reads, which is how a folder of one's own indexes what it
     holds."""
     from orthostudio import machine
+    from orthostudio.dem import raster as raster_module
 
     path = tmp_path / "big.tif"
     _write_geotiff(path, np.zeros((3, 3), dtype=np.float32), 43, 5)
+    # nine points stand for more than 0.1.19 read, which is where the memory is weighed
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 4)
     monkeypatch.setattr(machine, "physical_memory_mb", lambda: 0)
     events: list[object] = []
     read = read_elevation_from_file(path, 43, 5, on_event=events.append)
@@ -654,6 +657,7 @@ def test_ones_own_tiled_file_is_read_piece_by_piece_and_as_pillow_reads_it(
     alt[:6, :9] = -99999.0  # the sea of his file
     path = tmp_path / "S21E055.tif"
     _tiled_geotiff(path, alt, -21, 55, -99999.0)
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 0)  # larger than 0.1.19
     windows: list[object] = []
     real = cog.read_window
     monkeypatch.setattr(cog, "read_window", lambda *a, **k: windows.append(a[1]) or real(*a, **k))
@@ -676,6 +680,7 @@ def test_ones_own_tiled_file_is_read_piece_by_piece_and_as_pillow_reads_it(
 def test_a_file_wider_than_the_tile_is_read_over_the_tile_and_a_margin(tmp_path: Path) -> None:
     """A national mosaic is not read whole for one square: the tile and :data:`MARGIN` around it,
     clipped to the file."""
+    from orthostudio.dem import raster as raster_module
     from orthostudio.dem.raster import MARGIN
 
     alt = np.ones((300, 300), dtype=np.float32)  # three degrees a side, a hundred points a degree
@@ -690,7 +695,13 @@ def test_a_file_wider_than_the_tile_is_read_over_the_tile_and_a_margin(tmp_path:
     at = blob.index(struct.pack("<6d", 0.0, 0.0, 0.0, 54.0, -21.0, 0.0))
     blob[at : at + 48] = struct.pack("<6d", 0.0, 0.0, 0.0, 54.0, -19.0, 0.0)
     path.write_bytes(bytes(blob))
-    read = read_elevation_from_file(path, -21, 55)
+    # read whole, as 0.1.19 read it, while it is a size 0.1.19 read
+    assert read_elevation_from_file(path, -21, 55).nxdem == 300
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(raster_module, "readable_before", lambda guard=-1: 0)
+        read = read_elevation_from_file(path, -21, 55)
     assert read.nxdem == read.nydem == 100 + 2 * round(MARGIN / 0.01)
     assert read.x0 == pytest.approx(-MARGIN + 0.005) and read.y1 == pytest.approx(
         1 + MARGIN - 0.005
@@ -715,3 +726,26 @@ def test_pillow_reads_what_its_guard_used_to_refuse(tmp_path: Path, monkeypatch)
     read = read_elevation_from_file(path, 43, 5)
     assert read.alt_dem is not None and np.array_equal(read.alt_dem, alt)
     assert Image.MAX_IMAGE_PIXELS == 10
+
+
+def test_what_0119_read_is_read_as_0119_did(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """No regression: a relief 0.1.19 read never meets the new reader. Copernicus, the USGS,
+    ANADEM's squares and every file of one's own that worked are read by 0.1.19's code, through
+    Pillow; only a raster larger than 0.1.19 could read goes piece by piece."""
+    from orthostudio.dem import raster as raster_module
+
+    def never(*args: object, **kw: object) -> object:
+        raise AssertionError("a relief 0.1.19 read went the new way")
+
+    monkeypatch.setattr(raster_module, "_read_in_pieces", never)
+    monkeypatch.setattr(raster_module, "_read_larger", never)
+    alt = (np.arange(40 * 50, dtype=np.float32).reshape(40, 50) % 977) + 0.5
+    path = tmp_path / "S21E055.tif"
+    _tiled_geotiff(path, alt, -21, 55, -99999.0)
+    read = read_elevation_from_file(path, -21, 55)
+    assert read.alt_dem is not None and np.array_equal(read.alt_dem, alt)
+    _write_geotiff(tmp_path / "cop.tif", alt, 43, 5)
+    assert read_elevation_from_file(tmp_path / "cop.tif", 43, 5).nxdem == 50
+    # the threshold is 0.1.19's own: twice Pillow's guard, 400 million at most
+    assert raster_module.readable_before(89_478_485) == 178_956_970
+    assert raster_module.readable_before(None) == raster_module.MAX_POINTS == 400_000_000

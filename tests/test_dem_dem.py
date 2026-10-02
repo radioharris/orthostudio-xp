@@ -660,6 +660,7 @@ def test_a_fine_folder_file_raises_the_grid_as_far_as_the_memory_goes(
     as far as the memory allows, and past it the file is laid on the coarser grid and that is
     said, with the numbers."""
     from orthostudio import machine
+    from orthostudio.dem import dem as dem_module
 
     base = _square_tif(tmp_path / "base.tif", 1000, 10.0)  # 1 000 points a degree
     over = _square_tif(tmp_path / "over.tif", 2000, 20.0)  # 2 000: twice as fine
@@ -668,8 +669,11 @@ def test_a_fine_folder_file_raises_the_grid_as_far_as_the_memory_goes(
     dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}")
     # the file's own grid over the base's window (post centres: 0.999 of a degree)
     assert dem.nxdem == 1999 and dem.laid_over == (str(over),)
-    # 48 MB: the files read (16 MB the finer), their composite does not fit (32 MB over 24)
+    # up to 0.1.19's side it rises whatever the memory, as it did
     monkeypatch.setattr(machine, "physical_memory_mb", lambda: 48)
+    assert Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}").nxdem == 1999
+    # past it, 48 MB: the files read (16 MB the finer), their composite does not fit (32 MB > 24)
+    monkeypatch.setattr(dem_module, "MAX_COMPOSITE_SIDE", 1500)
     events: list[OsxpError] = []
     dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}", on_event=events.append)
     assert dem.nxdem == 1000 and dem.laid_over == (str(over),)  # laid, on the base's grid
@@ -692,6 +696,9 @@ def test_a_file_the_relief_cannot_use_says_why(tmp_path: Path, monkeypatch) -> N
     info[33922] = (0.0, 0.0, 0.0, 5.0, 44.0, 0.0)
     info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
     Image.new("F", (100, 100)).save(path, tiffinfo=info)
+    from orthostudio.dem import raster as raster_module
+
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 0)  # larger than 0.1.19
     monkeypatch.setattr(machine, "physical_memory_mb", lambda: 0)
     opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
     with pytest.raises(OsxpError) as caught:

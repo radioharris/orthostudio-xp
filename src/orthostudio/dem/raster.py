@@ -230,25 +230,40 @@ def _read_raw(path: Path, *, info_only: bool) -> RasterRead:
     return RasterRead(4326, 0.0, 0.0, 1.0, 1.0, NODATA, n, n, alt)
 
 
+MAX_POINTS = 400_000_000
+"""What 0.1.19 read whole at most: 1.6 GB of floats. Beyond it the file was refused with a plain
+reason rather than filling the memory (a national model at 10 m holds twice that). Pillow's guard
+refused less than that already (:func:`readable_before`)."""
+
 MEMORY_SHARE = 0.5
-"""How much of the installed memory reading one relief file may take. The mesher holds the raster
-twice (Triangle4XP's heights, and the curvature beside them), so a raster read past half of it
-could still not be meshed. Nothing else limits a file: a lidar square of 754 million points
-(27 468 a side, 3 GB of floats) is read whole, as Ortho4XP reads it (a user on La Réunion,
-2026-10-01). Until 0.1.20 a fixed 400 million points refused it, and Pillow's own guard against
-image bombs refused everything above 179 million anyway, with a word about a missing library."""
+"""How much of the installed memory reading a relief file larger than 0.1.19 read may take
+(:func:`_read_larger`). The mesher holds the raster twice (Triangle4XP's heights, and the
+curvature beside them), so a raster read past half of it could still not be meshed. A lidar square
+of 754 million points (27 468 a side, 3 GB of floats) is read whole within it, as Ortho4XP reads it
+(a user on La Réunion, 2026-10-01)."""
 
 PILLOW_BYTES_PER_POINT = 18
 """What Pillow takes to decode one float32 point of a raster whole: its own image, the bytes it
 hands numpy, numpy's array, and the nodata mask (10.1 GB measured for 754 million points before the
-mask). Only a file :func:`_read_in_pieces` does not decode goes through it."""
+mask). Only a larger file :func:`_read_in_pieces` does not decode goes through it that way."""
 
 PIECES_BYTES_PER_POINT = 4
 """What :func:`_read_in_pieces` takes per point: the raster itself, and one tile at a time."""
 
 MARGIN = 0.01
-"""Degrees kept around the tile when a file covers more than it: a national mosaic is not read
-whole for one square."""
+"""Degrees kept around the tile when a larger file covers more than it: a national mosaic is not
+read whole for one square."""
+
+
+def readable_before(guard: int | None = -1) -> int:
+    """The most points a raster could hold and be read by 0.1.19: Pillow refused to decode more than
+    twice its guard against image bombs (178 956 970 points by default), and :data:`MAX_POINTS`
+    refused more than 400 million. ``guard`` is Pillow's ``MAX_IMAGE_PIXELS`` (``-1``: as set)."""
+    if guard == -1:
+        from PIL import Image
+
+        guard = Image.MAX_IMAGE_PIXELS
+    return MAX_POINTS if guard is None else min(MAX_POINTS, 2 * int(guard))
 
 
 def _read_gdal_like(
@@ -259,30 +274,34 @@ def _read_gdal_like(
     info_only: bool,
     on_event: Callable[[OsxpError], None] | None,
 ) -> RasterRead:
-    """GeoTIFF piece by piece when it is stored in tiles or strips this reader decodes
-    (:func:`_read_in_pieces`), else through Pillow and the raw TIFF tags (spec section 5.1, a
-    **fix**)."""
-    pieces = _read_in_pieces(path, lat, lon, info_only=info_only, on_event=on_event)
-    if pieces is not None:
-        return pieces
-    from PIL import Image
+    """GeoTIFF through Pillow and the raw TIFF tags (spec section 5.1, a **fix**).
 
-    # Pillow refuses a very large image outright, to guard against a bomb, and asks again when it
-    # decodes. A national elevation model is legitimately that large (Switzerland at 10 m: 851
-    # million points): the guard is lifted for both, and the memory the decoding takes is weighed
-    # below instead (MEMORY_SHARE). It was put back before decoding until 0.1.20, which refused
-    # every raster above 179 million points as a missing library.
+    **What 0.1.19 read, it reads as 0.1.19 did**, the same code to the letter
+    (:func:`_read_with_pillow`): every relief a build used before reads the same. Only a raster
+    larger than 0.1.19 could read (:func:`readable_before`), which it refused, goes another way
+    (:func:`_read_larger`): a lidar square of La Réunion, 754 million points, was refused as
+    "unreadable" (a user, 2026-10-01).
+    """
+    from PIL import Image, TiffImagePlugin
+
+    # Pillow refuses a very large image outright, to guard against a bomb. A national elevation
+    # model is legitimately that large (Switzerland at 10 m: 851 million points), and its header is
+    # what tells us whether it can be used at all: the guard is lifted to read the header, and
+    # MAX_POINTS below decides what is read whole.
     guard = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = None
     try:
+        Image.MAX_IMAGE_PIXELS = None
         im = Image.open(path)
     except Exception as err:
-        Image.MAX_IMAGE_PIXELS = guard
         raise OsxpError("DEM_FILE_UNREADABLE", context={"path": path, "reason": repr(err)}) from err
-    try:
-        return _read_with_pillow(im, path, lat, lon, info_only=info_only, on_event=on_event)
     finally:
         Image.MAX_IMAGE_PIXELS = guard
+    if isinstance(im, TiffImagePlugin.TiffImageFile) and (
+        im.size[0] * im.size[1] > readable_before(guard)
+    ):
+        im.close()
+        return _read_larger(path, lat, lon, info_only=info_only, on_event=on_event)
+    return _read_with_pillow(im, path, lat, lon, info_only=info_only, on_event=on_event)
 
 
 def _read_with_pillow(
@@ -293,7 +312,11 @@ def _read_with_pillow(
     *,
     info_only: bool,
     on_event: Callable[[OsxpError], None] | None,
+    larger: bool = False,
 ) -> RasterRead:
+    """The raster through Pillow. Without ``larger``, 0.1.19's reading to the letter. With it, a
+    raster larger than 0.1.19 read: the memory it takes is weighed instead of ``MAX_POINTS``
+    (:func:`_room_for`), and a decode that fails says what failed rather than blaming a library."""
     from PIL import TiffImagePlugin
 
     with im:
@@ -309,7 +332,7 @@ def _read_with_pillow(
         # been decompressed to 3.4 GB of floats first, only to be turned down (2026-09-19).
         if epsg not in (4326, 4269):
             raise OsxpError("DEM_EPSG_UNSUPPORTED", context={"path": path, "epsg": epsg})
-        if not info_only:
+        if not info_only and larger:
             _room_for(
                 path,
                 nxdem * nydem,
@@ -318,16 +341,29 @@ def _read_with_pillow(
                 "; saved as a tiled GeoTIFF with Deflate compression, it is read piece by piece "
                 "in a fifth of that",
             )
+        elif not info_only and nxdem * nydem > MAX_POINTS:
+            raise OsxpError(
+                "DEM_FILE_UNREADABLE",
+                context={
+                    "path": path,
+                    "reason": f"{nxdem * nydem / 1e6:.0f} million points is more than this "
+                    f"version reads whole ({MAX_POINTS / 1e6:.0f} million)",
+                },
+            )
         alt: F32 | None = None
         if not info_only:
             try:
                 alt = np.array(im, dtype=np.float32)
             except MemoryError as err:
+                if not larger:
+                    raise OsxpError("DEM_RASTER_LIBRARY_MISSING", context={"path": path}) from err
                 raise OsxpError(
                     "DEM_FILE_UNREADABLE",
                     context={"path": path, "reason": "not enough memory to decode it whole"},
                 ) from err
             except Exception as err:
+                if not larger:
+                    raise OsxpError("DEM_RASTER_LIBRARY_MISSING", context={"path": path}) from err
                 raise OsxpError(
                     "DEM_FILE_UNREADABLE",
                     context={"path": path, "reason": f"it does not decode: {err}"},
@@ -341,6 +377,39 @@ def _read_with_pillow(
     x1 = x0 + (nxdem - 1) * geo[1]
     y0 = y1 + (nydem - 1) * geo[5]
     return RasterRead(epsg, x0, y0, x1, y1, NODATA, nxdem, nydem, alt)
+
+
+def _read_larger(
+    path: Path,
+    lat: int,
+    lon: int,
+    *,
+    info_only: bool,
+    on_event: Callable[[OsxpError], None] | None,
+) -> RasterRead:
+    """A raster larger than 0.1.19 read: piece by piece when it is stored in tiles or strips this
+    reader decodes (:func:`_read_in_pieces`), else by Pillow whole, its guard lifted for the decode
+    too (0.1.19 put it back first, and every raster above 179 million points failed as a missing
+    library), the memory weighed first in both cases (:func:`_room_for`)."""
+    pieces = _read_in_pieces(path, lat, lon, info_only=info_only, on_event=on_event)
+    if pieces is not None:
+        return pieces
+    from PIL import Image
+
+    guard = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None
+    try:
+        try:
+            im = Image.open(path)
+        except Exception as err:
+            raise OsxpError(
+                "DEM_FILE_UNREADABLE", context={"path": path, "reason": repr(err)}
+            ) from err
+        return _read_with_pillow(
+            im, path, lat, lon, info_only=info_only, on_event=on_event, larger=True
+        )
+    finally:
+        Image.MAX_IMAGE_PIXELS = guard
 
 
 def _room_for(path: Path, points: int, bytes_per_point: float, advice: str = "") -> None:

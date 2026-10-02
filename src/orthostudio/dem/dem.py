@@ -486,15 +486,21 @@ def _count_equal(alt: NDArray[np.float32], value: float) -> int:
     )
 
 
+MAX_COMPOSITE_SIDE = 12_000
+"""Up to this side the composite rises to the finest overlay's grid whatever the memory, as in
+0.1.19: a 1/3" overlay over an assembled window stays under it (11 013), and 12 000 points is 576 MB
+of float32. Past it, 0.1.19 laid the overlay on the base's grid in silence; it now rises as far as
+the memory allows (:func:`_composite_memory`)."""
+
+
 def _composite_memory(side: int, held_points: int) -> tuple[float, int | None]:
     """MB a composite of ``side`` points a side takes while the overlays' ``held_points`` are
     still in memory, and the installed memory in MB (``None`` where the platform does not say).
 
-    The window rises to the finest overlay's own grid as far as the memory allows
-    (:data:`orthostudio.dem.raster.MEMORY_SHARE`), and no further a fixed side: a cap of 12 000
-    points a side laid a lidar square of 4 m on the 30 m grid of the relief under it, in silence
-    (a user on La Réunion, 2026-10-01). 28 018 points a side is 3.1 GB, beside the 3 GB of the
-    file."""
+    Past :data:`MAX_COMPOSITE_SIDE` the window rises to the finest overlay's own grid as far as the
+    memory allows (:data:`orthostudio.dem.raster.MEMORY_SHARE`): that cap laid a lidar square of
+    4 m on the 30 m grid of the relief under it, in silence (a user on La Réunion, 2026-10-01).
+    28 018 points a side is 3.1 GB, beside the 3 GB of the file."""
     from orthostudio.machine import physical_memory_mb
 
     return (side * side + held_points) * 4 / 2**20, physical_memory_mb()
@@ -573,7 +579,11 @@ def _lay_into(
         side = round((base.x1 - base.x0) / finest) + 1
         held = sum(int(dem.alt_dem.size) for _name, dem in overlays)
         need_mb, installed_mb = _composite_memory(side, held)
-        if installed_mb is None or need_mb <= installed_mb * MEMORY_SHARE:
+        if (
+            side <= MAX_COMPOSITE_SIDE
+            or installed_mb is None
+            or need_mb <= installed_mb * MEMORY_SHARE
+        ):
             _refine(base, finest)
         else:
             name, over = min(overlays, key=lambda pair: _file_step(pair[1]))

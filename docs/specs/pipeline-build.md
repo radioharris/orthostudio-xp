@@ -465,12 +465,13 @@ on the reference Mac), 37 % for that file that came in 27 s; then, every `RELIEF
 the reading moves the rest by the time it takes against the time a file of that size should take
 (`sched.costs.timed_fraction`), never back and never full before the node ends. A relief that
 downloads nothing says no fraction, and moves by the time its rule took on the last builds
-(`api.md` 5.4). Its last line, which the Works log keeps, says in one line what it set aside or laid
-otherwise than asked (`RELIEF_SAID`: a file of one's own unreadable, too large for the memory, in
-another projection, an overlay with nothing for the square, coarser than the base, or laid on the
-base's grid for want of memory): the relief recorded those and nobody was told, so a folder's lidar
-file refused for its size left a user with a tile built on another relief and no word of it
-(2026-10-01). The mesh node does the same when the mesh reached its triangle budget
+(`api.md` 5.4). Its last line, which the Works log keeps, says in one line a file it could not use
+or laid on a coarser grid than its own (`RELIEF_SAID`: unreadable, too large for the memory, in
+another projection, or laid on the base's grid for want of memory), and then which relief answered
+instead (`DEM_OVERLAY_UNAVAILABLE`, never said alone: a folder or Canada's lidar with nothing for a
+square is how they are meant to be, and a build that said nothing before says nothing now). The
+relief recorded those and nobody was told, so a folder's lidar file refused for its size left a
+user with a tile built on another relief and no word of it (2026-10-01). The mesh node does the same when the mesh reached its triangle budget
 (`mesh_budget_line`, read from the artefact's `stats.json`): the stage found it and kept it. ANADEM's parts
 come through the fetcher: *downloading* until they are in, with no rate meanwhile. `osm_plan` decides before
 anything runs which tiles have a
@@ -587,7 +588,9 @@ the raster, 1.3 for the relief (2.4 when a folder's file is laid into the relief
 the vectors (the mapped raster and its copy smoothed over the airports) and 2.0 for the mesh plus
 `MESH_STRUCTURES_MB`. Measured on a 4 m square of 27 468 points a side (3.0 GB of floats): 3.8,
 7.0, 6.2 and 6.0 to 6.3 GB. Two such nodes then do not start together on a machine that cannot hold
-both; one larger than the whole budget still runs alone, as any node does.
+both; one larger than the whole budget still runs alone, as any node does. Only a raster larger than
+0.1.19 read is weighed so (`raster.readable_before`): every build that ran before is scheduled as
+it was.
 
 Cancellation reaches every stage: `orthostudio.osm` (token and timeout to the Overpass client),
 `orthostudio.dem` (`EnsureOptions.cancel`, polled between the nine cells of the block),

@@ -1827,6 +1827,19 @@ def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPa
     assert "the relief laid under it is used alone there" in last  # what answered instead
     assert "filled" not in last  # the sea of every coastal tile is not news
 
+    # a folder or Canada's lidar with nothing for the square is how they are meant to be: a
+    # build that said nothing before says nothing now
+    seen.clear()
+
+    def nothing_here(ctx: Any) -> None:
+        hear = dem_rule._job().on_event
+        assert hear is not None
+        hear(OsxpError("DEM_OVERLAY_UNAVAILABLE", context={"cell": "N47E011", "source": "HRDEM"}))
+
+    monkeypatch.setattr(build_mod, "run_p0_rule", nothing_here)
+    build_mod._dem_run(cast(Any, None), _spec("+47+011", zl=14))(Ctx())
+    assert not any("HRDEM" in message for message in seen)
+
 
 def test_a_mesh_that_reached_its_budget_says_so(tmp_path: Path) -> None:
     """The mesh found it had reached its triangle budget and kept it to itself. A relief of one's
@@ -1867,3 +1880,7 @@ def test_the_scheduler_weighs_a_relief_of_ones_own(tmp_path: Path) -> None:
     # nothing above what the rule declares changes, and a lidar square raises it
     assert build_mod.relief_ram(DEM_RULE, mb, 1.3) == {}
     assert build_mod.relief_ram(DEM_RULE, 3000.0, 1.3) == {"ram_mb": 3900}
+    # a raster 0.1.19 read keeps the scheduling it had, even where the estimate is higher
+    from orthostudio.mesh.rule import OSXP_MESH
+
+    assert build_mod.relief_ram(OSXP_MESH, 500.0, 2.0, 600) == {}
