@@ -3221,15 +3221,27 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
     assert 'pill(t("status.data_missing"), "fail")' in _function_body(app_js, "renderStatus")
     assert 't("disk.data_missing"' in _function_body(app_js, "renderDisk")
     assert "revealPath(dataFolderShown(state.status))" in app_js
-    # "Default values" is about the look of the tiles: the folders of the computer stay
+    # "Default values" is about the look of the tiles: the folders of the computer stay, and the
+    # places its map data comes from (the defaults emptied a library's address and key, and a
+    # build from source went to the public servers, 2026-10-02)
     assert "defaultsKeepingFolders(state.schema, state.settingsDraft)" in app_js
     schema = _mock_json("settings_schema")
-    draft = {"essential": {"xplane_dir": "D:\\X-Plane 12", "data_dir": "E:\\OrthoStudio"}}
+    draft = {
+        "essential": {"xplane_dir": "D:\\X-Plane 12", "data_dir": "E:\\OrthoStudio"},
+        "expert": {
+            "osm_folder": "E:\\OSM",
+            "osm_library": "https://maps.example",
+            "osm_library_token": "k",
+        },
+    }
     back = _node_json("settings.js", f"m.defaultsKeepingFolders({json.dumps(schema)}, "
                                      f"{json.dumps(draft)})")  # fmt: skip
     assert back["essential"]["xplane_dir"] == "D:\\X-Plane 12"
     assert back["essential"]["data_dir"] == "E:\\OrthoStudio"
     assert back["essential"]["zoom_level"] == 16 and back["essential"]["provider"] == "BI"
+    assert back["expert"]["osm_folder"] == "E:\\OSM"
+    assert back["expert"]["osm_library"] == "https://maps.example"
+    assert back["expert"]["osm_library_token"] == "k"
 
     whys = json.dumps(sorted(_DATA_DIR_REFUSALS))
     script = f"""

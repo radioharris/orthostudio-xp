@@ -62,8 +62,17 @@ export function schemaDefaults(schema) {
 
 /** What belongs to this computer and to its pilot, which *Default values* keeps: none of it is a
  * look of the tiles, and the defaults sending the downloads back to the computer's own disk would
- * surprise (2026-09-15); the SimBrief name is the pilot's own (2026-09-19). */
-export const COMPUTER_FOLDERS = ["essential.xplane_dir", "essential.data_dir", "essential.simbrief_user"];
+ * surprise (2026-09-15); the SimBrief name is the pilot's own (2026-09-19). So are the places the
+ * map data comes from, a folder of one's own and a library with its key: the defaults emptied them,
+ * and a build from source, which carries no library, went to the public servers (2026-10-02). */
+export const COMPUTER_FOLDERS = [
+  "essential.xplane_dir",
+  "essential.data_dir",
+  "essential.simbrief_user",
+  "expert.osm_folder",
+  "expert.osm_library",
+  "expert.osm_library_token",
+];
 
 /** The schema's defaults, with the folders of ``draft`` kept. */
 export function defaultsKeepingFolders(schema, draft) {
