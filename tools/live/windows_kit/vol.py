@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """A replayable test flight on this Windows (the kit's fourth step): tools/live/flights/fly.py's
 series, as on the developer's Mac, then what they left zipped beside the kit's scripts, to send
 back. Usage: vol.py 1|2|3|4 (Live; X-Plane alone; both, one after the other; Live building
