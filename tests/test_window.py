@@ -389,3 +389,29 @@ def test_on_windows_the_window_asked_for_goes_in_front(monkeypatch: pytest.Monke
     monkeypatch.setattr(winfront, "force_foreground", lambda hwnd: fronted.append(hwnd) or True)
     window.to_the_front()
     assert shown == [1] and fronted == [9]
+
+
+def test_on_a_mac_appkit_is_asked_on_its_main_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The other window asks from the thread of a request: what AppKit is asked goes to the main
+    thread, where macOS 26 requires it (it stopped the app at once, 2026-10-02)."""
+    import types
+
+    done, later = [], []
+
+    class App:
+        def unhide_(self, _sender: object) -> None:
+            done.append("unhide")
+
+        def activateIgnoringOtherApps_(self, _flag: bool) -> None:  # noqa: N802 (AppKit's name)
+            done.append("activate")
+
+    appkit = types.SimpleNamespace(NSApplication=types.SimpleNamespace(sharedApplication=App))
+    helper = types.SimpleNamespace(callAfter=later.append)
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", types.SimpleNamespace(AppHelper=helper))
+    monkeypatch.setattr(window, "_window", None)
+    monkeypatch.setattr(window.sys, "platform", "darwin")
+    window.to_the_front()
+    assert done == [] and len(later) == 1  # nothing in the asking thread
+    later[0]()
+    assert done == ["unhide", "activate"]

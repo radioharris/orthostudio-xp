@@ -374,7 +374,11 @@ def to_the_front() -> None:
     """Bring the window back and the app in front, put away or not: what it is about to ask must
     be seen. Windows lets only the program the user works in put a window in front, and the window
     is asked for from another (OrthoStudio XP's by Live's, and Live's by OrthoStudio XP's): there
-    it goes in front the ways :mod:`orthostudio.winfront` has for a program in the background."""
+    it goes in front the ways :mod:`orthostudio.winfront` has for a program in the background.
+
+    From any thread: on a Mac what it asks of AppKit runs on the main thread, as the window's own
+    show does. Asked from the thread of a request, as the other window asks it, macOS 26 stopped
+    the app at once ("Must only be used from the main thread", a user, 2026-10-02)."""
     if _window is not None:
         _window.show()
     if sys.platform == "win32":
@@ -387,10 +391,14 @@ def to_the_front() -> None:
     if not puts_away_on_close():
         return
     from AppKit import NSApplication
+    from PyObjCTools import AppHelper
 
-    app = NSApplication.sharedApplication()
-    app.unhide_(None)
-    app.activateIgnoringOtherApps_(True)
+    def in_front() -> None:
+        app = NSApplication.sharedApplication()
+        app.unhide_(None)
+        app.activateIgnoringOtherApps_(True)
+
+    AppHelper.callAfter(in_front)
 
 
 CLICK_QUIT = """
