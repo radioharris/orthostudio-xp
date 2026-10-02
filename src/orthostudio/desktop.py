@@ -522,11 +522,13 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
     """
     from orthostudio import window
 
+    stop_listening: Callable[[], None] | None = None
     if show is None:
         if not window.possible():
             _note(log, window.hint() or "no window of its own on this system")
             return False
         show = window.show
+        stop_listening = _brought_by_live(log)
     running = engine_here(ENGINE_PORT)
     url = f"http://127.0.0.1:{ENGINE_PORT}/"
     if not running:
@@ -554,8 +556,29 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
     except Exception:
         _note(log, "its window could not be shown: the browser opens instead")
         return False
+    finally:
+        if stop_listening is not None:
+            stop_listening()
     _note(log, "its window closed")
     return True
+
+
+def _brought_by_live(log: Path) -> Callable[[], None] | None:
+    """OrthoStudio XP Live's Build tiles brings this window to the front, put away or not, rather
+    than opening another (:func:`orthostudio.live.app_start.osxp_window_listens`). Returns what
+    stops listening; ``None``, nothing listened for, without Live or when listening fails."""
+    try:
+        from orthostudio import window
+        from orthostudio.live.app_start import osxp_window_listens
+    except ImportError:
+        return None
+    try:
+        return osxp_window_listens(ENGINE_PORT, window.to_the_front)
+    except Exception as exc:  # never in the way of the window itself
+        _note(
+            log, f"Live's Build tiles cannot bring this window back ({type(exc).__name__}: {exc})"
+        )
+        return None
 
 
 def _live_first(log: Path) -> bool:

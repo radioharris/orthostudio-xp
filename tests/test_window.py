@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -361,3 +362,30 @@ def test_the_window_carries_the_apps_icon_and_not_pythons(
     )
     # and an icon that is not there must not be passed: pywebview runs abspath on it
     assert '**({"icon": icon} if icon else {})' in source
+
+
+def test_on_windows_the_window_asked_for_goes_in_front(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Asked for by the app's other window, whose process is the one in front: Windows lets a
+    program in the background put its window in front only the ways winfront has."""
+    from orthostudio import winfront
+
+    shown, fronted = [], []
+
+    class Shown:
+        def show(self) -> None:
+            shown.append(1)
+
+    me = os.getpid()
+    monkeypatch.setattr(window, "_window", Shown())
+    monkeypatch.setattr(window.sys, "platform", "win32")
+    monkeypatch.setattr(
+        winfront,
+        "top_windows",
+        lambda: [
+            winfront.TopWindow(7, "Chrome_WidgetWin_1", "X-Plane", me + 1),
+            winfront.TopWindow(9, "WindowsForms10.Window", "OrthoStudio XP", me),
+        ],
+    )
+    monkeypatch.setattr(winfront, "force_foreground", lambda hwnd: fronted.append(hwnd) or True)
+    window.to_the_front()
+    assert shown == [1] and fronted == [9]

@@ -175,6 +175,50 @@ def test_a_live_window_open_already_comes_to_the_front(
     assert asked == ["front"] and shown == []
 
 
+def test_an_osxp_window_open_already_comes_to_the_front(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live's Build tiles brings OrthoStudio XP's window when it is open, put away or not, and
+    opens one only when none is: each click used to open another (a user saw it, 2026-10-02)."""
+    from orthostudio.desktop import ENGINE_PORT
+
+    started, fronted = [], []
+    monkeypatch.setattr(app_start, "_other_window", lambda start, aside: started.append(start))
+    stop = app_start.osxp_window_listens(ENGINE_PORT, lambda: fronted.append(1))
+    try:
+        assert app_start.open_osxp() == "front"
+        assert app_start.open_osxp() == "front"
+        assert fronted == [1, 1] and started == []
+        other = app_start.osxp_window_listens(ENGINE_PORT + 10, lambda: fronted.append(2))
+        try:  # the preview's window, on a port of its own, is not this app's
+            assert app_start.open_osxp() == "front" and fronted == [1, 1, 1]
+        finally:
+            other()
+    finally:
+        stop()
+    assert not app_start.osxp_window_file(ENGINE_PORT).exists()
+    assert app_start.open_osxp() == "started" and started == ["build"]
+    # a window gone without a word: its file names a port nobody listens on
+    with socket.socket() as gone:
+        gone.bind(("127.0.0.1", 0))
+        port = gone.getsockname()[1]
+    app_start.osxp_window_file(ENGINE_PORT).write_text(json.dumps({"pid": 1, "port": port}))
+    assert app_start.open_osxp() == "started" and started == ["build", "build"]
+
+
+def test_osxp_s_window_listens_for_live_while_it_is_open(home: Path, tmp_path: Path) -> None:
+    import orthostudio.desktop as desktop
+
+    stop = desktop._brought_by_live(tmp_path / "log")
+    assert stop is not None
+    try:
+        said = json.loads(app_start.osxp_window_file(desktop.ENGINE_PORT).read_text())
+        assert said["pid"] == os.getpid()
+    finally:
+        stop()
+    assert not app_start.osxp_window_file(desktop.ENGINE_PORT).exists()
+
+
 @pytest.mark.anyio
 async def test_osxp_s_button(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi import FastAPI
@@ -212,7 +256,7 @@ async def test_osxp_s_engine_serves_it_and_its_page_loads_it(home: Path) -> None
 @pytest.mark.anyio
 async def test_the_welcome_page_s_answer(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     opened = []
-    monkeypatch.setattr(app_start, "open_osxp", lambda: opened.append(1))
+    monkeypatch.setattr(app_start, "open_osxp", lambda: opened.append(1) or "started")
     control = LiveControl(echo=lambda _: None)
     async with client_for(create_live_app(control)) as client:
         page = await client.get("/welcome")
@@ -224,7 +268,7 @@ async def test_the_welcome_page_s_answer(home: Path, monkeypatch: pytest.MonkeyP
         assert load_settings().app_home == "build"
         assert control.leaving_for == "build"  # the window closes, OrthoStudio XP's opens
         assert (await client.post("/api/live/home", json={"home": "elsewhere"})).status_code == 422
-        assert (await client.post("/api/live/osxp")).json() == {"opened": True}
+        assert (await client.post("/api/live/osxp")).json() == {"opened": "started"}
     assert opened == [1]
 
 

@@ -22,10 +22,10 @@ do the same from the terminal.
 Live and OrthoStudio XP are one app. At its first start the app asks what you want to do: fly now,
 with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless you untick the
 box, and opens that window at each start after; Live's settings (When the app starts) change it.
-Each window has a button to the other: Live in OrthoStudio XP's top bar, its dot saying whether
-Live streams, and Build tiles in Live's. Where a computer cannot show the app's own window (a Linux
-without its libraries), both open in the browser, and Live stops by itself five minutes after its
-page was closed, unless it streams.
+Each window has a button to the other, which brings it back when it is open already: Live in
+OrthoStudio XP's top bar, its dot saying whether Live streams, and Build tiles in Live's. Where a
+computer cannot show the app's own window (a Linux without its libraries), both open in the
+browser, and Live stops by itself five minutes after its page was closed, unless it streams.
 
 ## What it is
 

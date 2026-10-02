@@ -193,8 +193,7 @@ def live_router(
     def osxp() -> dict[str, Any]:
         from orthostudio.live.app_start import open_osxp
 
-        open_osxp()
-        return {"opened": True}
+        return {"opened": open_osxp()}
 
     @router.post("/front")
     def to_the_front() -> dict[str, Any]:

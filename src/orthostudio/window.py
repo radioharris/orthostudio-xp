@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import sys
 import threading
 from collections.abc import Callable
@@ -371,9 +372,18 @@ def away() -> None:
 
 def to_the_front() -> None:
     """Bring the window back and the app in front, put away or not: what it is about to ask must
-    be seen."""
+    be seen. Windows lets only the program the user works in put a window in front, and the window
+    is asked for from another (OrthoStudio XP's by Live's, and Live's by OrthoStudio XP's): there
+    it goes in front the ways :mod:`orthostudio.winfront` has for a program in the background."""
     if _window is not None:
         _window.show()
+    if sys.platform == "win32":
+        from orthostudio import winfront
+
+        mine = [w.hwnd for w in winfront.top_windows() if w.pid == os.getpid()]
+        if mine:
+            winfront.force_foreground(mine[0])
+        return
     if not puts_away_on_close():
         return
     from AppKit import NSApplication

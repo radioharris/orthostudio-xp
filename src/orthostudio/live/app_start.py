@@ -9,17 +9,22 @@ pilot wants to do: fly now, with Live, or build their tiles, with OrthoStudio XP
 that window at each start after (:func:`app_start`, which OrthoStudio XP's ``desktop.main`` asks
 first). Each window has a button to the other, each window a process of its own: "Build tiles" in
 Live's, "Live" in OrthoStudio XP's top bar, which the one line OrthoStudio XP's page gains brings
-(:func:`osxp_router`: the button, and what it asks of the engine).
+(:func:`osxp_router`: the button, and what it asks of the engine). A button brings the other window
+to the front when it is open, and opens it only when it is not: Live's window through its API,
+OrthoStudio XP's through what its process listens for (:func:`osxp_window_listens`).
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
 import subprocess
 import sys
+import threading
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -126,10 +131,78 @@ def open_live() -> str:
     return "started"
 
 
-def open_osxp() -> None:
-    """OrthoStudio XP's window, whatever the app opens at its start: its own entry, which shows
-    the running engine's page, or starts one (on this app's port, ``OSXP_PORT``)."""
+def osxp_window_file(port: int) -> Path:
+    """Where OrthoStudio XP's open window says which process it is and where it listens: one file
+    for each engine's port, so that the preview's Live never brings the usual app's window."""
+    from orthostudio.home import osxp_home
+
+    return osxp_home() / "run" / f"osxp-window-{port}.json"
+
+
+def osxp_window_listens(port: int, front: Callable[[], object]) -> Callable[[], None]:
+    """In OrthoStudio XP's window process: run ``front`` when Live's Build tiles asks for this
+    window, and say where to ask (:func:`osxp_window_file`). Returns what stops it.
+
+    Live's window has its API for that; OrthoStudio XP's window has none, its engine being another
+    process, so it listens on a port of the system's choosing, on this computer only."""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(4)
+    mine = {"pid": os.getpid(), "port": server.getsockname()[1]}
+    path = osxp_window_file(port)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(mine), encoding="utf-8")
+
+    def answer() -> None:
+        while True:
+            try:
+                asked, _ = server.accept()
+            except OSError:
+                return  # stopped
+            with asked:
+                try:
+                    asked.settimeout(2.0)
+                    if asked.recv(16).strip() == b"front":
+                        front()
+                        asked.sendall(b"ok\n")
+                except Exception:  # an answer that fails leaves the window as it is
+                    continue
+
+    threading.Thread(target=answer, name="osxp-window-front", daemon=True).start()
+
+    def stop() -> None:
+        with contextlib.suppress(OSError):
+            server.close()
+        with contextlib.suppress(OSError, ValueError):
+            if json.loads(path.read_text(encoding="utf-8")) == mine:
+                path.unlink()
+
+    return stop
+
+
+def _osxp_to_front(port: int) -> bool:
+    """Whether an open OrthoStudio XP window came to the front when asked."""
+    try:
+        listening = int(json.loads(osxp_window_file(port).read_text(encoding="utf-8"))["port"])
+        with socket.create_connection(("127.0.0.1", listening), timeout=1.0) as window:
+            window.settimeout(3.0)
+            window.sendall(b"front\n")
+            return window.recv(8).strip() == b"ok"
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def open_osxp() -> str:
+    """OrthoStudio XP's window: brought to the front when it is open, else started, and says
+    which. Started, it is the app's own entry, which shows the running engine's page, or starts
+    one (on this app's port, ``OSXP_PORT``). Each click on Build tiles used to start another, one
+    more app in the Dock each time (a user saw it, 2026-10-02)."""
+    from orthostudio.desktop import ENGINE_PORT
+
+    if _osxp_to_front(ENGINE_PORT):
+        return "front"
     _other_window("build", ["-m", "orthostudio.desktop"])
+    return "started"
 
 
 def app_start(log: Path) -> bool:
