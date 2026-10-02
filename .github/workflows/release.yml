@@ -22,13 +22,14 @@ jobs:
         # macOS 14 on Apple Silicon: the wheels chosen there run on macOS 14 and later. The Intel
         # app on macOS 15 (Apple Silicon too, checked under Rosetta): pyproj's Intel wheels ask for
         # macOS 15. Ubuntu 22.04: Triangle4XP compiled there runs on the older glibc of the
-        # distributions still in use.
-        include:
-          - os: macos-14
-          - os: macos-15
-            machine: x86_64
-          - os: windows-latest
-          - os: ubuntu-22.04
+        # distributions still in use. The private repository where the betas are made builds the
+        # Apple Silicon and Windows installers alone: a macOS minute counts ten of the account's,
+        # and the Intel Mac's and Linux's installers are not tried there (2026-10-03).
+        include: >-
+          ${{ fromJSON(github.repository == 'radioharris/orthostudio-xp-dev'
+          && '[{"os": "macos-14"}, {"os": "windows-latest"}]'
+          || '[{"os": "macos-14"}, {"os": "macos-15", "machine": "x86_64"},
+          {"os": "windows-latest"}, {"os": "ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0

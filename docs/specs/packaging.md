@@ -327,7 +327,10 @@ with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ub
 compiled there runs on older glibc) builds and checks its installer and keeps it as an artifact; a
 tag also publishes them all as a release of the repository (a pre-release when the tag has a
 suffix, as in `v0.2.0-rc.1`), with `docs/releases/<version>.md` as its notes when that file exists
-(`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed.
+(`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed. The
+private repository where the betas are made (`orthostudio-xp-dev`) builds the Apple Silicon and
+Windows installers alone: a macOS minute counts ten of the account's, and the Intel Mac's and
+Linux's installers are not tried there.
 
 Before a release: `version` in `pyproject.toml` set to the tag's (the installers are named after
 it), the notes written, and the checks a person makes, which no workflow can
