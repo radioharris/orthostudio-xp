@@ -13,12 +13,15 @@
 .live-departure-update { margin-top: var(--help-gap); }
 .live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
-/* the flight and the textures, a line each: the title, then OrthoStudio XP's .kv along the line */
+/* OrthoStudio XP's .kv, each name and its value kept together (live.js kv): in its grid in the
+   flight's card, along the line in the textures' */
+.live .kv > div { display: contents; }
+.live .kv dd { overflow-wrap: anywhere; }
 .live-line-head { display: flex; align-items: baseline; gap: 16px; }
 .live-line-head h2, .live-line-head p { margin: 0; flex: none; }
 .live-kv { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; flex: 1 1 0; min-width: 0; }
-.live-kv > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.live-kv dd { text-align: left; overflow-wrap: anywhere; }
+.live .live-kv > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.live .live-kv dd { text-align: left; }
 .live .kv .none { color: var(--fg-3); }
 .live-disk { margin-top: var(--gap); }
 .live-disk.warn > span { background: var(--warn); }
