@@ -153,6 +153,13 @@ def live_router(
             )
         return {"state": control.state}
 
+    @router.post("/close")
+    def close() -> dict[str, Any]:
+        """The window's Quit, answered yes in its question (live.js quitLive): Live goes, at once
+        when nothing streams, else once the stream is out."""
+        control.close()
+        return {"state": control.state}
+
     @router.post("/uninstall")
     def uninstall() -> dict[str, Any]:
         if not control.uninstall():

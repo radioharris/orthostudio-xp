@@ -38,6 +38,13 @@
       <option value="en">EN</option>
       <option value="fr">FR</option>
     </select>
+    <!-- OrthoStudio XP's Quit, as it is: the same button, the same question (live.js quitLive) -->
+    <button type="button" id="quit-btn" class="btn btn-small quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP Live">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3v8M7.1 6.2a7 7 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span data-i18n="quit.button">Quit</span>
+    </button>
   </div>
 </header>
 
@@ -307,6 +314,18 @@
   <button type="button" class="btn btn-small" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- Quit OrthoStudio XP Live (live.js confirmQuit), as OrthoStudio XP's own question. -->
+<dialog id="quit-confirm" class="dialog" role="alertdialog" aria-labelledby="quit-confirm-title" aria-describedby="quit-confirm-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="quit-confirm-title" data-i18n="quit.title">Quit OrthoStudio XP Live?</h2>
+    <div class="dialog-text" id="quit-confirm-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="stay" autofocus data-i18n="quit.stay">Stay</button>
+      <button type="submit" class="btn btn-danger-solid" value="quit" data-i18n="quit.confirm">Quit OrthoStudio XP Live</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Delete: which of the two, what each costs, as OrthoStudio XP's own confirmations. -->
 <dialog id="delete-dialog" class="dialog" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-text">

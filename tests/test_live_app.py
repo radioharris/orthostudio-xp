@@ -272,6 +272,30 @@ async def test_the_welcome_page_s_answer(home: Path, monkeypatch: pytest.MonkeyP
     assert opened == [1]
 
 
+@pytest.mark.anyio
+async def test_the_page_s_quit(home: Path) -> None:
+    """Quit, as OrthoStudio XP's: its button and its question in the page, then ``POST
+    /api/live/close``: Live goes at once when nothing streams (the user asked, 2026-10-03)."""
+    control = LiveControl(echo=lambda _: None)
+    async with client_for(create_live_app(control)) as client:
+        page = (await client.get("/")).text
+        assert 'id="quit-btn"' in page and 'id="quit-confirm"' in page
+        assert not control.gone()
+        assert (await client.post("/api/live/close")).json() == {"state": "idle"}
+    assert control.gone() and control.leaving_for is None
+
+
+def test_quitting_a_stream_waits_for_it_to_be_out() -> None:
+    from orthostudio.live import control as control_module
+
+    control = LiveControl(echo=lambda _: None)
+    control._state = control_module.STREAMING
+    control.close()
+    assert control.state == control_module.STOPPING and not control.gone()
+    control._state = control_module.IDLE  # X-Plane has quit, the pack is out
+    assert control.gone()
+
+
 def test_the_preview_takes_a_port_and_a_log_of_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
     """Beside the usual app, whose engine takes 8641 and stops another OrthoStudio XP there."""
     import orthostudio.desktop as desktop

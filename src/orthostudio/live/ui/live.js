@@ -778,6 +778,45 @@ async function poll() {
   }
 }
 
+/** OrthoStudio XP's question before quitting (app.js confirmQuit), with Live's lines. */
+function confirmQuit(lines) {
+  const dialog = $("quit-confirm");
+  if (dialog.open) return Promise.resolve(false);
+  $("quit-confirm-text").replaceChildren(...lines.map((line) => {
+    const p = document.createElement("p");
+    p.textContent = line;
+    return p;
+  }));
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "quit"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** "Quit", as OrthoStudio XP's: asks, saying what a stream is worth, then Live goes, at once when
+ * nothing streams, else once the stream is out and X-Plane has let go of the pack. Cmd+Q, the
+ * app's menu and the Dock's press this button (orthostudio/live/web.py may_quit). */
+async function quitLive() {
+  let status = last;
+  try {
+    status = await api("status");
+  } catch (_e) {
+    // Live may be going already: the question stays the same
+  }
+  const running = Boolean(status && status.state !== "idle");
+  const lines = [t("quit.text")];
+  if (running) lines.push(t("quit.streaming"));
+  if (running && status.checks?.xplane_running) lines.push(t("quit.xplane"));
+  if (!(await confirmQuit(lines))) return;
+  await act("close");
+}
+
 async function act(path, body) {
   try {
     await api(path, { method: "POST", body });
@@ -1132,6 +1171,7 @@ function boot() {
     drawDeparture();
     if (last) draw(last);
   });
+  $("quit-btn").addEventListener("click", quitLive);
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
   $("departure-btn").addEventListener("click", prepareDeparture);
   $("departure").addEventListener("keydown", (event) => {

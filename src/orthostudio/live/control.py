@@ -238,6 +238,8 @@ class LiveControl:
         # why this window goes: "build", the welcome page's answer, for OrthoStudio XP's window;
         # "quit", the app being updated or removed (:meth:`quit`)
         self.leaving_for: str | None = None
+        # the window's Quit, answered yes: it goes once the stream is out (:meth:`close`)
+        self.closing = False
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
         # AutoOrtho's regions: GitHub's list, read in the background, and one install at a time
@@ -418,6 +420,19 @@ class LiveControl:
         if flying:
             self.leave()
         return True
+
+    def close(self) -> None:
+        """The window's Quit, once the pilot said yes to its question, as OrthoStudio XP's: a
+        stream stops as Stop stops it (Live waits for X-Plane to quit when X-Plane reads the
+        pack, which comes out then), and the window goes once that is done (:meth:`gone`)."""
+        self.closing = True
+        if self._state != IDLE:
+            self.stop()
+
+    def gone(self) -> bool:
+        """Whether the window and its process go: the welcome's answer was OrthoStudio XP's
+        window, the app asked Live to go (:meth:`quit`), or the pilot quit and nothing streams."""
+        return self.leaving_for in ("build", "quit") or (self.closing and self._state == IDLE)
 
     def uninstall(self) -> bool:
         """Take out a pack left installed; False while a stream runs, or while X-Plane does."""

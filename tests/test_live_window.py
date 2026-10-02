@@ -1,8 +1,9 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Live's window closes and quits as OrthoStudio XP's (orthostudio.live.web, the user asked,
-2026-09-29): on macOS the close button and Cmd+W put it away, a stream going on; Quit ends the app,
-and quitting while a stream runs asks first, in the window's language, the window in front."""
+2026-09-29 and 2026-10-03): on macOS the close button and Cmd+W put it away, a stream going on;
+Quit asks in the page, as OrthoStudio XP's, the window in front; on Windows and Linux closing is
+quitting, and asks first, in a box in the window's language, only while a stream runs."""
 
 from __future__ import annotations
 
@@ -25,12 +26,21 @@ class FakeControl:
     def __init__(self) -> None:
         self.state = IDLE
         self.leaving_for: str | None = None
+        self.closing = False
         self.stopped = 0
         self.said: list[str] = []
 
     def stop(self) -> None:
         self.stopped += 1
         self.state = IDLE
+
+    def close(self) -> None:
+        self.closing = True
+        if self.state != IDLE:
+            self.stop()
+
+    def gone(self) -> bool:
+        return self.leaving_for in ("build", "quit") or (self.closing and self.state == IDLE)
 
     def wait_idle(self) -> None:
         pass
@@ -58,6 +68,7 @@ def opened(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         monkeypatch.setattr(window_module, "puts_away_on_close", lambda: mac)
         monkeypatch.setattr(window_module, "away", lambda: done.append("away"))
         monkeypatch.setattr(window_module, "to_the_front", lambda: done.append("front"))
+        monkeypatch.setattr(window_module, "ask_the_page_to_quit", lambda: done.append("page"))
 
         def ask(title: str, message: str) -> bool:
             done.append(("ask", message))
@@ -91,29 +102,36 @@ def test_on_macos_closing_puts_the_window_away(opened) -> None:
     assert control.stopped == 0
 
 
-def test_quit_when_nothing_streams_is_at_once(opened) -> None:
-    given, done, _ = opened(mac=True)
-    assert given["may_quit"]() is True and done == []
-
-
-def test_quit_while_streaming_asks_first_the_window_in_front(opened) -> None:
-    given, done, control = opened(mac=True)
-    control.state = STREAMING
-    assert given["may_quit"]() is False
-    assert done[0] == "front"
-    assert questions(done) == [web.QUIT_WHILE_STREAMING["en"]]
+def asked_the_page(done: list) -> bool:
     deadline = time.monotonic() + 5.0
-    while control.stopped == 0 and time.monotonic() < deadline:
+    while "page" not in done and time.monotonic() < deadline:
         time.sleep(0.01)
-    assert control.stopped == 1
+    return "page" in done
+
+
+@pytest.mark.parametrize("state", [IDLE, STREAMING])
+def test_quit_asks_in_the_page_as_osxp_does(opened, state: str) -> None:
+    """Cmd+Q, the app's menu, the Dock's: the window in front and its page's Quit pressed, which
+    asks OrthoStudio XP's question, streaming or not; no box of the system."""
+    given, done, control = opened(mac=True)
+    control.state = state
+    assert given["may_quit"]() is False
+    assert done[0] == "front" and asked_the_page(done) and questions_none(done)
+    assert given["closes_when"]() is False  # nothing goes before the page's answer
+    control.close()  # the page's yes (POST /api/live/close)
+    assert control.stopped == (1 if state == STREAMING else 0)
     assert given["closes_when"]() is True  # the stream out: the app goes
     assert given["may_quit"]() is True
 
 
+def questions_none(done: list) -> bool:
+    return not any(isinstance(d, tuple) for d in done)
+
+
 def test_the_question_in_the_window_s_language(opened) -> None:
-    given, done, control = opened(mac=True, answer=False, language="fr")
+    given, done, control = opened(mac=False, answer=False, language="fr")
     control.state = STREAMING
-    given["may_quit"]()
+    given["on_close"]()
     assert questions(done) == [web.QUIT_WHILE_STREAMING["fr"]]
     time.sleep(0.05)
     assert control.stopped == 0 and not given["closes_when"]()  # "no": nothing stops
@@ -128,14 +146,14 @@ def test_on_windows_and_linux_closing_is_quitting(opened) -> None:
 
 
 def test_asked_once(opened) -> None:
-    given, done, control = opened(mac=True)
+    given, done, control = opened(mac=False)
     control.state = STREAMING
     stop = threading.Event()
     control.stop = lambda: stop.set()  # type: ignore[method-assign]
-    given["may_quit"]()
+    given["on_close"]()
     questions(done)
     assert stop.wait(5.0)
-    assert given["may_quit"]() is False  # asked already: it goes by itself once the pack is out
+    assert given["on_close"]() is False  # asked already: it goes by itself once the pack is out
     assert len(questions(done)) == 1
 
 

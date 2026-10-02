@@ -11,9 +11,11 @@ under ``/live``, is Live's (``orthostudio/live/ui``).
 
 The window goes as OrthoStudio XP's does (the user asked, 2026-09-29): on macOS the close button
 and Cmd+W put it away, the app staying in the Dock, a stream going on, and a click on its icon or
-Cmd+1 brings it back; Quit (Cmd+Q, the app's menu, the Dock's) ends the app. On Windows and Linux
-closing the window is quitting. Quitting while a stream runs asks first, in the window's language,
-the window in front, then stops it, and the app stays until X-Plane has quit and the pack is out of
+Cmd+1 brings it back. Quit (its button at the top, Cmd+Q, the app's menu, the Dock's) asks first in
+the page, as OrthoStudio XP's own Quit (the user asked, 2026-10-03): the window in front, the same
+question with what a stream is worth, Stay or Quit. On Windows and Linux closing the window is
+quitting, and asks first, in a box, only while a stream runs, as OrthoStudio XP asks only while a
+build runs. Quit stops the stream, and the app stays until X-Plane has quit and the pack is out of
 it (:class:`orthostudio.live.control.LiveControl`).
 """
 
@@ -235,8 +237,8 @@ def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> Non
         webbrowser.open(url)
     print(f"OrthoStudio XP Live: {url} (Ctrl-C here to close)")
     try:
-        # until the welcome's answer is OrthoStudio XP's window, or the app goes (control.quit)
-        while control.leaving_for not in ("build", "quit"):
+        # until the welcome's answer is OrthoStudio XP's window, or the app goes (control.gone)
+        while not control.gone():
             time.sleep(1)
     except KeyboardInterrupt:
         control.stop()
@@ -251,23 +253,33 @@ def _in_a_window(url: str, control: LiveControl) -> None:
     from orthostudio import window
     from orthostudio.live.pack import default_live_root
 
-    closing = [False]  # asked, and the answer was yes: the app goes once the stream is out
-
     def may_quit() -> bool:
-        """Quit, wherever it is asked (and the close button where closing is quitting): at once
-        when nothing streams; else the question first, the window in front even when it was put
-        away, and the app goes once the stream is out (``closes_when``)."""
-        if control.state == IDLE or control.leaving_for:
+        """Quit (Cmd+Q, the app's menu, the Dock's), as OrthoStudio XP's (``desktop.may_quit``):
+        the window in front, put away or not, and its page's Quit pressed: the page asks, in its
+        language, and says yes to Live (``POST /api/live/close``). This answers no meanwhile; the
+        app goes once the stream is out (``closes_when``)."""
+        if control.gone():
             return True
-        if closing[0]:
+        window.to_the_front()
+        threading.Thread(
+            target=window.ask_the_page_to_quit, name="live-ask-the-page-to-quit", daemon=True
+        ).start()
+        return False
+
+    def close_asks() -> bool:
+        """Windows and Linux: closing is quitting, as OrthoStudio XP's (``desktop.on_close``): at
+        once when nothing streams; else the question first, in a box, the window in front, and the
+        app goes once the stream is out (``closes_when``)."""
+        if control.state == IDLE or control.gone():
+            return True
+        if control.closing:
             return False  # already asked: it goes by itself, once the pack is out
         window.to_the_front()
 
         def aside() -> None:
             """The box cannot be drawn by the thread waiting for this answer."""
             if window.ask(TITLE, quit_question()):
-                closing[0] = True
-                control.stop()
+                control.close()
 
         threading.Thread(target=aside, name="live-ask-before-quitting", daemon=True).start()
         return False
@@ -281,11 +293,9 @@ def _in_a_window(url: str, control: LiveControl) -> None:
     window.show(
         url,
         title=TITLE,
-        on_close=put_away if window.puts_away_on_close() else may_quit,
+        on_close=put_away if window.puts_away_on_close() else close_asks,
         may_quit=may_quit,
-        closes_when=lambda: (
-            (closing[0] and control.state == IDLE) or control.leaving_for in ("build", "quit")
-        ),
+        closes_when=control.gone,
         size=SIZE,
         storage=default_live_root() / "window",  # where the page keeps its language
     )
