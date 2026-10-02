@@ -607,7 +607,17 @@ could not be read; kept still under the pointer, it then showed words gone stale
 2026-10-02). The page's shows once the pointer has rested on a cell for half a second
 (`TIP_DELAY_MS`), under and right of the pointer and kept inside the window, follows the pointer,
 changes its words in place at every redraw (`updateStepCell`), and goes when the pointer leaves
-the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`.
+the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`. It
+holds two lines in a bubble of a fixed size, 330 px wide, so that it no longer grows and shrinks
+with its words (the same user): the step and how far it is, as its cell says it (*Imagery · 42 %
+· 16.2 MB/s*), then what it is doing in the page's words, without the rate (*209 of 213 images*,
+*reading the relief*, *meshing the terrain, about 10 s to go*), or, when it does not run, why it
+waits, what went wrong, what was kept, and for OSM and Terrain what the step holds
+(`stepTipLines`). The engine's own line, in English and up to some eighty characters, did not fit
+such a bubble; it stays in `serve.log`. A longer line ends in an ellipsis: measured at the page's
+size, the words of a running step take 92 to 307 px in French, and only the tracing of the roads
+with its time left (404 px), a step not done after a failure (324 px) and the two longer texts of
+what OSM and Terrain hold are cut.
 
 **Node to step mapping.** The journal gives each node entry its `stage`. Otherwise the page maps
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's

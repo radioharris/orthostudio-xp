@@ -2005,7 +2005,7 @@ def test_a_step_tooltip_changes_its_words_in_place() -> None:
     every redraw with a percentage and a rate that move, the tooltip of every running step blinked
     and could not be read; kept still under the pointer, it then showed words gone stale (a user,
     2026-10-02). The steps have the page's own tooltip: it shows once the pointer rests on a cell,
-    its words follow the cell in place without hiding, and it goes when the pointer leaves. No
+    its two lines follow the cell in place without hiding, and it goes when the pointer leaves. No
     cell carries a `title` any more, which would show the system's beside it."""
     if NODE is None:
         pytest.skip("node is not installed")
@@ -2056,7 +2056,7 @@ const tip = () => body.kids[0];
 const first = tip() === undefined;  // nothing shown before the pointer rests on a cell
 c.root.fire("pointerenter", 300, 200);
 timers.shift()();
-const words = () => tip().textContent.split("\\n")[0];
+const words = () => tip().kids.map((line) => line.textContent).join(" | ");
 const seen = [words()];
 m.updateStepCell(c, job, at(0.17, 1240, 15.9), "imagery");
 seen.push(words());
@@ -2077,16 +2077,78 @@ process.stdout.write(JSON.stringify({
     assert got["first"] is True
     # its words follow the cell in place, the status's change included, and only this cell's
     assert got["seen"] == [
-        "Imagery — 8% · 14.2 MB/s",
-        "Imagery — 17% · 15.9 MB/s",
-        "Imagery — 26% · 16.7 MB/s",
-        "Imagery — done · 5 s",
+        "Imagery · 8% · 14.2 MB/s | 1 of 9 images",
+        "Imagery · 17% · 15.9 MB/s | 1 of 9 images",
+        "Imagery · 26% · 16.7 MB/s | 1 of 9 images",
+        "Imagery · done · 5 s | ",
     ]
     # shown once, never hidden while they changed, under and right of the pointer
     assert got["steady"] == [False, 1, "314px", "218px"]
     assert got["gone"] is True
-    assert got["after"] == "Imagery — done · 5 s"  # once gone, the cell's words leave it alone
+    assert got["after"] == "Imagery · done · 5 s | "  # once gone, the cell's words leave it
     assert got["title"] is None  # no system tooltip beside the page's own
+
+
+def test_a_step_tooltip_says_the_step_then_what_it_does() -> None:
+    """Two lines in a bubble of a fixed size (a user, 2026-10-02): the step and how far it is, as
+    its cell says it, then what it is doing in the page's words, or why it waits, what went wrong,
+    what the step holds. The engine's own line, in English and up to some eighty characters, did
+    not fit; the rate of a download is on the first line, once."""
+    now = 1_000_000
+    job = {"status": "running", "install": True, "tiles": [], "errors": []}
+
+    def tile(step: str, **state: Any) -> dict[str, Any]:
+        return {"tile": "+46+006", "steps": {step: state}}
+
+    textures = {"role": "textures", "status": "running", "fraction": 0.42}
+    imagery = tile(
+        "imagery", status="running", fraction=0.42, nodes={"+46+006/BI16/textures": textures},
+        message="BI16: tiles 4424/55296, textures 19/234 (1106 req/s, 14.2 MB/s)",
+    )  # fmt: skip
+    dem = {"role": "dem", "status": "running", "fraction": 0}
+    reading = tile(
+        "relief", status="running", fraction=0.8, nodes={"+46+006/dem": dem},
+        message="+46+006: elevation, reading",
+    )  # fmt: skip
+    mesh = {"role": "mesh", "status": "running", "fraction": 0, "startedMs": now - 5000,
+            "weight": 15}  # fmt: skip
+    meshing = tile("terrain", status="running", fraction=0.33, nodes={"+46+006/mesh": mesh})
+    waiting = tile("imagery", status="waiting", fraction=0.36, nodes={})
+    hit = tile("coast", status="hit", fraction=1, nodes={})
+    failed = tile("imagery", status="failed", fraction=1, nodes={})
+    failing = {**job, "errors": [{"tile": "+46+006", "step": "imagery", "code": "TEX_MISSING"}]}
+    pending = tile("osm", status="pending", nodes={})
+    installed = tile("install", status="done", fraction=1, wall_s=3, nodes={})
+    calls = [
+        (job, imagery, "imagery"), (job, reading, "relief"), (job, meshing, "terrain"),
+        (job, waiting, "imagery"), (job, hit, "coast"), (failing, failed, "imagery"),
+        (job, pending, "osm"), (job, installed, "install"),
+    ]  # fmt: skip
+    got = _node_json(
+        "app.js",
+        "["
+        + ", ".join(
+            f"m.stepTipLines({json.dumps(j)}, {json.dumps(t)}, '{s}', {now})" for j, t, s in calls
+        )
+        + "]",
+    )
+    assert got[0] == ["Imagery · 42% · 14.2 MB/s", "19 of 234 images"]
+    assert got[1] == ["Relief · 80%", "reading the relief"]
+    assert got[2] == ["Terrain · 33%", "meshing the terrain, about 10 s to go"]
+    assert got[3] == ["Imagery · waiting", "36% · Partly done: the rest waits for its turn."]
+    assert got[4] == ["Coast · already done", "Kept from an earlier build: nothing to redo."]
+    assert got[5][0] == "Imagery · failed" and got[5][1].startswith("TEX_MISSING: ")
+    assert got[6] == [
+        "OSM · pending",
+        "Airports, roads, coastline and water from OpenStreetMap, read from the prepared"
+        " library or asked of the public servers.",
+    ]  # what it holds, cut by the bubble's ellipsis
+    assert got[7] == ["Install · done · 3 s", ""]
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "width: 330px;" in rules[".step-tip"] and "max-width" not in rules[".step-tip"]
+    for prop in ("white-space: nowrap;", "text-overflow: ellipsis;", "height: 1.35em;"):
+        assert prop in rules[".step-tip-line"], prop
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:
@@ -3627,7 +3689,8 @@ def test_osm_has_a_step_of_its_own() -> None:
         'terrain: () => t("step.terrain_help") };'
     )
     assert help_line in app_js
-    assert "const about = STEP_HELP[s]?.();" in _function_body(app_js, "updateStepCell")
+    # the second line of the step's tooltip, when the step says nothing else (2026-10-02)
+    assert "|| STEP_HELP[s]?.() ||" in _function_body(app_js, "stepTipLines")
     assert i18n.count('"step.osm": "OSM",') == 2 and '"step.relief": "Relief",' in i18n
     assert '"step.terrain_help": "Tracé des routes, de l\'eau et des aéroports, puis' in i18n
     assert '"step.terrain_help": "The roads, water and airports traced, then' in i18n
