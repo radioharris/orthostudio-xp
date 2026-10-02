@@ -333,6 +333,15 @@ is never made on the computer's own disk instead: Live says so and does not star
 Live keeps its folder out of Windows Search (a rule it adds itself, as the Indexing Options do):
 listing its hundreds of thousands of files kept the indexer busy for whole flights.
 
+Microsoft Defender, on Windows, checks each new file Live writes: at Live's first start on a
+Windows PC it took about one core for a while (2026-10-02). Live does not take its folder out of
+Defender itself: that needs an administrator's yes, and it is a security setting for you to choose.
+To spare Live's start that check, add its folder as an exclusion: Windows Security, Virus & threat
+protection, Manage settings (under Virus & threat protection settings), Exclusions, Add or remove
+exclusions, Add an exclusion, Folder, then `%USERPROFILE%\.orthostudio\live`, or the folder Live's
+settings chose. Defender then leaves alone the photos Live downloads and the textures it makes
+there, and nothing else.
+
 - `pack`: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while OrthoStudio
   XP Live runs). Every DSF of the region is there; the files they name only round the aircraft,
   made as X-Plane comes: each texture built for real where you have flown, a neutral placeholder
