@@ -80,7 +80,7 @@ def open_live() -> str:
     """Live's window: brought to the front when it is open, else started. Says which."""
     if live_listening() and _ask_live("front", post=True) is not None:
         return "front"
-    _detached(["-m", "orthostudio.live", "ui"])
+    _detached(["-m", "orthostudio.live", "ui", "--quit-when-closed"])
     return "started"
 
 
@@ -107,7 +107,8 @@ def app_start(log: Path) -> bool:
         return True
     from orthostudio.live.web import open_window
 
-    if open_window(LIVE_PORT, start="welcome" if home == "ask" else None) == "build":
+    start = "welcome" if home == "ask" else None
+    if open_window(LIVE_PORT, start=start, quit_when_closed=True) == "build":
         # OrthoStudio XP's window in a process of its own, as Live's button opens it: the window
         # library's loop starts once a process, and Live's has just ended
         open_osxp()

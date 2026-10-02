@@ -346,6 +346,17 @@ def test_stopped_while_xplane_runs(home: Path, monkeypatch: pytest.MonkeyPatch) 
     assert any("stays installed" in line["text"] for line in c.log_after(0)["lines"])
 
 
+def test_busy_while_a_stream_is_on_its_way(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """What keeps the app's Live from going once its page is closed (orthostudio.live.web)."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    c = control_for(FakeStream())
+    assert not c.busy()
+    assert c.start()
+    assert c.busy()
+    c.stop()
+    assert c.wait_idle(5) and not c.busy()
+
+
 def test_the_app_s_update_asks_live_to_quit(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The Windows installer asks Live to go before it replaces or removes the files
     (tools/package/stop_running.pas): at once while no stream feeds a running X-Plane, the pack
@@ -467,6 +478,24 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
 
 
 # --- the API ------------------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_the_page_s_status_is_its_sign_of_life_and_front_shows_it(home: Path) -> None:
+    """Each status the page asks for (every second) says it is open (``seen``: in the browser,
+    the app's Live goes a while after the last); ``front`` shows the page wherever it is (in the
+    browser: opened again)."""
+    seen, fronts = [], []
+    c = control_for(FakeStream())
+    app = create_live_app(c, seen=lambda: seen.append(1), front=lambda: fronts.append(1))
+    async with client_for(app) as client:
+        assert (await client.get("/api/live/status")).status_code == 200
+        assert (await client.get("/api/live/status")).status_code == 200
+        assert (await client.post("/api/live/front", json={})).status_code == 200
+        assert (await client.post("/api/live/presence")).status_code == 200  # the welcome page
+    assert len(seen) == 3 and fronts == [1]
+    welcome = (UI_DIR / "welcome.js").read_text(encoding="utf-8")
+    assert 'fetch("api/live/presence", { method: "POST" })' in welcome
 
 
 @pytest.mark.anyio

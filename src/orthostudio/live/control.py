@@ -397,6 +397,13 @@ class LiveControl:
         """Stop waiting for X-Plane to quit: the pack and the plugin stay installed."""
         self._leave.set()
 
+    def busy(self) -> bool:
+        """Whether a stream is on its way, in or out, or a region is being installed: the app,
+        started from its icon, does not let Live's process go then (``orthostudio.live.web``)."""
+        with self._lock:
+            installing = self._install_thread is not None and self._install_thread.is_alive()
+            return self._state != IDLE or installing
+
     def quit(self, *, force: bool = False) -> bool:
         """The app is being updated or removed (the Windows installer, ``stop_running.pas``): stop,
         and let the window and its process go (``leaving_for``). False, and nothing done, while

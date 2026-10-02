@@ -51,7 +51,10 @@ def windows(monkeypatch: pytest.MonkeyPatch, answer: str | None = None) -> list:
 
     shown: list = []
 
-    def open_window(port: int, *, browser: bool = False, start: str | None = None):
+    def open_window(
+        port: int, *, browser: bool = False, start: str | None = None, **kw: object
+    ) -> str | None:
+        assert kw == {"quit_when_closed": True}  # the app's own start
         shown.append((port, start))
         return answer
 

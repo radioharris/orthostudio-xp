@@ -26,6 +26,7 @@ class FakeControl:
         self.state = IDLE
         self.leaving_for: str | None = None
         self.stopped = 0
+        self.said: list[str] = []
 
     def stop(self) -> None:
         self.stopped += 1
@@ -33,6 +34,16 @@ class FakeControl:
 
     def wait_idle(self) -> None:
         pass
+
+    def busy(self) -> bool:
+        return self.state != IDLE
+
+    def quit(self, *, force: bool = False) -> bool:
+        self.leaving_for = "quit"
+        return True
+
+    def log(self, text: str) -> None:
+        self.said.append(text)
 
 
 @pytest.fixture
@@ -140,9 +151,13 @@ def test_the_app_s_update_closes_the_window_without_a_question(opened) -> None:
         assert given["may_quit"]() is True and questions(done) == []
 
 
-def test_the_app_s_update_ends_it_in_the_browser_too(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("leaving_for", ["quit", "build"])
+def test_in_the_browser_it_ends_as_in_a_window(
+    monkeypatch: pytest.MonkeyPatch, leaving_for: str
+) -> None:
     """Without a window (a Linux without its libraries, ``--browser``), the page in the browser:
-    the process ends once asked to quit, as with a window."""
+    the process ends once asked to quit, or once the welcome's answer is OrthoStudio XP's window
+    (the app opens it then), as with a window."""
     monkeypatch.setattr(web.webbrowser, "open", lambda url: True)
     control = FakeControl()
     ended = threading.Event()
@@ -153,5 +168,37 @@ def test_the_app_s_update_ends_it_in_the_browser_too(monkeypatch: pytest.MonkeyP
 
     threading.Thread(target=page, daemon=True).start()
     assert not ended.wait(1.5)
-    control.leaving_for = "quit"
+    control.leaving_for = leaving_for
     assert ended.wait(5.0)
+
+
+def test_in_the_browser_the_app_s_live_goes_a_while_after_its_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Started by the app and shown in the browser (a Linux without the window's libraries), Live
+    goes once no page of it has spoken for a while, as OrthoStudio XP's engine does: closing a tab
+    ends nothing, and nothing would show the process then. Not while a stream is on its way."""
+    from orthostudio.api import presence
+
+    monkeypatch.setattr(presence, "QUIT_AFTER_S", 0.6)
+    monkeypatch.setattr(presence, "TICK_S", 0.05)
+    monkeypatch.setattr(web.webbrowser, "open", lambda url: True)
+    control = FakeControl()
+    control.state = STREAMING
+    seen = presence.Presence()
+    ended, gone = threading.Event(), threading.Event()
+
+    def page() -> None:
+        web._quit_when_closed(seen, control, ended)
+        web._in_the_browser("http://127.0.0.1:1/", control)
+        gone.set()
+
+    threading.Thread(target=page, daemon=True).start()
+    assert not gone.wait(1.5)  # a stream: it stays, its page closed or not
+    control.state = IDLE
+    for _ in range(10):  # the page asks for its status: it stays
+        seen.seen()
+        assert not gone.wait(0.1)
+    assert gone.wait(5.0)  # the page gone, nothing streaming: it goes
+    assert control.leaving_for == "quit" and "Live goes" in control.said[0]
+    ended.set()

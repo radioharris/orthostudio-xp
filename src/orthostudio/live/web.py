@@ -22,6 +22,7 @@ from __future__ import annotations
 import threading
 import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -94,9 +95,16 @@ def _airports_router() -> Any:
     return router
 
 
-def create_live_app(control: LiveControl, map_fetch: Any = None) -> Any:
+def create_live_app(
+    control: LiveControl,
+    map_fetch: Any = None,
+    *,
+    front: Callable[[], object] | None = None,
+    seen: Callable[[], object] | None = None,
+) -> Any:
     """The page, its API, OrthoStudio XP's base map and airports, and its style sheet under
-    ``/static``. ``map_fetch`` replaces the base map's upstream fetch, for the tests."""
+    ``/static``. ``map_fetch`` replaces the base map's upstream fetch, for the tests; ``front``
+    and ``seen``: :func:`orthostudio.live.api.live_router`'s."""
     from fastapi import FastAPI
     from fastapi.responses import FileResponse
 
@@ -111,7 +119,7 @@ def create_live_app(control: LiveControl, map_fetch: Any = None) -> Any:
 
     app = FastAPI(title=TITLE, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(_GuardMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS)
-    app.include_router(live_router(control))
+    app.include_router(live_router(control, front=front, seen=seen))
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
@@ -147,30 +155,76 @@ def _serve(app: Any, port: int) -> tuple[Any, threading.Thread]:
 
 
 def open_window(
-    port: int, *, browser: bool = False, start: str | None = None, show: bool = True
+    port: int,
+    *,
+    browser: bool = False,
+    start: str | None = None,
+    show: bool = True,
+    quit_when_closed: bool = False,
 ) -> str | None:
     """Serve the page on ``port`` and show it; return once the window is closed and no stream is
     left behind. ``start="welcome"``: the app's question first. ``show=False``: served only, as in
     the browser but without opening it (the installers' checks, ``tools/package/build.py``).
-    Returns ``"build"`` when its answer was OrthoStudio XP's window, for the app to open it."""
+    ``quit_when_closed``, the app's own start: in the browser, where no window closes, the process
+    goes a while after its page last spoke (:func:`_quit_when_closed`). Returns ``"build"`` when
+    the welcome's answer was OrthoStudio XP's window, for the app to open it."""
     from orthostudio import window
+    from orthostudio.api.presence import Presence
     from orthostudio.live import pools
 
     pools.start_server()  # before the engine's API loads PROJ (orthostudio.live.pools)
     log = LogFile(log_path(), archive=archive_folder())  # LogLive.txt, beside X-Plane's Log.txt
     control = LiveControl(echo=log.echo, log_file=log.path if log.open else None)
-    server, thread = _serve(create_live_app(control), port)
-    url = f"http://127.0.0.1:{port}/" + ("welcome" if start == "welcome" else "")
+    home = f"http://127.0.0.1:{port}/"
+    url = home + ("welcome" if start == "welcome" else "")
+    in_the_browser = browser or not show or not window.possible()
+    # the page again, where it is: the window brought back, or the page opened in the browser
+    # again, which a closed tab left nothing of (the app's icon, OrthoStudio XP's Live button)
+    front = (lambda: webbrowser.open(home)) if in_the_browser else None
+    seen = Presence()
+    ended = threading.Event()
+    server, thread = _serve(create_live_app(control, front=front, seen=seen.seen), port)
     try:
-        if browser or not show or not window.possible():
+        if in_the_browser:
+            if quit_when_closed:
+                _quit_when_closed(seen, control, ended)
             _in_the_browser(url, control, show=show)
         else:
             _in_a_window(url, control)
     finally:
+        ended.set()
         server.should_exit = True
         thread.join(5)
         log.close()
     return control.leaving_for
+
+
+def _quit_when_closed(seen: Any, control: Any, ended: threading.Event) -> None:
+    """The app's Live in the browser goes once no page of it has spoken for a while, as
+    OrthoStudio XP's engine does (:mod:`orthostudio.api.presence`): closing a tab ends nothing, and
+    nothing would show the process then. The page asks for its status every second, its sign of
+    life (``seen``); a stream on its way, in or out, or a region's install keeps it
+    (``control.busy``)."""
+    from orthostudio.api import presence
+
+    def say(_: str) -> None:
+        control.log(
+            f"no page of Live has been open for {presence.QUIT_AFTER_S / 60:g} min and nothing "
+            "streams: Live goes"
+        )
+
+    threading.Thread(
+        target=presence.quit_when_closed,
+        args=(seen, control.busy, control.quit),
+        kwargs={
+            "wait": ended.wait,
+            "after_s": presence.QUIT_AFTER_S,
+            "tick_s": presence.TICK_S,
+            "say": say,
+        },
+        name="live-quit-when-closed",
+        daemon=True,
+    ).start()
 
 
 def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> None:
@@ -181,7 +235,8 @@ def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> Non
         webbrowser.open(url)
     print(f"OrthoStudio XP Live: {url} (Ctrl-C here to close)")
     try:
-        while control.leaving_for != "quit":  # until the app's update or removal (control.quit)
+        # until the welcome's answer is OrthoStudio XP's window, or the app goes (control.quit)
+        while control.leaving_for not in ("build", "quit"):
             time.sleep(1)
     except KeyboardInterrupt:
         control.stop()

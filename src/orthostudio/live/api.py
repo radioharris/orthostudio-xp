@@ -4,6 +4,8 @@
 can include as it is the day Live comes into its window (``app.include_router``).
 
 - ``GET  /api/live/status``: the state, the last second's figures, the checks, the settings;
+  the page asks every second, which also says it is open; ``POST /api/live/presence`` says only
+  that (the welcome page);
 - ``GET  /api/live/log?after=N``: the log's lines after the N-th;
 - ``POST /api/live/start`` ``{"fresh": bool}``: start streaming (409 while a stream is on);
 - ``POST /api/live/stop``: stop it; the pack comes out once X-Plane has quit;
@@ -16,7 +18,7 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``POST /api/live/launch-xplane``: start X-Plane (409 until Live is ready for it);
 - ``POST /api/live/home`` ``{"home": "live" | "build", "remember": bool}``: the welcome page's
   answer; ``POST /api/live/osxp``: OrthoStudio XP's window; ``POST /api/live/front``: this window
-  to the front (``orthostudio.live.app_start``);
+  to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -80,12 +83,29 @@ class PrepareBody(BaseModel):
     departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
 
 
-def live_router(control: LiveControl) -> APIRouter:
+def live_router(
+    control: LiveControl,
+    *,
+    front: Callable[[], object] | None = None,
+    seen: Callable[[], object] | None = None,
+) -> APIRouter:
+    """The API of ``control``. ``front`` brings the page to the front, wherever it is shown (the
+    window by default); ``seen`` hears the page's every status, its sign of life
+    (``orthostudio.live.web``)."""
     router = APIRouter(prefix="/api/live")
 
     @router.get("/status")
     def status() -> dict[str, Any]:
+        if seen is not None:
+            seen()
         return control.status()
+
+    @router.post("/presence")
+    def presence() -> dict[str, Any]:
+        """A page that asks for no status says it is open (the welcome page, every 30 s)."""
+        if seen is not None:
+            seen()
+        return {"ok": True}
 
     @router.get("/log")
     def log(after: int = 0) -> dict[str, Any]:
@@ -177,10 +197,13 @@ def live_router(control: LiveControl) -> APIRouter:
         return {"opened": True}
 
     @router.post("/front")
-    def front() -> dict[str, Any]:
-        from orthostudio import window
+    def to_the_front() -> dict[str, Any]:
+        if front is not None:
+            front()
+        else:
+            from orthostudio import window
 
-        window.to_the_front()
+            window.to_the_front()
         return {"front": True}
 
     @router.get("/regions")

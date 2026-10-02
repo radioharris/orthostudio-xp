@@ -25,7 +25,20 @@ async function choose(home) {
   }
 }
 
+// In the browser, the app's Live goes a while after its page last spoke
+// (orthostudio/live/web.py): this page asks for no status, so it says it is open.
+const PRESENCE_EVERY_MS = 30000;
+
+function present() {
+  fetch("api/live/presence", { method: "POST" }).catch(() => {});
+}
+
 function boot() {
+  present();
+  setInterval(present, PRESENCE_EVERY_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") present();
+  });
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   applyStatic(document);
