@@ -2157,6 +2157,7 @@ function showScreen(name, arg) {
     toast(t("settings.left_unsaved"));
   }
   state.screen = name;
+  hideStepTip(); // the steps' tooltip belongs to Works
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   measureMapTop(); // the map can only be measured once its screen is shown
   findForget(); // an open Find looks in the screen now shown, not the one left behind
@@ -4263,6 +4264,8 @@ function reliefWords(relief) {
 
 function updateJobView(v, job) {
   const active = jobActive(job);
+  // a cell drawn anew (another job, another language) never says the pointer left the old one
+  if (stepTip.cell && !stepTip.cell.root.isConnected) hideStepTip();
   if (v.status !== job.status) {
     clear(v.pill).append(jobStatusPill(job.status));
     v.status = job.status;
@@ -4400,20 +4403,71 @@ function updateActivity(line, job, tile) {
   line.title = parts.length ? line.textContent : "";
 }
 
+/**
+ * The steps' own tooltip, one for the page. The system's cannot change its words without hiding
+ * and showing again, and a running step's words, a percentage and a rate, change at nearly every
+ * redraw: it blinked and could not be read, then, kept still under the pointer, it showed words
+ * gone stale (a user, 2026-10-02). This one changes its words in place (updateStepCell). It shows
+ * once the pointer has rested on a cell for TIP_DELAY_MS, as the system's does, and follows it
+ * like the map's (map.js showTip).
+ */
+const stepTip = { el: null, cell: null, timer: 0, x: 0, y: 0 };
+const TIP_DELAY_MS = 500;
+
+function placeStepTip() {
+  const el = stepTip.el;
+  // under and right of the pointer, kept inside the window: above it near the bottom edge
+  const room = 8;
+  const x = Math.max(room, Math.min(stepTip.x + 14, innerWidth - el.offsetWidth - room));
+  const below = stepTip.y + 18;
+  const y = below + el.offsetHeight + room > innerHeight ? Math.max(room, stepTip.y - el.offsetHeight - 10) : below;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+}
+
+function showStepTip(c) {
+  if (!stepTip.el) {
+    stepTip.el = h("div", { class: "step-tip", role: "tooltip", hidden: true });
+    document.body.append(stepTip.el);
+  }
+  setText(stepTip.el, c.title);
+  stepTip.el.hidden = false;
+  placeStepTip();
+}
+
+function hideStepTip() {
+  clearTimeout(stepTip.timer);
+  stepTip.cell = null;
+  if (stepTip.el) stepTip.el.hidden = true;
+}
+
 export function buildStepCell(tileName, s) {
-  const c = { status: null, title: "", pointed: false };
+  const c = { status: null, title: "" };
   c.dot = h("span", { class: "dot dot-pending" });
   c.fill = h("span");
   c.bar = h("div", { class: "progress step-bar progress-pending", role: "progressbar", "aria-label": `${tileName} ${STEP_KEYS[s]()}`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, c.fill);
   c.state = h("span", { class: "step-state" });
   c.detail = h("span", { class: "step-detail" });
-  // Under the pointer the tooltip keeps its words (updateStepCell); it takes the last ones when the
-  // pointer leaves.
-  const pointed = (on) => () => {
-    c.pointed = on;
-    if (!on) setAttr(c.root, "title", c.title);
+  const follow = (ev) => {
+    stepTip.x = ev.clientX;
+    stepTip.y = ev.clientY;
   };
-  c.root = h("div", { class: "step step-pending", onpointerenter: pointed(true), onpointerleave: pointed(false) }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
+  const enter = (ev) => {
+    follow(ev);
+    clearTimeout(stepTip.timer);
+    stepTip.cell = c;
+    stepTip.timer = setTimeout(() => {
+      if (stepTip.cell === c) showStepTip(c);
+    }, TIP_DELAY_MS);
+  };
+  const move = (ev) => {
+    follow(ev);
+    if (stepTip.cell === c && stepTip.el && !stepTip.el.hidden) placeStepTip();
+  };
+  const leave = () => {
+    if (stepTip.cell === c) hideStepTip();
+  };
+  c.root = h("div", { class: "step step-pending", onpointerenter: enter, onpointermove: move, onpointerleave: leave }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
   return c;
 }
 
@@ -4644,11 +4698,12 @@ export function updateStepCell(c, job, tile, s) {
   setText(c.detail, detail);
   const about = STEP_HELP[s]?.();
   c.title = `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}${about ? `\n${about}` : ""}`;
-  // A tooltip whose words change while it shows is hidden and shown again: written at every
-  // redraw, four times a second, it blinked and could not be read (a user, 2026-10-02). Under the
-  // pointer it keeps its words until the step changes status, and takes the last ones when the
-  // pointer leaves (buildStepCell).
-  if (!c.pointed || changed) setAttr(c.root, "title", c.title);
+  // The page's own tooltip (stepTip), not the system's `title`, which blinked: its words change in
+  // place while it shows.
+  if (stepTip.cell === c && stepTip.el && !stepTip.el.hidden) {
+    setText(stepTip.el, c.title);
+    placeStepTip();
+  }
 }
 
 function updateErrors(v, job, active) {

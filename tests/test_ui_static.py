@@ -2000,34 +2000,44 @@ def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
     assert got[3][0]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
 
 
-def test_a_step_tooltip_keeps_its_words_under_the_pointer() -> None:
-    """A tooltip whose words change while it shows is hidden and shown again. Written at every
-    redraw, four times a second, with a percentage and a rate that move, the tooltip of every
-    running step blinked and could not be read (a user, 2026-10-02). Under the pointer it keeps
-    its words while the cell moves on, until the step changes status; it takes the last ones when
-    the pointer leaves."""
+def test_a_step_tooltip_changes_its_words_in_place() -> None:
+    """The system's tooltip cannot change its words without hiding and showing again. Written at
+    every redraw with a percentage and a rate that move, the tooltip of every running step blinked
+    and could not be read; kept still under the pointer, it then showed words gone stale (a user,
+    2026-10-02). The steps have the page's own tooltip: it shows once the pointer rests on a cell,
+    its words follow the cell in place without hiding, and it goes when the pointer leaves. No
+    cell carries a `title` any more, which would show the system's beside it."""
     if NODE is None:
         pytest.skip("node is not installed")
     script = """
 class El {
   constructor(tag) {
     Object.assign(this, { tag, attrs: {}, kids: [], on: {}, style: {}, dataset: {} });
-    Object.assign(this, { className: "", textContent: "", titles: 0 });
+    Object.assign(this, { className: "", textContent: "", shown: 0, isConnected: true });
+    Object.assign(this, { offsetWidth: 220, offsetHeight: 48, _hidden: false });
   }
-  setAttribute(k, v) { this.attrs[k] = String(v); if (k === "title") this.titles += 1; }
+  get hidden() { return this._hidden; }
+  set hidden(v) { if (this._hidden && !v) this.shown += 1; this._hidden = Boolean(v); }
+  setAttribute(k, v) { if (k === "hidden") this.hidden = true; else this.attrs[k] = String(v); }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(name, fn) { (this.on[name] ||= []).push(fn); }
   append(...kids) { this.kids.push(...kids); }
-  fire(name) { for (const fn of this.on[name] || []) fn({ type: name }); }
+  fire(name, x = 0, y = 0) { for (const fn of this.on[name] || []) fn({ clientX: x, clientY: y }); }
 }
 globalThis.Node = El;
+const body = new El("body");
 globalThis.document = {
+  body,
   documentElement: {},
   getElementById: () => null,
   createElement: (tag) => new El(tag),
   createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
 };
+Object.assign(globalThis, { innerWidth: 1440, innerHeight: 900 });
 const m = await import("./app.js");
+const timers = [];
+globalThis.setTimeout = (fn) => timers.push(fn);  // run by hand: the pointer has rested
+globalThis.clearTimeout = () => {};
 const job = { status: "running", install: true, tiles: [] };
 const node = (status, fraction) => ({
   "+46+006/BI16/textures": { role: "textures", status, fraction },
@@ -2040,25 +2050,43 @@ const done = { tile: "+46+006", steps: { imagery: {
   status: "done", fraction: 1, wall_s: 5, nodes: node("done", 1),
 } } };
 const c = m.buildStepCell("+46+006", "imagery");
-const words = () => c.root.getAttribute("title").split("\\n")[0];
+const other = m.buildStepCell("+46+007", "imagery");
 m.updateStepCell(c, job, at(0.08, 1106, 14.2), "imagery");
-const first = words();
-c.root.fire("pointerenter");
+const tip = () => body.kids[0];
+const first = tip() === undefined;  // nothing shown before the pointer rests on a cell
+c.root.fire("pointerenter", 300, 200);
+timers.shift()();
+const words = () => tip().textContent.split("\\n")[0];
+const seen = [words()];
 m.updateStepCell(c, job, at(0.17, 1240, 15.9), "imagery");
+seen.push(words());
+m.updateStepCell(other, job, at(0.5, 1300, 16.0), "imagery");  // another cell leaves it alone
 m.updateStepCell(c, job, at(0.26, 1302, 16.7), "imagery");
-const held = [words(), c.state.textContent, c.detail.textContent, c.root.titles];
-c.root.fire("pointerleave");
-const left = words();
-c.root.fire("pointerenter");
+seen.push(words());
 m.updateStepCell(c, job, done, "imagery");
-process.stdout.write(JSON.stringify({ first, held, left, done: words() }));
+seen.push(words());
+const steady = [tip().hidden, tip().shown, tip().style.left, tip().style.top];
+c.root.fire("pointerleave");
+const gone = tip().hidden;
+m.updateStepCell(c, job, at(0.3, 1300, 16.1), "imagery");
+process.stdout.write(JSON.stringify({
+  first, seen, steady, gone, after: words(), title: c.root.getAttribute("title"),
+}));
 """
     got = _run_node(script)
-    assert got["first"] == "Imagery — 8% · 14.2 MB/s"
-    # under the pointer the cell moves on, its tooltip does not: written once, before
-    assert got["held"] == ["Imagery — 8% · 14.2 MB/s", "26%", "16.7 MB/s", 1]
-    assert got["left"] == "Imagery — 26% · 16.7 MB/s"
-    assert got["done"] == "Imagery — done · 5 s"  # a change of status shows under the pointer
+    assert got["first"] is True
+    # its words follow the cell in place, the status's change included, and only this cell's
+    assert got["seen"] == [
+        "Imagery — 8% · 14.2 MB/s",
+        "Imagery — 17% · 15.9 MB/s",
+        "Imagery — 26% · 16.7 MB/s",
+        "Imagery — done · 5 s",
+    ]
+    # shown once, never hidden while they changed, under and right of the pointer
+    assert got["steady"] == [False, 1, "314px", "218px"]
+    assert got["gone"] is True
+    assert got["after"] == "Imagery — done · 5 s"  # once gone, the cell's words leave it alone
+    assert got["title"] is None  # no system tooltip beside the page's own
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:

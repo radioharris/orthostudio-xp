@@ -600,11 +600,14 @@ The selected job (default: the running one, else the newest) shows, from top to 
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus
 of *Stop* and the bars' width transition survive. Events redraw through a throttle: at most four
 times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then. A step cell's tooltip
-waits while the pointer is on the cell: its words hold a percentage and a rate that move at
-nearly every redraw, a tooltip whose words change is hidden and shown again, and the tooltip of
-every running step blinked and could not be read (a user, 2026-10-02). Under the pointer it keeps
-its words until the step changes status, and takes the last ones when the pointer leaves
-(`buildStepCell`, `updateStepCell`); the cell itself moves on.
+is the page's own (`stepTip`, `.step-tip`, drawn as the map's), not the system's `title`: its
+words hold a percentage and a rate that move at nearly every redraw, the system's bubble hides
+and shows again at each change of its words, and the tooltip of every running step blinked and
+could not be read; kept still under the pointer, it then showed words gone stale (a user,
+2026-10-02). The page's shows once the pointer has rested on a cell for half a second
+(`TIP_DELAY_MS`), under and right of the pointer and kept inside the window, follows the pointer,
+changes its words in place at every redraw (`updateStepCell`), and goes when the pointer leaves
+the cell, when Works is left, or when the job is drawn anew. No step cell carries a `title`.
 
 **Node to step mapping.** The journal gives each node entry its `stage`. Otherwise the page maps
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's

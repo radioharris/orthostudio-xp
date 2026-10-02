@@ -946,6 +946,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .step-done .step-state { color: var(--ok); }
 .step-failed .step-state { color: var(--fail); font-weight: 600; }
 .step-detail:not(:empty)::before { content: " · "; }
+/* The steps' own tooltip (app.js stepTip), drawn as the map's: the system's blinked at each change
+   of its words, four times a second (2026-10-02). Its lines are the step, what it does, what it
+   holds. */
+.step-tip {
+  position: fixed; z-index: 800; pointer-events: none; max-width: 360px; white-space: pre-line;
+  padding: 4px 8px; border-radius: var(--radius); font-size: var(--fs-2); line-height: 1.35;
+  background: var(--fg); color: var(--bg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
 /* what the tile is doing, in words, set aside on 2026-10-02 (too much to read on every tile: see
    `updateTileRows`), kept for its return. The cells hold a word each, and a phrase was cut in them (a
    user, 2026-09-30). Under the tile's steps, across the row, in every row and always one line high, empty
