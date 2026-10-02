@@ -45,6 +45,17 @@ def _no_sources_of_this_machine(
     monkeypatch.setattr(providers, "user_sources_path", path)
 
 
+@pytest.fixture(autouse=True)
+def _live_off_unless_a_test_switches_it_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OrthoStudio XP Live is on by default in the beta that brings it
+    (``orthostudio.live.ENABLED_BY_DEFAULT``): the suite keeps it off unless a test switches it on
+    (``enabled = true`` in its ``live.toml``), as before, so that a test's app or OrthoStudio XP's
+    engine never reaches for a Live window of the machine it runs on (port 8642)."""
+    import orthostudio.live as live
+
+    monkeypatch.setattr(live, "ENABLED_BY_DEFAULT", False)
+
+
 @pytest.fixture(params=[False, True], ids=["fromstring", "split-tokens"])
 def number_parsing(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
     """Both ways numbers are read from text (``orthostudio.numtext``): ``np.fromstring``, and the

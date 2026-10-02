@@ -7,8 +7,8 @@ will read, before X-Plane reads it, following the aircraft and the camera. A sma
 holds X-Plane on its loading screen at a flight's start until the area is built. The design, the
 measurements behind it and the users' guide are in ``docs/specs/live.md``.
 
-It is switched off until its launch, and changes nothing in the rest of OrthoStudio XP: its own file
-``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, turns it on with ``enabled = true``
+It is switched on in the beta that brings it (:data:`ENABLED_BY_DEFAULT`), and its own file
+``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, switches it off with ``enabled = false``
 (:func:`enabled`). OrthoStudio XP's settings screen never saves that file, so the switch stays as
 set. It runs on macOS (Apple Silicon and Intel), Windows and Linux: its X-Plane plugin is built for
 each (``orthostudio.live.plugin``), it reads each system's own list of programs and starts X-Plane
@@ -24,7 +24,12 @@ from pathlib import Path
 
 from orthostudio.home import osxp_home
 
-__all__ = ["enabled", "settings_file", "supported"]
+__all__ = ["ENABLED_BY_DEFAULT", "enabled", "settings_file", "supported"]
+
+ENABLED_BY_DEFAULT = True
+"""Live's switch where ``live.toml`` does not set it: on, in the beta that brings it into the app
+(0.1.21, the user's choice, 2026-10-02). It was off before, while Live was tried on a branch of its
+own; the tests keep it off unless they switch it on (``tests/conftest.py``)."""
 
 
 def supported() -> bool:
@@ -38,9 +43,11 @@ def settings_file() -> Path:
 
 
 def enabled() -> bool:
-    """Whether ``live.toml`` says ``enabled = true``."""
+    """Whether Live is switched on: ``enabled`` in ``live.toml``, else :data:`ENABLED_BY_DEFAULT`
+    (no file, a file that does not parse, or no such key)."""
     try:
         data = tomllib.loads(settings_file().read_text("utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
-        return False
-    return data.get("enabled") is True
+        return ENABLED_BY_DEFAULT
+    switch = data.get("enabled")
+    return switch if isinstance(switch, bool) else ENABLED_BY_DEFAULT

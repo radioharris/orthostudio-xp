@@ -6,8 +6,8 @@
 terminal; ``setup`` prepares the region's pack once; ``regions`` lists, installs and deletes
 AutoOrtho's regions, the mesh Live streams onto; ``reset`` forgets what was built and downloaded;
 ``status`` says what is built and installed; ``uninstall`` takes the pack and the plugin out of
-X-Plane. Until its launch, every command needs ``enabled = true`` in
-``~/.orthostudio/live.toml`` (:func:`orthostudio.live.enabled`). ``stream`` takes the window's
+X-Plane. Every command refuses while Live is switched off (``enabled = false`` in
+``~/.orthostudio/live.toml``, :func:`orthostudio.live.enabled`). ``stream`` takes the window's
 settings (:mod:`orthostudio.live.settings`) for the options it is not given.
 """
 
@@ -58,7 +58,8 @@ def _root() -> None:
     if not enabled():
         raise typer.Exit(
             _fail(
-                f"OrthoStudio XP Live is switched off: put `enabled = true` in {settings_file()}."
+                f"OrthoStudio XP Live is switched off: put `enabled = true` in {settings_file()} "
+                "to switch it on."
             )
         )
 
