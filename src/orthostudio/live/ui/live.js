@@ -849,7 +849,7 @@ async function suggestDeparture({ fresh = false, now = false } = {}) {
   drawDeparture();
 }
 
-/** The newer plan taken: its departure in the box, named under it. */
+/** The newer plan taken: its departure in the box, named under it, its route on the map. */
 function loadDeparture() {
   if (!departureOffer) return;
   departurePlan = departureOffer;
@@ -857,6 +857,7 @@ function loadDeparture() {
   $("departure").value = departurePlan.icao;
   $("departure-error").hidden = true;
   drawDeparture();
+  showSimbriefRoute(); // as the map's own button: the plan just taken, seen where it goes
 }
 
 async function prepareDeparture() {

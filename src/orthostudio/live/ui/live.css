@@ -36,7 +36,8 @@
 .live-departure .path-row { max-width: 32em; }
 .live-departure-input { text-transform: uppercase; }
 .live-departure > p { margin: 4px 0 0; }
-.live-departure-update .btn { margin-left: 6px; }
+.live-departure-update { margin-top: 6px; max-width: 32em; }
+.live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
 /* a button to the regions, beside what asks for one */
 .live-go { margin-left: 6px; vertical-align: baseline; }

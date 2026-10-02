@@ -73,11 +73,12 @@
       </div>
       <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
       <p class="question-help" id="departure-plan" hidden></p>
-      <!-- a newer SimBrief plan than the box's, offered: never put in the box unasked -->
-      <p class="question-help live-departure-update" id="departure-update" role="status" hidden>
-        <span id="departure-update-text"></span>
-        <button type="button" class="btn btn-small" id="departure-load" data-i18n="departure.load">Load it</button>
-      </p>
+      <!-- a newer SimBrief plan than the box's, offered in OrthoStudio XP's yellow notice: never put
+           in the box unasked -->
+      <div class="overlay-notice live-departure-update" id="departure-update" role="status" hidden>
+        <p id="departure-update-text"></p>
+        <button type="button" class="btn btn-small btn-primary" id="departure-load" data-i18n="departure.load">Load it</button>
+      </div>
       <p class="error-inline" id="departure-error" role="alert" hidden></p>
     </div>
     <div class="actions">
