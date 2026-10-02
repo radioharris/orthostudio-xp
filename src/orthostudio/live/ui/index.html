@@ -124,16 +124,19 @@
           </div>
           <p class="error-inline" id="departure-error" role="alert" hidden></p>
         </div>
+        <!-- Live's buttons, then X-Plane's under them: Live first, then X-Plane -->
         <div class="actions">
           <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
-          <label class="switch" id="fresh-row" hidden>
+          <label class="live-check" id="fresh-row" hidden>
             <input type="checkbox" id="fresh">
             <span data-i18n="action.fresh">From scratch</span>
           </label>
           <button type="button" class="btn btn-danger" id="stop-btn" data-i18n="action.stop" hidden>Stop</button>
-          <button type="button" class="btn" id="xplane-btn" data-i18n="action.xplane" disabled>Start X-Plane</button>
           <button type="button" class="btn" id="leave-btn" data-i18n="action.leave" hidden>Leave it installed</button>
           <button type="button" class="btn btn-accent" id="uninstall-btn" data-i18n="action.uninstall" hidden>Take the pack out of X-Plane</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" id="xplane-btn" data-i18n="action.xplane" disabled>Start X-Plane</button>
         </div>
         <p class="question-help" id="action-help"></p>
       </section>

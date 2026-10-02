@@ -53,8 +53,7 @@ export const STRINGS = {
     "departure.title": "Prepare my departure",
     "departure.placeholder": "ICAO code, e.g. LFMN",
     "departure.prepare": "Prepare",
-    "departure.help":
-      "Live builds the ortho around this departure before you start the flight: X-Plane then passes its loading screen at once. Live starts for it if it is not running.",
+    "departure.help": "Built before X-Plane loads the flight: no wait on its loading screen.",
     "departure.from_plan": "From your last SimBrief plan: {plan}",
     "departure.updated": "Flight plan updated: {plan}",
     "departure.last": "Your last SimBrief plan: {plan}",
@@ -370,8 +369,7 @@ export const STRINGS = {
     "departure.title": "Préparer mon départ",
     "departure.placeholder": "Code OACI, par ex. LFMN",
     "departure.prepare": "Préparer",
-    "departure.help":
-      "Live construit l'ortho autour de ce départ avant que vous lanciez le vol : X-Plane passe alors son écran de chargement tout de suite. Live démarre pour lui s'il ne tourne pas.",
+    "departure.help": "Construit avant que X-Plane charge le vol : pas d'attente sur son écran de chargement.",
     "departure.from_plan": "Tiré de votre dernier plan SimBrief : {plan}",
     "departure.updated": "Plan de vol mis à jour : {plan}",
     "departure.last": "Votre dernier plan SimBrief : {plan}",

@@ -10,6 +10,10 @@
 .live-hold .progress { margin-top: var(--gap); }
 
 .live-departure-input { text-transform: uppercase; }
+/* a box and its words, as OrthoStudio XP's plain checkboxes (.disk-check), not its wide .switch */
+.live-check { display: inline-flex; align-items: center; gap: 6px; height: 28px; cursor: pointer; }
+/* X-Plane's button under Live's: the gap of a field to the next */
+.live-state .actions + .actions { margin-top: var(--gap); }
 .live-departure-update { margin-top: var(--help-gap); }
 .live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
