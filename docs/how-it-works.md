@@ -48,15 +48,15 @@ about a second, because the same questions have already been answered for that s
 answers are files; at road level 5 a dense tile's small roads weigh tens of megabytes, and it
 takes up to ten seconds or so, two or three of them downloading (Switzerland, 2026-09-25).
 Elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile when they answer
-(measured 2026-09-14), with the layers received and the download rate shown in the step. The
+(measured 2026-09-14), with the layers received and the download rate in the step's tooltip. The
 library's table of contents comes whole the first time only: after that a build just asks whether
 it changed, and the connections to the library stay open from one tile to the next. The relief
 and the tracing of the roads, water and airports for the mesh have steps of their own, Relief and
 Terrain: they take most of the time, 17 to 36 s of relief and 46 to 75 s of tracing on those
 Swiss tiles at road level 5, and with them in one Data step a map read in two seconds from the
-library read "Data 28 s" (2026-09-26). While a relief file downloads, Relief shows its speed as it
-arrives, then *reading the relief* while the file is read: a USGS square of 430 MB takes about half
-a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
+library read "Data 28 s" (2026-09-26). While a relief file downloads, the tooltip of Relief shows
+its speed as it arrives, then that the file is being read: a USGS square of 430 MB takes about
+half a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
 download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
 as it arrives, then goes on by the time the reading takes.
 
