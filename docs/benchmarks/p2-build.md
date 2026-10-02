@@ -14,7 +14,7 @@ decision 0009 removed that path); OrthoStudio XP's own store and chunk store wer
 every Bing tile was downloaded (the Ortho4XP ZL14 figure has its JPEG cache warm, its ZL16
 figure cold).
 
-Commands (the driver script and every JSON report live in the session scratch directory
+Commands (the driver script and every JSON report live in a temporary folder,
 `p2/integration/`: `validate.py`, `validate-*.json`, `validate.log`; the CLI equivalent of
 run A is below):
 

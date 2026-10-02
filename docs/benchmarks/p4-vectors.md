@@ -182,7 +182,7 @@ Both sides: same Triangle4XP, same options, same coastline weight map, same elev
 > **Replayability (review 5).** The mesh and mask lines of this table are re-run by the
 > repository: `tests/test_review5_fidelite_pslg.py` rebuilds both meshes and reconstructs the
 > seven masks from them and confirms them (5 of 7 byte-identical, 343 pixels, delta <= 8).
-> The **`.ter` and DSF lines are a one-off measurement** made in a scratchpad script that is
+> The **`.ter` and DSF lines are a one-off measurement** made in a throw-away script that is
 > not in the repository: no test replays them today. Treat them as a recorded observation,
 > not as a checked invariant; re-measuring them means building both DSFs from the two PSLGs
 > and comparing with `orthostudio.oracle.compare_dsf` / `compare_ter`, which needs the ZL14 imagery

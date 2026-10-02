@@ -1,7 +1,7 @@
 # Textures: assembling a 4096² texture from 256 web-mercator chunks
 
 Status: P1, written before the code. Code: `src/orthostudio/textures/assemble.py`.
-Measurements: section 6 (scratchpad script `bench_decode.py`, M4 Pro, `nice -n 10`, load 4.7).
+Measurements: section 6 (a throw-away script, `bench_decode.py`, M4 Pro, `nice -n 10`, load 4.7).
 
 ## 1. The rule in plain language
 

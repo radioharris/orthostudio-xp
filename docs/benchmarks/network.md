@@ -15,7 +15,7 @@ are identified by `X-VE-Tile-Info: no-tile`; httpx-h2 costs 0.79 ms CPU per requ
 of 2, and three mirrors are dead or six weeks stale.
 
 Scripts: `tools/bench/network/` (see its README). Raw outputs (JSON summaries, one TSV line per
-transfer for every curl run) are in the session scratch directory, not in the repository.
+transfer for every curl run) are kept in a temporary folder, not in the repository.
 
 ## 0. The tile set
 
@@ -312,5 +312,5 @@ tried, its AIMD lowered the window on a rise of latency. Reading:
   about 70 minutes of download at 8 to about 8 at 64.
 
 Single runs at one hour of one day: the order of magnitude and the step where a server stops
-matter, not the last digit. The script is kept with the session's scratch files, not in the
+matter, not the last digit. The script is kept with the other temporary files, not in the
 repository; `MEASURED_IN_FLIGHT` in `tests/test_imagery_providers.py` holds the values set.

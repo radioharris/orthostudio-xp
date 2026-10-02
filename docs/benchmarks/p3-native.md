@@ -12,7 +12,7 @@ columns are directly comparable; the Ortho4XP column is the frozen baseline.
 
 Every run: `osxp build --tile +43+005 --provider BI --zl <14|16> --legacy-dir <Ortho4XP>
 --creation-agent Ortho4XP --stages <legacy|native>`. The commands, the JSON reports and the
-comparison script are in the session scratchpad; the fidelity assertions are held by
+comparison script were kept outside the repository; the fidelity assertions are held by
 `tests/test_p3_oracle.py`.
 
 ## 1. One tile, ZL14, cold OrthoStudio XP store

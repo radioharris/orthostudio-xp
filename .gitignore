@@ -15,9 +15,6 @@ fixtures/
 *.log
 .vscode/
 
-# Editor and agent scratch (kept locally, not shared)
-.claude/
-
 # The address and key of the prepared library: written when the installers are built, from the
 # secrets of the repository, never committed (docs/specs/osm-prepared.md).
 src/orthostudio/library.json

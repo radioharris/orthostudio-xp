@@ -12,7 +12,7 @@ machine, same `Ortho4XP.cfg`, `max_convert_slots=4`). The OrthoStudio XP runs us
 and the masks of those Ortho4XP builds (`legacy_inputs`), so both tools produce the same 17 (ZL14)
 and 179 (ZL16) textures.
 
-Commands (raw JSON, logs and outputs kept in the session scratch directory, not in the repo):
+Commands (raw JSON, logs and outputs kept in a temporary folder, not in the repo):
 
 ```bash
 SCR=<scratch>/bench
