@@ -535,7 +535,7 @@ downloads its image pieces again.
 
 ## 6. Flying without tiles: OrthoStudio XP Live
 
-From 0.1.21, a beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+From 0.1.22, a beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho does, with no tile to build first. At its first
 start the app asks what you want to do, fly now with Live or build your tiles, and remembers the
 answer; each window has a button to the other. Its full guide, with why it has no zoom by flight

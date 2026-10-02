@@ -4,7 +4,7 @@ A guide for users: what OrthoStudio XP Live does while you fly, what you do, and
 few settings. For the design and the measurements behind it, see [specs/live.md](specs/live.md) and
 [specs/live/](specs/live/).
 
-OrthoStudio XP Live comes with OrthoStudio XP from version 0.1.21, a beta, switched on. To switch
+OrthoStudio XP Live comes with OrthoStudio XP from version 0.1.22, a beta, switched on. To switch
 it off, put this in `live.toml`, in OrthoStudio XP's own folder (`~/.orthostudio` on macOS and
 Linux, `%USERPROFILE%\.orthostudio` on Windows):
 
