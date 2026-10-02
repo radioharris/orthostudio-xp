@@ -1,24 +1,16 @@
 /* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
    Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
 /* The Live window: OrthoStudio XP's styles.css, whose cards, fields, gaps and dialogs it uses as
-   they are (.question, .sub-question, .question-help, .with-unit, .path-row, .field-row, .kv,
+   they are (.question, .sub-question, .question-help, .with-unit, .path-row, .plan-flow, .kv,
    .dialog), and these few of its own, made of its tokens. */
 
-/* the state on one line: a dot, the title, what to do; the countdown under it while X-Plane waits */
-.live-state-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-.live-state-head h1, .live-state-head p { margin: 0; }
-.live-state-head p { flex: 1 1 320px; }
+/* the state: a dot before the title, the countdown under it while X-Plane waits */
+.live-state-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--title-gap); }
+.live-state-head h1 { margin: 0; }
 .live-hold .progress { margin-top: var(--gap); }
 
-/* OrthoStudio XP's row of fields, its fields narrow, the buttons after them */
-.live-controls > .field { flex: none; }
-.live-source { width: 15em; }
-.live-departure { width: 19em; }
 .live-departure-input { text-transform: uppercase; }
-.live-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-/* the photos' credit at the row's end, on the buttons' line */
-.live-credit { margin-left: auto; line-height: 28px; }
-.live-departure-update { margin-top: var(--help-gap); max-width: 40em; }
+.live-departure-update { margin-top: var(--help-gap); }
 .live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
 /* the flight and the textures, a line each: the title, then OrthoStudio XP's .kv along the line */

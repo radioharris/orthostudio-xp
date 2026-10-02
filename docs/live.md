@@ -41,11 +41,11 @@ The OrthoStudio XP Live window opens with the app, once you chose to fly, or wit
 of OrthoStudio XP's window (`uv run python -m orthostudio.live ui` from a checkout). It has two
 tabs, as OrthoStudio XP's screens:
 
-- **Live**: at the top, short, on one line where the window is wide enough: the imagery source,
-  chosen first and saved as soon as chosen, the departure to prepare, and Start; then the map,
-  large; the flight and the textures, a line each; what Live needs (X-Plane, a mesh, AutoOrtho not
-  running, the plugin), with a button to the regions where a mesh is missing; its log at the
-  bottom. The source changes
+- **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
+  state, the imagery source (chosen first and saved as soon as chosen), the departure to prepare
+  and Start; under them the flight and the textures, a line each; what Live needs (X-Plane, a mesh,
+  AutoOrtho not running, the plugin), with a button to the regions where a mesh is missing; its
+  log at the bottom. The source changes
   only while Live is stopped, and textures already built keep their photos: "From scratch" builds
   them all again with a new source.
 - **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start

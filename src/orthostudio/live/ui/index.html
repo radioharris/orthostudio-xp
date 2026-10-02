@@ -3,7 +3,7 @@
      Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
 <!-- The Live window's page. Its parts are OrthoStudio XP's (styles.css): the cards and fields of its
      Settings (.question, .sub-question, .question-help, .question-detected, .with-unit, .path-row),
-     its row of fields (.field-row, .field), its .kv, its dialogs and its buttons, so that the
+     its Plan's layout (.plan-flow, .map-col), its .kv, its dialogs and its buttons, so that the
      spacing is the same. A click on a field's title is left to its text, as
      OrthoStudio XP does it (live.js isTitleClick): the title can be selected. -->
 <html lang="en">
@@ -43,36 +43,85 @@
 
 <main id="main" class="main live">
 <section id="screen-live" class="screen" aria-labelledby="state-title">
-  <!-- one screen, top to bottom: the state with what to choose and do, short; the map, large; the
-       flight, the textures, the checks and the log, a line each where they fit -->
-  <section class="question live-state" aria-live="polite">
-    <div class="live-state-head">
-      <span class="dot" id="state-dot"></span>
-      <h1 id="state-title"></h1>
-      <p class="question-help" id="state-lead"></p>
+  <!-- OrthoStudio XP's Plan layout (.plan-flow): the map on the left, large, and on the right the
+       state with what to choose and do; under them the flight and the textures, a line each, the
+       checks and the log -->
+  <div class="plan-flow">
+    <div class="map-col">
+      <section class="question live-map-card">
+        <div class="live-map-head">
+          <h2 class="question-title" data-i18n="map.title">Map</h2>
+          <div class="live-map-tools">
+            <label class="live-map-toggle"><input type="checkbox" id="map-details" checked>
+              <span data-i18n="map.details">Details</span></label>
+            <label class="live-map-toggle"><input type="checkbox" id="map-follow" checked>
+              <span data-i18n="map.follow">Follow the aircraft</span></label>
+            <button type="button" class="btn btn-small" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
+          </div>
+        </div>
+        <div class="live-map-wrap">
+          <div class="live-map" id="live-map"></div>
+          <!-- over the map's top: the texture under the pointer, told as it changes -->
+          <div class="live-map-bar is-hint" id="map-info" aria-live="polite"></div>
+        </div>
+        <div class="live-map-legend">
+          <span class="legend-title" data-i18n="map.legend_title">Sharpness on the ground:</span>
+          <span><i class="swatch is-zl19"></i><span data-i18n="map.legend_zl19">ZL19</span></span>
+          <span><i class="swatch is-zl18"></i><span data-i18n="map.legend_zl18">ZL18</span></span>
+          <span><i class="swatch is-zl17"></i><span data-i18n="map.legend_zl17">ZL17</span></span>
+          <span><i class="swatch is-zl16"></i><span data-i18n="map.legend_zl16">ZL16</span></span>
+          <span><i class="swatch is-zl15"></i><span data-i18n="map.legend_zl15">ZL15</span></span>
+          <span><i class="swatch is-less"></i><span data-i18n="map.legend_less">Blurrier</span></span>
+          <span><i class="swatch is-region"></i><span data-i18n="map.legend_region">Region installed</span></span>
+          <span id="legend-own-osxp" hidden><i class="swatch is-own is-osxp"></i><span data-i18n="map.legend_own_osxp">Your tiles</span></span>
+          <span id="legend-own-ortho4xp" hidden><i class="swatch is-own is-ortho4xp"></i><span data-i18n="map.legend_own_ortho4xp">Your Ortho4XP tiles</span></span>
+          <span id="legend-own-other" hidden><i class="swatch is-own is-other"></i><span data-i18n="map.legend_own_other">Other scenery</span></span>
+          <span><i class="swatch is-route"></i><span data-i18n="map.legend_route">Route</span></span>
+        </div>
+        <p class="question-help is-warn" id="map-error" hidden></p>
+      </section>
     </div>
-    <div class="live-hold" id="hold" hidden>
-      <div class="progress"><span id="hold-bar"></span></div>
-      <p class="question-help num" id="hold-text"></p>
-    </div>
-    <p class="error-inline" id="state-error" role="alert" hidden></p>
-    <p class="question-help is-warn" id="tint-note" hidden></p>
-    <!-- OrthoStudio XP's row of fields: the photos (saved as soon as chosen), the departure built
-         before X-Plane loads it, and the buttons, on one line where it is wide enough -->
-    <div class="field-row live-controls">
-      <div class="field live-source">
-        <label for="set-provider" data-i18n="source.title">Photo source</label>
-        <select id="set-provider" name="provider" class="live-source-select"></select>
+
+    <section class="question live-state" aria-live="polite">
+      <div class="live-state-head">
+        <span class="dot" id="state-dot"></span>
+        <h1 id="state-title"></h1>
       </div>
-      <div class="field live-departure">
-        <label for="departure" data-i18n="departure.title">Prepare my departure</label>
+      <p class="question-help" id="state-lead"></p>
+      <div class="live-hold" id="hold" hidden>
+        <div class="progress"><span id="hold-bar"></span></div>
+        <p class="question-help num" id="hold-text"></p>
+      </div>
+      <p class="error-inline" id="state-error" role="alert" hidden></p>
+      <p class="question-help is-warn" id="tint-note" hidden></p>
+      <!-- the photos, chosen first, before Start: saved as soon as chosen -->
+      <div class="sub-question">
+        <label class="sub-question-title" for="set-provider" data-i18n="source.title">Photo source</label>
+        <select id="set-provider" name="provider" class="question-select"></select>
+        <p class="question-help" id="provider-attribution"></p>
+        <p class="question-help is-warn" id="provider-note" hidden></p>
+        <p class="question-help" id="source-saved" hidden></p>
+        <p class="error-inline" id="source-error" role="alert" hidden></p>
+      </div>
+      <!-- a departure built before X-Plane loads it: X-Plane then passes its loading screen at once -->
+      <div class="sub-question">
+        <label class="sub-question-title" for="departure" data-i18n="departure.title">Prepare my departure</label>
         <div class="path-row">
-          <input type="text" id="departure" name="departure" class="live-departure-input" spellcheck="false" autocomplete="off" maxlength="40"
+          <input type="text" id="departure" name="departure" class="question-path live-departure-input" spellcheck="false" autocomplete="off" maxlength="40"
                  data-i18n-placeholder="departure.placeholder" placeholder="ICAO code, e.g. LFMN">
           <button type="button" class="btn" id="departure-btn" data-i18n="departure.prepare">Prepare</button>
         </div>
+        <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
+        <p class="question-help" id="departure-plan" hidden></p>
+        <!-- a newer SimBrief plan than the box's, offered in OrthoStudio XP's yellow notice: never
+             put in the box unasked -->
+        <div class="overlay-notice live-departure-update" id="departure-update" role="status" hidden>
+          <p id="departure-update-text"></p>
+          <button type="button" class="btn btn-small btn-primary" id="departure-load" data-i18n="departure.load">Load it</button>
+        </div>
+        <p class="error-inline" id="departure-error" role="alert" hidden></p>
       </div>
-      <div class="live-actions">
+      <div class="actions">
         <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
         <label class="switch" id="fresh-row" hidden>
           <input type="checkbox" id="fresh">
@@ -83,56 +132,9 @@
         <button type="button" class="btn" id="leave-btn" data-i18n="action.leave" hidden>Leave it installed</button>
         <button type="button" class="btn btn-accent" id="uninstall-btn" data-i18n="action.uninstall" hidden>Take the pack out of X-Plane</button>
       </div>
-      <span class="help live-credit" id="provider-attribution"></span>
-    </div>
-    <!-- what Prepare does, and what to do now: one paragraph, a line where it fits -->
-    <p class="question-help"><span id="departure-help" data-i18n="departure.help"></span>
-      <span id="action-help"></span></p>
-    <p class="question-help is-warn" id="provider-note" hidden></p>
-    <p class="question-help" id="source-saved" hidden></p>
-    <p class="error-inline" id="source-error" role="alert" hidden></p>
-    <p class="question-help" id="departure-plan" hidden></p>
-    <!-- a newer SimBrief plan than the box's, offered in OrthoStudio XP's yellow notice: never put
-         in the box unasked -->
-    <div class="overlay-notice live-departure-update" id="departure-update" role="status" hidden>
-      <p id="departure-update-text"></p>
-      <button type="button" class="btn btn-small btn-primary" id="departure-load" data-i18n="departure.load">Load it</button>
-    </div>
-    <p class="error-inline" id="departure-error" role="alert" hidden></p>
-  </section>
-
-  <section class="question live-map-card">
-    <div class="live-map-head">
-      <h2 class="question-title" data-i18n="map.title">Map</h2>
-      <div class="live-map-tools">
-        <label class="live-map-toggle"><input type="checkbox" id="map-details" checked>
-          <span data-i18n="map.details">Details</span></label>
-        <label class="live-map-toggle"><input type="checkbox" id="map-follow" checked>
-          <span data-i18n="map.follow">Follow the aircraft</span></label>
-        <button type="button" class="btn btn-small" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
-      </div>
-    </div>
-    <div class="live-map-wrap">
-      <div class="live-map" id="live-map"></div>
-      <!-- over the map's top: the texture under the pointer, told as it changes -->
-      <div class="live-map-bar is-hint" id="map-info" aria-live="polite"></div>
-    </div>
-    <div class="live-map-legend">
-      <span class="legend-title" data-i18n="map.legend_title">Sharpness on the ground:</span>
-      <span><i class="swatch is-zl19"></i><span data-i18n="map.legend_zl19">ZL19</span></span>
-      <span><i class="swatch is-zl18"></i><span data-i18n="map.legend_zl18">ZL18</span></span>
-      <span><i class="swatch is-zl17"></i><span data-i18n="map.legend_zl17">ZL17</span></span>
-      <span><i class="swatch is-zl16"></i><span data-i18n="map.legend_zl16">ZL16</span></span>
-      <span><i class="swatch is-zl15"></i><span data-i18n="map.legend_zl15">ZL15</span></span>
-      <span><i class="swatch is-less"></i><span data-i18n="map.legend_less">Blurrier</span></span>
-      <span><i class="swatch is-region"></i><span data-i18n="map.legend_region">Region installed</span></span>
-      <span id="legend-own-osxp" hidden><i class="swatch is-own is-osxp"></i><span data-i18n="map.legend_own_osxp">Your tiles</span></span>
-      <span id="legend-own-ortho4xp" hidden><i class="swatch is-own is-ortho4xp"></i><span data-i18n="map.legend_own_ortho4xp">Your Ortho4XP tiles</span></span>
-      <span id="legend-own-other" hidden><i class="swatch is-own is-other"></i><span data-i18n="map.legend_own_other">Other scenery</span></span>
-      <span><i class="swatch is-route"></i><span data-i18n="map.legend_route">Route</span></span>
-    </div>
-    <p class="question-help is-warn" id="map-error" hidden></p>
-  </section>
+      <p class="question-help" id="action-help"></p>
+    </section>
+  </div>
 
   <!-- the flight and the textures, a line each: the title, then its values one after the other -->
   <section class="question live-line">
