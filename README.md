@@ -17,6 +17,11 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 
 ## What you get
 
+- **OrthoStudio XP Live (beta, from 0.1.21).** Aerial imagery under your aircraft wherever you
+  fly, downloaded while you fly, as AutoOrtho does, with no tiles to build first. At its first
+  start the app asks what you want to do: fly now, with Live, or build your tiles. X-Plane waits
+  for the ortho on its loading screen at a flight's start, and never in flight. Its guide says how
+  it works and why it asks for so few settings: [docs/live.md](docs/live.md).
 - **A page with a map.** Click the squares you want, or draw a rectangle over them with Shift
   held, see the tiles already in X-Plane and the ones built but not in it, draw
   sharper zones around airports or anywhere you fly low (one zone may cover several tiles, and

@@ -4,35 +4,28 @@ A guide for users: what OrthoStudio XP Live does while you fly, what you do, and
 few settings. For the design and the measurements behind it, see [specs/live.md](specs/live.md) and
 [specs/live/](specs/live/).
 
-Until its launch, OrthoStudio XP Live is switched off and changes nothing in the rest of OrthoStudio
-XP. It is switched on by its own file, `~/.orthostudio/live.toml`:
+OrthoStudio XP Live comes with OrthoStudio XP from version 0.1.21, a beta, switched on. To switch
+it off, put this in `live.toml`, in OrthoStudio XP's own folder (`~/.orthostudio` on macOS and
+Linux, `%USERPROFILE%\.orthostudio` on Windows):
 
 ```toml
-enabled = true
+enabled = false
 ```
 
-It runs on macOS (Apple Silicon and Intel Macs), Windows and Linux, from OrthoStudio XP's folder
-with `uv run python -m orthostudio.live <command>`. `ui` opens its window; the other commands do
-the same from the terminal. It has flown with X-Plane on a Mac only so far.
+It runs on macOS (Apple Silicon and Intel Macs), Windows and Linux. It has flown with X-Plane on a
+Mac and on a Windows PC (a Shadow PC, 2026-10-02), not yet on Linux. From a checkout of the
+repository, `uv run python -m orthostudio.live <command>`: `ui` opens its window; the other commands
+do the same from the terminal.
 
 ## One app with OrthoStudio XP
 
-Switched on, Live and OrthoStudio XP are one app. At its first start the app asks what you want to
-do: fly now, with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless
-you untick the box, and opens that window at each start after; Live's settings (When the app
-starts) change it. Each window has a button to the other: Live in OrthoStudio XP's top bar, its dot
-saying whether Live streams, and Build tiles in Live's.
-
-To try it all as a user would, a checkout of the branch `live` makes its own app, beside the usual
-checkout's:
-
-```bash
-uv run python tools/package/live_preview_app.py
-```
-
-Drag `dist/OrthoStudio XP (aperçu Live).app` to the Dock. Its engine takes a port of its own (8651)
-and a log of its own (`serve-live-preview.log`), so that it never stops the usual app's, but both
-share your settings and your tiles: use one at a time.
+Live and OrthoStudio XP are one app. At its first start the app asks what you want to do: fly now,
+with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless you untick the
+box, and opens that window at each start after; Live's settings (When the app starts) change it.
+Each window has a button to the other: Live in OrthoStudio XP's top bar, its dot saying whether
+Live streams, and Build tiles in Live's. Where a computer cannot show the app's own window (a Linux
+without its libraries), both open in the browser, and Live stops by itself five minutes after its
+page was closed, unless it streams.
 
 ## What it is
 
@@ -44,8 +37,9 @@ them on the disk as ordinary files. X-Plane never waits for it, so there is noth
 
 ## What you do
 
-Open the OrthoStudio XP Live window: `uv run python -m orthostudio.live ui`. It has two tabs, as
-OrthoStudio XP's screens:
+The OrthoStudio XP Live window opens with the app, once you chose to fly, or with the Live button
+of OrthoStudio XP's window (`uv run python -m orthostudio.live ui` from a checkout). It has two
+tabs, as OrthoStudio XP's screens:
 
 - **Live**: the imagery source, chosen first and saved as soon as chosen, then Start; the map, the
   flight and the textures; what Live needs (X-Plane, a mesh, AutoOrtho not running, the plugin),
