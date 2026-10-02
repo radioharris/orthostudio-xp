@@ -3997,6 +3997,34 @@ def test_a_waiting_imagery_says_what_it_waits_for() -> None:
     assert got[5] == []
 
 
+def test_the_line_of_what_a_tile_does_is_set_aside_ready_to_come_back() -> None:
+    """The line under a tile's steps that said in words what it was doing (``tileActivity``) was
+    too much to read on every tile (a user, 2026-10-02): no row draws it, and the words stay in
+    each running bar's tooltip. Its code stays, commented, as it was made the same day: in every
+    row, one line high, a no-break space while nothing of the tile runs (shown only while a step
+    ran, it had made the rows grow and shrink), a longer phrase ending in an ellipsis."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    rows = _function_body(app_js, "updateTileRows")
+    live = [ln for ln in rows.splitlines() if not ln.strip().startswith("//")]
+    assert not [ln for ln in live if "tile-activity" in ln or "updateActivity(" in ln]
+    row = 'const row = h("div", { class: "tile-row" }, h("span", { class: "tile-name" }, tile.tile)'
+    assert f"{row}, steps);" in rows
+    # ready to come back: the commented lines, and the function they call
+    assert '// const activity = h("div", { class: "tile-activity" }, "\\u00a0");' in rows
+    assert f"// {row}, steps, activity);" in rows
+    assert "// updateActivity(v.activity.get(tile.tile), job, tile);" in rows
+    line = _function_body(app_js, "updateActivity")
+    assert ".hidden" not in line
+    assert 'if (!parts.length) line.append("\\u00a0");' in line
+    assert 'line.title = parts.length ? line.textContent : "";' in line
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rule = re.search(r"\n\.tile-activity \{(.*?)\}", css, re.S)
+    assert rule is not None
+    for prop in ("white-space: nowrap;", "overflow: hidden;", "text-overflow: ellipsis;"):
+        assert prop in rule.group(1)
+    assert "min-width: 0;" in rule.group(1)  # a grid item would widen the row to the phrase
+
+
 def test_two_squares_with_the_same_answer_are_not_called_different() -> None:
     """The Plan said "the chosen squares differ" for squares that did not (a user, 2026-09-18).
 
