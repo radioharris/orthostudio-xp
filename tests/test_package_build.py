@@ -23,6 +23,7 @@ import icon  # noqa: E402
 MAC = build.Target("macos", "arm64")
 INTEL_MAC = build.Target("macos", "x86_64")
 WINDOWS = build.Target("windows", "x64")
+WINDOWS_ARM = build.Target("windows", "arm64")
 LINUX = build.Target("linux", "x86_64")
 
 
@@ -156,21 +157,32 @@ def test_the_intel_app_may_run_under_rosetta_and_the_apple_silicon_one_may_not()
     )
 
 
-def test_the_python_asked_of_uv_names_the_mac_architecture() -> None:
+def test_the_python_asked_of_uv_names_the_architecture() -> None:
     assert MAC.python_request("3.14") == "cpython-3.14-macos-aarch64-none"
     assert INTEL_MAC.python_request("3.14") == "cpython-3.14-macos-x86_64-none"
-    assert WINDOWS.python_request("3.14") == "3.14" and LINUX.python_request("3.14") == "3.14"
+    assert WINDOWS.python_request("3.14") == "cpython-3.14-windows-x86_64-none"
+    assert WINDOWS_ARM.python_request("3.14") == "cpython-3.14-windows-aarch64-none"
+    assert LINUX.python_request("3.14") == "3.14"
 
 
-def test_only_macos_builds_for_another_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_a_mac_and_a_windows_on_arm_build_for_another_machine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import platform
     import subprocess
 
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
     assert build.this_target() == WINDOWS
-    with pytest.raises(SystemExit, match="only macOS"):
-        build.this_target("x86_64")
+    assert build.this_target("x64") == WINDOWS
+    for other in ("x86_64", "arm64"):  # an x64 PC runs no ARM app
+        with pytest.raises(SystemExit, match="for another machine"):
+            build.this_target(other)
+    # a Windows on ARM (a Parallels machine of an Apple Silicon Mac) builds the x64 app too, its
+    # Python's machine being the computer's, x64 Python or not
+    monkeypatch.setattr(platform, "machine", lambda: "ARM64")
+    assert build.this_target() == WINDOWS_ARM
+    assert build.this_target("x64") == WINDOWS
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     assert build.this_target() == INTEL_MAC  # an Intel Mac builds its own app

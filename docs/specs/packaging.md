@@ -241,6 +241,11 @@ Run on the system the installer is for, after Triangle4XP is built; Inno Setup 6
    4). The mitigation protects an elevated setup from junctions planted by an unprivileged user;
    this one runs as that user, without elevation.
 
+On Windows on ARM, `--machine x64` builds the x64 app, the release's: uv's x64 CPython and the
+x64 wheels, checked there under emulation, as an Apple Silicon Mac checks the Intel app under
+Rosetta. The Parallels machine of an Apple Silicon Mac built so the installer for an x64 PC
+(2026-10-02). Python's machine there is the computer's, an x64 Python or not.
+
 `--offline` takes the packages from uv's cache only. `tools/package/checkout_app.py` is another
 thing: a macOS app that runs a checkout's `.venv`, for development.
 

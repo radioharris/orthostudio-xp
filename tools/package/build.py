@@ -14,7 +14,8 @@ plugin in ``orthostudio/bin``, and the licences. What comes out, in ``dist/``:
   with ``--machine x86_64`` ``OrthoStudio-XP-<version>-macos-x86_64.dmg``, the app for Intel Macs
   (built and checked under Rosetta on Apple Silicon);
 - Windows: ``OrthoStudio-XP-<version>-windows-x64-setup.exe`` (Inno Setup, for the current user,
-  no administrator) and the same files as a ``.zip``;
+  no administrator) and the same files as a ``.zip``; on Windows on ARM, with ``--machine x64``
+  (checked there under emulation);
 - Linux: ``OrthoStudio-XP-<version>-linux-x86_64.tar.gz``, whose ``install.sh`` adds the menu entry.
 
 Nothing is signed: macOS and Windows warn at the first launch (``README.md``). Triangle4XP must be
@@ -124,11 +125,14 @@ class Target:
 
     def python_request(self, version: str) -> str:
         """What ``uv python install`` is asked for. The version alone gives the Python of the
-        machine uv runs on; on macOS the architecture is named, so that an Apple Silicon Mac
-        installs the Intel Python of the Intel app."""
-        if self.system != "macos":
-            return version
-        return f"cpython-{version}-macos-{MAC_UV_ARCH[self.machine]}-none"
+        machine uv runs on; on macOS and Windows the architecture is named, so that an Apple
+        Silicon Mac installs the Intel Python of the Intel app, and a Windows on ARM the x64
+        Python of the x64 app."""
+        if self.system == "macos":
+            return f"cpython-{version}-macos-{MAC_UV_ARCH[self.machine]}-none"
+        if self.system == "windows":
+            return f"cpython-{version}-windows-{WINDOWS_UV_ARCH[self.machine]}-none"
+        return version
 
 
 SYS_PLATFORM = {"macos": "darwin", "windows": "win32", "linux": "linux"}
@@ -141,6 +145,10 @@ otherwise."""
 MAC_UV_ARCH = {"arm64": "aarch64", "x86_64": "x86_64"}
 """The machines of the macOS apps, and uv's name for each (a user asked for Intel Macs,
 2026-09-17)."""
+WINDOWS_UV_ARCH = {"x64": "x86_64", "arm64": "aarch64"}
+"""The machines of the Windows apps, and uv's name for each. The release's is x64; a Windows on ARM
+builds it too (``--machine x64``), and runs it emulated to check it: the Parallels machine of an
+Apple Silicon Mac, where the app for an x64 PC was built and checked (2026-10-02)."""
 FOR_THIS_MAC = [False]
 """``--this-mac``: the app is built for the Mac it runs on, not for the release (see
 :func:`check_oldest_macos`)."""
@@ -150,15 +158,22 @@ runs on, and pyproj's Intel wheels ask for macOS 15: the Intel app is built on m
 
 
 def this_target(machine: str | None = None) -> Target:
-    """The system this runs on and its machine; on macOS, ``machine`` may name the other one: an
-    Apple Silicon Mac builds the Intel app too, and runs it under Rosetta to check it."""
+    """The system this runs on and its machine; ``machine`` may name another one that this
+    computer runs emulated, to check it: an Apple Silicon Mac builds the Intel app too, under
+    Rosetta, and a Windows on ARM the x64 app (Python's machine there is the computer's, x64
+    Python or not)."""
     system = {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
     host = platform.machine().lower()
     host = {"amd64": "x64", "x86_64": "x64" if system == "windows" else "x86_64"}.get(host, host)
     if machine is None or machine == host:
         return Target(system, host)
+    if system == "windows" and host == "arm64" and machine == "x64":
+        return Target(system, machine)
     if system != "macos" or machine not in MAC_UV_ARCH:
-        raise SystemExit(f"--machine {machine}: only macOS builds for another machine")
+        raise SystemExit(
+            f"--machine {machine}: only an Apple Silicon Mac (x86_64) and a Windows on ARM (x64) "
+            "build for another machine"
+        )
     if host == "arm64" and machine == "x86_64":
         rosetta = subprocess.run(["arch", "-x86_64", "/usr/bin/true"], check=False)
         if rosetta.returncode:
@@ -1074,8 +1089,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--machine",
-        choices=sorted(MAC_UV_ARCH),
-        help="macOS only: the machine of the app (x86_64: the Intel app, on Apple Silicon too)",
+        choices=sorted({*MAC_UV_ARCH, *WINDOWS_UV_ARCH}),
+        help="the machine of the app: on macOS x86_64, the Intel app (on Apple Silicon too); on "
+        "Windows x64, the x64 app (on Windows on ARM too)",
     )
     args = parser.parse_args(argv)
     if args.offline:
