@@ -1,43 +1,41 @@
 /* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
    Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
 /* The Live window: OrthoStudio XP's styles.css, whose cards, fields, gaps and dialogs it uses as
-   they are (.question, .sub-question, .question-help, .with-unit, .path-row, .dialog), and these
-   few of its own, made of its tokens. */
+   they are (.question, .sub-question, .question-help, .with-unit, .path-row, .field-row, .kv,
+   .dialog), and these few of its own, made of its tokens. */
 
-.live { max-width: 1100px; }
+/* the state on one line: a dot, the title, what to do; the countdown under it while X-Plane waits */
+.live-state-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.live-state-head h1, .live-state-head p { margin: 0; }
+.live-state-head p { flex: 1 1 320px; }
+.live-hold .progress { margin-top: var(--gap); }
 
-/* the state: a dot before the title, the countdown while X-Plane waits */
-.live-state-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--title-gap); }
-.live-state-head h1 { margin: 0; }
-.live-hold .progress { height: 10px; border-radius: 5px; margin-top: var(--gap); }
+/* OrthoStudio XP's row of fields, its fields narrow, the buttons after them */
+.live-controls > .field { flex: none; }
+.live-source { width: 15em; }
+.live-departure { width: 19em; }
+.live-departure-input { text-transform: uppercase; }
+.live-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+/* the photos' credit at the row's end, on the buttons' line */
+.live-credit { margin-left: auto; line-height: 28px; }
+.live-departure-update { margin-top: var(--help-gap); max-width: 40em; }
+.live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
-/* two cards side by side, as OrthoStudio XP's columns */
-.live-cols { gap: 0 var(--block-gap); }
-
+/* the flight and the textures, a line each: the title, then OrthoStudio XP's .kv along the line */
+.live-line-head { display: flex; align-items: baseline; gap: 16px; }
+.live-line-head h2, .live-line-head p { margin: 0; flex: none; }
+.live-kv { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; flex: 1 1 0; min-width: 0; }
+.live-kv > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.live-kv dd { text-align: left; overflow-wrap: anywhere; }
+.live .kv .none { color: var(--fg-3); }
 .live-disk { margin-top: var(--gap); }
 .live-disk.warn > span { background: var(--warn); }
-
-.live .kv dd { text-align: left; overflow-wrap: anywhere; }
-.live .kv .none { color: var(--fg-3); }
 
 .live-checks { list-style: none; margin: 0; padding: 0; }
 .live-checks li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; overflow-wrap: anywhere; }
 .live-checks .dot { margin-top: 4px; }
 .dot-warn { border-color: var(--warn); background: var(--warn); }
 .dot-info { border-color: var(--accent); }
-
-/* the imagery source, chosen first, before Start: the list beside its title, its credit and
-   notes under them */
-.live-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: var(--gap) 0; }
-.live-source .sub-question-title { display: inline; margin: 0; }
-.live-source-select { width: auto; min-width: 16em; max-width: 100%; }
-.live-source > p { flex: 1 0 100%; margin: 0; }
-.live-departure { margin: var(--gap) 0; }
-.live-departure .path-row { max-width: 32em; }
-.live-departure-input { text-transform: uppercase; }
-.live-departure > p { margin: 4px 0 0; }
-.live-departure-update { margin-top: 6px; max-width: 32em; }
-.live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
 /* a button to the regions, beside what asks for one */
 .live-go { margin-left: 6px; vertical-align: baseline; }
@@ -77,24 +75,14 @@
 .region-size { color: var(--fg-2); font-size: var(--fs-2); min-width: 5em; font-variant-numeric: tabular-nums; }
 .region-state { color: var(--fg-2); font-size: var(--fs-2); flex: 1; }
 .region-actions { display: flex; gap: 6px; margin-left: auto; }
-.region-progress { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
-.region .progress { height: 8px; border-radius: 4px; margin-top: 4px; }
+.region-progress { font-variant-numeric: tabular-nums; }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
-/* the map on two thirds of the width, the flight and the textures beside it, stacked */
-.live-main {
-  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--block-gap);
-  align-items: stretch; margin-bottom: var(--block-gap);
-}
-.live-main .live-map-card { display: flex; flex-direction: column; margin: 0; }
-.live-side { display: flex; flex-direction: column; gap: var(--block-gap); min-width: 0; }
-/* half the height each, as long as neither needs more (empty before a flight) */
-.live-side > .question { margin: 0; flex: 1 1 0; }
-@media (max-width: 900px) { .live-main { grid-template-columns: minmax(0, 1fr); } }
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .live-map-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .live-map-toggle { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2); cursor: pointer; }
-.live-map-wrap { position: relative; flex: 1 1 auto; min-height: 420px; margin-top: var(--gap); }
+/* the map, large: most of the window's height, never small */
+.live-map-wrap { position: relative; height: max(460px, 68vh); margin-top: var(--gap); }
 .live-map { position: absolute; inset: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
 /* over the map's top, right of the zoom buttons: one line, two at most, the map still usable under */
 .live-map-bar {
@@ -105,7 +93,7 @@
 .live-map-bar.is-hint { color: rgba(242, 242, 242, 0.7); }
 .live-map-bar b { font-family: var(--mono); font-weight: 600; }
 .live-map-bar .info-warn { color: #ffb347; }
-.live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: var(--fs-2); color: var(--fg-2); }
+.live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: var(--help-gap); font-size: var(--fs-2); color: var(--fg-2); }
 .live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
 .live-map-legend .legend-title { color: var(--fg); }

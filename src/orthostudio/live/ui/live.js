@@ -57,6 +57,7 @@ const gb = (bytes) => number(bytes / 1e9, 1);
 
 // --- drawing -----------------------------------------------------------------------------------
 
+/** Names and values along a line, each name kept with its value where the line breaks. */
 function kv(dl, rows) {
   dl.replaceChildren();
   for (const [label, value] of rows) {
@@ -69,7 +70,9 @@ function kv(dl, rows) {
     } else {
       dd.textContent = value;
     }
-    dl.append(dt, dd);
+    const pair = document.createElement("div");
+    pair.append(dt, dd);
+    dl.append(pair);
   }
 }
 
