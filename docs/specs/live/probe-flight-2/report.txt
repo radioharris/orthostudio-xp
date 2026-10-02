@@ -1,0 +1,94 @@
+X-StreamOrtho probe report: ecran
+========================================================================
+trace: 1335649 X-Plane events kept over 29.1 min, 0 lines not understood
+track: 6888 positions over 24.8 min, 70 km flown, max 2521 ft, max 210 kt
+test textures: 2437 touched, 4725 opens, 56557 disk reads from page faults, 0 explicit reads; DSF opens: 103
+  356 failed opens of wanted files, e.g. +46+003.dsf, +44+003.dsf, +45+003.dsf
+
+1. How X-Plane loads a texture
+------------------------------------------------------------------------
+what one open reads from the disk (H = header; level 0 = 4096 px, 1 = 2048, 2 = 1024, 3 = 512, 4 = 256):
+    2437 x  H level 4
+    1436 x  H level 3
+     269 x  level 2
+     193 x  H level 2
+     113 x  level 1
+     104 x  (nothing from disk)
+      65 x  H level 1
+      59 x  level 0
+finest level a texture reached: level -1: 6, level 0: 59, level 1: 86, level 2: 278, level 3: 899, level 4: 1109
+opens per texture: median 2, max 9
+
+2. Distance to the texture centre when a level is first asked for (en route, > 100 kt)
+------------------------------------------------------------------------
+  level  textures   p10 median    p90 km   median AGL ft   median time to overhead s
+     -1         6     7.4   11.8   11.9            1775                         111
+      0        20     3.0   11.9   20.5            1403                         112
+      1        31     5.1   37.1   37.6            1612                         348
+      2         8     9.3   17.7   17.8            1429                         166
+
+3. Does X-Plane open the file again for a sharper level?
+------------------------------------------------------------------------
+  sharper level after a new open(): 1845
+  sharper level from an earlier open, > 2 s later (kept mapping): 0
+  => 100% reopen: a texture replaced with rename() before X-Plane wants it sharper is seen.
+
+4. Demand: textures asked for at full resolution per minute (level 0, or the finest seen)
+------------------------------------------------------------------------
+  level 0: 62 textures over 25 min; per minute median 0, p90 6, peak 24
+    minute 10: 24 textures at 763 ft, 0 kt
+    minute 0: 10 textures at 763 ft, 0 kt
+    minute 7: 8 textures at 763 ft, 0 kt
+  time from X-Plane's first open of a texture to its level 0 (en route): p10 906 s, median 1024 s, p90 1477 s
+  test texture bytes read from the disk: 2.36 GB
+
+5. DSF loads
+------------------------------------------------------------------------
+  12 tiles loaded, 103 DSF opens across all packs
+  time from a tile's DSF load to level 0 of its textures (en route): p10 15.1 min, median 17.1 min
+
+6. Swap test: textures replaced ahead of the aircraft during the flight
+------------------------------------------------------------------------
+  119 textures swapped (8k), grouped by their distance when swapped:
+  swapped 0-50 km ahead: 119
+       79  read the new file (template C's blocks)
+       40  not opened again after the swap
+    first read of the new file: median 37 km from the aircraft, 29 s after the swap
+    finest level read from the new files: level -1 (8192 px): 6, level 0 (4096 px): 24, level 1 (2048 px): 38, level 2 (1024 px): 11
+    read past the size of a 4096 px file (so as the 8192 px file it is now): 79 of 119
+
+7. By screen: the levels first read in each phase of window size and field of view
+------------------------------------------------------------------------
+  1579x1055 px, field of view 64.9 deg, 03:07:32-03:14:25 (6.9 min):
+    ZL16 level 0 (4096 px): 4 textures, farthest 11.2 km, median 10.2 km, the last 7.1 min into the phase
+    ZL16 level 1 (2048 px): 15 textures, farthest 19.9 km, median 17.4 km, the last 7.1 min into the phase
+    ZL16 level 2 (1024 px): 58 textures, farthest 37.0 km, median 31.5 km, the last 7.1 min into the phase
+    ZL16 level 3 (512 px): 221 textures, farthest 72.0 km, median 59.0 km, the last 7.0 min into the phase
+    ZL18 level 0 (4096 px): 4 textures, farthest 2.6 km, median 2.4 km, the last 7.1 min into the phase
+    ZL18 level 1 (2048 px): 3 textures, farthest 4.0 km, median 4.0 km, the last 7.1 min into the phase
+    ZL18 level 3 (512 px): 19 textures, farthest 17.4 km, median 14.7 km, the last 7.1 min into the phase
+  2704x1756 px, field of view 64.9 deg, 03:14:26-03:17:13 (2.8 min):
+    ZL16 level 0 (4096 px): 4 textures, farthest 11.2 km, median 10.2 km, the last 0.2 min into the phase
+    ZL16 level 1 (2048 px): 15 textures, farthest 19.9 km, median 17.4 km, the last 0.2 min into the phase
+    ZL16 level 2 (1024 px): 81 textures, farthest 77.5 km, median 33.6 km, the last 3.1 min into the phase
+    ZL16 level 3 (512 px): 701 textures, farthest 160.8 km, median 94.8 km, the last 3.1 min into the phase
+    ZL18 level 0 (4096 px): 4 textures, farthest 2.6 km, median 2.4 km, the last 0.2 min into the phase
+    ZL18 level 1 (2048 px): 3 textures, farthest 4.0 km, median 4.0 km, the last 0.2 min into the phase
+    ZL18 level 3 (512 px): 47 textures, farthest 36.2 km, median 24.6 km, the last 2.9 min into the phase
+  2704x1756 px, field of view 33.5 deg, 03:17:18-03:20:01 (2.7 min):
+    ZL16 level 0 (4096 px): 20 textures, farthest 20.5 km, median 17.0 km, the last 0.7 min into the phase
+    ZL16 level 1 (2048 px): 75 textures, farthest 39.2 km, median 31.5 km, the last 0.7 min into the phase
+    ZL16 level 2 (1024 px): 275 textures, farthest 75.8 km, median 60.1 km, the last 0.7 min into the phase
+    ZL16 level 3 (512 px): 760 textures, farthest 150.6 km, median 113.9 km, the last 0.5 min into the phase
+    ZL18 level 0 (4096 px): 4 textures, farthest 5.3 km, median 4.0 km, the last 0.7 min into the phase
+    ZL18 level 1 (2048 px): 2 textures, farthest 5.6 km, median 5.6 km, the last 0.7 min into the phase
+    ZL18 level 2 (1024 px): 22 textures, farthest 18.2 km, median 14.3 km, the last 0.7 min into the phase
+    ZL18 level 3 (512 px): 12 textures, farthest 36.8 km, median 30.1 km, the last 0.5 min into the phase
+  2704x1756 px, field of view 65 deg, 03:20:07-03:32:22 (12.3 min):
+    ZL16 level -1 (8192 px): 5 textures, farthest 11.9 km, median 11.8 km, the last 12.2 min into the phase
+    ZL16 level 0 (4096 px): 15 textures, farthest 20.5 km, median 20.4 km, the last 11.9 min into the phase
+    ZL16 level 1 (2048 px): 26 textures, farthest 37.7 km, median 37.1 km, the last 12.1 min into the phase
+    ZL18 level -1 (8192 px): 1 textures, farthest 2.9 km, median 2.9 km, the last 7.7 min into the phase
+    ZL18 level 0 (4096 px): 5 textures, farthest 5.1 km, median 3.0 km, the last 6.9 min into the phase
+    ZL18 level 1 (2048 px): 5 textures, farthest 5.1 km, median 5.1 km, the last 6.7 min into the phase
+    ZL18 level 2 (1024 px): 8 textures, farthest 17.8 km, median 17.7 km, the last 11.6 min into the phase
