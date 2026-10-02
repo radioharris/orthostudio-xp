@@ -46,6 +46,8 @@
 .question.is-pointed { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .live .log pre { max-height: 360px; }
+/* the log's file, between the title and the lines: inside the box as they are */
+.live .log #log-file { padding: 0 10px; }
 
 /* the app's question at its first start (welcome.html): two cards of the same weight */
 .welcome { max-width: 1000px; display: flex; flex-direction: column; align-items: center; gap: var(--section-gap); padding-top: 48px; }
