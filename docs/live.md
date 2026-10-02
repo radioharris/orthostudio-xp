@@ -326,7 +326,9 @@ computer's own disk or on a disk of the same kind: APFS on a Mac, NTFS on Window
 never Mac OS Extended, exFAT or FAT32, which would take every texture round the aircraft whole.
 Not OrthoStudio XP's data folder, which may move to another disk for a while: a pack following
 it would be set up again there, and what it held left behind. A folder whose disk is not plugged in
-is never made on the computer's own disk instead: Live says so and does not start.
+is never made on the computer's own disk instead: Live says so and does not start. On Windows,
+Live keeps its folder out of Windows Search (a rule it adds itself, as the Indexing Options do):
+listing its hundreds of thousands of files kept the indexer busy for whole flights.
 
 - `pack`: the scenery X-Plane reads (linked into Custom Scenery as `z_osxp_live` while OrthoStudio
   XP Live runs). Every DSF of the region is there; the files they name only round the aircraft,

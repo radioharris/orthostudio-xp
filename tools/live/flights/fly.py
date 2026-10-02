@@ -819,7 +819,8 @@ def summary_lines(folder: Path) -> list[str]:
         or "OUTSIDE LIVE'S MODEL" in ln
         or "LOADED AGAIN" in ln
     ]
-    loads = sum(1 for ln in text.splitlines() if ln.startswith("- **load "))
+    # each load once: the report names it again in what X-Plane and the computer did during it
+    loads = sum(1 for ln in text.splitlines() if ln.startswith("- **load ") and ", aircraft " in ln)
     return [f"- {loads} scenery loads during the path", *keep]
 
 

@@ -204,6 +204,9 @@ def prepare(options: Options, log: Log) -> Prepared:
         check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)
     except FolderError as e:
         raise RefusedError(f"Live's folder: {e}. Choose another in the Live window.") from e
+    from orthostudio.live import winsearch
+
+    winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
     sources = [options.source] if options.source else default_sources(xp_dir)
     if not sources or not all((s / "terrain").is_dir() for s in sources):
         # the files the DSFs name come from the regions while Live streams, round the aircraft

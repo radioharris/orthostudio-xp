@@ -135,11 +135,18 @@ def test_the_regions_github_lists(github: FakeGitHub, tmp_path: Path) -> None:
         catalog(tmp_path / "elsewhere", client=offline)
 
 
-def test_an_install_as_autoortho_s_own(github: FakeGitHub, tmp_path: Path) -> None:
+def test_an_install_as_autoortho_s_own(
+    github: FakeGitHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.live import winsearch
+
+    kept_out: list[Path] = []
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: kept_out.append(folder))
     with github.client() as client:
         region = catalog(tmp_path, client=client)["eur"]
         progress = Installer(tmp_path, region, client=client, log=lambda _: None).run()
     assert progress.phase == "done", progress.error
+    assert kept_out == [tmp_path]  # Live's folder out of Windows Search before its files come
     assert progress.done_bytes == progress.total_bytes == region.size
     mesh = tmp_path / "regions" / "z_ao_eur"
     assert sorted(p.name for p in (mesh / "Earth nav data" / "+40+000").iterdir()) == [

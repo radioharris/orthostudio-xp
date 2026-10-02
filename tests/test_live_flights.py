@@ -339,6 +339,20 @@ def test_the_runner_says_when_xplane_went(tmp_path: Path, monkeypatch: pytest.Mo
     assert fly.wait_flight(tmp_path, sc, 1e18)[0] == "X-Plane quit"
 
 
+def test_the_series_summary_counts_each_load_once(tmp_path: Path) -> None:
+    """The report names a load twice: where it was, then what X-Plane and the computer did."""
+    (tmp_path / "report.md").write_text(
+        "## X-Plane's scenery loads\n"
+        "- **start**: 12 tiles\n"
+        "- **load 1** at path 618 s, aircraft 44.100 +1.510 (lat x.100, lon x.510): 4 tiles\n"
+        "- **load 2** at path 741 s, aircraft 44.184 +1.650 (lat x.184, lon x.650): 3 tiles\n"
+        "## X-Plane and the computer during the loads\n"
+        "- **load 1** at path 618 s: 35 s, X-Plane 3.02 cores\n"
+        "- **load 2** at path 741 s: 28 s, X-Plane 2.92 cores\n"
+    )
+    assert fly.summary_lines(tmp_path)[0] == "- 2 scenery loads during the path"
+
+
 def test_a_cold_live_keeps_the_users_settings_but_not_their_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

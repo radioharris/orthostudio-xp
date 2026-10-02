@@ -445,6 +445,9 @@ class Installer:
         return self.progress
 
     def _run(self) -> None:
+        from orthostudio.live import winsearch
+
+        winsearch.keep_out(self.root, self.log)  # Windows: the region's files too many to index
         region = self.region
         state = self._state()  # another release's leftovers go first
         self._save(state)
