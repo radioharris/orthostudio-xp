@@ -135,6 +135,17 @@ path, its dates). The `.pyc` files are compiled at build time, their recorded pa
 the `python` folder, and the `_sysconfigdata` of the CPython gets back the `/install` prefix uv
 replaced: no path of the build machine is left in an installer.
 
+Every `.pyc` the app carries, the standard library's and every package's, is written by hash and
+never checked against its source (`build.py` `BYTECODE_MODE`, `compileall -f --invalidation-mode
+unchecked-hash`), so that no file time decides whether Python loads it. A timestamp `.pyc` holds
+its source's mtime, and the Windows setup restores the files' times as the build machine's local
+time, GitHub's runner being on UTC: at UTC+2 every `.py` was two hours older than its `.pyc` said,
+and the first start after each install or update compiled the app again. In a Windows VM the
+engine's imports wrote 969 `.pyc` in 12.6 s, then took 1.7 s; on a cloud PC, whose antivirus reads
+each new file, the opening page said "Starting takes long" past 45 s (a user, 2026-10-02). Every
+Windows version since 0.1.0 did so. The zip's times, local too, did the same, and the standard
+library's own `.pyc` were out of date on every system, its files copied after they were written.
+
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of

@@ -5,8 +5,10 @@ Python): ``docs/specs/packaging.md``."""
 
 from __future__ import annotations
 
+import os
 import plistlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -288,6 +290,34 @@ def test_the_pruning_keeps_what_the_app_runs(tmp_path: Path) -> None:
     assert (site / "orthostudio" / "tilefiles" / "tests" / "keep.py").is_file()
     assert sorted(p.name for p in (root / "bin").iterdir()) == ["idle3"]
     assert build.python_root_of(site) == root
+
+
+def test_the_bytecode_is_loaded_whatever_the_files_times(tmp_path: Path) -> None:
+    """The Windows installer puts the files' times back as the build machine's local time, UTC:
+    two hours off at UTC+2, every timestamp .pyc was out of date, and the first start after an
+    install compiled them all again (969 files, 12.6 s against 1.7 s in a Windows VM; past 45 s on
+    a cloud PC, a user, 2026-10-02). The .pyc of the standard library and of every package are
+    written to be loaded without asking their source's time."""
+    stdlib = tmp_path / "python" / "lib" / "python3.14"
+    package = stdlib / "site-packages" / "demo_pkg"
+    _script(stdlib / "demo_std.py", "VALUE = 1\n")
+    _script(package / "__init__.py", "VALUE = 2\n")
+
+    build.compile_bytecode(Path(sys.executable), package)
+
+    pycs = sorted(stdlib.rglob("*.pyc"))
+    assert {pyc.parent.parent.name for pyc in pycs} == {"python3.14", "demo_pkg"}
+    for pyc in pycs:
+        assert int.from_bytes(pyc.read_bytes()[4:8], "little") == 1  # by hash, never checked
+    # two hours back, as at UTC+2: the .pyc are loaded as they are, none is written again
+    for source in (stdlib / "demo_std.py", package / "__init__.py"):
+        st = source.stat()
+        os.utime(source, (st.st_atime, st.st_mtime - 7200))
+    written = {pyc: pyc.stat().st_mtime_ns for pyc in pycs}
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+    env["PYTHONPATH"] = os.pathsep.join([str(stdlib), str(stdlib / "site-packages")])
+    subprocess.run([sys.executable, "-c", "import demo_std, demo_pkg"], env=env, check=True)
+    assert {pyc: pyc.stat().st_mtime_ns for pyc in sorted(stdlib.rglob("*.pyc"))} == written
 
 
 @pytest.mark.parametrize("size", [16, 256])

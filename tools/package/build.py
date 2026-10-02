@@ -590,15 +590,30 @@ def prune(package: Path) -> None:
             script.unlink()
 
 
+BYTECODE_MODE = "unchecked-hash"
+"""How the ``.pyc`` the app carries are written: loaded as they are, their source's time never
+asked. A timestamp ``.pyc`` holds its source's mtime, and the Windows installer puts the files'
+times back as the build machine's local time, GitHub's runner being on UTC: on a PC two hours
+off, every ``.py`` was older than its ``.pyc`` said, so every ``.pyc`` was out of date and the
+first start after an install compiled them all again. In a Windows VM at UTC+2 the engine's
+imports wrote 969 of them in 12.6 s, against 1.7 s the next time; a cloud PC, whose antivirus
+reads each new file, showed "Starting takes long" past 45 s (a user, 2026-10-02). The zip's times,
+local too, did the same, and the standard library's own ``.pyc`` were out of date everywhere, its
+files copied after they were written."""
+
+
 def compile_bytecode(python: Path, package: Path) -> None:
-    """The ``.pyc`` of every installed package, as the app will load them, recorded relative to the
-    app's ``python`` folder rather than to the build folder (Python puts the real path back when it
-    loads them)."""
+    """The ``.pyc`` of the whole Python the app carries, its standard library and every installed
+    package, in :data:`BYTECODE_MODE` (``-f`` writes them all again in it), recorded relative to
+    the app's ``python`` folder rather than to the build folder (Python puts the real path back
+    when it loads them)."""
     site = package.parent
     python_root = python_root_of(site)
-    run(
-        [python, "-I", "-m", "compileall", "-q", "-j", "0", "-s", python_root, "-p", "python", site]
-    )
+    command = [
+        python, "-I", "-m", "compileall", "-q", "-f", "-j", "0",
+        "--invalidation-mode", BYTECODE_MODE, "-s", python_root, "-p", "python", site.parent,
+    ]  # fmt: skip
+    run(command)
 
 
 def install_programs(target: Target, package: Path) -> None:
