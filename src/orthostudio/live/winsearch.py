@@ -155,7 +155,7 @@ def keep_out(folder: Path, log: Callable[[str], None] | None = None) -> bool:
 
     added = bool(_with_scope(work))
     if added and log is not None:
-        log(f"Live's folder kept out of Windows Search, its files too many to list: {folder}")
+        log(f"kept out of Windows Search, its files too many to list: {folder}")
     return added
 
 

@@ -62,8 +62,12 @@ def wait_quiet(max_s: float = QUIET_MAX_S) -> bool:
 
 def main(choice: str, kit: Path) -> int:
     from orthostudio.live import winsearch
+    from orthostudio.live.pack import live_root
 
-    winsearch.keep_out(kit.resolve(), print)
+    # before the first flight, X-Plane alone: the kit's folder and the user's Live folder (its
+    # region's hundreds of thousands of files) out of Windows Search, which then has done
+    for folder in (kit.resolve(), live_root()):
+        winsearch.keep_out(folder, print)
     before = set(fly.RESULTS.iterdir()) if fly.RESULTS.is_dir() else set()
     codes = []
     for args in RUNS[choice]:
