@@ -15,6 +15,11 @@
 /* X-Plane's button under Live's: the gap of a field to the next */
 .live-state .actions + .actions { margin-top: var(--gap); }
 .live-departure-update { margin-top: var(--help-gap); }
+/* the plan line's button: a small arrow after the plan's name, turning while SimBrief is asked
+   (OrthoStudio XP's spin) */
+.live-refresh { min-width: 24px; padding: 0 5px; margin-left: 4px; vertical-align: middle; }
+.live-refresh svg { display: block; width: 14px; height: 14px; }
+.live-refresh.is-busy svg { animation: spin 0.8s linear infinite; }
 .live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
 
 /* OrthoStudio XP's .kv, each name and its value kept together (live.js kv): in its grid in the

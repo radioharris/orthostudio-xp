@@ -280,6 +280,7 @@ async def test_the_page_s_quit(home: Path) -> None:
     async with client_for(create_live_app(control)) as client:
         page = (await client.get("/")).text
         assert 'id="quit-btn"' in page and 'id="quit-confirm"' in page
+        assert 'id="departure-check"' in page  # SimBrief asked at once for a newer plan
         assert not control.gone()
         assert (await client.post("/api/live/close")).json() == {"state": "idle"}
     assert control.gone() and control.leaving_for is None

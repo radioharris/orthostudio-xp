@@ -121,7 +121,14 @@
             <button type="button" class="btn" id="departure-btn" data-i18n="departure.prepare">Prepare</button>
           </div>
           <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
-          <p class="question-help" id="departure-plan" hidden></p>
+          <!-- the plan the box comes from, and a button asking SimBrief at once for a newer one -->
+          <p class="question-help" id="departure-plan" hidden><span id="departure-plan-text"></span>
+            <button type="button" class="btn btn-small live-refresh" id="departure-check" data-i18n-title="departure.check"
+                    data-i18n-aria-label="departure.check" title="Look on SimBrief for a newer plan" aria-label="Look on SimBrief for a newer plan">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button></p>
           <!-- a newer SimBrief plan than the box's, offered in OrthoStudio XP's yellow notice: never
                put in the box unasked -->
           <div class="overlay-notice live-departure-update" id="departure-update" role="status" hidden>

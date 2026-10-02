@@ -118,10 +118,11 @@ def live_router(
         return {"state": control.state}
 
     @router.get("/departure")
-    def departure(fresh: bool = False) -> dict[str, str]:
+    def departure(fresh: bool = False, now: bool = False) -> dict[str, str]:
         """What the "Prepare" box offers: the departure of the pilot's last SimBrief plan;
-        ``fresh``: asked again sooner, the window looking for a new plan."""
-        return control.departure_suggestion(fresh=fresh)
+        ``fresh``: asked again sooner, the window looking for a new plan; ``now``: at once, the
+        pilot asking with the plan line's button."""
+        return control.departure_suggestion(fresh=fresh, now=now)
 
     @router.post("/prepare", status_code=202)
     def prepare(body: PrepareBody) -> dict[str, Any]:

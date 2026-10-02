@@ -859,7 +859,7 @@ function drawDeparture() {
   const box = $("departure").value.trim().toUpperCase();
   const named = departurePlan && box === departurePlan.icao.toUpperCase();
   $("departure-plan").hidden = !named;
-  $("departure-plan").textContent = named ? t("departure.from_plan", { plan: departurePlan.plan }) : "";
+  $("departure-plan-text").textContent = named ? t("departure.from_plan", { plan: departurePlan.plan }) : "";
   $("departure-update").hidden = !departureOffer;
   $("departure-update-text").textContent = !departureOffer
     ? ""
@@ -871,13 +871,15 @@ function drawDeparture() {
 /**
  * The pilot's last SimBrief plan: its departure put in the box while the box is empty, a newer plan
  * offered once the box holds one. `fresh`: asked again, at most every DEPARTURE_AGAIN_MS unless
- * `now` (a new SimBrief name), the pilot perhaps back from simbrief.com with a new plan.
+ * `now` (a new SimBrief name, the plan line's button), the pilot perhaps back from simbrief.com
+ * with a new plan. What SimBrief gave, or null when Live did not answer.
  */
 async function suggestDeparture({ fresh = false, now = false } = {}) {
-  if (fresh && !now && Date.now() - departureAskedAt < DEPARTURE_AGAIN_MS) return;
+  if (fresh && !now && Date.now() - departureAskedAt < DEPARTURE_AGAIN_MS) return null;
   departureAskedAt = Date.now();
+  let got = null;
   try {
-    const got = await api(fresh ? "departure?fresh=true" : "departure");
+    got = await api(now ? "departure?fresh=true&now=true" : fresh ? "departure?fresh=true" : "departure");
     const view = departureView(departurePlan, got, $("departure").value);
     if (view.fill) $("departure").value = view.fill;
     departurePlan = view.shown;
@@ -886,6 +888,23 @@ async function suggestDeparture({ fresh = false, now = false } = {}) {
     // no suggestion: the box stays as it is
   }
   drawDeparture();
+  return got;
+}
+
+/** The plan line's button: SimBrief asked at once, the arrow turning meanwhile; a newer plan shows
+ * in the yellow notice, else a word says that none came (the user asked, 2026-10-03). */
+async function checkDeparture() {
+  const button = $("departure-check");
+  if (button.classList.contains("is-busy")) return;
+  button.classList.add("is-busy");
+  let got = null;
+  try {
+    got = await suggestDeparture({ fresh: true, now: true });
+  } finally {
+    button.classList.remove("is-busy");
+  }
+  if (!got?.icao) toast(t("departure.no_plan"));
+  else if (!departureOffer) toast(t("departure.no_newer"));
 }
 
 /** The newer plan taken: its departure in the box, named under it, its route on the map. */
@@ -1179,6 +1198,7 @@ function boot() {
   });
   $("departure").addEventListener("input", drawDeparture);
   $("departure-load").addEventListener("click", loadDeparture);
+  $("departure-check").addEventListener("click", checkDeparture);
   // a new SimBrief plan: looked for when the pilot comes back to the window (from simbrief.com,
   // say), and every two minutes while it is shown
   window.addEventListener("focus", () => suggestDeparture({ fresh: true }));

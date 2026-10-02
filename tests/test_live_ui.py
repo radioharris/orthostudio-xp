@@ -633,6 +633,12 @@ def test_the_departure_offered_is_the_last_simbrief_plan_s(home: Path) -> None:
     assert asked == ["pilot"]
     assert c.departure_suggestion(fresh=True) == plan
     assert asked == ["pilot", "pilot"]
+    # the plan line's button: at once, though asked a moment ago, but not more than every NOW_S
+    assert c.departure_suggestion(now=True) == plan
+    assert asked == ["pilot", "pilot"]
+    c._suggested = (c._suggested[0] - control_module.NOW_S, *c._suggested[1:])
+    assert c.departure_suggestion(now=True) == plan
+    assert asked == ["pilot", "pilot", "pilot"]
 
 
 def test_a_new_simbrief_plan_is_another_briefing(home: Path) -> None:

@@ -61,6 +61,7 @@ IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
 STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
 SUGGEST_S = 300.0  # the departure of the pilot's last SimBrief plan, asked at most this often
 FRESH_S = 30.0  # as often, while the window looks for a new plan (the pilot back from simbrief.com)
+NOW_S = 5.0  # as often, asked by the button of the window's plan line: at once, but no faster
 
 
 def resolve_departure(text: str) -> tuple[float, float]:
@@ -358,17 +359,19 @@ class LiveControl:
             wanted, self._departure = self._departure, None
         return wanted
 
-    def departure_suggestion(self, fresh: bool = False) -> dict[str, str]:
+    def departure_suggestion(self, fresh: bool = False, now: bool = False) -> dict[str, str]:
         """The departure of the pilot's last SimBrief plan, which the window's "Prepare" box
         offers: {"icao": "LFMN", "plan": "LFMN-LFPG", "briefing": "123456"}, the briefing telling
         the window a new plan from the one it shows; {} where no SimBrief name is set in Live's
         settings (nothing is asked of simbrief.com then) or no plan came. Asked at most every
-        SUGGEST_S, or FRESH_S when the window looks for a new plan (``fresh``)."""
+        SUGGEST_S, FRESH_S when the window looks for a new plan (``fresh``), NOW_S when the pilot
+        asks with the plan line's button (``now``)."""
         user = self._settings().simbrief_user.strip()
         if not user:
             return {}
         at, asked_for, got = self._suggested
-        if asked_for == user and time.monotonic() - at < (FRESH_S if fresh else SUGGEST_S):
+        wait = NOW_S if now else FRESH_S if fresh else SUGGEST_S
+        if asked_for == user and time.monotonic() - at < wait:
             return got
         if self._simbrief is not None:
             plan, _why = self._simbrief(user)
