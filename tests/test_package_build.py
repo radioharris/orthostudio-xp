@@ -105,6 +105,8 @@ def test_the_windows_uninstaller_removes_the_program_and_nothing_else(tmp_path: 
     assert "DelTree" not in after and "DeleteFile" not in after
     assert "junctions" in after and ".orthostudio" in code
     assert "MsgBox" in after and "mbInformation" in after
+    # but not in a silent removal, where its box waited for an OK nobody would click
+    assert after.index("if UninstallSilent then") < after.index("MsgBox(")
     # a data folder chosen on another disk is named too, so the room is not lost track of
     assert "ChosenDataDir" in after
 

@@ -29,7 +29,9 @@ them by hand would cost. **The tiles installed into X-Plane are junctions into t
 copies** (`orthostudio/install/packs.py`): taking it away empties X-Plane of every tile built
 here and leaves dead links. An offer to remove it was written and taken out again, for that
 reason: a checkbox nobody reads twice cannot be the thing standing between a user and hours of
-building. An install over an older version asks nothing and takes nothing either.
+building. An install over an older version asks nothing and takes nothing either. A silent
+removal (`/VERYSILENT`) shows no message: a message box waited there for an OK nobody would click,
+the removal done, in a Windows machine where `.orthostudio` existed (2026-10-02).
 
 The Pascal the installer carries is only judged when it runs. Inno Setup compiles an unknown
 constant without a word and refuses it in front of the user: `{userprofile}`, which it does not

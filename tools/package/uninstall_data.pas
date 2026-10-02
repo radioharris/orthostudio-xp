@@ -55,6 +55,10 @@ var
 begin
   if CurUninstallStep <> usPostUninstall then
     Exit;
+  // a silent removal shows nothing: its message box, which /SUPPRESSMSGBOXES does not suppress
+  // (MsgBox never is), waited for an OK nobody would click, the removal itself done (2026-10-02)
+  if UninstallSilent then
+    Exit;
   if (OsxpHome = '') or (not DirExists(OsxpHome)) then
     Exit;
   Data := ChosenDataDir;
