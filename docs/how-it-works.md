@@ -528,3 +528,41 @@ osxp clean --all
 
 Only the tiles still on disk are kept, with what they need. A tile built after a full clean
 downloads its image pieces again.
+
+## 6. Flying without tiles: OrthoStudio XP Live
+
+From 0.1.21, a beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+downloads the imagery while you fly, as AutoOrtho does, with no tile to build first. At its first
+start the app asks what you want to do, fly now with Live or build your tiles, and remembers the
+answer; each window has a button to the other. Its full guide, with why it has no zoom by flight
+level, prefetch or waiting settings, is [live.md](live.md).
+
+For a flight:
+
+1. In Live's window, choose the imagery source, then click Start.
+2. Start X-Plane (Live's Start X-Plane button), choose the flight and click Start Flight. X-Plane
+   waits on its loading screen until the ortho around the aircraft is built: a few seconds where
+   you have flown before, a minute or two the first time in a new area.
+3. Fly. Live builds the textures ahead of the aircraft, and X-Plane never waits for it in flight.
+4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
+
+Live lays its photos on AutoOrtho's mesh, which it installs by region from its Settings tab (Europe,
+North America...). Your own tiles come first: where you built one, X-Plane shows it, and Live
+downloads nothing there.
+
+What it keeps is in its own folder, `~/.orthostudio/live` unless its settings name another, apart
+from the data folder:
+
+```
+~/.orthostudio/live/
+  pack/            the scenery X-Plane reads while Live runs (z_osxp_live in Custom Scenery)
+  chunks.sqlite    the imagery downloaded, never downloaded twice
+  regions/         AutoOrtho's regions Live installed (the mesh), 6 to 33 GB each
+  overlays/        the roads, forests and buildings of Live's squares
+```
+
+The textures and the imagery share one disk space, 40 GB by default, set in Live's Settings tab:
+past it, Live makes the textures seen longest ago coarser and drops the imagery used longest ago.
+The same tab deletes the textures (built again when flown over) or the imagery (downloaded again
+when needed), and each region has its own Delete. `enabled = false` in `~/.orthostudio/live.toml`
+switches Live off.

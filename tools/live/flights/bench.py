@@ -39,7 +39,7 @@ import scenario as scenarios  # noqa: E402
 
 PAGE_DIR = HERE / "bench"
 PORT = 8661  # the preview app's engine takes 8651, Live's window 8642
-TITLE = "Vols de test — OrthoStudio XP Live"
+TITLE = "Vols de test (OrthoStudio XP Live)"
 SIZE = (1240, 900)
 CURRENT = "bench-current.json"  # in the results: the flight under way, for a window opened again
 LOGS = "bench-logs"
