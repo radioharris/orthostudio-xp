@@ -17,9 +17,8 @@ level below (orthostudio.live.texture). Its 8192 px level, read where a 4096 px 
 is, is the streamer's own rule.
 
 The rings were measured on one image, 2704 px wide with a 65° field of view. Probe flight 2
-(``docs/findings/2026-09-27-probe-flight-2.md`` in X-StreamOrtho) found X-Plane reading each level
-farther on a wider image and with a narrower field of view, as the width of a pixel on the ground
-goes: :func:`screen_scale`.
+(``docs/specs/live/probe-flight-2.md``) found X-Plane reading each level farther on a wider image
+and with a narrower field of view, as the width of a pixel on the ground goes: :func:`screen_scale`.
 """
 
 from __future__ import annotations
