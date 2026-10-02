@@ -310,9 +310,46 @@ def test_the_window_starts_its_engine_writing_utf8(
     ((args, kw),) = started
     assert args == [sys.executable, "-m", "orthostudio", *desktop.ENGINE_ARGS]
     assert kw["env"] == {**os.environ, "PYTHONIOENCODING": "utf-8"}
-    assert Path(kw["stdout"].name) == log and kw["stderr"] is kw["stdout"]
+    assert kw["stderr"] is kw["stdout"]  # the log itself, which the header went into
+    assert "orthostudio serve" in log.read_text(encoding="utf-8")
     assert kw["stdin"] == subprocess.DEVNULL and kw["start_new_session"] is True
     assert kw["creationflags"] == NO_CONSOLE_WINDOW  # no console window flashes on Windows
+
+
+def test_a_line_the_window_adds_beside_its_engine_stays_whole(tmp_path: Path) -> None:
+    """The engine writes at the log's end, whatever else writes there. On Windows, handed the log
+    as ``open(..., "a")`` gives it, it wrote where its own last line had ended, over a line the
+    window had added since ("its window closed"), whose head was lost (a Windows 11, 2026-10-02).
+    A real Python is handed the log as the window hands it to its engine; the window adds its line
+    between the two that Python writes."""
+    log = tmp_path / "serve.log"
+    log.write_text("--- start\n", encoding="utf-8")
+    writes = (
+        "import sys\n"
+        "print('engine 1', flush=True)\n"
+        "sys.stdin.readline()\n"
+        "print('engine 2', flush=True)\n"
+    )
+    with desktop.append_only(log) as out:
+        engine = subprocess.Popen(
+            [sys.executable, "-c", writes], stdin=subprocess.PIPE, stdout=out, stderr=out
+        )
+    try:
+        deadline = time.monotonic() + 30
+        while "engine 1" not in log.read_text(encoding="utf-8"):
+            assert time.monotonic() < deadline, "the engine wrote nothing"
+            time.sleep(0.05)
+        with log.open("a", encoding="utf-8") as window:
+            window.write("its window closed\n")
+        assert engine.stdin is not None
+        engine.stdin.write(b"go\n")
+        engine.stdin.close()
+        assert engine.wait(timeout=30) == 0
+    finally:
+        if engine.poll() is None:
+            engine.kill()
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert lines == ["--- start", "engine 1", "its window closed", "engine 2"]
 
 
 def test_what_the_engine_writes_reaches_the_log_in_utf8(

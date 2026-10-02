@@ -167,7 +167,10 @@ it is `$OSXP_HOME/log` beside everything else of ours: `~/Library/Logs/OrthoStud
 line gives the date and the arguments of each start. The log is UTF-8, what the engine a window
 starts aside writes included (`PYTHONIOENCODING`, `desktop.start_engine`): on Windows a Python
 writing to a file uses the system's code page, and that engine's lines came out in cp1252 among
-the app's UTF-8 ones (a French Windows 11, 2026-10-02). Started from the Finder, a menu or `pythonw`,
+the app's UTF-8 ones (a French Windows 11, 2026-10-02). That engine writes at the log's end
+whatever else writes there (`desktop.append_only`): on Windows, handed the log as the window opened
+it, it wrote where its own last line had ended, over the lines the window added since ("its window
+closed"); a handle opened there for appending alone keeps them. Started from the Finder, a menu or `pythonw`,
 the engine has no terminal; without the log, uvicorn's output would have nowhere to go.
 `python -m orthostudio` runs the command itself (`__main__.py`), for a terminal.
 

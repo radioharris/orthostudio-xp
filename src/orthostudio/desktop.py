@@ -31,6 +31,7 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import IO
 
 from platformdirs import user_log_dir
 
@@ -273,6 +274,37 @@ def _note(log: Path, text: str) -> None:
         out.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {APP_NAME}: {text}\n")
 
 
+FILE_APPEND_DATA = 0x0004
+SYNCHRONIZE = 0x00100000
+FILE_SHARE_ALL = 0x0007  # read, write and delete: the window's own writes go on beside it
+OPEN_ALWAYS = 4
+FILE_ATTRIBUTE_NORMAL = 0x80
+
+
+def append_only(log: Path) -> IO[str]:
+    """``log`` opened to write at its end only, whoever else writes there, and so the process it is
+    handed to: what ``O_APPEND`` gives on macOS and Linux. On Windows ``open(..., "a")`` only moves
+    to the end before each write of its own, in this process: the engine handed that file wrote
+    where its own last line had ended, over a line the window had added to the log meanwhile
+    ("its window closed"), whose head was lost (a Windows 11, 2026-10-02). A Windows handle opened
+    for appending alone (``FILE_APPEND_DATA``) writes at the end, whatever writes."""
+    if sys.platform != "win32":
+        return log.open("a", encoding="utf-8")
+    import _winapi
+    import msvcrt
+
+    handle = _winapi.CreateFile(
+        str(log),
+        FILE_APPEND_DATA | SYNCHRONIZE,
+        FILE_SHARE_ALL,
+        0,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        0,
+    )
+    return open(msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_APPEND), "a", encoding="utf-8")
+
+
 def start_engine(log: Path) -> None:
     """Start the engine in a process of its own, apart from this one, its output in ``log``.
 
@@ -290,12 +322,14 @@ def start_engine(log: Path) -> None:
     output alone, and the engine's own processes inherit it. UTF-8 mode (``PYTHONUTF8``) would
     change more: every file and every program's output the engine reads or writes without naming
     an encoding.
+
+    It writes at the log's end, whatever else writes there (:func:`append_only`).
     """
     import subprocess
 
     from orthostudio.fsutil import NO_CONSOLE_WINDOW
 
-    with log.open("a", encoding="utf-8") as out:
+    with append_only(log) as out:
         out.write(
             f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {APP_NAME}: orthostudio "
             f"{' '.join(ENGINE_ARGS)} (for its own window)\n"
