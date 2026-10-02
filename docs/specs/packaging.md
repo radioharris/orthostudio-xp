@@ -105,7 +105,9 @@ The Intel app (a user asked, 2026-09-17) is built on the same Apple Silicon Mac:
 `build.py --machine x86_64` asks uv for the Intel CPython (`cpython-<version>-macos-x86_64-none`),
 which uv runs under Rosetta to choose the Intel wheels of the lock, and the checks run it the same
 way. Triangle4XP (its `CMakeLists.txt` asks for `arm64;x86_64`) and DSFTool are universal
-binaries, and the build refuses one without the app's architecture (`lipo -archs`). The app
+binaries, and the build refuses one without the app's architecture (`lipo -archs`). OrthoStudio
+XP Live's X-Plane plugin holds both in one file whichever app it goes in: X-Plane runs natively on
+Apple Silicon, while the Intel app may run under Rosetta. The app
 declares `LSArchitecturePriority = [x86_64]` without `LSRequiresNativeExecution`: it runs natively
 on an Intel Mac and under Rosetta on Apple Silicon, where its check opens it; the doctor's
 `architecture` check does not apply to it. It needs macOS 15: uv chooses the wheels for the macOS
@@ -121,7 +123,8 @@ In every one:
 - the runtime dependencies at the versions of `uv.lock`, the wheels the tests ran with, and
   OrthoStudio XP itself, not editable (`uv sync --frozen --no-dev --extra server --no-editable`
   into that CPython);
-- Triangle4XP, compiled for the system, and DSFTool, in `orthostudio/bin` (section 3);
+- Triangle4XP, compiled for the system, DSFTool and OrthoStudio XP Live's X-Plane plugin, in
+  `orthostudio/bin` (section 3);
 - `licences/`: OrthoStudio XP's GPL, Triangle4XP's sources, notice of modifications and build
   file, as its licence requires with the binary, and DSFTool's notice. The wheels keep theirs in
   their `.dist-info`.
@@ -154,6 +157,10 @@ executable. The modules that run a program read, in this order:
   the binary exchange of OrthoStudio XP's build (`mesh-triangle-io.md`).
 - DSFTool (`overlays.find_dsftool`): the installed copy, then the checkout's
   `native/dsftool/<os>`.
+- OrthoStudio XP Live's X-Plane plugin (`live.plugin.built`), which Live puts into X-Plane while it
+  runs: the installed copy, `OrthoStudio XP Live.xpl`; in a checkout, on a Mac, the one it builds
+  into `native/xplane_plugin/build`, on Windows and Linux the one built ahead in
+  `native/xplane_plugin/prebuilt`.
 
 A checkout has no `orthostudio/bin`: nothing changes for it.
 
@@ -206,7 +213,10 @@ Run on the system the installer is for, after Triangle4XP is built; Inno Setup 6
    packed package is compared with the files git tracks in `src/orthostudio`, byte for byte, pruned
    and compiled;
 3. the programs into `orthostudio/bin`, the licences, the launcher, the icon (`icon.py`: `.icns`,
-   `.ico`, `.png`);
+   `.ico`, `.png`). Live's X-Plane plugin there is built for a Mac, with clang, needing neither
+   X-Plane nor its SDK; for Windows and Linux it is the one built ahead, which the build refuses
+   once its sources have changed since (`live.plugin.ship`; `tools/live/plugin_builds.py` builds
+   it again);
 4. the installer: `hdiutil create` of a folder holding the app and a link to `/Applications`;
    Inno Setup's `ISCC` on a generated script (`inno_setup_script`, a fixed `AppId` so that an
    update replaces the installed app) and a `.zip`; a `.tar.gz` that keeps the symbolic links.
@@ -226,13 +236,14 @@ its own Python, with an empty `$OSXP_HOME`, no `$OSXP_TRIANGLE4XP` and no user s
 standalone (its prefix and standard library are in the installer, no `pyvenv.cfg`: run through
 `uv run`, an early build packed the project's `.venv`, whose Python lives outside, and a check on
 the build machine could not see it); the doctor's Python, encoder and HTTP client checks pass and
-it finds the packed Triangle4XP; `find_dsftool` is the packed DSFTool; every module of the package
+it finds the packed Triangle4XP; `find_dsftool` is the packed DSFTool; Live finds the packed X-Plane
+plugin; every module of the package
 imports (nothing the pruning removed is needed); `osxp serve --check` starts the server on a free
 port, reads `/api/status` and the page, and stops.
 
 It then installs the installer itself in a throw-away place and starts the app through the entry a
 user starts, `doctor --json` (read back from `serve.log`: it must find the Triangle4XP installed
-with the app) and `serve --check`:
+with the app), Live's plugin (the one installed with the app) and `serve --check`:
 
 - macOS: the `.dmg` mounted read-only, `Contents/MacOS/orthostudio` of the app in the image; then
   a copy of the app, under another bundle identifier (given an app whose identifier and version an

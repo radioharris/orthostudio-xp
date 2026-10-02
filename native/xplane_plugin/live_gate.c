@@ -45,10 +45,11 @@
  * 8192 px textures built after a start, until a test showed that X-Plane's reload does not read
  * again the textures it holds (2026-09-27).
  *
- * orthostudio/live/plugin.py builds it on the Mac against X-Plane's own XPLM framework; the Windows
- * and Linux plugins are built ahead (tools/live/plugin_builds.py) and kept with the sources. It
- * declares the few XPLM functions it uses itself, so the SDK is not needed: X-Plane gives them to
- * the plugin as it loads it on Linux, and on Windows an import library made from XPLM_64.def does.
+ * On a Mac, orthostudio/live/plugin.py builds it with clang; the Windows and Linux plugins are built
+ * ahead (tools/live/plugin_builds.py) and kept with the sources. It declares the few XPLM functions
+ * it uses itself, so the SDK is not needed: X-Plane gives them to the plugin as it loads it on
+ * Linux; on Windows an import library made from XPLM_64.def does, and on the Mac a stub of X-Plane's
+ * XPLM framework made from the same list.
  */
 
 #ifdef _WIN32

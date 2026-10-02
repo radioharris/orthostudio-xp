@@ -1,7 +1,9 @@
 /* X-Plane's way of loading a plugin, for the Windows and Linux plugins built ahead
-   (native/xplane_plugin/prebuilt): the plugin's file loaded as X-Plane loads it, its functions found
-   by name, the XPLM functions it calls given by fake_xplm.c (built into this program and exported,
-   -rdynamic, on Linux; a fake XPLM_64.dll on Windows, which the plugin imports from). The command
+   (native/xplane_plugin/prebuilt) and the Mac's as built: the plugin's file loaded as X-Plane loads
+   it, its functions found by name, the XPLM functions it calls given by fake_xplm.c (built into this
+   program and exported, -rdynamic, on Linux; a fake XPLM_64.dll on Windows, which the plugin imports
+   from; on a Mac a fake XPLM.framework where X-Plane has its own, by the same name, which this
+   program and the plugin are both linked to: tests/test_live_gate.py's mac_xplane). The command
    line: the plugin's file, a latitude and a longitude, then what fake_xplm.c's main() takes:
    "102:0", "loop", "frames:5000", "sleep:100" ("click" needs the plugin's own code). On Windows, "window" first
    opens a window of this program's main thread, as X-Plane's, and a thread asks Windows every

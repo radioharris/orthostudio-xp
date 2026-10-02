@@ -611,28 +611,10 @@ class FlightStartTest(unittest.TestCase):
 @unittest.skipUnless(sys.platform == "darwin" and CLANG, "the Mac's build, with clang")
 class BuildTest(unittest.TestCase):
     def test_build_install_uninstall(self):
-        """The real build, against a stand-in XPLM framework in a stand-in X-Plane."""
+        """The real build, which needs no X-Plane: linked to X-Plane's XPLM framework by the name
+        that one answers to, as Laminar's own plugins are, then put into a stand-in X-Plane."""
         with tempfile.TemporaryDirectory() as tmp:
             xplane = Path(tmp) / "X-Plane 12"
-            fw = xplane / "Resources" / "plugins" / "XPLM.framework"
-            fw.mkdir(parents=True)
-            subprocess.run(
-                [
-                    CLANG,
-                    "-dynamiclib",
-                    "-DNO_MAIN",
-                    "-arch",
-                    "arm64",
-                    "-arch",
-                    "x86_64",
-                    "-install_name",
-                    "@executable_path/../../../Resources/plugins/XPLM.framework/XPLM",
-                    "-o",
-                    str(fw / "XPLM"),
-                    str(HERE / "data" / "live" / "fake_xplm.c"),
-                ],
-                check=True,
-            )
             with mock.patch.object(plugin, "BUILD_DIR", Path(tmp) / "build"):
                 self.assertTrue(plugin.install(xplane, log=self.fail))
                 xpl = (
@@ -659,11 +641,38 @@ class BuildTest(unittest.TestCase):
                     "XPluginStop",
                 ):
                     self.assertIn(f"_{name}", symbols)
+                linked = subprocess.run(["otool", "-L", str(xpl)], capture_output=True, text=True)
+                xplm = f"{plugin.XPLM_INSTALL_NAME} (compatibility version 1.0.0, current version"
+                self.assertEqual(linked.stdout.count(f"{xplm} 1.0.0)"), 2)  # each half, as xlua's
+                for machine in arch:
+                    bound = subprocess.run(
+                        ["nm", "-m", "-arch", machine, str(xpl)], capture_output=True, text=True
+                    ).stdout.splitlines()
+                    self.assertEqual(
+                        {line.split()[-3] for line in bound if line.endswith("(from XPLM)")},
+                        {f"_{name}" for name in plugin.xplm_functions()},
+                    )
                 plugin.uninstall(xplane)
                 self.assertFalse(
                     (xplane / "Resources" / "plugins" / "OrthoStudio XP Live").exists()
                 )
-                self.assertTrue(fw.exists())
+
+    def test_shipped_by_the_mac_installer(self):
+        """The Mac installer's copy (:func:`plugin.ship`, tools/package/build.py): built for Apple
+        Silicon and Intel Macs at once, whichever app it goes in (X-Plane runs natively, the Intel
+        app perhaps under Rosetta), and the one Live then installs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shipped = plugin.ship(Path(tmp), "darwin")
+            self.assertEqual(shipped, Path(tmp) / f"{plugin.NAME}.xpl")
+            arch = subprocess.run(["lipo", "-archs", str(shipped)], capture_output=True, text=True)
+            self.assertEqual(sorted(arch.stdout.split()), ["arm64", "x86_64"])
+            with (
+                mock.patch.object(plugin, "PREBUILT", shipped),
+                mock.patch.object(plugin, "BUILD_DIR", Path(tmp) / "build"),
+                mock.patch.object(plugin.subprocess, "run", side_effect=AssertionError("built")),
+            ):
+                self.assertEqual(plugin.availability(), "ready")
+                self.assertEqual(plugin.built(), shipped)
 
     def test_no_compiler(self):
         with (
@@ -786,9 +795,26 @@ class PrebuiltTest(unittest.TestCase):
                 "XPLMUnregisterFlightLoopCallback",
             },
         )
+        self.assertEqual(xplm, set(plugin.xplm_functions()))  # the Mac's stub lists the same
         self.assertFalse(
             {n for n in needed if n.startswith("X") and not n.startswith("XPLM")}
         )  # X11: opened
+
+    def test_shipped_by_the_installers(self):
+        """An installer's copy (:func:`plugin.ship`, tools/package/build.py): the very file built
+        ahead, where Live looks for an installer's; none once the sources changed since."""
+        for platform in ("win32", "linux"):
+            with self.subTest(platform), tempfile.TemporaryDirectory() as tmp:
+                shipped = plugin.ship(Path(tmp), platform)
+                self.assertEqual(shipped, Path(tmp) / f"{plugin.NAME}.xpl")
+                self.assertEqual(shipped.read_bytes(), self.xpl(platform))
+                shipped.unlink()
+                with (
+                    mock.patch.object(plugin, "sources_digest", return_value="0" * 64),
+                    self.assertRaisesRegex(RuntimeError, "plugin_builds.py"),
+                ):
+                    plugin.ship(Path(tmp), platform)
+                self.assertFalse(shipped.exists())
 
     def test_installed_where_xplane_looks(self):
         for platform, folder in (("win32", "win_x64"), ("linux", "lin_x64")):
@@ -960,10 +986,12 @@ class BuiltAheadTest(unittest.TestCase):
     its scenarios in turn: on that one port, two at once would hear each other's streamer."""
 
     PORT = 49250
+    run_as: tuple[str, ...] = ()  # the host's machine, where this computer runs another's (Rosetta)
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
+        cls.xpl = plugin._xpl(plugin.PREBUILT_DIR)
         cls.host = built_ahead_host(Path(cls.tmp.name))
         if cls.host is None:
             cls.tmp.cleanup()
@@ -982,7 +1010,7 @@ class BuiltAheadTest(unittest.TestCase):
     def xplane(self, *commands, root=None):
         env = {**os.environ, "FAKE_XPLANE": str(root) if root else ""}
         out = subprocess.run(
-            [str(self.host), str(plugin._xpl(plugin.PREBUILT_DIR)), "43.4382", "5.2129", *commands],
+            [*self.run_as, str(self.host), str(self.xpl), "43.4382", "5.2129", *commands],
             capture_output=True,
             text=True,
             timeout=60,
@@ -1054,7 +1082,7 @@ class BuiltAheadTest(unittest.TestCase):
             out = subprocess.run(
                 [
                     str(self.host),
-                    str(plugin._xpl(plugin.PREBUILT_DIR)),
+                    str(self.xpl),
                     "43.6",
                     "7.2",
                     "window",
@@ -1103,6 +1131,61 @@ class BuiltAheadTest(unittest.TestCase):
         for scenario in scenarios:
             with self.subTest(scenario.__name__):
                 scenario()
+
+
+def mac_xplane(root: Path) -> Path:
+    """A stand-in X-Plane laid out as X-Plane is on a Mac (tests/data/live/xpl_host.c): its program
+    in ``X-Plane.app/Contents/MacOS``, linked to a stand-in XPLM framework (fake_xplm.c) in
+    ``Resources/plugins`` that answers to the name of X-Plane's own. A plugin it loads finds its
+    XPLM functions there, as in X-Plane. Both halves, Apple Silicon and Intel."""
+    data = HERE / "data" / "live"
+    both = ["-arch", "arm64", "-arch", "x86_64"]
+    xplm = root / "Resources" / "plugins" / "XPLM.framework" / "XPLM"
+    xplm.parent.mkdir(parents=True)
+    subprocess.run(
+        [CLANG, "-dynamiclib", "-DNO_MAIN", *both, "-install_name", plugin.XPLM_INSTALL_NAME,
+         "-o", str(xplm), str(data / "fake_xplm.c")],
+        check=True,
+    )  # fmt: skip
+    exe = root / "X-Plane.app" / "Contents" / "MacOS" / "X-Plane"
+    exe.parent.mkdir(parents=True)
+    subprocess.run([CLANG, *both, "-o", str(exe), str(data / "xpl_host.c"), str(xplm)], check=True)
+    return exe
+
+
+def apple_silicon() -> bool:
+    """Whether this is an Apple Silicon Mac, this Python perhaps an Intel one under Rosetta."""
+    if sys.platform != "darwin":
+        return False
+    said = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], capture_output=True, text=True)
+    return said.stdout.strip() == "1"
+
+
+@unittest.skipUnless(sys.platform == "darwin" and CLANG, "the Mac's build, with clang")
+class MacBuildTest(BuiltAheadTest):
+    """The Mac plugin as Live builds it, and as the Mac installer ships it (:func:`plugin.ship`),
+    loaded as X-Plane loads it, by a stand-in X-Plane laid out as X-Plane is on a Mac
+    (:func:`mac_xplane`): the half of this Mac's own kind, the Apple Silicon one on Apple Silicon
+    even when these tests run under Rosetta (whose programs start the Intel half of a file that
+    holds both). Its own port, a free one: Live may run on this Mac."""
+
+    run_as = ("/usr/bin/arch", "-arm64") if apple_silicon() else ()
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name)
+        cls.PORT = free_port()
+        cls.host = mac_xplane(root / "X-Plane 12")
+        cls.xpl = root / "built" / f"{plugin.NAME}.xpl"
+        plugin.compile_plugin(cls.xpl, port=cls.PORT)
+
+
+@unittest.skipUnless(runs_intel_code(), "a Mac that runs Intel code")
+class IntelMacBuildTest(MacBuildTest):
+    """The same file's Intel half, as on an Intel Mac: under Rosetta on Apple Silicon."""
+
+    run_as = ("/usr/bin/arch", "-x86_64")
 
 
 class EncodersTest(unittest.TestCase):

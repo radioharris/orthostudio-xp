@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import plistlib
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -257,6 +258,23 @@ def test_the_linux_menu_entry_can_be_removed() -> None:
 def test_every_licence_file_exists() -> None:
     for source, _name in build.LICENCE_FILES:
         assert (build.REPO / source).is_file(), source
+
+
+def test_live_s_x_plane_plugin_goes_with_the_programs(tmp_path: Path) -> None:
+    """``orthostudio/bin`` holds OrthoStudio XP Live's X-Plane plugin beside Triangle4XP and
+    DSFTool, where Live looks for an installer's (``orthostudio.live.plugin.PREBUILT``): the Mac's
+    built, Windows' or Linux's the one built ahead."""
+    target = build.this_target()
+    if not (build.REPO / "native" / "triangle4xp" / "build" / target.exe("Triangle4XP")).is_file():
+        pytest.skip("Triangle4XP is not built")
+    if target.system == "macos" and shutil.which("clang") is None:
+        pytest.skip("no clang for the Mac's plugin")
+    build.install_programs(target, tmp_path)
+    plugin = build.live_plugin()
+    assert (tmp_path / "bin" / plugin.PREBUILT.name).is_file()
+    assert (
+        plugin.PREBUILT.parent.name == "bin" and plugin.PREBUILT.parent.parent.name == "orthostudio"
+    )
 
 
 def _script(path: Path, text: str) -> Path:

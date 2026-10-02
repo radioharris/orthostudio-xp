@@ -1,5 +1,7 @@
-; The XPLM functions the plugin calls, from which the Windows build makes its import library: X-Plane
-; gives them from Resources/plugins/XPLM_64.dll (live_gate.c declares them, so the SDK is not needed).
+; The XPLM functions the plugin calls (live_gate.c declares them, so the SDK is not needed). The
+; Windows build makes its import library from them: X-Plane gives them from
+; Resources/plugins/XPLM_64.dll. The Mac's makes its stub of X-Plane's XPLM framework from them
+; (orthostudio/live/plugin.py).
 LIBRARY XPLM_64.dll
 EXPORTS
     XPLMDebugString

@@ -7,7 +7,8 @@ which ``tests/test_live_gate.py`` checks against the sources). The test pilot of
 test flights the same way, into ``native/xplane_test_pilot/prebuilt``
 (``tools/live/flights/pilot_build.py``, checked by ``tests/test_live_pilot.py``).
 
-The Mac's plugin is built where it runs (``orthostudio.live.plugin``, Xcode's command-line tools).
+The Mac's plugin is built with clang on a Mac: by a checkout, where Live runs, and with the Mac
+installer (``orthostudio.live.plugin``).
 Windows and Linux computers seldom have a compiler, so theirs are built ahead: in an Ubuntu 20.04
 for x86-64, with gcc for Linux and MinGW-w64 for Windows (``plugin.LINUX_BUILD``,
 ``plugin.WINDOWS_BUILD``). Its C library, glibc 2.31, is the oldest the Linux plugin asks for, so it

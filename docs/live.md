@@ -380,8 +380,9 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
   when it stops, and if X-Plane is still running it waits for it to quit first.
 - If the streamer stops on an error, the window (or the terminal) says so at once, with the error,
   and the plugin lets X-Plane go on and says so in X-Plane's Log.txt.
-- The plugin is compiled on your Mac the first time, which needs Xcode's command-line tools
-  (`xcode-select --install`). Without them, OrthoStudio XP Live says so and works without the wait.
+- The plugin comes with OrthoStudio XP's installer. Run from a checkout of the repository on a
+  Mac, OrthoStudio XP Live compiles it the first time, which needs Xcode's command-line tools
+  (`xcode-select --install`). Without them, it says so and works without the wait.
 
 ## Not yet
 

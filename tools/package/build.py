@@ -7,8 +7,8 @@
 
 What goes in (``docs/specs/packaging.md``): the standalone CPython uv installs
 (python-build-standalone), the runtime dependencies pinned by ``uv.lock`` (no dev group, the
-``server`` extra), OrthoStudio XP's wheel, Triangle4XP and DSFTool in ``orthostudio/bin``, and the
-licences. What comes out, in ``dist/``:
+``server`` extra), OrthoStudio XP's wheel, Triangle4XP, DSFTool and OrthoStudio XP Live's X-Plane
+plugin in ``orthostudio/bin``, and the licences. What comes out, in ``dist/``:
 
 - macOS: ``OrthoStudio-XP-<version>-macos-arm64.dmg``, the app and a link to Applications, and
   with ``--machine x86_64`` ``OrthoStudio-XP-<version>-macos-x86_64.dmg``, the app for Intel Macs
@@ -18,7 +18,8 @@ licences. What comes out, in ``dist/``:
 - Linux: ``OrthoStudio-XP-<version>-linux-x86_64.tar.gz``, whose ``install.sh`` adds the menu entry.
 
 Nothing is signed: macOS and Windows warn at the first launch (``README.md``). Triangle4XP must be
-built first (``native/triangle4xp/README.md``); the Windows installer needs Inno Setup 6.
+built first (``native/triangle4xp/README.md``); the Mac's X-Plane plugin is built here, with clang
+(Xcode's command-line tools); the Windows installer needs Inno Setup 6.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ import urllib.request
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -126,6 +128,13 @@ class Target:
         return f"cpython-{version}-macos-{MAC_UV_ARCH[self.machine]}-none"
 
 
+SYS_PLATFORM = {"macos": "darwin", "windows": "win32", "linux": "linux"}
+"""Each system's ``sys.platform``, by which ``orthostudio.live.plugin`` names them."""
+LIVE_PLUGIN_FOUND = (
+    "from orthostudio.live import plugin\nif plugin.PREBUILT.is_file(): print(plugin.built())"
+)
+"""Run by a packed Python: the X-Plane plugin Live installs when it is the installer's; nothing
+otherwise."""
 MAC_UV_ARCH = {"arm64": "aarch64", "x86_64": "x86_64"}
 """The machines of the macOS apps, and uv's name for each (a user asked for Intel Macs,
 2026-09-17)."""
@@ -601,8 +610,23 @@ def compile_bytecode(python: Path, package: Path) -> None:
     )
 
 
+def live_plugin() -> ModuleType:
+    """``orthostudio.live.plugin`` of this checkout, whose sources are beside it in
+    ``native/xplane_plugin``."""
+    src = str(REPO / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    from orthostudio.live import plugin
+
+    return plugin
+
+
 def install_programs(target: Target, package: Path) -> None:
-    """Triangle4XP and DSFTool into ``orthostudio/bin`` (``orthostudio.programs``)."""
+    """Triangle4XP and DSFTool into ``orthostudio/bin`` (``orthostudio.programs``), and OrthoStudio
+    XP Live's X-Plane plugin, which Live puts into X-Plane (``orthostudio.live.plugin``): built here
+    for a Mac, for Apple Silicon and Intel Macs at once whichever app this is (X-Plane runs
+    natively, the Intel app perhaps under Rosetta); for Windows or Linux, the one built ahead from
+    these very sources."""
     triangle = REPO / "native" / "triangle4xp" / "build" / target.exe("Triangle4XP")
     if not triangle.is_file():
         raise SystemExit(
@@ -623,6 +647,10 @@ def install_programs(target: Target, package: Path) -> None:
         dest = bin_dir / program.name
         shutil.copy2(program, dest)
         dest.chmod(0o755)
+    try:
+        live_plugin().ship(bin_dir, SYS_PLATFORM[target.system])
+    except (OSError, RuntimeError) as e:
+        raise SystemExit(f"OrthoStudio XP Live's X-Plane plugin: {e}") from None
 
 
 def copy_licences(dest: Path) -> None:
@@ -754,8 +782,9 @@ def free_port() -> int:
 def check(python: Path) -> None:
     """The packed engine, from its own Python, in a throw-away home: that Python is standalone
     (its prefix and standard library are in the installer, no ``pyvenv.cfg``), the doctor finds
-    the packed Triangle4XP, DSFTool is the packed one, every module of the package imports (nothing
-    the pruning removed is needed), the page and the API answer."""
+    the packed Triangle4XP, DSFTool is the packed one, Live's X-Plane plugin is the packed one,
+    every module of the package imports (nothing the pruning removed is needed), the page and the
+    API answer."""
     root = (python.parent if python.name == "python.exe" else python.parents[1]).resolve()
     with tempfile.TemporaryDirectory() as home:
         env = {k: v for k, v in clean_env().items() if k not in {"PYTHONPATH", "OSXP_TRIANGLE4XP"}}
@@ -782,6 +811,9 @@ def check(python: Path) -> None:
         dsftool = Path(run([python, "-c", code], env=env)).resolve()
         if not dsftool.is_relative_to(root):
             raise SystemExit(f"the packed DSFTool is not the one found: {dsftool}")
+        xpl = run([python, "-c", LIVE_PLUGIN_FOUND], env=env)
+        if not xpl or not Path(xpl).resolve().is_relative_to(root):
+            raise SystemExit(f"Live's packed X-Plane plugin is not the one found: {xpl or 'none'}")
         every_module = (
             "import importlib, pkgutil, orthostudio\n"
             "for m in pkgutil.walk_packages(orthostudio.__path__, 'orthostudio.'):\n"
@@ -816,7 +848,8 @@ def check_launch(
     window: bool = False,
 ) -> None:
     """The installed app, through its launcher: the doctor, whose output is in the log, finds the
-    Triangle4XP installed with it, and the server starts and answers.
+    Triangle4XP installed with it, Live finds the X-Plane plugin installed with it, and the server
+    starts and answers.
 
     With ``window``, the app must also be able to show one (the doctor's ``window`` check): macOS
     carries the web view and the app carries the rest, so an app that would open the browser
@@ -831,6 +864,11 @@ def check_launch(
         installed.resolve()
     ):
         raise SystemExit(f"the installed app does not find its Triangle4XP: {triangle}")
+    xpl = run([python, "-c", LIVE_PLUGIN_FOUND], env=env)
+    if not xpl or not Path(xpl).resolve().is_relative_to(installed.resolve()):
+        raise SystemExit(
+            f"the installed app's Live does not find its X-Plane plugin: {xpl or 'none'}"
+        )
     if window:
         shown = next(c for c in doctor["checks"] if c["name"] == "window")
         if shown["status"] != "ok":
