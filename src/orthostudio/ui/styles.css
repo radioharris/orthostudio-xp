@@ -946,6 +946,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .step-done .step-state { color: var(--ok); }
 .step-failed .step-state { color: var(--fail); font-weight: 600; }
 .step-detail:not(:empty)::before { content: " · "; }
+/* what the tile is doing, in words: the cells hold a word each, and a phrase was cut in them (a user,
+   2026-09-30). Under the tile's steps, across the row, only while something of it runs */
+.tile-activity {
+  grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 5px;
+  font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums;
+}
+.tile-activity .activity-step { color: var(--fg); font-weight: 600; }
 
 .section-title { margin-top: var(--block-gap); }
 

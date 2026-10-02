@@ -302,7 +302,7 @@ events, a `Phase` (`BuildEvent = Event | Phase`; the scheduler never emits one):
 | When | Event |
 |---|---|
 | the settings validated, before the graph is declared | `Phase("build")` (`nodes=None`: the graph is being declared) |
-| `declare` returned, before the first node event | `Phase("build", nodes=((id, kind, rule name), ...), reused=((<tile>/osm, key), ...))`: every node registered on the scheduler, the OSM downloads included, and the `osm` rows that will not run because the store holds the tile's snapshot |
+| `declare` returned, before the first node event | `Phase("build", nodes=((id, kind, rule name), ...), reused=((<tile>/osm, key), ...), learned=((id, seconds), ...))`: every node registered on the scheduler, the OSM downloads included, and the `osm` rows that will not run because the store holds the tile's snapshot; `learned`, the time each node's rule takes on this computer, the average its scheduler keeps (`sched.costs`) once the rule ran `LEARNED_MIN` (3) times, the textures left out (weighed by their images): the API weighs the node by it, and a node that reports nothing moves by it (`api.md` 5.4) |
 | `run_osm_phase` (the downloads alone, on a scheduler of their own; `build_tiles` no longer calls it) | `Phase("data", nodes=((<tile>/osm, "net", "orthostudio.osm"), ...), reused=...)` before its downloads |
 | the second pass declared | `Phase("build", nodes=...)` of the tiles it runs again |
 
@@ -457,7 +457,15 @@ file 1, 210 of 430 MB (16.2 MB/s)`, `dem_downloading_message`, fed by `http_down
 `on_bytes`); then, and from its start for a relief already on disk or X-Plane 12's, that it reads
 (`+43+005: elevation, 2 file(s) at 3.1 MB/s, reading`, `dem_reading_message`, the rate out of the
 brackets). The page showed the rate only once a file was in, then kept it over the 45 s a USGS
-file of 430 MB takes to read, and a user took the relief for stuck (2026-09-29). ANADEM's parts
+file of 430 MB takes to read, and a user took the relief for stuck (2026-09-29). A downloaded
+relief also says how far it is, where its bar sat at nothing for 48 to 80 s (2026-09-29): the
+download fills its share of the bar as the bytes arrive, `dem_share`, the file at the rate it
+arrives against reading it at `RELIEF_READ_MB_S` (9.5 MB/s: USGS's 430 MB of +34-116 read in 45 s
+on the reference Mac), 37 % for that file that came in 27 s; then, every `RELIEF_TICK_S` (1 s),
+the reading moves the rest by the time it takes against the time a file of that size should take
+(`sched.costs.timed_fraction`), never back and never full before the node ends. A relief that
+downloads nothing says no fraction, and moves by the time its rule took on the last builds
+(`api.md` 5.4). ANADEM's parts
 come through the fetcher: *downloading* until they are in, with no rate meanwhile. `osm_plan` decides before
 anything runs which tiles have a
 snapshot already (their `osm` rows are announced as reused, the snapshot is the input) and which

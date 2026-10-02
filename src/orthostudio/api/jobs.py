@@ -166,8 +166,8 @@ class _NodeState:
     rate: float | None = None
     """Recent rate of its fraction per second (``progress.observe_progress``)."""
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(self, now: float | None = None) -> dict[str, Any]:
+        doc = {
             "node": self.node,
             "role": self.role,
             "status": self.status,
@@ -177,6 +177,10 @@ class _NodeState:
             "fraction": round(self.fraction, 4),
             "weight_s": round(weight_of(self), 3),
         }
+        if self.status == "running" and self.started_at is not None and now is not None:
+            # how long it has run: the page moves the bar of a step that reports nothing by it
+            doc["running_s"] = round(max(0.0, now - self.started_at), 3)
+        return doc
 
 
 @dataclass(slots=True)
@@ -191,16 +195,18 @@ class _TileState:
     def stage_nodes(self, stage: Stage) -> list[_NodeState]:
         return [n for n in self.nodes.values() if n.stage == stage]
 
-    def stage_dict(self, stage: Stage, job_status: str | None = None) -> dict[str, Any]:
+    def stage_dict(
+        self, stage: Stage, job_status: str | None = None, now: float | None = None
+    ) -> dict[str, Any]:
         nodes = self.stage_nodes(stage)
         if not nodes:
             status = "skipped" if stage == "install" and not self.install else "pending"
             return {"status": status, "fraction": 0.0, "wall_s": 0.0, "nodes": []}
         return {
             "status": stage_status([n.status for n in nodes], job_status),
-            "fraction": round(weighted_progress(nodes), 4),
+            "fraction": round(weighted_progress(nodes, now), 4),
             "wall_s": round(sum(n.wall_s for n in nodes), 3),
-            "nodes": [n.to_dict() for n in nodes],
+            "nodes": [n.to_dict(now) for n in nodes],
         }
 
     def errors(self) -> list[dict[str, Any]]:
@@ -225,13 +231,13 @@ class _TileState:
             return "running"
         return "pending"
 
-    def to_dict(self, job_status: str) -> dict[str, Any]:
+    def to_dict(self, job_status: str, now: float | None = None) -> dict[str, Any]:
         return {
             "tile": self.tile,
             "provider": self.provider,
             "zl": self.zl,
             "status": self.status(job_status),
-            "stages": {s: self.stage_dict(s, job_status) for s in STAGES},
+            "stages": {s: self.stage_dict(s, job_status, now) for s in STAGES},
             "errors": self.errors(),
         }
 
@@ -370,6 +376,8 @@ class Job:
         """One clock for the journal's ``ts``, the node times and the estimate."""
         self._t0 = self._clock()
         self._run_t0: float | None = None
+        self._learned: dict[str, float] = {}
+        """Seconds per node id, as this computer's scheduler learnt its rule (``Phase.learned``)."""
         self._tiles: dict[str, _TileState] = {}
         self._loaded = False
         # -- job-level progress (api/progress.py) --
@@ -475,12 +483,19 @@ class Job:
         return self._texture_cost.get("/".join(parts[:2]))
 
     def _weigh(self, st: _NodeState) -> None:
-        """Set the row's weight and speed group (``api/progress.py``)."""
+        """Set the row's weight and speed group (``api/progress.py``): the time its rule takes on
+        this computer when the scheduler has learnt it (``Phase.learned``), else the reference
+        Mac's; a textures row by its images."""
         cost = self._cost_of(st.node, st.role)
-        st.weight_s = node_seconds(
-            st.role,
-            textures_s=cost.seconds if cost is not None else None,
-            tiles=len(self._tiles_of_specs),
+        learned = self._learned.get(st.node) if cost is None else None
+        st.weight_s = (
+            learned
+            if learned is not None
+            else node_seconds(
+                st.role,
+                textures_s=cost.seconds if cost is not None else None,
+                tiles=len(self._tiles_of_specs),
+            )
         )
         st.group = cost.group if cost is not None else ""
 
@@ -624,6 +639,7 @@ class Job:
             self._phase, self._phase_at = "build", now
         for node_id, key in event.reused:
             self._reuse(node_id, key)
+        self._learned.update(getattr(event, "learned", ()) or ())
         if event.name == "build" and event.nodes is not None:
             self._reconcile(event.nodes)
             self._declared = True
@@ -944,7 +960,8 @@ class Job:
 
     def state(self) -> dict[str, Any]:
         with self._lock:
-            tiles = [t.to_dict(self.status) for t in self._tiles.values()]
+            now = None if self.finished else self._clock()
+            tiles = [t.to_dict(self.status, now) for t in self._tiles.values()]
             errors = [e for t in tiles for e in t["errors"]]
             if self.job_error is not None:
                 errors.append({**self.job_error, "node": None, "stage": None, "tile": None})

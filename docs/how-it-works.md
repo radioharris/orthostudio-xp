@@ -57,7 +57,8 @@ Swiss tiles at road level 5, and with them in one Data step a map read in two se
 library read "Data 28 s" (2026-09-26). While a relief file downloads, Relief shows its speed as it
 arrives, then *reading the relief* while the file is read: a USGS square of 430 MB takes about half
 a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
-download, left in place, made those seconds look stuck (2026-09-29).
+download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
+as it arrives, then goes on by the time the reading takes.
 
 Two places are looked in before those servers, in order: a folder of your own, if you named one in
 Settings, and the prepared library this version carries. Each one is taken whole or not at all, and
@@ -111,6 +112,15 @@ most of all. The download time starts from the speed your connection showed on y
 (read from their reports, the latest ones counting most), and the estimate corrects itself with the
 speed the build actually shows, moving smoothly rather than jumping. A step reads *running* only
 while it works, and *waiting* when part of it is done and the rest waits for its turn.
+
+**Every bar means something.** A step that counts what it does fills its bar with that: the map
+layers received, the megabytes of a relief file, the images done. The steps that count nothing,
+the meshing of the terrain, the coast masks, the writing of the X-Plane terrain, fill it with the
+time they have run against the time they usually take on your computer, which OrthoStudio XP
+learns from your builds: steadily, then slower if one takes longer than usual, never full before
+it has ended. Terrain used to sit at 56 % for the forty seconds of a mesh, then jump (2026-09-29).
+Under the steps of each tile at work, a line says in words what it is doing and how far: *Terrain:
+meshing the terrain, about 10 s to go*, *Imagery: 412 of 1,347 images, 15.2 MB/s*.
 
 **Several builds.** One build runs at a time, and takes up to 500 tiles. A build started while
 another runs waits in a queue and starts as soon as the one before it ends; the Plan stays open

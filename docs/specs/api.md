@@ -446,7 +446,8 @@ the stream. Past jobs (a `.jsonl` on disk, no thread) replay the file the same w
  tiles: [{
    tile, provider, zl, status: pending|running|done|failed|cancelled,
    stages: {data: {status, fraction, wall_s,
-                   nodes: [{node, role, status, key, hit, wall_s, fraction, weight_s}]},
+                   nodes: [{node, role, status, key, hit, wall_s, fraction, weight_s,
+                            running_s}]},
             terrain: ..., coast: ..., imagery: ..., assembly: ..., install: ...},
    errors: [{code, message, remedy, severity, action, node, stage, context}]
  }],
@@ -484,6 +485,15 @@ rows).
 the part being 1 for an ended row, the live `fraction` of a running one and 0 for a pending
 one; by count when every weight is 0 (every row a hit). `wall_s` is the sum. A tile is `done`
 when its target node ended without failure.
+
+A running row that has reported no fraction above 0 is timed, not measured: its part is
+`sched.costs.timed_fraction(running, weight_s)`, the time it has run over that time plus the time
+it has left, `max(weight_s - running, 0.15 x weight_s)` (the time remaining of section 5.6). That
+is the share of its usual time up to 85 % of it, slower past it (87 % at its usual time, 93 % at
+twice), never 1 before it ends. The mesh (Triangle4XP), the masks, the rasters, the DSF, the pack
+report nothing but their end: Terrain sat at 56 % for forty seconds of meshing, then jumped (a
+user, 2026-09-29). `running_s`, on a running row only, is how long it has run when the state was
+made: the page moves such a row between two reads by the same rule (`ui.md` 2.2).
 
 `stats` is the last `stats` line (section 5.6); `eta` is `{low_s, high_s}` from it while the
 job runs and a range is known, else `null`.
@@ -530,9 +540,14 @@ and journals a `done` event with `hit: true`. When the declared nodes arrive, an
 `pending` that the graph does not declare becomes a hit the same way. No expected row stays
 `pending` past the point where it would have run.
 
-**Weights.** A node weighs the seconds it is expected to take, on the reference Mac (`ROLE_SECONDS`: three `osxp build` runs of one tile; `BATCH_SECONDS`: the
-six-tile job of 2026-09-13, which the costs the scheduler learnt over fifteen builds agree
-with):
+**Weights.** A node weighs the seconds it is expected to take. On this computer when its
+scheduler has learnt them: `Phase("build").learned` gives, for every declared node whose rule has
+run three times at least, the average the scheduler keeps of its runs (`sched.costs`, an EWMA
+stored in the store's meta table); a textures node is weighed by its images instead (below).
+Otherwise on the reference Mac (`ROLE_SECONDS`: three `osxp build` runs of one tile;
+`BATCH_SECONDS`: the six-tile job of 2026-09-13, which the costs the scheduler learnt over fifteen
+builds agree with). A node that reports nothing moves by that time (section 5.4), so a mesh that
+takes 25 s on a slower computer is not full after the reference Mac's 2.6 (2026-09-30):
 
 | Role | alone (s) | batch of 3+ tiles (s) |
 |---|---:|---:|
