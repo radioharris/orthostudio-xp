@@ -200,3 +200,134 @@ def test_the_header_of_a_published_relief_fits_in_one_read() -> None:
     """A zone of 2 GB has 2 596 tiles: two tables of 10 KB after the directory. The first read
     must hold them, or the reader would ask twice for every square."""
     assert HEADER_BYTES >= 2 * 2596 * 4 + 4096
+
+
+# -- what a lidar file of one's own comes as (0.1.20) -------------------------------------------
+
+
+def coded_tiff(
+    values: np.ndarray, *, predictor: int, sample: str, fmt: int, order: str = "<"
+) -> bytes:
+    """One strip of ``values``, deflated, written the way the TIFF rules say a predictor is.
+
+    Predictor 2 stores each sample minus the one before it along the row; predictor 3 (floating
+    point) stores the bytes of a row by significance, most significant first, then each byte
+    minus the one before it. Built by hand from the rules, so that the reader is checked against
+    them and not against itself (libtiff agrees: ``test_libtiff_reads_these_files_as_written``).
+    """
+    rows, cols = values.shape
+    size = int(sample[1])
+    raw = np.ascontiguousarray(values.astype(order + sample))
+    if predictor == 3:
+        planes = raw.astype(">" + sample).view(np.uint8).reshape(rows, cols, size)
+        planes = planes.transpose(0, 2, 1).reshape(rows, cols * size).astype(np.int16)
+        planes[:, 1:] = (planes[:, 1:] - planes[:, :-1]) % 256
+        body = planes.astype(np.uint8).tobytes()
+    elif predictor == 2:
+        ints = raw.view(f"{order}u{size}").astype(f"u{size}")
+        diff = ints.copy()
+        diff[:, 1:] = ints[:, 1:] - ints[:, :-1]
+        body = diff.astype(f"{order}u{size}").tobytes()
+    else:
+        body = raw.tobytes()
+    blob = zlib.compress(body, 6)
+    b = order
+    entries = [
+        (256, 4, 1, struct.pack(b + "I", cols)),
+        (257, 4, 1, struct.pack(b + "I", rows)),
+        (258, 3, 1, struct.pack(b + "HH", size * 8, 0)),
+        (259, 3, 1, struct.pack(b + "HH", 8, 0)),
+        (262, 3, 1, struct.pack(b + "HH", 1, 0)),
+        (273, 4, 1, struct.pack(b + "I", 8)),
+        (277, 3, 1, struct.pack(b + "HH", 1, 0)),
+        (278, 4, 1, struct.pack(b + "I", rows)),
+        (279, 4, 1, struct.pack(b + "I", len(blob))),
+        (284, 3, 1, struct.pack(b + "HH", 1, 0)),
+        (317, 3, 1, struct.pack(b + "HH", predictor, 0)),
+        (339, 3, 1, struct.pack(b + "HH", fmt, 0)),
+        (33550, 12, 3, struct.pack(b + "3d", STEP, STEP, 0.0)),
+        (33922, 12, 6, struct.pack(b + "6d", 0.0, 0.0, 0.0, WEST, NORTH, 0.0)),
+        (34735, 3, 8, struct.pack(b + "8H", 1, 1, 0, 1, 2048, 0, 1, 4326)),
+    ]
+    ifd_at = 8 + len(blob)
+    values_at = ifd_at + 2 + 12 * len(entries) + 4
+    body2, tail = bytearray(struct.pack(b + "H", len(entries))), bytearray()
+    for tag, typ, count, payload in entries:
+        if len(payload) <= 4:
+            inline = payload + b"\x00" * (4 - len(payload))
+        else:
+            inline = struct.pack(b + "I", values_at + len(tail))
+            tail += payload
+        body2 += struct.pack(b + "HHI", tag, typ, count) + inline
+    body2 += struct.pack(b + "I", 0)
+    head = (b"II" if order == "<" else b"MM") + struct.pack(b + "HI", 42, ifd_at)
+    return head + blob + bytes(body2) + bytes(tail)
+
+
+def whole(blob: bytes) -> np.ndarray:
+    info = read_header(blob)
+    rows, cols = info.height, info.width
+    window = window_for(info, NORTH - rows * STEP, NORTH, WEST, WEST + cols * STEP)
+    read, _asked = ranges_of(blob)
+    return read_window(info, window, read)
+
+
+CODINGS = [
+    (3, "f4", 3, "<"),  # GDAL's PREDICTOR=3, the usual one for float32 elevation
+    (1, "f4", 3, ">"),  # a file written big-endian
+    (3, "f4", 3, ">"),
+    (2, "i2", 2, "<"),  # int16 metres, PREDICTOR=2
+    (2, "u2", 1, "<"),
+    (1, "f8", 3, "<"),
+]
+
+
+@pytest.mark.parametrize(("predictor", "sample", "fmt", "order"), CODINGS)
+def test_a_predictor_and_a_byte_order_are_undone_as_written(
+    predictor: int, sample: str, fmt: int, order: str
+) -> None:
+    """Until 0.1.20 predictor 3 was accepted and not undone, which reads noise, predictor 2 was
+    refused, and a big-endian file was read as little-endian."""
+    rng = np.random.default_rng(7)
+    values = rng.normal(800, 300, (37, 53)).clip(0, 3000).astype(sample)
+    got = whole(coded_tiff(values, predictor=predictor, sample=sample, fmt=fmt, order=order))
+    assert got.dtype == np.float32
+    assert np.array_equal(got, values.astype(np.float32))
+
+
+@pytest.mark.parametrize(
+    ("predictor", "sample", "fmt", "order"),
+    [(1, "f4", 3, "<"), (3, "f4", 3, "<"), (2, "i2", 2, "<"), (2, "u2", 1, "<")],
+)
+def test_libtiff_reads_these_files_as_written(
+    predictor: int, sample: str, fmt: int, order: str
+) -> None:
+    """The little-endian files of the test above follow the TIFF rules: libtiff, through Pillow,
+    reads the same values out of them. (Pillow opens no float64, and reads none of the
+    big-endian float32 files right, predictor or not, so those are checked against the rules
+    alone.)"""
+    import io
+
+    from PIL import Image
+
+    rng = np.random.default_rng(7)
+    values = rng.normal(800, 300, (37, 53)).clip(0, 3000).astype(sample)
+    blob = coded_tiff(values, predictor=predictor, sample=sample, fmt=fmt, order=order)
+    assert np.array_equal(np.array(Image.open(io.BytesIO(blob))).astype(np.float64), values)
+
+
+def test_a_file_in_strips_is_read_as_tiles_as_wide_as_it() -> None:
+    values = ground(45, 30)
+    info = read_header(coded_tiff(values, predictor=1, sample="f4", fmt=3))
+    assert not info.tiled and info.tile_width == 30 and info.tile_height == 45
+    assert np.array_equal(whole(coded_tiff(values, predictor=1, sample="f4", fmt=3)), values)
+
+
+def test_what_this_reader_does_not_decode_is_left_to_pillow() -> None:
+    """LZW, JPEG and the rest are not refused by the header: the caller reads them another way
+    (``dem/raster.py``)."""
+    blob = bytearray(coded_tiff(ground(8, 8), predictor=1, sample="f4", fmt=3))
+    info = read_header(bytes(blob))
+    assert info.decodable
+    lzw = info.__class__(**{**{f: getattr(info, f) for f in info.__slots__}, "compression": 5})
+    assert not lzw.decodable

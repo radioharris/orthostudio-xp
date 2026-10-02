@@ -37,6 +37,7 @@ from pydantic import Field
 from orthostudio import __version__
 from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
+from orthostudio.dem.raster import read_elevation_from_file, readable_before
 from orthostudio.dem.rule import DEM_RULE, DemJob, DemParams, dem_job
 from orthostudio.dem.sources import (
     Download,
@@ -62,6 +63,7 @@ from orthostudio.graph import (
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import Library, detect_xplane, global_scenery_dir
+from orthostudio.machine import _windows_memory_mb, physical_memory_mb  # noqa: F401
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
@@ -1467,22 +1469,36 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             reading()
             return answers
 
+        heard: list[OsxpError] = []
+
+        def hear(err: OsxpError) -> None:
+            if err.code in RELIEF_SAID or err.code == "DEM_OVERLAY_UNAVAILABLE":
+                heard.append(err)
+
         job = DemJob(
             tile=spec.tile,
             elevation_dir=default_elevation_dir(),
             download=download,
             ranges=ranges,
             cancel=cast(Any, ctx.cancel_event),
+            on_event=hear,
         )
         reading()  # a relief already on disk is read at once: the page says so from the start
         ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
         ticker.start()
         try:
             with dem_job(job):
-                return run_p0_rule(ctx)
+                ref = run_p0_rule(ctx)
         finally:
             stop.set()
             ticker.join(timeout=2 * RELIEF_TICK_S)
+        if any(e.code in RELIEF_SAID for e in heard):
+            # the node's last line, which the Works log keeps: one line, since two lines in the
+            # same second keep only the second
+            line = f"{spec.tile.name}: " + " ".join(e.message for e in heard)
+            log.warning("%s", line)
+            say(said[0], line)
+        return ref
 
     return run
 
@@ -1543,13 +1559,42 @@ def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
 
 
 def _mesh_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
-    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4)."""
+    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4), and say
+    when the mesh reached its triangle budget (:func:`mesh_budget_line`)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
         with _active_env(env, ctx), mesh_job(MeshJob(cancel=cast(Any, ctx.cancel_event))):
-            return run_p0_rule(ctx)
+            ref = run_p0_rule(ctx)
+        line = mesh_budget_line(ref.path, float(getattr(ctx.params, "limit_tris", 0) or 0))
+        if line is not None:
+            log.warning("%s", line)
+            ctx.progress(0.99, line)
+        return ref
 
     return run
+
+
+def mesh_budget_line(mesh_dir: Path, limit_tris: float) -> str | None:
+    """The line saying the mesh reached its triangle budget, or ``None``.
+
+    The mesh stage found it (``MESH_TRIANGLE_BUDGET_REACHED``) and nobody was told: the warning
+    stayed in the stage's result. A relief of one's own at 4 m makes it likely, since the mesher
+    follows its curvature point by point (a lidar square of La Réunion, 2026-10-02): the tile is
+    built, coarser where the relief is steepest, and the user can raise the budget.
+    """
+    try:
+        stats = json.loads((mesh_dir / "stats.json").read_text(encoding="utf-8"))
+        triangles = int(stats["n_triangles"])
+        tile = str(stats["tile"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if limit_tris <= 0 or triangles < 0.99 * limit_tris * 1e6:
+        return None
+    return (
+        f"{tile}: the mesh reached its budget of {limit_tris:g} million triangles "
+        f"({triangles:,} triangles), so it is coarser than the relief asks where it is steepest. "
+        "Advanced settings, Maximum triangles per tile, goes up to 5 million."
+    )
 
 
 def built_facts(spec: BuildSpec) -> dict[str, Any]:
@@ -1857,6 +1902,59 @@ def _by_its_contents(path: Path) -> str | None:
         return None
 
 
+RELIEF_SAID = frozenset(
+    {"DEM_FILE_UNREADABLE", "DEM_FILE_TOO_LARGE", "DEM_EPSG_UNSUPPORTED", "DEM_OVERLAY_NOT_REFINED"}
+)
+"""What the relief node says in Works, as its last line: a file it could not use, or laid on a
+coarser grid than its own. The relief recorded them and nobody was told, so a folder's file refused
+for its size left a user with a tile built on another relief and no word of it (a user on La
+Réunion, 2026-10-01). ``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with
+them and never alone: alone it is a folder or Canada's lidar with nothing for the square, which is
+how they are meant to be, and a build that said nothing before says nothing now."""
+
+RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
+"""Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
+square of 27 468 points a side (3.0 GB of floats, 2026-10-02): the relief 3.8 GB, 7.0 GB when a
+folder's file is laid into the relief under it (the composite of 28 011 points a side beside the
+file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports), Triangle4XP
+6.0 to 6.3 GB (the heights and their curvature, and the mesh)."""
+
+MESH_STRUCTURES_MB = 600
+"""What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
+triangles (``docs/specs/mesh-build.md``)."""
+
+
+def own_relief_mb(custom_dem: str, tile: TileRef) -> tuple[float, bool]:
+    """MB of the largest raster one's own files give ``tile``, and whether it is laid as an
+    overlay (a folder's file, or a file after the first ``;``). ``(0, False)`` for sources: a
+    lidar square is ten times the rasters the rules declare their memory for."""
+    biggest, overlay = 0.0, False
+    for index, part in enumerate(p for p in custom_dem.split(";") if p):
+        path = Path(part)
+        own = cell_file_in_folder(path, tile.lat, tile.lon) if path.is_dir() else path
+        if own is None or not own.is_file():
+            continue
+        try:
+            read = read_elevation_from_file(own, tile.lat, tile.lon, info_only=True)
+        except Exception:  # a file the relief will refuse with its reason: nothing to weigh
+            continue
+        mb = read.nxdem * read.nydem * 4 / 2**20
+        if mb > biggest:
+            biggest, overlay = mb, index > 0
+    return biggest, overlay
+
+
+def relief_ram(rule_: Rule, relief_mb: float, factor: float, extra_mb: float = 0) -> dict[str, int]:
+    """``ram_mb=`` for a node whose peak grows with a raster of one's own (:data:`RELIEF_RAM`),
+    when that is more than its rule declares. Only for a raster larger than 0.1.19 read
+    (:func:`orthostudio.dem.raster.readable_before`): the nodes of every build that ran before are
+    scheduled as they were."""
+    if relief_mb * 2**20 / 4 <= readable_before():
+        return {}
+    need = int(factor * relief_mb + extra_mb)
+    return {"ram_mb": need} if need > rule_.ram_mb else {}
+
+
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     """``params`` with the mark of what the overlays of a composite bring to this square.
 
@@ -1949,6 +2047,7 @@ def declare(
         dem_cfg, dem_inputs = dem_declaration(spec, cfg, global_source, env.global_scenery)
         if dem_cfg.get("custom_dem") == XP12_SOURCE:
             log.info("%s: relief from X-Plane 12's Global Scenery", name)
+        relief_mb, laid_over = own_relief_mb(str(dem_cfg.get("custom_dem") or ""), spec.tile)
         dem = reg.node(
             f"{name}/dem",
             DEM_RULE,
@@ -1960,6 +2059,7 @@ def declare(
             kind="subprocess" if dem_cfg.get("custom_dem") == XP12_SOURCE else "net",
             lane=None if dem_cfg.get("custom_dem") == XP12_SOURCE else RELIEF_LANE,
             run=_dem_run(env, spec),
+            **relief_ram(DEM_RULE, relief_mb, RELIEF_RAM["dem_overlay" if laid_over else "dem"]),
         )
         osm_ref = osm_refs.get(spec.tile)
         osm_input: Node | ArtifactRef
@@ -2003,6 +2103,7 @@ def declare(
             # numpy, shapely and Triangle-free noding release the GIL enough.
             kind="subprocess",
             run=_vectors_run(env, spec),
+            **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
         )
         coast = _coastline_node(reg, spec, osm_input)
         mesh = reg.node(
@@ -2019,6 +2120,7 @@ def declare(
             },
             kind="subprocess",
             run=_mesh_run(env),
+            **relief_ram(OSXP_MESH, relief_mb, RELIEF_RAM["mesh"], MESH_STRUCTURES_MB),
         )
         osm_nodes.append(osm)
         vectors_nodes.append(vectors)
@@ -2302,51 +2404,6 @@ def default_subprocess_slots() -> int:
     machine, where these stages of a batch ran one after the other and a user saw every tile's
     data before any terrain (2026-09-15). The RAM budget still holds back what memory cannot."""
     return min(3, max(1, (os.cpu_count() or 4) - 1))
-
-
-def physical_memory_mb() -> int | None:
-    """Installed RAM in MB, or ``None`` when the platform does not say.
-
-    ``os.sysconf`` does not exist on Windows, where the scheduler then ran with **no** RAM
-    budget at all and every ``ram_mb`` the native nodes declare became inert (review 4,
-    portability finding); ``GlobalMemoryStatusEx`` is the answer there, and a build with no
-    budget at all now says so.
-    """
-    try:
-        pages = os.sysconf("SC_PHYS_PAGES")
-        page = os.sysconf("SC_PAGE_SIZE")
-    except (ValueError, OSError, AttributeError):
-        return _windows_memory_mb()
-    if pages <= 0 or page <= 0:
-        return None
-    return int(pages * page / 2**20)
-
-
-def _windows_memory_mb() -> int | None:
-    """``GlobalMemoryStatusEx().ullTotalPhys``; ``None`` anywhere else."""
-    if os.name != "nt":
-        return None
-    import ctypes
-
-    class _Status(ctypes.Structure):
-        _fields_ = [
-            ("dwLength", ctypes.c_ulong),
-            ("dwMemoryLoad", ctypes.c_ulong),
-            ("ullTotalPhys", ctypes.c_ulonglong),
-            ("ullAvailPhys", ctypes.c_ulonglong),
-            ("ullTotalPageFile", ctypes.c_ulonglong),
-            ("ullAvailPageFile", ctypes.c_ulonglong),
-            ("ullTotalVirtual", ctypes.c_ulonglong),
-            ("ullAvailVirtual", ctypes.c_ulonglong),
-            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-        ]
-
-    status = _Status()
-    status.dwLength = ctypes.sizeof(_Status)
-    with contextlib.suppress(OSError, AttributeError):
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):  # type: ignore[attr-defined]
-            return int(status.ullTotalPhys / 2**20)
-    return None
 
 
 OVERPASS_LANE = "overpass"

@@ -379,25 +379,29 @@ def test_read_geotiff_window_and_nodata(tmp_path: Path) -> None:
     assert read.x1 == pytest.approx(read.x0 + 2 / 3600)
 
 
-def test_a_raster_too_large_to_read_whole_says_so(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """A national elevation model holds hundreds of millions of points: refused with a plain
-    reason rather than filled into memory (Switzerland at 10 m is 851 million, 3.4 GB of floats).
-
-    Pillow refuses to open such an image at all, as a guard against a bomb; the reader lifts that
-    guard for the header, which is what says whether the file can be used, and decides here.
-    """
+def test_a_raster_whose_read_would_fill_the_memory_says_so(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """No fixed size refuses a file any more: a lidar square of 754 million points is read whole,
+    as Ortho4XP reads it (a user on La Réunion, 2026-10-01). What refuses it is the memory the read
+    would take past half of what the machine has, said with the numbers rather than as a file
+    "unreadable"; the header still reads, which is how a folder of one's own indexes what it
+    holds."""
+    from orthostudio import machine
     from orthostudio.dem import raster as raster_module
 
-    monkeypatch.setattr(raster_module, "MAX_POINTS", 4)
     path = tmp_path / "big.tif"
     _write_geotiff(path, np.zeros((3, 3), dtype=np.float32), 43, 5)
+    # nine points stand for more than 0.1.19 read, which is where the memory is weighed
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 4)
+    monkeypatch.setattr(machine, "physical_memory_mb", lambda: 0)
     events: list[object] = []
     read = read_elevation_from_file(path, 43, 5, on_event=events.append)
     assert read.alt_dem is not None and not read.alt_dem.any()  # degraded, as an unreadable file
-    reason = next(e for e in events if getattr(e, "code", "") == "DEM_FILE_UNREADABLE")
-    assert "more than this version reads whole" in reason.context["reason"]  # type: ignore[attr-defined]
-    # its header still reads, which is how a folder of one's own can index what it holds
+    refused = next(e for e in events if getattr(e, "code", "") == "DEM_FILE_TOO_LARGE")
+    assert refused.context["points_m"] == "0" and "memory" in refused.message  # type: ignore[attr-defined]
     assert read_elevation_from_file(path, 43, 5, info_only=True).nxdem == 3
+    # with the memory a machine has, the same file reads
+    monkeypatch.setattr(machine, "physical_memory_mb", lambda: 16 * 1024)
+    assert read_elevation_from_file(path, 43, 5).nxdem == 3
 
 
 def test_a_geotiff_in_another_crs_is_refused(tmp_path: Path) -> None:
@@ -579,3 +583,169 @@ def test_the_block_reads_a_cell_coarser_in_longitude(tmp_path: Path) -> None:
     assert cell.shape == (base, base)
     assert cell[0, 0] == 0.0 and cell[0, -1] == 239.0  # the cell's own extent, end to end
     assert not [e for e in events if getattr(e, "code", "") == "DEM_FILE_UNREADABLE"]
+
+
+# -- one's own file read piece by piece (0.1.20) ------------------------------------------------
+
+
+def _tiled_geotiff(path: Path, alt: np.ndarray, lat: int, lon: int, nodata: float) -> None:
+    """A tiled, deflated float32 GeoTIFF of one square, as lidar is published: the directory after
+    the tiles, as libtiff writes it."""
+    import struct
+    import zlib
+
+    tile = 16
+    rows, cols = alt.shape
+    across, down = -(-cols // tile), -(-rows // tile)
+    blobs = []
+    for ty in range(down):
+        for tx in range(across):
+            block = np.full((tile, tile), nodata, dtype="<f4")
+            part = alt[ty * tile : ty * tile + tile, tx * tile : tx * tile + tile]
+            block[: part.shape[0], : part.shape[1]] = part
+            blobs.append(zlib.compress(block.tobytes(), 6))
+    offsets, at = [], 8
+    for blob in blobs:
+        offsets.append(at)
+        at += len(blob)
+    nodata_text = f"{nodata:g}".encode() + b"\x00"
+    entries = [
+        (256, 4, 1, struct.pack("<I", cols)),
+        (257, 4, 1, struct.pack("<I", rows)),
+        (258, 3, 1, struct.pack("<HH", 32, 0)),
+        (259, 3, 1, struct.pack("<HH", 8, 0)),
+        (262, 3, 1, struct.pack("<HH", 1, 0)),
+        (277, 3, 1, struct.pack("<HH", 1, 0)),
+        (284, 3, 1, struct.pack("<HH", 2, 0)),  # planar, one band: his file says so
+        (322, 3, 1, struct.pack("<HH", tile, 0)),
+        (323, 3, 1, struct.pack("<HH", tile, 0)),
+        (324, 4, len(offsets), struct.pack(f"<{len(offsets)}I", *offsets)),
+        (325, 4, len(blobs), struct.pack(f"<{len(blobs)}I", *map(len, blobs))),
+        (339, 3, 1, struct.pack("<HH", 3, 0)),
+        (33550, 12, 3, struct.pack("<3d", 1 / cols, 1 / rows, 0.0)),
+        (33922, 12, 6, struct.pack("<6d", 0.0, 0.0, 0.0, float(lon), float(lat + 1), 0.0)),
+        (34735, 3, 8, struct.pack("<8H", 1, 1, 0, 1, 2048, 0, 1, 4326)),
+        (42113, 2, len(nodata_text), nodata_text),
+    ]
+    ifd_at = at
+    values_at = ifd_at + 2 + 12 * len(entries) + 4
+    body, tail = bytearray(struct.pack("<H", len(entries))), bytearray()
+    for tag, typ, count, payload in entries:
+        if len(payload) <= 4:
+            inline = payload + b"\x00" * (4 - len(payload))
+        else:
+            inline = struct.pack("<I", values_at + len(tail))
+            tail += payload
+        body += struct.pack("<HHI", tag, typ, count) + inline
+    body += struct.pack("<I", 0)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b"II" + struct.pack("<HI", 42, ifd_at) + b"".join(blobs) + bytes(body) + bytes(tail)
+    )
+
+
+def test_ones_own_tiled_file_is_read_piece_by_piece_and_as_pillow_reads_it(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """A lidar square of La Réunion, 27 468 points a side, was refused for its size; Pillow would
+    have taken 10 GB to decode it. Read tile by tile it takes the raster's own memory, and it is the
+    same raster, nodata and window included, as the one Pillow reads (2026-10-01)."""
+    from orthostudio.dem import cog
+    from orthostudio.dem import raster as raster_module
+
+    alt = (np.arange(40 * 50, dtype=np.float32).reshape(40, 50) % 977) + 0.5
+    alt[:6, :9] = -99999.0  # the sea of his file
+    path = tmp_path / "S21E055.tif"
+    _tiled_geotiff(path, alt, -21, 55, -99999.0)
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 0)  # larger than 0.1.19
+    windows: list[object] = []
+    real = cog.read_window
+    monkeypatch.setattr(cog, "read_window", lambda *a, **k: windows.append(a[1]) or real(*a, **k))
+    pieces = read_elevation_from_file(path, -21, 55)
+    assert windows, "the tiled reader read it"
+    assert pieces.alt_dem is not None and pieces.alt_dem.shape == (40, 50)
+    assert pieces.alt_dem[0, 0] == np.float32(NODATA)  # the file's nodata is ours now
+    assert np.array_equal(pieces.alt_dem[6:], alt[6:])
+    # Pillow, which reads what the tiled reader does not, gives the same raster and window
+    from PIL import Image
+
+    with Image.open(path) as im:
+        pillow = raster_module._read_with_pillow(im, path, -21, 55, info_only=False, on_event=None)
+    assert np.array_equal(pieces.alt_dem, pillow.alt_dem)
+    assert (pieces.x0, pieces.x1, pieces.y0, pieces.y1) == pytest.approx(
+        (pillow.x0, pillow.x1, pillow.y0, pillow.y1)
+    )
+
+
+def test_a_file_wider_than_the_tile_is_read_over_the_tile_and_a_margin(tmp_path: Path) -> None:
+    """A national mosaic is not read whole for one square: the tile and :data:`MARGIN` around it,
+    clipped to the file."""
+    from orthostudio.dem import raster as raster_module
+    from orthostudio.dem.raster import MARGIN
+
+    alt = np.ones((300, 300), dtype=np.float32)  # three degrees a side, a hundred points a degree
+    path = tmp_path / "mosaic.tif"
+    _tiled_geotiff(path, alt, -22, 54, -99999.0)
+    # the file's step is 3 / 300, so it is read as 1 degree of it plus a margin on each side
+    import struct
+
+    blob = bytearray(path.read_bytes())
+    at = blob.index(struct.pack("<3d", 1 / 300, 1 / 300, 0.0))
+    blob[at : at + 24] = struct.pack("<3d", 0.01, 0.01, 0.0)
+    at = blob.index(struct.pack("<6d", 0.0, 0.0, 0.0, 54.0, -21.0, 0.0))
+    blob[at : at + 48] = struct.pack("<6d", 0.0, 0.0, 0.0, 54.0, -19.0, 0.0)
+    path.write_bytes(bytes(blob))
+    # read whole, as 0.1.19 read it, while it is a size 0.1.19 read
+    assert read_elevation_from_file(path, -21, 55).nxdem == 300
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(raster_module, "readable_before", lambda guard=-1: 0)
+        read = read_elevation_from_file(path, -21, 55)
+    assert read.nxdem == read.nydem == 100 + 2 * round(MARGIN / 0.01)
+    assert read.x0 == pytest.approx(-MARGIN + 0.005) and read.y1 == pytest.approx(
+        1 + MARGIN - 0.005
+    )
+
+
+def test_pillow_reads_what_its_guard_used_to_refuse(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Pillow's guard against image bombs was put back before decoding, so every raster above
+    179 million points failed as a missing library. Lifted for the decode too, put back after."""
+    from PIL import Image
+
+    path = tmp_path / "lzw.tif"  # LZW: not decoded piece by piece, so Pillow reads it
+    alt = np.arange(64, dtype=np.float32).reshape(8, 8)
+    from PIL import TiffImagePlugin
+
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / 8, 1 / 8, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, 5.0, 44.0, 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    Image.fromarray(alt).save(path, tiffinfo=info, compression="tiff_lzw")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)  # 64 points is a bomb now
+    read = read_elevation_from_file(path, 43, 5)
+    assert read.alt_dem is not None and np.array_equal(read.alt_dem, alt)
+    assert Image.MAX_IMAGE_PIXELS == 10
+
+
+def test_what_0119_read_is_read_as_0119_did(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """No regression: a relief 0.1.19 read never meets the new reader. Copernicus, the USGS,
+    ANADEM's squares and every file of one's own that worked are read by 0.1.19's code, through
+    Pillow; only a raster larger than 0.1.19 could read goes piece by piece."""
+    from orthostudio.dem import raster as raster_module
+
+    def never(*args: object, **kw: object) -> object:
+        raise AssertionError("a relief 0.1.19 read went the new way")
+
+    monkeypatch.setattr(raster_module, "_read_in_pieces", never)
+    monkeypatch.setattr(raster_module, "_read_larger", never)
+    alt = (np.arange(40 * 50, dtype=np.float32).reshape(40, 50) % 977) + 0.5
+    path = tmp_path / "S21E055.tif"
+    _tiled_geotiff(path, alt, -21, 55, -99999.0)
+    read = read_elevation_from_file(path, -21, 55)
+    assert read.alt_dem is not None and np.array_equal(read.alt_dem, alt)
+    _write_geotiff(tmp_path / "cop.tif", alt, 43, 5)
+    assert read_elevation_from_file(tmp_path / "cop.tif", 43, 5).nxdem == 50
+    # the threshold is 0.1.19's own: twice Pillow's guard, 400 million at most
+    assert raster_module.readable_before(89_478_485) == 178_956_970
+    assert raster_module.readable_before(None) == raster_module.MAX_POINTS == 400_000_000

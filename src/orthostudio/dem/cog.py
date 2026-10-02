@@ -6,7 +6,10 @@ A relief published as one huge tiled GeoTIFF cannot be read the way the other so
 ANADEM terrain model of South America (``dem/sources.py``) is 52 files of about 2 GB, one per MGRS
 zone; the square of one X-Plane tile is 37 MB of it. The files are tiled 512 by 512 and deflated,
 and their server serves byte ranges, so the tiles the square needs are the only bytes that travel.
-The same reader opens a huge file the user has on his disk, which Pillow would decode whole.
+The same reader opens a huge file the user has on his disk, which Pillow would decode whole: a
+lidar square of 27 468 points a side (754 million, 3 GB of floats) took Pillow 10 GB of memory, and
+was refused before that (a user on La Réunion, 2026-10-01). Read here, tile by tile or strip by
+strip, it takes the 3 GB of the raster and little more (``dem/raster.py``).
 
 Nothing here knows about a source or a provider: it is given the bytes of a header, then a way to
 read byte ranges, and it answers the window as a float32 array with its geometry.
@@ -42,6 +45,20 @@ the directory: a quarter of a megabyte is room to spare, and one request."""
 
 _TYPE_SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 16: 8}
 _TILE_WIDTH, _TILE_LENGTH, _TILE_OFFSETS, _TILE_COUNTS = 322, 323, 324, 325
+_STRIP_OFFSETS, _ROWS_PER_STRIP, _STRIP_COUNTS = 273, 278, 279
+
+_SAMPLES = {
+    (3, 32): "f4",
+    (3, 64): "f8",
+    (2, 16): "i2",
+    (1, 16): "u2",
+    (2, 32): "i4",
+    (1, 32): "u4",
+}
+"""(SampleFormat, BitsPerSample) to the numpy type of a sample: the kinds elevation comes in."""
+
+DEFLATE = (8, 32946)
+"""The two codes of Deflate; with 1 (none), the compressions this reader decodes."""
 _PIXEL_SCALE, _TIEPOINT, _GEO_KEYS, _NODATA = 33550, 33922, 34735, 42113
 
 
@@ -63,6 +80,16 @@ class TiffInfo:
     nodata: float
     compression: int
     predictor: int
+    sample: str = "f4"
+    """The numpy type of one sample, without its byte order (:data:`_SAMPLES`)."""
+    byte_order: str = "<"
+    tiled: bool = True
+    """``False`` for a file stored in strips, read here as tiles as wide as the image."""
+
+    @property
+    def decodable(self) -> bool:
+        """Whether :func:`read_window` decodes this file (else the caller reads it another way)."""
+        return self.compression in (1, *DEFLATE) and self.predictor in (1, 2, 3)
 
     @property
     def across(self) -> int:
@@ -179,10 +206,15 @@ def read_header(head: bytes, *, path: str = "<bytes>") -> TiffInfo:
             return [blob.decode("ascii", "replace").strip("\x00")]
         return list(struct.unpack(bo + f"{n}{code}", blob))
 
-    if _TILE_WIDTH not in tags or _TILE_OFFSETS not in tags:
-        raise _bad(path, "not tiled (this reader needs a tiled GeoTIFF)")
-    if values(258)[0] != 32 or values(339, needed=False)[:1] != [3]:
-        raise _bad(path, "not one band of float32")
+    tiled = _TILE_WIDTH in tags and _TILE_OFFSETS in tags
+    if not tiled and _STRIP_OFFSETS not in tags:
+        raise _bad(path, "neither tiled nor in strips")
+    if 277 in tags and values(277)[0] != 1:
+        raise _bad(path, f"{values(277)[0]} bands, where elevation is one")
+    sample_format = (values(339, needed=False) or [1])[0]
+    sample = _SAMPLES.get((sample_format, values(258)[0]))
+    if sample is None:
+        raise _bad(path, f"samples of {values(258)[0]} bits, format {sample_format}")
     scale = values(_PIXEL_SCALE)
     tie = values(_TIEPOINT)
     if len(scale) < 2 or len(tie) < 6 or scale[0] <= 0 or scale[1] <= 0:
@@ -190,16 +222,27 @@ def read_header(head: bytes, *, path: str = "<bytes>") -> TiffInfo:
     keys = values(_GEO_KEYS, needed=False)
     epsg = 0
     for i in range(4, len(keys) - 3, 4):
-        if keys[i] == 2048:  # GeographicTypeGeoKey
+        # GeographicTypeGeoKey, and ProjectedCSTypeGeoKey, which the caller then refuses: a file in
+        # a national projection must not be read as degrees
+        if keys[i] in (2048, 3072):
             epsg = int(keys[i + 3])
     nodata = float(values(_NODATA, needed=False)[0]) if _NODATA in tags else float("nan")
+    width, height = int(values(256)[0]), int(values(257)[0])
+    if tiled:
+        tile_width, tile_height = int(values(_TILE_WIDTH)[0]), int(values(_TILE_LENGTH)[0])
+        offsets, counts = values(_TILE_OFFSETS), values(_TILE_COUNTS)
+    else:
+        # strips are tiles as wide as the image; a file without RowsPerStrip is one strip
+        tile_width = width
+        tile_height = min(int((values(_ROWS_PER_STRIP, needed=False) or [height])[0]), height)
+        offsets, counts = values(_STRIP_OFFSETS), values(_STRIP_COUNTS)
     return TiffInfo(
-        width=int(values(256)[0]),
-        height=int(values(257)[0]),
-        tile_width=int(values(_TILE_WIDTH)[0]),
-        tile_height=int(values(_TILE_LENGTH)[0]),
-        offsets=tuple(int(v) for v in values(_TILE_OFFSETS)),
-        counts=tuple(int(v) for v in values(_TILE_COUNTS)),
+        width=width,
+        height=height,
+        tile_width=tile_width,
+        tile_height=tile_height,
+        offsets=tuple(int(v) for v in offsets),
+        counts=tuple(int(v) for v in counts),
         step_x=float(scale[0]),
         step_y=float(scale[1]),
         west=float(tie[3]),
@@ -208,6 +251,9 @@ def read_header(head: bytes, *, path: str = "<bytes>") -> TiffInfo:
         nodata=nodata,
         compression=int(values(259, needed=False)[0]) if 259 in tags else 1,
         predictor=int(values(317, needed=False)[0]) if 317 in tags else 1,
+        sample=sample,
+        byte_order=bo,
+        tiled=tiled,
     )
 
 
@@ -247,17 +293,37 @@ def window_for(info: TiffInfo, south: float, north: float, west: float, east: fl
     )
 
 
-def _decode(blob: bytes, info: TiffInfo, path: str) -> NDArray[np.float32]:
-    if info.compression in (8, 32946):
-        blob = zlib.decompress(blob)
+def _decode(blob: bytes, info: TiffInfo, path: str, rows: int) -> NDArray[Any]:
+    """One tile (or strip) of ``rows`` rows as samples of the file's own type.
+
+    Predictor 2 adds each sample to the one before it along the row, on the integer it is stored
+    as; predictor 3 (floating point) stored the bytes of a row by significance, most significant
+    first, and differenced them byte by byte: both are undone here, as libtiff undoes them. Until
+    0.1.20 predictor 3 was taken and not undone, which would have read noise.
+    """
+    if info.compression in DEFLATE:
+        try:
+            blob = zlib.decompress(blob)
+        except zlib.error as err:
+            raise _bad(path, f"a tile does not inflate ({err})") from err
     elif info.compression != 1:
         raise _bad(path, f"compression {info.compression} is not read here")
-    if info.predictor not in (1, 3):
-        raise _bad(path, f"predictor {info.predictor}")
-    expected = info.tile_width * info.tile_height * 4
+    size = int(info.sample[1])
+    expected = info.tile_width * rows * size
     if len(blob) != expected:
         raise _bad(path, f"a tile holds {len(blob)} bytes, not {expected}")
-    return np.frombuffer(blob, dtype="<f4").reshape(info.tile_height, info.tile_width)
+    raw = np.frombuffer(blob, dtype=np.uint8).reshape(rows, info.tile_width * size)
+    if info.predictor == 1:
+        return raw.view(info.byte_order + info.sample).reshape(rows, info.tile_width)
+    if info.predictor == 2:
+        as_int = raw.view(f"{info.byte_order}u{size}")
+        undone = np.cumsum(as_int, axis=1, dtype=as_int.dtype.newbyteorder("="))
+        return undone.view(info.sample).reshape(rows, info.tile_width)
+    if info.predictor == 3:
+        planes = np.cumsum(raw, axis=1, dtype=np.uint8).reshape(rows, size, info.tile_width)
+        big_endian = np.ascontiguousarray(planes.transpose(0, 2, 1))
+        return big_endian.view(">" + info.sample).reshape(rows, info.tile_width)
+    raise _bad(path, f"predictor {info.predictor}")
 
 
 def read_window(
@@ -281,8 +347,10 @@ def read_window(
     out = np.full((window.rows, window.cols), info.nodata, dtype=np.float32)
     for index, blob in zip((i for i in wanted if i < len(info.offsets)), blobs, strict=True):
         ty, tx = divmod(index, info.across)
-        block = _decode(blob, info, path)
         top, left = ty * info.tile_height, tx * info.tile_width
+        # the last strip of a file in strips stops at the image's last row; a tile never does
+        rows = info.tile_height if info.tiled else min(info.tile_height, info.height - top)
+        block = _decode(blob, info, path, rows)
         r0 = max(window.row0, top)
         r1 = min(window.row0 + window.rows, top + info.tile_height)
         c0 = max(window.col0, left)

@@ -635,3 +635,91 @@ def test_a_file_of_ones_own_that_cannot_be_read_gives_way_to_the_relief_chosen(
         Dem.build(tile, opts, custom_dem=str(folder), on_event=said.append)
     assert exc.value.code == "DEM_TILE_UNAVAILABLE"
     assert ".hgt" in exc.value.remedy and "N43E005" in exc.value.remedy
+
+
+# -- a folder's file at its own resolution, as far as the memory goes (0.1.20) ------------------
+
+
+def _square_tif(path: Path, side: int, value: float, lat: int = 43, lon: int = 5) -> Path:
+    """A GeoTIFF of one square, ``side`` points a side, every point at ``value``."""
+    from PIL import Image, TiffImagePlugin
+
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / side, 1 / side, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, float(lon), float(lat + 1), 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    Image.fromarray(np.full((side, side), value, np.float32)).save(path, tiffinfo=info)
+    return path
+
+
+def test_a_fine_folder_file_raises_the_grid_as_far_as_the_memory_goes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fixed cap of 12 000 points a side laid a lidar square of 4 m on the 30 m grid of the relief
+    under it, in silence (a user on La Réunion, 2026-10-01). The grid now rises to the file's own
+    as far as the memory allows, and past it the file is laid on the coarser grid and that is
+    said, with the numbers."""
+    from orthostudio import machine
+    from orthostudio.dem import dem as dem_module
+
+    base = _square_tif(tmp_path / "base.tif", 1000, 10.0)  # 1 000 points a degree
+    over = _square_tif(tmp_path / "over.tif", 2000, 20.0)  # 2 000: twice as fine
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    monkeypatch.setattr(machine, "physical_memory_mb", lambda: 64 * 1024)
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}")
+    # the file's own grid over the base's window (post centres: 0.999 of a degree)
+    assert dem.nxdem == 1999 and dem.laid_over == (str(over),)
+    # up to 0.1.19's side it rises whatever the memory, as it did
+    monkeypatch.setattr(machine, "physical_memory_mb", lambda: 48)
+    assert Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}").nxdem == 1999
+    # past it, 48 MB: the files read (16 MB the finer), their composite does not fit (32 MB > 24)
+    monkeypatch.setattr(dem_module, "MAX_COMPOSITE_SIDE", 1500)
+    events: list[OsxpError] = []
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{over}", on_event=events.append)
+    assert dem.nxdem == 1000 and dem.laid_over == (str(over),)  # laid, on the base's grid
+    (told,) = [e for e in events if e.code == "DEM_OVERLAY_NOT_REFINED"]
+    assert told.context["own"] == "over.tif" and told.context["ram_gb"] == "0"
+    assert "memory" in told.message
+
+
+def test_a_file_the_relief_cannot_use_says_why(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """ "the file is unreadable" was all a user read of a lidar square refused for its size: the
+    reader's own words now reach the error, numbers included."""
+    from orthostudio import machine
+
+    own = _hgt(tmp_path / "mine.hgt", 1201, 10)
+    path = tmp_path / "mine.tif"
+    from PIL import Image, TiffImagePlugin
+
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (1 / 100, 1 / 100, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, 5.0, 44.0, 0.0)
+    info[34735] = (1, 1, 0, 1, 2048, 0, 1, 4326)
+    Image.new("F", (100, 100)).save(path, tiffinfo=info)
+    from orthostudio.dem import raster as raster_module
+
+    monkeypatch.setattr(raster_module, "readable_before", lambda guard=-1: 0)  # larger than 0.1.19
+    monkeypatch.setattr(machine, "physical_memory_mb", lambda: 0)
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    with pytest.raises(OsxpError) as caught:
+        Dem.build(TileRef(43, 5), opts, custom_dem=str(path))
+    assert caught.value.code == "DEM_TILE_UNAVAILABLE"
+    reason = str(caught.value.context["reason"])
+    assert "memory" in reason and "mine.tif" in reason and "unreadable" not in reason
+    assert own.is_file()
+
+
+def test_the_raster_is_written_as_it_is_and_its_voids_counted_by_blocks(tmp_path: Path) -> None:
+    """``astype`` copied a raster already in float32 to write it, 3 GB more for a lidar square;
+    the voids were counted through a mask of the whole of it, 0.75 GB."""
+    from orthostudio.dem import dem as dem_module
+
+    alt = np.arange(3000 * 7, dtype=np.float32).reshape(3000, 7)
+    alt[::5, 2] = -32768.0
+    dem = _dem(alt, x0=0.0, x1=1.0)
+    dem.nodata = -32768.0
+    dem.write_alt(tmp_path / "Data.alt")
+    assert np.array_equal(
+        np.fromfile(tmp_path / "Data.alt", dtype=np.float32).reshape(alt.shape), alt
+    )
+    assert dem.meta()["nodata_pixels"] == 600 == dem_module._count_equal(alt, -32768.0)
