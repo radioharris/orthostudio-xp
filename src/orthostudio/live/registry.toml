@@ -1,0 +1,37 @@
+# OrthoStudio XP Live's own imagery sources: two that AutoOrtho offers and OrthoStudio XP does not
+# ship. They follow the conventions of OrthoStudio XP's registry (orthostudio/imagery/registry.toml).
+# Live lists them after OrthoStudio XP's sources and before the user's own
+# (orthostudio.live.providers.registry). OrthoStudio XP's own lists do not change.
+#
+# AutoOrtho also offers Google (GO2), Yandex (YNDX) and Apple (APPLE). They stay out, as Google
+# stays out of OrthoStudio XP's registry (decision 0005): their terms forbid taking their tiles
+# outside their own applications, and Apple's tiles need a key taken from Apple's pages. A pilot can
+# still add any source of their own in OrthoStudio XP's Plan.
+
+schema = 1
+
+[providers.FIREFLY]
+# AutoOrtho's FIREFLY (autoortho/getortho.py): Esri World Imagery in its "Firefly" style, the same
+# photos with softer colours, under the same terms as Esri World Imagery (Arc). Where it has no
+# imagery (open sea, ZL16 and more) it answers 404 (2026-09-27).
+url_template = "https://fly.maptiles.arcgis.com/arcgis/rest/services/World_Imagery_Firefly/MapServer/tile/{zoom}/{y}/{x}"
+max_zl = 19  # ZL20 is a 404 over Lyon, served over Kansas City (2026-09-27)
+max_in_flight = 128  # 32, 64, 128, 192 gave 78, 172, 303, 315 req/s, no error (2026-09-27)
+attribution = "Esri World Imagery Firefly (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"
+name = "Esri World Imagery Firefly"
+terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
+
+[providers.NAIP]
+# AutoOrtho's NAIP (autoortho/getortho.py): the USDA's National Agriculture Imagery Program over
+# the contiguous United States, public domain, served by Esri. Ortho4XP's address for it
+# (gis.apfo.usda.gov) is dead (docs/providers-audit.md). ZL18 at most: ZL19 is a 404 over Kansas
+# City, and so is anything outside the United States, where Live takes Bing Maps (2026-09-27).
+# Slow: about 0.8 s an answer, hence the wide window.
+url_template = "https://naip.maptiles.arcgis.com/arcgis/rest/services/NAIP/MapServer/tile/{zoom}/{y}/{x}"
+max_zl = 18
+max_in_flight = 192  # 32, 64, 128, 192 gave 28, 41, 59, 71 req/s, no error (2026-09-27)
+attribution = "USDA National Agriculture Imagery Program (NAIP, public domain), served by Esri"
+name = "NAIP"
+extent = "United States"
+extent_bounds = [-125.0, 24.4, -66.9, 49.4]  # the contiguous United States, a rectangle
+terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"

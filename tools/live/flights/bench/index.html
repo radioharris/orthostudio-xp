@@ -1,0 +1,186 @@
+<!doctype html>
+<!-- OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+     Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
+<!-- The test flights' window (tools/live/flights/bench.py): OrthoStudio XP's styles.css, its cards
+     (.question), choices, buttons, tables and log box, and bench.css for the few parts of its own. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Vols de test — OrthoStudio XP Live</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="live/live.css">
+<link rel="stylesheet" href="bench/bench.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M2 15l8-2 7-8 2 1-4 8 5 1 1 2-6 1-3 4h-2l1-4-7 1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">Vols de test</span>
+    <span class="brand-version">OrthoStudio XP Live</span>
+  </div>
+  <div class="bench-machine" aria-live="polite">
+    <span class="bench-chip"><span class="dot" id="m-xplane"></span>X-Plane</span>
+    <span class="bench-chip"><span class="dot" id="m-live"></span>Live</span>
+    <span class="bench-chip"><span class="dot" id="m-autoortho"></span>AutoOrtho</span>
+  </div>
+</header>
+
+<main class="main bench">
+  <div class="bench-cols">
+    <div>
+      <fieldset class="question">
+        <legend class="question-title">Quoi voler</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="mode" value="scenarios" checked>
+            <span class="choice-text"><span class="choice-label">Des scénarios</span>
+              <span class="choice-note">à la suite, dans un seul X-Plane qui s'ouvre et se ferme tout seul</span></span></label>
+          <label class="choice"><input type="radio" name="mode" value="campaign">
+            <span class="choice-text"><span class="choice-label">Une campagne</span>
+              <span class="choice-note">plusieurs réglages sur les mêmes vols, l'un après l'autre, puis un tableau qui les compare</span></span></label>
+        </div>
+        <div class="choices bench-list" id="scenario-list"></div>
+        <div class="choices bench-list" id="campaign-list" hidden></div>
+      </fieldset>
+
+      <fieldset class="question" id="with-card">
+        <legend class="question-title">Avec</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="streamer" value="none" checked>
+            <span class="choice-text"><span class="choice-label">X-Plane seul</span>
+              <span class="choice-note">sans ortho streamée : ce que fait X-Plane lui-même</span></span></label>
+          <label class="choice"><input type="radio" name="streamer" value="live">
+            <span class="choice-text"><span class="choice-label">Live</span>
+              <span class="choice-note">le Live de cette copie, lancé avant X-Plane comme tu le lances</span></span></label>
+          <label class="choice" id="ao-choice"><input type="radio" name="streamer" value="autoortho">
+            <span class="choice-text"><span class="choice-label">AutoOrtho</span>
+              <span class="choice-note" id="ao-note">ton AutoOrtho Dev, sans sa fenêtre, lancé avant X-Plane</span></span></label>
+        </div>
+        <fieldset class="sub-question" id="ao-settings-q" hidden>
+          <legend class="sub-question-title">Réglages d'AutoOrtho</legend>
+          <div class="choices">
+            <label class="choice"><input type="radio" name="ao_settings" value="mine" checked>
+              <span class="choice-text"><span class="choice-label">Les tiens</span>
+                <span class="choice-note">une copie de ton fichier de réglages : le tien n'est jamais modifié</span></span></label>
+            <label class="choice"><input type="radio" name="ao_settings" value="default">
+              <span class="choice-text"><span class="choice-label">Ses réglages par défaut</span>
+                <span class="choice-note">ceux qu'AutoOrtho prend quand on ne règle rien</span></span></label>
+          </div>
+        </fieldset>
+        <fieldset class="sub-question" id="zooms-q" hidden>
+          <legend class="sub-question-title">Zooms</legend>
+          <select id="zooms" class="question-select bench-select">
+            <option value="">tels que réglés</option>
+            <option value="16/18">ZL16, et ZL18 près des aéroports</option>
+            <option value="17/19">ZL17, et ZL19 près des aéroports</option>
+          </select>
+        </fieldset>
+        <label class="choice bench-cold" id="cold-q" hidden><input type="checkbox" id="cold">
+          <span class="choice-text"><span class="choice-label">À froid</span>
+            <span class="choice-note">rien de construit, rien de téléchargé, comme une première fois : ses fichiers dans les résultats, les tiens jamais touchés</span></span></label>
+      </fieldset>
+
+      <fieldset class="question">
+        <legend class="question-title">Caméra</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="camera" value="scenario" checked>
+            <span class="choice-text"><span class="choice-label">Celle du scénario</span>
+              <span class="choice-note">le cockpit, et les vues extérieures que le scénario prévoit</span></span></label>
+          <label class="choice"><input type="radio" name="camera" value="mine">
+            <span class="choice-text"><span class="choice-label">La tienne</span>
+              <span class="choice-note">rejouée à l'identique, pour les scénarios où tu l'as enregistrée ; les autres gardent la leur</span></span></label>
+        </div>
+        <div class="bench-go">
+          <button type="button" class="btn btn-small" id="record-btn">Enregistrer ma caméra</button>
+          <span class="question-help" id="record-note">coche un seul scénario : X-Plane vole seul, et tu bouges la caméra comme tu veux pendant tout le vol</span>
+        </div>
+      </fieldset>
+
+      <section class="question">
+        <label class="choice" id="keep-open-q"><input type="checkbox" id="keep-open">
+          <span class="choice-text"><span class="choice-label">Laisser X-Plane ouvert à la fin</span>
+            <span class="choice-note">une série suivante démarre alors tout de suite</span></span></label>
+        <div class="bench-go">
+          <button type="button" class="btn btn-primary" id="start-btn">Lancer</button>
+          <span class="question-help" id="start-note"></span>
+        </div>
+        <p class="error-inline" id="start-error" role="alert" hidden></p>
+      </section>
+    </div>
+
+    <section class="question bench-now" aria-live="polite">
+      <div class="bench-state-head">
+        <span class="dot" id="run-dot"></span>
+        <h2 class="question-title" id="run-title">Rien en cours</h2>
+      </div>
+      <p class="question-help" id="run-lead">Choisis à gauche ce que tu veux voler, puis Lancer.</p>
+      <div class="progress bench-progress" id="run-progress" hidden><span id="run-bar"></span></div>
+      <p class="question-help num" id="run-text"></p>
+      <button type="button" class="btn btn-danger" id="stop-btn" hidden>Arrêter</button>
+      <!-- Live's own map while Live flies (livemap.js, as Live's window draws it) -->
+      <div class="bench-map" id="run-map-box" hidden>
+        <div class="bench-map-head">
+          <h3 class="sub-question-title">La carte de Live</h3>
+          <label class="live-map-toggle"><input type="checkbox" id="run-map-follow" checked><span>Suivre l'avion</span></label>
+        </div>
+        <div class="live-map-wrap">
+          <div class="live-map" id="run-map"></div>
+          <div class="live-map-bar is-hint" id="run-map-info" aria-live="polite"></div>
+        </div>
+        <div class="live-map-legend">
+          <span class="legend-title">Netteté au sol :</span>
+          <span><i class="swatch is-zl19"></i>ZL19</span>
+          <span><i class="swatch is-zl18"></i>ZL18</span>
+          <span><i class="swatch is-zl17"></i>ZL17</span>
+          <span><i class="swatch is-zl16"></i>ZL16</span>
+          <span><i class="swatch is-zl15"></i>ZL15</span>
+          <span><i class="swatch is-less"></i>Plus flou</span>
+          <span><i class="swatch is-region"></i>Région installée</span>
+          <span><i class="swatch is-route"></i>Trajet</span>
+        </div>
+      </div>
+      <details class="log" open>
+        <summary>Ce que fait la commande</summary>
+        <pre id="run-log"></pre>
+      </details>
+    </section>
+  </div>
+
+  <section class="question bench-results">
+    <div class="bench-results-head">
+      <h2 class="question-title">Résultats</h2>
+      <button type="button" class="btn btn-small" id="compare-btn" disabled>Comparer les résultats cochés</button>
+    </div>
+    <p class="question-help">Clique une ligne pour lire son bilan et voir ses photos. Coche-en deux ou plus pour les comparer : leurs chiffres côte à côte, et leurs photos prises au même moment du même vol.</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th></th><th>Quand</th><th>Quoi</th><th>Avec</th><th>Issue</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+    <div class="bench-report" id="result-view" hidden></div>
+  </section>
+</main>
+
+<div class="bench-shot" id="shot" hidden><img id="shot-img" alt=""></div>
+<template id="map-legend"><div class="live-map-legend">
+          <span class="legend-title">Netteté au sol :</span>
+          <span><i class="swatch is-zl19"></i>ZL19</span>
+          <span><i class="swatch is-zl18"></i>ZL18</span>
+          <span><i class="swatch is-zl17"></i>ZL17</span>
+          <span><i class="swatch is-zl16"></i>ZL16</span>
+          <span><i class="swatch is-zl15"></i>ZL15</span>
+          <span><i class="swatch is-less"></i>Plus flou</span>
+          <span><i class="swatch is-region"></i>Région installée</span>
+          <span><i class="swatch is-route"></i>Trajet</span>
+        </div></template>
+<script src="static/vendor/leaflet/leaflet.js"></script>
+<script src="bench/bench.js"></script>
+</body>
+</html>

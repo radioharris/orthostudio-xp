@@ -1,0 +1,24 @@
+# AutoOrtho against Live, like against like: low over Toulouse, where the ground's textures are
+# seen closest, with turns, a climb and a descent, and external views as a pilot takes them:
+# behind the aircraft, then zoomed far out (Shift+4). 20 min at 230 kt over the ground.
+title AutoOrtho contre Live : bas au-dessus de Toulouse, virages, montée, vues extérieures
+start 43.63 1.37 3000 320 230
+weather clear
+zulu 11 271                            # 13:00 in France on 29 September
+camera 0 300 cockpit
+camera 300 420 chase 150 30 180        # just behind
+camera 420 480 chase 8000 2000 180     # zoomed out, 8 km behind and 2 km up
+camera 480 900 cockpit
+camera 900 960 chase 20000 3000 90     # far out, 20 km to the right and 3 km up
+camera 960 99999 cockpit
+leg 240 0 0                            # north-west at 3,000 ft
+leg 60 1.5 0                           # right, 90 degrees
+leg 240 0 0                            # north-east
+leg 300 0 1400                         # climb to 10,000 ft
+leg 60 -3 0                            # left, 180 degrees
+leg 300 0 -1400                        # back down to 3,000 ft
+screenshot 120
+screenshot 360
+screenshot 450
+screenshot 930
+screenshot 1140

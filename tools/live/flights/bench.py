@@ -1,0 +1,796 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
+"""The test flights' window: what to fly, chosen with the mouse, the flight under way, and the
+results (``docs/specs/live/flights.md``). It runs ``fly.py`` as its command line does, with the
+options chosen, and reads what it leaves in ``build/flights``.
+
+    uv run python tools/live/flights/bench.py
+
+Built as Live's own window is (``orthostudio.live.web``): OrthoStudio XP's window, the guard of its
+API and its style sheet, on a port of its own (8661). A window apart from Live's: Live's is for its
+users, this one is the developer's, and speaks of AutoOrtho. A flight goes on if the window is
+closed: it is ``fly.py``'s, in a process of its own, found again when the window opens.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import html
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+import webbrowser
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import benchmap  # noqa: E402
+import fly  # noqa: E402
+import scenario as scenarios  # noqa: E402
+
+PAGE_DIR = HERE / "bench"
+PORT = 8661  # the preview app's engine takes 8651, Live's window 8642
+TITLE = "Vols de test — OrthoStudio XP Live"
+SIZE = (1240, 900)
+CURRENT = "bench-current.json"  # in the results: the flight under way, for a window opened again
+LOGS = "bench-logs"
+START_S = 60.0  # X-Plane's start and the runner's own steps, for the time a choice will take
+RUN_EXTRA_S = (
+    8 * 60
+)  # a campaign's run beyond its flights: a cold start (AutoOrtho's took 4 min), the quits
+STREAMERS = ("none", "live", "autoortho")
+ZOOMS = ("", "16/18", "17/19")
+
+
+FRENCH = (  # the runner's words for a setup (fly.label), as the window says them
+    ("X-Plane alone", "X-Plane seul"),
+    ("its defaults", "ses réglages par défaut"),
+    ("your settings", "tes réglages"),
+    ("cold", "à froid"),
+)
+
+
+def in_french(label: str) -> str:
+    for en, fr in FRENCH:
+        label = label.replace(en, fr)
+    return label
+
+
+class BenchError(ValueError):
+    """A choice the runner would refuse; the message says why, in the window's words."""
+
+
+# ---- what there is to fly ---------------------------------------------------------------------
+
+
+def _lead(path: Path) -> str:
+    """A file's first comment lines, as one text: what it is for."""
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("#"):
+            break
+        lines.append(line.lstrip("#").strip())
+    return " ".join(ln for ln in lines if ln)
+
+
+def options() -> dict[str, Any]:
+    """The scenarios and campaigns there are, and whether AutoOrtho can be started."""
+    scs = []
+    for path in sorted(scenarios.SCENARIOS.glob("*.txt")):
+        try:
+            sc = scenarios.load(path)
+        except scenarios.ScenarioError as e:
+            scs.append({"name": path.stem, "error": str(e)})
+            continue
+        camera = fly.camera_file(fly.RESULTS, sc.name)
+        scs.append(
+            {
+                "name": sc.name,
+                "title": sc.title or sc.name,
+                "minutes": round(sc.duration / 60, 1),
+                "about": _lead(path),
+                "camera": (
+                    when(datetime.fromtimestamp(camera.stat().st_mtime).strftime("%Y-%m-%d %H%M%S"))
+                    if camera.is_file()
+                    else None
+                ),
+            }
+        )
+    camps = []
+    for path in sorted(fly.CAMPAIGNS.glob("*.txt")):
+        try:
+            camp = fly.read_campaign(str(path))
+            flight = sum(scenarios.load(n).duration for n in camp.scenarios) / 60
+        except (fly.RefusedError, scenarios.ScenarioError) as e:
+            camps.append({"name": path.stem, "error": str(e)})
+            continue
+        parser = parser_for_labels()
+        args = {i: parser.parse_args([*opts, *camp.scenarios]) for i, opts in camp.runs}
+        all_cold = all(a.cold for a in args.values())
+        labels = {i: in_french(fly.label(a)) for i, a in args.items()}
+        short = {i: lb.removesuffix(", à froid") if all_cold else lb for i, lb in labels.items()}
+        camps.append(
+            {
+                "name": camp.name,
+                "title": camp.title or camp.name,
+                "about": _lead(path),
+                "scenarios": camp.scenarios,
+                "runs": [{"id": i, "label": labels[i]} for i, _ in camp.runs],
+                "comparisons": [
+                    {"index": n, "runs": comp, "title": " contre ".join(short[i] for i in comp)}
+                    for n, comp in enumerate(camp.comparisons, 1)
+                ],
+                "run_minutes": round(flight + RUN_EXTRA_S / 60, 1),
+                "flight_minutes": round(flight, 1),
+            }
+        )
+    ao = fly.AO_PYTHON.is_file() and (fly.AO_SOURCES / "__main__.py").is_file()
+    return {"scenarios": scs, "campaigns": camps, "autoortho": ao}
+
+
+def parser_for_labels() -> Any:
+    """fly.py's options, to name a campaign's runs as the runner names them."""
+    import argparse
+
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("scenarios", nargs="*")
+    p.add_argument("--streamer", choices=STREAMERS, default="none")
+    p.add_argument("--cold", action="store_true")
+    p.add_argument("--ao-settings", choices=("mine", "default"), default="mine")
+    p.add_argument("--zooms", type=fly.zooms_of)
+    p.add_argument("--keep-open", action="store_true")
+    p.add_argument("--record-camera", action="store_true")
+    p.add_argument("--camera", choices=("scenario", "mine"), default="scenario")
+    return p
+
+
+def fly_args(choice: dict[str, Any]) -> list[str]:
+    """``fly.py``'s arguments for what the window chose; BenchError when they make no sense."""
+    camera = choice.get("camera", "scenario")
+    if camera not in ("scenario", "mine"):
+        raise BenchError(f"caméra inconnue : {camera}")
+    mine = ["--camera", "mine"] if camera == "mine" else []
+    if choice.get("record_camera"):
+        names = [str(n) for n in choice.get("scenarios") or []]
+        if len(names) != 1:
+            raise BenchError("pour enregistrer ta caméra, coche un seul scénario")
+        if names[0] not in {p.stem for p in scenarios.SCENARIOS.glob("*.txt")}:
+            raise BenchError(f"pas de scénario « {names[0]} »")
+        return ["--record-camera", "--streamer", "none", names[0]]
+    campaign = choice.get("campaign") or ""
+    if campaign:
+        known = {p.stem for p in fly.CAMPAIGNS.glob("*.txt")}
+        if campaign not in known:
+            raise BenchError(f"pas de campagne « {campaign} »")
+        camp = fly.read_campaign(campaign)
+        count = len(camp.comparisons) or len(camp.runs)
+        known = {p.stem for p in scenarios.SCENARIOS.glob("*.txt")}
+        picks: dict[int, list[str]] = {}
+        for item in choice.get("pick") or []:  # {index, scenarios}, or an index alone
+            index = int(item["index"] if isinstance(item, dict) else item)
+            names = list(item.get("scenarios") or []) if isinstance(item, dict) else []
+            if not 1 <= index <= count:
+                raise BenchError(f"comparaisons de 1 à {count}")
+            if isinstance(item, dict) and not names:
+                raise BenchError(f"comparaison {index} : coche au moins un vol")
+            unknown = [n for n in names if n not in known]
+            if unknown:
+                raise BenchError(f"pas de scénario « {unknown[0]} »")
+            picks[index] = names or list(camp.scenarios)
+        if "pick" in choice and not picks:
+            raise BenchError("coche au moins une comparaison")
+        default = list(camp.scenarios)
+        if not picks or (len(picks) == count and all(v == default for v in picks.values())):
+            return ["--campaign", campaign, *mine]
+        text = ",".join(
+            str(k) if names == default else f"{k}:{'+'.join(names)}"
+            for k, names in sorted(picks.items())
+        )
+        return ["--campaign", campaign, "--pick", text, *mine]
+    names = [str(n) for n in choice.get("scenarios") or []]
+    if not names:
+        raise BenchError("choisis au moins un scénario")
+    known = {p.stem for p in scenarios.SCENARIOS.glob("*.txt")}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise BenchError(f"pas de scénario « {unknown[0]} »")
+    streamer = choice.get("streamer", "none")
+    if streamer not in STREAMERS:
+        raise BenchError(f"streamer inconnu : {streamer}")
+    args = ["--streamer", streamer]
+    if streamer == "autoortho":
+        settings = choice.get("ao_settings", "mine")
+        if settings not in ("mine", "default"):
+            raise BenchError(f"réglages d'AutoOrtho inconnus : {settings}")
+        args += ["--ao-settings", settings]
+    zooms = choice.get("zooms") or ""
+    if zooms:
+        if streamer == "none":
+            raise BenchError("les zooms sont ceux d'un streamer : choisis Live ou AutoOrtho")
+        try:
+            fly.zooms_of(zooms)
+        except Exception as e:  # argparse's own error
+            raise BenchError(f"zooms : {e}") from None
+        args += ["--zooms", zooms]
+    if choice.get("cold"):
+        if streamer == "none":
+            raise BenchError("« à froid » est pour un streamer : choisis Live ou AutoOrtho")
+        args.append("--cold")
+    if choice.get("keep_open"):
+        args.append("--keep-open")
+    return [*args, *mine, *names]
+
+
+# ---- the flight under way ---------------------------------------------------------------------
+
+_SERIES = re.compile(r"^\S+ (\d+)/(\d+) (\S+): ([\d.]+) min of path")
+_FLYING = re.compile(r"^\S+ +flying: (\d+) of (\d+) s")
+_CAMPAIGN = re.compile(r"^\S+ campaign (\S+), run (\d+) of (\d+): (.+)$")
+
+
+def progress(lines: list[str]) -> dict[str, Any]:
+    """Where the runner is, from its output: the campaign's run, the scenario, the path's time."""
+    out: dict[str, Any] = {}
+    for line in lines:
+        m = _CAMPAIGN.match(line)
+        if m:
+            out.update(campaign=m[1], run=int(m[2]), runs=int(m[3]), setup=m[4])
+            continue
+        m = _SERIES.match(line)
+        if m:
+            out.update(index=int(m[1]), count=int(m[2]), scenario=m[3], path_s=0.0)
+            out["duration_s"] = float(m[4]) * 60
+            continue
+        m = _FLYING.match(line)
+        if m:
+            out.update(path_s=float(m[1]), duration_s=float(m[2]))
+    return out
+
+
+class Runner:
+    """``fly.py`` run for the window, one at a time. The flight under way is written down in the
+    results (``CURRENT``), so that a window opened again finds it."""
+
+    def __init__(self, results: Path = fly.RESULTS, command: list[str] | None = None):
+        self.results = results
+        self.command = command or [sys.executable, str(HERE / "fly.py")]
+        self.proc: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+
+    def _current(self) -> dict[str, Any] | None:
+        try:
+            return json.loads((self.results / CURRENT).read_text())
+        except (OSError, ValueError):
+            return None
+
+    def running(self) -> bool:
+        if self.proc is not None:
+            return self.proc.poll() is None
+        cur = self._current()
+        if not cur:
+            return False
+        try:
+            os.kill(int(cur["pid"]), 0)
+        except (OSError, KeyError, ValueError):
+            return False
+        return True
+
+    def start(self, args: list[str]) -> dict[str, Any]:
+        with self.lock:
+            if self.running():
+                raise BenchError("un vol est déjà en cours")
+            logs = self.results / LOGS
+            logs.mkdir(parents=True, exist_ok=True)
+            log = logs / f"{datetime.now():%Y-%m-%d %H%M%S}.log"
+            with log.open("ab") as f:
+                self.proc = subprocess.Popen(
+                    [*self.command, *args],
+                    cwd=fly.REPO,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,  # it flies on if the window is closed
+                )
+            cur = {"pid": self.proc.pid, "log": str(log), "args": args, "started": time.time()}
+            (self.results / CURRENT).write_text(json.dumps(cur))
+            return cur
+
+    def stop(self) -> bool:
+        """Ctrl-C, as in its terminal: the runner writes what it has, and quits X-Plane."""
+        cur = self._current()
+        pid = self.proc.pid if self.proc is not None else (cur or {}).get("pid")
+        if not pid or not self.running():
+            return False
+        with contextlib.suppress(OSError):
+            os.kill(int(pid), signal.SIGINT)
+        return True
+
+    def lines(self) -> list[str]:
+        cur = self._current() or {}
+        with contextlib.suppress(OSError, KeyError):
+            return Path(cur["log"]).read_text(errors="replace").splitlines()
+        return []
+
+    def series(self) -> Path | None:
+        """The series folder of the flight under way, or of the last one."""
+        for line in reversed(self.lines()):
+            m = re.search(r" series of \d+ in (.+)$", line)
+            if m:
+                return Path(m[1])
+        return None
+
+    def status(self, since: int = 0) -> dict[str, Any]:
+        cur = self._current() or {}
+        lines: list[str] = []
+        if cur.get("log"):
+            with contextlib.suppress(OSError):
+                lines = Path(cur["log"]).read_text(errors="replace").splitlines()
+        return {
+            "running": self.running(),
+            "args": cur.get("args", []),
+            "started": cur.get("started"),
+            "lines": lines[since:],
+            "next": len(lines),
+            "progress": {
+                k: in_french(v) if k == "setup" else v for k, v in progress(lines).items()
+            },
+        }
+
+
+# ---- the results ------------------------------------------------------------------------------
+
+
+def _inside(results: Path, rel: str) -> Path:
+    path = (results / rel).resolve()
+    if results.resolve() not in path.parents and path != results.resolve():
+        raise BenchError("hors des résultats")
+    return path
+
+
+MONTHS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.",
+          "nov.", "déc.")  # fmt: skip
+
+
+def when(stamp: str) -> str:
+    """``2026-09-29 162429`` as ``29 sept. 16:24``."""
+    m = re.match(r"^(\d{4})-(\d\d)-(\d\d) (\d\d)(\d\d)", stamp)
+    return f"{int(m[3])} {MONTHS[int(m[2]) - 1]} {m[4]}:{m[5]}" if m else stamp
+
+
+def setup_label(run: dict[str, Any]) -> str:
+    """What a flight flew with, in the window's words, from its ``run.json``."""
+    streamer = run.get("streamer", "")
+    parts = [{"none": "X-Plane seul", "live": "Live", "autoortho": "AutoOrtho"}.get(streamer, "?")]
+    if streamer == "autoortho" and run.get("ao_settings"):
+        parts.append(
+            "ses réglages par défaut" if run["ao_settings"] == "default" else "tes réglages"
+        )
+    if run.get("zooms"):
+        parts.append("ZL{}/{}".format(*run["zooms"]))
+    if run.get("cold"):
+        parts.append("à froid")
+    return ", ".join(parts)
+
+
+def _flights(series: Path) -> list[Path]:
+    return sorted(p for p in series.iterdir() if p.is_dir() and re.match(r"^\d+-", p.name))
+
+
+def _first_run(series: Path) -> dict[str, Any]:
+    for flight in _flights(series):
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads((flight / "run.json").read_text())
+    return {}
+
+
+def compare_view(rels: list[str], results: Path = fly.RESULTS) -> dict[str, Any]:
+    """Series side by side: their figures in one table a scenario (``report.campaign_table``),
+    and their screenshots taken at the same moment of the same scenario, in rows."""
+    import report
+
+    if len(rels) < 2:
+        raise BenchError("coche au moins deux résultats")
+    series = []
+    for rel in rels:
+        path = _inside(results, rel)
+        if not path.is_dir():
+            raise BenchError(f"pas une série de vols : {rel}")
+        series.append(path)
+    labels = [f"{setup_label(_first_run(s))} ({when(s.name)})" for s in series]
+    table = report.campaign_table(list(zip(labels, series, strict=True)))
+    shots: dict[tuple[str, float], list[str | None]] = {}
+    for k, s in enumerate(series):
+        for flight in _flights(s):
+            name = flight.name.split("-", 1)[1]
+            files = (
+                sorted((flight / "screenshots").glob("*.png"))
+                if (flight / "screenshots").is_dir()
+                else []
+            )
+            for t, f in zip(report._shots_of(flight), files, strict=False):
+                row = shots.setdefault((name, t), [None] * len(series))
+                row[k] = f"results/{s.name}/{flight.name}/screenshots/{f.name}"
+
+    def photos(images: list[str | None]) -> list[Path | None]:
+        return [results / img.removeprefix("results/") if img else None for img in images]
+
+    return {
+        "labels": labels,
+        "html": markdown_html(table),
+        "shots": [
+            {
+                "scenario": name,
+                "t": t,
+                "images": images,
+                "sharpness": report.sharpness(photos(images)),
+            }
+            for (name, t), images in sorted(shots.items(), key=lambda kv: (kv[0][0], kv[0][1]))
+        ],
+    }
+
+
+def _table_head(path: Path) -> tuple[list[str], list[str]]:
+    """A campaign's table: the setups it compares (its first table's columns) and their outcomes."""
+    labels: list[str] = []
+    outcomes: list[str] = []
+    with contextlib.suppress(OSError):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if line.startswith("| |") and not labels:
+                labels = cells[1:]
+            elif line.startswith("| outcome |") and not outcomes:
+                outcomes = cells[1:]
+            if labels and outcomes:
+                break
+    return labels, outcomes
+
+
+def results_list(results: Path = fly.RESULTS) -> list[dict[str, Any]]:
+    """The series and campaigns flown, newest first."""
+    items = []
+    if not results.is_dir():
+        return items
+    for path in results.iterdir():
+        if path.is_dir() and re.match(r"^\d{4}-\d\d-\d\d \d{6}$", path.name):
+            flights = sorted(p for p in path.iterdir() if p.is_dir() and re.match(r"^\d+-", p.name))
+            runs = []
+            for f in flights:
+                with contextlib.suppress(OSError, ValueError):
+                    runs.append(json.loads((f / "run.json").read_text()))
+            what = ", ".join(r.get("scenario", "?") for r in runs) or "(rien de volé)"
+            first = runs[0] if runs else {}
+            outcomes = {r.get("outcome") for r in runs}
+            items.append(
+                {
+                    "path": path.name,
+                    "kind": "series",
+                    "when": path.name,
+                    "what": what,
+                    "with": setup_label(first) if first else "",
+                    "outcome": "done"
+                    if outcomes == {"done"}
+                    else ", ".join(sorted(map(str, outcomes))),
+                }
+            )
+        elif (
+            path.is_file()
+            and path.suffix == ".md"
+            and re.match(r"^\d{4}-\d\d-\d\d \d{6} ", path.name)
+        ):
+            labels, outcomes = _table_head(path)
+            items.append(
+                {
+                    "path": path.name,
+                    "kind": "campaign",
+                    "when": path.name[:17],
+                    "what": f"tableau comparatif, campagne {path.stem[18:]}",
+                    "with": " · ".join(in_french(lb) for lb in labels),
+                    "outcome": "complète" if outcomes and set(outcomes) == {"done"} else "arrêtée",
+                }
+            )
+    return sorted(items, key=lambda i: i["when"], reverse=True)
+
+
+def _inline(text: str) -> str:
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
+
+def markdown_html(text: str) -> str:
+    """The reports' own markdown, as HTML: headings, lists, tables, code blocks, bold, code. Every
+    character of the text is escaped first."""
+    out: list[str] = []
+    lines = html.escape(text, quote=False).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("```"):
+            block = []
+            i += 1
+            while i < len(lines) and not lines[i].startswith("```"):
+                block.append(lines[i])
+                i += 1
+            out.append("<pre>" + "\n".join(block) + "</pre>")
+        elif line.startswith("|"):
+            rows = []
+            while i < len(lines) and lines[i].startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                if not all(re.fullmatch(r"-+", c) for c in cells if c):
+                    rows.append(cells)
+                i += 1
+            i -= 1
+            head, body = rows[0], rows[1:]
+            out.append(
+                '<div class="table-wrap"><table class="table"><thead><tr>'
+                + "".join(f"<th>{_inline(c)}</th>" for c in head)
+                + "</tr></thead><tbody>"
+                + "".join(
+                    "<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>" for r in body
+                )
+                + "</tbody></table></div>"
+            )
+        elif m := re.match(r"^(#{1,3}) (.*)$", line):
+            level = len(m[1]) + 1
+            out.append(f"<h{level}>{_inline(m[2])}</h{level}>")
+        elif m := re.match(r"^( *)- (.*)$", line):
+            items = []
+            while i < len(lines) and (m := re.match(r"^( *)- (.*)$", lines[i])):
+                cls = ' class="sub"' if m[1] else ""
+                items.append(f"<li{cls}>{_inline(m[2])}</li>")
+                i += 1
+            i -= 1
+            out.append("<ul>" + "".join(items) + "</ul>")
+        elif line.strip():
+            out.append(f"<p>{_inline(line)}</p>")
+        i += 1
+    return "\n".join(out)
+
+
+def result_view(rel: str, results: Path = fly.RESULTS) -> dict[str, Any]:
+    """A series (its summary, then each flight's report and screenshots) or a campaign's table."""
+    path = _inside(results, rel)
+    parts: list[dict[str, Any]] = []
+    if path.is_file():
+        parts.append({"title": path.stem, "html": markdown_html(path.read_text(errors="replace"))})
+        return {"parts": parts}
+    if not path.is_dir():
+        raise BenchError("introuvable")
+    summary = path / "summary.md"
+    if summary.is_file():
+        parts.append({"title": "Bilan", "html": markdown_html(summary.read_text(errors="replace"))})
+    for flight in sorted(p for p in path.iterdir() if p.is_dir() and re.match(r"^\d+-", p.name)):
+        report = flight / "report.md"
+        shots = (
+            sorted((flight / "screenshots").glob("*.png"))
+            if (flight / "screenshots").is_dir()
+            else []
+        )
+        parts.append(
+            {
+                "title": flight.name,
+                "html": markdown_html(report.read_text(errors="replace"))
+                if report.is_file()
+                else "",
+                "screenshots": [f"results/{rel}/{flight.name}/screenshots/{s.name}" for s in shots],
+            }
+        )
+    return {"parts": parts}
+
+
+# ---- the window ---------------------------------------------------------------------------------
+
+
+def _xplane() -> Path | None:
+    from orthostudio.live import session
+
+    try:
+        return session.xplane_dir(None)
+    except session.RefusedError:
+        return None
+
+
+def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
+    from fastapi import Body, FastAPI, HTTPException
+    from fastapi.responses import FileResponse
+
+    from orthostudio.api.app import (
+        DEFAULT_ALLOWED_HOSTS,
+        PAGE_CACHE_CONTROL,
+        _GuardMiddleware,
+        _RevalidatedStaticFiles,
+    )
+    from orthostudio.ui import ui_dir
+
+    app = FastAPI(title=TITLE, docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(_GuardMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS)
+    app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
+    app.mount("/bench", _RevalidatedStaticFiles(directory=PAGE_DIR), name="bench")
+    # Live's own map, its modules and styles as Live's window serves them (benchmap.py)
+    from orthostudio.live.web import UI_DIR, _airports_router, _map_router
+
+    app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
+    app.include_router(_map_router())
+    app.include_router(_airports_router())
+    records = benchmap.Records()
+    xp_dir: list[Path | None] = []
+
+    def xp() -> Path | None:
+        if not xp_dir:
+            xp_dir.append(_xplane())
+        return xp_dir[0]
+
+    def series_of(src: str) -> tuple[Path | None, bool]:
+        """The series a map shows (``current``: the flight under way), and whether it flies."""
+        if src == "current":
+            flying = runner.running()
+            return (runner.series() if flying else None), flying
+        try:
+            return _inside(results, src), False
+        except BenchError:
+            return None, False
+
+    def record_of(src: str) -> Path:
+        series, flying = series_of(src)
+        path = benchmap.record_file(series, flying) if series is not None else None
+        if path is None:
+            raise HTTPException(404, "no Live here")
+        return path
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(PAGE_DIR / "index.html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
+
+    @app.get("/api/bench/options")
+    def get_options() -> dict[str, Any]:
+        return options()
+
+    @app.get("/api/bench/machine")
+    def machine() -> dict[str, bool]:
+        return {
+            "xplane": fly.xplane_up(),
+            "live": fly.live_runs(),
+            "autoortho": fly.autoortho_runs(),
+        }
+
+    @app.get("/api/bench/status")
+    def status(since: int = 0) -> dict[str, Any]:
+        return runner.status(max(0, since))
+
+    @app.post("/api/bench/start")
+    def start(choice: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+        try:
+            return runner.start(fly_args(choice))
+        except BenchError as e:
+            raise HTTPException(409, str(e)) from None
+
+    @app.post("/api/bench/stop")
+    def stop() -> dict[str, bool]:
+        return {"stopped": runner.stop()}
+
+    @app.get("/api/bench/map/state")
+    def map_state(src: str = "current") -> dict[str, Any]:
+        """Whether Live flies (or flew) there, its status as livemap.js reads it, and the route:
+        the scenario's path while it flies, the path flown afterwards."""
+        series, flying = series_of(src)
+        if series is None or not (series / "live.txt").is_file():
+            return {"live": False}
+        if flying:
+            aircraft = benchmap.last_position(fly.box(xp()) / "frames.csv") if xp() else None
+            name = runner.status()["progress"].get("scenario")
+            route = benchmap.planned(name) if name else []
+        else:
+            route = benchmap.flown(series)
+            end = route[-1] if route else None
+            aircraft = {"lat": end[0], "lon": end[1], "hdg": 0.0} if end else None
+        return {
+            "live": True,
+            "record": benchmap.record_file(series, flying) is not None,
+            "status": benchmap.status(aircraft, flying),
+            "route": route,
+        }
+
+    @app.get("/api/bench/map/built")
+    def map_built(
+        west: float, south: float, east: float, north: float, known: int = -1, src: str = "current"
+    ) -> dict[str, Any]:
+        covered = {(t["lat"], t["lon"]) for t in benchmap.own_tiles(xp())}
+        return benchmap.built(records, record_of(src), west, south, east, north, known, covered)
+
+    @app.get("/api/bench/map/texture")
+    def map_texture(lat: float, lon: float, src: str = "current") -> dict[str, Any]:
+        return {"textures": benchmap.textures_at(records, record_of(src), lat, lon)}
+
+    @app.get("/api/bench/map/own")
+    def map_own(src: str = "current") -> list[dict[str, Any]]:
+        return benchmap.own_tiles(xp())
+
+    @app.get("/api/bench/map/regions")
+    def map_regions(src: str = "current") -> dict[str, Any]:
+        return benchmap.regions(xp())
+
+    @app.get("/api/bench/results")
+    def get_results() -> list[dict[str, Any]]:
+        return results_list(results)
+
+    @app.get("/api/bench/result")
+    def get_result(path: str) -> dict[str, Any]:
+        try:
+            return result_view(path, results)
+        except BenchError as e:
+            raise HTTPException(404, str(e)) from None
+
+    @app.get("/api/bench/compare")
+    def compare(paths: str) -> dict[str, Any]:
+        """Series side by side (``paths``: theirs, separated by ``|``)."""
+        try:
+            return compare_view([p for p in paths.split("|") if p], results)
+        except BenchError as e:
+            raise HTTPException(409, str(e)) from None
+
+    @app.get("/results/{rel:path}", include_in_schema=False)
+    def result_file(rel: str) -> FileResponse:
+        try:
+            path = _inside(results, rel)
+        except BenchError:
+            raise HTTPException(404, "not found") from None
+        if not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".csv", ".txt", ".md"):
+            raise HTTPException(404, "not found")
+        return FileResponse(path)
+
+    return app
+
+
+def main(argv: list[str] | None = None) -> int:
+    """The window; ``--serve``: the page and its API only, until Ctrl-C (a browser of one's own);
+    ``--port N``: another port than PORT."""
+    import uvicorn
+
+    from orthostudio import window
+
+    args = sys.argv[1:] if argv is None else argv
+    serve_only = "--serve" in args
+    port = int(args[args.index("--port") + 1]) if "--port" in args else PORT
+    app = create_app(Runner())
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off")
+    )
+    thread = threading.Thread(target=server.run, name="bench-web", daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        if not thread.is_alive() or time.monotonic() > deadline:
+            print(f"nothing could listen on 127.0.0.1:{port} (the window open already?)")
+            webbrowser.open(f"http://127.0.0.1:{port}/")
+            return 1
+        time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        if serve_only:
+            print(f"{TITLE}: {url} (Ctrl-C here to stop)", flush=True)
+            while True:
+                time.sleep(1)
+        elif window.possible():
+            window.show(url, title=TITLE, size=SIZE)
+        else:
+            webbrowser.open(url)
+            print(f"{TITLE}: {url} (Ctrl-C here to close)")
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.should_exit = True
+        thread.join(5)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

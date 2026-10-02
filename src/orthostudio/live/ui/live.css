@@ -1,0 +1,143 @@
+/* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+   Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
+/* The Live window: OrthoStudio XP's styles.css, whose cards, fields, gaps and dialogs it uses as
+   they are (.question, .sub-question, .question-help, .with-unit, .path-row, .dialog), and these
+   few of its own, made of its tokens. */
+
+.live { max-width: 1100px; }
+
+/* the state: a dot before the title, the countdown while X-Plane waits */
+.live-state-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--title-gap); }
+.live-state-head h1 { margin: 0; }
+.live-hold .progress { height: 10px; border-radius: 5px; margin-top: var(--gap); }
+
+/* two cards side by side, as OrthoStudio XP's columns */
+.live-cols { gap: 0 var(--block-gap); }
+
+.live-disk { margin-top: var(--gap); }
+.live-disk.warn > span { background: var(--warn); }
+
+.live .kv dd { text-align: left; overflow-wrap: anywhere; }
+.live .kv .none { color: var(--fg-3); }
+
+.live-checks { list-style: none; margin: 0; padding: 0; }
+.live-checks li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; overflow-wrap: anywhere; }
+.live-checks .dot { margin-top: 4px; }
+.dot-warn { border-color: var(--warn); background: var(--warn); }
+.dot-info { border-color: var(--accent); }
+
+/* the imagery source, chosen first, before Start: the list beside its title, its credit and
+   notes under them */
+.live-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: var(--gap) 0; }
+.live-source .sub-question-title { display: inline; margin: 0; }
+.live-source-select { width: auto; min-width: 16em; max-width: 100%; }
+.live-source > p { flex: 1 0 100%; margin: 0; }
+.live-departure { margin: var(--gap) 0; }
+.live-departure .path-row { max-width: 32em; }
+.live-departure-input { text-transform: uppercase; }
+.live-departure > p { margin: 4px 0 0; }
+.live-departure-update { margin-top: 6px; max-width: 32em; }
+.live-departure-update p { flex: 1 1 auto; } /* the button beside the text where it fits */
+
+/* a button to the regions, beside what asks for one */
+.live-go { margin-left: 6px; vertical-align: baseline; }
+
+/* a question a button pointed at, marked for a moment */
+.question.is-pointed { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.live .log pre { max-height: 360px; }
+
+/* the app's question at its first start (welcome.html): two cards of the same weight */
+.welcome { max-width: 1000px; display: flex; flex-direction: column; align-items: center; gap: var(--section-gap); padding-top: 48px; }
+.welcome-head { text-align: center; max-width: 720px; }
+.welcome-head h1 { font-size: 22px; }
+.welcome-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--section-gap); width: 100%; }
+@media (max-width: 720px) { .welcome-cards { grid-template-columns: minmax(0, 1fr); } }
+.welcome-card { display: flex; flex-direction: column; gap: var(--block-gap); padding: 20px; margin: 0; }
+.welcome-card-head { display: flex; align-items: center; gap: 12px; }
+.welcome-card-head h2 { margin: 0; font-size: var(--fs-title-1); }
+.welcome-product { font-size: var(--fs-2); color: var(--fg-2); }
+.welcome-icon { width: 42px; height: 42px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 21px; background: var(--accent-soft); color: var(--accent); }
+.welcome-icon svg { width: 22px; height: 22px; }
+.welcome-points { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.welcome-points .yes::marker { color: var(--ok); }
+.welcome-points .note { color: var(--fg-2); }
+.welcome-choose { min-height: 40px; font-size: 14px; }
+.welcome-both { margin: 0; width: 100%; box-sizing: border-box; }
+.welcome-remember { font-size: var(--fs-2); color: var(--fg-2); }
+
+.topbar-tools .live-osxp { width: auto; padding: 0 8px; white-space: nowrap; }
+
+/* AutoOrtho's regions, the mesh Live installs */
+.regions { list-style: none; margin: var(--gap) 0 0; padding: 0; display: grid; gap: 6px; }
+.region-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
+.region-name { font-weight: 600; min-width: 11em; }
+.region-size { color: var(--fg-2); font-size: var(--fs-2); min-width: 5em; font-variant-numeric: tabular-nums; }
+.region-state { color: var(--fg-2); font-size: var(--fs-2); flex: 1; }
+.region-actions { display: flex; gap: 6px; margin-left: auto; }
+.region-progress { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.region .progress { height: 8px; border-radius: 4px; margin-top: 4px; }
+
+/* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
+/* the map on two thirds of the width, the flight and the textures beside it, stacked */
+.live-main {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--block-gap);
+  align-items: stretch; margin-bottom: var(--block-gap);
+}
+.live-main .live-map-card { display: flex; flex-direction: column; margin: 0; }
+.live-side { display: flex; flex-direction: column; gap: var(--block-gap); min-width: 0; }
+/* half the height each, as long as neither needs more (empty before a flight) */
+.live-side > .question { margin: 0; flex: 1 1 0; }
+@media (max-width: 900px) { .live-main { grid-template-columns: minmax(0, 1fr); } }
+.live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.live-map-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.live-map-toggle { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2); cursor: pointer; }
+.live-map-wrap { position: relative; flex: 1 1 auto; min-height: 420px; margin-top: var(--gap); }
+.live-map { position: absolute; inset: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
+/* over the map's top, right of the zoom buttons: one line, two at most, the map still usable under */
+.live-map-bar {
+  position: absolute; top: 8px; left: 52px; right: 8px; z-index: 1000; pointer-events: none;
+  padding: 4px 10px; border-radius: 6px; background: rgba(18, 20, 24, 0.82); color: #f2f2f2;
+  font-size: var(--fs-2); line-height: 1.4; max-height: calc(2 * 1.4em + 8px); overflow: hidden;
+}
+.live-map-bar.is-hint { color: rgba(242, 242, 242, 0.7); }
+.live-map-bar b { font-family: var(--mono); font-weight: 600; }
+.live-map-bar .info-warn { color: #ffb347; }
+.live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: var(--fs-2); color: var(--fg-2); }
+.live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.live-map-legend .legend-title { color: var(--fg); }
+.swatch.is-zl19 { background: #8e44d9; }
+.swatch.is-zl18 { background: #2f6fd6; }
+.swatch.is-zl17 { background: #35a852; }
+.swatch.is-zl16 { background: #f2b134; }
+.swatch.is-zl15 { background: #e8743b; }
+.swatch.is-less { background: #9aa0a6; }
+.swatch.is-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
+.swatch.is-route { height: 3px; background: #e0572f; border-radius: 0; }
+
+/* the user's own tiles, framed as OrthoStudio XP's Plan frames the tiles in X-Plane: its colours,
+   its dark line under them */
+.live-map .live-own-casing { stroke: var(--map-casing); fill: none; }
+.live-map .live-own { stroke: var(--ok); fill: none; }
+.live-map .live-own.is-ortho4xp { stroke: var(--map-ortho4xp); }
+.live-map .live-own.is-other { stroke: var(--fg-2); }
+.live-map .live-own, .live-map .live-own-casing { shape-rendering: crispEdges; }
+.swatch.is-own { background: transparent; border: 2px solid var(--ok); box-sizing: border-box; }
+.swatch.is-own.is-ortho4xp { border-color: var(--map-ortho4xp); }
+.swatch.is-own.is-other { border-color: var(--fg-2); }
+.live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
+.live-plane svg { display: block; }
+/* as the Plan map draws them (styles.css .plan-map .osxp-border, .osxp-airport-label) */
+.live-map .base-border { stroke: #ffd966; stroke-opacity: 0.85; stroke-width: 1.5; stroke-dasharray: 6 4; fill: none; }
+.live-map .base-border.is-disputed { stroke-opacity: 0.55; stroke-dasharray: 2 4; }
+.base-airport-label {
+  font: 600 11px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #ffd166;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* the test of the 8192 px, under the start choices */
+.live-tint { margin-top: var(--gap); }

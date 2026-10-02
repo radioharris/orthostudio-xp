@@ -145,6 +145,8 @@ async def test_index_and_referenced_files_are_served(client: AsyncClient) -> Non
         assert res.status_code == 200
         assert "<title>OrthoStudio XP</title>" in res.text
         for ref in _index_refs():
+            if ref == LIVE_ENTRY:  # served by OrthoStudio XP Live's router (tests/test_live_app.py)
+                continue
             assert ref.startswith("static/"), ref
             assert (UI / ref.removeprefix("static/")).is_file(), ref
             got = await client.get(f"/{ref}")
@@ -183,12 +185,19 @@ def test_no_external_url() -> None:
     assert "attributionControl.setPrefix(false)" in (UI / "map.js").read_text(encoding="utf-8")
 
 
+LIVE_ENTRY = "api/live-app/entry.js"
+
+
 def test_no_framework_or_cdn_script() -> None:
     # Decision M1 of docs/specs/map-zones.md: Leaflet 1.9.4 is the one library, vendored under
     # static/vendor/leaflet/ (same origin, no CDN) and loaded as a classic script before app.js.
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     scripts = re.findall(r"<script[^>]*>", html)
-    assert scripts == [LEAFLET_SCRIPT, '<script type="module" src="static/app.js">']
+    assert scripts == [
+        LEAFLET_SCRIPT,
+        '<script type="module" src="static/app.js">',
+        f'<script type="module" src="{LIVE_ENTRY}">',  # OrthoStudio XP Live's button, where it is
+    ]
     links = re.findall(r'<link rel="stylesheet"[^>]*>', html)
     assert links == [LEAFLET_CSS, '<link rel="stylesheet" href="static/styles.css">']
     assert (UI / "vendor" / "leaflet" / "LICENSE").is_file()

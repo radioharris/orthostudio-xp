@@ -1,0 +1,15 @@
+# AutoOrtho against Live over the same flight, each from nothing (cold: nothing built, nothing
+# downloaded), like against like: the same zooms on both sides. The user's four comparisons
+# (2026-09-29); a flight two of them share is flown once, so the four need six flights.
+title AutoOrtho contre Live, à froid
+scenarios toulouse-low
+run ao-default-1618 --streamer autoortho --ao-settings default --zooms 16/18 --cold
+run live-1618 --streamer live --zooms 16/18 --cold
+run ao-default-1719 --streamer autoortho --ao-settings default --zooms 17/19 --cold
+run live-1719 --streamer live --zooms 17/19 --cold
+run ao-mine-1618 --streamer autoortho --ao-settings mine --zooms 16/18 --cold
+run ao-mine-1719 --streamer autoortho --ao-settings mine --zooms 17/19 --cold
+compare ao-default-1618 live-1618
+compare ao-default-1719 live-1719
+compare ao-mine-1618 live-1618
+compare ao-mine-1719 live-1719
