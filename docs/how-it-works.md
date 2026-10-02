@@ -48,16 +48,17 @@ about a second, because the same questions have already been answered for that s
 answers are files; at road level 5 a dense tile's small roads weigh tens of megabytes, and it
 takes up to ten seconds or so, two or three of them downloading (Switzerland, 2026-09-25).
 Elsewhere the public Overpass servers are asked, which is about 8 to 15 s a tile when they answer
-(measured 2026-09-14), with the layers received and the download rate in the step's tooltip. The
+(measured 2026-09-14), with the download rate shown in the step and the layers received in its
+tooltip. The
 library's table of contents comes whole the first time only: after that a build just asks whether
 it changed, and the connections to the library stay open from one tile to the next. The relief
 and the tracing of the roads, water and airports for the mesh have steps of their own, Relief and
 Terrain: they take most of the time, 17 to 36 s of relief and 46 to 75 s of tracing on those
 Swiss tiles at road level 5, and with them in one Data step a map read in two seconds from the
-library read "Data 28 s" (2026-09-26). While a relief file downloads, the tooltip of Relief shows
-its speed as it arrives, then that the file is being read: a USGS square of 430 MB takes about
-half a minute to arrive at 16 MB/s and some 45 s more to read, and the speed of the finished
-download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
+library read "Data 28 s" (2026-09-26). While a relief file downloads, Relief shows its speed as it
+arrives; then the speed leaves the step and its tooltip says the file is being read: a USGS square
+of 430 MB takes about half a minute to arrive at 16 MB/s and some 45 s more to read, and the speed
+of the finished download, left in place, made those seconds look stuck (2026-09-29). Its bar fills with the file
 as it arrives, then goes on by the time the reading takes.
 
 Two places are looked in before those servers, in order: a folder of your own, if you named one in
@@ -119,7 +120,8 @@ the meshing of the terrain, the coast masks, the writing of the X-Plane terrain,
 time they have run against the time they usually take on your computer, which OrthoStudio XP
 learns from your builds: steadily, then slower if one takes longer than usual, never full before
 it has ended. Terrain used to sit at 56 % for the forty seconds of a mesh, then jump (2026-09-29).
-Hold the mouse over a step at work to read what it is doing.
+Hold the mouse over a step at work to read what it is doing: the words hold still while the mouse
+is there, where they changed four times a second and blinked (2026-10-02).
 
 **Several builds.** One build runs at a time, and takes up to 500 tiles. A build started while
 another runs waits in a queue and starts as soon as the one before it ends; the Plan stays open

@@ -521,7 +521,7 @@ The selected job (default: the running one, else the newest) shows, from top to 
   | Step status | Bar | Words |
   |---|---|---|
   | `pending` (no row runs and none did real work; hits alone do not start a step) | empty | *pending* (*not started* once the job ended) |
-  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0); what it does is in the tooltip, the engine's `message` (the tile's line that said it in words, below, is set aside) |
+  | `running` (a row runs) | accent colour, the step's `fraction`, a row that reports nothing moving by its time (below); the dot pulses | `42 %` (*running* at 0), and the download rate its line gives in brackets beside it, `42 % · 16.2 MB/s` (OSM, Relief as a file arrives, Imagery: as in 0.1.19, which a user missed once the tile's line, below, was set aside, 2026-10-02); the rest of what it does is in the tooltip, the engine's `message` |
   | `waiting` (rows did real work, the others have not started, none runs) | paler accent, the step's `fraction`; the dot does not pulse | *waiting*; tooltip: its share, partly done, the rest waits for its turn (*waiting · 36 %* was cut in the narrowest window, 2026-09-30) |
   | `done` | full, green | *done · 12 s* (the time from 1 s) |
   | `hit` | full, the dimmer `--hit` colour | *already done*; tooltip: kept from an earlier build, nothing to redo |
@@ -599,7 +599,12 @@ The selected job (default: the running one, else the newest) shows, from top to 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus
 of *Stop* and the bars' width transition survive. Events redraw through a throttle: at most four
-times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then.
+times a second (`RENDER_EVERY_MS = 250`), drawing the state as it is then. A step cell's tooltip
+waits while the pointer is on the cell: its words hold a percentage and a rate that move at
+nearly every redraw, a tooltip whose words change is hidden and shown again, and the tooltip of
+every running step blinked and could not be read (a user, 2026-10-02). Under the pointer it keeps
+its words until the step changes status, and takes the last ones when the pointer leaves
+(`buildStepCell`, `updateStepCell`); the cell itself moves on.
 
 **Node to step mapping.** The journal gives each node entry its `stage`. Otherwise the page maps
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's

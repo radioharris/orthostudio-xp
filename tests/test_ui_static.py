@@ -1949,11 +1949,11 @@ def test_imagery_shows_the_download_rate_the_engine_reports() -> None:
         f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]",
     )
     assert got[0] == 21.6 and got[1] is None
-    # the cell holds a word; the rate is said in the tile's line (a user found the cells too
-    # narrow for a phrase, 2026-09-30)
-    assert got[2]["text"] == "42%" and got[2]["detail"] == ""
+    # the rate beside the percentage, as in 0.1.19: a user missed it once the tile's line that
+    # said it was set aside (2026-10-02); the rest of the line, a phrase, stays out of the cell
+    assert got[2]["text"] == "42%" and got[2]["detail"] == "21.6 MB/s"
     assert got[2]["help"] == with_rate  # the whole line stays in the tooltip
-    assert got[3]["detail"] == "" and got[3]["help"] == osm_line
+    assert got[3]["detail"] == "1.4 MB/s" and got[3]["help"] == osm_line
     assert got[4] == 3.1  # a downloaded relief
     assert got[5] == [
         {"step": "osm", "words": "layers received: 1 of 4, 1.4 MB/s"},
@@ -1988,15 +1988,77 @@ def test_the_relief_step_says_whether_it_downloads_or_reads() -> None:
             f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})]"
         )
     got = _node_json("app.js", "[" + ", ".join(views) + "]")
-    # said in the tile's line under its steps, the cell holding a word (2026-09-30)
+    # said in the tile's line under its steps, set aside since 2026-10-02 (2026-09-30)
     assert [act[0]["words"] for _view, act in got] == [
         "reading the relief",
         "downloading",
         "downloading, 210 of 430 MB, 16.2 MB/s",
         "reading the relief",
     ]
-    assert all(view["detail"] == "" for view, _ in got)
+    # the cell shows the rate of the file as it arrives, never the last one over the reading
+    assert [view["detail"] for view, _ in got] == ["", "", "16.2 MB/s", ""]
     assert got[3][0]["help"] == lines[3] and "at 15.9 MB/s" in lines[3]
+
+
+def test_a_step_tooltip_keeps_its_words_under_the_pointer() -> None:
+    """A tooltip whose words change while it shows is hidden and shown again. Written at every
+    redraw, four times a second, with a percentage and a rate that move, the tooltip of every
+    running step blinked and could not be read (a user, 2026-10-02). Under the pointer it keeps
+    its words while the cell moves on, until the step changes status; it takes the last ones when
+    the pointer leaves."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    script = """
+class El {
+  constructor(tag) {
+    Object.assign(this, { tag, attrs: {}, kids: [], on: {}, style: {}, dataset: {} });
+    Object.assign(this, { className: "", textContent: "", titles: 0 });
+  }
+  setAttribute(k, v) { this.attrs[k] = String(v); if (k === "title") this.titles += 1; }
+  getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+  addEventListener(name, fn) { (this.on[name] ||= []).push(fn); }
+  append(...kids) { this.kids.push(...kids); }
+  fire(name) { for (const fn of this.on[name] || []) fn({ type: name }); }
+}
+globalThis.Node = El;
+globalThis.document = {
+  documentElement: {},
+  getElementById: () => null,
+  createElement: (tag) => new El(tag),
+  createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+};
+const m = await import("./app.js");
+const job = { status: "running", install: true, tiles: [] };
+const node = (status, fraction) => ({
+  "+46+006/BI16/textures": { role: "textures", status, fraction },
+});
+const at = (fraction, req, rate) => ({ tile: "+46+006", steps: { imagery: {
+  status: "running", fraction, nodes: node("running", fraction),
+  message: `BI16: tiles 1/9, textures 1/9 (${req} req/s, ${rate} MB/s)`,
+} } });
+const done = { tile: "+46+006", steps: { imagery: {
+  status: "done", fraction: 1, wall_s: 5, nodes: node("done", 1),
+} } };
+const c = m.buildStepCell("+46+006", "imagery");
+const words = () => c.root.getAttribute("title").split("\\n")[0];
+m.updateStepCell(c, job, at(0.08, 1106, 14.2), "imagery");
+const first = words();
+c.root.fire("pointerenter");
+m.updateStepCell(c, job, at(0.17, 1240, 15.9), "imagery");
+m.updateStepCell(c, job, at(0.26, 1302, 16.7), "imagery");
+const held = [words(), c.state.textContent, c.detail.textContent, c.root.titles];
+c.root.fire("pointerleave");
+const left = words();
+c.root.fire("pointerenter");
+m.updateStepCell(c, job, done, "imagery");
+process.stdout.write(JSON.stringify({ first, held, left, done: words() }));
+"""
+    got = _run_node(script)
+    assert got["first"] == "Imagery — 8% · 14.2 MB/s"
+    # under the pointer the cell moves on, its tooltip does not: written once, before
+    assert got["held"] == ["Imagery — 8% · 14.2 MB/s", "26%", "16.7 MB/s", 1]
+    assert got["left"] == "Imagery — 26% · 16.7 MB/s"
+    assert got["done"] == "Imagery — done · 5 s"  # a change of status shows under the pointer
 
 
 def test_a_started_build_empties_the_selection_and_the_job_list_follows() -> None:

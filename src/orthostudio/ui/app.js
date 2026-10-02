@@ -4400,14 +4400,20 @@ function updateActivity(line, job, tile) {
   line.title = parts.length ? line.textContent : "";
 }
 
-function buildStepCell(tileName, s) {
-  const c = { status: null };
+export function buildStepCell(tileName, s) {
+  const c = { status: null, title: "", pointed: false };
   c.dot = h("span", { class: "dot dot-pending" });
   c.fill = h("span");
   c.bar = h("div", { class: "progress step-bar progress-pending", role: "progressbar", "aria-label": `${tileName} ${STEP_KEYS[s]()}`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, c.fill);
   c.state = h("span", { class: "step-state" });
   c.detail = h("span", { class: "step-detail" });
-  c.root = h("div", { class: "step step-pending" }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
+  // Under the pointer the tooltip keeps its words (updateStepCell); it takes the last ones when the
+  // pointer leaves.
+  const pointed = (on) => () => {
+    c.pointed = on;
+    if (!on) setAttr(c.root, "title", c.title);
+  };
+  c.root = h("div", { class: "step step-pending", onpointerenter: pointed(true), onpointerleave: pointed(false) }, h("div", { class: "step-label" }, c.dot, h("span", { class: "step-name" }, STEP_KEYS[s]())), c.bar, h("div", { class: "step-text" }, c.state, c.detail));
   return c;
 }
 
@@ -4445,9 +4451,12 @@ export function stepView(job, tile, s) {
   } else if (status === "running") {
     width = clamp01(step.fraction);
     text = width > 0 ? fmtPercent(width) : word();
-    // What it is doing is in the tooltip, the engine's whole line: a cell holds a word, and its
-    // phrase was cut (a user, 2026-09-30); the tile's line that said it in words (tileActivity) is
-    // set aside, too much to read on every tile (2026-10-02).
+    // A step that downloads shows its rate beside it, as in 0.1.19: a user missed it once the
+    // tile's line that said it (tileActivity) was set aside (2026-10-02). The rest of what it is
+    // doing is in the tooltip, the engine's whole line: a cell holds a word and a rate, and a
+    // phrase was cut in it (a user, 2026-09-30).
+    const rate = downloadRate(step.message);
+    if (rate) detail = fmtMbps(rate);
     help = step.message || "";
   } else if (status === "pending" && s === "imagery") {
     // why it waits is said in the tooltip
@@ -4616,11 +4625,13 @@ export function keepLive(fresh, previous, nowMs = Date.now()) {
  * joining Terrain, which it feeds. */
 export const STEP_HELP = { osm: () => t("step.osm_help"), terrain: () => t("step.terrain_help") };
 
-/** One step of a tile: a thin bar for every status, then what it is doing in plain words. */
-function updateStepCell(c, job, tile, s) {
+/** One step of a tile: a thin bar for every status, then what it is doing in plain words.
+ * Exported, with buildStepCell, for the tests. */
+export function updateStepCell(c, job, tile, s) {
   if (!c) return;
   const { status, pct, text, detail, help } = stepView(job, tile, s);
-  if (c.status !== status) {
+  const changed = c.status !== status;
+  if (changed) {
     c.root.className = `step step-${status}`;
     c.dot.className = `dot dot-${status}`;
     c.bar.className = `progress step-bar progress-${status}`;
@@ -4632,7 +4643,12 @@ function updateStepCell(c, job, tile, s) {
   setText(c.state, text);
   setText(c.detail, detail);
   const about = STEP_HELP[s]?.();
-  setAttr(c.root, "title", `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}${about ? `\n${about}` : ""}`);
+  c.title = `${STEP_KEYS[s]()} — ${text}${detail ? ` · ${detail}` : ""}${help && help !== detail ? `\n${help}` : ""}${about ? `\n${about}` : ""}`;
+  // A tooltip whose words change while it shows is hidden and shown again: written at every
+  // redraw, four times a second, it blinked and could not be read (a user, 2026-10-02). Under the
+  // pointer it keeps its words until the step changes status, and takes the last ones when the
+  // pointer leaves (buildStepCell).
+  if (!c.pointed || changed) setAttr(c.root, "title", c.title);
 }
 
 function updateErrors(v, job, active) {
