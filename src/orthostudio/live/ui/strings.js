@@ -56,6 +56,9 @@ export const STRINGS = {
     "departure.help":
       "Live builds the ortho around this departure before you start the flight: X-Plane then passes its loading screen at once. Live starts for it if it is not running.",
     "departure.from_plan": "From your last SimBrief plan: {plan}",
+    "departure.updated": "Flight plan updated: {plan}",
+    "departure.last": "Your last SimBrief plan: {plan}",
+    "departure.load": "Load it",
     "departure.unknown": "X-Plane knows no airport {code}.",
     "departure.empty": "Type an airport's ICAO code.",
     "departure.busy": "Live is starting or stopping: prepare it again in a moment.",
@@ -260,7 +263,7 @@ export const STRINGS = {
       "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 90 seconds straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
     "plan.privacy":
-      "Only this name goes to simbrief.com: when a flight starts, and when the Live window opens, to offer your departure. Empty: nothing is asked.",
+      "Only this name goes to simbrief.com: when a flight starts, and while the Live window is open (when it opens, when you come back to it, and every two minutes), to offer your departure and tell you when your plan changes. Empty: nothing is asked.",
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "start.title": "When a flight starts",
@@ -370,6 +373,9 @@ export const STRINGS = {
     "departure.help":
       "Live construit l'ortho autour de ce départ avant que vous lanciez le vol : X-Plane passe alors son écran de chargement tout de suite. Live démarre pour lui s'il ne tourne pas.",
     "departure.from_plan": "Tiré de votre dernier plan SimBrief : {plan}",
+    "departure.updated": "Plan de vol mis à jour : {plan}",
+    "departure.last": "Votre dernier plan SimBrief : {plan}",
+    "departure.load": "Le charger",
     "departure.unknown": "X-Plane ne connaît pas d'aéroport {code}.",
     "departure.empty": "Entrez le code OACI d'un aéroport.",
     "departure.busy": "Live démarre ou s'arrête : réessayez dans un instant.",
@@ -578,7 +584,7 @@ export const STRINGS = {
       "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 90 secondes tout droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
     "plan.privacy":
-      "Seul ce nom est envoyé à simbrief.com : au départ de chaque vol, et à l'ouverture de la fenêtre de Live pour proposer votre départ. Vide : rien n'est demandé.",
+      "Seul ce nom est envoyé à simbrief.com : au départ de chaque vol, et tant que la fenêtre de Live est ouverte (à son ouverture, quand vous y revenez, et toutes les deux minutes), pour proposer votre départ et vous dire quand votre plan change. Vide : rien n'est demandé.",
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "start.title": "Au démarrage d'un vol",

@@ -266,9 +266,13 @@ far X-Plane reads 4096 px there.
 With your SimBrief name in the settings (Flight plan), Live follows your last SimBrief plan while
 you fly it, ten minutes of route ahead, turns and approach included, beside the five minutes
 straight on; off the route, or flying it the other way, it looks straight on only. Only that name
-goes to simbrief.com, when a flight starts; the route is drawn on the map only while you fly
-it (or when you ask for it with the map's button). The window offers the name
-OrthoStudio XP has, and asks SimBrief nothing until you take it. What is
+goes to simbrief.com: when a flight starts, and while the Live window is open (when it opens, when
+you come back to it, and every two minutes), for the "Prepare my departure" box. The box takes the
+departure of your last plan; when you make a new plan on simbrief.com, the window says "Flight
+plan updated" and changes the box only when you click "Load it" (you may have typed another
+departure). The route is drawn on the map only while you fly it (or when you ask for it with the
+map's button). The window offers the name OrthoStudio XP has, and asks SimBrief nothing until you
+take it. What is
 missing is downloaded and built, the most urgent first, and replaces the file on the disk. X-Plane
 picks the new file up by itself the next time it wants that texture sharper.
 

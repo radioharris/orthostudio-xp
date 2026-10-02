@@ -58,6 +58,12 @@ def test_a_simbrief_briefing() -> None:
     plan = plan_of(doc)
     assert plan is not None and plan.name == "LFLL-LSGG"
     assert plan.points == [(45.7256, 5.0811), (45.9, 5.5), (46.2381, 6.1089)]
+    assert plan.briefing == ""  # SimBrief's number for it, when the briefing says it
+    assert (
+        plan_of({**doc, "params": {"request_id": "84213", "time_generated": "1790891234"}}).briefing
+        == "84213"
+    )
+    assert plan_of({**doc, "params": {"time_generated": "1790891234"}}).briefing == "1790891234"
     assert plan_of({}) is None
 
 

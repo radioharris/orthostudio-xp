@@ -9,8 +9,9 @@ instead, ten minutes of it, while the aircraft is on it (within ROUTE_KM, going 
 
 SimBrief serves a pilot's last plan without a key or a password, from their name or pilot ID
 (``orthostudio.api.simbrief``, OrthoStudio XP's own reading of it). The name is Live's setting,
-empty unless the pilot gives it, and only that name goes to simbrief.com: when Live starts, and
-when a flight starts, at most once a minute.
+empty unless the pilot gives it, and only that name goes to simbrief.com: when Live starts, when a
+flight starts, at most once a minute, and while the Live window is open, to offer the departure of
+the last plan and say when a new one came (``LiveControl.departure_suggestion``).
 """
 
 from __future__ import annotations
@@ -37,10 +38,13 @@ def _xy(p: LatLon, lat0: float, lon0: float) -> tuple[float, float]:
 
 @dataclass
 class FlightPlan:
-    """A route: its name (``LFLL-LSGG``) and its points, departure and arrival included."""
+    """A route: its name (``LFLL-LSGG``) and its points, departure and arrival included; and the
+    briefing it comes from (SimBrief's number for it, or when it was made): another plan of the
+    same route is another briefing."""
 
     name: str
     points: list[LatLon]
+    briefing: str = ""
 
     def ahead(
         self, lat: float, lon: float, km: float, track_deg: float | None = None
@@ -92,7 +96,9 @@ def plan_of(doc: dict) -> FlightPlan | None:
     points = [(p["lat"], p["lon"]) for p in route["points"]]
     if len(points) < 2:
         return None
-    return FlightPlan(f"{route['from']}-{route['to']}", points)
+    params = doc.get("params") if isinstance(doc.get("params"), dict) else {}
+    briefing = str(params.get("request_id") or params.get("time_generated") or "")
+    return FlightPlan(f"{route['from']}-{route['to']}", points, briefing)
 
 
 def last_plan(user: str) -> tuple[FlightPlan | None, str]:

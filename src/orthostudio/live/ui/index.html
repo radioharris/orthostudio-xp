@@ -73,6 +73,11 @@
       </div>
       <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
       <p class="question-help" id="departure-plan" hidden></p>
+      <!-- a newer SimBrief plan than the box's, offered: never put in the box unasked -->
+      <p class="question-help live-departure-update" id="departure-update" role="status" hidden>
+        <span id="departure-update-text"></span>
+        <button type="button" class="btn btn-small" id="departure-load" data-i18n="departure.load">Load it</button>
+      </p>
       <p class="error-inline" id="departure-error" role="alert" hidden></p>
     </div>
     <div class="actions">

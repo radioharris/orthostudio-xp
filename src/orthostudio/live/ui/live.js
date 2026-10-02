@@ -695,9 +695,11 @@ async function saveSettings(event) {
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
   try {
+    const before = saved?.simbrief_user;
     saved = await api("settings", { method: "PUT", body });
     fillSettings(saved);
     $("settings-status").textContent = t("settings.saved");
+    if (saved.simbrief_user !== before) suggestDeparture({ fresh: true, now: true }); // their plan
   } catch (error) {
     $("settings-error").hidden = false;
     $("settings-error").textContent = error.message;
@@ -792,16 +794,69 @@ async function act(path, body) {
 
 // --- a departure prepared before X-Plane loads it ------------------------------------------------
 
-/** The departure of the pilot's last SimBrief plan, offered in the box while it is empty. */
-async function suggestDeparture() {
+let departurePlan = null; // the SimBrief plan the box was filled from: {icao, plan, briefing}
+let departureOffer = null; // a newer plan, offered to load ("Flight plan updated")
+let departureAskedAt = 0;
+const DEPARTURE_AGAIN_MS = 30_000; // asked again at most this often, the window back in front...
+const DEPARTURE_EVERY_MS = 120_000; // ... and this often while it is shown
+
+/**
+ * What the "Prepare" box shows of the pilot's SimBrief plans, from the plan it was filled from
+ * (`shown`), the last one SimBrief gave (`got`: {icao, plan, briefing}, or {}) and the code in the
+ * box (`typed`): `fill`, the code to put in the box (the first plan, into an empty box); `shown`,
+ * the plan the box now comes from; `offer`, a plan to offer instead, never put in the box unasked
+ * (the pilot may have typed another departure): one of another briefing than the box's.
+ */
+export function departureView(shown, got, typed) {
+  const plan = got && got.icao ? got : null;
+  const box = (typed || "").trim();
+  if (plan && !shown && !box) return { fill: plan.icao, shown: plan, offer: null };
+  const offer = plan && (!shown || plan.briefing !== shown.briefing) ? plan : null;
+  return { fill: null, shown, offer };
+}
+
+/** The box's plan named under it while the box holds its departure; a newer plan offered. */
+function drawDeparture() {
+  const box = $("departure").value.trim().toUpperCase();
+  const named = departurePlan && box === departurePlan.icao.toUpperCase();
+  $("departure-plan").hidden = !named;
+  $("departure-plan").textContent = named ? t("departure.from_plan", { plan: departurePlan.plan }) : "";
+  $("departure-update").hidden = !departureOffer;
+  $("departure-update-text").textContent = !departureOffer
+    ? ""
+    : departurePlan
+      ? t("departure.updated", { plan: departureOffer.plan })
+      : t("departure.last", { plan: departureOffer.plan });
+}
+
+/**
+ * The pilot's last SimBrief plan: its departure put in the box while the box is empty, a newer plan
+ * offered once the box holds one. `fresh`: asked again, at most every DEPARTURE_AGAIN_MS unless
+ * `now` (a new SimBrief name), the pilot perhaps back from simbrief.com with a new plan.
+ */
+async function suggestDeparture({ fresh = false, now = false } = {}) {
+  if (fresh && !now && Date.now() - departureAskedAt < DEPARTURE_AGAIN_MS) return;
+  departureAskedAt = Date.now();
   try {
-    const got = await api("departure");
-    if (got.icao && !$("departure").value) $("departure").value = got.icao;
-    $("departure-plan").hidden = !got.plan;
-    $("departure-plan").textContent = got.plan ? t("departure.from_plan", { plan: got.plan }) : "";
+    const got = await api(fresh ? "departure?fresh=true" : "departure");
+    const view = departureView(departurePlan, got, $("departure").value);
+    if (view.fill) $("departure").value = view.fill;
+    departurePlan = view.shown;
+    departureOffer = view.offer;
   } catch (_e) {
     // no suggestion: the box stays as it is
   }
+  drawDeparture();
+}
+
+/** The newer plan taken: its departure in the box, named under it. */
+function loadDeparture() {
+  if (!departureOffer) return;
+  departurePlan = departureOffer;
+  departureOffer = null;
+  $("departure").value = departurePlan.icao;
+  $("departure-error").hidden = true;
+  drawDeparture();
 }
 
 async function prepareDeparture() {
@@ -1074,6 +1129,7 @@ function boot() {
     renderProviders($("set-provider").value);
     drawSearch();
     if (!$("source-saved").hidden) $("source-saved").textContent = t("source.saved");
+    drawDeparture();
     if (last) draw(last);
   });
   $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
@@ -1081,6 +1137,17 @@ function boot() {
   $("departure").addEventListener("keydown", (event) => {
     if (event.key === "Enter") prepareDeparture();
   });
+  $("departure").addEventListener("input", drawDeparture);
+  $("departure-load").addEventListener("click", loadDeparture);
+  // a new SimBrief plan: looked for when the pilot comes back to the window (from simbrief.com,
+  // say), and every two minutes while it is shown
+  window.addEventListener("focus", () => suggestDeparture({ fresh: true }));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") suggestDeparture({ fresh: true });
+  });
+  setInterval(() => {
+    if (document.visibilityState === "visible") suggestDeparture({ fresh: true });
+  }, DEPARTURE_EVERY_MS);
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));

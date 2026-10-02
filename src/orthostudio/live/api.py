@@ -92,9 +92,10 @@ def live_router(control: LiveControl) -> APIRouter:
         return {"state": control.state}
 
     @router.get("/departure")
-    def departure() -> dict[str, str]:
-        """What the "Prepare" box offers: the departure of the pilot's last SimBrief plan."""
-        return control.departure_suggestion()
+    def departure(fresh: bool = False) -> dict[str, str]:
+        """What the "Prepare" box offers: the departure of the pilot's last SimBrief plan;
+        ``fresh``: asked again sooner, the window looking for a new plan."""
+        return control.departure_suggestion(fresh=fresh)
 
     @router.post("/prepare", status_code=202)
     def prepare(body: PrepareBody) -> dict[str, Any]:

@@ -60,6 +60,7 @@ LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
 STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
 SUGGEST_S = 300.0  # the departure of the pilot's last SimBrief plan, asked at most this often
+FRESH_S = 30.0  # as often, while the window looks for a new plan (the pilot back from simbrief.com)
 
 
 def resolve_departure(text: str) -> tuple[float, float]:
@@ -354,16 +355,17 @@ class LiveControl:
             wanted, self._departure = self._departure, None
         return wanted
 
-    def departure_suggestion(self) -> dict[str, str]:
+    def departure_suggestion(self, fresh: bool = False) -> dict[str, str]:
         """The departure of the pilot's last SimBrief plan, which the window's "Prepare" box
-        offers: {"icao": "LFMN", "plan": "LFMN-LFPG"}; {} where no SimBrief name is set in Live's
+        offers: {"icao": "LFMN", "plan": "LFMN-LFPG", "briefing": "123456"}, the briefing telling
+        the window a new plan from the one it shows; {} where no SimBrief name is set in Live's
         settings (nothing is asked of simbrief.com then) or no plan came. Asked at most every
-        SUGGEST_S."""
+        SUGGEST_S, or FRESH_S when the window looks for a new plan (``fresh``)."""
         user = self._settings().simbrief_user.strip()
         if not user:
             return {}
         at, asked_for, got = self._suggested
-        if asked_for == user and time.monotonic() - at < SUGGEST_S:
+        if asked_for == user and time.monotonic() - at < (FRESH_S if fresh else SUGGEST_S):
             return got
         if self._simbrief is not None:
             plan, _why = self._simbrief(user)
@@ -371,7 +373,15 @@ class LiveControl:
             from orthostudio.live.flightplan import last_plan
 
             plan, _why = last_plan(user)
-        got = {} if plan is None else {"icao": plan.name.split("-")[0], "plan": plan.name}
+        got = (
+            {}
+            if plan is None
+            else {
+                "icao": plan.name.split("-")[0],
+                "plan": plan.name,
+                "briefing": plan.briefing or plan.name,
+            }
+        )
         self._suggested = (time.monotonic(), user, got)
         return got
 

@@ -552,9 +552,35 @@ def test_the_departure_offered_is_the_last_simbrief_plan_s(home: Path) -> None:
     c._simbrief = simbrief
     assert c.departure_suggestion() == {}  # no SimBrief name: nothing asked
     c._settings = lambda: LiveSettings(disk_gb=66, simbrief_user="pilot")
-    assert c.departure_suggestion() == {"icao": "LFMN", "plan": "LFMN-LFPG"}
-    assert c.departure_suggestion() == {"icao": "LFMN", "plan": "LFMN-LFPG"}
+    plan = {"icao": "LFMN", "plan": "LFMN-LFPG", "briefing": "LFMN-LFPG"}
+    assert c.departure_suggestion() == plan
+    assert c.departure_suggestion() == plan
+    assert c.departure_suggestion(fresh=True) == plan  # the window looking for a new plan...
     assert asked == ["pilot"]
+    c._suggested = (c._suggested[0] - control_module.FRESH_S, *c._suggested[1:])
+    assert c.departure_suggestion() == plan  # ... asked again after FRESH_S, not SUGGEST_S
+    assert asked == ["pilot"]
+    assert c.departure_suggestion(fresh=True) == plan
+    assert asked == ["pilot", "pilot"]
+
+
+def test_a_new_simbrief_plan_is_another_briefing(home: Path) -> None:
+    """The same route planned again is another plan: the window offers it (its briefing)."""
+    from orthostudio.live.flightplan import FlightPlan
+
+    briefings = iter(["101", "102"])
+
+    def simbrief(user: str):
+        return FlightPlan("LFBO-LFMN", [(43.6, 1.4), (43.7, 7.2)], next(briefings)), ""
+
+    c = control_for(FakeStream())
+    c._simbrief = simbrief
+    c._settings = lambda: LiveSettings(disk_gb=66, simbrief_user="pilot")
+    assert c.departure_suggestion()["briefing"] == "101"
+    c._suggested = (c._suggested[0] - control_module.FRESH_S, *c._suggested[1:])
+    assert c.departure_suggestion(fresh=True) == {
+        "icao": "LFBO", "plan": "LFBO-LFMN", "briefing": "102",
+    }  # fmt: skip
 
 
 @pytest.mark.anyio
@@ -622,6 +648,41 @@ def test_the_page_says_everything_in_both_languages() -> None:
     used |= {f"flight.data_{d}" for d in ("none", "fresh", "stale")}  # t(`flight.data_${...}`)
     assert used, "no key found"
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_departure_box_and_a_new_simbrief_plan() -> None:
+    """The first plan fills an empty box; a newer one (another briefing) is offered, never put in
+    the box unasked; a plan comes into a box the pilot typed in only when asked."""
+    script = (
+        f"import {{ departureView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        "const a = { icao: 'LFMN', plan: 'LFMN-LFPG', briefing: '101' };"
+        "const b = { icao: 'LFBO', plan: 'LFBO-LFMN', briefing: '102' };"
+        "console.log(JSON.stringify(["
+        " departureView(null, a, ''),"  # the window opens: the box filled
+        " departureView(a, a, 'LFMN'),"  # the same plan: nothing to say
+        " departureView(a, b, 'LFMN'),"  # a new plan: offered
+        " departureView(a, b, 'LSGG'),"  # the pilot typed another: offered all the same
+        " departureView(null, a, 'LSGG'),"  # typed before the plan came: offered, not put in
+        " departureView(a, {}, 'LFMN'),"  # no plan (no name, simbrief.com silent): as it is
+        "]));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    a = {"icao": "LFMN", "plan": "LFMN-LFPG", "briefing": "101"}
+    b = {"icao": "LFBO", "plan": "LFBO-LFMN", "briefing": "102"}
+    assert json.loads(out.stdout) == [
+        {"fill": "LFMN", "shown": a, "offer": None},
+        {"fill": None, "shown": a, "offer": None},
+        {"fill": None, "shown": a, "offer": b},
+        {"fill": None, "shown": a, "offer": b},
+        {"fill": None, "shown": None, "offer": a},
+        {"fill": None, "shown": a, "offer": None},
+    ]
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
