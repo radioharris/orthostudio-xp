@@ -158,7 +158,6 @@ function drawState(status) {
   // the photos: chosen before Start, and kept until Live stops
   $("set-provider").disabled = !idle;
   $("set-provider").title = idle ? "" : t("source.running");
-  if (!idle) $("source-saved").hidden = true;
   $("start-btn").hidden = !idle;
   $("start-btn").disabled = Boolean(blocking(checks));
   $("fresh-row").hidden = !idle;
@@ -582,8 +581,6 @@ async function chooseProvider() {
   $("source-error").hidden = true;
   try {
     saved = await api("settings", { method: "PUT", body: { provider: $("set-provider").value } });
-    $("source-saved").textContent = t("source.saved");
-    $("source-saved").hidden = false;
   } catch (error) {
     $("source-error").textContent = error.message;
     $("source-error").hidden = false;
@@ -1132,7 +1129,6 @@ function boot() {
     renderZooms();
     renderProviders($("set-provider").value);
     drawSearch();
-    if (!$("source-saved").hidden) $("source-saved").textContent = t("source.saved");
     drawDeparture();
     if (last) draw(last);
   });

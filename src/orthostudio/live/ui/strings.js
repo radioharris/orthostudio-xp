@@ -39,7 +39,7 @@ export const STRINGS = {
     "state.error": "Live stopped: {error}",
     "hold.text": "{left} textures to build · {seconds} s · {mbs} MB/s",
 
-    "action.start": "Start",
+    "action.start": "Start Live",
     "action.stop": "Stop",
     "action.xplane": "Start X-Plane",
     "action.osxp": "Build tiles",
@@ -48,6 +48,8 @@ export const STRINGS = {
     "action.leave": "Leave it installed",
     "action.uninstall": "Take the pack out of X-Plane",
     "action.fresh": "From scratch",
+    "action.fresh_title":
+      "Forgets every texture built and every photo downloaded, as the very first time, and builds them again with the photo source above. Without it, textures already built keep their photos.",
     "action.fresh_help": "Forgets every texture built and all photos downloaded, as the very first time.",
 
     "departure.title": "Prepare my departure",
@@ -210,8 +212,6 @@ export const STRINGS = {
     "find.close": "Close (Esc)",
 
     "source.title": "Photo source",
-    "source.saved":
-      "Saved. Textures already built keep their photos: “From scratch” builds them all again with this source.",
     "source.running": "It changes once Live is stopped.",
     "source.group_world": "The whole world",
     "source.group_mine": "My sources",
@@ -354,7 +354,7 @@ export const STRINGS = {
     "state.error": "Live s'est arrêté : {error}",
     "hold.text": "{left} textures à construire · {seconds} s · {mbs} Mo/s",
 
-    "action.start": "Démarrer",
+    "action.start": "Démarrer Live",
     "action.stop": "Arrêter",
     "action.xplane": "Lancer X-Plane",
     "action.osxp": "Construire des tuiles",
@@ -363,6 +363,8 @@ export const STRINGS = {
     "action.leave": "Le laisser installé",
     "action.uninstall": "Retirer le pack de X-Plane",
     "action.fresh": "Repartir de zéro",
+    "action.fresh_title":
+      "Oublie toutes les textures construites et les photos téléchargées, comme la toute première fois, et les reconstruit avec la source photo choisie plus haut. Sans cela, les textures déjà construites gardent leurs photos.",
     "action.fresh_help":
       "Oublie toutes les textures construites et les photos téléchargées, comme la toute première fois.",
 
@@ -527,8 +529,6 @@ export const STRINGS = {
     "find.close": "Fermer (Échap)",
 
     "source.title": "Source des photos",
-    "source.saved":
-      "Enregistré. Les textures déjà construites gardent leurs photos : « Repartir de zéro » les reconstruit toutes avec cette source.",
     "source.running": "Elle se change quand Live est arrêté.",
     "source.group_world": "Le monde entier",
     "source.group_mine": "Mes sources",

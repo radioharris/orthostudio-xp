@@ -543,7 +543,7 @@ level, prefetch or waiting settings, is [live.md](live.md).
 
 For a flight:
 
-1. In Live's window, choose the imagery source, then click Start.
+1. In Live's window, choose the imagery source, then click Start Live.
 2. Start X-Plane (Live's Start X-Plane button), choose the flight and click Start Flight. X-Plane
    waits on its loading screen until the ortho around the aircraft is built: a few seconds where
    you have flown before, a minute or two the first time in a new area.

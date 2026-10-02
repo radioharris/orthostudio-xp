@@ -103,7 +103,6 @@
           <select id="set-provider" name="provider" class="question-select"></select>
           <p class="question-help" id="provider-attribution"></p>
           <p class="question-help is-warn" id="provider-note" hidden></p>
-          <p class="question-help" id="source-saved" hidden></p>
           <p class="error-inline" id="source-error" role="alert" hidden></p>
         </div>
         <!-- a departure built before X-Plane loads it: X-Plane then passes its loading screen at once -->
@@ -126,8 +125,8 @@
         </div>
         <!-- Live's buttons, then X-Plane's under them: Live first, then X-Plane -->
         <div class="actions">
-          <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start</button>
-          <label class="live-check" id="fresh-row" hidden>
+          <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start Live</button>
+          <label class="live-check" id="fresh-row" data-i18n-title="action.fresh_title" hidden>
             <input type="checkbox" id="fresh">
             <span data-i18n="action.fresh">From scratch</span>
           </label>
