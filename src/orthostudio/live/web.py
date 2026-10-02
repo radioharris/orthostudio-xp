@@ -145,8 +145,19 @@ def _serve(app: Any, port: int) -> tuple[Any, threading.Thread]:
     """Serve ``app`` on the loopback in a thread; raises OSError when the port is taken."""
     import uvicorn
 
+    # no colours: uvicorn would ask the console whether it shows them, and the Windows app runs in
+    # pythonw, which has no console at all: Live stopped there at the app's start ("Unable to
+    # configure formatter 'default'", a cloud PC, 2026-10-03); its button, whose process has an
+    # output, opened it
     server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off")
+        uvicorn.Config(
+            app,
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+            lifespan="off",
+            use_colors=False,
+        )
     )
     thread = threading.Thread(target=server.run, name="live-web", daemon=True)
     thread.start()

@@ -293,3 +293,25 @@ def test_live_that_cannot_be_set_up_closes_its_window(
         web.open_window(1, log=log)
     assert closed == [True]
     assert "OrthoStudio XP Live could not start (OSError" in log.read_text()
+
+
+def test_live_serves_in_a_process_without_a_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Windows app runs in pythonw, which has no console: Live's server, set up in the app's
+    own process at its start, stopped there ("Unable to configure formatter 'default'", a cloud
+    PC, 2026-10-03)."""
+    import socket
+    import sys
+
+    from fastapi import FastAPI
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    server, thread = web._serve(FastAPI(), port)
+    try:
+        assert server.started
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
