@@ -404,23 +404,26 @@ def test_quitting_the_app_asks_the_page_first(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(desktop, "_listening", lambda port: True)
     front, asked = [], []
-    monkeypatch.setattr(window, "to_the_front", lambda: front.append(True))
-    monkeypatch.setattr(window, "ask_the_page_to_quit", lambda: asked.append(True))
+    # OrthoStudio XP's window by its name: the app's other window may be beside it
+    monkeypatch.setattr(window, "to_the_front", lambda name=None: front.append(name))
+    monkeypatch.setattr(window, "ask_the_page_to_quit", lambda name=None: asked.append(name))
 
     assert desktop.may_quit() is False  # the page answers, not this
-    assert front == [True]
+    assert front == [window.PLACE_NAME]
     for _ in range(50):
         if asked:
             break
         time.sleep(0.02)
-    assert asked == [True]
+    assert asked == [window.PLACE_NAME]
 
 
 def test_quitting_with_no_engine_left_goes_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
     from orthostudio import window
 
     monkeypatch.setattr(desktop, "_listening", lambda port: False)
-    monkeypatch.setattr(window, "to_the_front", lambda: pytest.fail("nothing to ask about"))
+    monkeypatch.setattr(
+        window, "to_the_front", lambda name=None: pytest.fail("nothing to ask about")
+    )
     assert desktop.may_quit() is True
 
 
@@ -428,11 +431,11 @@ def test_the_close_button_puts_the_window_away_on_macos(monkeypatch: pytest.Monk
     from orthostudio import window
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: True)
-    put_away: list[bool] = []
-    monkeypatch.setattr(window, "away", lambda: put_away.append(True))
+    put_away: list[str | None] = []
+    monkeypatch.setattr(window, "away", lambda name=None: put_away.append(name))
     answer = desktop.on_close()
     assert answer is not None
-    assert answer() is False and put_away == [True]  # the window stays, out of sight
+    assert answer() is False and put_away == [window.PLACE_NAME]  # it stays, out of sight
 
 
 def test_the_close_button_quits_without_a_word_when_nothing_is_building(
@@ -445,7 +448,9 @@ def test_the_close_button_quits_without_a_word_when_nothing_is_building(
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
     monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: False)
-    monkeypatch.setattr(window, "ask", lambda *a: pytest.fail("asked a question nobody needed"))
+    monkeypatch.setattr(
+        window, "ask", lambda *a, **k: pytest.fail("asked a question nobody needed")
+    )
     stopped: list[bool] = []
     monkeypatch.setattr(
         desktop, "stop_the_engine", lambda *a, **k: stopped.append(k.get("force", False))
@@ -461,9 +466,9 @@ def test_the_close_button_asks_when_a_build_runs(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
     monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
     asked: list[tuple[str, str]] = []
-    closed: list[bool] = []
-    monkeypatch.setattr(window, "ask", lambda t, m: (asked.append((t, m)), True)[1])
-    monkeypatch.setattr(window, "close_now", lambda: closed.append(True))
+    closed: list[str | None] = []
+    monkeypatch.setattr(window, "ask", lambda t, m, name=None: (asked.append((t, m)), True)[1])
+    monkeypatch.setattr(window, "close_now", lambda name=None: closed.append(name))
     forced: list[bool] = []
     monkeypatch.setattr(
         desktop, "stop_the_engine", lambda *a, **k: forced.append(k.get("force", False))
@@ -478,7 +483,7 @@ def test_the_close_button_asks_when_a_build_runs(monkeypatch: pytest.MonkeyPatch
         time.sleep(0.02)
     assert asked and asked[0][0] == APP_NAME and "build is running" in asked[0][1]
     assert "carries on from there" in asked[0][1]  # what it costs, and what it does not
-    assert closed == [True]
+    assert closed == [window.PLACE_NAME]
     assert forced == [True]  # a build is stopped only when the user has said so
 
     # closing comes back through here, and the question must not be asked a second time: it was,
@@ -494,8 +499,8 @@ def test_the_close_button_asks_again_on_a_later_close(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
     monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
-    monkeypatch.setattr(window, "ask", lambda t, m: False)  # the user says no
-    monkeypatch.setattr(window, "close_now", lambda: pytest.fail("closed on a no"))
+    monkeypatch.setattr(window, "ask", lambda t, m, name=None: False)  # the user says no
+    monkeypatch.setattr(window, "close_now", lambda name=None: pytest.fail("closed on a no"))
     monkeypatch.setattr(
         desktop, "stop_the_engine", lambda *a, **k: pytest.fail("stopped a build on a no")
     )

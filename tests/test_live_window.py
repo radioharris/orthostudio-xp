@@ -66,11 +66,22 @@ def opened(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         done: list = []
         given: dict = {}
         monkeypatch.setattr(window_module, "puts_away_on_close", lambda: mac)
-        monkeypatch.setattr(window_module, "away", lambda: done.append("away"))
-        monkeypatch.setattr(window_module, "to_the_front", lambda: done.append("front"))
-        monkeypatch.setattr(window_module, "ask_the_page_to_quit", lambda: done.append("page"))
 
-        def ask(title: str, message: str) -> bool:
+        def mine(what: str):  # every call names Live's window: OrthoStudio XP's may be beside it
+            def did(name: str | None = None) -> None:
+                assert name == web.TITLE, (what, name)
+                done.append(what)
+
+            return did
+
+        monkeypatch.setattr(window_module, "away", mine("away"))
+        monkeypatch.setattr(window_module, "to_the_front", mine("front"))
+        monkeypatch.setattr(window_module, "ask_the_page_to_quit", mine("page"))
+        # Live's window up, OrthoStudio XP's not
+        monkeypatch.setattr(window_module, "shown", lambda name=None: name == web.TITLE)
+
+        def ask(title: str, message: str, *, name: str | None = None) -> bool:
+            assert name == web.TITLE
             done.append(("ask", message))
             return answer
 
@@ -80,6 +91,9 @@ def opened(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
             settings_module, "load_settings", lambda: SimpleNamespace(language=language)
         )
         control = FakeControl()
+        live = web._Starting()
+        live.control = control
+        monkeypatch.setattr(web, "_here", live)  # Live in this program, as the app's start sets up
         web._in_a_window("http://127.0.0.1:1/", control)
         control.stopped = 0  # the window's own stop as it goes: the fake one went at once
         return given, done, control
@@ -137,13 +151,15 @@ def test_the_question_in_the_window_s_language(opened) -> None:
     assert control.stopped == 0 and not given["closes_when"]()  # "no": nothing stops
 
 
-def test_the_window_keeps_a_place_and_a_storage_of_its_own(opened) -> None:
-    """Its place (macOS keeps it by name in the app's defaults, Windows in the window's folder)
-    and its page's storage, where the zoom and the text size are kept, are Live's own: under
-    OrthoStudio XP's, each window opened where the other was left (2026-10-03)."""
+def test_the_window_keeps_a_place_of_its_own_in_the_app_s_one_program(opened) -> None:
+    """Its place is Live's own (macOS keeps it by name in the app's defaults, Windows in a file of
+    its own): under OrthoStudio XP's, each window opened where the other was left (2026-10-03).
+    The web view's folder is the program's, OrthoStudio XP's beside it sharing it; the zoom and
+    the text size each page keeps stay its own, by its address. The Window menu has both."""
     given, _done, _control = opened(True)
     assert given["place"] == web.TITLE != window_module.PLACE_NAME
-    assert given["storage"].name == "window" and given["storage"] != window_module.storage_dir()
+    assert "storage" not in given  # the program's, window.storage_dir()
+    assert [title for title, _ in given["menu"]] == ["OrthoStudio XP", web.TITLE]
 
 
 def test_on_windows_and_linux_closing_is_quitting(opened) -> None:

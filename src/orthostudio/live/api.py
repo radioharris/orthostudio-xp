@@ -195,6 +195,12 @@ def live_router(
     @router.post("/home")
     def home(body: HomeBody) -> dict[str, Any]:
         control.choose_home(body.home, remember=body.remember)
+        if body.home == "build":
+            # OrthoStudio XP's window first, beside this one in its program where it can be, so
+            # that the app is still there when this one goes (control.gone)
+            from orthostudio.live.app_start import open_osxp
+
+            open_osxp()
         return {"home": body.home}
 
     @router.post("/osxp")
@@ -209,8 +215,9 @@ def live_router(
             front()
         else:
             from orthostudio import window
+            from orthostudio.live.web import TITLE
 
-            window.to_the_front()
+            window.to_the_front(TITLE)
         return {"front": True}
 
     @router.get("/regions")

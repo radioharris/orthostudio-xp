@@ -31,7 +31,7 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 from platformdirs import user_log_dir
 
@@ -421,9 +421,12 @@ def may_quit() -> bool:
 
     if not _listening(ENGINE_PORT):
         return True
-    window.to_the_front()
+    window.to_the_front(window.PLACE_NAME)
     threading.Thread(
-        target=window.ask_the_page_to_quit, name="ask-the-page-to-quit", daemon=True
+        target=window.ask_the_page_to_quit,
+        args=(window.PLACE_NAME,),
+        name="ask-the-page-to-quit",
+        daemon=True,
     ).start()
     return False
 
@@ -495,7 +498,7 @@ def on_close() -> Callable[[], bool] | None:
     if window.puts_away_on_close():
 
         def keep() -> bool:
-            window.away()
+            window.away(window.PLACE_NAME)
             return False  # the window stays, out of sight, and the icon stays in the Dock
 
         return keep
@@ -511,10 +514,10 @@ def on_close() -> Callable[[], bool] | None:
 
         def aside() -> None:
             """Closing the window comes back through here, which is why the answer is kept."""
-            if window.ask(APP_NAME, BUILDING_ON_QUIT):
+            if window.ask(APP_NAME, BUILDING_ON_QUIT, name=window.PLACE_NAME):
                 stop_the_engine(ENGINE_PORT, force=True)
                 said_yes[0] = True
-                window.close_now()
+                window.close_now(window.PLACE_NAME)
 
         threading.Thread(target=aside, name="ask-before-quitting", daemon=True).start()
         return False
@@ -522,23 +525,10 @@ def on_close() -> Callable[[], bool] | None:
     return quit_the_app
 
 
-def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
-    """Show the app in a window of its own, and return ``True`` once that window is closed.
-
-    ``False``, and nothing started, when this system has no window to give: the caller opens the
-    browser, as every version before 0.1.8 did, and the doctor's ``window`` check says in the page
-    what to install for one. The engine starts only once the window is up, behind the page that
-    says so, so that a system without one is left as it was found.
-    """
-    from orthostudio import window
-
-    stop_listening: Callable[[], None] | None = None
-    if show is None:
-        if not window.possible():
-            _note(log, window.hint() or "no window of its own on this system")
-            return False
-        show = window.show
-        stop_listening = _brought_by_live(log)
+def _osxp_window(log: Path, *, beside: bool = False) -> dict[str, Any]:
+    """What OrthoStudio XP's window is shown with, the app's first or beside its other window: its
+    page, the opening one while the engine starts (which goes to the engine's by itself), and what
+    it does at its close, at the app's Quit and once its engine is gone."""
     running = engine_here(ENGINE_PORT)
     url = f"http://127.0.0.1:{ENGINE_PORT}/"
     if not running:
@@ -550,18 +540,78 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
         # what the window's start took; a line that cannot be written must not keep the engine
         # from starting
         with contextlib.suppress(Exception):
-            _note(log, window_opens())
+            _note(log, "its window opens, beside the app's other one" if beside else window_opens())
         start_engine(log)
 
+    return {
+        "url": url,
+        "title": APP_NAME,
+        "on_shown": None if running else opens,
+        "closes_when": _then_live_too(time_to_close(ENGINE_PORT)),
+        "on_close": on_close(),
+        "note": lambda text: _note(log, text),
+    }
+
+
+def _then_live_too(closes: Callable[[], bool]) -> Callable[[], bool]:
+    """OrthoStudio XP's window goes once its engine has (``closes``): quitting quits the app, and
+    OrthoStudio XP Live's window, beside it in this program, goes too, at once when nothing streams,
+    else after its own page's question (``orthostudio.live.web.live_goes_too``)."""
+
+    def closes_when() -> bool:
+        if not closes():
+            return False
+        try:
+            from orthostudio.live.web import live_goes_too
+        except ImportError:
+            return True
+        threading.Thread(target=live_goes_too, name="live-goes-too", daemon=True).start()
+        return True
+
+    return closes_when
+
+
+def _app_quit() -> Callable[[], bool]:
+    """What the app's Quit does: OrthoStudio XP's own (:func:`may_quit`), or, OrthoStudio XP Live
+    switched on, the one that asks in either window's page, the two being one program
+    (``orthostudio.live.web.app_may_quit``)."""
+    try:
+        from orthostudio.live import enabled
+        from orthostudio.live.web import app_may_quit
+    except ImportError:
+        return may_quit
+    return app_may_quit if enabled() else may_quit
+
+
+def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
+    """Show the app in a window of its own, and return ``True`` once that window is closed.
+
+    ``False``, and nothing started, when this system has no window to give: the caller opens the
+    browser, as every version before 0.1.8 did, and the doctor's ``window`` check says in the page
+    what to install for one. The engine starts only once the window is up, behind the page that
+    says so, so that a system without one is left as it was found. The app's other window may open
+    beside it, in this program (``orthostudio.live``): the call returns once both are closed.
+    """
+    from orthostudio import window
+
+    stop_listening: Callable[[], None] | None = None
+    menu: list[tuple[str, Callable[[], None]]] | None = None
+    quits: Callable[[], bool] = may_quit
+    if show is None:
+        if not window.possible():
+            _note(log, window.hint() or "no window of its own on this system")
+            return False
+        show = window.show
+        stop_listening = _brought_by_live(log)
+        menu = _window_menu(log)
+        quits = _app_quit()
+    shown = _osxp_window(log)
     try:
         show(
-            url,
-            title=APP_NAME,
-            on_shown=None if running else opens,
-            closes_when=time_to_close(ENGINE_PORT),
-            on_close=on_close(),
-            may_quit=may_quit,
-            note=lambda text: _note(log, text),
+            shown.pop("url"),
+            **shown,
+            may_quit=quits,
+            **({"menu": menu} if menu is not None else {}),
         )
     except Exception:
         _note(log, "its window could not be shown: the browser opens instead")
@@ -569,21 +619,78 @@ def in_a_window(log: Path, *, show: Callable[..., None] | None = None) -> bool:
     finally:
         if stop_listening is not None:
             stop_listening()
+        _live_ends(log)
     _note(log, "its window closed")
     return True
 
 
+def open_osxp_here(log: Path | None = None) -> bool:
+    """OrthoStudio XP's window in this program, beside the app's other window: brought to the
+    front when it is up, else opened, its engine started behind the opening page as at the app's
+    start. ``False``, nothing done, when this program shows no window to open it beside: it then
+    opens in a program of its own (``orthostudio.live.app_start.open_osxp``)."""
+    from orthostudio import window
+
+    if not window.running():
+        return False
+    if window.shown(window.PLACE_NAME):
+        window.to_the_front(window.PLACE_NAME)
+        return True
+    shown = _osxp_window(log or log_path(), beside=True)
+    window.open_another(shown.pop("url"), **shown, place=window.PLACE_NAME)
+    return True
+
+
+def _window_menu(log: Path) -> list[tuple[str, Callable[[], None]]] | None:
+    """The Window menu's entries when the app has two windows (OrthoStudio XP Live switched on):
+    each brings its window back, or opens it; None, the window's own entry alone, without it."""
+    try:
+        from orthostudio.live.web import menu_entry
+    except ImportError:
+        return None
+    try:
+        live = menu_entry(log)
+    except Exception:  # never in the way of the window itself
+        return None
+    if live is None:
+        return None
+    return [(APP_NAME, lambda: open_osxp_here(log) and None), live]
+
+
+def _live_ends(log: Path) -> None:
+    """OrthoStudio XP Live opened beside this window, in this program: stopped with the app, its
+    page no longer served (``orthostudio.live.web.end_here``)."""
+    try:
+        from orthostudio.live.web import end_here
+    except ImportError:
+        return
+    try:
+        end_here()
+    except Exception as exc:
+        _note(log, f"OrthoStudio XP Live could not be stopped ({type(exc).__name__}: {exc})")
+
+
 def _brought_by_live(log: Path) -> Callable[[], None] | None:
     """OrthoStudio XP Live's Build tiles brings this window to the front, put away or not, rather
-    than opening another (:func:`orthostudio.live.app_start.osxp_window_listens`). Returns what
-    stops listening; ``None``, nothing listened for, without Live or when listening fails."""
+    than opening another, and this window's Live button opens Live's window beside it, in this
+    program (:func:`orthostudio.live.app_start.osxp_window_listens`): the engine that has the
+    button is a program of its own. Returns what stops listening; ``None``, nothing listened for,
+    without Live or when listening fails."""
     try:
         from orthostudio import window
         from orthostudio.live.app_start import osxp_window_listens
     except ImportError:
         return None
+
+    def live() -> None:
+        from orthostudio.live.web import live_window_here
+
+        live_window_here(log)
+
     try:
-        return osxp_window_listens(ENGINE_PORT, window.to_the_front)
+        return osxp_window_listens(
+            ENGINE_PORT, lambda: window.to_the_front(window.PLACE_NAME), live=live
+        )
     except Exception as exc:  # never in the way of the window itself
         _note(
             log, f"Live's Build tiles cannot bring this window back ({type(exc).__name__}: {exc})"

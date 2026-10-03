@@ -286,9 +286,11 @@ async def test_the_welcome_page_s_answer(home: Path, monkeypatch: pytest.MonkeyP
         await client.post("/api/live/home", json={"home": "build", "remember": True})
         assert load_settings().app_home == "build"
         assert control.leaving_for == "build"  # the window closes, OrthoStudio XP's opens
+        # at once, before this window goes: beside it in its program, the app still there
+        assert opened == [1]
         assert (await client.post("/api/live/home", json={"home": "elsewhere"})).status_code == 422
         assert (await client.post("/api/live/osxp")).json() == {"opened": "started"}
-    assert opened == [1]
+    assert opened == [1, 1]
 
 
 @pytest.mark.anyio

@@ -7,11 +7,13 @@ Once Live is switched on (``enabled`` in ``live.toml``), the app asks at its fir
 pilot wants to do: fly now, with Live, or build their tiles, with OrthoStudio XP (Live's
 ``/welcome`` page). The choice is kept (``app_home`` in Live's settings, which change it) and opens
 that window at each start after (:func:`app_start`, which OrthoStudio XP's ``desktop.main`` asks
-first). Each window has a button to the other, each window a process of its own: "Build tiles" in
-Live's, "Live" in OrthoStudio XP's top bar, which the one line OrthoStudio XP's page gains brings
-(:func:`osxp_router`: the button, and what it asks of the engine). A button brings the other window
-to the front when it is open, and opens it only when it is not: Live's window through its API,
-OrthoStudio XP's through what its process listens for (:func:`osxp_window_listens`).
+first). Each window has a button to the other: "Build tiles" in Live's, "Live" in OrthoStudio XP's
+top bar, which the one line OrthoStudio XP's page gains brings (:func:`osxp_router`: the button,
+and what it asks of the engine). The two windows are one program, with one icon in the Dock or the
+taskbar: a button brings the other window to the front when it is open, else opens it beside, in
+that program (``desktop.open_osxp_here``, ``web.live_window_here``): Live's window through its API,
+OrthoStudio XP's through what its process listens for (:func:`osxp_window_listens`). A program
+showing no window opens the other in a program of its own.
 """
 
 from __future__ import annotations
@@ -124,9 +126,15 @@ def _other_window(start: str, aside: list[str]) -> None:
 
 
 def open_live() -> str:
-    """Live's window: brought to the front when it is open, else started. Says which."""
+    """Live's window: brought to the front when it is open (``front``), else opened beside
+    OrthoStudio XP's window, in its program (``beside``: one program, one icon), else started in a
+    program of its own. Says which."""
+    from orthostudio.desktop import ENGINE_PORT
+
     if live_listening() and _ask_live("front", post=True) is not None:
         return "front"
+    if _ask_osxp_window(ENGINE_PORT, b"live"):
+        return "beside"
     _other_window("live", ["-m", "orthostudio.live", "ui", "--quit-when-closed"])
     return "started"
 
@@ -139,9 +147,12 @@ def osxp_window_file(port: int) -> Path:
     return osxp_home() / "run" / f"osxp-window-{port}.json"
 
 
-def osxp_window_listens(port: int, front: Callable[[], object]) -> Callable[[], None]:
+def osxp_window_listens(
+    port: int, front: Callable[[], object], *, live: Callable[[], object] | None = None
+) -> Callable[[], None]:
     """In OrthoStudio XP's window process: run ``front`` when Live's Build tiles asks for this
-    window, and say where to ask (:func:`osxp_window_file`). Returns what stops it.
+    window, and ``live`` when this window's Live button asks for Live's window beside it, in this
+    program; and say where to ask (:func:`osxp_window_file`). Returns what stops it.
 
     Live's window has its API for that; OrthoStudio XP's window has none, its engine being another
     process, so it listens on a port of the system's choosing, on this computer only."""
@@ -162,8 +173,12 @@ def osxp_window_listens(port: int, front: Callable[[], object]) -> Callable[[], 
             with asked:
                 try:
                     asked.settimeout(2.0)
-                    if asked.recv(16).strip() == b"front":
+                    what = asked.recv(16).strip()
+                    if what == b"front":
                         front()
+                        asked.sendall(b"ok\n")
+                    elif what == b"live" and live is not None:
+                        live()
                         asked.sendall(b"ok\n")
                 except Exception:  # an answer that fails leaves the window as it is
                     continue
@@ -180,25 +195,38 @@ def osxp_window_listens(port: int, front: Callable[[], object]) -> Callable[[], 
     return stop
 
 
-def _osxp_to_front(port: int) -> bool:
-    """Whether an open OrthoStudio XP window came to the front when asked."""
+def _ask_osxp_window(port: int, what: bytes) -> bool:
+    """Whether an open OrthoStudio XP window did ``what`` when asked: ``front`` (came to the
+    front), ``live`` (opened Live's window beside it, in its program)."""
     try:
         listening = int(json.loads(osxp_window_file(port).read_text(encoding="utf-8"))["port"])
         with socket.create_connection(("127.0.0.1", listening), timeout=1.0) as window:
-            window.settimeout(3.0)
-            window.sendall(b"front\n")
+            window.settimeout(10.0)  # opening a window takes longer than bringing one
+            window.sendall(what + b"\n")
             return window.recv(8).strip() == b"ok"
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
 
-def open_osxp() -> str:
-    """OrthoStudio XP's window: brought to the front when it is open, else started, and says
-    which. Started, it is the app's own entry, which shows the running engine's page, or starts
-    one (on this app's port, ``OSXP_PORT``). Each click on Build tiles used to start another, one
-    more app in the Dock each time (a user saw it, 2026-10-02)."""
-    from orthostudio.desktop import ENGINE_PORT
+def _osxp_to_front(port: int) -> bool:
+    """Whether an open OrthoStudio XP window came to the front when asked."""
+    return _ask_osxp_window(port, b"front")
 
+
+_opened_here = threading.Event()  # OrthoStudio XP's window opened beside Live's, in this program
+
+
+def open_osxp() -> str:
+    """OrthoStudio XP's window: in this program, beside Live's, brought to the front or opened
+    (``here``: one program, one icon), else an open one of another program brought to the front
+    (``front``), else started, and says which. Started, it is the app's own entry, which shows the
+    running engine's page, or starts one (on this app's port, ``OSXP_PORT``). Each click on Build
+    tiles used to start another, one more app in the Dock each time (a user saw it, 2026-10-02)."""
+    from orthostudio.desktop import ENGINE_PORT, open_osxp_here
+
+    if open_osxp_here():
+        _opened_here.set()
+        return "here"
     if _osxp_to_front(ENGINE_PORT):
         return "front"
     _other_window("build", ["-m", "orthostudio.desktop"])
@@ -228,9 +256,9 @@ def app_start(log: Path) -> bool:
         answer = open_window(LIVE_PORT, start=start, quit_when_closed=True, log=log)
     except LiveStartError:
         answer = "build"  # Live could not be set up behind its window: OrthoStudio XP's opens
-    if answer == "build":
-        # OrthoStudio XP's window in a process of its own, as Live's button opens it: the window
-        # library's loop starts once a process, and Live's has just ended
+    if answer == "build" and not _opened_here.is_set():
+        # OrthoStudio XP's window in a process of its own, as Live's button opens it, where it did
+        # not open beside Live's in this program (the welcome's answer opens it there at once)
         open_osxp()
     return True
 

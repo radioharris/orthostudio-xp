@@ -23,9 +23,12 @@ Live and OrthoStudio XP are one app. At its first start the app asks what you wa
 with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless you untick the
 box, and opens that window at each start after; Live's settings (When the app starts) change it.
 Each window has a button to the other, which brings it back when it is open already: Live in
-OrthoStudio XP's top bar, its dot saying whether Live streams, and Build tiles in Live's. Quit, at
-the right of Live's top bar, asks as OrthoStudio XP's does, and Cmd+Q asks the same: a stream stops,
-and Live stays until X-Plane has quit. Where a computer cannot show the app's own window (a Linux
+OrthoStudio XP's top bar, its dot saying whether Live streams, and Build tiles in Live's. The two
+windows are one program, with one icon in the Dock or the taskbar, and each opens beside the other.
+Quit, at the right of Live's top bar, asks as OrthoStudio XP's does: a stream stops, and Live stays
+until X-Plane has quit. Quit in either window quits the app, the other window going too, at once
+when nothing runs there, else after its own question; Cmd+Q asks where a build or a stream runs.
+On Windows, a window's close button closes that window alone. Where a computer cannot show the app's own window (a Linux
 without its libraries), both open in the browser, and Live stops by itself five minutes after its
 page was closed, unless it streams.
 
