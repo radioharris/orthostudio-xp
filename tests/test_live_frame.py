@@ -523,15 +523,42 @@ def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     assert '<dialog id="build-running"' in page
 
 
-def test_the_frame_s_quit_is_the_pages_own() -> None:
-    """Its look is OrthoStudio XP's Quit, in one place (styles.css, ``.topbar-tools .quit-btn``: the
-    label on its icon on Windows too, a user, 2026-10-04): the same icon, in the same bar."""
-    from orthostudio.ui import ui_dir as osxp_ui
+OSXP_ELEMENTS = (".brand", ".topbar-tools", ".status-text", "#status-zoom")
 
-    page = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
-    osxp = (osxp_ui() / "index.html").read_text(encoding="utf-8")
-    icon = 'd="M12 4.4v8M7.1 7.6a7 7 0 1 0 9.8 0"'
-    assert icon in page and icon in osxp
-    tools = page[page.index('<div class="topbar-tools">') :]
-    assert tools.index('id="quit-btn"') < tools.index("</div>")
+
+def test_the_frame_takes_osxp_s_bars_from_its_page_and_copies_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The name, the language, the theme, Quit, the text size and the zoom are written once, in
+    OrthoStudio XP's page, and put into the frame's as it is served: a copy in the frame was left
+    behind when OrthoStudio XP's Quit changed (the user: « pourquoi c'est pas le même bouton ??? »,
+    2026-10-04). Its style is OrthoStudio XP's too (styles.css)."""
+    from orthostudio import ui
+
+    own = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
+    for copied in ('class="logo"', 'id="lang-select"', 'id="theme-btn"', 'id="quit-btn"'):
+        assert copied not in own, copied  # nothing of the kind written in the frame itself
+    for copied in ('id="text-size"', 'id="status-zoom"', 'class="brand"'):
+        assert copied not in own, copied
     assert ".quit-btn" not in (FRAME_DIR / "frame.css").read_text(encoding="utf-8")
+    osxp = (ui_dir() / "index.html").read_text(encoding="utf-8")
+    served = frame_page({}).decode()
+    for selector in OSXP_ELEMENTS:
+        element = frame_module.osxp_element(selector)
+        assert f"<!-- osxp: {selector} -->" in own and element in osxp and element in served
+    assert "<!-- osxp:" not in served
+    top = served[served.index('<header class="topbar frame-top">') : served.index("</header>")]
+    assert frame_module.osxp_element(".brand") in top
+    assert frame_module.osxp_element(".topbar-tools") in top
+    foot = served[served.index('id="frame-foot"') :]
+    assert foot.index(frame_module.osxp_element("#status-zoom")) < foot.index('id="toast"')
+    # the element as the page writes it, what it holds included, the first so named
+    page = (
+        '<div class="a b"><div>in</div><br><span id="x">x <b>y</b></span></div><p class="b">p</p>'
+    )
+    assert frame_module.osxp_element(".b", page) == page[: page.index("<p")]
+    assert frame_module.osxp_element("#x", page) == '<span id="x">x <b>y</b></span>'
+    assert frame_module.osxp_element("#nothing", page) == ""
+    # no page of OrthoStudio XP's: nothing put in, the frame served all the same
+    monkeypatch.setattr(ui, "ui_dir", lambda: tmp_path)
+    assert "<!-- osxp:" not in frame_page({}).decode()

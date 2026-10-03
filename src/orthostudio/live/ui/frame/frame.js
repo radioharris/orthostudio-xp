@@ -345,6 +345,8 @@ function boot() {
     tellPages();
     keep();
   });
+  // OrthoStudio XP's own Quit (frame.py frame_page), which its page shows once its engine may stop
+  $("quit-btn").hidden = false;
   $("quit-btn").addEventListener("click", async () => {
     try {
       await (await tools()).quit();

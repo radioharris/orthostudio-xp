@@ -32,11 +32,13 @@ import contextlib
 import http.server
 import json
 import os
+import re
 import sys
 import threading
 import time
 import urllib.parse
 from collections.abc import Callable
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +55,12 @@ THEMES = ("", "dark", "light")  # "" is the system's
 TEXT_SIZES = (100, 115, 130)  # ui/textsize.js TEXT_SIZES, which a test keeps equal
 GIVEN = '<script type="application/json" id="frame-given">{}</script>'
 """Where :func:`frame_page` puts what the frame starts from, in ``frame.html``."""
+OSXP_MARK = re.compile(r"<!-- osxp: ([.#][\w-]+) -->")
+"""Where :func:`frame_page` puts one of OrthoStudio XP's own elements (:func:`osxp_element`), in
+``frame.html``: ``.class`` or ``#id``, as that page names it."""
+VOID = frozenset(
+    ("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "wbr")
+)
 
 TYPES = {
     ".js": "text/javascript; charset=utf-8",
@@ -179,12 +187,85 @@ def save_prefs(prefs: Any) -> dict[str, Any]:
 # -- the frame's page -----------------------------------------------------------------------------
 
 
+class _Element(HTMLParser):
+    """Where the first element ``selector`` names (``.class`` or ``#id``) starts and ends in
+    ``page``: ``span``, or None when it is not there."""
+
+    def __init__(self, page: str, selector: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.page, self.by_id, self.name = page, selector[0] == "#", selector[1:]
+        self.starts = [0]  # where each line of the page starts, for the parser's (line, column)
+        for line in page.splitlines(keepends=True):
+            self.starts.append(self.starts[-1] + len(line))
+        self.tag: str | None = None
+        self.depth = 0
+        self.start = 0
+        self.span: tuple[int, int] | None = None
+        self.feed(page)
+        self.close()
+
+    def _here(self) -> int:
+        line, column = self.getpos()
+        return self.starts[line - 1] + column
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.span is not None:
+            return
+        if self.tag is None:
+            named = dict(attrs)
+            found = (
+                named.get("id") == self.name
+                if self.by_id
+                else self.name in (named.get("class") or "").split()
+            )
+            if found:
+                self.tag, self.start = tag, self._here()
+                if tag in VOID:
+                    self.span = (self.start, self.start + len(self.get_starttag_text() or ""))
+                else:
+                    self.depth = 1
+        elif tag == self.tag and tag not in VOID:
+            self.depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.tag is None or self.span is not None or tag != self.tag:
+            return
+        self.depth -= 1
+        if self.depth == 0:
+            self.span = (self.start, self.page.index(">", self._here()) + 1)
+
+
+def osxp_element(selector: str, page: str | None = None) -> str:
+    """OrthoStudio XP's own element ``selector`` (``.class``, ``#id``: the first so named), as its
+    page writes it (``ui/index.html``), or ``page``; "" when it is not there."""
+    if page is None:
+        from orthostudio.ui import ui_dir
+
+        try:
+            page = (ui_dir() / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            return ""
+    found = _Element(page, selector).span
+    return page[found[0] : found[1]] if found else ""
+
+
 def frame_page(given: dict[str, Any]) -> bytes:
     """``frame.html`` with what the frame starts from (``given``: the part shown first, whether the
-    welcome is asked, the app's version, what the pilot chose and whether it was ever kept)."""
+    welcome is asked, the app's version, what the pilot chose and whether it was ever kept), and
+    OrthoStudio XP's own elements where it marks them (:data:`OSXP_MARK`): the name, the language,
+    the theme, Quit, the text size and the zoom are written once, in OrthoStudio XP's page. The
+    frame had copies of them, and a change to OrthoStudio XP's Quit left its own behind (the user:
+    « pourquoi c'est pas le même bouton ??? », 2026-10-04)."""
     html = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
     literal = json.dumps(given).replace("</", "<\\/").replace("<!--", "<\\!--")
-    return html.replace(GIVEN, GIVEN.replace("{}", literal)).encode("utf-8")
+    html = html.replace(GIVEN, GIVEN.replace("{}", literal))
+    from orthostudio.ui import ui_dir
+
+    try:
+        osxp = (ui_dir() / "index.html").read_text(encoding="utf-8")
+    except OSError:
+        osxp = ""
+    return OSXP_MARK.sub(lambda mark: osxp_element(mark.group(1), osxp), html).encode("utf-8")
 
 
 def _inside(base: Path, rel: str) -> Path | None:
