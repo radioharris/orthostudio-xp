@@ -333,6 +333,54 @@ def test_the_window_zooms_its_page_because_a_browser_would() -> None:
     assert WINDOW_MENU_KEY != "0"
 
 
+def test_the_windows_zoom_is_set_on_the_windows_own_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl+plus never did anything on Windows (a user, 2026-10-03): the page's calls come in on
+    threads of their own (pywebview runs each apart), WebView2 is touched from its window's thread
+    alone, and the error it raised was taken for a no. The zoom is set through the control's
+    ``Invoke``, on that thread."""
+    import types
+
+    from orthostudio import window
+
+    class WebView2:
+        """A WinForms WebView2 that refuses its zoom off its own thread, as the real one does."""
+
+        InvokeRequired = True
+
+        def __init__(self) -> None:
+            self.on_its_thread = False
+            self.factor = 1.0
+
+        def Invoke(self, delegate: object) -> None:  # noqa: N802 (WinForms' own name)
+            self.on_its_thread = True
+            try:
+                delegate()  # type: ignore[operator]
+            finally:
+                self.on_its_thread = False
+
+        @property
+        def ZoomFactor(self) -> float:  # noqa: N802
+            return self.factor
+
+        @ZoomFactor.setter
+        def ZoomFactor(self, value: float) -> None:  # noqa: N802
+            if not self.on_its_thread:
+                raise RuntimeError("CoreWebView2 can only be accessed from the UI thread.")
+            self.factor = value
+
+    view = WebView2()
+    system = types.ModuleType("System")
+    system.Action = lambda do: do  # type: ignore[attr-defined]  # pythonnet makes a delegate
+    monkeypatch.setitem(sys.modules, "System", system)
+    monkeypatch.setattr(window, "_web_view", lambda: view)
+    assert window.PageTools().set_zoom(1.25) is True
+    assert view.factor == 1.25
+    # on the window's own thread already, it is set at once
+    view.InvokeRequired = False
+    view.on_its_thread = True
+    assert window.PageTools().set_zoom(0.9) is True and view.factor == 0.9
+
+
 def test_the_window_carries_the_apps_icon_and_not_pythons(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

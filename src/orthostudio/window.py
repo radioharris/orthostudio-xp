@@ -108,6 +108,22 @@ ZOOM_LIMITS = (0.5, 3.0)
 no room left for the map."""
 
 
+def on_its_own_thread(control: Any, do: Callable[[], object]) -> None:
+    """Run ``do`` on the thread that owns the WinForms ``control``, and wait for it.
+
+    WebView2 is touched from that thread alone (``CoreWebView2 can only be accessed from the UI
+    thread``), and the page's calls come in on threads of their own: pywebview runs each one apart
+    so as not to hold the window. Set from there, the zoom raised, the page heard no, and Ctrl+plus
+    never did anything on Windows (a user, 2026-10-03).
+    """
+    if not getattr(control, "InvokeRequired", False):
+        do()
+        return
+    from System import Action  # pythonnet, which the window runs on there
+
+    control.Invoke(Action(do))
+
+
 class PageTools:
     """What the page may ask of the window it runs in (pywebview's ``js_api``).
 
@@ -137,7 +153,7 @@ class PageTools:
                 view.setPageZoom_(wanted)
                 return True
             if hasattr(view, "ZoomFactor"):  # WebView2, through its WinForms control
-                view.ZoomFactor = wanted
+                on_its_own_thread(view, lambda: setattr(view, "ZoomFactor", wanted))
                 return True
         except Exception:
             return False
