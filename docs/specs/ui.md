@@ -80,6 +80,8 @@ drawn, and when the window's size changes): where scrollbars take room (a mouse,
 them always, Windows), WebKit added the scrollbar after placing what follows the table, and the line
 under step 3's per-tile table overlapped the table until the page moved (a user, 2026-09-22).
 
+**Text size** (a user on an ultrawide screen found the text too small, TinkerNZ, 2026-10-03): Settings' last question, *Text size* (`essential.text_size`: 100, 115 or 130 %), draws these styles at that share of their size. `app.js applyTextSize` writes the six `--fs-*` tokens on the page's root; their own values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal. The controls' own sizes and the map do not grow: that is the zoom's work (2.5). The size is kept in the page's storage too, so that the next start draws its text at it before the settings come, and *Default values* keeps it.
+
 ## 2. The four screens
 
 ### 2.1 Plan
@@ -858,8 +860,8 @@ brought the top of the screen back, since removing the focused answer made the b
 half-drawn page). Nothing is saved before *Save*; *Undo
 my changes* goes back to the saved settings, *Default values* to the schema's defaults
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder, the data folder, the SimBrief
-name and the places the map data comes from (a folder of one's own, a library's address and key)
-kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
+name, the size of the page's text and the places the map data comes from (a folder of one's own, a
+library's address and key) kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
 "Changes not saved yet". The action bar sticks to the bottom, and a save the engine refuses says
@@ -1241,6 +1243,16 @@ switches. A refusal for want of the data folder (`CFG_DATA_DIR_MISSING`, `CFG_DA
 has a *Settings* button that focuses its field. The library count follows every read of the library
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
+
+**The zoom** (2026-10-03): at the bar's right end, in the window alone, `− 100 % +` zooms the whole
+page, its level bringing it back to 100 % (`zoom.js bindZoom`; the window scales the page through
+`PageTools.set_zoom`, a CSS zoom would cut the map off at the foot). The keys, Ctrl or ⌘ with plus,
+minus and 0, were there since 0.1.8 and showed nowhere: a user on an ultrawide screen asked for a
+way to make the text bigger (TinkerNZ). Their help names the keys of the system, the level is kept
+in the page's storage, and the control shows once the window has said it scales the page; in a
+browser, the browser's own zoom does it. On Windows the zoom is set on the window's own thread
+(`window.on_its_own_thread`): WebView2 refused it from the threads the page's calls come in on, and
+neither the keys nor anything else had ever zoomed there (a user, 2026-10-03).
 
 **The first screen** (2026-09-22): the page shows the screen of its address at once, then fills it
 in as the engine answers. It used to wait for every answer (status, zones, library, sources,

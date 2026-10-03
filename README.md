@@ -96,6 +96,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **Your disk of choice.** The tiles, the cache and the downloaded imagery can go to a folder on an
   external disk, chosen in Settings; an unplugged disk is said as such, and nothing is written in
   its place on the computer's own disk.
+- **Text as large as you need.** `− 100 % +` at the foot of the window zooms the whole page (Ctrl
+  or ⌘ with plus, minus and 0 too), and Settings' *Text size* makes the text alone larger, on a
+  big or far screen.
 
 How it works, what it keeps on disk and how to clean it:
 [docs/how-it-works.md](docs/how-it-works.md).

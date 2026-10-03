@@ -277,6 +277,21 @@
      "ortho4xp": null,
      "title": "Data Dir",
      "unit": ""
+    },
+    "text_size": {
+     "default": 100,
+     "description": "The size of the page's text, in percent of its own: larger on a big or far screen, where a user found it too small (2026-10-03). The text alone grows; the zoom at the foot of the window (or Ctrl+plus) makes everything larger, the map included. Nothing to do with the tiles.",
+     "enum": [
+      100,
+      115,
+      130
+     ],
+     "hint": "The size of the page's text, in percent of its own: larger on a big or far screen, where a user found it too small (2026-10-03). The text alone grows; the zoom at the foot of the window (or Ctrl+plus) makes everything larger, the map included. Nothing to do with the tiles.",
+     "level": "essential",
+     "ortho4xp": null,
+     "title": "Text Size",
+     "type": "integer",
+     "unit": "%"
     }
    },
    "title": "Essential",

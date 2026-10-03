@@ -4582,6 +4582,94 @@ def test_settings_are_where_the_next_plan_starts_and_nothing_more() -> None:
     assert "state.settings?.essential?.zoom_level" in _function_body(app_js, "renderZlOptions")
 
 
+def _zoom_control(scales: bool, platform: str = "Win32") -> Any:
+    """``bindZoom`` with its control, in a window that scales the page (``scales``) or not, on a
+    system (``platform``): what the control shows and asks of the window as it is clicked."""
+    script = """
+    Object.defineProperty(globalThis, "navigator", {
+      value: { platform: "@PLATFORM@" }, configurable: true,
+    });
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = v; },
+      removeItem: (k) => { delete store[k]; },
+    };
+    globalThis.document = { addEventListener: () => {} };
+    const asked = [];
+    const setZoom = async (f) => { asked.push(f); return @SCALES@; };
+    globalThis.window = { pywebview: { api: { set_zoom: setZoom } } };
+    const button = () => {
+      const b = { dataset: {}, title: "", textContent: "", attrs: {}, click: null };
+      b.setAttribute = (k, v) => { b.attrs[k] = v; };
+      b.addEventListener = (type, fn) => { if (type === "click") b.click = fn; };
+      return b;
+    };
+    const parts = { out: button(), level: button(), in: button() };
+    const having = { "[data-i18n-title]": "i18nTitle", "[data-i18n-aria-label]": "i18nAriaLabel" };
+    const box = {
+      hidden: true,
+      querySelector: (sel) => parts[/data-zoom='(\\w+)'/.exec(sel)[1]],
+      querySelectorAll: (sel) => Object.values(parts).filter((b) => having[sel] in b.dataset),
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    import("./zoom.js").then(async (m) => {
+      const refresh = m.bindZoom(() => {}, box);
+      await tick();
+      const seen = [[box.hidden, parts.level.textContent]];
+      for (const part of ["in", "in", "level", "out"]) {
+        parts[part].click();
+        await tick();
+        seen.push([part, parts.level.textContent]);
+      }
+      process.stdout.write(JSON.stringify({
+        seen, asked, saved: store["osxp.zoom"] ?? null, refresh: typeof refresh,
+        titles: [parts.out.title, parts.level.title, parts.in.title],
+        aria: parts.in.attrs["aria-label"], keys: parts.in.dataset,
+      }));
+    });
+    """
+    script = script.replace("@PLATFORM@", platform).replace("@SCALES@", str(scales).lower())
+    return _run_node(script)
+
+
+def test_the_zoom_shows_its_level_and_steps_at_the_foot_of_the_page() -> None:
+    """A user on an ultrawide screen, whose text was too small, asked for a way to make it bigger:
+    the zoom was there, on keys nothing showed (TinkerNZ, 2026-10-03). The window's zoom has a
+    control in the status bar (minus, the level, plus), whose level brings it back to 100 %; its
+    help names the keys, and it shows once the window has said it scales the page."""
+    got = _zoom_control(True)
+    assert got["seen"] == [
+        [False, "100%"],  # shown, at the size the window was left at
+        ["in", "110%"],
+        ["in", "125%"],
+        ["level", "100%"],
+        ["out", "90%"],
+    ]
+    assert got["asked"] == [1, 1.1, 1.25, 1, 0.9]  # the window does the scaling
+    assert got["saved"] == "0.9"  # and the next start opens there
+    titles = ["Zoom out (Ctrl+minus)", "Back to 100% (Ctrl+0)", "Zoom in (Ctrl+plus)"]
+    assert got["titles"] == titles
+    assert got["aria"] == "Zoom in (Ctrl+plus)"
+    # the page's language changing writes them again (i18n.js applyStatic, app.js rerenderAll)
+    assert got["keys"] == {"i18nTitle": "app.zoom_in", "i18nAriaLabel": "app.zoom_in"}
+    assert got["refresh"] == "function"
+    mac = _zoom_control(True, "MacIntel")["titles"]
+    assert mac == ["Zoom out (\u2318\u2212)", "Back to 100% (\u23180)", "Zoom in (\u2318+)"]
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    bar = html[html.index('<footer class="statusbar"') : html.index("</footer>")]
+    assert 'id="status-zoom" hidden' in bar
+    assert all(f'data-zoom="{part}"' in bar for part in ("out", "level", "in"))
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "zoomRefresh?.();" in _function_body(app_js, "rerenderAll")
+
+
+def test_the_zoom_control_stays_hidden_where_the_window_does_not_scale() -> None:
+    got = _zoom_control(False)
+    assert got["seen"][0] == [True, ""]  # hidden and untouched: a click would do nothing
+    assert got["saved"] is None  # and nothing is remembered
+
+
 def test_the_page_keeps_the_zoom_keys_and_where_it_was_left() -> None:
     """Cmd+plus, Cmd+minus and Cmd+0, which the window took away with the browser. Bound only
     once pywebview says the window is there: asked at boot, `window.pywebview` is not written
@@ -4591,7 +4679,8 @@ def test_the_page_keeps_the_zoom_keys_and_where_it_was_left() -> None:
     assert "pywebviewready" in _function_body(app_js, "whenInOwnWindow")
     boot = _function_body(app_js, "boot")
     assert "bindFind();" in boot  # the bar's buttons work in a browser too
-    assert "bindFindKeys();" in boot and "bindZoom((text) => toast(text));" in boot
+    assert "bindFindKeys();" in boot
+    assert 'bindZoom((text) => toast(text), $("status-zoom"));' in boot
     assert boot.index("whenInOwnWindow(") < boot.index("bindFindKeys();")
 
     got = _node_json(
@@ -4979,6 +5068,74 @@ OWN_SIZES = {
     ".find-input",
     ".experts-chevron::before",
 }
+
+
+def test_the_text_grows_with_its_setting_and_the_controls_keep_their_size() -> None:
+    """A user on an ultrawide screen found the text too small (TinkerNZ, 2026-10-03). The setting
+    ``essential.text_size`` draws the page's text styles at 115 or 130 % of their own size, every
+    style and nothing else: the controls' own sizes (``OWN_SIZES``) and the map are the zoom's."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    tokens = _node_json("app.js", "m.TEXT_TOKENS")
+    assert set(re.findall(r"^  (--fs[\w-]*): [\d.]+px;", css, re.M)) == set(tokens)
+    for token, px in tokens.items():
+        assert re.search(rf"^  {re.escape(token)}: {px:g}px;", css, re.M), token
+    got = _node_json(
+        "app.js",
+        """(() => {
+          const store = {};
+          globalThis.localStorage = {
+            getItem: (k) => (k in store ? store[k] : null),
+            setItem: (k, v) => { store[k] = v; },
+            removeItem: (k) => { delete store[k]; },
+          };
+          const props = {};
+          const root = { style: {
+            setProperty: (k, v) => { props[k] = v; },
+            removeProperty: (k) => { delete props[k]; },
+          } };
+          m.applyTextSize(130, root);
+          const big = { ...props }, kept = m.savedTextSize();
+          m.applyTextSize(100, root);
+          const back = { ...props }, after = m.savedTextSize();
+          m.applyTextSize(undefined, root);  // an engine too old to say
+          return { big, kept, back, after, none: Object.keys(props).length };
+        })()""",
+    )
+    assert got["big"] == {
+        "--fs-title-1": "23.4px", "--fs-title-2": "19.5px", "--fs-title-3": "17.55px",
+        "--fs": "17.55px", "--fs-2": "16.25px", "--fs-3": "14.95px",
+    }  # fmt: skip
+    assert got["kept"] == 130  # the next start draws it so before the settings come
+    assert got["back"] == {} and got["after"] == 100 and got["none"] == 0
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    boot = _function_body(app_js, "boot")
+    assert boot.index("applyTextSize(savedTextSize());") < boot.index("applyStatic(document);")
+    assert "applyTextSize(s?.essential?.text_size);" in boot  # once the settings come
+    assert "applyTextSize(state.settings?.essential?.text_size);" in _function_body(
+        app_js, "saveSettings"
+    )
+
+
+def test_settings_ask_the_text_size_and_default_values_keep_it() -> None:
+    got = _node_json(
+        "settings.js",
+        """(() => {
+          const draft = { essential: { text_size: 100 } };
+          m.answer(draft, "text", "115");
+          return {
+            choices: m.questionChoices("text", draft).map((c) => [c.value, c.label]),
+            answered: draft.essential.text_size,
+            kept: m.COMPUTER_FOLDERS.includes("essential.text_size"),
+            paths: m.QUESTION_PATHS.text,
+          };
+        })()""",
+    )
+    assert got["choices"] == [[100, "Normal (100%)"], [115, "Large (115%)"], [130, "Larger (130%)"]]
+    assert got["answered"] == 115  # a number, as the engine's model wants it
+    assert got["kept"] and got["paths"] == ["essential.text_size"]
+    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
+    questions = _function_body(settings_js, "renderQuestions")
+    assert 'radios(view, "text", "q-text", getPath(d, "essential.text_size"))' in questions
 
 
 def test_the_text_follows_one_set_of_styles() -> None:

@@ -2193,7 +2193,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 26;
+const PAGE_API_LEVEL = 27;
 
 async function loadStatus() {
   try {
@@ -5935,6 +5935,7 @@ async function saveSettings(ev) {
     // the settings a save had really changed still moved the plan he had set up under him
     // (a user, 2026-09-20 and the day after).
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
+    applyTextSize(state.settings?.essential?.text_size);
     setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
     // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
@@ -5991,8 +5992,45 @@ function toggleTheme() {
   applyTheme(dark ? "light" : "dark");
 }
 
+// ------------------------------------------------------------------ text size
+
+/** The sizes of the page's text styles (styles.css `:root`, which a test keeps equal), in px. */
+export const TEXT_TOKENS = { "--fs-title-1": 18, "--fs-title-2": 15, "--fs-title-3": 13.5, "--fs": 13.5, "--fs-2": 12.5, "--fs-3": 11.5 };
+const TEXT_SIZE_KEY = "osxp.text_size";
+
+/**
+ * The page's text at `percent` of its own size (the setting `essential.text_size`): its styles
+ * grow, the controls' own sizes and the map do not, which is the zoom's work. A user on an
+ * ultrawide screen found the text too small (TinkerNZ, 2026-10-03). Kept in the page's storage
+ * too, so that the next start draws its text at that size before the settings come.
+ */
+export function applyTextSize(percent, root = document.documentElement) {
+  const scale = Number(percent) / 100;
+  const own = !Number.isFinite(scale) || scale <= 0 || scale === 1;
+  for (const [token, px] of Object.entries(TEXT_TOKENS)) {
+    if (own) root.style.removeProperty(token);
+    else root.style.setProperty(token, `${Number((px * scale).toFixed(2))}px`);
+  }
+  try {
+    if (own) localStorage.removeItem(TEXT_SIZE_KEY);
+    else localStorage.setItem(TEXT_SIZE_KEY, String(percent));
+  } catch (_e) {
+    // ignore: the settings say it again at the next start
+  }
+}
+
+/** The text size the page was left at, before the settings say it. */
+export function savedTextSize() {
+  try {
+    return Number(localStorage.getItem(TEXT_SIZE_KEY)) || 100;
+  } catch (_e) {
+    return 100;
+  }
+}
+
 function rerenderAll() {
   applyStatic(document);
+  zoomRefresh?.();
   renderStatus();
   renderProviders();
   renderTiles();
@@ -6007,6 +6045,10 @@ function rerenderAll() {
 }
 
 // ------------------------------------------------------------------ boot
+
+/** Writes the zoom's level again in the page's language (zoom.js bindZoom), once the window
+ * has bound it; nothing in a browser. */
+let zoomRefresh = null;
 
 /**
  * Whether this page is OrthoStudio XP's own window rather than a tab in a browser.
@@ -6050,6 +6092,7 @@ async function boot() {
   window.addEventListener("resize", markWideTables);
   setLanguage(detectLanguage());
   $("lang-select").value = language();
+  applyTextSize(savedTextSize());
   try {
     const theme = localStorage.getItem("osxp.theme");
     if (theme) applyTheme(theme);
@@ -6064,7 +6107,7 @@ async function boot() {
     stopped.dataset.i18n = "quit.stopped_text_window";
     stopped.textContent = t("quit.stopped_text_window");
     bindFindKeys();
-    bindZoom((text) => toast(text));
+    zoomRefresh = bindZoom((text) => toast(text), $("status-zoom"));
   });
   $("mock-badge").hidden = !MOCK;
 
@@ -6236,6 +6279,7 @@ async function boot() {
   });
   const settings = api("GET", "/api/settings").then((s) => {
     state.settings = s;
+    applyTextSize(s?.essential?.text_size);
     setDraft(structuredClone(s));
   });
   const schema = api("GET", "/api/settings/schema").then((s) => {

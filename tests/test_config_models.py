@@ -23,10 +23,18 @@ from orthostudio.errors import OsxpError
 def test_levels_and_field_counts() -> None:
     assert LEVELS == ("essential", "advanced", "expert")
     assert list(Settings.model_fields) == list(LEVELS)
-    # region is P5; overlays, data_dir and simbrief_user are OrthoStudio XP's own
-    assert len(Essential.model_fields) == 11
+    # region is P5; overlays, data_dir, simbrief_user and text_size are OrthoStudio XP's own
+    assert len(Essential.model_fields) == 12
     assert len(Advanced.model_fields) == 14
     assert len(Expert.model_fields) == 29  # decal_on_sea and decal are OrthoStudio XP's own
+
+
+def test_the_text_size_is_one_of_three() -> None:
+    """``essential.text_size``: the page's text at its own size or larger (TinkerNZ, 2026-10-03)."""
+    assert Settings().essential.text_size == 100
+    assert Settings.model_validate({"essential": {"text_size": 130}}).essential.text_size == 130
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"essential": {"text_size": 120}})
 
 
 def test_defaults_are_the_ortho4xp_defaults() -> None:

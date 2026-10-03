@@ -21,7 +21,8 @@
     "overlays": "xplane",
     "xplane_dir": "/Users/pilot/X-Plane 12",
     "data_dir": null,
-    "simbrief_user": "pilot"
+    "simbrief_user": "pilot",
+    "text_size": 100
   },
   "advanced": {
     "curvature_tol": 2.0,

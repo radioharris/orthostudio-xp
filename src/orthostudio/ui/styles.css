@@ -1051,6 +1051,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* the folder's button (app.js renderStatus), as tall as the bar's pills so the bar keeps its height */
 .status-home .status-reveal { min-height: 18px; height: 18px; width: 22px; color: var(--fg-2); }
 .status-home .status-reveal svg { width: 13px; height: 13px; }
+/* the window's zoom (zoom.js bindZoom), as tall as the folder's button so the bar keeps its height */
+.status-zoom { gap: 2px; }
+.status-zoom .btn-small { min-height: 18px; height: 18px; padding: 0 6px; }
+.status-zoom-level { min-width: 46px; justify-content: center; }
 .status-item details { position: relative; }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }

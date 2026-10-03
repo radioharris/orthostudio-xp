@@ -399,6 +399,12 @@
   <span class="status-item num" id="status-store"></span>
   <span class="status-item num" id="status-library"></span>
   <span class="status-item status-home" id="status-home"></span>
+  <!-- the window's zoom (zoom.js bindZoom): shown in the window alone, once it says it scales -->
+  <span class="status-item status-zoom" id="status-zoom" hidden>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
+    <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
+  </span>
 </footer>
 
 <div id="find-bar" class="find-bar" role="search" hidden>

@@ -212,6 +212,18 @@ class Essential(BaseModel):
             "with a virtual machine). What was downloaded before stays where it is."
         ),
     )
+    text_size: Literal[100, 115, 130] = _field(
+        100,
+        "essential",
+        None,
+        "%",
+        hint=(
+            "The size of the page's text, in percent of its own: larger on a big or far screen, "
+            "where a user found it too small (2026-10-03). The text alone grows; the zoom at the "
+            "foot of the window (or Ctrl+plus) makes everything larger, the map included. Nothing "
+            "to do with the tiles."
+        ),
+    )
 
 
 # -- advanced ------------------------------------------------------------------------------
