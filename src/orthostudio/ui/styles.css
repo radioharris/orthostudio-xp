@@ -250,11 +250,13 @@ a { color: var(--accent); }
   background-color: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .topbar-tools .tool-select { padding-right: 22px; background-position: right 7px center; }
-/* Quit's label on the middle of its icon, on Windows too: Segoe UI sets its letters lower in
-   their line than the Mac's font, and the label stood under the icon (a user, 2026-10-04). The
-   label's box is trimmed to its capitals and its line (text-box), which the flex centring puts on
-   the middle of the icon, whose drawing stands in the middle of its own box (index.html). The
-   icon's margin inside that box widened the left: the right takes as much. */
+/* Quit's label on its icon, on Windows too: Segoe UI sets its letters lower in their line than
+   the Mac's font, and the label stood under the icon (a user, 2026-10-04). The label's box is
+   trimmed to its capitals and its line (text-box), which the flex centring puts on the middle of
+   the icon's box. The icon's ring is taller than those capitals: drawn in the middle of its box,
+   it hung below the text (the same user, the same day). It is drawn to sit on the baseline, as a
+   round letter does (index.html). The icon's margin inside its box widened the left: the right
+   takes as much. */
 .topbar-tools .quit-btn { padding: 0 8px 0 6px; }
 .topbar-tools .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }
 .tool-btn { width: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
