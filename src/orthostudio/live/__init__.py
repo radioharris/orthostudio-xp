@@ -28,7 +28,7 @@ __all__ = ["ENABLED_BY_DEFAULT", "enabled", "settings_file", "supported"]
 
 ENABLED_BY_DEFAULT = True
 """Live's switch where ``live.toml`` does not set it: on, in the beta that brings it into the app
-(0.1.22, the user's choice, 2026-10-02). It was off before, while Live was tried on a branch of its
+(0.1.23, the user's choice, 2026-10-02). It was off before, while Live was tried on a branch of its
 own; the tests keep it off unless they switch it on (``tests/conftest.py``)."""
 
 
