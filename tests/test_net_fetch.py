@@ -16,9 +16,11 @@ import math
 import socket
 import threading
 import time
+import types
 from collections import defaultdict
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import pytest
 
@@ -265,6 +267,51 @@ def test_hedge_beats_a_straggler(server: LocalServer) -> None:
     assert wall < 2.0, wall
     assert fetcher.stats().hedges == 1 and fetcher.stats().retries == 0
     assert len(server.hits("/slow/1")) == 2
+
+
+class HandedOver:
+    """A session that answers 200 at once, and keeps when each request was handed to it."""
+
+    def __init__(self, during: Any = None) -> None:
+        self.handed: list[float] = []
+        self.during = during
+
+    async def request(self, method: str, url: str, **kwargs: Any) -> Any:
+        self.handed.append(fetch_mod._now())
+        if self.during is not None:
+            await self.during(len(self.handed))
+        return types.SimpleNamespace(status_code=200, headers={}, content=b"ok")
+
+
+def test_a_transfer_let_in_before_a_429_waits_out_the_pause() -> None:
+    """A request let in before a 429 came back left after it, under load, during the pause the
+    server had asked for (the whole suite on six workers, 2026-10-03). It now waits the pause out
+    as it is handed to the session; the wait is not its latency, which steers the window."""
+    group = fetch_mod._Group("p", 8, 8)
+    session = HandedOver()
+
+    async def let_in_then_paused() -> Any:
+        group.paused_until = fetch_mod._now() + 0.2  # a 429 came back since it was let in
+        return await Fetcher()._transfer(session, FetchRequest("k", "http://x/1"), group)  # type: ignore[arg-type]
+
+    outcome = asyncio.run(let_in_then_paused())
+    assert session.handed and session.handed[0] >= group.paused_until
+    assert outcome.kind == "ok" and outcome.latency < 0.1
+
+
+def test_no_hedge_leaves_while_the_group_is_paused() -> None:
+    """A hedge is a second request: none starts while the server has asked to wait."""
+    group = fetch_mod._Group("p", 8, 8)
+
+    async def hangs_while_a_429_comes_back(nth: int) -> None:
+        if nth == 1:
+            group.paused_until = fetch_mod._now() + 5.0  # another request's 429
+            await asyncio.sleep(0.3)  # longer than hedge_after_s
+
+    session = HandedOver(hangs_while_a_429_comes_back)
+    pending = fetch_mod._Pending(0, FetchRequest("k", "http://x/1"))
+    outcome = asyncio.run(Fetcher(hedge_after_s=0.1)._attempt(pending, group, session))  # type: ignore[arg-type]
+    assert outcome.kind == "ok" and len(session.handed) == 1 and not pending.hedged
 
 
 def test_a_refused_connection_lowers_the_window(server: LocalServer) -> None:
