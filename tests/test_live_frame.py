@@ -239,6 +239,7 @@ def test_quitting_asks_once_in_the_frame_s_language_while_something_runs(
         return answers.pop(0)
 
     monkeypatch.setattr(window_module, "ask", ask)
+    monkeypatch.setattr(frame_module, "xplane_flies", lambda: True)
     frame = Frame(home / "serve.log", first="build")
     assert frame.may_quit() is True and stopped == [False] and asked == []  # nothing runs
     # a stream: asked once, in the frame's language, over its window; no, then yes
@@ -250,7 +251,7 @@ def test_quitting_asks_once_in_the_frame_s_language_while_something_runs(
     answers[:] = [False]
     assert frame.may_quit() is False
     assert wait_for(lambda: asked) and asked[0][1] == window_module.PLACE_NAME
-    assert "en marche" in asked[0][0]  # orthostudio.live.web.QUIT_WHILE_STREAMING, in French
+    assert asked[0][0].startswith("Live est en vol avec X-Plane. Quitter l'arrête.")  # in French
     time.sleep(0.1)
     assert closed == [] and control.quits == []
     answers[:] = [True]
@@ -268,7 +269,24 @@ def test_quitting_asks_once_in_the_frame_s_language_while_something_runs(
     asked.clear()
     assert frame.may_quit() is False
     assert wait_for(lambda: closed == [window_module.PLACE_NAME])
-    assert "build est en cours" in asked[0][0] and stopped[-1] is True
+    assert asked[0][0].startswith("Un build est en cours. Quitter l'arrête.") and stopped[-1]
+
+
+def test_one_question_says_what_runs_what_quitting_stops_and_what_is_left() -> None:
+    """A build and a flight at once: one question, not the two of before one after the other (the
+    user, 2026-10-04: « un message plus simple et combiné plus explicite »)."""
+    both = frame_module.quit_question("fr", build=True, live=True, flying=True)
+    assert both.split("\n\n") == [
+        "Un build est en cours, et Live est en vol avec X-Plane. Quitter arrête les deux.",
+        "Ce qui est déjà construit est gardé : relancer le build reprend à partir de là. "
+        "X-Plane continue de voler avec les photos déjà faites, sans nouvelles.",
+        "Quitter quand même ?",
+    ]
+    working = frame_module.quit_question("en", build=False, live=True, flying=False)
+    assert working == "Live is at work. Quitting stops it.\n\nQuit anyway?"  # X-Plane not running
+    build = frame_module.quit_question("de", build=True, live=False, flying=False)
+    assert build.startswith("A build is running. Quitting stops it.\n\nWhat is already built")
+    assert set(frame_module.QUIT_WORDS["en"]) == set(frame_module.QUIT_WORDS["fr"])
 
 
 def test_the_frame_s_quit_closes_it_at_once_when_nothing_runs(
@@ -503,3 +521,14 @@ def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     assert 'api("osxp-build")' in js
     page = (UI_DIR / "index.html").read_text(encoding="utf-8")
     assert '<dialog id="build-running"' in page
+
+
+def test_the_frame_s_quit_has_its_label_on_its_icon() -> None:
+    """On Windows too (a user, 2026-10-04): the label trimmed to its capitals, centred on the icon's
+    ring, itself in the middle of its box, and as much room on the right as on the left."""
+    css = (FRAME_DIR / "frame.css").read_text(encoding="utf-8")
+    assert ".frame-top .quit-btn { padding: 0 8px 0 6px; }" in css
+    trim = ".frame-top .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }"
+    assert trim in css
+    page = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
+    assert 'd="M12 4.4v8M7.1 7.6a7 7 0 1 0 9.8 0"' in page

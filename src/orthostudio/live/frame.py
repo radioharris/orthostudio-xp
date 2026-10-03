@@ -66,11 +66,51 @@ TYPES = {
 QUIT_AFTER_THE_ANSWER_S = 0.3
 """How long the frame's Quit waits for its call's answer to reach the page (:meth:`Frame.quit`)."""
 
-BUILDING_ON_QUIT_FR = (
-    "Un build est en cours. Quitter OrthoStudio XP et l'arrêter ?\n\n"
-    "Ce qui est déjà construit est gardé : relancer le build reprend à partir de là."
-)
-"""``orthostudio.desktop.BUILDING_ON_QUIT``, in French: the frame asks in its own language."""
+QUIT_WORDS = {
+    "en": {
+        "build": "A build is running",
+        "flying": "Live is flying with X-Plane",
+        "live": "Live is at work",
+        "and": ", and ",
+        "stops_it": "Quitting stops it.",
+        "stops_both": "Quitting stops both.",
+        "kept": "What is already built is kept: starting the build again carries on from there.",
+        "flies_on": "X-Plane flies on with the photos already made, without new ones.",
+        "anyway": "Quit anyway?",
+    },
+    "fr": {
+        "build": "Un build est en cours",
+        "flying": "Live est en vol avec X-Plane",
+        "live": "Live est en marche",
+        "and": ", et ",
+        "stops_it": "Quitter l'arrête.",
+        "stops_both": "Quitter arrête les deux.",
+        "kept": "Ce qui est déjà construit est gardé : relancer le build reprend à partir de là.",
+        "flies_on": "X-Plane continue de voler avec les photos déjà faites, sans nouvelles.",
+        "anyway": "Quitter quand même ?",
+    },
+}
+"""The words of the question before quitting (:func:`quit_question`), in the frame's language."""
+
+
+def quit_question(language: str, *, build: bool, live: bool, flying: bool) -> str:
+    """The one question asked before quitting while something runs: what runs, that quitting stops
+    it, what is left after. A build and a stream at once asked their two questions one after the
+    other in the box, and the user wanted one, simpler and saying more (2026-10-04)."""
+    words = QUIT_WORDS.get(language, QUIT_WORDS["en"])
+    running = ([words["build"]] if build else []) + (
+        [words["flying" if flying else "live"]] if live else []
+    )
+    said = words["and"].join(running) + ". " + words["stops_both" if build and live else "stops_it"]
+    after = ([words["kept"]] if build else []) + ([words["flies_on"]] if live and flying else [])
+    return "\n\n".join([said, *([" ".join(after)] if after else []), words["anyway"]])
+
+
+def xplane_flies() -> bool:
+    """Whether X-Plane runs, which the question says: Live's photos are what it flies over."""
+    from orthostudio.live.scenery import xplane_running
+
+    return xplane_running()
 
 
 def wanted() -> bool:
@@ -373,18 +413,10 @@ class Frame:
         streams = control is not None and not live.gone() and control.busy()
         return bool(build), control if streams else None
 
-    def question(self, build: bool, streams: bool) -> str:
-        """What is asked before quitting while a build or a stream runs, in the frame's language."""
-        from orthostudio import desktop
-        from orthostudio.live import web
-
-        french = self.language() == "fr"
-        said = []
-        if build:
-            said.append(BUILDING_ON_QUIT_FR if french else desktop.BUILDING_ON_QUIT)
-        if streams:
-            said.append(web.QUIT_WHILE_STREAMING["fr" if french else "en"])
-        return "\n\n".join(said)
+    def question(self, build: bool, live: bool) -> str:
+        """What is asked before quitting while a build or Live runs, in the frame's language."""
+        flying = live and xplane_flies()
+        return quit_question(self.language(), build=build, live=live, flying=flying)
 
     def may_quit(self) -> bool:
         """The app's Quit (Cmd+Q, its menu's, the Dock's, the frame's own), and the close button
