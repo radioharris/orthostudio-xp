@@ -164,9 +164,8 @@ end (`python -B -m orthostudio.warmup`): every module of OrthoStudio XP, and on 
 and WebView2 files its window loads. The first time a new file is opened, Windows reads it from
 the disk and its antivirus may inspect it: with the `.pyc` right, the first start of 0.1.21 after
 its install still took about 10 s on a cloud PC, 7 of them loading the engine's code, against
-about 3 s for the next ones, and Live's build more than a minute (2026-10-02 and 2026-10-03). It
-writes nothing, passes over what cannot load, and the setup waits 5 minutes at most. A silent
-update does it too.
+about 3 s for the next ones (2026-10-02). It writes nothing, passes over what cannot load, and the
+setup waits 5 minutes at most. A silent update does it too.
 
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
