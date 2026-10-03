@@ -300,13 +300,26 @@ def test_the_frame_s_quit_closes_it_at_once_when_nothing_runs(
     assert wait_for(lambda: closed == [window_module.PLACE_NAME]) and frame.said_yes
 
 
-def test_the_installer_s_quit_closes_the_frame(home: Path) -> None:
+def test_the_installer_s_quit_closes_the_frame(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Windows installer asks Live and OrthoStudio XP's engine to quit before it replaces the
+    files (stop_running.pas): the frame goes then, Live's or not, rather than being ended 20 s
+    later."""
+    listening = [False]
+    monkeypatch.setattr(desktop, "_listening", lambda port: listening[0])
     frame = Frame(home / "serve.log", first="build")
+    assert frame.gone() is False  # no engine yet: Build not shown, or still starting
+    listening[0] = True
+    assert frame.gone() is False  # it answers
+    listening[0] = False
+    assert frame.gone() is True  # it stopped, and Live is not set up here: the frame goes
+    frame = Frame(home / "serve.log", first="build")
+    listening[0] = True
     assert frame.gone() is False
     live = web._Starting()
     live.control = Streaming()
     web._be_here(live)
-    assert frame.gone() is False
+    listening[0] = False
+    assert frame.gone() is False  # the engine stopped, Live here: Live's own answer decides
     live.control.leaving_for = "quit"  # the Windows installer asked Live to go (stop_running.pas)
     assert frame.gone() is True
 

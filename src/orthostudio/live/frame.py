@@ -343,10 +343,14 @@ class Frame:
     """The app's one window and what is behind it: the parts' pages, what they take, its Quit."""
 
     def __init__(self, log: Path, *, first: str, welcome: bool = False) -> None:
+        from orthostudio import desktop
+
         self.log = log
         self.first = first if first in PARTS else "build"
         self.welcome = welcome  # the app's question, asked once in Live's part (its /welcome)
         self.said_yes = False  # asked before quitting and answered: closing goes through at once
+        # OrthoStudio XP's engine stopped once it had answered (desktop.time_to_close)
+        self._engine_gone = desktop.time_to_close(desktop.ENGINE_PORT)
 
     def given(self) -> dict[str, Any]:
         """What the frame's page starts from (:func:`frame_page`)."""
@@ -550,13 +554,19 @@ class Frame:
         return False
 
     def gone(self) -> bool:
-        """Whether the app is asked to go from elsewhere: Live asked to quit by the installer of
-        an update (its API's ``quit``), OrthoStudio XP's engine with it."""
+        """Whether the app is asked to go from elsewhere, the installer of an update asking Live
+        and OrthoStudio XP's engine to quit (``tools/package/stop_running.pas``): Live asked to
+        quit (its API's ``quit``); or, Live not set up in this program, the engine stopped once it
+        had answered, as OrthoStudio XP's own window then goes (``desktop.time_to_close``). The
+        frame of a pilot who had only built stayed, and the installer waited 20 s before ending it
+        (found 2026-10-04). Asked every 2 s: a connection on the loopback, no request."""
         from orthostudio.live import web
 
         with web._here_lock:
             live = web._here
-        return live is not None and live.leaving_for == "quit"
+        if live is not None:
+            return live.leaving_for == "quit"
+        return self._engine_gone()
 
     def _stop(self, *, build: bool, control: Any) -> None:
         from orthostudio import desktop
