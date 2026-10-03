@@ -1259,7 +1259,10 @@ way to make the text bigger (TinkerNZ). Their help names the keys of the system,
 in the page's storage, and the control shows once the window has said it scales the page; in a
 browser, the browser's own zoom does it. On Windows the zoom is set on the window's own thread
 (`window.on_its_own_thread`): WebView2 refused it from the threads the page's calls come in on, and
-neither the keys nor anything else had ever zoomed there (a user, 2026-10-03).
+neither the keys nor anything else had ever zoomed there (a user, 2026-10-03). It is not even read
+from those threads: 0.1.22rc3 asked whether the view had a zoom by reading it there, the read
+waited for the window's thread while holding Python's lock, and the window froze at most starts
+(a Shadow, 2026-10-03).
 
 **The first screen** (2026-09-22): the page shows the screen of its address at once, then fills it
 in as the engine answers. It used to wait for every answer (status, zones, library, sources,

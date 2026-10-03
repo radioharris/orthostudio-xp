@@ -361,10 +361,14 @@ def test_the_windows_zoom_is_set_on_the_windows_own_thread(monkeypatch: pytest.M
     """Ctrl+plus never did anything on Windows (a user, 2026-10-03): the page's calls come in on
     threads of their own (pywebview runs each apart), WebView2 is touched from its window's thread
     alone, and the error it raised was taken for a no. The zoom is set through the control's
-    ``Invoke``, on that thread."""
+    ``Invoke``, on that thread.
+
+    Not even read from elsewhere: 0.1.22rc3 still asked whether the view had a zoom by reading it,
+    from the page's thread, and the window froze at most starts on a Shadow (2026-10-03)."""
 
     class WebView2:
-        """A WinForms WebView2 that refuses its zoom off its own thread, as the real one does."""
+        """A WinForms WebView2 whose zoom is neither read nor set off its own thread, as the real
+        one: there the read raised, or waited for ever on the window's thread."""
 
         InvokeRequired = True
 
@@ -381,17 +385,22 @@ def test_the_windows_zoom_is_set_on_the_windows_own_thread(monkeypatch: pytest.M
 
         @property
         def ZoomFactor(self) -> float:  # noqa: N802
+            self.touched()
             return self.factor
 
         @ZoomFactor.setter
         def ZoomFactor(self, value: float) -> None:  # noqa: N802
+            self.touched()
+            self.factor = value
+
+        def touched(self) -> None:
             if not self.on_its_thread:
                 raise RuntimeError("CoreWebView2 can only be accessed from the UI thread.")
-            self.factor = value
 
     view = WebView2()
     system = types.ModuleType("System")
-    system.Action = lambda do: do  # type: ignore[attr-defined]  # pythonnet makes a delegate
+    system.Object = object  # type: ignore[attr-defined]
+    system.Func = {object: lambda do: do}  # type: ignore[attr-defined]  # Func[Object]: a delegate
     monkeypatch.setitem(sys.modules, "System", system)
     monkeypatch.setattr(window, "_web_view", lambda: view)
     assert window.PageTools().set_zoom(1.25) is True

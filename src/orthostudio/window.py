@@ -113,15 +113,23 @@ def on_its_own_thread(control: Any, do: Callable[[], object]) -> None:
 
     WebView2 is touched from that thread alone (``CoreWebView2 can only be accessed from the UI
     thread``), and the page's calls come in on threads of their own: pywebview runs each one apart
-    so as not to hold the window. Set from there, the zoom raised, the page heard no, and Ctrl+plus
-    never did anything on Windows (a user, 2026-10-03).
+    so as not to hold the window, and hands its own work to that thread the same way
+    (``platforms/edgechromium.py``, ``evaluate_js``). Set from there, the zoom raised, the page
+    heard no, and Ctrl+plus never did anything on Windows (a user, 2026-10-03).
+
+    Reading it from there is no better: the read waits for the window's thread while it holds
+    Python's lock, and that thread runs Python for each of the page's requests (pywebview's
+    ``on_web_resource_request``). When one came at that moment, each waited for the other: the
+    window froze at most starts, the page asking for the zoom as it opened (0.1.22rc3 on a
+    Shadow, 2026-10-03). ``Invoke`` lets the lock go while it waits.
     """
     if not getattr(control, "InvokeRequired", False):
         do()
         return
-    from System import Action  # pythonnet, which the window runs on there
+    from System import Func, Object  # pythonnet, which the window runs on there
 
-    control.Invoke(Action(do))
+    # the delegate pywebview hands its own scripts over with (``evaluate_js``)
+    control.Invoke(Func[Object](lambda: do()))
 
 
 class PageTools:
@@ -152,7 +160,9 @@ class PageTools:
             if hasattr(view, "setPageZoom_"):  # WKWebView, macOS 11 and later
                 view.setPageZoom_(wanted)
                 return True
-            if hasattr(view, "ZoomFactor"):  # WebView2, through its WinForms control
+            # WebView2, through its WinForms control: its zoom is not even read from here, only
+            # on the window's own thread (on_its_own_thread)
+            if hasattr(view, "InvokeRequired"):
                 on_its_own_thread(view, lambda: setattr(view, "ZoomFactor", wanted))
                 return True
         except Exception:
