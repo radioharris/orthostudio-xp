@@ -2880,7 +2880,14 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
     assert "position: sticky;" in topbar and "top: 0;" in topbar
     assert "position: sticky; bottom: 0;" in statusbar
     assert ".map-col { position: sticky; top: calc(var(--topbar-h) + 12px);" in css
-    assert "bottom: var(--statusbar-h);" in css and "scroll-padding-top:" in css
+    assert "bottom: var(--statusbar-h);" in css
+    # what the page scrolls to stops between the bars, and the bars' own controls are not taken
+    # for hidden: a click on the text size at the foot scrolled the page (a user, 2026-10-03)
+    assert "scroll-padding" not in css
+    assert (
+        "main * { scroll-margin-top: calc(var(--topbar-h) + 8px); "
+        "scroll-margin-bottom: calc(var(--statusbar-h) + 8px); }"
+    ) in css
     assert "trackStatusbarHeight();" in _function_body(app_js, "boot")
     assert "min-height: 30px;" in css and "height: 30px;" not in css.replace("min-height", "")
 

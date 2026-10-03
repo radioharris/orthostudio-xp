@@ -1302,9 +1302,11 @@ user edits, and every path the engine is asked to open or to save, keep the path
 **Pinned bars** (user request, 2026-09-14): the top bar stays at the top of the window and the
 status bar at its bottom, wherever the page is scrolled (`position: sticky`). The status bar's
 height, measured by `app.js` `trackStatusbarHeight` into `--statusbar-h` (it grows when its items
-wrap), keeps Settings' sticky *Save* bar and the toast above it; `scroll-padding` keeps what the
-page scrolls to (a card, a focused field) between the two bars, and the Plan's map column sticks
-below the top bar.
+wrap), keeps Settings' sticky *Save* bar and the toast above it; a `scroll-margin` on the page's
+content (`main *`) keeps what the page scrolls to (a card, a focused field) between the two bars,
+and the Plan's map column sticks below the top bar. It was a `scroll-padding` on the whole page,
+which the bars' own controls lay inside: the browser took them for hidden and scrolled the page to
+show them, by half a window each time the text size was clicked (a user, 2026-10-03).
 
 **Quit** (top bar, user request 2026-09-13; shown when `can_quit`): asks first in a modal dialog
 ("Quit OrthoStudio XP?", the page will not work until OrthoStudio XP is opened again, and, when a
