@@ -160,6 +160,40 @@ def forget_imagery(log: Log) -> None:
     log(f"downloaded imagery deleted ({removed / 1e9:.1f} GB)")
 
 
+def keep_region_lists(xplane: Path | None, log: Log) -> None:
+    """Each region a start would stream onto read into its list, where that list is missing or
+    older than its folder (``orthostudio.live.names.one_region``): the Windows setup does it for
+    the regions already there, Live's window as it opens for one installed meanwhile (AutoOrtho's),
+    so that a start reads lists only. Without X-Plane, Live's own regions alone."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.names import one_region, region_list_file
+    from orthostudio.live.region import sources_of_pack
+
+    root = live_root()
+    lists = aoregions.lists_dir(root)
+    found = sources_of_pack(default_pack_dir()) + (
+        default_sources(xplane, root)
+        if xplane is not None
+        else [aoregions.mesh_dir(root, region) for region in sorted(aoregions.installed(root))]
+    )
+    seen: set[Path] = set()
+    for source in found:
+        kept = region_list_file(lists, source)
+        if kept in seen:
+            continue
+        seen.add(kept)
+        t0 = time.monotonic()
+        try:
+            one = one_region(source, lists)
+        except OSError as e:  # a start lists it then
+            log(f"{source.name}: its textures not listed: {e}")
+            continue
+        if one.listed:
+            state = f"its list not kept: {one.keep_error}" if one.keep_error else "its list kept"
+            took = time.monotonic() - t0
+            log(f"{source.name}: {len(one.kinds)} textures listed in {took:.1f} s, {state}")
+
+
 def reset(pack: Path, log: Log) -> None:
     """The pack and the imagery as the first time, to try a start in a new area."""
     forget_textures(pack, log)

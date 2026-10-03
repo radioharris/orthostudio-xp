@@ -20,6 +20,7 @@ from orthostudio.live.names import (
     RING,
     NeutralPool,
     RegionTextures,
+    one_region,
     region_list_file,
     squares_round,
 )
@@ -328,6 +329,42 @@ def test_a_broken_list_is_made_again_and_one_that_cannot_be_written_stops_nothin
     unkept = RegionTextures(sources, lists=blocker)
     assert unkept.listed == sources and unkept.keep_error and len(unkept) == len(ROW)
     assert RegionTextures(sources).listed == sources  # no lists given: listed each time
+
+
+def test_a_start_waits_for_the_list_being_made_never_listing_alongside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live's window lists a region as it opens; a start that comes meanwhile waits for that list
+    and reads it, never listing the region a second time."""
+    import threading
+
+    import orthostudio.live.names as names_module
+
+    pack = region(tmp_path)
+    sources, lists = sources_of_pack(pack), tmp_path / "lists"
+    real = names_module._listed
+    listing, go_on = threading.Event(), threading.Event()
+    listed: list[Path] = []
+
+    def slow(source: Path):
+        listed.append(source)
+        listing.set()
+        go_on.wait(5)
+        return real(source)
+
+    monkeypatch.setattr(names_module, "_listed", slow)
+    window = threading.Thread(target=one_region, args=(sources[0], lists))
+    window.start()
+    assert listing.wait(5)
+    got: list[RegionTextures] = []
+    start = threading.Thread(target=lambda: got.append(RegionTextures(sources, lists=lists)))
+    start.start()
+    time.sleep(0.2)
+    assert start.is_alive()  # waiting for the window's list
+    go_on.set()
+    window.join(5)
+    start.join(5)
+    assert listed == sources and got[0].listed == [] and len(got[0]) == len(ROW)
 
 
 # --- the streamer ---------------------------------------------------------------------------------

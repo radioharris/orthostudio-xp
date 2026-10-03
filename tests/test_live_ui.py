@@ -429,6 +429,30 @@ def test_xplane_starts_only_once_live_is_ready(home: Path, monkeypatch: pytest.M
     assert c.wait_idle(5)
 
 
+def test_the_window_reads_the_regions_into_their_lists_as_it_opens(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In the background, X-Plane or not; what goes wrong there is said, and a start lists what
+    is left."""
+    asked: list[Any] = []
+
+    def no_xplane(explicit: Path | None) -> Path:
+        raise session.RefusedError("no X-Plane here")
+
+    monkeypatch.setattr(session, "xplane_dir", no_xplane)
+    monkeypatch.setattr(session, "keep_region_lists", lambda xp, log: asked.append(xp))
+    LiveControl(checks=checks(), echo=lambda _: None).keep_region_lists_aside().join(5)
+    assert asked == [None]
+
+    def broken(xp: Path | None, log: Any) -> None:
+        raise OSError("the disk went away")
+
+    monkeypatch.setattr(session, "keep_region_lists", broken)
+    lines: list[str] = []
+    LiveControl(checks=checks(), echo=lines.append).keep_region_lists_aside().join(5)
+    assert lines == ["the regions could not be read into their lists: the disk went away"]
+
+
 def test_the_log_after_a_line(home: Path) -> None:
     c = control_for(FakeStream())
     c.log("one\ntwo")

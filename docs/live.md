@@ -355,7 +355,8 @@ there, and nothing else.
 - `regions`: the AutoOrtho regions Live installed (`z_ao_<region>` for the mesh, `y_ao_<region>`
   for its overlays), and while an install runs, what it has downloaded so far. In `regions/.lists`,
   the list of each region's files, AutoOrtho's regions too, so that a start does not read the
-  whole region again.
+  whole region again: made at the end of a region's install, by the Windows setup ("Reading the
+  regions of OrthoStudio XP Live..."), or as Live's window opens.
 - `overlays`: the roads, forests and buildings of Live's squares (linked into Custom Scenery as
   `y_osxp_live_overlays` while Live runs), copies of the regions' that take no space.
 

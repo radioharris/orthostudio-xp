@@ -115,3 +115,47 @@ def test_the_pack_goes_below_the_built_tiles_and_above_autoortho(tmp_path: Path)
     assert LINK_NAME not in SceneryPacks.load(ini).names()
     assert not (xp / "Custom Scenery" / LINK_NAME).exists()
     assert pack.is_dir()  # the pack itself stays
+
+
+def test_the_setup_reads_the_regions_into_their_lists(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``lists``, which the Windows setup runs: each region read into its list, its time limit
+    taken back at its end (a test, or a setup that finished in time, goes on unharmed)."""
+    import json
+    import threading
+
+    from orthostudio.live import aoregions, session
+    from orthostudio.live.names import region_list_file
+    from orthostudio.live.pack import live_root
+
+    settings_file().write_text("enabled = true\n")
+
+    def no_xplane(explicit: Path | None) -> Path:
+        raise session.RefusedError("no X-Plane here")
+
+    monkeypatch.setattr(session, "xplane_dir", no_xplane)
+    mesh = aoregions.mesh_dir(live_root(), "eur")
+    (mesh / "terrain").mkdir(parents=True)
+    (mesh / "terrain" / "23296_33152_BI16.ter").write_text("A\n800\nTERRAIN\n")
+    (mesh / aoregions.MARKER).write_text(json.dumps({"id": "eur", "release": "0.0.51"}))
+    timers: list[list[str]] = []
+
+    class Timer:
+        def __init__(self, seconds: float, function: object, args: tuple) -> None:
+            self.daemon = False
+            self.said = [f"{seconds:.0f} s"]
+            timers.append(self.said)
+
+        def start(self) -> None:
+            self.said.append("started")
+
+        def cancel(self) -> None:
+            self.said.append("cancelled")
+
+    monkeypatch.setattr(threading, "Timer", Timer)
+    result = CliRunner().invoke(app, ["lists", "--limit", "300"])
+    assert result.exit_code == 0, result.output
+    assert "z_ao_eur: 1 textures listed in " in result.output
+    assert timers == [["300 s", "started", "cancelled"]]
+    assert region_list_file(aoregions.lists_dir(live_root()), mesh).exists()

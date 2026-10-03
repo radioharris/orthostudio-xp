@@ -184,6 +184,13 @@ about 3 s for the next ones, and Live's build more than a minute (2026-10-02 and
 writes nothing, passes over what cannot load, and the setup waits 5 minutes at most. A silent
 update does it too.
 
+After it, the setup reads OrthoStudio XP Live's regions already there into their lists
+(`python -B -m orthostudio.live lists --limit 300`, under "Reading the regions of OrthoStudio XP
+Live..."): listing Europe's 684,455 files took 57 s at a start on a cloud PC (2026-10-03), and a
+start then reads lists only. Five minutes at most; a region cut short keeps no list, and Live's
+window reads it as it opens (`docs/specs/live.md`). Where Live is switched off, the command
+refuses and the setup goes on.
+
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of

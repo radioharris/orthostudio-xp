@@ -430,6 +430,9 @@ Filename: "{{tmp}}\\{WEBVIEW2_EXE}"; Parameters: "/silent /install"; StatusMsg: 
 ; (2026-10-02). The app's code is opened once here, under the setup's progress bar, and the first
 ; start goes as the next ones.
 Filename: "{run}"; Parameters: "-B -m orthostudio.warmup"; WorkingDir: "{{app}}"; StatusMsg: "Preparing {APP_NAME} for its first start..."; Flags: runhidden waituntilterminated
+; Live's regions read into their lists, so that its first start reads lists only: 57 s for Europe
+; at a start on a cloud PC (2026-10-03). Five minutes at most; what is left, Live's window reads.
+Filename: "{run}"; Parameters: "-B -m orthostudio.live lists --limit 300"; WorkingDir: "{{app}}"; StatusMsg: "Reading the regions of {APP_NAME} Live..."; Flags: runhidden waituntilterminated
 Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Description: "{{cm:LaunchProgram,{APP_NAME}}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]

@@ -240,6 +240,7 @@ def _set_up(port: int, *, front: Callable[[], object] | None) -> tuple[Any, ...]
     loaded = time.time()
     log = LogFile(log_path(), archive=archive_folder())  # LogLive.txt, beside X-Plane's Log.txt
     control = LiveControl(echo=log.echo, log_file=log.path if log.open else None)
+    control.keep_region_lists_aside()  # a region not read yet, read before any start asks for it
     seen = Presence()
     made = time.time()
     try:

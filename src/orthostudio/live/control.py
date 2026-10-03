@@ -280,6 +280,25 @@ class LiveControl:
                 self._lines.append((self._seq, line))
         self._echo(text)
 
+    def keep_region_lists_aside(self) -> threading.Thread:
+        """Each region read into its list in the background, where that list is missing or old
+        (``session.keep_region_lists``): the window does it as it opens, so that its Start or
+        Prepare reads lists only, or waits for the one being made."""
+
+        def run() -> None:
+            try:
+                xp = session.xplane_dir(None)
+            except session.RefusedError:
+                xp = None
+            try:
+                session.keep_region_lists(xp, self.log)
+            except Exception as e:  # a start lists what is left
+                self.log(f"the regions could not be read into their lists: {e}")
+
+        thread = threading.Thread(target=run, name="live-region-lists", daemon=True)
+        thread.start()
+        return thread
+
     def checks(self, fresh: bool = False) -> dict[str, Any]:
         at, got = self._checked
         if fresh or got is None or time.monotonic() - at > CHECKS_S:

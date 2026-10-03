@@ -6,9 +6,10 @@
 terminal; ``setup`` prepares the region's pack once; ``regions`` lists, installs and deletes
 AutoOrtho's regions, the mesh Live streams onto; ``reset`` forgets what was built and downloaded;
 ``status`` says what is built and installed; ``uninstall`` takes the pack and the plugin out of
-X-Plane. Every command refuses while Live is switched off (``enabled = false`` in
-``~/.orthostudio/live.toml``, :func:`orthostudio.live.enabled`). ``stream`` takes the window's
-settings (:mod:`orthostudio.live.settings`) for the options it is not given.
+X-Plane; ``lists`` reads each region into its list, so that a start reads lists only. Every
+command refuses while Live is switched off (``enabled = false`` in ``~/.orthostudio/live.toml``,
+:func:`orthostudio.live.enabled`). ``stream`` takes the window's settings
+(:mod:`orthostudio.live.settings`) for the options it is not given.
 """
 
 from __future__ import annotations
@@ -330,6 +331,34 @@ def uninstall(xplane: XPlaneOpt = None) -> None:
             _fail("X-Plane is running and reads its textures from the pack: quit it first")
         )
     session.uninstall(xp_dir, typer.echo)
+
+
+@app.command()
+def lists(
+    xplane: XPlaneOpt = None,
+    limit: Annotated[
+        float, typer.Option(help="seconds at most, 0 for none: a region cut short keeps no list")
+    ] = 0.0,
+) -> None:
+    """Read each region into its list where that list is missing or old, so that a start reads
+    lists only: the Windows setup runs it for the regions already there."""
+    import os
+    import threading
+
+    timer = None
+    if limit > 0:  # what is left, Live's window reads as it opens (session.keep_region_lists)
+        timer = threading.Timer(limit, os._exit, (0,))
+        timer.daemon = True
+        timer.start()
+    try:
+        try:
+            xp_dir = session.xplane_dir(xplane)
+        except session.RefusedError:
+            xp_dir = None  # Live's own regions, without X-Plane
+        session.keep_region_lists(xp_dir, typer.echo)
+    finally:
+        if timer is not None:
+            timer.cancel()
 
 
 regions_app = typer.Typer(
