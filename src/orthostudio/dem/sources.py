@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import functools
 import io
 import json
 import math
@@ -31,12 +32,11 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 from orthostudio.errors import OsxpError
+from orthostudio.meter import written
 
 __all__ = [
     "ALPHABET",
     "COP30_BASE_URL",
-    "DEM1_BLOCKS",
-    "DEM1_CELLS",
     "FULL_HGT_SIZE",
     "MANUAL_SOURCES",
     "SOURCES",
@@ -58,17 +58,30 @@ __all__ = [
     "generic_tif",
     "hem_latlon",
     "round_latlon",
+    "view3_urls",
     "view_url",
+    "view_urls",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
+Source = Literal["View", "View3", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM")
+SOURCES: tuple[Source, ...] = (
+    "View",
+    "View3",
+    "SRTM",
+    "ALOS",
+    "NED1",
+    "NED1/3",
+    "COP30",
+    "HRDEM",
+    "ANADEM",
+)
 """The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), plus the two
 OrthoStudio XP added for users who asked: ``COP30``, the Copernicus DEM GLO-30 (2026-09-17), and
-``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``)."""
+``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``). ``View3`` is viewfinderpanoramas
+at 3" alone, where ``View`` takes its 1" archives first (2026-10-30)."""
 
-GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
+GLOBAL_SOURCES: tuple[Source, ...] = ("View", "View3", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
 
 MANUAL_SOURCES: tuple[Source, ...] = ("SRTM", "ALOS")
@@ -128,35 +141,6 @@ def anadem_url(zone: str) -> str:
     return f"{ANADEM_BASE_URL}/anadem_v1_{zone}.tif"
 
 
-DEM1_CELLS: frozenset[tuple[int, int]] = frozenset(
-    {
-        (44, 5), (45, 5), (46, 5),
-        (43, 6), (44, 6), (45, 6), (46, 6), (47, 6),
-        (43, 7), (44, 7), (45, 7), (46, 7), (47, 7),
-        (45, 8), (46, 8), (47, 8),
-        (45, 9), (46, 9), (47, 9),
-        (45, 10), (46, 10), (47, 10),
-        (45, 11), (46, 11), (47, 11),
-        (45, 12), (46, 12), (47, 12),
-        (46, 13), (47, 13),
-        (46, 14), (47, 14),
-        (46, 15), (47, 15),
-    }
-)  # fmt: skip
-"""The 34 cells served one-per-zip under ``dem1/`` (``O4_DEM_Utils.py:599-635``)."""
-
-DEM1_BLOCKS: frozenset[str] = frozenset(
-    {
-        "O31", "P31",
-        "N32", "O32", "P32", "Q32",
-        "N33", "O33", "P33", "Q33", "R33",
-        "O34", "P34", "Q34", "R34",
-        "O35", "P35", "Q35", "R35",
-        "P36", "Q36", "R36",
-    }
-)  # fmt: skip
-"""De Ferranti blocks that are 1" although served under ``dem3/`` (``:645-667``)."""
-
 _MEMBER_RE = re.compile(r"^([NSns])(\d{2})([EWew])(\d{3})")
 
 
@@ -195,6 +179,7 @@ def base_file_name(elevation_dir: Path, lat: int, lon: int) -> Path:
 
 _SUFFIX: dict[str, str] = {
     "View": ".hgt",
+    "View3": "_VIEW3.hgt",  # its own name: ``View`` keeps a 1" file where the site has one
     "COP30": "_COP30.tif",
     "SRTM": "_SRTMv3.hgt",
     "ALOS": "_ALOS3W30.tif",
@@ -310,19 +295,72 @@ def default_memo_path() -> Path:
 # -- URLs -----------------------------------------------------------------------------------
 
 
-def view_url(lat: int, lon: int) -> tuple[str, int]:
-    """``(url, resolution)`` of the viewfinderpanoramas archive holding this cell.
-
-    ``O4_DEM_Utils.py:595-668``. The resolution is 1 or 3 and only drives the recycling test
-    of :func:`ensure_elevation`, never the URL.
-    """
-    if (lat, lon) in DEM1_CELLS:
-        return f"{VIEW_BASE_URL}/dem1/{hem_latlon(lat, lon).lower()}.zip", 1
+def _view_block(lat: int, lon: int) -> str:
+    """The 4-degree x 6-degree block of de Ferranti's grid holding a cell, as the site names it:
+    letter ``alphabet[lat // 4]`` (``"S" + alphabet[(-1 - lat) // 4]`` south of the equator),
+    number ``31 + lon // 6`` on two digits."""
     number = 31 + lon // 6
     letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
-    block = f"{letter}{number:02d}"
-    resol = 1 if block in DEM1_BLOCKS else 3
-    return f"{VIEW_BASE_URL}/dem3/{block}.zip", resol
+    return f"{letter}{number:02d}"
+
+
+@functools.lru_cache(maxsize=1)
+def site_archives() -> tuple[frozenset[str], frozenset[str], Mapping[str, str]]:
+    """The 1" blocks, the 3" ones and the cells in archives of their own that viewfinderpanoramas
+    serves (``data/viewfinder.json``, made by ``tools/dem/viewfinder_archives.py`` from the site's
+    two coverage maps)."""
+    doc = json.loads((Path(__file__).with_name("data") / "viewfinder.json").read_text())
+    return frozenset(doc["dem1"]), frozenset(doc["dem3"]), doc["special"]
+
+
+def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
+    """Every archive of viewfinderpanoramas that may hold this cell, finest first, and the
+    resolution of the first: what the site's coverage maps list (:func:`site_archives`), and
+    nothing else.
+
+    The 1" archives come first: the cell's 1" block (``dem1/L32.zip`` for Geneva, of March 2026,
+    ``dem1/M31.zip`` for Paris) or the 1" place archive it is in (Antarctica's ``dem1/ANT-E``);
+    then the 3" ones: the block, the block the site moved (``dem3/P35v2.zip``), or the place
+    archive (``dem3/SHL.zip``, ``dem3/P-143.zip``). Ortho4XP's own names are not asked: the
+    per-cell archives of the Alps it reads (``dem1/n46e006.zip``) are of 2017, answer 404 under
+    its lower-case names since October 2026, and every block it points to is in the site's
+    list under its real name. Last comes the cell's 3" block under its grid name, a net for an
+    archive the reading of the maps would miss. Resolution 1 when the first archive is a 1" one,
+    else 3.
+    """
+    dem1, dem3, special = site_archives()
+    block = _view_block(lat, lon)
+    own = special.get(hem_latlon(lat, lon).upper())
+    urls: list[str] = []
+    if block in dem1:
+        urls.append(f"{VIEW_BASE_URL}/dem1/{block}.zip")
+    if own is not None and own.startswith("dem1/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    if block in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}.zip")
+    if f"{block}v2" in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
+    if own is not None and own.startswith("dem3/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    # Last, the 3" block under its grid name, listed or not: the reading of the maps missed
+    # archives twice (names with a dash; ``A21``, which the 3" map links at the site's root). A
+    # cell with no archive at all costs one 404, remembered (3.4).
+    computed = f"{VIEW_BASE_URL}/dem3/{block}.zip"
+    if computed not in urls:
+        urls.append(computed)
+    resol = 1 if "/dem1/" in urls[0] else 3
+    return urls, resol
+
+
+def view3_urls(lat: int, lon: int) -> list[str]:
+    """The 3" archives of :func:`view_urls` alone, for ``View3``."""
+    return [url for url in view_urls(lat, lon)[0] if "/dem1/" not in url]
+
+
+def view_url(lat: int, lon: int) -> tuple[str, int]:
+    """The first archive :func:`view_urls` asks for this cell and its resolution."""
+    urls, resol = view_urls(lat, lon)
+    return urls[0], resol
 
 
 def ned_url(source: str, lat: int, lon: int) -> str:
@@ -798,6 +836,7 @@ def _atomic_write_bytes(path: Path, body: bytes) -> None:
     try:
         tmp.write_bytes(body)
         os.replace(tmp, path)
+        written(len(body))  # the relief step's count of what it wrote (meter.py)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
@@ -829,6 +868,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
     """
     if source == "View":
         return _ensure_view(lat, lon, opts)
+    if source == "View3":
+        return _ensure_view3(lat, lon, opts)
     if source == "COP30":
         return _ensure_cop30(lat, lon, opts)
     if source in MANUAL_SOURCES:
@@ -848,21 +889,58 @@ def _local(source: str, lat: int, lon: int, opts: EnsureOptions) -> Path:
 
 def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     path = _local("View", lat, lon, opts)
-    url, resol = view_url(lat, lon)
+    urls, resol = view_urls(lat, lon)
+    first = urls[0]
     if path.is_file() and (resol == 3 or path.stat().st_size >= FULL_HGT_SIZE):
-        return EnsureResult(lat, lon, CellState.LOCAL, path, url)
-    if opts.memo.is_missing(url):
-        return _view_fallback(lat, lon, path, url, opts, "the archive is in the negative memo")
-    opts.check_cancelled()
-    got = opts.download(url)
-    if got.ok:
-        extract_view_zip(got.body, opts.elevation_dir)
-        if path.is_file():
-            return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
-        return _view_fallback(lat, lon, path, url, opts, "the archive did not hold this cell")
-    if got.final:
+        return EnsureResult(lat, lon, CellState.LOCAL, path, first)
+    # each name has its own memo entry: a 404 remembered for one case never skips the other
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir)
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            # the next name may hold it: a northern block's 1" archive lacks cells its 3" one
+            # has (dem1/R36.zip and the Kola peninsula, 2026-10-17)
+            detail = "the archive did not hold this cell"
+            continue
+        if not got.final:
+            # the network, not the name: the other case would fail the same way
+            return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
         opts.memo.record(url)
-    return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
+        detail = got.error or f"HTTP {got.status}"
+    return _view_fallback(lat, lon, path, first, opts, detail)
+
+
+def _ensure_view3(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """One cell of viewfinderpanoramas at 3", in a file of its own (``_VIEW3.hgt``)."""
+    path = _local("View3", lat, lon, opts)
+    urls = view3_urls(lat, lon)
+    if path.is_file():
+        return EnsureResult(lat, lon, CellState.LOCAL, path, urls[0])
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir, "View3")
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            detail = "the archive did not hold this cell"
+            continue
+        if not got.final:
+            return EnsureResult(
+                lat, lon, CellState.MISSING, None, url, got.error or f"HTTP {got.status}"
+            )
+        opts.memo.record(url)
+        detail = got.error or f"HTTP {got.status}"
+    return EnsureResult(lat, lon, CellState.MISSING, None, urls[0], detail)
 
 
 def cop30_name(lat: int, lon: int) -> str:
@@ -897,6 +975,9 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
         tmp = path.with_suffix(path.suffix + ".part")
         tmp.write_bytes(got.body)
         tmp.replace(path)
+        # the relief step's count of what it wrote (meter.py): a Copernicus cell was counted as
+        # downloaded and not as written, 46 MB of a tile's 795 (the Shadow, 2026-10-16)
+        written(len(got.body))
         return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
     if got.final:
         opts.memo.record(url)
@@ -904,7 +985,7 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
 
 
 def _view_fallback(
-    lat: int, lon: int, path: Path, url: str, opts: EnsureOptions, detail: str
+    lat: int, lon: int, path: Path, url: str | None, opts: EnsureOptions, detail: str
 ) -> EnsureResult:
     if path.is_file() and opts.dem1_local_fallback:
         return EnsureResult(lat, lon, CellState.LOCAL, path, url, detail)
@@ -1032,8 +1113,9 @@ def manual_download_error(source: str, lat: int, lon: int, elevation_dir: Path) 
 # -- zip extraction -------------------------------------------------------------------------
 
 
-def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
-    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``).
+def extract_view_zip(content: bytes, elevation_dir: Path, source: str = "View") -> list[Path]:
+    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``), under the
+    names of ``source`` (``View``, or ``View3`` for a 3" archive asked alone).
 
     A member whose basename does not parse as ``[NS]dd[EW]ddd`` is skipped, and an existing
     file is kept unless it is at most as large as the archived member (a 1" file must not be
@@ -1048,7 +1130,7 @@ def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
                 continue
             lat0 = int(m.group(2)) * (-1 if m.group(1) in "Ss" else 1)
             lon0 = int(m.group(4)) * (-1 if m.group(3) in "Ww" else 1)
-            out = elevation_path("View", elevation_dir, lat0, lon0)
+            out = elevation_path(source, elevation_dir, lat0, lon0)
             if out.exists() and out.stat().st_size > info.file_size:
                 continue
             with zf.open(info, "r") as src:
@@ -1075,7 +1157,9 @@ def iter_urls(source: str, cells: Iterable[tuple[int, int]]) -> list[str]:
     urls: list[str] = []
     for lat, lon in cells:
         if source == "View":
-            urls.append(view_url(lat, lon)[0])
+            urls.extend(view_urls(lat, lon)[0])
+        elif source == "View3":
+            urls.extend(view3_urls(lat, lon))
         elif source in ("NED1", "NED1/3"):
             urls.append(ned_url(source, lat, lon))
     return urls

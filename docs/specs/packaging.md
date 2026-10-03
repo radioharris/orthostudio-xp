@@ -90,6 +90,15 @@ ever (a Shadow, 2026-10-03). A place whose title
 bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
 on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
 
+One program may show several windows (`window.open_another`, beside the one `window.show` opens and
+in its loop), with one icon in the Dock or the taskbar however many it shows. Each has a name of its
+own, the first `PLACE_NAME`: macOS keeps each frame under its name, and Windows each place in a file
+of its own in the web view's folder, which the windows share (`place_file`: `place.json` for the
+first, as before). What speaks to a window from elsewhere names it, the first by default (`away`,
+`to_the_front`, `ask`, `close_now`, `ask_the_page_to_quit`), each page's zoom reaches its own window
+(`PageTools`), and a click on the app's icon brings back the window put away last. pywebview ends
+its loop with the last window, on macOS and on Windows alike.
+
 The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
 own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is
 missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
