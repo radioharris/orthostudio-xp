@@ -65,6 +65,7 @@ jobs:
           uv run --no-sync python tools/package/build.py --check
           ${{ matrix.machine && format('--machine {0}', matrix.machine) || '' }}
       - uses: actions/upload-artifact@v7
+        if: github.repository != 'radioharris/orthostudio-xp-dev'
         with:
           name: installer-${{ matrix.os }}${{ matrix.machine && format('-{0}', matrix.machine) || '' }}
           path: |
@@ -73,6 +74,26 @@ jobs:
             dist/OrthoStudio-XP-*.zip
             dist/OrthoStudio-XP-*.tar.gz
           if-no-files-found: error
+      # The betas' private repository puts its installers in a pre-release of its own, one for
+      # each run: its artifacts count against the free plan's 0.5 GB, which held one beta and not
+      # the next (2026-10-03), and a release's files do not.
+      - name: Put the installer in the beta's pre-release
+        if: github.repository == 'radioharris/orthostudio-xp-dev'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: beta-${{ github.run_number }}
+        run: |
+          shopt -s nullglob
+          files=(dist/OrthoStudio-XP-*.dmg dist/OrthoStudio-XP-*-setup.exe)
+          if [ ${#files[@]} -eq 0 ]; then echo "no installer in dist"; exit 1; fi
+          name=$(basename "${files[0]}"); version=${name#OrthoStudio-XP-}; version=${version%%-*}
+          # each system's job comes here: the first makes the release, the other finds it made
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Beta $version (${GITHUB_SHA::7})" \
+            --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA}. Not signed." \
+            || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
+          gh release upload "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
   publish:
     name: release
     if: startsWith(github.ref, 'refs/tags/v')

@@ -330,7 +330,9 @@ suffix, as in `v0.2.0-rc.1`), with `docs/releases/<version>.md` as its notes whe
 (`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed. The
 private repository where the betas are made (`orthostudio-xp-dev`) builds the Apple Silicon and
 Windows installers alone: a macOS minute counts ten of the account's, and the Intel Mac's and
-Linux's installers are not tried there.
+Linux's installers are not tried there. It puts them in a pre-release of its own for each run
+(`beta-<run number>`), not in the run's artifacts: these count against the free plan's 0.5 GB,
+which held one beta and not the next, and a release's files do not.
 
 Before a release: `version` in `pyproject.toml` set to the tag's (the installers are named after
 it), the notes written, and the checks a person makes, which no workflow can
