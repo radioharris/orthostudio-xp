@@ -65,8 +65,9 @@ def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None
 
 
 def test_the_windows_installer_opens_the_app_s_code_before_its_first_start() -> None:
-    """Windows' antivirus reads each new file of the app the first time it is opened: on a cloud PC
-    the first start after an install waited more than a minute (2026-10-03). The setup opens the
+    """The first time a new file is opened, Windows reads it from the disk and its antivirus may
+    inspect it: on a cloud PC the first start after an install took 10 s, against 3 s for the next
+    ones (2026-10-02). The setup opens the
     code once, under its progress bar and writing nothing (``-B``), before the app starts; a silent
     update does it too."""
     script = build.inno_setup_script(
