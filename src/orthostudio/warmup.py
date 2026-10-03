@@ -5,12 +5,12 @@ wait for it.
 
 The first time a new file is opened, Windows reads it from the disk and its antivirus may inspect
 it: on a cloud PC the first start of 0.1.21 after its install took about 10 s, 7 of them loading
-the engine's code, where the next ones took about 3 s, and Live's build waited more than a minute
-(a user, 2026-10-02 and 2026-10-03). The setup runs this under its progress bar
-(``tools/package/build.py``, ``inno_setup_script``): every module of OrthoStudio XP, which its
-window and its engine load, and on Windows the .NET and web view files its window shows its page
-through. Nothing is written or started; a part that cannot load is passed over, and the app's own
-start says why. The setup never waits more than :data:`LIMIT_S` for it.
+the engine's code, where the next ones took about 3 s (a user, 2026-10-02). The setup runs this
+under its progress bar (``tools/package/build.py``, ``inno_setup_script``): every module of
+OrthoStudio XP, which its window and its engine load, and on Windows the .NET and web view files
+its window shows its page through. Nothing is written or started; a part that cannot load is
+passed over, and the app's own start says why. The setup never waits more than :data:`LIMIT_S`
+for it.
 """
 
 from __future__ import annotations
