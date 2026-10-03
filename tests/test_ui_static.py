@@ -4383,6 +4383,31 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     assert "min-height" in small and "height: " not in small.replace("min-height", "")
 
 
+def test_quits_label_stands_on_the_middle_of_its_icon() -> None:
+    """On Windows, Quit's label stood under its icon, with more room on its left than on its right
+    (a user, 2026-10-04). Segoe UI sets its letters lower in their line than the Mac's font: the
+    label's box is trimmed to its capitals and its line, which the flex centring puts on the middle
+    of the icon. The icon was drawn 1.4 units above the middle of its 24: it stands in the middle
+    now. Its margin inside its box widened the left: the right takes as much."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    button = html[html.index('id="quit-btn"') :]
+    button = button[: button.index("</button>")]
+    d = re.search(r'<path d="([^"]+)"', button)
+    assert d is not None
+    # the stem from its top down, then the ring through both ends of a chord, its centre below
+    m = re.fullmatch(
+        r"M12 ([\d.]+)v([\d.]+)M([\d.]+) ([\d.]+)a([\d.]+) \5 0 1 0 ([\d.]+) 0", d.group(1)
+    )
+    assert m is not None, d.group(1)
+    top, _stem, _x, chord_y, radius, chord = (float(v) for v in m.groups())
+    bottom = chord_y + (radius**2 - (chord / 2) ** 2) ** 0.5 + radius
+    assert abs((top + bottom) / 2 - 12) < 0.05, (top, bottom)
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "padding: 0 8px 0 6px;" in rules[".topbar-tools .quit-btn"]
+    label = rules[".topbar-tools .quit-btn span"]
+    assert "text-box-trim: trim-both;" in label and "text-box-edge: cap alphabetic;" in label
+
+
 def test_a_setting_can_be_found_by_name_or_by_its_ortho4xp_name() -> None:
     """The questions are laid out in two CSS columns, so the tenth of them sits halfway down the
     right-hand one: a user with the page in English looked for "How much of the photo on lakes and
