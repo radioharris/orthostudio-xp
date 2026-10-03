@@ -1256,8 +1256,11 @@ included, as a browser does, its level bringing it back to 100 % (`zoom.js bindZ
 `PageTools.set_zoom`, a CSS zoom would cut the map off at the foot). The keys, Ctrl or ⌘ with plus,
 minus and 0, were there since 0.1.8 and showed nowhere: a user on an ultrawide screen asked for a
 way to make the text bigger (TinkerNZ). Their help names the keys of the system, the level is kept
-in the page's storage, and the control shows once the window has said it scales the page; in a
-browser, the browser's own zoom does it. On Windows the zoom is set on the window's own thread
+in the page's storage, and the control shows once the window has said it scales the page, asked
+again each time pywebview makes the page's functions anew (`pywebviewready`): it makes them twice
+when the opening page's land late in the engine's, and the control showed at one start in two on a
+Mac (2026-10-03); in a browser, the browser's own zoom does it. On Windows the zoom is set on the
+window's own thread
 (`window.on_its_own_thread`): WebView2 refused it from the threads the page's calls come in on, and
 neither the keys nor anything else had ever zoomed there (a user, 2026-10-03). It is not even read
 from those threads: 0.1.22rc3 asked whether the view had a zoom by reading it there, the read

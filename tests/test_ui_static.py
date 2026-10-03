@@ -4605,7 +4605,7 @@ def _zoom_control(scales: bool, platform: str = "Win32") -> Any:
     globalThis.document = { addEventListener: () => {} };
     const asked = [];
     const setZoom = async (f) => { asked.push(f); return @SCALES@; };
-    globalThis.window = { pywebview: { api: { set_zoom: setZoom } } };
+    globalThis.window = { pywebview: { api: { set_zoom: setZoom } }, addEventListener: () => {} };
     const button = () => {
       const b = { dataset: {}, title: "", textContent: "", attrs: {}, click: null };
       b.setAttribute = (k, v) => { b.attrs[k] = v; };
@@ -4638,6 +4638,45 @@ def _zoom_control(scales: bool, platform: str = "Win32") -> Any:
     """
     script = script.replace("@PLATFORM@", platform).replace("@SCALES@", str(scales).lower())
     return _run_node(script)
+
+
+def test_the_zoom_control_shows_once_pywebview_has_made_the_pages_functions_for_good() -> None:
+    """On a Mac the control showed at one start in two (2026-10-03). As the window opens, the
+    opening page hands over to the engine's at once, and pywebview's making of the page's
+    functions for the opening page can land in the engine's page: they are then made twice, and a
+    question asked in between finds no function yet, or has its answer sent to the object made
+    after it. The window is asked again each time pywebview says its functions are ready."""
+    script = """
+    globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    globalThis.document = { addEventListener: () => {} };
+    const ready = [];
+    globalThis.window = {
+      addEventListener: (type, fn) => { if (type === "pywebviewready") ready.push(fn); },
+    };
+    const box = { hidden: true, querySelector: () => null, querySelectorAll: () => [] };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const remade = async (api) => {
+      window.pywebview = { api };
+      for (const fn of ready) fn();
+      await tick();
+    };
+    import("./zoom.js").then(async (m) => {
+      const seen = [];
+      // the opening page's object, its functions not made yet
+      window.pywebview = { api: {} };
+      m.bindZoom(() => {}, box);
+      await tick();
+      seen.push(box.hidden);
+      // its functions made, but the answer goes to an object made after it: never answered
+      await remade({ set_zoom: () => new Promise(() => {}) });
+      seen.push(box.hidden);
+      // the engine's page's own, for good
+      await remade({ set_zoom: async () => true });
+      seen.push(box.hidden);
+      process.stdout.write(JSON.stringify(seen));
+    });
+    """
+    assert _run_node(script) == [True, True, False]
 
 
 def test_the_zoom_shows_its_level_and_steps_at_the_foot_of_the_page() -> None:

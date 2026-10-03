@@ -96,12 +96,19 @@ export function bindZoom(say, box = null) {
     show();
     if (!quiet) say?.(t("app.zoom_at", { percent: Math.round(factor * 100) }));
   };
-  // the size this window was left at, and whether the window scales the page at all
-  ask(now).then((scales) => {
-    if (!scales || !box) return;
-    show();
-    box.hidden = false;
-  });
+  // The size this window was left at, and whether the window scales the page at all: asked again
+  // each time pywebview makes the page's functions anew (`pywebviewready`). It makes them twice as
+  // the window opens when the opening page's late into this one, and a question asked in between
+  // found no function yet, or had its answer sent to the object made after it: the control showed
+  // at one start in two (2026-10-03).
+  const check = () =>
+    ask(now).then((scales) => {
+      if (!scales || !box) return;
+      show();
+      box.hidden = false;
+    });
+  check();
+  window.addEventListener("pywebviewready", check);
   const mac = isMac();
   for (const [part, by, words, macWords] of box ? PARTS : []) {
     const button = box.querySelector(`[data-zoom='${part}']`);
