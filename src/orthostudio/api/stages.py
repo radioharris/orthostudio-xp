@@ -17,7 +17,10 @@ tracing, which feeds the mesh and reads both, is ``terrain`` now.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
+
+from orthostudio.errors import OsxpError
 
 __all__ = [
     "ROLE_STAGE",
@@ -25,6 +28,7 @@ __all__ = [
     "Action",
     "Stage",
     "action_for",
+    "error_json",
     "parse_node_id",
     "stage_of",
 ]
@@ -78,3 +82,17 @@ def action_for(code: str) -> Action:
     if code.startswith(_SETTINGS_PREFIXES):
         return "settings"
     return "none"
+
+
+def error_json(err: OsxpError | Mapping[str, Any]) -> dict[str, Any]:
+    """The API rendering of an error: ``OsxpError.to_dict`` plus the page's ``action``. Here
+    rather than in ``jobs``, which imports the whole tile engine: the routes of SimBrief and of
+    the base map answer with it, and OrthoStudio XP Live's window serves them without the engine.
+
+    ``action`` is the page's (``retry`` / ``settings`` / ``none``); the scheduler's
+    ``stop`` / ``continue`` moves to ``node_action``.
+    """
+    d = dict(err.to_dict()) if isinstance(err, OsxpError) else dict(err)
+    d["node_action"] = d.get("action")
+    d["action"] = action_for(str(d.get("code", "")))
+    return d

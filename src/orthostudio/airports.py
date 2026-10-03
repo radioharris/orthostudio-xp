@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from orthostudio.errors import OsxpError
+from orthostudio.home import osxp_home
 from orthostudio.install.xplane import detect_xplane, global_scenery_dir, is_xplane_dir
 from orthostudio.model import TileRef
-from orthostudio.pipeline.home import osxp_home
 
 __all__ = [
     "SCHEMA_VERSION",

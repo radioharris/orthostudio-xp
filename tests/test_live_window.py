@@ -315,3 +315,33 @@ def test_live_serves_in_a_process_without_a_console(monkeypatch: pytest.MonkeyPa
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+def test_live_s_start_leaves_the_tile_engine_out(tmp_path: Path) -> None:
+    """Live's window serves its page without OrthoStudio XP's tile engine. It took the guard of its
+    page from the engine's app and loaded the whole engine with it: half of what its start read,
+    which took 44 s on a cloud PC the first time after an install (2026-10-03)."""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from orthostudio.api.presence import Presence\n"
+        "from orthostudio.live import control, logfile, web\n"
+        "from orthostudio.live.providers import listing\n"
+        "web.create_live_app(None)\n"
+        "listing()\n"
+        "engine = ('orthostudio.api.jobs', 'orthostudio.api.app', 'orthostudio.pipeline', 'pyproj',"
+        " 'scipy', 'shapely')\n"
+        "print([m for m in engine if m in sys.modules])\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+        env={**os.environ, "OSXP_HOME": str(tmp_path)},
+    )
+    assert done.stdout.strip() == "[]", done.stdout + done.stderr

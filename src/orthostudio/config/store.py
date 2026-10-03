@@ -23,7 +23,7 @@ from pydantic import BaseModel, ValidationError
 from orthostudio.config.models import Settings
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
-from orthostudio.pipeline.home import osxp_home
+from orthostudio.home import osxp_home
 
 __all__ = [
     "CONFIG_FILE",

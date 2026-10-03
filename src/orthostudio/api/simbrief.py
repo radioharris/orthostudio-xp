@@ -36,7 +36,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from orthostudio.api.jobs import error_json
+from orthostudio.api.stages import error_json
 from orthostudio.errors import OsxpError
 from orthostudio.flightplan import has_scenery, plan_of
 

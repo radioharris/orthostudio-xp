@@ -19,20 +19,27 @@ import subprocess
 import threading
 import time
 import tomllib
-from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from orthostudio import __version__, config, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
+from orthostudio.api.guard import (
+    ALLOWED_FETCH_SITES,
+    DEFAULT_ALLOWED_HOSTS,
+    MAX_BODY_BYTES,
+    PAGE_CACHE_CONTROL,
+    _GuardMiddleware,
+    _plain_error,
+    _RevalidatedStaticFiles,
+)
 from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
 from orthostudio.api.map_api import TileClient, TileFetch, map_router
 from orthostudio.api.models import (
@@ -75,10 +82,10 @@ from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
     Provider,
-    cache_name,
     is_placeholder,
     load_registry,
     new_source_code,
+    provider_json,
     read_user_sources,
     save_user_sources,
     tile_url,
@@ -169,49 +176,6 @@ served by an engine older than itself (a ``osxp serve`` started before an update
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
 
-PAGE_CACHE_CONTROL = "no-cache"
-"""The page's files are revalidated on every load (ETag / Last-Modified make it cheap). Without
-it a browser kept an old ``geo.js`` next to a new ``map.js`` after an update, and the page did not
-start: an ES module import of a missing export fails the whole page."""
-
-
-PAGE_MEDIA_TYPES: dict[str, str] = {
-    ".css": "text/css; charset=utf-8",
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json",
-    ".mjs": "text/javascript; charset=utf-8",
-    ".png": "image/png",
-    ".svg": "image/svg+xml",
-    ".webp": "image/webp",
-}
-"""The type of each kind of file of the page, fixed here rather than asked of the system. Python
-asks Windows' registry, where a program may have written ``text/plain`` for ``.js``, and a browser
-refuses to run a module of that type: users on Windows saw the menu alone, greyed, in every
-browser, and nothing answered a click (2026-09-22)."""
-
-
-class _RevalidatedStaticFiles(StaticFiles):
-    """``StaticFiles`` answering with ``Cache-Control: no-cache`` (``PAGE_CACHE_CONTROL``), and
-    with the type of ``PAGE_MEDIA_TYPES`` for the page's own kinds of file."""
-
-    def file_response(self, full_path: Any, *args: Any, **kwargs: Any) -> Any:
-        response = super().file_response(full_path, *args, **kwargs)
-        response.headers["Cache-Control"] = PAGE_CACHE_CONTROL
-        media_type = PAGE_MEDIA_TYPES.get(Path(full_path).suffix.lower())
-        if media_type is not None and isinstance(response, FileResponse):
-            response.headers["Content-Type"] = media_type
-        return response
-
-
-MAX_BODY_BYTES = 4 * 1024 * 1024
-"""Largest request body: a zones document of hundreds of detailed polygons (``map-zones.md`` 3)."""
-DEFAULT_ALLOWED_HOSTS: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
-ALLOWED_FETCH_SITES: frozenset[str] = frozenset({"same-origin", "none"})
-"""``Sec-Fetch-Site`` values accepted under ``/api/``: the page itself, or a URL the user typed."""
-JSON_MEDIA_TYPE = "application/json"
-BODY_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-"""Methods whose ``Content-Type`` under ``/api/`` must be JSON when there is one (section 3)."""
 DOCTOR_TTL_S = 60.0
 SSE_POLL_MIN_S = 0.05
 SSE_POLL_MAX_S = 0.25
@@ -246,102 +210,10 @@ def _error_response(err: OsxpError | dict[str, Any], status: int | None = None) 
     return JSONResponse({"error": body}, status_code=status or _http_status(str(body["code"])))
 
 
-def _plain_error(
-    code: str,
-    message: str,
-    remedy: str,
-    *,
-    status: int,
-    severity: str = "blocking",
-    context: Mapping[str, Any] | None = None,
-) -> JSONResponse:
-    """An API-only error whose code is not in the registry (``SYS_BUSY``, ``SYS_FORBIDDEN_*``)."""
-    body = {
-        "schema": 1,
-        "code": code,
-        "domain": code.split("_", 1)[0],
-        "severity": severity,
-        "action": "stop",
-        "message": message,
-        "remedy": remedy,
-        "context": dict(context or {}),
-        "cause": None,
-    }
-    return _error_response(body, status)
-
-
 def sse_message(entry: dict[str, Any]) -> str:
     """One SSE message: ``id``, ``event``, ``data`` (JSON on one line)."""
     data = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
     return f"id: {entry['seq']}\nevent: {entry['event']}\ndata: {data}\n\n"
-
-
-class _GuardMiddleware(BaseHTTPMiddleware):
-    """DNS-rebinding guard (``Host`` allow-list), cross-site guard of the API (``Sec-Fetch-Site``
-    and JSON-only bodies) and request-body cap (spec section 3)."""
-
-    def __init__(self, app: Any, *, allowed_hosts: Iterable[str]) -> None:
-        super().__init__(app)
-        self.allowed = {h.lower() for h in allowed_hosts}
-
-    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Any:
-        host = request.headers.get("host", "")
-        if host.startswith("["):
-            name = host.split("]")[0].lower() + "]"
-        else:
-            name = host.rsplit(":", 1)[0].lower()
-        if name not in self.allowed:
-            return _plain_error(
-                "SYS_FORBIDDEN_HOST",
-                f"Request refused: the Host header {host[:64]!r} is not an address OrthoStudio XP "
-                "answers to.",
-                "Open OrthoStudio XP at the address osxp serve prints (http://127.0.0.1 and its "
-                "port).",
-                status=400,
-            )
-        # A browser says where a request comes from: another website (an <img>, a form, a script,
-        # another server on localhost) must not make OrthoStudio XP fetch map tiles, start a build
-        # or rewrite the zones. A request without Sec-Fetch-Site (curl, a script) is let through.
-        site = request.headers.get("sec-fetch-site")
-        if (
-            site is not None
-            and request.url.path.startswith("/api/")
-            and site.strip().lower() not in ALLOWED_FETCH_SITES
-        ):
-            return _plain_error(
-                "SYS_FORBIDDEN_ORIGIN",
-                f"Request from another website refused (Sec-Fetch-Site: {site[:32]}).",
-                "Use OrthoStudio XP from its own page, at the address osxp serve prints; other "
-                "websites cannot use its API.",
-                status=403,
-            )
-        # A form on another website can post to OrthoStudio XP without any script, in a browser that
-        # sends no Sec-Fetch-Site; it cannot send JSON. The page always does, or sends no body
-        # at all.
-        media = request.headers.get("content-type")
-        if (
-            media is not None
-            and request.method in BODY_METHODS
-            and request.url.path.startswith("/api/")
-            and media.split(";", 1)[0].strip().lower() != JSON_MEDIA_TYPE
-        ):
-            return _plain_error(
-                "SYS_BAD_CONTENT_TYPE",
-                "Request refused: OrthoStudio XP's API reads JSON only, and this one came as "
-                f"{media[:64]!r}.",
-                "Use OrthoStudio XP from its own page; a script sends its request body as "
-                "application/json.",
-                status=415,
-            )
-        length = request.headers.get("content-length")
-        if length is not None and length.isdigit() and int(length) > MAX_BODY_BYTES:
-            return _plain_error(
-                "CFG_VALUE_INVALID",
-                f"Request body above {MAX_BODY_BYTES} bytes.",
-                "Send fewer tiles or overrides.",
-                status=413,
-            )
-        return await call_next(request)
 
 
 class _SlowAnswers:
@@ -737,29 +609,6 @@ def _artefact_photo(store: Store, key: str) -> dict[str, float] | None:
     if not any(name in params for name in names):
         return None  # built before the colours existed at all
     return {name.removeprefix("photo_"): float(params.get(name) or 0.0) for name in names}
-
-
-def provider_json(p: Provider) -> dict[str, Any]:
-    """A provider as ``GET /api/providers`` gives it: the page groups them by what they cover."""
-    doc: dict[str, Any] = {
-        "code": p.code,
-        "name": p.name or p.attribution or p.code,
-        "max_zl": p.max_zl,
-        "attribution": p.attribution,
-        "terms_url": p.terms_url,
-        "licence": p.licence,
-        "alive": None,
-        "extent": p.extent,
-        "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,
-        "same_as": p.same_as,
-        "custom": p.custom,
-    }
-    if p.custom:
-        doc["url_template"] = p.url_template  # shown in the list of the sources the user added
-        # the folder its images are kept in, which carries its address: the page puts it in the
-        # URL of its map tiles, which a browser keeps a day (see map.js tileVersion)
-        doc["cache"] = cache_name(p)
-    return doc
 
 
 _TILE_PLACE = (("{x}",), ("{y}", "{-y}", "{|y|}"), ("{zoom}", "{zoom:02d}"))

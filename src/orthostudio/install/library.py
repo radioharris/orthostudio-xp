@@ -28,13 +28,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 from orthostudio.errors import OsxpError
+from orthostudio.home import osxp_home
 from orthostudio.install._model import TileRef
 from orthostudio.install.scenery_packs import (
     IMPORTED_OVERLAY_PACK,
     IMPORTED_PACK_PREFIX,
     ORTHO_PREFIXES,
 )
-from orthostudio.pipeline.home import osxp_home
 from orthostudio.tilefiles import list_textures, tile_config
 
 __all__ = [
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS pack_facts (
 
 
 def default_library_path() -> Path:
-    """``<OrthoStudio XP home>/library.sqlite`` (``orthostudio.pipeline.home``)."""
+    """``<OrthoStudio XP home>/library.sqlite`` (``orthostudio.home``)."""
     return osxp_home() / LIBRARY_FILENAME
 
 

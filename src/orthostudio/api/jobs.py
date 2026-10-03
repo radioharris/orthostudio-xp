@@ -42,8 +42,8 @@ from orthostudio.api.progress import (
     weight_of,
     weighted_progress,
 )
-from orthostudio.api.stages import STAGES, Stage, action_for, parse_node_id, stage_of
-from orthostudio.errors import OsxpError, wrap
+from orthostudio.api.stages import STAGES, Stage, error_json, parse_node_id, stage_of
+from orthostudio.errors import wrap
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.imagery.chunks import ChunkStore
 from orthostudio.imagery.grid import TextureId
@@ -112,18 +112,6 @@ class TileInBuildError(Exception):
 
 def default_jobs_dir() -> Path:
     return osxp_home() / "jobs"
-
-
-def error_json(err: OsxpError | Mapping[str, Any]) -> dict[str, Any]:
-    """The API rendering of an error: ``OsxpError.to_dict`` plus the page's ``action``.
-
-    ``action`` is the page's (``retry`` / ``settings`` / ``none``); the scheduler's
-    ``stop`` / ``continue`` moves to ``node_action``.
-    """
-    d = dict(err.to_dict()) if isinstance(err, OsxpError) else dict(err)
-    d["node_action"] = d.get("action")
-    d["action"] = action_for(str(d.get("code", "")))
-    return d
 
 
 def _now() -> float:

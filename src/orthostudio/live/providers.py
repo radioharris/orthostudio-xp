@@ -114,6 +114,6 @@ def cache_key(code: str) -> str:
 def listing() -> list[dict[str, Any]]:
     """The sources as the Live window lists them, as OrthoStudio XP's engine gives them to its Plan
     (``GET /api/providers``). A source that is the very same imagery as another is listed once."""
-    from orthostudio.api.app import provider_json
+    from orthostudio.imagery.providers import provider_json
 
     return [provider_json(p) for p in registry().values() if p.same_as is None]

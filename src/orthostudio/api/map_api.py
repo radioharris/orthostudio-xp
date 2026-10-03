@@ -51,7 +51,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.types import Receive
 
-from orthostudio.api.jobs import error_json
+from orthostudio.api.stages import error_json
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.home import data_root_missing, default_mapcache_root

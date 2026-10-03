@@ -112,7 +112,7 @@ def create_live_app(
     from fastapi import FastAPI
     from fastapi.responses import FileResponse
 
-    from orthostudio.api.app import (
+    from orthostudio.api.guard import (
         DEFAULT_ALLOWED_HOSTS,
         PAGE_CACHE_CONTROL,
         _GuardMiddleware,

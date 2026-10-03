@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from functools import cache
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import blake3
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -37,6 +37,7 @@ __all__ = [
     "is_placeholder",
     "load_registry",
     "new_source_code",
+    "provider_json",
     "read_user_sources",
     "save_user_sources",
     "tile_url",
@@ -172,6 +173,31 @@ def cache_name(p: Provider) -> str:
     if not p.custom:
         return p.code
     return f"{p.code}@{blake3.blake3(p.url_template.encode()).hexdigest()[:8]}"
+
+
+def provider_json(p: Provider) -> dict[str, Any]:
+    """A provider as ``GET /api/providers`` gives it: the page groups them by what they cover.
+    Here rather than in ``orthostudio.api.app``, which imports the whole tile engine: OrthoStudio
+    XP Live's window lists the sources too (``orthostudio.live.providers``)."""
+    doc: dict[str, Any] = {
+        "code": p.code,
+        "name": p.name or p.attribution or p.code,
+        "max_zl": p.max_zl,
+        "attribution": p.attribution,
+        "terms_url": p.terms_url,
+        "licence": p.licence,
+        "alive": None,
+        "extent": p.extent,
+        "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,
+        "same_as": p.same_as,
+        "custom": p.custom,
+    }
+    if p.custom:
+        doc["url_template"] = p.url_template  # shown in the list of the sources the user added
+        # the folder its images are kept in, which carries its address: the page puts it in the
+        # URL of its map tiles, which a browser keeps a day (see map.js tileVersion)
+        doc["cache"] = cache_name(p)
+    return doc
 
 
 def tile_url(p: Provider, x: int, y: int, zl: int, *, switch: int | None = None) -> str:
