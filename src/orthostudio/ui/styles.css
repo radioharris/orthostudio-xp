@@ -1055,6 +1055,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-zoom { gap: 2px; }
 .status-zoom .btn-small { min-height: 18px; height: 18px; padding: 0 6px; }
 .status-zoom-level { min-width: 46px; justify-content: center; }
+/* the text's size (app.js bindTextSize), as tall as the zoom's buttons */
+.status-text { gap: 4px; }
+.status-text-mark { font-weight: 600; color: var(--fg-2); }
+.status-select { font: inherit; height: 18px; padding: 0 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .status-item details { position: relative; }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }

@@ -64,13 +64,11 @@ export function schemaDefaults(schema) {
  * look of the tiles, and the defaults sending the downloads back to the computer's own disk would
  * surprise (2026-09-15); the SimBrief name is the pilot's own (2026-09-19). So are the places the
  * map data comes from, a folder of one's own and a library with its key: the defaults emptied them,
- * and a build from source, which carries no library, went to the public servers (2026-10-02). The
- * size of the page's text is the pilot's eyes' and screen's, not a look of the tiles either. */
+ * and a build from source, which carries no library, went to the public servers (2026-10-02). */
 export const COMPUTER_FOLDERS = [
   "essential.xplane_dir",
   "essential.data_dir",
   "essential.simbrief_user",
-  "essential.text_size",
   "expert.osm_folder",
   "expert.osm_library",
   "expert.osm_library_token",
@@ -150,14 +148,6 @@ export function matchingPreset(settings) {
 
 // ---------------------------------------------------------------- questions
 
-/** The sizes the page's text can take, in percent of its own (``essential.text_size``). */
-export const TEXT_SIZES = [100, 115, 130];
-const TEXT_SIZE_WORDS = {
-  100: () => t("settings.q.text_100"),
-  115: () => t("settings.q.text_115"),
-  130: () => t("settings.q.text_130"),
-};
-
 export const QUESTION_PATHS = {
   provider: ["essential.provider"],
   detail: ["essential.zoom_level"],
@@ -173,7 +163,6 @@ export const QUESTION_PATHS = {
   xplane: ["essential.xplane_dir"],
   data: ["essential.data_dir"],
   simbrief: ["essential.simbrief_user"],
-  text: ["essential.text_size"],
 };
 
 const QUESTION_TEXT = {
@@ -191,7 +180,6 @@ const QUESTION_TEXT = {
   xplane: [() => t("settings.q.xplane"), () => t("settings.q.xplane_help")],
   data: [() => t("settings.q.data"), () => t("settings.q.data_help")],
   simbrief: [() => t("settings.q.simbrief"), () => t("settings.q.simbrief_help")],
-  text: [() => t("settings.q.text"), () => t("settings.q.text_help")],
 };
 
 /**
@@ -344,10 +332,6 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
         },
       ];
     }
-    case "text":
-      // the page's text alone, at its own size or larger: a user found it too small on an
-      // ultrawide screen (TinkerNZ, 2026-10-03)
-      return TEXT_SIZES.map((size) => ({ value: size, label: TEXT_SIZE_WORDS[size]() }));
     default:
       return [];
   }
@@ -392,9 +376,6 @@ export function answer(draft, id, value) {
       break;
     case "overlays":
       setPath(draft, "essential.overlays", value);
-      break;
-    case "text":
-      setPath(draft, "essential.text_size", Number(value));
       break;
     default:
       break;
@@ -938,9 +919,6 @@ function renderQuestions(box, view) {
   }), { size: 256, wide: true });
   if (preview) colours.push(h("div", { class: "sub-question" }, preview));
   box.append(questionBox(view, "colours", ...colours));
-
-  // Last, the page itself: nothing to do with the tiles.
-  box.append(questionBox(view, "text", radios(view, "text", "q-text", getPath(d, "essential.text_size"))));
 }
 
 /** The three colour numbers of the 'my own values' answer, in the order they are applied. */

@@ -399,6 +399,11 @@
   <span class="status-item num" id="status-store"></span>
   <span class="status-item num" id="status-library"></span>
   <span class="status-item status-home" id="status-home"></span>
+  <!-- the size of the page's text (app.js bindTextSize), applied at once, in a browser too -->
+  <label class="status-item status-text" data-i18n-title="app.text_size">
+    <span class="status-text-mark" aria-hidden="true">Aa</span>
+    <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
+  </label>
   <!-- the window's zoom (zoom.js bindZoom): shown in the window alone, once it says it scales -->
   <span class="status-item status-zoom" id="status-zoom" hidden>
     <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>

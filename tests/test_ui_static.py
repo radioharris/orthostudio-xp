@@ -5070,10 +5070,10 @@ OWN_SIZES = {
 }
 
 
-def test_the_text_grows_with_its_setting_and_the_controls_keep_their_size() -> None:
-    """A user on an ultrawide screen found the text too small (TinkerNZ, 2026-10-03). The setting
-    ``essential.text_size`` draws the page's text styles at 115 or 130 % of their own size, every
-    style and nothing else: the controls' own sizes (``OWN_SIZES``) and the map are the zoom's."""
+def test_the_text_grows_with_its_size_and_the_controls_keep_theirs() -> None:
+    """A user on an ultrawide screen found the text too small (TinkerNZ, 2026-10-03). The text size
+    draws the page's text styles at 115 or 130 % of their own size, every style and nothing else:
+    the controls' own sizes (``OWN_SIZES``) and the map are the zoom's."""
     css = (UI / "styles.css").read_text(encoding="utf-8")
     tokens = _node_json("app.js", "m.TEXT_TOKENS")
     assert set(re.findall(r"^  (--fs[\w-]*): [\d.]+px;", css, re.M)) == set(tokens)
@@ -5105,37 +5105,59 @@ def test_the_text_grows_with_its_setting_and_the_controls_keep_their_size() -> N
         "--fs-title-1": "23.4px", "--fs-title-2": "19.5px", "--fs-title-3": "17.55px",
         "--fs": "17.55px", "--fs-2": "16.25px", "--fs-3": "14.95px",
     }  # fmt: skip
-    assert got["kept"] == 130  # the next start draws it so before the settings come
+    assert got["kept"] == 130  # the next start draws it so
     assert got["back"] == {} and got["after"] == 100 and got["none"] == 0
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     boot = _function_body(app_js, "boot")
     assert boot.index("applyTextSize(savedTextSize());") < boot.index("applyStatic(document);")
-    assert "applyTextSize(s?.essential?.text_size);" in boot  # once the settings come
-    assert "applyTextSize(state.settings?.essential?.text_size);" in _function_body(
-        app_js, "saveSettings"
-    )
 
 
-def test_settings_ask_the_text_size_and_default_values_keep_it() -> None:
+def test_the_text_size_is_at_hand_at_the_foot_of_the_page_and_applies_at_once() -> None:
+    """``Aa`` and its sizes, beside the zoom: applied as it is chosen and kept, with nothing to
+    save. It was a question of Settings first, saved with the rest, and a user wanted it at hand
+    and at once (2026-10-03). In a browser too: the page draws its text itself."""
     got = _node_json(
-        "settings.js",
+        "app.js",
         """(() => {
-          const draft = { essential: { text_size: 100 } };
-          m.answer(draft, "text", "115");
-          return {
-            choices: m.questionChoices("text", draft).map((c) => [c.value, c.label]),
-            answered: draft.essential.text_size,
-            kept: m.COMPUTER_FOLDERS.includes("essential.text_size"),
-            paths: m.QUESTION_PATHS.text,
+          const store = { "osxp.text_size": "115" };
+          globalThis.localStorage = {
+            getItem: (k) => (k in store ? store[k] : null),
+            setItem: (k, v) => { store[k] = v; },
+            removeItem: (k) => { delete store[k]; },
           };
+          const props = {};
+          globalThis.document = {
+            createElement: () => ({ value: "", textContent: "", selected: false }),
+            documentElement: { style: {
+              setProperty: (k, v) => { props[k] = v; },
+              removeProperty: (k) => { delete props[k]; },
+            } },
+          };
+          let changed = null;
+          const select = {
+            value: "", options: [],
+            replaceChildren(...options) { this.options = options; },
+            addEventListener: (type, fn) => { if (type === "change") changed = fn; },
+          };
+          const refresh = m.bindTextSize(select);
+          const shown = [select.options.map((o) => o.textContent), select.value];
+          select.value = "130";
+          changed();
+          const saved = store["osxp.text_size"];
+          return { shown, saved, fs: props["--fs"], refresh: typeof refresh };
         })()""",
     )
-    assert got["choices"] == [[100, "Normal (100%)"], [115, "Large (115%)"], [130, "Larger (130%)"]]
-    assert got["answered"] == 115  # a number, as the engine's model wants it
-    assert got["kept"] and got["paths"] == ["essential.text_size"]
-    settings_js = (UI / "settings.js").read_text(encoding="utf-8")
-    questions = _function_body(settings_js, "renderQuestions")
-    assert 'radios(view, "text", "q-text", getPath(d, "essential.text_size"))' in questions
+    assert got["shown"] == [["100%", "115%", "130%"], "115"]  # the size it was left at
+    assert got["saved"] == "130" and got["fs"] == "17.55px"  # applied and kept at once
+    assert got["refresh"] == "function"
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    bar = html[html.index('<footer class="statusbar"') : html.index("</footer>")]
+    assert 'id="text-size"' in bar and bar.index('id="text-size"') < bar.index('id="status-zoom"')
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'textSizeRefresh = bindTextSize($("text-size"));' in _function_body(app_js, "boot")
+    assert "textSizeRefresh?.();" in _function_body(app_js, "rerenderAll")
+    # one place for it: Settings no longer asks
+    assert "text_size" not in (UI / "settings.js").read_text(encoding="utf-8")
 
 
 def test_the_text_follows_one_set_of_styles() -> None:

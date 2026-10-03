@@ -205,8 +205,8 @@ page closed, with no build running or waiting.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
 browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl or ⌘
-with plus, minus and 0 do the same), and Settings' last question, *Text size*, makes the
-text alone larger. The window opens where you left it, the size it had, and where the system
+with plus, minus and 0 do the same), and `Aa` beside it makes the text alone larger, at
+once. The window opens where you left it, the size it had, and where the system
 puts it when that screen is no longer there. On Linux the page opens in your browser instead: the web view a
 window needs there is built for the distribution's own Python, and OrthoStudio XP carries its own,
 so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's WebView2,

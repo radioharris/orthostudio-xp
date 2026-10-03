@@ -2193,7 +2193,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 27;
+const PAGE_API_LEVEL = 26;
 
 async function loadStatus() {
   try {
@@ -5935,7 +5935,6 @@ async function saveSettings(ev) {
     // the settings a save had really changed still moved the plan he had set up under him
     // (a user, 2026-09-20 and the day after).
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
-    applyTextSize(state.settings?.essential?.text_size);
     setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
     // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
@@ -5998,11 +5997,13 @@ function toggleTheme() {
 export const TEXT_TOKENS = { "--fs-title-1": 18, "--fs-title-2": 15, "--fs-title-3": 13.5, "--fs": 13.5, "--fs-2": 12.5, "--fs-3": 11.5 };
 const TEXT_SIZE_KEY = "osxp.text_size";
 
+/** The sizes the page's text can take, in percent of its own. */
+export const TEXT_SIZES = [100, 115, 130];
+
 /**
- * The page's text at `percent` of its own size (the setting `essential.text_size`): its styles
- * grow, the controls' own sizes and the map do not, which is the zoom's work. A user on an
- * ultrawide screen found the text too small (TinkerNZ, 2026-10-03). Kept in the page's storage
- * too, so that the next start draws its text at that size before the settings come.
+ * The page's text at `percent` of its own size: its styles grow, the controls' own sizes and the
+ * map do not, which is the zoom's work. A user on an ultrawide screen found the text too small
+ * (TinkerNZ, 2026-10-03). Kept in the page's storage, as the zoom is, for the next start.
  */
 export function applyTextSize(percent, root = document.documentElement) {
   const scale = Number(percent) / 100;
@@ -6019,18 +6020,44 @@ export function applyTextSize(percent, root = document.documentElement) {
   }
 }
 
-/** The text size the page was left at, before the settings say it. */
+/** The text size the page was left at, one of TEXT_SIZES. */
 export function savedTextSize() {
   try {
-    return Number(localStorage.getItem(TEXT_SIZE_KEY)) || 100;
+    const saved = Number(localStorage.getItem(TEXT_SIZE_KEY));
+    return TEXT_SIZES.includes(saved) ? saved : 100;
   } catch (_e) {
     return 100;
   }
 }
 
+/**
+ * The text size's own control at the foot of the page, `Aa` and its sizes, beside the zoom:
+ * applied at once and kept, with nothing to save. It was a question of Settings first, saved with
+ * the rest, and a user wanted it at hand and at once (2026-10-03). In a browser too: the page draws
+ * its text itself. Returns what writes its sizes again in the page's language.
+ */
+export function bindTextSize(select) {
+  if (!select) return null;
+  const label = () => {
+    const now = savedTextSize();
+    select.replaceChildren(...TEXT_SIZES.map((size) => {
+      const option = document.createElement("option");
+      option.value = String(size);
+      option.textContent = t("app.zoom_percent", { percent: size });
+      option.selected = size === now;
+      return option;
+    }));
+    select.value = String(now);
+  };
+  label();
+  select.addEventListener("change", () => applyTextSize(Number(select.value)));
+  return label;
+}
+
 function rerenderAll() {
   applyStatic(document);
   zoomRefresh?.();
+  textSizeRefresh?.();
   renderStatus();
   renderProviders();
   renderTiles();
@@ -6049,6 +6076,9 @@ function rerenderAll() {
 /** Writes the zoom's level again in the page's language (zoom.js bindZoom), once the window
  * has bound it; nothing in a browser. */
 let zoomRefresh = null;
+
+/** Writes the text size's choices again in the page's language (bindTextSize). */
+let textSizeRefresh = null;
 
 /**
  * Whether this page is OrthoStudio XP's own window rather than a tab in a browser.
@@ -6101,6 +6131,7 @@ async function boot() {
   }
   applyStatic(document);
   bindFind(); // the bar's own field and buttons: the same page runs in a browser
+  textSizeRefresh = bindTextSize($("text-size"));
   whenInOwnWindow(() => {
     // No tab to close in a window of its own.
     const stopped = $("stopped").querySelector("p");
@@ -6279,7 +6310,6 @@ async function boot() {
   });
   const settings = api("GET", "/api/settings").then((s) => {
     state.settings = s;
-    applyTextSize(s?.essential?.text_size);
     setDraft(structuredClone(s));
   });
   const schema = api("GET", "/api/settings/schema").then((s) => {
