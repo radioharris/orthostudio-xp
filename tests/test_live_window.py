@@ -124,18 +124,22 @@ def asked_the_page(done: list) -> bool:
 
 
 @pytest.mark.parametrize("state", [IDLE, STREAMING])
-def test_quit_asks_in_the_page_as_osxp_does(opened, state: str) -> None:
-    """Cmd+Q, the app's menu, the Dock's: the window in front and its page's Quit pressed, which
-    asks OrthoStudio XP's question, streaming or not; no box of the system."""
+def test_the_app_s_quit_asks_only_while_a_stream_runs(opened, state: str) -> None:
+    """Cmd+Q, the app's menu, the Dock's: the app goes at once when nothing streams; while a
+    stream runs, one box over Live's window first, and on yes the stream stops (X-Plane flying on
+    over what is built) and the windows close. A page's own Quit closes its window alone."""
     given, done, control = opened(mac=True)
     control.state = state
-    assert given["may_quit"]() is False
-    assert done[0] == "front" and asked_the_page(done) and questions_none(done)
-    assert given["closes_when"]() is False  # nothing goes before the page's answer
-    control.close()  # the page's yes (POST /api/live/close)
-    assert control.stopped == (1 if state == STREAMING else 0)
-    assert given["closes_when"]() is True  # the stream out: the app goes
-    assert given["may_quit"]() is True
+    if state == IDLE:
+        assert given["may_quit"]() is True and questions_none(done)
+        return
+    assert given["may_quit"]() is False and done[0] == "front"
+    assert questions(done) == [web.QUIT_WHILE_STREAMING["en"]]
+    deadline = time.monotonic() + 5.0
+    while control.leaving_for != "quit" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert control.leaving_for == "quit"  # the stream stopped, the app going
+    assert given["closes_when"]() is True
 
 
 def questions_none(done: list) -> bool:

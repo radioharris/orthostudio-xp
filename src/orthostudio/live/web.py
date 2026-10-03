@@ -7,8 +7,9 @@ nothing of OrthoStudio XP changes: ``python -m orthostudio.live ui`` opens it. I
 windows are one program, with one icon in the Dock or the taskbar (the user's choice, 2026-10-03):
 the app's first window is either, and the other opens beside it (:func:`live_window_here`,
 ``orthostudio.desktop.open_osxp_here``), Live being set up in that program the first time. Quit in
-either page quits the app, the other window going too, at once when nothing runs there, else after
-its own page's question; on Windows and Linux a window's close button closes that window alone.
+a page closes that window alone, as its close button does on Windows and Linux, and the app goes
+with its last window; the app's Quit (Cmd+Q) closes both, asking once first while a build or a
+stream runs (:func:`app_may_quit`).
 It is built with OrthoStudio XP's own parts, as they are: the window
 (:func:`orthostudio.window.show`, :func:`orthostudio.window.open_another`),
 the guard of its API (the ``Host`` allow-list, no request from another website, JSON only), and
@@ -441,18 +442,10 @@ def _live_window(live: Any) -> dict[str, Any]:
         window.away(TITLE)
         return False
 
-    def closes_when() -> bool:
-        """Live went: its Quit (the page's, the app's), the app's update, the welcome's answer.
-        Quitting quits the app: OrthoStudio XP's window, in this program, goes too."""
-        if not live.gone():
-            return False
-        if live.leaving_for == "quit" or live.closing:
-            threading.Thread(target=_osxp_goes_too, name="osxp-goes-too", daemon=True).start()
-        return True
-
     return {
         "on_close": put_away if window.puts_away_on_close() else close_asks,
-        "closes_when": closes_when,
+        # Live went: its page's Quit, the app's update, the welcome's answer; this window alone
+        "closes_when": live.gone,
     }
 
 
@@ -585,63 +578,41 @@ def end_here() -> None:
     live.end()
 
 
-def live_goes_too() -> None:
-    """OrthoStudio XP quit, at its page's Quit or the app's: Live's window, in this program, goes
-    too, at once when nothing streams, else after its page's own question."""
-    from orthostudio import window
-
-    with _here_lock:
-        live = _here
-    if live is None or live.control is None or not window.shown(TITLE):
-        return
-    if live.control.busy():
-        window.to_the_front(TITLE)
-        window.ask_the_page_to_quit(TITLE)
-        return
-    live.close()  # it goes at once, nothing streaming (closes_when)
-
-
-def _osxp_goes_too() -> None:
-    """Live quit: OrthoStudio XP's window, in this program, goes too, its engine stopped (the
-    window closes once it is gone), or after its page's own question while a build runs."""
-    from orthostudio import desktop, window
-
-    if not window.shown(window.PLACE_NAME):
-        return
-    if not desktop._listening(desktop.ENGINE_PORT):
-        window.close_now(window.PLACE_NAME)
-    elif desktop.a_build_runs(desktop.ENGINE_PORT):
-        desktop.may_quit()  # its page asks, in front
-    else:
-        desktop.stop_the_engine(desktop.ENGINE_PORT)
-
-
 def app_may_quit() -> bool:
-    """The app's Quit (Cmd+Q, its menu's, the Dock's), its windows being one program: a page asks,
-    in front, as each window's Quit does (OrthoStudio XP's while a build runs, else Live's while it
-    streams, else the one up), and the app goes once that page's side has gone, the other window
-    with it (:func:`live_goes_too`, :func:`_osxp_goes_too`). At once when no window is up."""
+    """The app's Quit (Cmd+Q, its menu's, the Dock's), its windows being one program: both go, at
+    once when nothing runs; else one question first, in a box over the window where it runs, and
+    on yes the build or the stream is stopped and the app goes. A page's own Quit closes its
+    window alone."""
     from orthostudio import desktop, window
 
+    engine = window.shown(window.PLACE_NAME) and desktop._listening(desktop.ENGINE_PORT)
+    build = engine and desktop.a_build_runs(desktop.ENGINE_PORT)
     with _here_lock:
         live = _here
-    live_up = live is not None and window.shown(TITLE) and not live.gone()
-    live_busy = live_up and live.control is not None and live.control.busy()
-    if window.shown(window.PLACE_NAME) and (
-        not live_busy or desktop.a_build_runs(desktop.ENGINE_PORT)
-    ):
-        if desktop.may_quit():  # no engine to ask: OrthoStudio XP's side has gone already
-            if not live_up:
-                return True
-        else:
-            return False
-    if live_up:
-        window.to_the_front(TITLE)
-        threading.Thread(
-            target=window.ask_the_page_to_quit,
-            args=(TITLE,),
-            name="live-ask-the-page-to-quit",
-            daemon=True,
-        ).start()
-        return False
-    return True
+    streams = (
+        live is not None and live.control is not None and not live.gone() and live.control.busy()
+    )
+    if not build and not streams:
+        if engine:
+            desktop.stop_the_engine(desktop.ENGINE_PORT)
+        return True
+    over = window.PLACE_NAME if build else TITLE
+    window.to_the_front(over)
+
+    def aside() -> None:
+        """The box cannot be drawn by the thread waiting for this answer."""
+        said = ([desktop.BUILDING_ON_QUIT] if build else []) + (
+            [quit_question()] if streams else []
+        )
+        if not window.ask(desktop.APP_NAME, "\n\n".join(said), name=over):
+            return
+        if engine:  # OrthoStudio XP's own, its window in this program
+            desktop.stop_the_engine(desktop.ENGINE_PORT, force=build)
+        if streams:
+            # X-Plane flies on over what is built; its plugin takes Live's links out next start
+            live.control.quit(force=True)
+        for name in (window.PLACE_NAME, TITLE):
+            window.close_now(name)
+
+    threading.Thread(target=aside, name="app-ask-before-quitting", daemon=True).start()
+    return False

@@ -547,33 +547,15 @@ def _osxp_window(log: Path, *, beside: bool = False) -> dict[str, Any]:
         "url": url,
         "title": APP_NAME,
         "on_shown": None if running else opens,
-        "closes_when": _then_live_too(time_to_close(ENGINE_PORT)),
+        "closes_when": time_to_close(ENGINE_PORT),
         "on_close": on_close(),
         "note": lambda text: _note(log, text),
     }
 
 
-def _then_live_too(closes: Callable[[], bool]) -> Callable[[], bool]:
-    """OrthoStudio XP's window goes once its engine has (``closes``): quitting quits the app, and
-    OrthoStudio XP Live's window, beside it in this program, goes too, at once when nothing streams,
-    else after its own page's question (``orthostudio.live.web.live_goes_too``)."""
-
-    def closes_when() -> bool:
-        if not closes():
-            return False
-        try:
-            from orthostudio.live.web import live_goes_too
-        except ImportError:
-            return True
-        threading.Thread(target=live_goes_too, name="live-goes-too", daemon=True).start()
-        return True
-
-    return closes_when
-
-
 def _app_quit() -> Callable[[], bool]:
     """What the app's Quit does: OrthoStudio XP's own (:func:`may_quit`), or, OrthoStudio XP Live
-    switched on, the one that asks in either window's page, the two being one program
+    switched on, the one that closes both windows, the two being one program
     (``orthostudio.live.web.app_may_quit``)."""
     try:
         from orthostudio.live import enabled

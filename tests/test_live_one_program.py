@@ -2,8 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """OrthoStudio XP's window and OrthoStudio XP Live's, one program with one icon in the Dock or the
 taskbar (the user's choice, 2026-10-03): each opens beside the other, Live set up in that program
-the first time; Quit in either page quits the app, the other window going too, at once when
-nothing runs there, else after its own page's question; Cmd+Q asks where something runs."""
+the first time; Quit in a page closes that window alone (the user's choice, 2026-10-03); Cmd+Q
+closes both, asking once first while a build or a stream runs."""
 
 from __future__ import annotations
 
@@ -43,6 +43,10 @@ class Control:
 
     def gone(self) -> bool:
         return self.leaving_for in ("build", "quit") or (self.closing and self.state == IDLE)
+
+    def quit(self, *, force: bool = False) -> bool:
+        self.leaving_for = "quit" if force else self.leaving_for
+        return True
 
     def wait_idle(self) -> None:
         pass
@@ -187,87 +191,72 @@ def _live_here(state: str = IDLE) -> Control:
     return live.control  # type: ignore[return-value]
 
 
-def test_live_s_quit_takes_osxp_s_window_with_it(
+def test_a_page_s_quit_closes_its_window_alone(
     program: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Quit in Live's page quits the app: OrthoStudio XP's window goes too, its engine asked to
-    stop (the window closes once it is gone), or its page asking first while a build runs."""
-    control = _live_here()
-    program.up.update({web.TITLE, window_module.PLACE_NAME})
-    closes_when = web._live_window(web._here)["closes_when"]
-    stopped: list[int] = []
-    monkeypatch.setattr(desktop, "_listening", lambda port: True)
-    monkeypatch.setattr(desktop, "a_build_runs", lambda port=0: False)
-    monkeypatch.setattr(desktop, "stop_the_engine", lambda port, **kw: stopped.append(port))
-    assert closes_when() is False
-    control.close()  # the page's yes
-    assert closes_when() is True
-    assert wait_for(lambda: stopped == [desktop.ENGINE_PORT])
-    # a build running: OrthoStudio XP's page asks, in front
-    monkeypatch.setattr(desktop, "a_build_runs", lambda port=0: True)
-    asked: list[bool] = []
-    monkeypatch.setattr(desktop, "may_quit", lambda: asked.append(True) or False)
-    assert closes_when() is True and wait_for(lambda: asked == [True])
-    # its engine gone already: its window closes at once
-    monkeypatch.setattr(desktop, "_listening", lambda port: False)
-    assert closes_when() is True
-    assert wait_for(lambda: ("close", window_module.PLACE_NAME) in program.done)
-
-
-def test_the_welcome_s_answer_does_not_quit_osxp(
-    program: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    """Quit in Live's page closes Live's window, OrthoStudio XP's staying as it is, and the other
+    way round (the user: « c'est logique de fermer toute l'application ? bof »)."""
     control = _live_here()
     program.up.update({web.TITLE, window_module.PLACE_NAME})
     monkeypatch.setattr(desktop, "stop_the_engine", lambda *a, **k: pytest.fail("quit OSXP"))
     monkeypatch.setattr(desktop, "may_quit", lambda: pytest.fail("asked OSXP to quit"))
-    control.leaving_for = "build"  # Live's window goes, OrthoStudio XP's just opened stays
-    assert web._live_window(web._here)["closes_when"]() is True
+    closes_when = web._live_window(web._here)["closes_when"]
+    assert closes_when() is False
+    control.close()  # the page's yes
+    assert closes_when() is True
+    control.closing, control.leaving_for = False, "build"  # the welcome's answer: the same
+    assert closes_when() is True
     time.sleep(0.1)
     assert program.done == []
+    # OrthoStudio XP's window goes once its engine has, and asks nothing of Live
+    assert "_then_live_too" not in desktop.__dict__
 
 
-def test_osxp_s_quit_takes_live_s_window_with_it(
+def test_cmd_q_closes_both_asking_once_where_something_runs(
     program: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Quit in OrthoStudio XP's page stops its engine and closes its window: Live's goes too, at
-    once when nothing streams, else after its page's own question, in front."""
-    gone = [False]
-    closes_when = desktop._then_live_too(lambda: gone[0])
-    control = _live_here()
-    program.up.update({web.TITLE, window_module.PLACE_NAME})
-    assert closes_when() is False and not control.closing
-    gone[0] = True
-    assert closes_when() is True and wait_for(lambda: control.closing)  # it goes at once
-    control.closing, control.state = False, STREAMING
-    assert closes_when() is True
-    assert wait_for(lambda: ("page", web.TITLE) in program.done) and not control.closing
-    assert ("front", web.TITLE) in program.done
-
-
-def test_cmd_q_asks_where_something_runs(program: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The app's Quit, its windows one program: OrthoStudio XP's page asks while a build runs,
-    Live's while it streams, else the window up's; at once with no window up."""
-    assert web.app_may_quit() is True  # nothing up
-    osxp_asked: list[bool] = []
-    monkeypatch.setattr(desktop, "may_quit", lambda: osxp_asked.append(True) or False)
+    """The app's Quit, its windows one program: both go at once when nothing runs, OrthoStudio
+    XP's engine asked to stop; else one box over the window where it runs, and on yes the build
+    or the stream stops and both windows close; on no, nothing."""
+    stopped: list[bool] = []
+    monkeypatch.setattr(desktop, "_listening", lambda port: True)
     monkeypatch.setattr(desktop, "a_build_runs", lambda port=0: False)
+    monkeypatch.setattr(desktop, "stop_the_engine", lambda port, force=False: stopped.append(force))
+    answers: list[bool] = []
+    asked: list[tuple[str, str | None]] = []
+
+    def ask(title: str, message: str, *, name: str | None = None) -> bool:
+        asked.append((message, name))
+        return answers.pop(0)
+
+    monkeypatch.setattr(window_module, "ask", ask)
+    assert web.app_may_quit() is True and stopped == []  # nothing up, no engine to stop
     control = _live_here()
     program.up.update({web.TITLE, window_module.PLACE_NAME})
-    assert web.app_may_quit() is False and osxp_asked == [True]  # nothing runs: OSXP's page asks
+    assert web.app_may_quit() is True and stopped == [False]  # nothing runs: all goes at once
+    # a stream: the box over Live's window; no, then yes
     control.state = STREAMING
-    assert web.app_may_quit() is False and osxp_asked == [True]  # a stream: Live's page asks
-    assert wait_for(lambda: ("page", web.TITLE) in program.done)
-    monkeypatch.setattr(desktop, "a_build_runs", lambda port=0: True)
-    assert web.app_may_quit() is False and osxp_asked == [True, True]  # a build: OSXP's first
-    # Live's window alone, nothing streaming: its page asks
-    program.up.discard(window_module.PLACE_NAME)
-    control.state = IDLE
-    program.done.clear()
+    answers[:] = [False]
     assert web.app_may_quit() is False
-    assert wait_for(lambda: ("page", web.TITLE) in program.done)
-    control.close()  # its yes: Live gone
-    assert web.app_may_quit() is True
+    assert wait_for(lambda: asked) and asked[0][1] == web.TITLE
+    time.sleep(0.1)
+    assert ("close", web.TITLE) not in program.done and control.leaving_for is None
+    answers[:] = [True]
+    asked.clear()
+    assert web.app_may_quit() is False
+    assert wait_for(lambda: ("close", web.TITLE) in program.done)
+    assert ("close", window_module.PLACE_NAME) in program.done
+    assert control.leaving_for == "quit" and stopped[-1] is False
+    # a build: the box over OrthoStudio XP's window, the build stopped on yes
+    monkeypatch.setattr(desktop, "a_build_runs", lambda port=0: True)
+    control.state, control.leaving_for = IDLE, None
+    program.done.clear()
+    answers[:] = [True]
+    asked.clear()
+    assert web.app_may_quit() is False
+    assert wait_for(lambda: ("close", web.TITLE) in program.done)
+    assert asked[0][1] == window_module.PLACE_NAME and "build is running" in asked[0][0]
+    assert stopped[-1] is True
 
 
 def test_live_set_up_beside_stops_with_the_app(program: Any) -> None:

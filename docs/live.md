@@ -26,9 +26,9 @@ Each window has a button to the other, which brings it back when it is open alre
 OrthoStudio XP's top bar, its dot saying whether Live streams, and Build tiles in Live's. The two
 windows are one program, with one icon in the Dock or the taskbar, and each opens beside the other.
 Quit, at the right of Live's top bar, asks as OrthoStudio XP's does: a stream stops, and Live stays
-until X-Plane has quit. Quit in either window quits the app, the other window going too, at once
-when nothing runs there, else after its own question; Cmd+Q asks where a build or a stream runs.
-On Windows, a window's close button closes that window alone. Where a computer cannot show the app's own window (a Linux
+until X-Plane has quit. Quit in a window closes that window alone, as its close button does on
+Windows, and the app ends with its last window. Cmd+Q, on a Mac, quits the app, both windows,
+asking once first while a build or a stream runs. Where a computer cannot show the app's own window (a Linux
 without its libraries), both open in the browser, and Live stops by itself five minutes after its
 page was closed, unless it streams.
 
