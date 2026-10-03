@@ -311,6 +311,21 @@
 </section>
 </main>
 
+<!-- OrthoStudio XP's foot controls, as at the foot of its page: the size of the page's text
+     (static/textsize.js), in a browser too, and the window's zoom (static/zoom.js), shown in
+     Live's own window once it says it scales the page. -->
+<footer class="statusbar live-statusbar" id="statusbar">
+  <label class="status-item status-text" data-i18n-title="app.text_size">
+    <span class="status-text-mark" aria-hidden="true">Aa</span>
+    <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
+  </label>
+  <span class="status-item status-zoom" id="status-zoom" hidden>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
+    <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
+  </span>
+</footer>
+
 <!-- OrthoStudio XP's find bar (static/find.js): Cmd+F and Ctrl+F in Live's own window. -->
 <div id="find-bar" class="find-bar" role="search" hidden>
   <input type="search" id="find-input" class="find-input" spellcheck="false" autocomplete="off"

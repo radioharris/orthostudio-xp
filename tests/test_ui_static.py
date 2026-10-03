@@ -48,6 +48,7 @@ PAGE_MODULES = (
     "map.js",
     "settings.js",
     "sources.js",
+    "textsize.js",
     "zoom.js",
 )
 """The page's own modules: every visible string of theirs goes through a literal t() key."""

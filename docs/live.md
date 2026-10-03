@@ -55,6 +55,10 @@ tabs, as OrthoStudio XP's screens:
   what each takes now, and a button to delete either), and Live's folder. They apply with Save, at
   the next start; leaving the tab with answers not saved says so.
 
+At the foot of the window, as at the foot of OrthoStudio XP's page: `Aa` sets the size of the
+page's text (100, 115 or 130 %) and `− 100 % +` zooms the whole page (also Ctrl+plus, Ctrl+minus,
+Ctrl+0, or Cmd on a Mac). Each window keeps its own, and its own place on the screen.
+
 As in OrthoStudio XP's window, a field over the settings keeps only the questions holding the words
 typed (accents, case and plurals aside), and the window has OrthoStudio XP's find bar (Cmd+F,
 Ctrl+F), which looks in the tab shown, and text size (Cmd+plus, Cmd+minus, Cmd+0), which it takes

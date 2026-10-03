@@ -715,6 +715,66 @@ def _strings() -> dict[str, list[str]]:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_foot_of_the_page_is_osxp_s_text_size_and_zoom() -> None:
+    """The user asked for the foot of OrthoStudio XP's page in Live's (2026-10-03): its text size
+    (static/textsize.js), in a browser too, and its zoom (static/zoom.js) in Live's own window,
+    bound as OrthoStudio XP binds them, written again when the language changes, in its words."""
+    from orthostudio.ui import ui_dir
+
+    def foot(html: str) -> str:
+        return html[html.index('<footer class="statusbar') : html.index("</footer>")]
+
+    bar = foot((UI_DIR / "index.html").read_text())
+    osxp_bar = foot((ui_dir() / "index.html").read_text())
+    for part in (
+        'id="text-size"',
+        'class="status-text-mark"',
+        'id="status-zoom"',
+        'data-zoom="out"',
+        'data-zoom="level"',
+        'data-zoom="in"',
+    ):
+        assert part in bar and part in osxp_bar, part
+    assert bar.index('id="text-size"') < bar.index('id="status-zoom"')  # as in OrthoStudio XP's
+    js = (UI_DIR / "live.js").read_text()
+    assert 'import("../static/textsize.js")' in js
+    assert "textSize.applyTextSize(textSize.savedTextSize());" in js
+    assert 'textSizeRefresh = textSize.bindTextSize($("text-size"));' in js
+    assert 'zoomRefresh = zoom.bindZoom(toast, $("status-zoom"));' in js
+    change = js[js.index('$("lang-select").addEventListener("change"') :]
+    change = change[: change.index("\n  });")]
+    assert "zoomRefresh?.();" in change and "textSizeRefresh?.();" in change
+    # its words are OrthoStudio XP's, in both languages
+    keys = [
+        "app.text_size",
+        "app.zoom_out",
+        "app.zoom_out_mac",
+        "app.zoom_level",
+        "app.zoom_level_mac",
+        "app.zoom_in",
+        "app.zoom_in_mac",
+    ]
+    script = (
+        "globalThis.document = { documentElement: {} };"
+        f"const live = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
+        f"const osxp = await import({json.dumps((ui_dir() / 'i18n.js').as_uri())});"
+        f"const keys = {json.dumps(keys)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { live.setLanguage(lang); osxp.setLanguage(lang);"
+        " out[lang] = keys.map((k) => [live.t(k), osxp.t(k)]); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    for lang, pairs in json.loads(out.stdout).items():
+        for key, (live_text, osxp_text) in zip(keys, pairs, strict=True):
+            assert live_text == osxp_text, (lang, key)
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_says_everything_in_both_languages() -> None:
     keys = _strings()
     assert set(keys["en"]) == set(keys["fr"])

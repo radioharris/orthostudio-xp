@@ -82,9 +82,10 @@ under step 3's per-tile table overlapped the table until the page moved (a user,
 
 **Text size** (a user on an ultrawide screen found the text too small, TinkerNZ, 2026-10-03): `Aa`
 at the foot of the page, beside the zoom (2.5), draws these styles at 100, 115 or 130 % of their
-size, applied as it is chosen and kept in the page's storage, as the zoom is (`app.js
-bindTextSize`, `applyTextSize`, which writes the six `--fs-*` tokens on the page's root; their own
-values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal). It was a question of Settings
+size, applied as it is chosen and kept in the page's storage, as the zoom is (`textsize.js`
+`bindTextSize`, `applyTextSize`, which writes the six `--fs-*` tokens on the page's root; their own
+values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal; a module of its own, as
+`zoom.js` is, since OrthoStudio XP Live's page shows both at its foot). It was a question of Settings
 first, saved with the rest, and the user wanted it at hand and at once. The controls' own sizes and
 the map do not grow: that is the zoom's work. In a browser too: the page draws its text itself.
 

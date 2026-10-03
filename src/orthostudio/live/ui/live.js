@@ -1018,27 +1018,34 @@ function toast(message) {
 
 let osxpWords = null; // OrthoStudio XP's words (static/i18n.js), which its find bar and zoom speak
 let findTools = null; // its find bar (static/find.js), once loaded
+let zoomRefresh = null; // writes the zoom's level again in the page's language, once bound
+let textSizeRefresh = null; // writes the text size's choices again, once bound
 
 /**
- * OrthoStudio XP's find bar (Cmd+F, Ctrl+F) and text size (Cmd+plus, Cmd+minus, Cmd+0), as they
- * are (static/find.js, static/zoom.js): Live's window has neither, and a browser keeps its own.
- * Loaded here rather than with the page, as the map is: they speak OrthoStudio XP's own words,
- * told the page's language.
+ * OrthoStudio XP's find bar (Cmd+F, Ctrl+F), zoom (Cmd+plus, Cmd+minus, Cmd+0, and its control at
+ * the foot) and text size (its own control at the foot), as they are (static/find.js,
+ * static/zoom.js, static/textsize.js): Live's window has none of them, and a browser keeps its own
+ * find and zoom; the text size works in a browser too. Loaded here rather than with the page, as
+ * the map is: they speak OrthoStudio XP's own words, told the page's language. The user asked for
+ * the foot of OrthoStudio XP's page in Live's (2026-10-03).
  */
 async function bindPageTools() {
   try {
-    const [words, find, zoom] = await Promise.all([
+    const [words, find, zoom, textSize] = await Promise.all([
       import("../static/i18n.js"),
       import("../static/find.js"),
       import("../static/zoom.js"),
+      import("../static/textsize.js"),
     ]);
     osxpWords = words;
     findTools = find;
     osxpWords.setLanguage(language());
+    textSize.applyTextSize(textSize.savedTextSize());
+    textSizeRefresh = textSize.bindTextSize($("text-size"));
     find.bindFind();
     whenInOwnWindow(() => {
       find.bindFindKeys();
-      zoom.bindZoom(toast);
+      zoomRefresh = zoom.bindZoom(toast, $("status-zoom"));
     });
   } catch (_e) {
     // not there: the page works without them
@@ -1184,6 +1191,8 @@ function boot() {
     tellLanguage();
     liveMap?.languageChanged();
     applyStatic(document);
+    zoomRefresh?.();
+    textSizeRefresh?.();
     renderZooms();
     renderProviders($("set-provider").value);
     drawSearch();
