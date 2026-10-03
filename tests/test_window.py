@@ -726,14 +726,17 @@ def test_one_program_shows_another_window_beside_its_first(
         with pytest.raises(RuntimeError, match="up already"):
             window.open_another("http://127.0.0.1:2/", title="Other", place="Other")
         seen["both"] = (window.shown(), window.shown("Other"))
+        assert window.running()
         window.away("Other")
         window.to_the_front()  # the first one
         seen["asked"] = window.ask("Other", "Really?", name="Other")
         window.close_now("Other")
         seen["after"] = (window.shown(), window.shown("Other"))
 
+    assert not window.running()
     made = _one_program(monkeypatch, during)
     window.show("http://127.0.0.1:1/", title="OrthoStudio XP", storage=tmp_path)
+    assert not window.running()  # the loop is over
     first, other = made["OrthoStudio XP"], made["Other"]
     assert seen["both"] == (True, True)
     assert other.done == ["hide", "ask Really?", "destroy"] and first.done == ["show"]
