@@ -131,8 +131,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* The top bar stays in view: what the page scrolls to (a card, a focused field) stops below it. */
-html { height: 100%; scroll-padding-top: calc(var(--topbar-h) + 8px); scroll-padding-bottom: calc(var(--statusbar-h) + 8px); }
+/* The two bars stay in view: what the page scrolls to (a card, a focused field) stops between
+   them. A margin on the page's content, not a padding on the whole page: the bars' own controls
+   lay inside that padding, so the browser took them for hidden and scrolled to show them, by half
+   a window each time the text size was clicked (a user, 2026-10-03). */
+html { height: 100%; }
+main * { scroll-margin-top: calc(var(--topbar-h) + 8px); scroll-margin-bottom: calc(var(--statusbar-h) + 8px); }
 
 body {
   margin: 0;
@@ -1051,6 +1055,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* the folder's button (app.js renderStatus), as tall as the bar's pills so the bar keeps its height */
 .status-home .status-reveal { min-height: 18px; height: 18px; width: 22px; color: var(--fg-2); }
 .status-home .status-reveal svg { width: 13px; height: 13px; }
+/* the window's zoom (zoom.js bindZoom), as tall as the folder's button so the bar keeps its height */
+.status-zoom { gap: 2px; }
+.status-zoom .btn-small { min-height: 18px; height: 18px; padding: 0 6px; }
+.status-zoom-level { min-width: 46px; justify-content: center; }
+/* the text's size (app.js bindTextSize), as tall as the zoom's buttons */
+.status-text { gap: 4px; }
+.status-text-mark { font-weight: 600; color: var(--fg-2); }
+.status-select { font: inherit; height: 18px; padding: 0 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .status-item details { position: relative; }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }

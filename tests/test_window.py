@@ -7,7 +7,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -149,18 +151,40 @@ def test_the_window_asks_nothing_of_cocoa_on_a_system_that_has_none(
         assert window.puts_away_on_close() is False
 
 
+class Handlers:
+    """One of pywebview's events: the handlers given to it with ``+=``."""
+
+    def __init__(self) -> None:
+        self.handlers: list[Any] = []
+
+    def __iadd__(self, handler: Any) -> Handlers:
+        self.handlers.append(handler)
+        return self
+
+    def set(self) -> None:
+        for handler in self.handlers:
+            handler()
+
+
+class FakeWindow:
+    """What ``webview.create_window`` gives: its events, and the native window under it."""
+
+    def __init__(self) -> None:
+        self.events = type("E", (), {})()
+        for name in ("closed", "closing", "before_show"):
+            setattr(self.events, name, Handlers())
+        self.native: Any = None
+
+    def show(self) -> None:
+        return None
+
+
 def test_the_engine_starts_even_when_the_window_trimmings_fail(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """What the window puts around itself is comfort; the engine is the point. A comfort that
     fails must not take the engine with it, and must not do it silently."""
     started, said = [], []
-
-    class FakeWindow:
-        events = type("E", (), {"closed": type("S", (), {"__iadd__": lambda s, f: s})()})()
-
-        def show(self) -> None:
-            return None
 
     monkeypatch.setattr(
         window, "on_quit", lambda h: (_ for _ in ()).throw(RuntimeError("no AppKit"))
@@ -214,7 +238,7 @@ def test_what_pywebview_says_about_the_web_view_goes_to_the_log(
     fake = type(
         "W",
         (),
-        {"create_window": lambda *a, **k: object(), "start": fake_start, "screens": []},
+        {"create_window": lambda *a, **k: FakeWindow(), "start": fake_start, "screens": []},
     )
     monkeypatch.setitem(sys.modules, "webview", fake)
     monkeypatch.setitem(
@@ -334,6 +358,60 @@ def test_the_window_zooms_its_page_because_a_browser_would() -> None:
     assert WINDOW_MENU_KEY != "0"
 
 
+def test_the_windows_zoom_is_set_on_the_windows_own_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl+plus never did anything on Windows (a user, 2026-10-03): the page's calls come in on
+    threads of their own (pywebview runs each apart), WebView2 is touched from its window's thread
+    alone, and the error it raised was taken for a no. The zoom is set through the control's
+    ``Invoke``, on that thread.
+
+    Not even read from elsewhere: 0.1.22rc3 still asked whether the view had a zoom by reading it,
+    from the page's thread, and the window froze at most starts on a Shadow (2026-10-03)."""
+
+    class WebView2:
+        """A WinForms WebView2 whose zoom is neither read nor set off its own thread, as the real
+        one: there the read raised, or waited for ever on the window's thread."""
+
+        InvokeRequired = True
+
+        def __init__(self) -> None:
+            self.on_its_thread = False
+            self.factor = 1.0
+
+        def Invoke(self, delegate: object) -> None:  # noqa: N802 (WinForms' own name)
+            self.on_its_thread = True
+            try:
+                delegate()  # type: ignore[operator]
+            finally:
+                self.on_its_thread = False
+
+        @property
+        def ZoomFactor(self) -> float:  # noqa: N802
+            self.touched()
+            return self.factor
+
+        @ZoomFactor.setter
+        def ZoomFactor(self, value: float) -> None:  # noqa: N802
+            self.touched()
+            self.factor = value
+
+        def touched(self) -> None:
+            if not self.on_its_thread:
+                raise RuntimeError("CoreWebView2 can only be accessed from the UI thread.")
+
+    view = WebView2()
+    system = types.ModuleType("System")
+    system.Object = object  # type: ignore[attr-defined]
+    system.Func = {object: lambda do: do}  # type: ignore[attr-defined]  # Func[Object]: a delegate
+    monkeypatch.setitem(sys.modules, "System", system)
+    monkeypatch.setattr(window, "_web_view", lambda: view)
+    assert window.PageTools().set_zoom(1.25) is True
+    assert view.factor == 1.25
+    # on the window's own thread already, it is set at once
+    view.InvokeRequired = False
+    view.on_its_thread = True
+    assert window.PageTools().set_zoom(0.9) is True and view.factor == 0.9
+
+
 def test_the_window_carries_the_apps_icon_and_not_pythons(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -415,3 +493,212 @@ def test_on_a_mac_appkit_is_asked_on_its_main_thread(monkeypatch: pytest.MonkeyP
     assert done == [] and len(later) == 1  # nothing in the asking thread
     later[0]()
     assert done == ["unhide", "activate"]
+
+
+# -- where the window was left (TinkerNZ, 2026-10-03) -------------------------------------------
+
+
+def test_a_title_bar_is_grabbable_only_on_a_screen() -> None:
+    main, left = (0, 0, 2560, 1400), (-1920, 0, 1920, 1040)
+    assert window.grabbable((100, 50, 1440, 30), [main])
+    assert window.grabbable((-1800, 10, 1440, 30), [main, left])  # on the screen to the left
+    assert not window.grabbable((-1800, 10, 1440, 30), [main])  # that screen unplugged
+    assert not window.grabbable((2500, 50, 1440, 30), [main])  # 60 px of it showing: too little
+    assert window.grabbable((2400, 50, 1440, 30), [main])  # 160 px: enough to take it
+    assert not window.grabbable((100, 1395, 1440, 30), [main])  # its bar under the screen
+    assert window.grabbable((0, 0, 50, 10), [main])  # a band smaller than asked, wholly on it
+
+
+def test_a_place_that_cannot_be_read_is_none(tmp_path: Path) -> None:
+    file = tmp_path / window.PLACE_FILE
+    assert window.saved_place(tmp_path) is None  # nothing kept yet
+    file.write_text('{"x": -1900, "y": 20, "width": 1500, "height": 900, "maximized": true}')
+    assert window.saved_place(tmp_path) == {
+        "x": -1900, "y": 20, "width": 1500, "height": 900, "maximized": True,
+    }  # fmt: skip
+    for broken in ("{", '{"x": 1}', '{"x": 1, "y": 2, "width": 0, "height": 5}', "[]"):
+        file.write_text(broken)
+        assert window.saved_place(tmp_path) is None, broken
+
+
+class Rect:
+    def __init__(self, x: int, y: int, width: int, height: int) -> None:
+        self.X, self.Y, self.Width, self.Height = x, y, width, height
+
+
+def _winforms(monkeypatch: pytest.MonkeyPatch, screens: list[Rect]) -> None:
+    """System.Drawing and System.Windows.Forms, as pythonnet gives them on Windows."""
+    forms = types.ModuleType("System.Windows.Forms")
+    forms.FormStartPosition = type("FormStartPosition", (), {"Manual": "Manual"})  # type: ignore[attr-defined]
+    forms.FormWindowState = type(  # type: ignore[attr-defined]
+        "FormWindowState", (), {"Normal": "Normal", "Maximized": "Maximized"}
+    )
+    forms.Screen = type(  # type: ignore[attr-defined]
+        "Screen", (), {"AllScreens": [type("S", (), {"WorkingArea": a})() for a in screens]}
+    )
+    drawing = types.ModuleType("System.Drawing")
+    drawing.Rectangle = lambda x, y, w, h: (x, y, w, h)  # type: ignore[attr-defined]
+    for name, module in (
+        ("System", types.ModuleType("System")),
+        ("System.Windows", types.ModuleType("System.Windows")),
+        ("System.Windows.Forms", forms),
+        ("System.Drawing", drawing),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+
+
+class Form:
+    """A WinForms ``Form`` as pywebview makes it, before it shows."""
+
+    def __init__(self) -> None:
+        self.StartPosition = "CenterScreen"
+        self.Bounds: Any = None
+        self.WindowState = "Normal"
+        self.RestoreBounds = Rect(-1700, 40, 1500, 900)
+
+
+def test_windows_opens_the_window_where_it_was_left(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """It opened on the screen of the shortcut, not the one the user works on, and was moved and
+    resized at every start (TinkerNZ, 2026-10-03; "surtout sous Windows")."""
+    _winforms(monkeypatch, [Rect(0, 0, 2560, 1400), Rect(-1920, 0, 1920, 1040)])
+    closing = Form()
+    closing.WindowState = "Maximized"  # maximized on the left screen as it closes
+    window.keep_where_it_is(closing, tmp_path, system="win32")
+    assert window.saved_place(tmp_path) == {
+        "x": -1700, "y": 40, "width": 1500, "height": 900, "maximized": True,
+    }  # fmt: skip
+    opening = Form()
+    window.back_where_it_was(opening, tmp_path, system="win32")
+    assert opening.StartPosition == "Manual"
+    assert opening.Bounds == (-1700, 40, 1500, 900)  # its size and place before it was maximized
+    assert opening.WindowState == "Maximized"  # and maximized again, on that screen
+
+
+def test_windows_keeps_the_place_a_window_was_moved_to_by_hand(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """WinForms' RestoreBounds follows what code sets and the moment the window leaves its normal
+    state, not a move or a resize by hand: 0.1.22rc5 kept the place of each start for ever, and
+    the window was moved and resized in vain (a Shadow, 2026-10-03). A normal window is kept by
+    its Bounds."""
+    _winforms(monkeypatch, [Rect(0, 0, 2880, 1572)])
+    closing = Form()
+    closing.RestoreBounds = Rect(0, 0, 2880, 1620)  # where it was put as it opened
+    closing.Bounds = Rect(300, 200, 1600, 900)  # where the user moved it, at the size they gave it
+    window.keep_where_it_is(closing, tmp_path, system="win32")
+    assert window.saved_place(tmp_path) == {
+        "x": 300, "y": 200, "width": 1600, "height": 900, "maximized": False,
+    }  # fmt: skip
+
+
+def test_windows_leaves_a_window_whose_screen_is_gone_to_the_system(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _winforms(monkeypatch, [Rect(0, 0, 2560, 1400)])  # the left screen unplugged
+    (tmp_path / window.PLACE_FILE).write_text(
+        '{"x": -1700, "y": 40, "width": 1500, "height": 900, "maximized": false}'
+    )
+    opening = Form()
+    window.back_where_it_was(opening, tmp_path, system="win32")
+    assert opening.StartPosition == "CenterScreen" and opening.Bounds is None
+    # and a first start, with nothing kept, is the system's as before
+    first = Form()
+    window.back_where_it_was(first, tmp_path / "none", system="win32")
+    assert first.StartPosition == "CenterScreen"
+
+
+class NSWindow:
+    """An ``NSWindow`` whose frame macOS kept (``frame``), or not (``None``)."""
+
+    def __init__(self, frame: tuple[float, float, float, float] | None) -> None:
+        self.kept = frame
+        self.saved_as: str | None = None
+        self.centred = False
+        self._frame = frame or (300, 200, 1440, 920)
+
+    def setFrameUsingName_(self, name: str) -> bool:  # noqa: N802 (AppKit's own names)
+        return self.kept is not None
+
+    def frame(self) -> Any:
+        x, y, w, h = self._frame
+        point = types.SimpleNamespace(x=x, y=y)
+        size = types.SimpleNamespace(width=w, height=h)
+        return types.SimpleNamespace(origin=point, size=size)
+
+    def center(self) -> None:
+        self.centred = True
+
+    def setFrameAutosaveName_(self, name: str) -> bool:  # noqa: N802
+        self.saved_as = name
+        return True
+
+
+def _appkit(monkeypatch: pytest.MonkeyPatch, areas: list[tuple[int, int, int, int]]) -> None:
+    def screen(x: int, y: int, w: int, h: int) -> Any:
+        area = types.SimpleNamespace(
+            origin=types.SimpleNamespace(x=x, y=y), size=types.SimpleNamespace(width=w, height=h)
+        )
+        return types.SimpleNamespace(visibleFrame=lambda: area)
+
+    appkit = types.ModuleType("AppKit")
+    appkit.NSScreen = types.SimpleNamespace(screens=lambda: [screen(*a) for a in areas])  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+
+
+def test_macos_keeps_the_frame_by_name_and_centres_a_window_whose_screen_is_gone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """macOS keeps a window's frame by name in the app's defaults, as it moves or resizes."""
+    _appkit(monkeypatch, [(0, 25, 1512, 920)])  # a laptop's screen, macOS counting up
+    on_it = NSWindow((40, 60, 1440, 860))
+    window.back_where_it_was(on_it, tmp_path, system="darwin")
+    assert on_it.saved_as == window.PLACE_NAME and not on_it.centred
+    gone = NSWindow((2000, 60, 1440, 860))  # kept on a screen to the right, unplugged since
+    window.back_where_it_was(gone, tmp_path, system="darwin")
+    assert gone.centred and gone.saved_as == window.PLACE_NAME
+    first = NSWindow(None)  # a first start: pywebview's own place, kept from now on
+    window.back_where_it_was(first, tmp_path, system="darwin")
+    assert not first.centred and first.saved_as == window.PLACE_NAME
+    # nothing written of its own on macOS: AppKit keeps it
+    window.keep_where_it_is(on_it, tmp_path, system="darwin")
+    assert not (tmp_path / window.PLACE_FILE).exists()
+
+
+def test_the_window_is_placed_before_it_shows_and_kept_as_it_closes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Wired into pywebview's ``before_show`` and ``closing``; a place that fails is said, and
+    the window opens where the system puts it, as before."""
+    said: list[str] = []
+    made = FakeWindow()
+
+    def fake_start(func: object, **kw: object) -> None:
+        made.events.before_show.set()
+        made.events.closing.set()
+
+    fake = type(
+        "W", (), {"create_window": lambda *a, **k: made, "start": fake_start, "screens": []}
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setitem(
+        sys.modules,
+        "webview.menu",
+        type("M", (), {"Menu": lambda *a, **k: None, "MenuAction": lambda *a, **k: None}),
+    )
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    placed: list[tuple[Any, Path]] = []
+    monkeypatch.setattr(window, "back_where_it_was", lambda n, s: placed.append((n, s)))
+
+    def refused(native: Any, store: Path) -> None:
+        raise PermissionError("the folder is read-only")
+
+    monkeypatch.setattr(window, "keep_where_it_is", refused)
+    window.show(
+        "http://127.0.0.1:8641/", title="OrthoStudio XP", note=said.append, storage=tmp_path
+    )
+    assert placed == [(None, tmp_path)]
+    assert len(said) == 1 and "could not be kept" in said[0] and "read-only" in said[0]
+    # the place's handler answers nothing on closing: a close is never taken away by it
+    assert all(h() is None for h in made.events.closing.handlers)

@@ -350,8 +350,8 @@ def inno_setup_script(
     an OrthoStudio XP running from the folder, its Live window first, stopped before its files are
     replaced or removed (:data:`INNO_CODE`). Uninstalling also takes OrthoStudio XP Live's pack and
     plugin out of X-Plane, where a Live that did not stop left them. Before the end, the app's code
-    is opened once (``orthostudio.warmup``), so that the antivirus has read each new file before
-    the first start, which waited more than a minute for it otherwise.
+    is opened once (``orthostudio.warmup``), so that each new file has been read once, from the
+    disk and by the antivirus, before the first start (``docs/specs/packaging.md``).
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
@@ -425,9 +425,10 @@ Filename: "{{app}}\\python\\python.exe"; Parameters: "-m orthostudio.live uninst
 
 [Run]
 Filename: "{{tmp}}\\{WEBVIEW2_EXE}"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft WebView2 Runtime..."; Tasks: webview2
-; Windows' antivirus reads each new file of the app the first time it is opened: the first start
-; after an install waited more than a minute for it on a cloud PC (2026-10-03). The app's code is
-; opened once here, under the setup's progress bar, and the first start goes as the next ones.
+; The first time a new file is opened, Windows reads it from the disk and its antivirus may inspect
+; it: the first start after an install took 10 s on a cloud PC, against 3 s for the next ones
+; (2026-10-02). The app's code is opened once here, under the setup's progress bar, and the first
+; start goes as the next ones.
 Filename: "{run}"; Parameters: "-B -m orthostudio.warmup"; WorkingDir: "{{app}}"; StatusMsg: "Preparing {APP_NAME} for its first start..."; Flags: runhidden waituntilterminated
 Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Description: "{{cm:LaunchProgram,{APP_NAME}}}"; Flags: nowait postinstall skipifsilent
 

@@ -80,6 +80,14 @@ drawn, and when the window's size changes): where scrollbars take room (a mouse,
 them always, Windows), WebKit added the scrollbar after placing what follows the table, and the line
 under step 3's per-tile table overlapped the table until the page moved (a user, 2026-09-22).
 
+**Text size** (a user on an ultrawide screen found the text too small, TinkerNZ, 2026-10-03): `Aa`
+at the foot of the page, beside the zoom (2.5), draws these styles at 100, 115 or 130 % of their
+size, applied as it is chosen and kept in the page's storage, as the zoom is (`app.js
+bindTextSize`, `applyTextSize`, which writes the six `--fs-*` tokens on the page's root; their own
+values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal). It was a question of Settings
+first, saved with the rest, and the user wanted it at hand and at once. The controls' own sizes and
+the map do not grow: that is the zoom's work. In a browser too: the page draws its text itself.
+
 ## 2. The four screens
 
 ### 2.1 Plan
@@ -1242,6 +1250,23 @@ has a *Settings* button that focuses its field. The library count follows every 
 (a build that ends, a tile installed or deleted), and a build that ends reads the status again for
 the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
 
+**The text size and the zoom** (2026-10-03): at the bar's right end, `Aa` and its sizes make the
+page's text larger (2 above), and in the window alone `− 100 % +` zooms the whole page, the bar
+included, as a browser does, its level bringing it back to 100 % (`zoom.js bindZoom`; the window scales the page through
+`PageTools.set_zoom`, a CSS zoom would cut the map off at the foot). The keys, Ctrl or ⌘ with plus,
+minus and 0, were there since 0.1.8 and showed nowhere: a user on an ultrawide screen asked for a
+way to make the text bigger (TinkerNZ). Their help names the keys of the system, the level is kept
+in the page's storage, and the control shows once the window has said it scales the page, asked
+again each time pywebview makes the page's functions anew (`pywebviewready`): it makes them twice
+when the opening page's land late in the engine's, and the control showed at one start in two on a
+Mac (2026-10-03); in a browser, the browser's own zoom does it. On Windows the zoom is set on the
+window's own thread
+(`window.on_its_own_thread`): WebView2 refused it from the threads the page's calls come in on, and
+neither the keys nor anything else had ever zoomed there (a user, 2026-10-03). It is not even read
+from those threads: 0.1.22rc3 asked whether the view had a zoom by reading it there, the read
+waited for the window's thread while holding Python's lock, and the window froze at most starts
+(a Shadow, 2026-10-03).
+
 **The first screen** (2026-09-22): the page shows the screen of its address at once, then fills it
 in as the engine answers. It used to wait for every answer (status, zones, library, sources,
 settings, their schema, jobs) before showing any screen; the menu is wired before that wait, so
@@ -1280,9 +1305,11 @@ user edits, and every path the engine is asked to open or to save, keep the path
 **Pinned bars** (user request, 2026-09-14): the top bar stays at the top of the window and the
 status bar at its bottom, wherever the page is scrolled (`position: sticky`). The status bar's
 height, measured by `app.js` `trackStatusbarHeight` into `--statusbar-h` (it grows when its items
-wrap), keeps Settings' sticky *Save* bar and the toast above it; `scroll-padding` keeps what the
-page scrolls to (a card, a focused field) between the two bars, and the Plan's map column sticks
-below the top bar.
+wrap), keeps Settings' sticky *Save* bar and the toast above it; a `scroll-margin` on the page's
+content (`main *`) keeps what the page scrolls to (a card, a focused field) between the two bars,
+and the Plan's map column sticks below the top bar. It was a `scroll-padding` on the whole page,
+which the bars' own controls lay inside: the browser took them for hidden and scrolled the page to
+show them, by half a window each time the text size was clicked (a user, 2026-10-03).
 
 **Quit** (top bar, user request 2026-09-13; shown when `can_quit`): asks first in a modal dialog
 ("Quit OrthoStudio XP?", the page will not work until OrthoStudio XP is opened again, and, when a

@@ -756,10 +756,11 @@ class Fetcher:
                     g.wake.set()
 
     async def _attempt(self, pending: _Pending, group: _Group, session: AsyncSession) -> _Outcome:
-        """One transfer, doubled after ``hedge_after_s`` (spec R3)."""
+        """One transfer, doubled after ``hedge_after_s`` (spec R3); no hedge starts while the
+        group is paused (spec R2)."""
         req = pending.request
         pending.attempts += 1
-        primary = asyncio.create_task(self._transfer(session, req))
+        primary = asyncio.create_task(self._transfer(session, req, group))
         tasks: set[asyncio.Task[_Outcome]] = {primary}
         hedge_started = False
         try:
@@ -771,13 +772,14 @@ class Fetcher:
                 pending.failures < self._run_attempts
                 and group.hedges_in_flight < hedge_cap
                 and not self._cancelled
+                and _now() >= group.paused_until
             ):
                 hedge_started = True
                 group.hedges_in_flight += 1
                 self._hedges += 1
                 pending.hedged = True
                 pending.attempts += 1
-                tasks.add(asyncio.create_task(self._transfer(session, req)))
+                tasks.add(asyncio.create_task(self._transfer(session, req, group)))
             last: _Outcome | None = None
             while tasks:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -796,8 +798,16 @@ class Fetcher:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _transfer(self, session: AsyncSession, req: FetchRequest) -> _Outcome:
-        """One HTTP transfer; never raises except ``CancelledError``."""
+    async def _transfer(self, session: AsyncSession, req: FetchRequest, group: _Group) -> _Outcome:
+        """One HTTP transfer; never raises except ``CancelledError``.
+
+        It leaves only once its group's pause is over (spec R2), checked as it is handed to the
+        session, in the same step: a request let in before a 429 came back was sent after it
+        under load, during the pause the server had asked for (the whole suite on six workers,
+        2026-10-03). The wait is not its latency, which tells the window how the server fares.
+        """
+        while (wait := group.paused_until - _now()) > 0:
+            await asyncio.sleep(wait)
         self._transfers_in_flight += 1
         t0 = _now()
         try:

@@ -24,6 +24,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -285,19 +286,42 @@ def test_server_dies_mid_run_containers_persist_and_resume_fetches_only_the_rest
 
 
 def test_429_pause_is_polite_no_dispatch_during_retry_after(
-    server: TileServer, tmp_path: Path, mask_dir: Path
+    server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Politeness: no request leaves while a ``Retry-After`` pause runs, a hedge included.
+
+    Measured where it is decided, on the fetcher's own clock: when each request is handed to the
+    session, and when each pause starts and ends. It was measured at the server, a request taken
+    as sent during a pause when it arrived 50 ms to 950 ms after a 429; with the whole suite on
+    six workers two arrived later than that, sent by requests let in before the 429 came back
+    (2026-10-03). They had left during the pause indeed: a transfer now waits it out as it is
+    handed to the session (``fetch._transfer``)."""
+    from orthostudio.net import fetch
+
+    sent: list[float] = []
+    pauses: list[tuple[float, float]] = []
+    request = fetch.AsyncSession.request
+    pause = fetch._Group.pause
+
+    async def handed(self: Any, *args: Any, **kwargs: Any) -> Any:
+        sent.append(fetch._now())
+        return await request(self, *args, **kwargs)
+
+    def paused(self: Any, retry_after: float | None, now: float) -> float:
+        until = pause(self, retry_after, now)
+        pauses.append((now, until))
+        return until
+
+    monkeypatch.setattr(fetch.AsyncSession, "request", handed)
+    monkeypatch.setattr(fetch._Group, "pause", paused)
     st = server.state
     st.rate_limit_first_n = 40
     build_textures(make_spec(server, tmp_path, mask_dir, max_attempts=4))
-    limited = st.hits_with_status(429)
-    assert len(limited) == 40
-    # Politeness: nothing new is dispatched during a Retry-After pause. A request that arrives
-    # well after a 429 (the local round trip is ~1 ms) but before that 429's Retry-After
-    # expired was dispatched during the pause.
-    all_hits = sorted(t for t, _, _ in st.log)
-    violations = [t for t in all_hits if any(t429 + 0.05 < t < t429 + 0.95 for t429 in limited)]
-    assert violations == [], f"{len(violations)} requests dispatched during a Retry-After pause"
+    assert len(st.hits_with_status(429)) == 40
+    assert len(pauses) == 40  # each 429 paused the group, here in this process
+    assert len(sent) == st.total_hits()  # every request the server saw was handed here
+    during = [t for t in sent if any(start < t < until for start, until in pauses)]
+    assert during == [], f"{len(during)} requests sent during a Retry-After pause"
 
 
 def test_429_storm_longer_than_max_attempts_does_not_lose_tiles(

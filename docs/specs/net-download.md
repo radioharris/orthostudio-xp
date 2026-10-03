@@ -136,7 +136,11 @@ and counters. Default `host_group=""` is a group like any other.
   storm over the queue instead of letting the first window of requests absorb it: with a
   window of 8, forty 429 with `Retry-After: 1` used to exhaust `max_attempts = 4` for eight
   requests and fail their texture although the provider had only asked to wait; now every
-  request sees at most one pushback and none is lost.
+  request sees at most one pushback and none is lost. Nothing leaves during the pause, not only
+  no new dispatch: a request let in before the 429 came back waits the pause out as it is handed
+  to the session (`_transfer`), and that wait is not counted as its latency. Under load such a
+  request left during the pause (the whole suite on six workers, 2026-10-03); the test measures
+  it on the fetcher's own clock, as each request is handed over, not at the server.
 - The benchmark never saw a 429/503 from Bing in 315 000 requests (s. 2); this branch is
   verified against the local test server, not against Bing.
 
@@ -176,7 +180,8 @@ set the estimate alone.
   Both failing = the attempt failed.
 - Hedges do not consume a window slot (they are 0.05-0.1 % of requests: 58 of 50 000 above
   0.5 s at 128, s. 2) but are capped at `max(1, window // 2)` in flight per group, so a dead
-  network cannot double the load.
+  network cannot double the load. No hedge starts while its group is paused (R2): it is a second
+  request, and the server has asked to wait.
 - Default `hedge_after_s` is 3 s in the constructor (safe for slow lines); the imagery layer
   passes a provider-tuned value (0.5 s for Bing, ~5 x p50, s. 2).
 - **(review 2026-09-13)** Over HTTP/2 a hedge (same URL, hence same hostname) is multiplexed on

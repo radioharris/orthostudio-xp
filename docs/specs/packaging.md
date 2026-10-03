@@ -90,6 +90,19 @@ so: a block that cannot shrink pushes the page wider than the window, which show
 scrollbar and as text cut off at the right, both of which a user met at the smallest window the app
 allows (`tests/test_ui_static.py::test_the_final_report_folds_before_it_runs_out_of_room`).
 
+It opens where it was left, the size it had (`window.back_where_it_was`, in pywebview's
+`before_show`): it used to open where the system chose, on the screen of the shortcut rather than
+the one the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; "above
+all on Windows"). macOS keeps the frame by name in the app's own defaults
+(`NSWindow.setFrameAutosaveName_`, `PLACE_NAME`) as the window moves or resizes. Windows writes
+`place.json` in the window's own folder as it closes (`keep_where_it_is`, in `closing`): its place
+and size as a normal window (`Bounds`, or `RestoreBounds` when it is maximized or minimized), and
+whether it was maximized. `RestoreBounds` alone follows only what code sets and the moment the
+window leaves its normal state, not a move by hand: 0.1.22rc5 kept the place of each start for
+ever (a Shadow, 2026-10-03). A place whose title
+bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
+on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
+
 The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
 own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is
 missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
@@ -164,9 +177,10 @@ library's own `.pyc` were out of date on every system, its files copied after th
 
 The setup then opens the app's code once, under its progress bar, before the app starts at the
 end (`python -B -m orthostudio.warmup`): every module of OrthoStudio XP, and on Windows the .NET
-and WebView2 files its window loads. Windows' antivirus reads each new file of a program the
-first time it is opened, and with the `.pyc` right, the first start after installing the beta
-still waited more than a minute on a cloud PC, where the next ones took seconds (2026-10-03). It
+and WebView2 files its window loads. The first time a new file is opened, Windows reads it from
+the disk and its antivirus may inspect it: with the `.pyc` right, the first start of 0.1.21 after
+its install still took about 10 s on a cloud PC, 7 of them loading the engine's code, against
+about 3 s for the next ones, and Live's build more than a minute (2026-10-02 and 2026-10-03). It
 writes nothing, passes over what cannot load, and the setup waits 5 minutes at most. A silent
 update does it too.
 
@@ -332,15 +346,21 @@ on a machine that never had OrthoStudio XP.
 
 On a tag `v*`, and by hand: one job per installer (macOS 14 for the Apple Silicon app; macOS 15,
 with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ubuntu 22.04: Triangle4XP
-compiled there runs on older glibc) builds and checks its installer and keeps it as an artifact; a
-tag also publishes them all as a release of the repository (a pre-release when the tag has a
-suffix, as in `v0.2.0-rc.1`), with `docs/releases/<version>.md` as its notes when that file exists
-(`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed. The
-private repository where the betas are made (`orthostudio-xp-dev`) builds the Apple Silicon and
-Windows installers alone: a macOS minute counts ten of the account's, and the Intel Mac's and
-Linux's installers are not tried there. It puts them in a pre-release of its own for each run
-(`beta-<run number>`), not in the run's artifacts: these count against the free plan's 0.5 GB,
-which held one beta and not the next, and a release's files do not.
+compiled there runs on older glibc) builds and checks its installer. A private repository builds
+the Windows installer alone: its minutes are counted, macOS's ten times over, and the Mac app of a
+release candidate is tried from a checkout (2026-10-03). On a tag, a first job makes the
+release as a draft (a pre-release when the tag has a suffix, as in `v0.2.0-rc.1`), with
+`docs/releases/<version>.md` as its notes when that file exists (`v0.1.0`:
+`docs/releases/0.1.0.md`), else one line saying the installers are not signed. Each installer goes
+into the draft as soon as it is built (`gh release upload`), and a last job publishes it once all
+are in: no one sees a release with an installer missing, and a build that fails leaves a draft
+nobody sees. No artifact carries them from job to job: artifacts count against the account's
+storage, which builds in a private repository filled, and a release then could not be made at all
+("Artifact storage quota has been hit", 2026-10-03); the files of a release do not count. A run by
+hand keeps its installers as the run's artifacts, for a day. On the branch of OrthoStudio XP Live's
+betas (`live-osxp`), the private repository builds the Apple Silicon installer as well, and a run
+by hand puts its installers in a pre-release of its own (`beta-<run number>`) rather than in the
+run's artifacts, for the testers to download.
 
 Before a release: `version` in `pyproject.toml` set to the tag's (the installers are named after
 it), the notes written, and the checks a person makes, which no workflow can
