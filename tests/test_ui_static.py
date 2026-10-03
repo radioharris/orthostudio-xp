@@ -4383,12 +4383,15 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     assert "min-height" in small and "height: " not in small.replace("min-height", "")
 
 
-def test_quits_label_stands_on_the_middle_of_its_icon() -> None:
+def test_quits_label_stands_on_its_icon() -> None:
     """On Windows, Quit's label stood under its icon, with more room on its left than on its right
     (a user, 2026-10-04). Segoe UI sets its letters lower in their line than the Mac's font: the
     label's box is trimmed to its capitals and its line, which the flex centring puts on the middle
-    of the icon. The icon was drawn 1.4 units above the middle of its 24: it stands in the middle
-    now. Its margin inside its box widened the left: the right takes as much."""
+    of the icon's box. The icon's ring, 15.8 units high with its stroke, is taller than the 14.5 of
+    the 12px label's capitals: drawn in the middle of its box, it hung 0.7px below the text, and
+    the same user saw that at once on his Mac. It sits on the baseline now, as a round letter does,
+    its middle 0.5 unit above the box's. Its margin inside its box widened the left: the right
+    takes as much."""
     html = (UI / "index.html").read_text(encoding="utf-8")
     button = html[html.index('id="quit-btn"') :]
     button = button[: button.index("</button>")]
@@ -4399,9 +4402,11 @@ def test_quits_label_stands_on_the_middle_of_its_icon() -> None:
         r"M12 ([\d.]+)v([\d.]+)M([\d.]+) ([\d.]+)a([\d.]+) \5 0 1 0 ([\d.]+) 0", d.group(1)
     )
     assert m is not None, d.group(1)
-    top, _stem, _x, chord_y, radius, chord = (float(v) for v in m.groups())
-    bottom = chord_y + (radius**2 - (chord / 2) ** 2) ** 0.5 + radius
-    assert abs((top + bottom) / 2 - 12) < 0.05, (top, bottom)
+    top, stem, _x, chord_y, radius, chord = (float(v) for v in m.groups())
+    centre = chord_y + (radius**2 - (chord / 2) ** 2) ** 0.5
+    assert abs(centre - 11.5) < 0.05, centre
+    # the stem as it was drawn, into the ring and stopping short of its centre
+    assert abs(top + stem - (centre - 0.2)) < 0.05, (top, stem, centre)
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "padding: 0 8px 0 6px;" in rules[".topbar-tools .quit-btn"]
     label = rules[".topbar-tools .quit-btn span"]
