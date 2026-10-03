@@ -313,10 +313,16 @@ on a machine that never had OrthoStudio XP.
 
 On a tag `v*`, and by hand: one job per installer (macOS 14 for the Apple Silicon app; macOS 15,
 with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ubuntu 22.04: Triangle4XP
-compiled there runs on older glibc) builds and checks its installer and keeps it as an artifact; a
-tag also publishes them all as a release of the repository (a pre-release when the tag has a
-suffix, as in `v0.2.0-rc.1`), with `docs/releases/<version>.md` as its notes when that file exists
-(`v0.1.0`: `docs/releases/0.1.0.md`), else one line saying the installers are not signed.
+compiled there runs on older glibc) builds and checks its installer. On a tag, a first job makes the
+release as a draft (a pre-release when the tag has a suffix, as in `v0.2.0-rc.1`), with
+`docs/releases/<version>.md` as its notes when that file exists (`v0.1.0`:
+`docs/releases/0.1.0.md`), else one line saying the installers are not signed. Each installer goes
+into the draft as soon as it is built (`gh release upload`), and a last job publishes it once all
+four are in: no one sees a release with an installer missing, and a build that fails leaves a draft
+nobody sees. No artifact carries them from job to job: artifacts count against the account's
+storage, which builds in a private repository filled, and a release then could not be made at all
+("Artifact storage quota has been hit", 2026-10-03); the files of a release do not count. A run by
+hand keeps its installers as the run's artifacts, for a day.
 
 Before a release: `version` in `pyproject.toml` set to the tag's (the installers are named after
 it), the notes written, and the checks a person makes, which no workflow can
