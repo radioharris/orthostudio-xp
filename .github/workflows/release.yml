@@ -1,8 +1,8 @@
 name: release
 # The installers of OrthoStudio XP (tools/package/build.py, docs/specs/packaging.md): each built and
 # checked on its own system. A tag v* makes them a GitHub release: a draft first, which each
-# system's installer goes into as soon as it is built, published once all four are in. A manual run
-# keeps them as the run's artifacts, for a day.
+# system's installer goes into as soon as it is built, published once all are in. A manual run
+# keeps them as the run's artifacts, for a day. A private repository builds the Windows one alone.
 #
 # No artifact carries a tag's installers from one job to the next: artifacts count against the
 # account's storage, which builds in a private repository filled ("Artifact storage quota has been
@@ -58,12 +58,11 @@ jobs:
         # app on macOS 15 (Apple Silicon too, checked under Rosetta): pyproj's Intel wheels ask for
         # macOS 15. Ubuntu 22.04: Triangle4XP compiled there runs on the older glibc of the
         # distributions still in use.
-        include:
-          - os: macos-14
-          - os: macos-15
-            machine: x86_64
-          - os: windows-latest
-          - os: ubuntu-22.04
+        #
+        # A private repository builds the Windows installer alone: its minutes are counted, macOS's
+        # ten times over, and the Mac app of a release candidate is tried from a checkout
+        # (2026-10-03).
+        include: ${{ fromJSON(github.event.repository.private && '[{"os":"windows-latest"}]' || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
