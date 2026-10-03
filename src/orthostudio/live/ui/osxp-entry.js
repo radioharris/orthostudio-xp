@@ -2,16 +2,20 @@
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // OrthoStudio XP Live's button in OrthoStudio XP's top bar (orthostudio/live/app_start.py): shown
 // only when Live is switched on, its dot saying whether Live streams, a click opening Live's
-// window, or bringing it to the front. OrthoStudio XP's page loads it with one line; everything
-// else of it is here, in its own words, EN and FR as the page's language.
+// window, or bringing it to the front; and the question OrthoStudio XP's page asks before a build
+// while Live streams. OrthoStudio XP's page loads it with one line; everything else of it is here,
+// in its own words, EN and FR as the page's language.
 
 const POLL_MS = 5000;
 const WORDS = {
   en: { live: "Live", off: "stopped", starting: "starting", idle: "ready", streaming: "streaming",
-    stopping: "stopping", leaving: "waiting for X-Plane", deleting: "deleting", title: "Open OrthoStudio XP Live" },
+    stopping: "stopping", leaving: "waiting for X-Plane", deleting: "deleting", title: "Open OrthoStudio XP Live",
+    before_build: "OrthoStudio XP Live is streaming. A build uses a lot of processor time and may slow X-Plane and Live down." },
   fr: { live: "Live", off: "arrêté", starting: "démarre", idle: "prêt", streaming: "en cours",
-    stopping: "s'arrête", leaving: "attend X-Plane", deleting: "efface", title: "Ouvrir OrthoStudio XP Live" },
+    stopping: "s'arrête", leaving: "attend X-Plane", deleting: "efface", title: "Ouvrir OrthoStudio XP Live",
+    before_build: "OrthoStudio XP Live est en vol. Un build utilise beaucoup le processeur et peut ralentir X-Plane et Live." },
 };
+const FLYING = new Set(["starting", "streaming"]);
 const DOT = { off: "var(--skip)", idle: "var(--fg-3)", streaming: "var(--ok)" };
 
 const words = () => (document.documentElement.lang || navigator.language || "en").toLowerCase().startsWith("fr")
@@ -49,6 +53,15 @@ function makeButton() {
   return { button, dot, name, state };
 }
 
+/** OrthoStudio XP's page asks this before a build starts (app.js askedBeforeBuild), in its own
+ * language: while Live streams, a build may slow X-Plane and Live down. A question, never a
+ * refusal. */
+export async function beforeBuild(lang, ask = status) {
+  const live = await ask();
+  if (!live || !live.enabled || !FLYING.has(live.state)) return null;
+  return (lang === "fr" ? WORDS.fr : WORDS.en).before_build;
+}
+
 async function boot() {
   const first = await status();
   const tools = document.querySelector(".topbar-tools");
@@ -67,4 +80,7 @@ async function boot() {
   setInterval(async () => draw(await status()), POLL_MS);
 }
 
-boot();
+if (typeof window !== "undefined") {
+  (window.osxpBeforeBuild ||= []).push((lang) => beforeBuild(lang));
+  boot();
+}

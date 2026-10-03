@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+     Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. -->
+<!-- The app's frame (orthostudio/live/frame.py): one window for OrthoStudio XP and OrthoStudio
+     XP Live, one top bar (the app's name, Build | Live, the screens of the part shown, the
+     language, the theme, Quit) and one foot (the text size, the zoom) for both, each part's page
+     in a frame of its own, kept alive while the other is shown. Made of OrthoStudio XP's parts
+     (styles.css). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OrthoStudio XP</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="frame/frame.css">
+</head>
+<body class="frame">
+<header class="topbar frame-top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M3 12h6l3-4 3 6 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">OrthoStudio XP</span>
+    <span class="brand-version num" id="brand-version"></span>
+  </div>
+  <div class="frame-parts" id="frame-parts" role="group">
+    <button type="button" class="frame-part" data-part="build" aria-pressed="false">
+      <span class="frame-part-name">Build</span>
+      <span class="frame-state" id="state-build" hidden></span>
+    </button>
+    <button type="button" class="frame-part" data-part="live" aria-pressed="false">
+      <span class="frame-part-name">Live</span>
+      <span class="frame-state" id="state-live" hidden></span>
+    </button>
+  </div>
+  <nav class="nav" aria-label="Screens" id="nav"></nav>
+  <div class="topbar-tools">
+    <label class="sr-only" for="lang-select" data-i18n="app.language">Language</label>
+    <select id="lang-select" class="tool-select">
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+    </select>
+    <button type="button" id="theme-btn" class="tool-btn" data-i18n-title="app.theme" title="Light / dark theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>
+      </svg>
+    </button>
+    <button type="button" id="quit-btn" class="btn btn-small quit-btn" data-i18n-title="quit.help" title="Quit OrthoStudio XP">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3v8M7.1 6.2a7 7 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span data-i18n="quit.button">Quit</span>
+    </button>
+  </div>
+</header>
+
+<main class="frame-main">
+  <iframe id="part-build" class="frame-page" title="OrthoStudio XP" hidden allow="clipboard-read; clipboard-write"></iframe>
+  <iframe id="part-live" class="frame-page" title="OrthoStudio XP Live" hidden allow="clipboard-read; clipboard-write"></iframe>
+</main>
+
+<!-- the text size and the zoom, for both parts, laid over the right end of the shown page's foot -->
+<div class="frame-foot" id="frame-foot">
+  <label class="status-item status-text" data-i18n-title="app.text_size">
+    <span class="status-text-mark" aria-hidden="true">Aa</span>
+    <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
+  </label>
+  <span class="status-item status-zoom" id="status-zoom" hidden>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
+    <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
+    <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
+  </span>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- what the frame starts from: the part shown first, what the pilot chose (frame.py frame_page) -->
+<script type="application/json" id="frame-given">{}</script>
+<script type="module" src="frame/frame.js"></script>
+</body>
+</html>

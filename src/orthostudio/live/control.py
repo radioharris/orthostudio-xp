@@ -241,6 +241,9 @@ class LiveControl:
         self.leaving_for: str | None = None
         # the window's Quit, answered yes: it goes once the stream is out (:meth:`close`)
         self.closing = False
+        # shown in the app's frame (orthostudio.live.frame): its page stays when the welcome's
+        # answer is building, the frame showing OrthoStudio XP's part beside it
+        self.in_frame = False
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
         # AutoOrtho's regions: GitHub's list, read in the background, and one install at a time
@@ -568,7 +571,7 @@ class LiveControl:
 
             settings = self._settings().model_copy(update={"app_home": home})
             (save or save_settings)(settings)
-        if home == "build":
+        if home == "build" and not self.in_frame:
             self.leaving_for = "build"
 
     # --- AutoOrtho's regions -----------------------------------------------------------------

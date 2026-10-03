@@ -55,6 +55,10 @@ export const STRINGS = {
     "quit.xplane": "X-Plane is running: Live stays until X-Plane quits, then takes its pack out of X-Plane.",
     "quit.stay": "Stay",
     "quit.confirm": "Quit OrthoStudio XP Live",
+    "building.title": "A build is running",
+    "building.text": "OrthoStudio XP is building tiles. A build uses a lot of processor time and may slow X-Plane and Live down.",
+    "building.wait": "Not now",
+    "building.go": "Go on anyway",
     "action.fresh": "From scratch",
     "action.fresh_title":
       "Forgets every texture built and every photo downloaded, as the very first time, and builds them again with the photo source above. Without it, textures already built keep their photos.",
@@ -388,6 +392,10 @@ export const STRINGS = {
     "quit.xplane": "X-Plane tourne : Live reste jusqu'à ce que X-Plane quitte, puis sort son pack de X-Plane.",
     "quit.stay": "Rester",
     "quit.confirm": "Quitter OrthoStudio XP Live",
+    "building.title": "Un build est en cours",
+    "building.text": "OrthoStudio XP construit des tuiles. Un build utilise beaucoup le processeur et peut ralentir X-Plane et Live.",
+    "building.wait": "Pas maintenant",
+    "building.go": "Continuer quand même",
     "action.fresh": "Repartir de zéro",
     "action.fresh_title":
       "Oublie toutes les textures construites et les photos téléchargées, comme la toute première fois, et les reconstruit avec la source photo choisie plus haut. Sans cela, les textures déjà construites gardent leurs photos.",

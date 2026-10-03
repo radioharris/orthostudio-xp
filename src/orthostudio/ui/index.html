@@ -15,7 +15,7 @@
 <body>
 <a class="skip" href="#main" data-i18n="nav.skip">Skip to content</a>
 
-<header class="topbar">
+<header class="topbar" data-frame-owned>
   <div class="brand">
     <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -400,12 +400,12 @@
   <span class="status-item num" id="status-library"></span>
   <span class="status-item status-home" id="status-home"></span>
   <!-- the size of the page's text (app.js bindTextSize), applied at once, in a browser too -->
-  <label class="status-item status-text" data-i18n-title="app.text_size">
+  <label class="status-item status-text" data-i18n-title="app.text_size" data-frame-owned>
     <span class="status-text-mark" aria-hidden="true">Aa</span>
     <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
   </label>
   <!-- the window's zoom (zoom.js bindZoom): shown in the window alone, once it says it scales -->
-  <span class="status-item status-zoom" id="status-zoom" hidden>
+  <span class="status-item status-zoom" id="status-zoom" hidden data-frame-owned>
     <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
     <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
     <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
@@ -467,6 +467,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="stay" autofocus data-i18n="quit.stay">Stay</button>
       <button type="submit" class="btn btn-danger-solid" value="quit" data-i18n="quit.confirm">Quit OrthoStudio XP</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- A question another part of the app asks before a build (app.js askedBeforeBuild). -->
+<dialog id="build-question" class="dialog" role="alertdialog" aria-labelledby="build-question-title" aria-describedby="build-question-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="build-question-title" data-i18n="build_question.title">Build now?</h2>
+    <div class="dialog-text" id="build-question-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="wait" autofocus data-i18n="build_question.wait">Not now</button>
+      <button type="submit" class="btn btn-primary" value="build" data-i18n="build_question.build">Build anyway</button>
     </div>
   </form>
 </dialog>

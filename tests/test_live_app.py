@@ -82,6 +82,91 @@ def test_live_that_cannot_start_leaves_osxp_s_window(
     assert app_start.app_start(home / "log") is True and opened == [1]
 
 
+def test_with_live_on_the_app_opens_in_its_frame(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where the system gives a window, OrthoStudio XP and Live are one window, the app's frame:
+    shown first, the part asked for, else the one chosen before, else Live's with the question; one
+    open in another program comes to the front instead; turned off, the two windows of before."""
+    from orthostudio import window
+    from orthostudio.live import frame
+
+    monkeypatch.delenv(frame.OFF_ENV)
+    monkeypatch.setattr(window, "possible", lambda: True)
+    monkeypatch.setattr(app_start, "_osxp_to_front", lambda port: False)
+    shown: list[tuple[str, bool]] = []
+
+    def show_frame(log: Path, *, first: str, welcome: bool = False) -> bool:
+        shown.append((first, welcome))
+        return True
+
+    monkeypatch.setattr(frame, "show_frame", show_frame)
+    assert not app_start.app_start(home / "log") and shown == []  # Live off: OrthoStudio XP's
+    switch_on()
+    assert app_start.app_start(home / "log") and shown == [("live", True)]  # the question first
+    for chosen, first in (("build", "build"), ("live", "live")):
+        save_settings(LiveSettings(app_home=chosen))
+        assert app_start.app_start(home / "log") and shown[-1] == (first, False)
+    monkeypatch.setenv(app_start.START_ENV, "build")
+    save_settings(LiveSettings(app_home="ask"))
+    assert app_start.app_start(home / "log") and shown[-1] == ("build", False)
+    monkeypatch.delenv(app_start.START_ENV)
+    monkeypatch.setattr(app_start, "_osxp_to_front", lambda port: True)
+    count = len(shown)
+    assert app_start.app_start(home / "log") and len(shown) == count  # up elsewhere: in front
+    # turned off (OSXP_FRAME=0), or no window to give: the two windows of before
+    monkeypatch.setattr(app_start, "_osxp_to_front", lambda port: False)
+    monkeypatch.setenv(frame.OFF_ENV, "0")
+    windows_shown = windows(monkeypatch)
+    assert app_start.app_start(home / "log") and windows_shown == [(app_start.LIVE_PORT, "welcome")]
+    monkeypatch.delenv(frame.OFF_ENV)
+    monkeypatch.setattr(window, "possible", lambda: False)
+    assert app_start.app_start(home / "log") and len(shown) == count
+
+
+def test_a_frame_that_cannot_be_shown_leaves_the_windows_of_before(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio import window
+    from orthostudio.live import frame
+
+    monkeypatch.delenv(frame.OFF_ENV)
+    monkeypatch.setattr(window, "possible", lambda: True)
+    monkeypatch.setattr(app_start, "_osxp_to_front", lambda port: False)
+    monkeypatch.setattr(frame, "show_frame", lambda log, **kw: False)
+    switch_on("live")
+    shown = windows(monkeypatch)
+    assert app_start.app_start(home / "log") and shown == [(app_start.LIVE_PORT, None)]
+
+
+@pytest.mark.anyio
+async def test_in_the_frame_the_welcome_and_build_tiles_show_its_other_part(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In the app's frame, the welcome's answer "build" and Live's Build tiles show OrthoStudio
+    XP's part of the same window: no other window opens, and Live's page stays."""
+    from types import SimpleNamespace
+
+    from orthostudio import desktop
+    from orthostudio.live import frame
+
+    monkeypatch.setattr(app_start, "open_osxp", lambda: pytest.fail("another window opened"))
+    parts: list[str] = []
+    monkeypatch.setattr(frame, "current", lambda: SimpleNamespace(show_part=parts.append))
+    control = LiveControl(echo=lambda _: None)
+    control.in_frame = True
+    async with client_for(create_live_app(control)) as client:
+        await client.post("/api/live/home", json={"home": "build", "remember": True})
+        assert load_settings().app_home == "build" and control.leaving_for is None
+        assert (await client.post("/api/live/osxp")).json() == {"opened": "here"}
+        assert parts == ["build"]
+        monkeypatch.setattr(desktop, "_listening", lambda port: False)
+        assert (await client.get("/api/live/osxp-build")).json() == {"building": False}
+        monkeypatch.setattr(desktop, "_listening", lambda port: True)
+        monkeypatch.setattr(desktop, "a_build_runs", lambda port, timeout_s=1.5: True)
+        assert (await client.get("/api/live/osxp-build")).json() == {"building": True}
+
+
 def test_osxp_as_ever_without_live(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shown = windows(monkeypatch)
     assert not app_start.app_start(home / "log")  # not switched on: OrthoStudio XP's window

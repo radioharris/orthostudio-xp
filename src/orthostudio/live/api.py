@@ -17,8 +17,9 @@ can include as it is the day Live comes into its window (``app.include_router``)
   stream runs, or X-Plane for the textures);
 - ``POST /api/live/launch-xplane``: start X-Plane (409 until Live is ready for it);
 - ``POST /api/live/home`` ``{"home": "live" | "build", "remember": bool}``: the welcome page's
-  answer; ``POST /api/live/osxp``: OrthoStudio XP's window; ``POST /api/live/front``: this window
-  to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
+  answer; ``POST /api/live/osxp``: OrthoStudio XP's window (its part, in the app's frame);
+  ``GET /api/live/osxp-build``: whether OrthoStudio XP builds now; ``POST /api/live/front``: this
+  window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
@@ -195,9 +196,10 @@ def live_router(
     @router.post("/home")
     def home(body: HomeBody) -> dict[str, Any]:
         control.choose_home(body.home, remember=body.remember)
-        if body.home == "build":
+        if body.home == "build" and not control.in_frame:
             # OrthoStudio XP's window first, beside this one in its program where it can be, so
-            # that the app is still there when this one goes (control.gone)
+            # that the app is still there when this one goes (control.gone); in the app's frame
+            # the page asks the frame for OrthoStudio XP's part itself (embed.js askFrame)
             from orthostudio.live.app_start import open_osxp
 
             open_osxp()
@@ -205,9 +207,26 @@ def live_router(
 
     @router.post("/osxp")
     def osxp() -> dict[str, Any]:
+        if control.in_frame:
+            from orthostudio.live import frame
+
+            shown = frame.current()
+            if shown is not None:
+                shown.show_part("build")  # OrthoStudio XP's part of the app's frame
+                return {"opened": "here"}
         from orthostudio.live.app_start import open_osxp
 
         return {"opened": open_osxp()}
+
+    @router.get("/osxp-build")
+    def osxp_build() -> dict[str, Any]:
+        """Whether OrthoStudio XP builds now, which a start or a departure prepared asks first: a
+        build uses a lot of processor time and may slow X-Plane and Live down (a question, never a
+        refusal). A second at most: an engine that does not answer builds nothing worth asking
+        about."""
+        from orthostudio.desktop import ENGINE_PORT, _listening, a_build_runs
+
+        return {"building": _listening(ENGINE_PORT) and a_build_runs(ENGINE_PORT, timeout_s=1.0)}
 
     @router.post("/front")
     def to_the_front() -> dict[str, Any]:

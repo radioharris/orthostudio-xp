@@ -767,7 +767,10 @@ def test_the_foot_of_the_page_is_osxp_s_text_size_and_zoom() -> None:
     assert 'zoomRefresh = zoom.bindZoom(toast, $("status-zoom"));' in js
     change = js[js.index('$("lang-select").addEventListener("change"') :]
     change = change[: change.index("\n  });")]
-    assert "zoomRefresh?.();" in change and "textSizeRefresh?.();" in change
+    assert "languageChanged();" in change  # what the page says again, the frame's choice too
+    again = js[js.index("function languageChanged() {") :]
+    again = again[: again.index("\n}")]
+    assert "zoomRefresh?.();" in again and "textSizeRefresh?.();" in again
     # its words are OrthoStudio XP's, in both languages
     keys = [
         "app.text_size",

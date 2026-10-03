@@ -34,6 +34,7 @@ import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary 
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
+import { bindFrame, inFrame } from "./embed.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -2168,6 +2169,7 @@ function showScreen(name, arg) {
   }
   const hash = (arg ? `#${name}/${arg}` : `#${name}`) + HASH_OPTIONS;
   if (location.hash !== hash) history.replaceState(null, "", hash);
+  tellFrame?.(); // the app's frame shows this page's screens as its tabs (embed.js)
   if (name === "works") loadWorks(arg);
   else followBuildUnderWay();
   if (name === "library") {
@@ -2493,6 +2495,42 @@ function confirmQuit(active, queued = 0) {
   };
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => resolve(dialog.returnValue === "quit"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/**
+ * What another part of the app asks before a build starts (`window.osxpBeforeBuild`: functions
+ * that answer the words of a question in the page's language, or nothing), each in turn in the
+ * page's modal <dialog>, the build going on only on yes. A question, never a refusal: the pilot
+ * may build all the same.
+ */
+async function askedBeforeBuild() {
+  const asks = (typeof window !== "undefined" && window.osxpBeforeBuild) || [];
+  for (const ask of asks) {
+    let text = null;
+    try {
+      text = await ask(language());
+    } catch (_e) {
+      text = null; // a question that cannot be put is not asked
+    }
+    if (text && !(await confirmBeforeBuild(text))) return false;
+  }
+  return true;
+}
+
+function confirmBeforeBuild(text) {
+  const dialog = $("build-question");
+  if (dialog.open) return Promise.resolve(false);
+  clear($("build-question-text")).append(h("p", null, text));
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "build"), { once: true });
     dialog.showModal();
   });
 }
@@ -3653,6 +3691,7 @@ async function build(install) {
     if (!state.plan || diskVerdict(state.plan.disk).ok === false) return;
     const req = await planRequest();
     if (!req) return;
+    if (!(await askedBeforeBuild())) return;
     // Asked while another build runs, it waits for its turn (a user asked for a queue).
     const res = await api("POST", "/api/jobs", { ...req, install, queue: true });
     planMap?.zonesAccepted();
@@ -3922,6 +3961,7 @@ function buildingOnMap() {
 /** The builds under way or waiting changed: step 4's note, the map's build layer and the Library's
  * buttons follow, and so does the job the page watches off Works. */
 function jobsChanged() {
+  tellFrame?.(); // what the page is doing, which the app's frame says beside its name (embed.js)
   renderBuildActions();
   planMap?.jobChanged();
   if (state.screen === "library" && state.library) renderLibrary();
@@ -4860,6 +4900,7 @@ async function cancelJob() {
 
 async function retryJob() {
   if (!state.jobId) return;
+  if (!(await askedBeforeBuild())) return;
   try {
     const res = await api("POST", `/api/jobs/${encodeURIComponent(state.jobId)}/retry`, { queue: true });
     if (res?.queue_position > 0) {
@@ -6024,6 +6065,40 @@ let zoomRefresh = null;
 /** Writes the text size's choices again in the page's language (bindTextSize). */
 let textSizeRefresh = null;
 
+/** Gives the app's frame this page's screens again, when the page is shown in one (embed.js). */
+let tellFrame = null;
+
+/** The theme this page keeps, "dark", "light" or "" (the system's). */
+function storedTheme() {
+  try {
+    return localStorage.getItem("osxp.theme") || "";
+  } catch (_e) {
+    return "";
+  }
+}
+
+/**
+ * What the pilot chose in the app's frame, applied as if chosen here: the frame shows the
+ * language, the theme and the text size once for the app's pages (embed.js).
+ */
+function framePrefs({ language: wanted, theme, textSize }) {
+  if (wanted && wanted !== language()) {
+    setLanguage(wanted, true);
+    $("lang-select").value = language();
+    rerenderAll();
+    tellFrame?.();
+  }
+  if (theme !== undefined && theme !== null) applyTheme(theme || null);
+  if (textSize) applyTextSize(textSize);
+}
+
+/** No tab to close where the page is a window, of its own or in the app's frame. */
+function stoppedInAWindow() {
+  const stopped = $("stopped").querySelector("p");
+  stopped.dataset.i18n = "quit.stopped_text_window";
+  stopped.textContent = t("quit.stopped_text_window");
+}
+
 /**
  * Whether this page is OrthoStudio XP's own window rather than a tab in a browser.
  *
@@ -6077,13 +6152,24 @@ async function boot() {
   bindFind(); // the bar's own field and buttons: the same page runs in a browser
   textSizeRefresh = bindTextSize($("text-size"));
   whenInOwnWindow(() => {
-    // No tab to close in a window of its own.
-    const stopped = $("stopped").querySelector("p");
-    stopped.dataset.i18n = "quit.stopped_text_window";
-    stopped.textContent = t("quit.stopped_text_window");
+    stoppedInAWindow();
     bindFindKeys();
     zoomRefresh = bindZoom((text) => toast(text), $("status-zoom"));
   });
+  // in the app's frame: Cmd+F here, the zoom the frame's (embed.js)
+  tellFrame = bindFrame({
+    // the screens' names as the page's own bar says them, in its language
+    tabs: () => SCREENS.map((id) => ({ id, label: $("nav").querySelector(`[data-screen="${id}"]`)?.textContent || id })),
+    current: () => state.screen || "plan",
+    show: (id) => showScreen(id),
+    prefs: framePrefs,
+    ownPrefs: () => ({ language: language(), theme: storedTheme(), textSize: savedTextSize() }),
+    busy: () => (activeJobs().length ? "building" : ""),
+  });
+  if (inFrame()) {
+    stoppedInAWindow();
+    bindFindKeys();
+  }
   $("mock-badge").hidden = !MOCK;
 
   $("nav").addEventListener("click", (ev) => {

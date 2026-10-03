@@ -830,9 +830,11 @@ def _make(
     on_close: Callable[[], bool] | None,
     note: Callable[[str], None] | None,
     size: tuple[int, int],
+    tools: Any = None,
 ) -> Any:
     """A window of the app, made and known by ``name`` until it closes: what :func:`show` and
-    :func:`open_another` share."""
+    :func:`open_another` share. ``tools``: what its page may ask of it (pywebview's ``js_api``),
+    :class:`PageTools` by default."""
     width, height = fits_the_screen(size, webview.screens)
     window = webview.create_window(
         title,
@@ -850,7 +852,7 @@ def _make(
         # window that zoomed itself instead would take that away. Cmd+plus and Ctrl+plus are the
         # page's business too, through PageTools.set_zoom.
         zoomable=False,
-        js_api=PageTools(name),
+        js_api=PageTools(name) if tools is None else tools,
     )
     if window is None:  # pywebview answers nothing when it could not make one
         raise RuntimeError("the web view gave no window")
@@ -921,6 +923,7 @@ def show(
     storage: Path | None = None,
     place: str = PLACE_NAME,
     menu: Sequence[tuple[str, Callable[[], None]]] | None = None,
+    tools: Any = None,
 ) -> None:
     """Show ``url`` in a window of its own, and return once the app's last window is closed.
 
@@ -936,7 +939,8 @@ def show(
     view's folder, every window's while the app runs (:func:`storage_dir` by default); ``place``
     the window's name (:func:`back_where_it_was`, :func:`place_file`). ``menu``: the entries of
     the Window menu, (title, what it does), where the app has one; by default this window's own,
-    which brings it back.
+    which brings it back. ``tools``: what the page may ask of the window (pywebview's ``js_api``),
+    :class:`PageTools` by default.
 
     Raises when this system has no web view (the package missing, or no toolkit under it). The
     engine must not have been started before this returns, so that a system without a window
@@ -957,6 +961,7 @@ def show(
         on_close=on_close,
         note=note,
         size=size,
+        tools=tools,
     )
     _first, _store = place, store
 

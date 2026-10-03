@@ -525,6 +525,7 @@ function drawRegions(status) {
 
 function draw(status) {
   last = status;
+  tellFrame?.(); // its state, which the app's frame says beside Live's name (embed.js)
   drawSimbrief();
   drawState(status);
   drawFlight(status);
@@ -817,6 +818,33 @@ async function quitLive() {
   await act("close");
 }
 
+/**
+ * Whether to go on while OrthoStudio XP builds (GET /api/live/osxp-build, a second at most): a
+ * build uses a lot of processor time and may slow X-Plane and Live down. Asked in the page's modal
+ * <dialog> before a start or a departure prepared; never refused, the pilot may fly all the same.
+ */
+async function askedWhileBuilding() {
+  let building = false;
+  try {
+    building = Boolean((await api("osxp-build"))?.building);
+  } catch (_e) {
+    building = false; // no answer: nothing worth asking about
+  }
+  if (!building) return true;
+  const dialog = $("build-running");
+  if (dialog.open) return false;
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "go"), { once: true });
+    dialog.showModal();
+  });
+}
+
 async function act(path, body) {
   try {
     await api(path, { method: "POST", body });
@@ -919,6 +947,7 @@ function loadDeparture() {
 }
 
 async function prepareDeparture() {
+  if (!(await askedWhileBuilding())) return;
   const departure = $("departure").value.trim();
   $("departure-error").hidden = true;
   try {
@@ -1017,6 +1046,7 @@ function toast(message) {
 }
 
 let osxpWords = null; // OrthoStudio XP's words (static/i18n.js), which its find bar and zoom speak
+let textSizeTools = null; // its text size (static/textsize.js), once loaded
 let findTools = null; // its find bar (static/find.js), once loaded
 let zoomRefresh = null; // writes the zoom's level again in the page's language, once bound
 let textSizeRefresh = null; // writes the text size's choices again, once bound
@@ -1031,14 +1061,16 @@ let textSizeRefresh = null; // writes the text size's choices again, once bound
  */
 async function bindPageTools() {
   try {
-    const [words, find, zoom, textSize] = await Promise.all([
+    const [words, find, zoom, textSize, embed] = await Promise.all([
       import("../static/i18n.js"),
       import("../static/find.js"),
       import("../static/zoom.js"),
       import("../static/textsize.js"),
+      import("../static/embed.js"),
     ]);
     osxpWords = words;
     findTools = find;
+    textSizeTools = textSize;
     osxpWords.setLanguage(language());
     textSize.applyTextSize(textSize.savedTextSize());
     textSizeRefresh = textSize.bindTextSize($("text-size"));
@@ -1047,8 +1079,30 @@ async function bindPageTools() {
       find.bindFindKeys();
       zoomRefresh = zoom.bindZoom(toast, $("status-zoom"));
     });
+    if (embed.inFrame()) find.bindFindKeys(); // in the app's frame: Cmd+F here, the zoom the frame's
+    // in the app's frame, its screens are the frame's tabs, its choices the frame's (embed.js)
+    tellFrame = embed.bindFrame({
+      // the screens' names as the page's own bar says them, in its language
+      tabs: () => SCREENS.map((id) => ({ id, label: $("nav").querySelector(`[data-screen="${id}"]`)?.textContent || id })),
+      current: () => shownScreen,
+      show: (id) => showScreen(id),
+      prefs: framePrefs,
+      ownPrefs: () => ({ language: language(), textSize: textSize.savedTextSize() }), // no theme of its own
+      busy: () => last?.state || "",
+    });
   } catch (_e) {
     // not there: the page works without them
+  }
+}
+
+/** Whether this page is shown in the app's frame (static/embed.js frameOrigin, which comes with
+ * OrthoStudio XP's other parts a moment later): known at once, so that the bars the frame shows
+ * for it never show here meanwhile. */
+function inAppFrame() {
+  try {
+    return window.parent !== window && /^http:\/\/127\.0\.0\.1:\d+$/.test(location.ancestorOrigins?.[0] || "");
+  } catch (_e) {
+    return false;
   }
 }
 
@@ -1131,6 +1185,7 @@ function showScreen(name, question = null) {
     else btn.removeAttribute("aria-current");
   }
   if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+  tellFrame?.(); // the app's frame shows these screens as its tabs (embed.js)
   findTools?.findForget(); // an open find bar looks in the screen now shown
   if (name === "live") liveMap?.shown();
   if (question) showQuestion(question);
@@ -1175,7 +1230,43 @@ async function loadProviders() {
   renderProviders(saved?.provider || "BI");
 }
 
+let tellFrame = null; // gives the app's frame these screens again, in it (embed.js)
+
+/** Everything the page says again in a new language, chosen here or in the app's frame. */
+function languageChanged() {
+  osxpWords?.setLanguage(language());
+  tellLanguage();
+  liveMap?.languageChanged();
+  applyStatic(document);
+  zoomRefresh?.();
+  textSizeRefresh?.();
+  renderZooms();
+  renderProviders($("set-provider").value);
+  drawSearch();
+  drawDeparture();
+  if (last) draw(last);
+  tellFrame?.();
+}
+
+/** The theme chosen in the app's frame: Live's own page follows the system's. */
+function applyTheme(theme) {
+  if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+}
+
+/** What the pilot chose in the app's frame, applied as if chosen here (embed.js). */
+function framePrefs({ language: wanted, theme, textSize }) {
+  if (wanted && wanted !== language()) {
+    setLanguage(wanted, true);
+    $("lang-select").value = language();
+    languageChanged();
+  }
+  if (theme !== undefined && theme !== null) applyTheme(theme);
+  if (textSize) textSizeTools?.applyTextSize(textSize);
+}
+
 function boot() {
+  if (inAppFrame()) document.documentElement.classList.add("in-frame"); // its bars, the frame's
   // before any other listener: the click is the text's, not the field's
   document.addEventListener("click", (ev) => {
     if (isTitleClick(ev.target)) ev.preventDefault();
@@ -1187,20 +1278,12 @@ function boot() {
   drawStart();
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
-    osxpWords?.setLanguage(language());
-    tellLanguage();
-    liveMap?.languageChanged();
-    applyStatic(document);
-    zoomRefresh?.();
-    textSizeRefresh?.();
-    renderZooms();
-    renderProviders($("set-provider").value);
-    drawSearch();
-    drawDeparture();
-    if (last) draw(last);
+    languageChanged();
   });
   $("quit-btn").addEventListener("click", quitLive);
-  $("start-btn").addEventListener("click", () => act("start", { fresh: $("fresh").checked }));
+  $("start-btn").addEventListener("click", async () => {
+    if (await askedWhileBuilding()) act("start", { fresh: $("fresh").checked });
+  });
   $("departure-btn").addEventListener("click", prepareDeparture);
   $("departure").addEventListener("keydown", (event) => {
     if (event.key === "Enter") prepareDeparture();

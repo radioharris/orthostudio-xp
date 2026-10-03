@@ -19,16 +19,21 @@ do the same from the terminal.
 
 ## One app with OrthoStudio XP
 
-Live and OrthoStudio XP are one app. At its first start the app asks what you want to do: fly now,
-with Live, or build your tiles, with OrthoStudio XP. It remembers the answer, unless you untick the
-box, and opens that window at each start after; Live's settings (When the app starts) change it.
-Each window has a button to the other, which brings it back when it is open already: Live in
-OrthoStudio XP's top bar, its dot saying whether Live streams, and Build tiles in Live's. The two
-windows are one program, with one icon in the Dock or the taskbar, and each opens beside the other.
-Quit, at the right of Live's top bar, asks as OrthoStudio XP's does: a stream stops, and Live stays
-until X-Plane has quit. Quit in a window closes that window alone, as its close button does on
-Windows, and the app ends with its last window. Cmd+Q, on a Mac, quits the app, both windows,
-asking once first while a build or a stream runs. Where a computer cannot show the app's own window (a Linux
+Live and OrthoStudio XP are one app, in one window (a trial). At the top, Build | Live shows one or
+the other, with what the other is doing in a word beside its name (build under way, in flight), and
+the tabs of the one shown: Plan, Works, Library and Settings for Build, Live and Settings for Live.
+The language, the theme, Quit, and at the foot the text size and the zoom, are there once for both.
+Each is loaded the first time you show it, and stays: a build or a stream goes on while you look at
+the other. Starting a build while Live streams, or Start and Prepare in Live while a build runs,
+asks first, since a build uses a lot of processor time and may slow X-Plane and Live down; you may
+go on all the same.
+
+At its first start the app asks what you want to do: fly now, with Live, or build your tiles, with
+OrthoStudio XP. It remembers the answer, unless you untick the box, and shows that side at each
+start after; Live's settings (When the app starts) change it. Quit asks first while a build or a
+stream runs: a build stops, and so does a stream. On a Mac the close button puts the window away,
+and Cmd+Q quits. `OSXP_FRAME=0` in the environment opens the two windows of before, one program
+with one icon, each with its own bars. Where a computer cannot show the app's own window (a Linux
 without its libraries), both open in the browser, and Live stops by itself five minutes after its
 page was closed, unless it streams.
 
@@ -60,7 +65,8 @@ tabs, as OrthoStudio XP's screens:
 
 At the foot of the window, as at the foot of OrthoStudio XP's page: `Aa` sets the size of the
 page's text (100, 115 or 130 %) and `− 100 % +` zooms the whole page (also Ctrl+plus, Ctrl+minus,
-Ctrl+0, or Cmd on a Mac). Each window keeps its own, and its own place on the screen.
+Ctrl+0, or Cmd on a Mac). Both are the same for Build and Live, kept for the next start with the
+language and the theme, and the window opens where you left it.
 
 As in OrthoStudio XP's window, a field over the settings keeps only the questions holding the words
 typed (accents, case and plurals aside), and the window has OrthoStudio XP's find bar (Cmd+F,

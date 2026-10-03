@@ -56,6 +56,16 @@ def _live_off_unless_a_test_switches_it_on(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(live, "ENABLED_BY_DEFAULT", False)
 
 
+@pytest.fixture(autouse=True)
+def _no_frame_unless_a_test_asks_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app opens in its frame where the system gives a window (``orthostudio.live.frame``): the
+    suite keeps it off unless a test asks for it, so that a test of the app's start never shows a
+    real window on the screen of the machine it runs on (one did, 2026-10-04)."""
+    from orthostudio.live.frame import OFF_ENV
+
+    monkeypatch.setenv(OFF_ENV, "0")
+
+
 @pytest.fixture(params=[False, True], ids=["fromstring", "split-tokens"])
 def number_parsing(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
     """Both ways numbers are read from text (``orthostudio.numtext``): ``np.fromstring``, and the

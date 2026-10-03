@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="live/live.css">
 </head>
 <body>
-<header class="topbar">
+<header class="topbar" data-frame-owned>
   <div class="brand">
     <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -315,11 +315,11 @@
      (static/textsize.js), in a browser too, and the window's zoom (static/zoom.js), shown in
      Live's own window once it says it scales the page. -->
 <footer class="statusbar live-statusbar" id="statusbar">
-  <label class="status-item status-text" data-i18n-title="app.text_size">
+  <label class="status-item status-text" data-i18n-title="app.text_size" data-frame-owned>
     <span class="status-text-mark" aria-hidden="true">Aa</span>
     <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
   </label>
-  <span class="status-item status-zoom" id="status-zoom" hidden>
+  <span class="status-item status-zoom" id="status-zoom" hidden data-frame-owned>
     <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
     <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
     <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
@@ -345,6 +345,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="stay" autofocus data-i18n="quit.stay">Stay</button>
       <button type="submit" class="btn btn-danger-solid" value="quit" data-i18n="quit.confirm">Quit OrthoStudio XP Live</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Before a start or a departure prepared while OrthoStudio XP builds (live.js askedWhileBuilding). -->
+<dialog id="build-running" class="dialog" role="alertdialog" aria-labelledby="build-running-title" aria-describedby="build-running-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="build-running-title" data-i18n="building.title">A build is running</h2>
+    <p class="dialog-text" id="build-running-text" data-i18n="building.text">OrthoStudio XP is building tiles. A build uses a lot of processor time and may slow X-Plane and Live down.</p>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="wait" autofocus data-i18n="building.wait">Not now</button>
+      <button type="submit" class="btn btn-primary" value="go" data-i18n="building.go">Go on anyway</button>
     </div>
   </form>
 </dialog>

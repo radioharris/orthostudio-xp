@@ -1,0 +1,37 @@
+/* OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+   Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE. */
+
+/* The app's frame (frame.html): its top bar is OrthoStudio XP's (styles.css .topbar), its pages
+   fill the rest of the window, and its foot's text size and zoom lie over the right end of the
+   shown page's own foot, which keeps room for them (styles.css, html.in-frame .statusbar). */
+
+html, body.frame { height: 100%; }
+body.frame { display: flex; flex-direction: column; margin: 0; overflow: hidden; background: var(--bg); }
+
+.frame-main { flex: 1; position: relative; min-height: 0; }
+.frame-page { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+
+/* Build | Live: which part the window shows, and the other's state in a word */
+.frame-parts {
+  display: inline-flex; align-items: stretch; height: 28px;
+  border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden;
+}
+.frame-part {
+  appearance: none; border: 0; margin: 0; background: var(--bg-2); color: var(--fg-2);
+  font: inherit; padding: 0 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+}
+.frame-part + .frame-part { border-left: 1px solid var(--line-2); }
+.frame-part:hover { color: var(--fg); background: var(--bg-3); }
+.frame-part[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
+.frame-state { font-size: var(--fs-3); font-weight: 400; color: var(--warn); }
+
+/* as tall as the shown page's foot (frame.js placeFoot), its items in the middle of it */
+.frame-foot {
+  position: fixed; right: var(--pad); bottom: 0; height: 28px; z-index: 40;
+  display: flex; align-items: center; gap: 18px; font-size: 12px; color: var(--fg-2);
+}
+/* a page without a foot of its own (the welcome): a small one of the frame's */
+.frame-foot-alone {
+  right: 0; padding: 0 var(--pad); background: var(--bg-2);
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-top-left-radius: var(--radius);
+}

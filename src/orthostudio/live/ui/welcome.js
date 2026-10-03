@@ -3,6 +3,7 @@
 // The app's question at its first start (orthostudio/live/app_start.py): Live, and this window
 // becomes Live's; or building, and this window closes for OrthoStudio XP's, which the app opens.
 
+import { askFrame, bindFrame } from "../static/embed.js";
 import { applyStatic, detectLanguage, language, setLanguage } from "./strings.js";
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,12 @@ async function choose(home) {
     });
   } catch (_e) {
     // the answer is the window's to act on; nothing to say here
+  }
+  // in the app's frame: the part chosen is shown there; this page becomes Live's own for Live, and
+  // is let go for building, the frame loading Live's page the first time Live is shown
+  if (askFrame(home === "live" ? "live" : "build")) {
+    if (home === "live") location.replace("./");
+    return;
   }
   if (home === "live") {
     location.replace("./");
@@ -48,6 +55,22 @@ function boot() {
   });
   $("choose-live").addEventListener("click", () => choose("live"));
   $("choose-build").addEventListener("click", () => choose("build"));
+  // in the app's frame, its language and theme (embed.js); the question has no screens to give
+  bindFrame({
+    tabs: () => [],
+    current: () => "",
+    show: () => {},
+    prefs: ({ language: wanted, theme }) => {
+      if (wanted && wanted !== language()) {
+        setLanguage(wanted, true);
+        applyStatic(document);
+      }
+      if (theme !== undefined && theme !== null) {
+        if (theme) document.documentElement.dataset.theme = theme;
+        else delete document.documentElement.dataset.theme;
+      }
+    },
+  });
 }
 
 if (typeof document !== "undefined") boot();

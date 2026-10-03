@@ -1075,6 +1075,16 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .popover li { display: flex; gap: 8px; padding: 2px 0; align-items: baseline; }
 .popover li .name { font-family: var(--mono); min-width: 90px; }
 
+/* ------------------------------------------------------ in the app's frame */
+
+/* A page shown in the app's frame (embed.js) leaves it its top bar's name and tools and its foot's
+   text size and zoom, which the frame shows once for the app's pages; its own screens become the
+   frame's tabs. Its foot keeps its own items, the frame's text size and zoom laid over its right
+   end (frame.css), for which it keeps room. */
+html.in-frame { --topbar-h: 0px; }
+html.in-frame [data-frame-owned] { display: none !important; }
+html.in-frame .statusbar { padding-right: var(--frame-foot-w, 236px); min-height: 28px; }
+
 /* --------------------------------------------------------- toast */
 
 .toast {

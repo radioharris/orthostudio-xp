@@ -14,6 +14,9 @@ taskbar: a button brings the other window to the front when it is open, else ope
 that program (``desktop.open_osxp_here``, ``web.live_window_here``): Live's window through its API,
 OrthoStudio XP's through what its process listens for (:func:`osxp_window_listens`). A program
 showing no window opens the other in a program of its own.
+
+Where the system gives a window, the two are one window instead, the app's frame (a trial,
+:mod:`orthostudio.live.frame`): Build | Live in its top bar shows one or the other.
 """
 
 from __future__ import annotations
@@ -233,18 +236,39 @@ def open_osxp() -> str:
     return "started"
 
 
+def _in_the_frame(log: Path, wanted: str | None, home: str) -> bool:
+    """Both parts in one window, the app's frame (:mod:`orthostudio.live.frame`), where the system
+    gives a window and the frame is not turned off: shown first, the part asked for (``wanted``),
+    else the one chosen before (``home``), else Live's with the app's question. ``True`` once it is
+    closed, or when one open in another program came to the front; ``False`` when it cannot be
+    shown here, nothing started then."""
+    from orthostudio import window
+    from orthostudio.live import frame
+
+    if not frame.wanted() or not window.possible():
+        return False
+    from orthostudio.desktop import ENGINE_PORT
+
+    if _osxp_to_front(ENGINE_PORT):
+        return True  # up already, in a program of its own: in front
+    first = wanted if wanted in ("build", "live") else ("build" if home == "build" else "live")
+    return frame.show_frame(log, first=first, welcome=home == "ask" and wanted is None)
+
+
 def app_start(log: Path) -> bool:
-    """At the app's start, before OrthoStudio XP's window: ``True`` when Live's window was shown
-    instead (chosen, or the welcome page the first time: its answer "build" opens OrthoStudio
-    XP's window then, apart), ``False`` for OrthoStudio XP's in this process: Live switched off,
-    building chosen before, or asked for by Live's own button."""
+    """At the app's start, before OrthoStudio XP's window: ``True`` when the app's frame was shown
+    instead (:func:`_in_the_frame`), or Live's window (chosen, or the welcome page the first time:
+    its answer "build" opens OrthoStudio XP's window then, apart), ``False`` for OrthoStudio XP's in
+    this process: Live switched off, building chosen before, or asked for by Live's own button."""
     from orthostudio.live.settings import load_settings
 
     wanted = os.environ.get(START_ENV)  # a window's button, through macOS (_other_window)
-    if wanted == "build" or not enabled():
+    if not enabled():
         return False
     home = load_settings().app_home
-    if home == "build" and wanted != "live":
+    if _in_the_frame(log, wanted, home):
+        return True
+    if wanted == "build" or (home == "build" and wanted != "live"):
         return False
     if live_listening():  # its window is open already, in a process of its own
         _ask_live("front", post=True)
