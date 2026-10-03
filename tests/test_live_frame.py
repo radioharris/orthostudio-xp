@@ -523,12 +523,15 @@ def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     assert '<dialog id="build-running"' in page
 
 
-def test_the_frame_s_quit_has_its_label_on_its_icon() -> None:
-    """On Windows too (a user, 2026-10-04): the label trimmed to its capitals, centred on the icon's
-    ring, itself in the middle of its box, and as much room on the right as on the left."""
-    css = (FRAME_DIR / "frame.css").read_text(encoding="utf-8")
-    assert ".frame-top .quit-btn { padding: 0 8px 0 6px; }" in css
-    trim = ".frame-top .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }"
-    assert trim in css
+def test_the_frame_s_quit_is_the_pages_own() -> None:
+    """Its look is OrthoStudio XP's Quit, in one place (styles.css, ``.topbar-tools .quit-btn``: the
+    label on its icon on Windows too, a user, 2026-10-04): the same icon, in the same bar."""
+    from orthostudio.ui import ui_dir as osxp_ui
+
     page = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
-    assert 'd="M12 4.4v8M7.1 7.6a7 7 0 1 0 9.8 0"' in page
+    osxp = (osxp_ui() / "index.html").read_text(encoding="utf-8")
+    icon = 'd="M12 4.4v8M7.1 7.6a7 7 0 1 0 9.8 0"'
+    assert icon in page and icon in osxp
+    tools = page[page.index('<div class="topbar-tools">') :]
+    assert tools.index('id="quit-btn"') < tools.index("</div>")
+    assert ".quit-btn" not in (FRAME_DIR / "frame.css").read_text(encoding="utf-8")

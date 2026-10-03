@@ -25,14 +25,6 @@ body.frame { display: flex; flex-direction: column; margin: 0; overflow: hidden;
 .frame-part[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
 .frame-state { font-size: var(--fs-3); font-weight: 400; color: var(--warn); }
 
-/* Quit, as the pages' own (styles.css .quit-btn), with its label on its icon on Windows too: Segoe
-   UI sets its letters lower in their line than the Mac's font, and the label stood under the icon
-   (a user, 2026-10-04). The label's box is trimmed to its capitals and its line (text-box), which
-   the flex centring puts on the middle of the icon, whose ring is drawn in the middle of its box
-   (frame.html). The icon's own margin inside its box widened the left: the right takes as much. */
-.frame-top .quit-btn { padding: 0 8px 0 6px; }
-.frame-top .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }
-
 /* as tall as the shown page's foot (frame.js placeFoot), its items in the middle of it */
 .frame-foot {
   position: fixed; right: var(--pad); bottom: 0; height: 28px; z-index: 40;
