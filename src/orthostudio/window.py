@@ -53,6 +53,7 @@ __all__ = [
     "place_file",
     "possible",
     "puts_away_on_close",
+    "running",
     "show",
     "shown",
     "storage_dir",
@@ -236,6 +237,13 @@ def _named(name: str | None) -> Any:
 def shown(name: str | None = None) -> bool:
     """Whether the window ``name`` (by default the first) is up, put away or not."""
     return _named(name) is not None
+
+
+def running() -> bool:
+    """Whether this program shows windows, and so may open another beside them
+    (:func:`open_another`): the loop :func:`show` started runs, and a window of it is up."""
+    with _lock:
+        return _store is not None and bool(_windows)
 
 
 LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
