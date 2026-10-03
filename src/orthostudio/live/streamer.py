@@ -63,7 +63,7 @@ from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, x
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
-from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
+from .names import KEEP, REGION_LIST, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
 from .region import (
     NEUTRAL_LEVEL,
@@ -392,7 +392,18 @@ class Streamer:
         # (X-Plane was running), has every texture's file already.
         self.sources = sources_of_pack(pack_dir)
         per_square = bool(self.sources) and region_version(pack_dir) >= REGION_VERSION
-        region = RegionTextures(self.sources) if per_square else None
+        t0 = time.monotonic()
+        region = RegionTextures(self.sources, kept=pack_dir / REGION_LIST) if per_square else None
+        # a start's longest step where a disk is slow: its time, for the log (session.follow)
+        self.region_note: str | None = None
+        if region is not None:
+            unkept = region.keep_error
+            self.region_note = (
+                f"the region's {len(region)} textures "
+                + ("read from their list" if region.from_list else "listed from its folders")
+                + f" in {time.monotonic() - t0:.1f} s"
+                + (f" (the list could not be kept: {unkept})" if unkept else "")
+            )
         self.index = TextureIndex(
             region.entries()
             if region is not None

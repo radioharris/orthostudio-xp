@@ -185,6 +185,8 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.route import AirportIndex, Route, apt_dat
     from orthostudio.live.streamer import Fix
 
+    # where a start's wait begins, in the log: the window's Start or Prepare
+    log("starting" + (f" for a departure from {options.start}" if options.start else ""))
     xp_dir = xplane_dir(options.xplane)
     pack_dir = options.pack or default_pack_dir()
     link = xp_dir / "Custom Scenery" / LINK_NAME
@@ -378,6 +380,8 @@ def follow(
                         s.name.removeprefix("z_ao_") for s in default_sources(prepared.xplane)
                     },
                 )
+                if streamer.region_note:
+                    log(streamer.region_note)
                 log(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "
                     f"start X-Plane, {stop_hint}"
