@@ -98,7 +98,7 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   its place on the computer's own disk.
 - **Text as large as you need.** `− 100 % +` at the foot of the window zooms the whole page (Ctrl
   or ⌘ with plus, minus and 0 too), and Settings' *Text size* makes the text alone larger, on a
-  big or far screen.
+  big or far screen. The window opens where you left it, the size it had.
 
 How it works, what it keeps on disk and how to clean it:
 [docs/how-it-works.md](docs/how-it-works.md).

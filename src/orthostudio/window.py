@@ -555,6 +555,128 @@ def fits_the_screen(
     )
 
 
+# -- where the window was left ------------------------------------------------------------------
+
+PLACE_NAME = "OrthoStudio XP"
+"""The name macOS keeps the window's frame under, in the app's own defaults
+(``NSWindow.setFrameAutosaveName_``)."""
+
+PLACE_FILE = "place.json"
+"""Where Windows' window is kept, in the window's own folder (:func:`storage_dir`)."""
+
+TITLE_BAR = 30
+"""How tall a band at the top of a window is taken as its title bar, by which it is moved."""
+
+
+def grabbable(
+    band: tuple[float, float, float, float],
+    screens: list[tuple[float, float, float, float]],
+    need: tuple[float, float] = (100, 20),
+) -> bool:
+    """Whether a window's title bar ``band`` (x, y, width, height) lies on one of ``screens``
+    (their working areas, in the same units) by at least ``need``, or by the whole band when it is
+    smaller: enough of it to take it by the mouse. Either way up: a band and screens counted down
+    from the top, as on Windows, or up from the bottom, as on macOS."""
+    x, y, w, h = band
+    need_w, need_h = min(need[0], w), min(need[1], h)
+    for sx, sy, sw, sh in screens:
+        across = min(x + w, sx + sw) - max(x, sx)
+        down = min(y + h, sy + sh) - max(y, sy)
+        if across >= need_w and down >= need_h:
+            return True
+    return False
+
+
+def saved_place(store: Path) -> dict[str, Any] | None:
+    """Where Windows' window was left (:data:`PLACE_FILE`): ``{x, y, width, height, maximized}``,
+    or ``None`` when nothing was kept or what was kept cannot be read."""
+    import json
+
+    try:
+        place = json.loads((store / PLACE_FILE).read_text(encoding="utf-8"))
+        x, y, width, height = (int(place[k]) for k in ("x", "y", "width", "height"))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return {
+        "x": x,
+        "y": y,
+        "width": width,
+        "height": height,
+        "maximized": place.get("maximized") is True,
+    }
+
+
+def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -> None:
+    """Put the window being made (``native``: an ``NSWindow``, a WinForms ``Form``) where it was
+    left, the size it had, before it shows: on its own thread, in pywebview's ``before_show``.
+
+    The window opened where the system chose, on the screen of the shortcut rather than the one
+    the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; a user:
+    "surtout sous Windows"). macOS keeps a window's frame by name in the app's defaults; Windows'
+    is read from :data:`PLACE_FILE`. A place whose title bar lies on no screen any more, the
+    screen it was on unplugged, is left to the system, as on a first start.
+    """
+    if system == "darwin":
+        import AppKit
+
+        if native.setFrameUsingName_(PLACE_NAME):
+            frame = native.frame()
+            top = frame.origin.y + frame.size.height  # macOS counts up from the bottom
+            band = (frame.origin.x, top - TITLE_BAR, frame.size.width, TITLE_BAR)
+            screens = []
+            for screen in AppKit.NSScreen.screens():
+                area = screen.visibleFrame()
+                screens.append((area.origin.x, area.origin.y, area.size.width, area.size.height))
+            if not grabbable(band, screens):
+                native.center()
+        # from now on AppKit keeps the frame under that name as the window moves or resizes
+        native.setFrameAutosaveName_(PLACE_NAME)
+    elif system == "win32":
+        place = saved_place(store)
+        if place is None:
+            return
+        from System.Drawing import Rectangle
+        from System.Windows.Forms import FormStartPosition, FormWindowState, Screen
+
+        screens = []
+        for screen in Screen.AllScreens:
+            area = screen.WorkingArea
+            screens.append((area.X, area.Y, area.Width, area.Height))
+        x, y, width, height = place["x"], place["y"], place["width"], place["height"]
+        if not grabbable((x, y, width, TITLE_BAR), screens):
+            return
+        native.StartPosition = FormStartPosition.Manual
+        native.Bounds = Rectangle(x, y, width, height)
+        if place["maximized"]:
+            native.WindowState = FormWindowState.Maximized
+
+
+def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) -> None:
+    """Keep where Windows' window is, as it closes (pywebview's ``closing``, on its own thread):
+    its place and size when neither maximized nor minimized (``RestoreBounds``), and whether it was
+    maximized. macOS keeps its own as the window moves (:func:`back_where_it_was`)."""
+    if system != "win32":
+        return
+    import json
+
+    from System.Windows.Forms import FormWindowState
+
+    from orthostudio.fsutil import atomic_write_text
+
+    bounds = native.RestoreBounds
+    place = {
+        "x": int(bounds.X),
+        "y": int(bounds.Y),
+        "width": int(bounds.Width),
+        "height": int(bounds.Height),
+        "maximized": native.WindowState == FormWindowState.Maximized,
+    }
+    store.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(store / PLACE_FILE, json.dumps(place) + "\n")
+
+
 class _ToNote(logging.Handler):
     """pywebview's own warnings and errors, given to the ``note`` of :func:`show`.
 
@@ -638,6 +760,25 @@ def show(
             return None if on_close() else False
 
         window.events.closing += closing
+
+    # The window opens where it was left, the size it had (back_where_it_was); a place that
+    # cannot be had leaves it where the system puts it, as before, and says so in the log.
+    def placed() -> None:
+        try:
+            back_where_it_was(window.native, store)
+        except Exception as exc:
+            if note is not None:
+                note(f"the window opened where the system put it, not where it was left: {exc!r}")
+
+    def kept() -> None:  # answers nothing: closing is not taken away
+        try:
+            keep_where_it_is(window.native, store)
+        except Exception as exc:
+            if note is not None:
+                note(f"where the window was left could not be kept: {exc!r}")
+
+    window.events.before_show += placed
+    window.events.closing += kept
 
     def behind() -> None:
         """What runs while the window is up. It must end when the window does: pywebview gives it

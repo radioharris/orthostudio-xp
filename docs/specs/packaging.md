@@ -77,6 +77,16 @@ so: a block that cannot shrink pushes the page wider than the window, which show
 scrollbar and as text cut off at the right, both of which a user met at the smallest window the app
 allows (`tests/test_ui_static.py::test_the_final_report_folds_before_it_runs_out_of_room`).
 
+It opens where it was left, the size it had (`window.back_where_it_was`, in pywebview's
+`before_show`): it used to open where the system chose, on the screen of the shortcut rather than
+the one the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; "above
+all on Windows"). macOS keeps the frame by name in the app's own defaults
+(`NSWindow.setFrameAutosaveName_`, `PLACE_NAME`) as the window moves or resizes. Windows writes
+`place.json` in the window's own folder as it closes (`keep_where_it_is`, in `closing`): its place
+and size before any maximizing (`RestoreBounds`), and whether it was maximized. A place whose title
+bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
+on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
+
 The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
 own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is
 missing (`tools/package/webview2.pas`). Windows 11 carries it and, Microsoft writes, so do the
