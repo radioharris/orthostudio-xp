@@ -61,9 +61,8 @@ jobs:
         #
         # A private repository builds the Windows installer alone: its minutes are counted, macOS's
         # ten times over, and the Mac app of a release candidate is tried from a checkout
-        # (2026-10-03). On this branch, OrthoStudio XP Live's betas, it builds the Apple Silicon one
-        # as well, which the testers install (2026-10-03).
-        include: ${{ fromJSON(github.event.repository.private && '[{"os":"macos-14"},{"os":"windows-latest"}]' || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
+        # (2026-10-03).
+        include: ${{ fromJSON(github.event.repository.private && '[{"os":"windows-latest"}]' || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0

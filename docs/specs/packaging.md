@@ -358,9 +358,8 @@ nobody sees. No artifact carries them from job to job: artifacts count against t
 storage, which builds in a private repository filled, and a release then could not be made at all
 ("Artifact storage quota has been hit", 2026-10-03); the files of a release do not count. A run by
 hand keeps its installers as the run's artifacts, for a day. On the branch of OrthoStudio XP Live's
-betas (`live-osxp`), the private repository builds the Apple Silicon installer as well, and a run
-by hand puts its installers in a pre-release of its own (`beta-<run number>`) rather than in the
-run's artifacts, for the testers to download.
+betas (`live-osxp`), a run by hand in the private repository puts its installer in a pre-release
+of its own (`beta-<run number>`) rather than in the run's artifacts, for the testers to download.
 
 Before a release: `version` in `pyproject.toml` set to the tag's (the installers are named after
 it), the notes written, and the checks a person makes, which no workflow can
