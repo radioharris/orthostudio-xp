@@ -620,7 +620,7 @@ def saved_place(store: Path) -> dict[str, Any] | None:
 
 def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -> None:
     """Put the window being made (``native``: an ``NSWindow``, a WinForms ``Form``) where it was
-    left, the size it had, before it shows: on its own thread, in pywebview's ``before_show``.
+    left, the size it had, before it shows: in pywebview's ``before_show``, on the window's thread.
 
     The window opened where the system chose, on the screen of the shortcut rather than the one
     the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; a user:
@@ -664,9 +664,15 @@ def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -
 
 
 def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) -> None:
-    """Keep where Windows' window is, as it closes (pywebview's ``closing``, on its own thread):
-    its place and size when neither maximized nor minimized (``RestoreBounds``), and whether it was
-    maximized. macOS keeps its own as the window moves (:func:`back_where_it_was`)."""
+    """Keep where Windows' window is, as it closes (pywebview's ``closing``, on the window's own
+    thread): its place and size as a normal window, and whether it was maximized. macOS keeps its
+    own as the window moves (:func:`back_where_it_was`).
+
+    A normal window's place is its ``Bounds``. WinForms' ``RestoreBounds`` follows what code sets
+    and the moment the window leaves its normal state, not a move or a resize by hand: taken
+    always, it kept the place of each start for ever, and the window was moved and resized in
+    vain (0.1.22rc5 on a Shadow, 2026-10-03). Maximized or minimized, it is the place the window
+    goes back to."""
     if system != "win32":
         return
     import json
@@ -675,7 +681,8 @@ def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) ->
 
     from orthostudio.fsutil import atomic_write_text
 
-    bounds = native.RestoreBounds
+    normal = native.WindowState == FormWindowState.Normal
+    bounds = native.Bounds if normal else native.RestoreBounds
     place = {
         "x": int(bounds.X),
         "y": int(bounds.Y),

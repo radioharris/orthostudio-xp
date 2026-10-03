@@ -83,7 +83,10 @@ the one the user works on, and was moved and resized at every start (TinkerNZ, 2
 all on Windows"). macOS keeps the frame by name in the app's own defaults
 (`NSWindow.setFrameAutosaveName_`, `PLACE_NAME`) as the window moves or resizes. Windows writes
 `place.json` in the window's own folder as it closes (`keep_where_it_is`, in `closing`): its place
-and size before any maximizing (`RestoreBounds`), and whether it was maximized. A place whose title
+and size as a normal window (`Bounds`, or `RestoreBounds` when it is maximized or minimized), and
+whether it was maximized. `RestoreBounds` alone follows only what code sets and the moment the
+window leaves its normal state, not a move by hand: 0.1.22rc5 kept the place of each start for
+ever (a Shadow, 2026-10-03). A place whose title
 bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
 on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
 

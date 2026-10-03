@@ -522,6 +522,23 @@ def test_windows_opens_the_window_where_it_was_left(
     assert opening.WindowState == "Maximized"  # and maximized again, on that screen
 
 
+def test_windows_keeps_the_place_a_window_was_moved_to_by_hand(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """WinForms' RestoreBounds follows what code sets and the moment the window leaves its normal
+    state, not a move or a resize by hand: 0.1.22rc5 kept the place of each start for ever, and
+    the window was moved and resized in vain (a Shadow, 2026-10-03). A normal window is kept by
+    its Bounds."""
+    _winforms(monkeypatch, [Rect(0, 0, 2880, 1572)])
+    closing = Form()
+    closing.RestoreBounds = Rect(0, 0, 2880, 1620)  # where it was put as it opened
+    closing.Bounds = Rect(300, 200, 1600, 900)  # where the user moved it, at the size they gave it
+    window.keep_where_it_is(closing, tmp_path, system="win32")
+    assert window.saved_place(tmp_path) == {
+        "x": 300, "y": 200, "width": 1600, "height": 900, "maximized": False,
+    }  # fmt: skip
+
+
 def test_windows_leaves_a_window_whose_screen_is_gone_to_the_system(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
