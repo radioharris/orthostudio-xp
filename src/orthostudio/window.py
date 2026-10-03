@@ -10,6 +10,11 @@ app is an app: one window, an icon that stays, a click that brings it back. The 
 very one the browser shows, served by the same engine on the same port: nothing of the interface
 is written twice.
 
+One program may show several windows, each by a name of its own (:data:`PLACE_NAME` for the
+first): :func:`show` opens the first and runs the system's loop, :func:`open_another` opens the
+others while it runs, and what speaks to a window from elsewhere names it (by default the first).
+One program has one icon in the Dock or the taskbar, however many windows it shows.
+
 Nothing here is required. :func:`show` raises when the system has no web view to give, and the
 caller opens the browser instead, which is what every version before 0.1.8 did. A system that could
 have a window and lacks a library is told which one, with a link (:func:`hint`); OrthoStudio XP
@@ -23,7 +28,7 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -44,9 +49,12 @@ __all__ = [
     "hint",
     "install",
     "on_quit",
+    "open_another",
+    "place_file",
     "possible",
     "puts_away_on_close",
     "show",
+    "shown",
     "storage_dir",
     "the_distributions_python",
     "to_the_front",
@@ -141,7 +149,12 @@ class PageTools:
     shortcuts off in WebView2 (``platforms/edgechromium.py``: ``AreBrowserAcceleratorKeysEnabled``
     follows ``debug``), so Ctrl+plus did nothing on Windows either. A user who found the text
     bigger in the window than in his browser had no way to make it smaller (2026-09-20).
+
+    Each window's page has its own, which zooms that window alone.
     """
+
+    def __init__(self, name: str | None = None) -> None:
+        self._name = name  # the window whose page asks; not given to the page (pywebview skips _)
 
     def set_zoom(self, factor: float) -> bool:
         """Draw the page ``factor`` times its size; whether it could be done.
@@ -154,7 +167,7 @@ class PageTools:
             wanted = max(low, min(high, float(factor)))
         except (TypeError, ValueError):
             return False
-        view = _web_view()
+        view = _web_view(self._name)
         if view is None:
             return False
         try:
@@ -171,15 +184,16 @@ class PageTools:
         return False
 
 
-def _web_view() -> Any:
-    """The platform's own view inside the window, or None where it cannot be reached.
+def _web_view(name: str | None = None) -> Any:
+    """The platform's own view inside the window ``name``, or None where it cannot be reached.
 
     pywebview does not offer it, so this reaches for the one it keeps. Guarded: a version that
     keeps it elsewhere costs the zoom, not the window.
     """
-    if _window is None:
+    window = _named(name)
+    if window is None:
         return None
-    uid = getattr(_window, "uid", None)
+    uid = getattr(window, "uid", None)
     for module in ("webview.platforms.cocoa", "webview.platforms.winforms"):
         try:
             platform = __import__(module, fromlist=["BrowserView"])
@@ -201,8 +215,28 @@ LINUX_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
 """What Debian and Ubuntu call the GTK web view. Other distributions name them otherwise, which is
 why the message carries the link rather than a command for a system we did not recognise."""
 
-_window: Any = None
-"""The window that is up, for what has to speak to its page from elsewhere."""
+_windows: dict[str, Any] = {}
+"""The windows that are up, by name: what has to speak to a page from elsewhere reaches its window
+here."""
+
+_titles: dict[str, str] = {}  # each window's title, by name: Windows finds its window by it
+_first: str | None = None  # the name of the window show() opened: what a call naming none means
+_put_away: list[str] = []  # the windows put away, the last one last: the Dock's icon brings it back
+_store: Path | None = None  # the web view's folder, one for every window of the program
+_lock = threading.Lock()
+
+
+def _named(name: str | None) -> Any:
+    """The window called ``name``, the first one shown when ``name`` is None; None when it is not
+    up."""
+    with _lock:
+        return _windows.get(_first if name is None else name)
+
+
+def shown(name: str | None = None) -> bool:
+    """Whether the window ``name`` (by default the first) is up, put away or not."""
+    return _named(name) is not None
+
 
 LINUX_HELP = "https://pywebview.flowrl.com/guide/installation.html"
 WEBVIEW2_HELP = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -386,33 +420,48 @@ def puts_away_on_close() -> bool:
     return sys.platform == "darwin"
 
 
-def away() -> None:
-    """Put the window away without closing it. The app stays where it was, active, its name in the
-    menu bar, and :func:`on_quit` brings the window back when its icon is clicked.
+def away(name: str | None = None) -> None:
+    """Put the window ``name`` away without closing it. The app stays where it was, active, its
+    name in the menu bar, and :func:`on_quit` brings the window back when its icon is clicked.
 
     Not the whole app: hiding that would hand the menu bar to whichever app comes next, where
     closing a window leaves a Mac app as it was (a user saw it, 2026-09-20)."""
-    if _window is not None:
-        _window.hide()
+    window = _named(name)
+    if window is None:
+        return
+    window.hide()
+    which = _first if name is None else name
+    with _lock:
+        if which in _put_away:
+            _put_away.remove(which)
+        _put_away.append(which)
 
 
-def to_the_front() -> None:
-    """Bring the window back and the app in front, put away or not: what it is about to ask must
-    be seen. Windows lets only the program the user works in put a window in front, and the window
-    is asked for from another (OrthoStudio XP's by Live's, and Live's by OrthoStudio XP's): there
-    it goes in front the ways :mod:`orthostudio.winfront` has for a program in the background.
+def to_the_front(name: str | None = None) -> None:
+    """Bring the window ``name`` back and the app in front, put away or not: what it is about to
+    ask must be seen. Windows lets only the program the user works in put a window in front, and a
+    window may be asked for from another program: there it goes in front the ways
+    :mod:`orthostudio.winfront` has for a program in the background, the window of this program
+    that bears its title.
 
     From any thread: on a Mac what it asks of AppKit runs on the main thread, as the window's own
-    show does. Asked from the thread of a request, as the other window asks it, macOS 26 stopped
-    the app at once ("Must only be used from the main thread", a user, 2026-10-02)."""
-    if _window is not None:
-        _window.show()
+    show does. Asked from the thread of a request, macOS 26 stopped the app at once ("Must only be
+    used from the main thread", a user, 2026-10-02)."""
+    window = _named(name)
+    which = _first if name is None else name
+    if window is not None:
+        window.show()
+        with _lock:
+            if which in _put_away:
+                _put_away.remove(which)
     if sys.platform == "win32":
         from orthostudio import winfront
 
-        mine = [w.hwnd for w in winfront.top_windows() if w.pid == os.getpid()]
-        if mine:
-            winfront.force_foreground(mine[0])
+        title = _titles.get(which or "")
+        mine = [w for w in winfront.top_windows() if w.pid == os.getpid()]
+        named = [w.hwnd for w in mine if w.title == title] or [w.hwnd for w in mine]
+        if named:
+            winfront.force_foreground(named[0])
         return
     if not puts_away_on_close():
         return
@@ -439,13 +488,14 @@ CLICK_QUIT = """
 stops the engine (``ui/app.js`` ``quitOsxp``). Asking it beats asking again in a second voice."""
 
 
-def ask_the_page_to_quit() -> None:
-    """Press the page's Quit button, and end the app outright when there is no page to ask.
+def ask_the_page_to_quit(name: str | None = None) -> None:
+    """Press the Quit button of the window ``name``'s page, and close that window outright when
+    there is no page to ask.
 
     Never from the main thread: reading a page's answer waits for the main thread, which would be
     waiting for this.
     """
-    window = _window
+    window = _named(name)
     if window is None:
         return
     try:
@@ -491,8 +541,8 @@ def on_quit(handler: Callable[[], bool]) -> None:
             def applicationShouldHandleReopen_hasVisibleWindows_(  # noqa: N802
                 self, app: object, visible: bool
             ) -> bool:
-                if not visible and _window is not None:
-                    _window.show()
+                if not visible:
+                    _bring_back()
                 return True
 
             def applicationSupportsSecureRestorableState_(  # noqa: N802
@@ -508,6 +558,20 @@ def on_quit(handler: Callable[[], bool]) -> None:
         AppKit.NSApplication.sharedApplication().setDelegate_(delegate)
 
     AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(install)
+
+
+def _bring_back() -> None:
+    """What a click on the app's icon brings back when no window shows: the window put away last,
+    else the first one shown."""
+    with _lock:
+        name = _put_away[-1] if _put_away else _first
+    window = _named(name)
+    if window is None:
+        return
+    window.show()
+    with _lock:
+        if name in _put_away:
+            _put_away.remove(name)
 
 
 def _window_menu_shortcut() -> None:
@@ -539,14 +603,14 @@ def _window_menu_shortcut() -> None:
     AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(put_it_there)
 
 
-def ask(title: str, message: str) -> bool:
-    """Ask in a window of the system's own; whether the answer was yes.
+def ask(title: str, message: str, *, name: str | None = None) -> bool:
+    """Ask in a window of the system's own, over the window ``name``; whether the answer was yes.
 
     Never from the thread that draws: the close button's answer is given on that thread, and
     waiting there for a box that same thread must draw would wait for ever. Asked and not
     answerable, the answer is yes: the button was pressed, after all.
     """
-    window = _window
+    window = _named(name)
     if window is None:
         return True
     try:
@@ -555,12 +619,13 @@ def ask(title: str, message: str) -> bool:
         return True
 
 
-def close_now() -> None:
-    """Close the window. It goes through the close button's own answer again, which must let it
-    through this time (``orthostudio.desktop.on_close``) or the question would be asked for ever
-    (a user, 2026-09-20)."""
-    if _window is not None:
-        _window.destroy()
+def close_now(name: str | None = None) -> None:
+    """Close the window ``name``. It goes through the close button's own answer again, which must
+    let it through this time (``orthostudio.desktop.on_close``) or the question would be asked for
+    ever (a user, 2026-09-20)."""
+    window = _named(name)
+    if window is not None:
+        window.destroy()
 
 
 def fits_the_screen(
@@ -586,11 +651,22 @@ def fits_the_screen(
 # -- where the window was left ------------------------------------------------------------------
 
 PLACE_NAME = "OrthoStudio XP"
-"""The name macOS keeps the window's frame under, in the app's own defaults
-(``NSWindow.setFrameAutosaveName_``)."""
+"""The first window's name, which macOS keeps its frame under in the app's own defaults
+(``NSWindow.setFrameAutosaveName_``); every other window of the app has a name of its own."""
 
 PLACE_FILE = "place.json"
-"""Where Windows' window is kept, in the window's own folder (:func:`storage_dir`)."""
+"""Where Windows' first window is kept, in the web view's folder (:func:`storage_dir`)."""
+
+
+def place_file(name: str = PLACE_NAME) -> str:
+    """The file Windows keeps the window ``name``'s place in, in the web view's folder:
+    :data:`PLACE_FILE` for the first, a file of its own for each other window of the app, which
+    shares that folder (one a program)."""
+    if name == PLACE_NAME:
+        return PLACE_FILE
+    slug = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-")
+    return f"place-{slug}.json"
+
 
 TITLE_BAR = 30
 """How tall a band at the top of a window is taken as its title bar, by which it is moved."""
@@ -615,13 +691,13 @@ def grabbable(
     return False
 
 
-def saved_place(store: Path) -> dict[str, Any] | None:
-    """Where Windows' window was left (:data:`PLACE_FILE`): ``{x, y, width, height, maximized}``,
-    or ``None`` when nothing was kept or what was kept cannot be read."""
+def saved_place(store: Path, name: str = PLACE_NAME) -> dict[str, Any] | None:
+    """Where Windows' window ``name`` was left (:func:`place_file`): ``{x, y, width, height,
+    maximized}``, or ``None`` when nothing was kept or what was kept cannot be read."""
     import json
 
     try:
-        place = json.loads((store / PLACE_FILE).read_text(encoding="utf-8"))
+        place = json.loads((store / place_file(name)).read_text(encoding="utf-8"))
         x, y, width, height = (int(place[k]) for k in ("x", "y", "width", "height"))
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
@@ -645,10 +721,10 @@ def back_where_it_was(
     The window opened where the system chose, on the screen of the shortcut rather than the one
     the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; a user:
     "surtout sous Windows"). macOS keeps a window's frame by ``name`` in the app's defaults, which
-    every window of the app shares: OrthoStudio XP Live's window has a name of its own, or the two
-    windows took each other's place (2026-10-03). Windows' is read from :data:`PLACE_FILE`, in the
-    window's own ``store``. A place whose title bar lies on no screen any more, the screen it was
-    on unplugged, is left to the system, as on a first start.
+    every window of the app shares: each window has a name of its own, or two windows took each
+    other's place (2026-10-03). Windows' is read from the window's own file in ``store``
+    (:func:`place_file`). A place whose title bar lies on no screen any more, the screen it was on
+    unplugged, is left to the system, as on a first start.
     """
     if system == "darwin":
         import AppKit
@@ -666,7 +742,7 @@ def back_where_it_was(
         # from now on AppKit keeps the frame under that name as the window moves or resizes
         native.setFrameAutosaveName_(name)
     elif system == "win32":
-        place = saved_place(store)
+        place = saved_place(store, name)
         if place is None:
             return
         from System.Drawing import Rectangle
@@ -685,7 +761,9 @@ def back_where_it_was(
             native.WindowState = FormWindowState.Maximized
 
 
-def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) -> None:
+def keep_where_it_is(
+    native: Any, store: Path, *, name: str = PLACE_NAME, system: str = sys.platform
+) -> None:
     """Keep where Windows' window is, as it closes (pywebview's ``closing``, on the window's own
     thread): its place and size as a normal window, and whether it was maximized. macOS keeps its
     own as the window moves (:func:`back_where_it_was`).
@@ -713,7 +791,7 @@ def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) ->
         "maximized": native.WindowState == FormWindowState.Maximized,
     }
     store.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(store / PLACE_FILE, json.dumps(place) + "\n")
+    atomic_write_text(store / place_file(name), json.dumps(place) + "\n")
 
 
 class _ToNote(logging.Handler):
@@ -734,43 +812,19 @@ class _ToNote(logging.Handler):
             self._note(f"the window's web view: {record.getMessage()}")
 
 
-def show(
+def _make(
+    webview: Any,
     url: str,
     *,
     title: str,
-    on_shown: Callable[[], None] | None = None,
-    closes_when: Callable[[], bool] | None = None,
-    on_close: Callable[[], bool] | None = None,
-    may_quit: Callable[[], bool] | None = None,
-    note: Callable[[str], None] | None = None,
-    size: tuple[int, int] = SIZE,
-    storage: Path | None = None,
-    place: str = PLACE_NAME,
-) -> None:
-    """Show ``url`` in a window of its own, and return once the window is closed.
-
-    ``on_shown`` runs in a thread of its own the moment the window is up, which is where the
-    engine is started: the window is on screen while it loads, rather than after. ``closes_when``
-    is asked every :data:`POLL_S` while the window is open, and the window closes the moment it
-    says yes: *Quit* stops the engine, and a window left on a page with nothing behind it would
-    keep the app in the Dock with nothing to show. ``on_close`` is asked when the close button is
-    clicked, and the window stays when it answers no, which is how the app is put away rather than
-    quit (:func:`puts_away_on_close`); ``may_quit`` answers for the app's own Quit, wherever it is
-    asked from (:func:`on_quit`). ``note`` is given a line when something that is not the engine
-    goes wrong behind the window, which would otherwise be said to nobody. ``storage`` and
-    ``place`` are the window's own: the folder of its page's storage and of its place on Windows,
-    and the name macOS keeps its place under (:func:`back_where_it_was`).
-
-    Raises when this system has no web view (the package missing, or no toolkit under it). The
-    engine must not have been started before this returns, so that a system without a window
-    leaves nothing behind when the caller falls back to the browser.
-    """
-    import webview  # not at import time: a system without it must still run the engine
-    from webview.menu import Menu, MenuAction
-
-    global _window
-    store = storage_dir() if storage is None else storage
-    store.mkdir(parents=True, exist_ok=True)
+    name: str,
+    store: Path,
+    on_close: Callable[[], bool] | None,
+    note: Callable[[str], None] | None,
+    size: tuple[int, int],
+) -> Any:
+    """A window of the app, made and known by ``name`` until it closes: what :func:`show` and
+    :func:`open_another` share."""
     width, height = fits_the_screen(size, webview.screens)
     window = webview.create_window(
         title,
@@ -788,11 +842,22 @@ def show(
         # window that zoomed itself instead would take that away. Cmd+plus and Ctrl+plus are the
         # page's business too, through PageTools.set_zoom.
         zoomable=False,
-        js_api=PageTools(),
+        js_api=PageTools(name),
     )
     if window is None:  # pywebview answers nothing when it could not make one
         raise RuntimeError("the web view gave no window")
-    _window = window
+    with _lock:
+        _windows[name] = window
+        _titles[name] = title
+
+    def gone() -> None:  # closed for good: no longer reached by its name
+        with _lock:
+            if _windows.get(name) is window:
+                del _windows[name]
+                if name in _put_away:
+                    _put_away.remove(name)
+
+    window.events.closed += gone
 
     if on_close is not None:
 
@@ -807,20 +872,85 @@ def show(
     # cannot be had leaves it where the system puts it, as before, and says so in the log.
     def placed() -> None:
         try:
-            back_where_it_was(window.native, store, name=place)
+            back_where_it_was(window.native, store, name=name)
         except Exception as exc:
             if note is not None:
                 note(f"the window opened where the system put it, not where it was left: {exc!r}")
 
     def kept() -> None:  # answers nothing: closing is not taken away
         try:
-            keep_where_it_is(window.native, store)
+            keep_where_it_is(window.native, store, name=name)
         except Exception as exc:
             if note is not None:
                 note(f"where the window was left could not be kept: {exc!r}")
 
     window.events.before_show += placed
     window.events.closing += kept
+    return window
+
+
+def _closes_when(window: Any, closes_when: Callable[[], bool]) -> None:
+    """Close ``window`` the moment ``closes_when`` says yes, asked every :data:`POLL_S` while it is
+    open; returns once it is closed."""
+    closed = threading.Event()
+    window.events.closed += closed.set
+    while not closed.wait(POLL_S):
+        if closes_when():
+            window.destroy()
+            return
+
+
+def show(
+    url: str,
+    *,
+    title: str,
+    on_shown: Callable[[], None] | None = None,
+    closes_when: Callable[[], bool] | None = None,
+    on_close: Callable[[], bool] | None = None,
+    may_quit: Callable[[], bool] | None = None,
+    note: Callable[[str], None] | None = None,
+    size: tuple[int, int] = SIZE,
+    storage: Path | None = None,
+    place: str = PLACE_NAME,
+    menu: Sequence[tuple[str, Callable[[], None]]] | None = None,
+) -> None:
+    """Show ``url`` in a window of its own, and return once the app's last window is closed.
+
+    ``on_shown`` runs in a thread of its own the moment the window is up, which is where the
+    engine is started: the window is on screen while it loads, rather than after. ``closes_when``
+    is asked every :data:`POLL_S` while the window is open, and the window closes the moment it
+    says yes: *Quit* stops the engine, and a window left on a page with nothing behind it would
+    keep the app in the Dock with nothing to show. ``on_close`` is asked when the close button is
+    clicked, and the window stays when it answers no, which is how the app is put away rather than
+    quit (:func:`puts_away_on_close`); ``may_quit`` answers for the app's own Quit, wherever it is
+    asked from (:func:`on_quit`). ``note`` is given a line when something that is not the engine
+    goes wrong behind the window, which would otherwise be said to nobody. ``storage`` is the web
+    view's folder, every window's while the app runs (:func:`storage_dir` by default); ``place``
+    the window's name (:func:`back_where_it_was`, :func:`place_file`). ``menu``: the entries of
+    the Window menu, (title, what it does), where the app has one; by default this window's own,
+    which brings it back.
+
+    Raises when this system has no web view (the package missing, or no toolkit under it). The
+    engine must not have been started before this returns, so that a system without a window
+    leaves nothing behind when the caller falls back to the browser.
+    """
+    import webview  # not at import time: a system without it must still run the engine
+    from webview.menu import Menu, MenuAction
+
+    global _first, _store
+    store = storage_dir() if storage is None else storage
+    store.mkdir(parents=True, exist_ok=True)
+    window = _make(
+        webview,
+        url,
+        title=title,
+        name=place,
+        store=store,
+        on_close=on_close,
+        note=note,
+        size=size,
+    )
+    _first, _store = place, store
 
     def behind() -> None:
         """What runs while the window is up. It must end when the window does: pywebview gives it
@@ -840,20 +970,15 @@ def show(
         except Exception as exc:  # the window is up and the engine runs: this is not worth dying
             if note is not None:
                 note(f"the window opened without its menu and its Quit: {exc!r}")
-        if closes_when is None:
-            return
-        closed = threading.Event()
-        window.events.closed += closed.set
-        while not closed.wait(POLL_S):
-            if closes_when():
-                window.destroy()
-                return
+        if closes_when is not None:
+            _closes_when(window, closes_when)
 
     start = behind if any(x is not None for x in (on_shown, closes_when, may_quit)) else None
     # the way back to a window that was put away, next to the Dock's icon; where the close button
     # closes, there is nothing to come back to
-    menu = (
-        [Menu(WINDOW_MENU, [MenuAction(title, lambda: window.show())])]
+    entries = [(title, lambda: _shown_again(place))] if menu is None else list(menu)
+    window_menu = (
+        [Menu(WINDOW_MENU, [MenuAction(text, action) for text, action in entries])]
         if puts_away_on_close()
         else []
     )
@@ -867,7 +992,7 @@ def show(
     try:
         webview.start(
             start,
-            menu=menu,
+            menu=window_menu,
             private_mode=False,
             storage_path=str(store),
             **({"icon": icon} if icon else {}),
@@ -875,3 +1000,63 @@ def show(
     finally:
         if relay is not None:
             said.removeHandler(relay)
+        _first = _store = None  # the loop is over: the next show() starts afresh
+
+
+def _shown_again(name: str) -> None:
+    """Bring the window ``name`` back where it is up: the Window menu's entry."""
+    window = _named(name)
+    if window is not None:
+        window.show()
+        with _lock:
+            if name in _put_away:
+                _put_away.remove(name)
+
+
+def open_another(
+    url: str,
+    *,
+    title: str,
+    place: str,
+    on_shown: Callable[[], None] | None = None,
+    closes_when: Callable[[], bool] | None = None,
+    on_close: Callable[[], bool] | None = None,
+    note: Callable[[str], None] | None = None,
+    size: tuple[int, int] = SIZE,
+) -> None:
+    """Show ``url`` in another window of the app, beside the one :func:`show` opened, and return
+    at once: from any thread, while that loop runs. One program, one icon in the Dock or the
+    taskbar, however many windows it shows; each keeps its own place (``place``, its name, which
+    no window up may have already), its page's own storage by its address, and its own zoom.
+
+    ``on_shown``, ``closes_when``, ``on_close`` and ``note`` as for :func:`show`; the app's Quit
+    and its folder are the first window's. Raises when no window is up to open it beside.
+    """
+    import webview
+
+    store = _store
+    if store is None or _first is None:
+        raise RuntimeError("no window is up to open another beside")
+    if shown(place):
+        raise RuntimeError(f"a window called {place!r} is up already")
+    window = _make(
+        webview,
+        url,
+        title=title,
+        name=place,
+        store=store,
+        on_close=on_close,
+        note=note,
+        size=size,
+    )
+    if on_shown is None and closes_when is None:
+        return
+
+    def behind() -> None:
+        window.events.shown.wait(10)  # it opens on the app's loop, a moment after this returns
+        if on_shown is not None:
+            on_shown()
+        if closes_when is not None:
+            _closes_when(window, closes_when)
+
+    threading.Thread(target=behind, name=f"window-{place}", daemon=True).start()

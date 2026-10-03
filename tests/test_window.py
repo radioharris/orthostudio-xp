@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -343,7 +345,7 @@ def test_the_window_zooms_its_page_because_a_browser_would() -> None:
     )
     start = source.index("webview.create_window(")
     call = source[start : source.index("if window is None", start)]
-    assert "js_api=PageTools()" in call
+    assert "js_api=PageTools(name)" in call  # each window's page zooms that window alone
     assert "setPageZoom_" in source and "ZoomFactor" in source  # macOS, then Windows
 
     # asked without a window, it says no rather than raising: the page then leaves the size alone
@@ -403,7 +405,7 @@ def test_the_windows_zoom_is_set_on_the_windows_own_thread(monkeypatch: pytest.M
     system.Object = object  # type: ignore[attr-defined]
     system.Func = {object: lambda do: do}  # type: ignore[attr-defined]  # Func[Object]: a delegate
     monkeypatch.setitem(sys.modules, "System", system)
-    monkeypatch.setattr(window, "_web_view", lambda: view)
+    monkeypatch.setattr(window, "_web_view", lambda name=None: view)
     assert window.PageTools().set_zoom(1.25) is True
     assert view.factor == 1.25
     # on the window's own thread already, it is set at once
@@ -454,19 +456,25 @@ def test_on_windows_the_window_asked_for_goes_in_front(monkeypatch: pytest.Monke
             shown.append(1)
 
     me = os.getpid()
-    monkeypatch.setattr(window, "_window", Shown())
+    monkeypatch.setattr(window, "_windows", {window.PLACE_NAME: Shown(), "Other": Shown()})
+    monkeypatch.setattr(window, "_titles", {window.PLACE_NAME: "OrthoStudio XP", "Other": "Other"})
+    monkeypatch.setattr(window, "_first", window.PLACE_NAME)
+    monkeypatch.setattr(window, "_put_away", [])
     monkeypatch.setattr(window.sys, "platform", "win32")
     monkeypatch.setattr(
         winfront,
         "top_windows",
         lambda: [
             winfront.TopWindow(7, "Chrome_WidgetWin_1", "X-Plane", me + 1),
+            winfront.TopWindow(8, "WindowsForms10.Window", "Other", me),
             winfront.TopWindow(9, "WindowsForms10.Window", "OrthoStudio XP", me),
         ],
     )
     monkeypatch.setattr(winfront, "force_foreground", lambda hwnd: fronted.append(hwnd) or True)
     window.to_the_front()
     assert shown == [1] and fronted == [9]
+    window.to_the_front("Other")  # two windows of one program: the one asked for, by its title
+    assert shown == [1, 1] and fronted == [9, 8]
 
 
 def test_on_a_mac_appkit_is_asked_on_its_main_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -487,7 +495,7 @@ def test_on_a_mac_appkit_is_asked_on_its_main_thread(monkeypatch: pytest.MonkeyP
     helper = types.SimpleNamespace(callAfter=later.append)
     monkeypatch.setitem(sys.modules, "AppKit", appkit)
     monkeypatch.setitem(sys.modules, "PyObjCTools", types.SimpleNamespace(AppHelper=helper))
-    monkeypatch.setattr(window, "_window", None)
+    monkeypatch.setattr(window, "_windows", {})
     monkeypatch.setattr(window.sys, "platform", "darwin")
     window.to_the_front()
     assert done == [] and len(later) == 1  # nothing in the asking thread
@@ -693,14 +701,14 @@ def test_the_window_is_placed_before_it_shows_and_kept_as_it_closes(
     placed: list[tuple[Any, Path, str]] = []
     monkeypatch.setattr(window, "back_where_it_was", lambda n, s, name: placed.append((n, s, name)))
 
-    def refused(native: Any, store: Path) -> None:
+    def refused(native: Any, store: Path, name: str) -> None:
         raise PermissionError("the folder is read-only")
 
     monkeypatch.setattr(window, "keep_where_it_is", refused)
     window.show(
         "http://127.0.0.1:8641/", title="OrthoStudio XP", note=said.append, storage=tmp_path
     )
-    assert placed == [(None, tmp_path, window.PLACE_NAME)]  # OrthoStudio XP's own name
+    assert placed == [(None, tmp_path, window.PLACE_NAME)]
     assert len(said) == 1 and "could not be kept" in said[0] and "read-only" in said[0]
     # the place's handler answers nothing on closing: a close is never taken away by it
     assert all(h() is None for h in made.events.closing.handlers)
@@ -716,3 +724,157 @@ def test_macos_keeps_each_window_s_frame_under_its_own_name(
     live = NSWindow((40, 60, 1440, 860))
     window.back_where_it_was(live, tmp_path, name="OrthoStudio XP Live", system="darwin")
     assert live.asked_for == live.saved_as == "OrthoStudio XP Live" != window.PLACE_NAME
+
+
+# -- several windows in one program ---------------------------------------------------------------
+
+
+class Window:
+    """A pywebview window as the program's own code sees it: shown, put away, closed, asked."""
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+        self.events = type("E", (), {})()
+        for name in ("closed", "closing", "before_show"):
+            setattr(self.events, name, Handlers())
+        self.events.shown = threading.Event()
+        self.events.shown.set()
+        self.native: Any = None
+        self.done: list[str] = []
+
+    def show(self) -> None:
+        self.done.append("show")
+
+    def hide(self) -> None:
+        self.done.append("hide")
+
+    def destroy(self) -> None:
+        self.done.append("destroy")
+        self.events.closed.set()
+
+    def create_confirmation_dialog(self, title: str, message: str) -> bool:
+        self.done.append(f"ask {message}")
+        return True
+
+
+def _one_program(monkeypatch: pytest.MonkeyPatch, during: Any) -> dict[str, Window]:
+    """A fake pywebview whose loop runs ``during()`` while the first window is up; returns the
+    windows made, by title."""
+    made: dict[str, Window] = {}
+
+    def create_window(title: str, url: str, **kw: object) -> Window:
+        made[title] = Window(title)
+        made[title].url = url  # type: ignore[attr-defined]
+        made[title].js_api = kw.get("js_api")  # type: ignore[attr-defined]
+        return made[title]
+
+    def fake_start(func: object, **kw: object) -> None:
+        during()
+
+    fake = type("W", (), {"create_window": create_window, "start": fake_start, "screens": []})
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setitem(
+        sys.modules,
+        "webview.menu",
+        type("M", (), {"Menu": lambda *a, **k: None, "MenuAction": lambda *a, **k: None}),
+    )
+    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
+    monkeypatch.setattr(window, "_windows", {})
+    monkeypatch.setattr(window, "_titles", {})
+    monkeypatch.setattr(window, "_put_away", [])
+    return made
+
+
+def test_one_program_shows_another_window_beside_its_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One program, one icon in the Dock or the taskbar: a second window opens in the program's
+    own loop, by a name of its own, and each call reaches the window it names (the first by
+    default)."""
+    with pytest.raises(RuntimeError, match="no window is up"):
+        window.open_another("http://127.0.0.1:2/", title="Other", place="Other")
+    seen: dict[str, Any] = {}
+
+    def during() -> None:
+        window.open_another("http://127.0.0.1:2/", title="Other", place="Other")
+        with pytest.raises(RuntimeError, match="up already"):
+            window.open_another("http://127.0.0.1:2/", title="Other", place="Other")
+        seen["both"] = (window.shown(), window.shown("Other"))
+        window.away("Other")
+        window.to_the_front()  # the first one
+        seen["asked"] = window.ask("Other", "Really?", name="Other")
+        window.close_now("Other")
+        seen["after"] = (window.shown(), window.shown("Other"))
+
+    made = _one_program(monkeypatch, during)
+    window.show("http://127.0.0.1:1/", title="OrthoStudio XP", storage=tmp_path)
+    first, other = made["OrthoStudio XP"], made["Other"]
+    assert seen["both"] == (True, True)
+    assert other.done == ["hide", "ask Really?", "destroy"] and first.done == ["show"]
+    assert seen["asked"] is True and seen["after"] == (True, False)  # closed for good: forgotten
+    # each page's zoom asks for its own window
+    assert first.js_api._name == window.PLACE_NAME and other.js_api._name == "Other"  # type: ignore[attr-defined]
+
+
+def test_a_window_put_away_last_comes_back_at_a_click_on_the_icon(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def during() -> None:
+        window.open_another("http://127.0.0.1:2/", title="Other", place="Other")
+        window.away()
+        window.away("Other")
+        window._bring_back()  # the icon clicked, nothing showing: the last put away
+        window._bring_back()  # then the first
+        window._bring_back()  # nothing put away any more: the first again
+
+    made = _one_program(monkeypatch, during)
+    window.show("http://127.0.0.1:1/", title="OrthoStudio XP", storage=tmp_path)
+    assert made["Other"].done == ["hide", "show"]
+    assert made["OrthoStudio XP"].done == ["hide", "show", "show"]
+
+
+def test_another_window_starts_its_own_work_once_shown_and_closes_on_its_own_word(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    started = threading.Event()
+    monkeypatch.setattr(window, "POLL_S", 0.01)
+
+    def during() -> None:
+        window.open_another(
+            "http://127.0.0.1:2/",
+            title="Other",
+            place="Other",
+            on_shown=started.set,
+            closes_when=lambda: started.is_set(),
+        )
+        assert started.wait(5)
+        deadline = time.monotonic() + 5
+        while window.shown("Other") and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    made = _one_program(monkeypatch, during)
+    window.show("http://127.0.0.1:1/", title="OrthoStudio XP", storage=tmp_path)
+    assert made["Other"].done == ["destroy"]
+
+
+def test_each_window_keeps_its_place_in_a_file_of_its_own(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The program has one web view folder for all its windows: on Windows each window's place
+    has a file of its own there, the first's the one it always had."""
+    assert window.place_file() == window.PLACE_FILE == "place.json"
+    assert window.place_file("Second Window") == "place-second-window.json"
+    _winforms(monkeypatch, [Rect(0, 0, 1920, 1040)])
+    form = Form()
+    form.Bounds = Rect(100, 80, 1200, 800)
+    window.keep_where_it_is(form, tmp_path, name="Second Window", system="win32")
+    assert (tmp_path / "place-second-window.json").exists()
+    assert not (tmp_path / window.PLACE_FILE).exists()
+    assert window.saved_place(tmp_path, "Second Window") == {
+        "x": 100,
+        "y": 80,
+        "width": 1200,
+        "height": 800,
+        "maximized": False,
+    }
+    assert window.saved_place(tmp_path) is None  # the first window's: nothing kept yet
