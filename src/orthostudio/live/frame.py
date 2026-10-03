@@ -1,6 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""OrthoStudio XP and OrthoStudio XP Live in one window: the app's frame (a trial, 2026-10-03).
+"""OrthoStudio XP and OrthoStudio XP Live in one window: the app's frame (the user's choice,
+2026-10-04, after a trial: « Bien mieux que deux applications »).
 
 Two windows that do not do the same thing and are one app were confusing, each with its own
 language, theme, text size and zoom (the user: « Le fait d'avoir deux fenetres d'applications qui

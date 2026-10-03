@@ -15,8 +15,9 @@ that program (``desktop.open_osxp_here``, ``web.live_window_here``): Live's wind
 OrthoStudio XP's through what its process listens for (:func:`osxp_window_listens`). A program
 showing no window opens the other in a program of its own.
 
-Where the system gives a window, the two are one window instead, the app's frame (a trial,
-:mod:`orthostudio.live.frame`): Build | Live in its top bar shows one or the other.
+Where the system gives a window, the two are one window instead, the app's frame
+(:mod:`orthostudio.live.frame`, the user's choice, 2026-10-04): Build | Live in its top bar shows
+one or the other.
 """
 
 from __future__ import annotations

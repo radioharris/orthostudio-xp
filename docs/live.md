@@ -19,7 +19,7 @@ do the same from the terminal.
 
 ## One app with OrthoStudio XP
 
-Live and OrthoStudio XP are one app, in one window (a trial). At the top, Build | Live shows one or
+Live and OrthoStudio XP are one app, in one window. At the top, Build | Live shows one or
 the other, with what the other is doing in a word beside its name (build under way, in flight), and
 the tabs of the one shown: Plan, Works, Library and Settings for Build, Live and Settings for Live.
 The language, the theme, Quit, and at the foot the text size and the zoom, are there once for both.

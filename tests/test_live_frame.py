@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""OrthoStudio XP and OrthoStudio XP Live in one window, the app's frame (a trial, 2026-10-03): its
-page served on the loopback with what it starts from, each part loaded the first time it is shown
-and kept, the parts' states, what the pilot chose kept once for both, quitting asked once while a
+"""OrthoStudio XP and OrthoStudio XP Live in one window, the app's frame (the user's choice,
+2026-10-04): its page served on the loopback with what it starts from, each part loaded the first
+time it is shown and kept, what the pilot chose kept once for both, quitting asked once while a
 build or a stream runs; and a page in the frame (``ui/embed.js``), which leaves it its bars."""
 
 from __future__ import annotations
