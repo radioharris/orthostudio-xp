@@ -63,7 +63,7 @@ from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, x
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points
-from .names import KEEP, REGION_LIST, RING, Entry, Names, RegionTextures, squares_round
+from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
 from .region import (
     NEUTRAL_LEVEL,
@@ -326,10 +326,12 @@ class Streamer:
         flight_encodes: int = FLIGHT_ENCODES,
         sharp_builds: int = SHARP_WORKERS,
         memory_pressure: Callable[[], int] = machine.memory_pressure,
+        region_lists: Path | None = None,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
-        builder feeds: ``submit(key, priority)``, ``close()``, and its counters."""
+        builder feeds: ``submit(key, priority)``, ``close()``, and its counters. ``region_lists``:
+        where each region's textures are kept from one start to the next (``names.one_region``)."""
         self.pack_dir = pack_dir
         self.cache = cache
         self.downloader_factory = downloader_factory
@@ -393,16 +395,17 @@ class Streamer:
         self.sources = sources_of_pack(pack_dir)
         per_square = bool(self.sources) and region_version(pack_dir) >= REGION_VERSION
         t0 = time.monotonic()
-        region = RegionTextures(self.sources, kept=pack_dir / REGION_LIST) if per_square else None
+        region = RegionTextures(self.sources, lists=region_lists) if per_square else None
         # a start's longest step where a disk is slow: its time, for the log (session.follow)
         self.region_note: str | None = None
         if region is not None:
+            listed = ", ".join(source.name for source in region.listed)
+            folders = "its folder" if len(region.listed) == 1 else "their folders"
             unkept = region.keep_error
             self.region_note = (
-                f"the region's {len(region)} textures "
-                + ("read from their list" if region.from_list else "listed from its folders")
-                + f" in {time.monotonic() - t0:.1f} s"
-                + (f" (the list could not be kept: {unkept})" if unkept else "")
+                f"the regions' {len(region)} textures in {time.monotonic() - t0:.1f} s: "
+                + (f"{listed} listed from {folders}" if listed else "read from their lists")
+                + (f" (a list could not be kept: {unkept})" if unkept else "")
             )
         self.index = TextureIndex(
             region.entries()

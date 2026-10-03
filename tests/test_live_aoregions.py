@@ -16,6 +16,7 @@ import pytest
 
 from orthostudio.live import aoregions
 from orthostudio.live.aoregions import AoRegion, Asset, Installer, catalog, installed
+from orthostudio.live.names import RegionTextures, region_list_file
 
 HOST = "https://github.test/"
 
@@ -161,6 +162,11 @@ def test_an_install_as_autoortho_s_own(
     assert sorted(p.name for p in overlays.iterdir()) == ["+43+005.dsf", "+45+006.dsf"]
     assert installed(tmp_path)["eur"]["release"] == "0.0.51"
     assert not (tmp_path / "regions" / ".download" / "eur").exists()  # nothing left behind
+    # its textures listed as it installed: the first start reads their list, not the folder
+    lists = aoregions.lists_dir(tmp_path)
+    assert region_list_file(lists, mesh).exists()
+    first_start = RegionTextures([mesh], lists=lists)
+    assert first_start.listed == [] and len(first_start) == 1
 
 
 def test_a_dropped_download_resumes(github: FakeGitHub, tmp_path: Path, monkeypatch) -> None:
@@ -220,9 +226,12 @@ def test_remove(github: FakeGitHub, tmp_path: Path) -> None:
     with github.client() as client:
         region = catalog(tmp_path, client=client)["eur"]
         Installer(tmp_path, region, client=client, log=lambda _: None).run()
+    mesh = tmp_path / "regions" / "z_ao_eur"
+    assert region_list_file(aoregions.lists_dir(tmp_path), mesh).exists()
     aoregions.remove(tmp_path, "eur", log=lambda _: None)
     assert installed(tmp_path) == {}
     assert not (tmp_path / "regions" / "y_ao_eur").exists()
+    assert not region_list_file(aoregions.lists_dir(tmp_path), mesh).exists()  # its list too
 
 
 def test_a_region_round_trips_through_its_json() -> None:

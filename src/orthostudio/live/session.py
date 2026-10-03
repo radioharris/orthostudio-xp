@@ -339,7 +339,7 @@ def follow(
     ``attach``: told of the streamer once it runs, and of None once it stops (the window's map
     reads what it builds from its memory). ``departure``: a start the window asks to prepare
     before X-Plane loads it (``streamer.run``)."""
-    from orthostudio.live import machine
+    from orthostudio.live import aoregions, machine
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
     from orthostudio.live.providers import cache_key
@@ -379,6 +379,7 @@ def follow(
                     installed_regions=lambda: {
                         s.name.removeprefix("z_ao_") for s in default_sources(prepared.xplane)
                     },
+                    region_lists=aoregions.lists_dir(live_root()),
                 )
                 if streamer.region_note:
                     log(streamer.region_note)

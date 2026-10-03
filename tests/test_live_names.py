@@ -17,10 +17,10 @@ from live_helpers import NAMES, FakeDownloader, live_names, make_source, square_
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.names import (
     KEEP,
-    REGION_LIST,
     RING,
     NeutralPool,
     RegionTextures,
+    region_list_file,
     squares_round,
 )
 from orthostudio.live.region import neutral_file, setup_region, sources_of_pack
@@ -274,18 +274,19 @@ def test_the_squares_round_a_point() -> None:
     assert (47, 5) in made and (48, 6) in kept and (48, 6) not in made
 
 
-# --- the regions' textures, kept in a list --------------------------------------------------------
+# --- each region's textures, kept in a list -------------------------------------------------------
 
 
-def test_the_regions_textures_are_read_from_their_list_at_the_next_start(
+def test_a_regions_textures_are_read_from_its_list_at_the_next_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Listing a region's .ter files is a start's longest step where a disk is slow: the list is
-    kept in the pack and read back, the terrain folder not listed again."""
+    """Listing a region's .ter files is a start's longest step where a disk is slow: its list is
+    kept and read back, the terrain folder not listed again."""
     pack = region(tmp_path)
-    sources, kept = sources_of_pack(pack), pack / REGION_LIST
-    first = RegionTextures(sources, kept=kept)
-    assert not first.from_list and kept.exists() and first.keep_error is None
+    sources, lists = sources_of_pack(pack), tmp_path / "lists"
+    first = RegionTextures(sources, lists=lists)
+    assert first.listed == sources and first.keep_error is None
+    assert region_list_file(lists, sources[0]).exists()
     real_scandir = os.scandir
 
     def no_terrain(path):
@@ -293,53 +294,53 @@ def test_the_regions_textures_are_read_from_their_list_at_the_next_start(
         return real_scandir(path)
 
     monkeypatch.setattr(os, "scandir", no_terrain)
-    again = RegionTextures(sources, kept=kept)
-    assert again.from_list
+    again = RegionTextures(sources, lists=lists)
+    assert again.listed == []
     assert list(again.entries()) == list(first.entries()) and len(again) == len(ROW)
     assert again.others == first.others
 
 
 def test_a_region_changed_is_listed_again(tmp_path: Path) -> None:
     pack = region(tmp_path, textures=ROW[:3])
-    sources, kept = sources_of_pack(pack), pack / REGION_LIST
-    RegionTextures(sources, kept=kept)
+    sources, lists = sources_of_pack(pack), tmp_path / "lists"
+    RegionTextures(sources, lists=lists)
     terrain = sources[0] / "terrain"
     (terrain / f"{ROW[3]}.ter").write_text("A\n800\nTERRAIN\n")
     st = terrain.stat()  # its time moved, whatever the clock's step on this disk
     os.utime(terrain, ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
-    changed = RegionTextures(sources, kept=kept)
-    assert not changed.from_list and len(changed) == 4
-    assert RegionTextures(sources, kept=kept).from_list  # kept again, as it is now
-    # another region added to the pack: listed again too
-    assert not RegionTextures([*sources, tmp_path / "elsewhere"], kept=kept).from_list
+    changed = RegionTextures(sources, lists=lists)
+    assert changed.listed == sources and len(changed) == 4
+    assert RegionTextures(sources, lists=lists).listed == []  # kept again, as it is now
 
 
 def test_a_broken_list_is_made_again_and_one_that_cannot_be_written_stops_nothing(
     tmp_path: Path,
 ) -> None:
     pack = region(tmp_path)
-    sources, kept = sources_of_pack(pack), pack / REGION_LIST
-    kept.parent.mkdir(parents=True, exist_ok=True)
-    kept.write_text('{"version": 1, "folders"')
-    broken = RegionTextures(sources, kept=kept)
-    assert not broken.from_list and len(broken) == len(ROW)
-    assert RegionTextures(sources, kept=kept).from_list
+    sources, lists = sources_of_pack(pack), tmp_path / "lists"
+    lists.mkdir()
+    region_list_file(lists, sources[0]).write_text('{"version": 1, "folder"')
+    broken = RegionTextures(sources, lists=lists)
+    assert broken.listed == sources and len(broken) == len(ROW)
+    assert RegionTextures(sources, lists=lists).listed == []
     blocker = tmp_path / "a file"
     blocker.write_text("")
-    unkept = RegionTextures(sources, kept=blocker / "region-textures.json")
-    assert not unkept.from_list and unkept.keep_error and len(unkept) == len(ROW)
+    unkept = RegionTextures(sources, lists=blocker)
+    assert unkept.listed == sources and unkept.keep_error and len(unkept) == len(ROW)
+    assert RegionTextures(sources).listed == sources  # no lists given: listed each time
 
 
 # --- the streamer ---------------------------------------------------------------------------------
 
 
-def test_the_streamer_keeps_the_regions_list_and_says_how_long_it_took(tmp_path: Path) -> None:
+def test_the_streamer_keeps_the_regions_lists_and_says_how_long_it_took(tmp_path: Path) -> None:
     pack = region(tmp_path)
-    for listed in ("listed from its folders", "read from their list"):
-        s = Streamer(pack, ChunkCache(tmp_path / "c.sqlite"), FakeDownloader, 0, log=quiet)
+    cache, lists = ChunkCache(tmp_path / "c.sqlite"), tmp_path / "lists"
+    for said in ("z_ao_test listed from its folder", "read from their lists"):
+        s = Streamer(pack, cache, FakeDownloader, 0, log=quiet, region_lists=lists)
         assert s.region_note is not None
-        assert s.region_note.startswith(f"the region's {len(ROW)} textures {listed} in ")
-    assert (pack / REGION_LIST).exists()
+        assert s.region_note.startswith(f"the regions' {len(ROW)} textures in ")
+        assert s.region_note.endswith(f" s: {said}")
 
 
 def streamer(tmp_path: Path) -> Streamer:

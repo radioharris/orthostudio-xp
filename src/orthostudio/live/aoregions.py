@@ -246,6 +246,12 @@ def mesh_dir(root: Path, region: str) -> Path:
     return regions_dir(root) / f"z_ao_{region}"
 
 
+def lists_dir(root: Path) -> Path:
+    """Where each region's textures are kept from one start to the next, AutoOrtho's regions' too
+    (``orthostudio.live.names.one_region``)."""
+    return regions_dir(root) / ".lists"
+
+
 def overlays_dir(root: Path, region: str) -> Path:
     return regions_dir(root) / f"y_ao_{region}"
 
@@ -261,6 +267,9 @@ def remove(root: Path, region: str, log: Log = print) -> None:
     ):
         if path.exists():
             shutil.rmtree(path)
+    from orthostudio.live.names import region_list_file
+
+    region_list_file(lists_dir(root), mesh_dir(root, region)).unlink(missing_ok=True)
     log(f"AutoOrtho's region {region} deleted from Live's folder")
 
 
@@ -617,3 +626,16 @@ class Installer:
         shutil.rmtree(self.download, ignore_errors=True)
         shutil.rmtree(self.staging, ignore_errors=True)
         self.log(f"AutoOrtho's region {region.id} installed: {final_mesh}")
+        # its textures listed now, the install still under way: the first start reads their list
+        from orthostudio.live.names import one_region, region_list_file
+
+        lists = lists_dir(self.root)
+        t0 = time.monotonic()
+        try:
+            region_list_file(lists, final_mesh).unlink(missing_ok=True)
+            one = one_region(final_mesh, lists)
+        except OSError as e:  # the region is installed all the same: a start lists it
+            self.log(f"  its textures not listed: {e}")
+            return
+        kept = f"their list not kept: {one.keep_error}" if one.keep_error else "their list kept"
+        self.log(f"  its {len(one.kinds)} textures listed in {time.monotonic() - t0:.1f} s, {kept}")
