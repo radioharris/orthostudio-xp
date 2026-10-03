@@ -636,20 +636,24 @@ def saved_place(store: Path) -> dict[str, Any] | None:
     }
 
 
-def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -> None:
+def back_where_it_was(
+    native: Any, store: Path, *, name: str = PLACE_NAME, system: str = sys.platform
+) -> None:
     """Put the window being made (``native``: an ``NSWindow``, a WinForms ``Form``) where it was
     left, the size it had, before it shows: in pywebview's ``before_show``, on the window's thread.
 
     The window opened where the system chose, on the screen of the shortcut rather than the one
     the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; a user:
-    "surtout sous Windows"). macOS keeps a window's frame by name in the app's defaults; Windows'
-    is read from :data:`PLACE_FILE`. A place whose title bar lies on no screen any more, the
-    screen it was on unplugged, is left to the system, as on a first start.
+    "surtout sous Windows"). macOS keeps a window's frame by ``name`` in the app's defaults, which
+    every window of the app shares: OrthoStudio XP Live's window has a name of its own, or the two
+    windows took each other's place (2026-10-03). Windows' is read from :data:`PLACE_FILE`, in the
+    window's own ``store``. A place whose title bar lies on no screen any more, the screen it was
+    on unplugged, is left to the system, as on a first start.
     """
     if system == "darwin":
         import AppKit
 
-        if native.setFrameUsingName_(PLACE_NAME):
+        if native.setFrameUsingName_(name):
             frame = native.frame()
             top = frame.origin.y + frame.size.height  # macOS counts up from the bottom
             band = (frame.origin.x, top - TITLE_BAR, frame.size.width, TITLE_BAR)
@@ -660,7 +664,7 @@ def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -
             if not grabbable(band, screens):
                 native.center()
         # from now on AppKit keeps the frame under that name as the window moves or resizes
-        native.setFrameAutosaveName_(PLACE_NAME)
+        native.setFrameAutosaveName_(name)
     elif system == "win32":
         place = saved_place(store)
         if place is None:
@@ -741,6 +745,7 @@ def show(
     note: Callable[[str], None] | None = None,
     size: tuple[int, int] = SIZE,
     storage: Path | None = None,
+    place: str = PLACE_NAME,
 ) -> None:
     """Show ``url`` in a window of its own, and return once the window is closed.
 
@@ -752,7 +757,9 @@ def show(
     clicked, and the window stays when it answers no, which is how the app is put away rather than
     quit (:func:`puts_away_on_close`); ``may_quit`` answers for the app's own Quit, wherever it is
     asked from (:func:`on_quit`). ``note`` is given a line when something that is not the engine
-    goes wrong behind the window, which would otherwise be said to nobody.
+    goes wrong behind the window, which would otherwise be said to nobody. ``storage`` and
+    ``place`` are the window's own: the folder of its page's storage and of its place on Windows,
+    and the name macOS keeps its place under (:func:`back_where_it_was`).
 
     Raises when this system has no web view (the package missing, or no toolkit under it). The
     engine must not have been started before this returns, so that a system without a window
@@ -800,7 +807,7 @@ def show(
     # cannot be had leaves it where the system puts it, as before, and says so in the log.
     def placed() -> None:
         try:
-            back_where_it_was(window.native, store)
+            back_where_it_was(window.native, store, name=place)
         except Exception as exc:
             if note is not None:
                 note(f"the window opened where the system put it, not where it was left: {exc!r}")

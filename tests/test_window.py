@@ -615,10 +615,12 @@ class NSWindow:
     def __init__(self, frame: tuple[float, float, float, float] | None) -> None:
         self.kept = frame
         self.saved_as: str | None = None
+        self.asked_for: str | None = None
         self.centred = False
         self._frame = frame or (300, 200, 1440, 920)
 
     def setFrameUsingName_(self, name: str) -> bool:  # noqa: N802 (AppKit's own names)
+        self.asked_for = name
         return self.kept is not None
 
     def frame(self) -> Any:
@@ -688,8 +690,8 @@ def test_the_window_is_placed_before_it_shows_and_kept_as_it_closes(
         type("M", (), {"Menu": lambda *a, **k: None, "MenuAction": lambda *a, **k: None}),
     )
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
-    placed: list[tuple[Any, Path]] = []
-    monkeypatch.setattr(window, "back_where_it_was", lambda n, s: placed.append((n, s)))
+    placed: list[tuple[Any, Path, str]] = []
+    monkeypatch.setattr(window, "back_where_it_was", lambda n, s, name: placed.append((n, s, name)))
 
     def refused(native: Any, store: Path) -> None:
         raise PermissionError("the folder is read-only")
@@ -698,7 +700,19 @@ def test_the_window_is_placed_before_it_shows_and_kept_as_it_closes(
     window.show(
         "http://127.0.0.1:8641/", title="OrthoStudio XP", note=said.append, storage=tmp_path
     )
-    assert placed == [(None, tmp_path)]
+    assert placed == [(None, tmp_path, window.PLACE_NAME)]  # OrthoStudio XP's own name
     assert len(said) == 1 and "could not be kept" in said[0] and "read-only" in said[0]
     # the place's handler answers nothing on closing: a close is never taken away by it
     assert all(h() is None for h in made.events.closing.handlers)
+
+
+def test_macos_keeps_each_window_s_frame_under_its_own_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """macOS keeps a window's frame in the app's defaults, which OrthoStudio XP's window and
+    OrthoStudio XP Live's share: under one name, each opened where the other was left
+    (2026-10-03)."""
+    _appkit(monkeypatch, [(0, 25, 1512, 920)])
+    live = NSWindow((40, 60, 1440, 860))
+    window.back_where_it_was(live, tmp_path, name="OrthoStudio XP Live", system="darwin")
+    assert live.asked_for == live.saved_as == "OrthoStudio XP Live" != window.PLACE_NAME

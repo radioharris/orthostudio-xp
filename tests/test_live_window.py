@@ -137,6 +137,15 @@ def test_the_question_in_the_window_s_language(opened) -> None:
     assert control.stopped == 0 and not given["closes_when"]()  # "no": nothing stops
 
 
+def test_the_window_keeps_a_place_and_a_storage_of_its_own(opened) -> None:
+    """Its place (macOS keeps it by name in the app's defaults, Windows in the window's folder)
+    and its page's storage, where the zoom and the text size are kept, are Live's own: under
+    OrthoStudio XP's, each window opened where the other was left (2026-10-03)."""
+    given, _done, _control = opened(True)
+    assert given["place"] == web.TITLE != window_module.PLACE_NAME
+    assert given["storage"].name == "window" and given["storage"] != window_module.storage_dir()
+
+
 def test_on_windows_and_linux_closing_is_quitting(opened) -> None:
     given, done, control = opened(mac=False)
     assert given["on_close"]() is True  # nothing streams: the window closes, the app ends

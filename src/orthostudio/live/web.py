@@ -449,7 +449,8 @@ def _in_a_window(url: str, control: Any, *, on_shown: Callable[[], None] | None 
         may_quit=may_quit,
         closes_when=control.gone,
         size=SIZE,
-        storage=default_live_root() / "window",  # where the page keeps its language
+        storage=default_live_root() / "window",  # where the page keeps its language and its sizes
+        place=TITLE,  # the name macOS keeps its place under: OrthoStudio XP's window has its own
     )
     control.stop()  # the window went some other way: nothing may stream behind it
     control.wait_idle()
