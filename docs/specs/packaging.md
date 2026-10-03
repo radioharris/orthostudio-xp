@@ -146,6 +146,14 @@ each new file, the opening page said "Starting takes long" past 45 s (a user, 20
 Windows version since 0.1.0 did so. The zip's times, local too, did the same, and the standard
 library's own `.pyc` were out of date on every system, its files copied after they were written.
 
+The setup then opens the app's code once, under its progress bar, before the app starts at the
+end (`python -B -m orthostudio.warmup`): every module of OrthoStudio XP, and on Windows the .NET
+and WebView2 files its window loads. Windows' antivirus reads each new file of a program the
+first time it is opened, and with the `.pyc` right, the first start after an install still
+waited more than a minute on a cloud PC, where the next ones took seconds (2026-10-03). It writes
+nothing, passes over what cannot load, and the setup waits 5 minutes at most. A silent update
+does it too.
+
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of

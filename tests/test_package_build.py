@@ -64,6 +64,22 @@ def test_the_windows_installer_offers_webview2_only_when_it_is_missing() -> None
     assert "Tasks: webview2" in script
 
 
+def test_the_windows_installer_opens_the_app_s_code_before_its_first_start() -> None:
+    """Windows' antivirus reads each new file of the app the first time it is opened: on a cloud PC
+    the first start after an install waited more than a minute (2026-10-03). The setup opens the
+    code once, under its progress bar and writing nothing (``-B``), before the app starts; a silent
+    update does it too."""
+    script = build.inno_setup_script(
+        "0.1.22", Path("/b"), Path("/i.ico"), Path("/o"), "out", Path("/w") / build.WEBVIEW2_EXE
+    )
+    runs = script[script.index("\n[Run]\n") :].split("\n\n[", 1)[0].splitlines()
+    warm = next(i for i, line in enumerate(runs) if "-m orthostudio.warmup" in line)
+    start = next(i for i, line in enumerate(runs) if f"-m {build.ENTRY_MODULE}" in line)
+    assert warm < start
+    assert '"-B -m orthostudio.warmup"' in runs[warm] and "runhidden" in runs[warm]
+    assert "StatusMsg:" in runs[warm] and "skipifsilent" not in runs[warm]
+
+
 def test_the_windows_installer_offers_the_update_when_webview2_is_too_old() -> None:
     """A Shadow PC carried WebView2 100.0.1185.36 of 2022, on which the window opened empty; the
     installer had offered nothing, since a runtime was there (2026-10-01). Microsoft's bootstrapper

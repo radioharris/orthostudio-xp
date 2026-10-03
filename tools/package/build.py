@@ -319,7 +319,9 @@ def inno_setup_script(
     """The Inno Setup script of the Windows installer: for the current user only (no
     administrator), a Start menu entry, an optional desktop one, the app started at the end, and
     an OrthoStudio XP running from the folder stopped before its files are replaced or removed
-    (:data:`INNO_CODE`).
+    (:data:`INNO_CODE`). Before the end, the app's code is opened once (``orthostudio.warmup``),
+    so that the antivirus has read each new file before the first start, which waited more than a
+    minute for it otherwise.
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
@@ -387,6 +389,10 @@ Name: "{{autodesktop}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_M
 
 [Run]
 Filename: "{{tmp}}\\{WEBVIEW2_EXE}"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft WebView2 Runtime..."; Tasks: webview2
+; Windows' antivirus reads each new file of the app the first time it is opened: the first start
+; after an install waited more than a minute for it on a cloud PC (2026-10-03). The app's code is
+; opened once here, under the setup's progress bar, and the first start goes as the next ones.
+Filename: "{run}"; Parameters: "-B -m orthostudio.warmup"; WorkingDir: "{{app}}"; StatusMsg: "Preparing {APP_NAME} for its first start..."; Flags: runhidden waituntilterminated
 Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Description: "{{cm:LaunchProgram,{APP_NAME}}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
