@@ -73,6 +73,9 @@ class Downloader:
             self.hedged
         ) = 0
         self.in_flight = 0
+        # how the last request failed, in curl's words, until a piece comes: the reason when
+        # nothing downloads any more (Streamer, STALL_S)
+        self.last_error = ""
         self._paused_until = 0.0
         # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
         # those ahead of what it shows while its workers are all busy (Streamer.holds)
@@ -172,10 +175,25 @@ class Downloader:
             return await self._session.get(url, headers=dict(p.headers))
         except asyncio.CancelledError:
             raise
-        except Exception:  # timeout, refused connection, reset...
+        except Exception as e:  # timeout, refused connection, reset...
+            self._failed_request(e)
             return None
         finally:
             self.in_flight -= 1
+
+    def _failed_request(self, e: Exception) -> None:
+        """A request that failed, in the log the first time a request fails that way: on the
+        user's Windows (2026-10-04) every request failed at once, curl unable to open its
+        certificates' file (error 77, a letter outside ASCII in the folder's name), and the log
+        said only « failed »."""
+        self.last_error = f"{type(e).__name__}: {e}"
+        kind = f"{type(e).__name__} {getattr(e, 'code', '')}"
+        if self.log is not None and kind not in self._said:
+            self._said.add(kind)
+            self.log(
+                f"  a request for a piece failed ({self.last_error}): a piece is asked "
+                f"{self.attempts} times before it counts as failed"
+            )
 
     async def _hedged(self, p: Provider, x: int, y: int, z: int, attempt: int):
         """One request, and the same of another server if the first is slow: the first good answer
@@ -231,6 +249,7 @@ class Downloader:
                         return NO_IMAGERY, None
                     self.downloaded += 1
                     self.bytes += len(r.content)
+                    self.last_error = ""
                     return IMAGE, r.content
                 if r.status_code in (204, 404):
                     self.no_imagery += 1

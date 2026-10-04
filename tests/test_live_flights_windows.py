@@ -283,3 +283,21 @@ def test_the_kit_s_flights_are_the_runner_s(monkeypatch):
     for choice in ("2", "3", "4", "5"):
         for args in vol.RUNS[choice]:
             assert fly.main(args) == 0
+
+
+def test_the_kit_s_folder_short_and_without_accents(monkeypatch):
+    """On the user's Shadow (2026-10-04) the kit's folder « ... vols de la fenêtre unique ... »
+    downloaded nothing (its « ê »: curl could not open its certificates' file) and, twice in the
+    path after Windows' « Extraire tout », was too long for a region's list to be kept."""
+    monkeypatch.syspath_prepend(str(FLIGHTS.parent))
+    import windows_kit
+
+    vol = _kit_flight_script()
+    root = Path("/k")
+    assert vol.unfit(root / "OSXP-vols-Windows" / "OSXP-vols-Windows") == ""
+    assert "accent" in vol.unfit(root / "vols de la fen\u00eatre unique")
+    assert "caracteres" in vol.unfit(root / ("x" * vol.LONGEST_PATH))
+    assert windows_kit.NAME.isascii()
+    # unpacked on a Desktop, twice in the path: still short enough
+    desktop = "C:\\Users\\Jean-Christophe\\Desktop"
+    assert len(f"{desktop}\\{windows_kit.NAME}\\{windows_kit.NAME}") <= vol.LONGEST_PATH

@@ -241,7 +241,8 @@ To make X-Plane wait, OrthoStudio XP Live puts a small plugin in X-Plane while i
 - The plugin never holds X-Plane in flight, and does nothing if OrthoStudio XP Live is not
   running. At a start it holds X-Plane as long as the ortho keeps arriving, with no time limit:
   sharp zooms can take more than five minutes in a new area. It lets X-Plane go when nothing has
-  downloaded for a minute (no internet), or when you click Stop in the Live window; X-Plane then
+  downloaded for a minute (no internet, or the imagery's servers refusing every request:
+  `LogLive.txt` then says why), or when you click Stop in the Live window; X-Plane then
   shows the neutral colour where nothing was built, until it loads that place again (a new
   flight there, or X-Plane restarted). Live asks for no reload of the scenery: X-Plane's keeps
   the textures it holds.

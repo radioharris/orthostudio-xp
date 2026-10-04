@@ -596,6 +596,68 @@ class DownloaderTest(unittest.TestCase):
         self.assertEqual(answers[(15, 9, 9)], IMAGE)
         self.assertEqual(len(logged), 1)
 
+    def test_a_failing_request_is_told_once(self):
+        """Every request failing at once (on the user's Windows, 2026-10-04: curl could not open
+        its certificates' file, error 77) is in the log in curl's words, once for each way it
+        fails, and kept for the message that lets X-Plane go, until a piece comes."""
+        import queue
+        import socket
+
+        from orthostudio.live.downloader import FAILED, Downloader
+        from orthostudio.live.providers import Provider
+
+        with socket.socket() as s:  # a port nothing listens on: every connection refused
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        p = Provider(
+            code="LOCAL", url_template=f"http://127.0.0.1:{port}/{{zoom}}/{{x}}/{{y}}", max_zl=19
+        )
+        got, logged = queue.Queue(), []
+        d = Downloader(
+            p,
+            lambda k, st, b: got.put((k, st)),
+            max_in_flight=4,
+            attempts=1,
+            fallback=None,
+            log=logged.append,
+        )
+        try:
+            keys = [(15, 30 + i, 30) for i in range(4)]
+            for i, k in enumerate(keys):
+                d.submit(k, float(i))
+            answers = dict(got.get(timeout=20) for _ in keys)
+        finally:
+            d.close()
+        self.assertEqual(answers, dict.fromkeys(keys, FAILED))
+        told = [line for line in logged if "a request for a piece failed" in line]
+        self.assertEqual(len(told), 1, logged)
+        self.assertIn("curl: (7)", told[0])  # curl's own words: could not connect
+        self.assertIn("curl: (7)", d.last_error)
+
+    def test_a_piece_that_comes_clears_the_failure(self):
+        import queue
+
+        from orthostudio.live.cache import IMAGE
+        from orthostudio.live.downloader import Downloader
+        from orthostudio.live.providers import Provider
+
+        server = _Server(jpeg_body())
+        p = Provider(
+            code="LOCAL",
+            url_template=f"http://127.0.0.1:{server.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+        )
+        got = queue.Queue()
+        d = Downloader(p, lambda k, st, b: got.put(st), max_in_flight=1, fallback=None)
+        try:
+            d.last_error = "RequestsError: curl: (28) timed out"  # an earlier request's
+            d.submit((15, 40, 40), 0.0)
+            self.assertEqual(got.get(timeout=20), IMAGE)
+        finally:
+            d.close()
+            server.close()
+        self.assertEqual(d.last_error, "")
+
     def test_a_stuck_piece_is_asked_again_elsewhere(self):
         import queue
         from unittest import mock

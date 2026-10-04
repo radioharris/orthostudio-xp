@@ -42,6 +42,9 @@ BACKGROUND = (
 QUIET_CORES = 0.15  # that much between them, at most
 QUIET_WINDOW_S = 30.0
 QUIET_MAX_S = 15 * 60  # then the flight goes all the same, and its processes.csv says why
+# Windows opens 259 characters at most, and a cold flight's deepest file lies about 140 below the
+# kit's folder (a region's list, in its Live's folder)
+LONGEST_PATH = 100
 
 
 def label_of(args: list[str]) -> str:
@@ -81,6 +84,20 @@ def wait_quiet(max_s: float = QUIET_MAX_S) -> bool:
     return False
 
 
+def unfit(kit: Path) -> str:
+    """What keeps the kit's folder from flying, or nothing. A letter outside ASCII in its path: the
+    app's Python (in UTF-8 mode) gives curl a name of its certificates' file that curl cannot open,
+    and nothing downloads; on the user's Shadow (2026-10-04) the kit's folder was named « ... vols
+    de la fenêtre unique ... ». And too long a path for Windows: the same folder, twice in the path
+    after « Extraire tout », left a region's list 261 characters deep, which could not be kept."""
+    path = str(kit.resolve())
+    if not path.isascii():
+        return "son chemin a une lettre accentuee"
+    if len(path) > LONGEST_PATH:
+        return f"son chemin a {len(path)} caracteres, {LONGEST_PATH} au plus"
+    return ""
+
+
 def series_now() -> set[Path]:
     return set(fly.RESULTS.iterdir()) if fly.RESULTS.is_dir() else set()
 
@@ -89,6 +106,15 @@ def main(choice: str, kit: Path) -> int:
     from orthostudio.live import winsearch
     from orthostudio.live.pack import live_root
 
+    why = unfit(kit)
+    if why:
+        print(
+            f"Le dossier du kit ne convient pas : {why} ({kit.resolve()}). Decompresse le paquet "
+            "dans un dossier au chemin court et sans accent (par exemple sur le Bureau), puis "
+            "relance ce script.",
+            flush=True,
+        )
+        return 1
     # before the first flight: the kit's folder and the user's Live folder (its region's hundreds
     # of thousands of files) out of Windows Search, which then has done
     for folder in (kit.resolve(), live_root()):

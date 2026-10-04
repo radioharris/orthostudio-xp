@@ -13,9 +13,11 @@ Rien d'autre : le premier script installe ce qui manque, en te le demandant d'ab
 Avant de commencer : quitte OrthoStudio XP (la bêta installée) et X-Plane.
 
 
-0. Décompresse le paquet sur C: (par exemple dans Documents) : clic droit sur le fichier .zip, puis
-   « Extraire tout... ». Si Windows avertit à l'ouverture d'un script (« Windows a protégé votre
-   ordinateur »), clique « Informations complémentaires » puis « Exécuter quand même ».
+0. Décompresse le paquet sur C:, dans un dossier au chemin court et sans accent (par exemple sur le
+   Bureau) : clic droit sur le fichier .zip, puis « Extraire tout... ». Un accent ou un chemin trop
+   long empêchent Live de télécharger : le script des vols le dit et s'arrête. Si Windows avertit
+   à l'ouverture d'un script (« Windows a protégé votre ordinateur »), clique « Informations
+   complémentaires » puis « Exécuter quand même ».
 
 
 1. Facultatif : double-clique « 1 - Tests de Live.cmd ».

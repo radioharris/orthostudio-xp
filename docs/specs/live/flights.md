@@ -311,7 +311,8 @@ which of the load's tiles had come.
 - Flown on a Mac, and on Windows from its kit (a user's Shadow PC, 2026-10-01; since 2026-10-04
   step 3 of `tools/live/windows_kit.py`: the app's one window, Live alone in it and with
   OrthoStudio XP open, each cold at 16/18 over Toulouse, X-Plane alone, zipped to be sent back
-  with the runs side by side). Linux: the runner and the test pilot fly the stand-in's series, but
+  with the runs side by side; its folder's path short and without accents, or nothing downloads,
+  `unfit` in its `vol.py`). Linux: the runner and the test pilot fly the stand-in's series, but
   the sampler reads only `ps` there. AutoOrtho's runs, the window and the watcher of X-Plane's
   stacks: a Mac's only.
 - The aircraft is the one X-Plane started with, for the whole series.

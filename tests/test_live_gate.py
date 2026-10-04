@@ -1706,11 +1706,36 @@ class SilentDownloader:
         pass
 
 
+class RefusedDownloader(SilentDownloader):
+    """Asked for pieces, answers none: every request refused, as curl said it."""
+
+    last_error = "SSLError: Failed to perform, curl: (77) error adding trust anchors"
+
+
 class NoTimeLimitTest(unittest.TestCase):
     """The plugin holds X-Plane as long as pieces arrive, with no time limit; once none has arrived
     for STALL_S, the streamer lets X-Plane go, and reloads the scenery once all is built."""
 
     def test_nothing_downloads_any_more(self):
+        answers, took, logged = self.fly(SilentDownloader)
+        self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers[:3])
+        self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
+        self.assertNotEqual(answers[-1], "LIVE1 GO 0")  # textures were left to build
+        self.assertGreater(took, 1.5)  # held while pieces could still come
+        stalled = [line for line in logged if "nothing downloaded for" in line]
+        self.assertTrue(stalled, logged[-5:])
+        self.assertIn("(is the internet there?)", stalled[0])
+
+    def test_the_reason_nothing_downloads(self):
+        """The internet there, but every request refused (on the user's Windows, 2026-10-04,
+        curl could not open its certificates' file): the message says how they fail."""
+        answers, _took, logged = self.fly(RefusedDownloader)
+        self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
+        stalled = [line for line in logged if "nothing downloaded for" in line]
+        self.assertTrue(stalled, logged[-5:])
+        self.assertIn(f"(the requests fail: {RefusedDownloader.last_error})", stalled[0])
+
+    def fly(self, downloader):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pack = root / "stream_pack"
@@ -1719,9 +1744,7 @@ class NoTimeLimitTest(unittest.TestCase):
             port = free_port()
             gate = Gate(root / "X-Plane 12", lambda icao: None, port=port)
             logged = []
-            s = Streamer(
-                pack, cache, SilentDownloader, finest_quality=1, workers=1, log=logged.append
-            )
+            s = Streamer(pack, cache, downloader, finest_quality=1, workers=1, log=logged.append)
             stop = threading.Event()
             lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
             with (
@@ -1759,11 +1782,7 @@ class NoTimeLimitTest(unittest.TestCase):
                 thread.join(30)
             gate.close()
             cache.close()
-        self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers[:3])
-        self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
-        self.assertNotEqual(answers[-1], "LIVE1 GO 0")  # textures were left to build
-        self.assertGreater(took, 1.5)  # held while pieces could still come
-        self.assertTrue(any("nothing downloaded for" in line for line in logged), logged[-5:])
+        return answers, took, logged
 
 
 class InFlightTest(unittest.TestCase):

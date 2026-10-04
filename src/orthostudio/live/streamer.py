@@ -1875,10 +1875,15 @@ def run(
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
+                            failing = getattr(streamer.downloader, "last_error", "")
                             log(
                                 f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
-                                f"{left} textures to build around {arrival.name} (is the internet "
-                                f"there?)"
+                                f"{left} textures to build around {arrival.name} "
+                                + (
+                                    f"(the requests fail: {failing})"
+                                    if failing
+                                    else "(is the internet there?)"
+                                )
                             )
                         elif ready and not arrival.released:
                             arrival.released = True

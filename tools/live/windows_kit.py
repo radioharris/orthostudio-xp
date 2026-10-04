@@ -41,7 +41,11 @@ STEPS = (
     "LISEZ-MOI.txt",
 )
 HELPER_FILES = ("uv.cmd", "tests.py", "vol.py")
-NAME = "OrthoStudio XP - vols de la fenêtre unique - Windows"
+# short, and ASCII only: the kit named « OrthoStudio XP - vols de la fenêtre unique - Windows »
+# downloaded nothing on the user's Shadow (2026-10-04): its « ê » kept curl from opening the
+# certificates' file, and Windows' « Extraire tout » put it twice in the path, too long for
+# Windows (a region's list 261 characters deep)
+NAME = "OSXP-vols-Windows"
 
 
 STAND_INS = ("xpl_host.exe", "fake_xplane.exe", "XPLM_64.dll")
