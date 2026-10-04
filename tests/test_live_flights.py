@@ -1194,6 +1194,7 @@ def test_the_app_opens_on_its_sides_and_starts_live(
 
     monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
     monkeypatch.setattr(fly, "POLL_S", 0.01)
+    monkeypatch.setattr(fly, "_port_open", lambda port: False)  # no Live, no app of the user's
     monkeypatch.setattr(fly.sys, "platform", "darwin")
     monkeypatch.setattr(fly, "app_bundle", lambda: tmp_path / "OrthoStudio XP (vols de test).app")
     out = tmp_path / "2026-10-04 010203"
@@ -1274,6 +1275,7 @@ def test_an_app_whose_live_cannot_start_is_closed_before_the_run_gives_up(
 
     monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
     monkeypatch.setattr(fly, "POLL_S", 0.01)
+    monkeypatch.setattr(fly, "_port_open", lambda port: False)  # no Live, no app of the user's
     monkeypatch.setattr(fly.sys, "platform", "darwin")
     monkeypatch.setattr(fly, "app_bundle", lambda: tmp_path / "OrthoStudio XP (vols de test).app")
     out = tmp_path / "2026-10-04 020304"
@@ -1304,3 +1306,13 @@ def test_an_app_whose_live_cannot_start_is_closed_before_the_run_gives_up(
     with pytest.raises(fly.RefusedError, match="no X-Plane"):
         fly.start_app(tmp_path / "X-Plane 12", out, True)
     assert stopped == [(4242, 60.0)]
+
+
+def test_the_app_is_not_opened_beside_a_live_of_the_user_s(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's own app or the preview with Live up: their Live would answer for the run's."""
+    monkeypatch.setattr(fly, "_port_open", lambda port: port == fly.LIVE_PORT)
+    monkeypatch.setattr(fly.subprocess, "run", lambda *a, **k: pytest.fail("the app opened"))
+    with pytest.raises(fly.RefusedError, match="Live or the app runs already"):
+        fly.start_app(tmp_path / "X-Plane 12", tmp_path, True)

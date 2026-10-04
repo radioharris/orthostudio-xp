@@ -111,7 +111,8 @@ TELEMETRY = Path("Output") / "diagnostic reports"  # X-Plane's telemetry_0.tlm, 
 APP_PORT = 8671
 APP_UP_TIMEOUT_S = 5 * 60  # the app's window up, each side loaded, OrthoStudio XP's engine started
 APP_NAME = "OrthoStudio XP (vols de test)"  # the Mac's app the runner opens (app_bundle)
-LIVE_API = "http://127.0.0.1:8642/api/live/"  # Live's, in the app (orthostudio.live.app_start)
+LIVE_PORT = 8642  # Live's window's, the app's too (orthostudio.live.app_start.LIVE_PORT)
+LIVE_API = f"http://127.0.0.1:{LIVE_PORT}/api/live/"
 
 
 class RefusedError(Exception):
@@ -485,6 +486,12 @@ def start_app(
     from orthostudio.home import osxp_home
 
     out = out.resolve()  # Live refuses a folder that is not a full path
+    if _port_open(LIVE_PORT) or _port_open(APP_PORT):
+        # another Live would answer for the run's: the user's own app, the preview
+        raise RefusedError(
+            f"Live or the app runs already (port {LIVE_PORT} or {APP_PORT}): quit it, the series "
+            "opens the app itself"
+        )
     home = cold_home(out / LIVE_HOME) if cold else osxp_home()
     passed = {
         "OSXP_START": "build" if with_osxp else "live",
@@ -1141,7 +1148,7 @@ def run(a: argparse.Namespace) -> int:
     if up and READY not in log_text(xp):
         raise RefusedError("X-Plane runs without the test pilot: quit it, the series starts it")
     running = {"live": live_runs(), "autoortho": autoortho_runs()}
-    running["app"] = running["live"] or _port_open(APP_PORT)
+    running["app"] = running["live"] or _port_open(LIVE_PORT) or _port_open(APP_PORT)
     proc: subprocess.Popen | App | None = None
     folder_of_streamer = None
     if a.streamer != "none" and up:
