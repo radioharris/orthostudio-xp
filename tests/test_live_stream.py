@@ -634,6 +634,16 @@ class DownloaderTest(unittest.TestCase):
         self.assertIn("curl: (7)", told[0])  # curl's own words: could not connect
         self.assertIn("curl: (7)", d.last_error)
 
+    def test_the_session_names_the_bundle_osxp_ships(self):
+        """The certificate bundle by OrthoStudio XP's own name of it (orthostudio/net/certs.py):
+        on Windows, in Python's UTF-8 mode, curl could not open certifi's own name of it from a
+        folder named « ... fenêtre ... », and every request failed (2026-10-04)."""
+        import inspect
+
+        from orthostudio.live.downloader import Downloader
+
+        self.assertIn("verify=ca_bundle()", inspect.getsource(Downloader._main))
+
     def test_a_piece_that_comes_clears_the_failure(self):
         import queue
 

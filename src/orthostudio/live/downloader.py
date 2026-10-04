@@ -115,8 +115,10 @@ class Downloader:
             self._ready.set()
 
     async def _main(self) -> None:
-        import certifi
         from curl_cffi.requests import AsyncSession
+
+        # the bundle OrthoStudio XP ships, by a name curl opens whatever Python's encoding
+        from orthostudio.net.certs import ca_bundle
 
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._stop = asyncio.Event()
@@ -125,7 +127,7 @@ class Downloader:
             http_version="v2tls",
             allow_redirects=True,
             timeout=self.timeout_s,
-            verify=certifi.where(),
+            verify=ca_bundle(),
         )
         workers = [asyncio.create_task(self._worker()) for _ in range(self.max_in_flight)]
         self._ready.set()
