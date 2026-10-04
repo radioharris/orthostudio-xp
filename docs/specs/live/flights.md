@@ -199,6 +199,31 @@ a descent, a close and two far external views), all cold, the user's four compar
 17/19, then with the user's settings at 16/18 and at 17/19, each against Live at those zooms.
 Six flights (each Live flight serves two comparisons), about 2 h 50, nobody at the controls.
 
+`fenetre-unique` (2026-10-04), over `toulouse-low`, cold at 16/18: the app itself in its one
+window, Live alone in it, then with OrthoStudio XP open beside it (its engine started and its page
+loaded, idle): what OrthoStudio XP open costs in memory, in processor and for X-Plane; its second
+comparison adds X-Plane alone. The app's own rows in the table: the streamer's start, and of it in
+flight OrthoStudio XP's engine and the window's web view, and the computer's memory meanwhile.
+
+## The app itself
+
+`--streamer app` (2026-10-04) flies the app as the user opens it rather than Live's streamer alone:
+the runner starts it before X-Plane on Live's side (`OSXP_START=live`), or with `--with-osxp` on
+OrthoStudio XP's side first, its engine started and its page loaded, then asks its window for
+Live's side (`osxp_window_listens`, "live"); Live, set up in it, is started through its API as its
+Start starts it, and the runner launches X-Plane once Live is ready (`streaming`). Its engine is on
+a port of its own (8671: the usual app's and the preview's OrthoStudio XP are not asked to stop),
+its log under a name of its own beside `serve.log`, put in the series' folder afterwards
+(`app-serve.log`). `--cold`: its home of its own (`OSXP_HOME`), Live's settings the user's less
+the folder and the SimBrief name, the zooms written there (the app takes them from its settings:
+`--zooms` needs `--cold`); without AutoOrtho's region in X-Plane, Live is given the one installed
+in the user's folder (`OSXP_LIVE_SOURCE`, as `stream --source`). It quits as the installer of an
+update quits it: its engine asked to stop, then Live (`POST /api/live/quit`), the window going by
+itself. On a Mac, macOS opens it from an app the runner makes (`build/flights/app`), so that the
+processes of its web view, which the system starts and which are not under it, are counted as its
+own (`sampler.responsible`); on Windows they are under it. `system.csv` keeps, of the app, its
+engine's and its web view's memory and processor apart (`engine_*`, `web_*`).
+
 ## The photos' sharpness
 
 Two flights with the same camera (the scenario's, or the user's replayed) take their screenshots
@@ -283,9 +308,10 @@ which of the load's tiles had come.
 
 ## Limits
 
-- Flown on a Mac, and on Windows from its kit (a user's Shadow PC, 2026-10-01: step 4 of
-  `tools/live/windows_kit.py`, three runs, Live cold at 16/18 over Toulouse, X-Plane alone, or
-  both, zipped to be sent back). Linux: the runner and the test pilot fly the stand-in's series, but
+- Flown on a Mac, and on Windows from its kit (a user's Shadow PC, 2026-10-01; since 2026-10-04
+  step 3 of `tools/live/windows_kit.py`: the app's one window, Live alone in it and with
+  OrthoStudio XP open, each cold at 16/18 over Toulouse, X-Plane alone, zipped to be sent back
+  with the runs side by side). Linux: the runner and the test pilot fly the stand-in's series, but
   the sampler reads only `ps` there. AutoOrtho's runs, the window and the watcher of X-Plane's
   stacks: a Mac's only.
 - The aircraft is the one X-Plane started with, for the whole series.

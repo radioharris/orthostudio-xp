@@ -47,7 +47,7 @@ START_S = 60.0  # X-Plane's start and the runner's own steps, for the time a cho
 RUN_EXTRA_S = (
     8 * 60
 )  # a campaign's run beyond its flights: a cold start (AutoOrtho's took 4 min), the quits
-STREAMERS = ("none", "live", "autoortho")
+STREAMERS = ("none", "live", "autoortho", "app")  # the app: its one window (fly.py, 2026-10-04)
 ZOOMS = ("", "16/18", "17/19")
 
 
@@ -56,6 +56,9 @@ FRENCH = (  # the runner's words for a setup (fly.label), as the window says the
     ("its defaults", "ses réglages par défaut"),
     ("your settings", "tes réglages"),
     ("cold", "à froid"),
+    ("Live in the app", "Live dans l'app"),
+    ("alone in it", "seul"),
+    ("with OrthoStudio XP open", "avec OrthoStudio XP ouvert"),
 )
 
 
@@ -150,6 +153,8 @@ def parser_for_labels() -> Any:
     p.add_argument("--keep-open", action="store_true")
     p.add_argument("--record-camera", action="store_true")
     p.add_argument("--camera", choices=("scenario", "mine"), default="scenario")
+    p.add_argument("--with-osxp", action="store_true")
+    p.add_argument("--freeze-in-flight", action="store_true")
     return p
 
 
@@ -368,7 +373,15 @@ def when(stamp: str) -> str:
 def setup_label(run: dict[str, Any]) -> str:
     """What a flight flew with, in the window's words, from its ``run.json``."""
     streamer = run.get("streamer", "")
-    parts = [{"none": "X-Plane seul", "live": "Live", "autoortho": "AutoOrtho"}.get(streamer, "?")]
+    names = {
+        "none": "X-Plane seul",
+        "live": "Live",
+        "autoortho": "AutoOrtho",
+        "app": "Live dans l'app",
+    }
+    parts = [names.get(streamer, "?")]
+    if streamer == "app":
+        parts.append("avec OrthoStudio XP ouvert" if run.get("with_osxp") else "seul")
     if streamer == "autoortho" and run.get("ao_settings"):
         parts.append(
             "ses réglages par défaut" if run["ao_settings"] == "default" else "tes réglages"

@@ -1054,3 +1054,213 @@ def test_the_watcher_follows_x_planes_log_and_samples_the_loads_that_last(
     assert len(taken) == 3
     log.write_text(f"{pilot}ready\n")  # X-Plane's next start writes a new log
     assert stacks.new_lines(log, flight) == [f"{pilot}ready"]
+
+
+# ---- the app itself, in its one window (2026-10-04) ---------------------------------------------
+
+
+def test_the_app_in_a_few_words_and_its_options() -> None:
+    import argparse
+
+    def ns(**kw: object) -> argparse.Namespace:
+        base = {
+            "streamer": "app",
+            "ao_settings": "mine",
+            "zooms": (16, 18),
+            "cold": True,
+            "with_osxp": False,
+            "freeze_in_flight": False,
+            "record_camera": False,
+            "camera": "scenario",
+        }
+        return argparse.Namespace(**{**base, **kw})
+
+    assert fly.label(ns()) == "Live in the app, alone in it, ZL16/18, cold"
+    assert (
+        fly.label(ns(with_osxp=True)) == "Live in the app, with OrthoStudio XP open, ZL16/18, cold"
+    )
+    assert fly.refused_options(ns()) is None
+    assert fly.refused_options(ns(freeze_in_flight=True)) is None  # Live's test, in the app too
+    assert "--with-osxp is for the app" in fly.refused_options(ns(streamer="live", with_osxp=True))
+    # the app takes its zooms from its settings: the run's own, a cold home's
+    assert "needs --cold" in fly.refused_options(ns(cold=False))
+    assert fly.refused_options(ns(cold=False, zooms=None)) is None
+
+
+def test_a_cold_app_has_live_on_and_the_series_zooms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tomllib
+
+    import orthostudio.live as live
+
+    mine = tmp_path / "live.toml"
+    mine.write_text(
+        'enabled = false\n\n[stream]\nmax_zoom = 17\nsimbrief_user = "radioharris"\n'
+        'folder = "/Volumes/Disk/Live"\napp_home = "build"\n'
+    )
+    monkeypatch.setattr(live, "settings_file", lambda: mine)
+    home = fly.cold_home(tmp_path / "home")
+    fly.app_settings(home, (16, 18))
+    data = tomllib.loads((home / "live.toml").read_text())
+    assert data["enabled"] is True  # the app asks nothing and shows Live: switched on
+    stream = data["stream"]
+    assert (stream["max_zoom"], stream["max_zoom_airports"]) == (16, 18)
+    assert stream["simbrief_user"] == "" and stream["folder"] == ""  # neither the user's
+    assert "radioharris" in mine.read_text()  # the user's own file, untouched
+
+
+def test_the_one_window_campaign_reads() -> None:
+    camp = fly.read_campaign("fenetre-unique")
+    assert camp.title.startswith("La fenêtre unique")
+    runs = dict(camp.runs)
+    assert runs["live-seul"] == ["--streamer", "app", "--zooms", "16/18", "--cold"]
+    assert runs["live-et-osxp"] == [
+        "--streamer",
+        "app",
+        "--with-osxp",
+        "--zooms",
+        "16/18",
+        "--cold",
+    ]
+    assert runs["xplane-seul"] == []
+    assert [i for i, _, _ in camp.picked([(1, None)])[1]] == ["live-seul", "live-et-osxp"]
+    assert [i for i, _, _ in camp.picked(None)[1]] == ["live-seul", "live-et-osxp", "xplane-seul"]
+
+
+def test_the_sampler_counts_the_app_s_web_view(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Mac's web view is WebKit's processes working for the app, started by the system and not
+    under it; Windows' is WebView2's, under the app."""
+    import sampler
+
+    rows = [
+        (10, 1, 300.0, 5.0, "/opt/venv/bin/python"),  # the app's program
+        (11, 10, 140.0, 2.0, "/opt/venv/bin/python"),  # OrthoStudio XP's engine, under it
+        (20, 1, 120.0, 1.0, "/System/.../com.apple.WebKit.WebContent"),
+        (21, 1, 50.0, 0.5, "/System/.../com.apple.WebKit.GPU"),
+        (22, 1, 90.0, 9.0, "/System/.../com.apple.WebKit.WebContent"),  # another app's
+        (30, 10, 80.0, 3.0, "msedgewebview2.exe"),  # Windows' names: the image's alone
+    ]
+    monkeypatch.setattr(sampler.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        sampler, "responsible", lambda pid, command="": 10 if pid in (20, 21) else 99
+    )
+    assert [r[0] for r in sampler.web_view(rows, 10)] == [20, 21]
+    monkeypatch.setattr(sampler.sys, "platform", "win32")
+    assert [r[0] for r in sampler.web_view(rows, 10)] == [30]
+    assert sampler.tree(rows, 11) == (140.0, 2.0)  # the engine alone
+    assert sampler.FIELDS[-4:] == ["engine_rss_mb", "engine_cpu_s", "web_rss_mb", "web_cpu_s"]
+
+
+def test_what_the_app_s_engine_and_web_view_cost() -> None:
+    def row(wall: float, s_cpu: float, e_cpu: float, w_cpu: float) -> dict:
+        return {
+            "wall": wall,
+            "xp_mb": 12288.0,
+            "xp_cpu": wall,
+            "s_mb": 2048.0,
+            "s_cpu": s_cpu,
+            "net": 0,
+            "disks": {},
+            "e_mb": 150.0,
+            "e_cpu": e_cpu,
+            "w_mb": 300.0,
+            "w_cpu": w_cpu,
+        }
+
+    rows = [row(0, 0, 0, 0), row(60, 30, 0.6, 3), row(660, 330, 6.6, 33)]
+    run = {"sent_wall": 0.0, "flying_wall": 60.0, "done_wall": 660.0, "disks": {}}
+    _, path = report.computer_lines(rows, run)
+    assert "streamer 0.50 core, 2.0 GB (most 2.0)" in path
+    assert "of it, OrthoStudio XP's engine 0.01 core, 0.15 GB" in path
+    assert "of it, its web view 0.05 core, 0.29 GB" in path
+    # without them (Live's streamer, AutoOrtho): nothing said of them
+    plain = [
+        {k: v for k, v in r.items() if k not in ("e_mb", "e_cpu", "w_mb", "w_cpu")} for r in rows
+    ]
+    assert "of it" not in report.computer_lines(plain, run)[1]
+
+
+def test_the_app_opens_on_its_sides_and_starts_live(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--streamer app --with-osxp --cold``: macOS opens the runner's app with its environment,
+    OrthoStudio XP's side first, then Live's, asked through the window; Live started as its Start
+    starts it, the runner back once Live is ready for X-Plane."""
+    import socket
+    import threading
+
+    import orthostudio.live as live
+
+    monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
+    monkeypatch.setattr(fly, "POLL_S", 0.01)
+    monkeypatch.setattr(fly.sys, "platform", "darwin")
+    monkeypatch.setattr(fly, "app_bundle", lambda: tmp_path / "OrthoStudio XP (vols de test).app")
+    out = tmp_path / "2026-10-04 010203"
+    out.mkdir()
+    home = out / fly.LIVE_HOME
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    asked: list[bytes] = []
+
+    def window_answers() -> None:
+        conn, _ = listener.accept()
+        with conn:
+            asked.append(conn.recv(16))
+            conn.sendall(b"ok\n")
+
+    threading.Thread(target=window_answers, daemon=True).start()
+    opened: list[list[str]] = []
+
+    def run(cmd: list[str], **kw: object) -> object:
+        opened.append(cmd)
+        (home / "run").mkdir(parents=True, exist_ok=True)
+        shown = {"pid": 4242, "port": listener.getsockname()[1]}
+        (home / "run" / f"osxp-window-{fly.APP_PORT}.json").write_text(json.dumps(shown))
+        return None
+
+    monkeypatch.setattr(fly.subprocess, "run", run)
+    states = iter(["idle", "starting", "streaming"])
+    posted: list[tuple[str, dict]] = []
+
+    def http(url: str, body: dict | None = None, timeout_s: float = 5.0) -> dict | None:
+        if body is not None:
+            posted.append((url, body))
+            return {}
+        if url.endswith("/api/status"):
+            return {"active_job": None}
+        if url.endswith("/api/engine"):
+            return {"engine": {"pid": 4343}}
+        if url.endswith("/api/live/status"):
+            return {"state": next(states, "streaming"), "error": None}
+        return None
+
+    monkeypatch.setattr(fly, "_http", http)
+    app = fly.start_app(
+        tmp_path / "X-Plane 12", out, True, (16, 18), False, tmp_path / "eur", with_osxp=True
+    )
+    cmd = opened[0]
+    assert cmd[:3] == ["open", "-n", "-a"]
+    env = dict(cmd[i + 1].split("=", 1) for i, w in enumerate(cmd) if w == "--env")
+    assert env["OSXP_START"] == "build" and env["OSXP_PORT"] == str(fly.APP_PORT)
+    assert env["OSXP_HOME"] == str(home) and env["OSXP_LIVE_SOURCE"] == str(tmp_path / "eur")
+    assert asked == [b"live\n"]  # Live's side, once OrthoStudio XP's engine answered
+    assert posted == [(fly.LIVE_API + "start", {})]
+    assert (app.window, app.engine_pid, app.home) == (4242, 4343, home)
+    assert app.live_log == home / "live" / "LogLive.txt"
+    assert app.log.name == f"serve-test-flight-{out.name.replace(' ', '-')}.log"
+
+
+def test_the_app_quits_as_an_update_s_installer_quits_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    posted: list[tuple[str, dict | None]] = []
+    monkeypatch.setattr(
+        fly, "_http", lambda url, body=None, timeout_s=5.0: posted.append((url, body))
+    )
+    monkeypatch.setattr(fly, "_alive", lambda pid: len(posted) < 2)
+    monkeypatch.setattr(fly, "stop_tree", lambda pid, timeout_s=0: pytest.fail("ended by force"))
+    fly.stop_app(4242, timeout_s=5)
+    assert posted == [
+        (f"http://127.0.0.1:{fly.APP_PORT}/api/quit", {"force": True}),
+        (fly.LIVE_API + "quit", {"force": True}),
+    ]

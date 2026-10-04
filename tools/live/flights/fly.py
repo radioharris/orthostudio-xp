@@ -9,6 +9,8 @@ every time, and each leaves its files and a report in a folder of its own.
     uv run python tools/live/flights/fly.py --streamer autoortho --ao-settings default <scenario>
     uv run python tools/live/flights/fly.py --streamer autoortho --zooms 17/19 --cold <scenario>
     uv run python tools/live/flights/fly.py --campaign ao-vs-live
+    uv run python tools/live/flights/fly.py --streamer app --with-osxp --cold <scenario>
+    uv run python tools/live/flights/fly.py --campaign fenetre-unique
 
 Nobody at the controls. X-Plane starts once for the series, straight in the air at the first
 scenario's start (hidden options: no main menu, the preferences never saved); each scenario after
@@ -26,6 +28,14 @@ built and nothing downloaded, the streamer's files in its home under the results
 less its folder and SimBrief name; without AutoOrtho's region in X-Plane, Live given the one it
 installed in the user's folder: ``cold_source``). ``--zooms 17/19``: the streamer's max_zoom and
 max_zoom near airports for the series. The user's own files are only ever read.
+
+``--streamer app`` (2026-10-04): the app itself, OrthoStudio XP and Live in its one window, as the
+user opens it: Live's side shown and started as its Start does; ``--with-osxp``, OrthoStudio XP's
+side open too, its engine started and its page loaded, idle, to see what it costs beside Live. Its
+engine on a port of its own (APP_PORT), its log of its own, beside the usual one; on a Mac opened
+by macOS from an app made for it (``app_bundle``), so that its web view's processes are counted as
+its own. ``--cold`` there: its home of its own too (OrthoStudio XP's settings and library empty),
+the zooms written in its Live settings. It quits as the installer of an update quits it.
 
 Results: ``build/flights/<date time>/<n>-<scenario>/``: ``report.md``, the scenario's part of
 X-Plane's ``Log.txt``, the test pilot's ``frames.csv`` and ``events.txt``, ``screenshots/``, the
@@ -96,6 +106,12 @@ NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 # index the hundreds of thousands of files Live makes there during a flight (2026-10-01)
 LIVE_HOME = "live-home.noindex"
 TELEMETRY = Path("Output") / "diagnostic reports"  # X-Plane's telemetry_0.tlm, written as it quits
+# the app's engine in a test flight (--streamer app): neither the usual app's port (8641) nor the
+# preview's (8651), whose OrthoStudio XP it would ask to stop as it starts (desktop.ENGINE_PORT)
+APP_PORT = 8671
+APP_UP_TIMEOUT_S = 5 * 60  # the app's window up, each side loaded, OrthoStudio XP's engine started
+APP_NAME = "OrthoStudio XP (vols de test)"  # the Mac's app the runner opens (app_bundle)
+LIVE_API = "http://127.0.0.1:8642/api/live/"  # Live's, in the app (orthostudio.live.app_start)
 
 
 class RefusedError(Exception):
@@ -251,7 +267,7 @@ def cold_home(home: Path) -> Path:
     except FileNotFoundError:
         text = "enabled = true\n"
     text = re.sub(r"(?m)^folder\s*=.*$", 'folder = ""', text)
-    text = re.sub(r"(?m)^simbrief\s*=.*$", 'simbrief = ""', text)
+    text = re.sub(r"(?m)^(simbrief(?:_user)?)\s*=.*$", r'\1 = ""', text)
     (home / "live.toml").write_text(text, encoding="utf-8")
     return home
 
@@ -327,6 +343,255 @@ def start_live(
             raise RefusedError(f"Live stopped before it was ready:\n{tail}")
     quit_in_background(proc, out if cold else None, xp)
     raise RefusedError("Live not ready after 20 min")
+
+
+# ---- the app itself, in its one window (2026-10-04) ------------------------------------------
+
+
+def app_bundle() -> Path:
+    """A Mac's app that opens this checkout's OrthoStudio XP, made for the runner: opened by macOS
+    (``open -n``), the app is a program of its own, and the processes of its web view, which the
+    system starts, are counted as its (``sampler.responsible``); started under the runner, they
+    would be the runner's."""
+    import plistlib
+
+    app = REPO / "build" / "flights" / "app" / f"{APP_NAME}.app"
+    macos = app / "Contents" / "MacOS"
+    macos.mkdir(parents=True, exist_ok=True)
+    script = macos / "osxp-test-flights"
+    script.write_text(
+        "#!/bin/bash\n"
+        f"cd {shlex.quote(str(REPO))} || exit 1\n"
+        f"exec {shlex.quote(sys.executable)} -m orthostudio.desktop\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    info = {
+        "CFBundleName": APP_NAME,
+        "CFBundleDisplayName": APP_NAME,
+        "CFBundleIdentifier": "org.orthostudio-xp.launcher.test-flights",
+        "CFBundleExecutable": script.name,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": "0.1",
+        "LSMinimumSystemVersion": "12.0",
+        "LSArchitecturePriority": ["arm64"],  # a script launcher: not under Rosetta
+        "LSRequiresNativeExecution": True,
+        "NSHighResolutionCapable": True,
+    }
+    with (app / "Contents" / "Info.plist").open("wb") as f:
+        plistlib.dump(info, f)
+    return app
+
+
+def app_settings(home: Path, zooms: tuple[int, int] | None) -> None:
+    """A cold app's Live settings (``cold_home``'s copy of the user's): Live switched on, and the
+    series' zooms, which the app takes from its settings (it has no ``--max-zoom``)."""
+    import tomllib
+
+    from orthostudio.config.store import toml_dumps
+
+    path = home / "live.toml"
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    data["enabled"] = True
+    if zooms:
+        data.setdefault("stream", {}).update(max_zoom=zooms[0], max_zoom_airports=zooms[1])
+    path.write_text(toml_dumps(data), encoding="utf-8")
+
+
+def _http(url: str, body: dict | None = None, timeout_s: float = 5.0) -> dict | None:
+    """The app's JSON answer, to a GET or a POST of ``body``; None when nothing answers."""
+    import urllib.request
+
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"} if data is not None else {},
+        method="GET" if data is None else "POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as answer:
+            return json.load(answer)
+    except (OSError, ValueError):
+        return None
+
+
+def _port_open(port: int) -> bool:
+    with contextlib.suppress(OSError), socket.create_connection(("127.0.0.1", port), timeout=0.3):
+        return True
+    return False
+
+
+def _alive(pid: int) -> bool:
+    """Whether the process ``pid`` runs."""
+    if WINDOWS:
+        return any(p == pid for p, *_ in sampler.processes())
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+@dataclass
+class App:
+    """The app in a test flight (``--streamer app``): the program that shows its one window, Live
+    set up in it, OrthoStudio XP's side too with ``--with-osxp``."""
+
+    pid: int  # the root of what is counted as the app's: the program, or a venv's launcher above it
+    window: int  # the program that shows the window, whose web view is the app's (a Mac's)
+    home: Path  # its OSXP_HOME
+    log: Path  # its own log, where serve.log is kept, under a name of its own
+    live_log: Path  # Live's LogLive.txt
+    engine_pid: int | None  # OrthoStudio XP's engine, with --with-osxp
+
+
+def _app_said(said: Path) -> str:
+    try:
+        return "\n".join(said.read_text(errors="replace").splitlines()[-15:])
+    except OSError:
+        return ""
+
+
+def _wait_until(ready: object, what: str, timeout_s: float, check: object = None) -> None:
+    """Until ``ready()``; ``check()`` may refuse meanwhile (the app gone)."""
+    began = time.time()
+    while time.time() - began < timeout_s:
+        if ready():  # type: ignore[operator]
+            return
+        if check is not None:
+            check()  # type: ignore[operator]
+        time.sleep(POLL_S)
+    raise RefusedError(f"{what} not there after {timeout_s / 60:.0f} min")
+
+
+def start_app(
+    xp: Path,
+    out: Path,
+    cold: bool,
+    zooms: tuple[int, int] | None = None,
+    frozen: bool = False,
+    source: Path | None = None,
+    with_osxp: bool = False,
+) -> App:
+    """The app itself, before X-Plane, as the user opens it: its one window on Live's side, Live
+    set up behind it, or with ``with_osxp`` OrthoStudio XP's side first (its engine started, its
+    page loaded), then Live's; then Live started as its Start starts it; back once Live is ready
+    for X-Plane. ``cold``: a home of its own under the results (``cold_home``, ``app_settings``).
+    ``source``: the region Live streams onto (``cold_source``), as ``stream --source``."""
+    from orthostudio import desktop
+    from orthostudio.home import osxp_home
+
+    out = out.resolve()  # Live refuses a folder that is not a full path
+    home = cold_home(out / LIVE_HOME) if cold else osxp_home()
+    passed = {
+        "OSXP_START": "build" if with_osxp else "live",
+        "OSXP_PORT": str(APP_PORT),
+        "OSXP_LOG_NAME": f"serve-test-flight-{out.name.replace(' ', '-')}.log",
+    }
+    if cold:
+        app_settings(home, zooms)
+        passed["OSXP_HOME"] = str(home)
+    if frozen:
+        passed["OSXP_LIVE_FROZEN_IN_FLIGHT"] = "1"
+    if source is not None:
+        from orthostudio.live.control import SOURCE_ENV
+
+        passed[SOURCE_ENV] = str(source)
+    listening = home / "run" / f"osxp-window-{APP_PORT}.json"  # app_start.osxp_window_file
+    with contextlib.suppress(OSError):
+        listening.unlink()  # an earlier app's, left behind
+    said = out / "app.txt"
+    proc: subprocess.Popen | None = None
+    if sys.platform == "darwin":
+        options = [x for k, v in passed.items() for x in ("--env", f"{k}={v}")]
+        cmd = ["open", "-n", "-a", str(app_bundle()), *options, "--stdout", str(said)]
+        subprocess.run([*cmd, "--stderr", str(said)], check=True, timeout=60, capture_output=True)
+    else:
+        env = {k: v for k, v in os.environ.items() if k != "OSXP_FRAME"} | passed
+        with said.open("ab") as f:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "orthostudio.desktop"],
+                cwd=REPO,
+                env=env,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                creationflags=NEW_GROUP,
+            )
+    sides = "OrthoStudio XP, then Live" if with_osxp else "Live"
+    own = " (cold: a home of its own)" if cold else ""
+    say(f"the app opening on {sides}{own}; its output in {said}")
+
+    def gone() -> None:
+        if proc is not None and proc.poll() is not None:
+            raise RefusedError(f"the app stopped before it was ready:\n{_app_said(said)}")
+
+    _wait_until(listening.is_file, "the app's window", APP_UP_TIMEOUT_S, gone)
+    shown = json.loads(listening.read_text(encoding="utf-8"))
+    window = int(shown["pid"])
+    engine_pid = None
+    if with_osxp:
+        _wait_until(
+            lambda: _http(f"http://127.0.0.1:{APP_PORT}/api/status") is not None,
+            "OrthoStudio XP's engine",
+            APP_UP_TIMEOUT_S,
+            gone,
+        )
+        engine = (_http(f"http://127.0.0.1:{APP_PORT}/api/engine") or {}).get("engine") or {}
+        engine_pid = int(engine["pid"]) if engine.get("pid") else None
+        with socket.create_connection(("127.0.0.1", int(shown["port"])), timeout=5.0) as w:
+            w.settimeout(30.0)
+            w.sendall(b"live\n")  # Live's side shown, as its button shows it (app_start)
+            w.recv(8)
+    _wait_until(
+        lambda: (_http(LIVE_API + "status") or {}).get("state") == "idle",
+        "Live, set up in the app",
+        APP_UP_TIMEOUT_S,
+        gone,
+    )
+    if _http(LIVE_API + "start", {}) is None:
+        raise RefusedError(f"Live did not start:\n{_app_said(said)}")
+    began = time.time()
+    while time.time() - began < LIVE_READY_TIMEOUT_S:
+        status = _http(LIVE_API + "status") or {}
+        if status.get("state") == "streaming":
+            break
+        if status.get("error"):
+            raise RefusedError(f"Live stopped before it was ready: {status['error']}")
+        gone()
+        time.sleep(POLL_S)
+    else:
+        raise RefusedError("Live not ready after 20 min")
+    if cold:
+        live_log = home / "live" / "LogLive.txt"
+    else:
+        from orthostudio.live.logfile import log_path as live_log_path
+
+        live_log = live_log_path()
+    if sys.platform.startswith("linux"):
+        log = home / "log" / passed["OSXP_LOG_NAME"]
+    else:
+        log = desktop.log_path().with_name(passed["OSXP_LOG_NAME"])
+    engine_said = f", engine {engine_pid}" if engine_pid else ""
+    say(f"Live is ready in the app (program {window}{engine_said})")
+    return App(proc.pid if proc else window, window, home, log, live_log, engine_pid)
+
+
+def stop_app(app_pid: int, timeout_s: float = STOP_TIMEOUT_S) -> None:
+    """The app quit as the installer of an update quits it (``tools/package/stop_running.pas``):
+    its engine asked to stop, then Live, which takes its files out of X-Plane, and its window goes
+    by itself (``orthostudio.live.frame``, ``Frame.gone``); a Ctrl-C and a SIGTERM (``stop_tree``)
+    if it is still there ``timeout_s`` later. Only once X-Plane has quit."""
+    _http(f"http://127.0.0.1:{APP_PORT}/api/quit", {"force": True})
+    _http(LIVE_API + "quit", {"force": True})
+    began = time.time()
+    while time.time() - began < timeout_s:
+        if not _alive(app_pid):
+            return
+        time.sleep(1.0)
+    stop_tree(app_pid, 30.0)
 
 
 def live_folder(out: Path, cold: bool) -> Path:
@@ -567,7 +832,11 @@ def keep_telemetry(xp: Path, series: Path) -> Path | None:
 
 
 def after_series(
-    pid: int, clean: Path | None = None, xp: Path | None = None, series: Path | None = None
+    pid: int,
+    clean: Path | None = None,
+    xp: Path | None = None,
+    series: Path | None = None,
+    app_log: Path | None = None,
 ) -> None:
     """In a process of its own, left running by the runner. X-Plane asks "Quit the simulator?" at
     the test pilot's quit and waits for a click, plugins stopped meanwhile; a second quit over UDP
@@ -584,14 +853,19 @@ def after_series(
         time.sleep(2.0)
     if xp is not None and series is not None:
         keep_telemetry(xp, series)
-    if pid > 0:
+    if pid > 0 and app_log is not None:  # the app: quit as an update's installer quits it
+        stop_app(pid)
+    elif pid > 0:
         stop_tree(pid)
+    if app_log is not None and series is not None:  # its own log, with the series
+        with contextlib.suppress(OSError):
+            shutil.move(str(app_log), str(series / "app-serve.log"))
     if clean is not None:
         clean_cold(clean, xp)
 
 
 def quit_in_background(
-    proc: subprocess.Popen | None,
+    proc: subprocess.Popen | App | None,
     clean: Path | None = None,
     xp: Path | None = None,
     series: Path | None = None,
@@ -600,12 +874,18 @@ def quit_in_background(
     cold run's heavy files deleted (``clean``, its series' folder), by ``after_series`` in a
     process of its own; the streamer only, at once, when X-Plane is not running. On Windows the
     runner does it itself, and waits (the module's docstring)."""
-    pid = proc.pid if proc is not None and proc.poll() is None else 0
+    app_log = proc.log if isinstance(proc, App) else None
+    if isinstance(proc, App):
+        pid = proc.pid if _alive(proc.pid) else 0
+    else:
+        pid = proc.pid if proc is not None and proc.poll() is None else 0
     if WINDOWS:
         say("X-Plane quits, then Live stops: a few minutes at most")
-        after_series(pid, clean, xp, series)
+        after_series(pid, clean, xp, series, app_log)
         return
     cmd = [sys.executable, str(Path(__file__).resolve()), "--after-series", str(pid)]
+    if app_log is not None:
+        cmd += ["--app-log", str(app_log)]
     if clean is not None:
         cmd += ["--clean", str(clean)]
     if series is not None:
@@ -756,7 +1036,13 @@ def take(src: Path, dest: Path) -> None:
 
 
 def collect(
-    xp: Path, folder: Path, log_from: int, shots_before: set[str], live_from: int, out: Path
+    xp: Path,
+    folder: Path,
+    log_from: int,
+    shots_before: set[str],
+    live_from: int,
+    out: Path,
+    live_log: Path | None = None,
 ) -> None:
     """The flight's files into its folder: the test pilot's, X-Plane's log and screenshots from the
     scenario on, and Live's output."""
@@ -786,9 +1072,10 @@ def collect(
         (folder / "screenshots").mkdir(exist_ok=True)
         for p in new:
             take(p, folder / "screenshots" / p.name)
-    for name in ("live.txt", "autoortho.txt"):
-        if (out / name).is_file():
-            with (out / name).open("rb") as f:
+    sources = {"live.txt": live_log or out / "live.txt", "autoortho.txt": out / "autoortho.txt"}
+    for name, source in sources.items():  # the app's Live writes its own log (LogLive.txt)
+        if source.is_file():
+            with source.open("rb") as f:
                 f.seek(live_from)
                 (folder / name).write_bytes(f.read())
 
@@ -831,10 +1118,11 @@ def run(a: argparse.Namespace) -> int:
     if WINDOWS and a.streamer == "autoortho":
         raise RefusedError("AutoOrtho's runs: on a Mac only for now")
     xp = session.xplane_dir(a.xplane)
-    out = a.results / datetime.now().strftime("%Y-%m-%d %H%M%S")
+    # a full path: a cold streamer's home is given to it, which refuses a folder that is not one
+    out = (a.results / datetime.now().strftime("%Y-%m-%d %H%M%S")).resolve()
     out.mkdir(parents=True)
     a.out = out
-    if a.streamer == "live":
+    if a.streamer in ("live", "app"):
         # Windows: the user's Live folder, its region Live streams onto, out of Windows Search,
         # whose listing of their files kept half a core busy through the flights of 2026-10-02
         from orthostudio.live import winsearch
@@ -845,7 +1133,9 @@ def run(a: argparse.Namespace) -> int:
     if up and READY not in log_text(xp):
         raise RefusedError("X-Plane runs without the test pilot: quit it, the series starts it")
     running = {"live": live_runs(), "autoortho": autoortho_runs()}
-    proc, folder_of_streamer = None, None
+    running["app"] = running["live"] or _port_open(APP_PORT)
+    proc: subprocess.Popen | App | None = None
+    folder_of_streamer = None
     if a.streamer != "none" and up:
         if not running[a.streamer]:
             raise RefusedError(
@@ -862,6 +1152,12 @@ def run(a: argparse.Namespace) -> int:
         if a.streamer == "live":
             source = cold_source(xp, series) if a.cold else None
             proc = start_live(xp, out, a.cold, a.zooms, a.freeze_in_flight, source)
+            folder_of_streamer = live_folder(out, a.cold)
+        elif a.streamer == "app":
+            source = cold_source(xp, series) if a.cold else None
+            proc = start_app(
+                xp, out, a.cold, a.zooms, a.freeze_in_flight, source, getattr(a, "with_osxp", False)
+            )
             folder_of_streamer = live_folder(out, a.cold)
         else:
             home = out / "ao-home"
@@ -885,12 +1181,21 @@ def run(a: argparse.Namespace) -> int:
             say(f"{n}/{len(series)} {sc.name}: {sc.duration / 60:.1f} min of path")
             log_from = log_size(xp) if up else 0
             shots_before = screenshots_now(xp)
+            live_log = proc.live_log if isinstance(proc, App) else None
             live_from = size_of(
-                out / ("autoortho.txt" if a.streamer == "autoortho" else "live.txt")
+                live_log or out / ("autoortho.txt" if a.streamer == "autoortho" else "live.txt")
             )
             if up:
                 clear_box(xp)
-            recorder = sampler.Sampler(folder / "system.csv", proc.pid if proc else None)
+            if isinstance(proc, App):  # the app, its engine and its web view apart (sampler)
+                recorder = sampler.Sampler(
+                    folder / "system.csv",
+                    proc.pid,
+                    engine_pid=proc.engine_pid,
+                    web_of=proc.window if sys.platform == "darwin" else proc.pid,
+                )
+            else:
+                recorder = sampler.Sampler(folder / "system.csv", proc.pid if proc else None)
             recorder.start()
             recorder.first.wait(30)  # the computer before the scenario, then the scenario
             track = camera_file(a.results, sc.name) if a.camera == "mine" else None
@@ -909,8 +1214,8 @@ def run(a: argparse.Namespace) -> int:
             if outcome == "done" and not wait_log(xp, log_from, f"{report.PILOT}done"):
                 say(f"  X-Plane's log still without the flight's end after {LOG_LATE_S} s")
             recorder.stop()
-            collect(xp, folder, log_from, shots_before, live_from, out)
-            if a.streamer == "live" and not a.cold:
+            collect(xp, folder, log_from, shots_before, live_from, out, live_log)
+            if a.streamer in ("live", "app") and not a.cold:
                 keep_record(out)
             if a.record_camera:
                 kept = keep_camera(folder / "camera.csv", a.results, sc.name)
@@ -923,6 +1228,7 @@ def run(a: argparse.Namespace) -> int:
                 "scenario": sc.name,
                 "streamer": a.streamer,
                 "ao_settings": a.ao_settings if a.streamer == "autoortho" else None,
+                "with_osxp": getattr(a, "with_osxp", False) if a.streamer == "app" else None,
                 "zooms": list(a.zooms) if a.zooms else None,
                 "cold": a.cold,
                 "frozen_in_flight": a.freeze_in_flight,
@@ -969,9 +1275,14 @@ def run(a: argparse.Namespace) -> int:
 
 def label(a: argparse.Namespace) -> str:
     """What a run flew with, in a few words."""
-    parts = [{"none": "X-Plane alone", "live": "Live", "autoortho": "AutoOrtho"}[a.streamer]]
+    names = {"none": "X-Plane alone", "live": "Live", "autoortho": "AutoOrtho"}
+    parts = [names.get(a.streamer, "Live in the app")]
     if a.streamer == "autoortho":
         parts.append("its defaults" if a.ao_settings == "default" else "your settings")
+    if a.streamer == "app":
+        parts.append(
+            "with OrthoStudio XP open" if getattr(a, "with_osxp", False) else "alone in it"
+        )
     if a.zooms:
         parts.append(f"ZL{a.zooms[0]}/{a.zooms[1]}")
     if a.cold:
@@ -1065,7 +1376,7 @@ def wait_quiet(timeout_s: float = 600.0) -> None:
     """Until X-Plane has quit and no streamer runs: the run before quits them in the background."""
     began = time.time()
     while time.time() - began < timeout_s:
-        if xplane_gone() and not live_runs() and not autoortho_runs():
+        if xplane_gone() and not live_runs() and not autoortho_runs() and not _port_open(APP_PORT):
             return
         time.sleep(5.0)
     raise RefusedError("X-Plane or a streamer still runs 10 min after the run before")
@@ -1113,8 +1424,9 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
     code = 0
     for k, (run_id, options, flights) in enumerate(runs, 1):
         a = parser.parse_args([*options, *extra, *flights])
-        if a.cold and a.streamer == "none":
-            raise RefusedError(f"run {run_id}: --cold is for a streamer")
+        wrong = refused_options(a)
+        if wrong:
+            raise RefusedError(f"run {run_id}: {wrong}")
         if k > 1:
             say("waiting for X-Plane and the streamer of the run before to quit")
             wait_quiet()
@@ -1143,6 +1455,27 @@ def campaign(ref: str, parser: argparse.ArgumentParser, base: argparse.Namespace
     return code
 
 
+def refused_options(a: argparse.Namespace) -> str | None:
+    """Why options that do not go together are refused, else None (from the runner's parser, or
+    a window's: an option it does not give is not set)."""
+
+    def given(name: str) -> object:
+        return getattr(a, name, None)
+
+    streamer = given("streamer") or "none"
+    if given("cold") and streamer == "none":
+        return "--cold is for a streamer"
+    if given("freeze_in_flight") and streamer not in ("live", "app"):
+        return "--freeze-in-flight is for Live"
+    if given("with_osxp") and streamer != "app":
+        return "--with-osxp is for the app (--streamer app)"
+    if streamer == "app" and given("zooms") and not given("cold"):
+        return "--zooms with the app needs --cold: it takes them from its settings, the run's own"
+    if given("record_camera") and given("camera") == "mine":
+        return "--record-camera records a camera: it replays none"
+    return None
+
+
 def zooms_of(text: str) -> tuple[int, int]:
     """``17/19``: AutoOrtho's max_zoom and max_zoom_near_airports (Live's the same)."""
     try:
@@ -1159,7 +1492,12 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("scenarios", nargs="*", help="names in tools/live/flights/scenarios, or files")
-    p.add_argument("--streamer", choices=("none", "live", "autoortho"), default="none")
+    p.add_argument("--streamer", choices=("none", "live", "autoortho", "app"), default="none")
+    p.add_argument(
+        "--with-osxp",
+        action="store_true",
+        help="with --streamer app: OrthoStudio XP's side open too, its engine and its page, idle",
+    )
     p.add_argument("--cold", action="store_true", help="the streamer from a home of its own, empty")
     p.add_argument(
         "--ao-settings",
@@ -1196,11 +1534,12 @@ def main(argv: list[str] | None = None) -> int:
         "--pick", help="with --campaign: its comparisons chosen, e.g. 1,3 (all by default)"
     )
     p.add_argument("--after-series", type=int, help=argparse.SUPPRESS)
+    p.add_argument("--app-log", type=Path, help=argparse.SUPPRESS)
     p.add_argument("--clean", type=Path, help=argparse.SUPPRESS)
     p.add_argument("--series", type=Path, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     if a.after_series is not None:
-        after_series(a.after_series, a.clean, a.xplane, a.series)
+        after_series(a.after_series, a.clean, a.xplane, a.series, a.app_log)
         return 0
     if a.campaign:
         if a.record_camera:
@@ -1212,12 +1551,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     if not a.scenarios:
         p.error("a scenario at least")
-    if a.cold and a.streamer == "none":
-        p.error("--cold is for a streamer")
-    if a.freeze_in_flight and a.streamer != "live":
-        p.error("--freeze-in-flight is for Live")
-    if a.record_camera and a.camera == "mine":
-        p.error("--record-camera records a camera: it replays none")
+    wrong = refused_options(a)
+    if wrong:
+        p.error(wrong)
     try:
         return run(a)
     except (RefusedError, scenarios.ScenarioError) as e:

@@ -21,6 +21,7 @@ The states:
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import traceback
@@ -79,8 +80,16 @@ LEAVE_HINT = "Leave it installed, in the window, to stop waiting"
 STOP_HINT = "Stop in the window to end"
 
 
+SOURCE_ENV = "OSXP_LIVE_SOURCE"
+"""The region a test flight's Live streams onto, as ``stream --source`` names it: a cold run of the
+app (``tools/live/flights/fly.py --streamer app --cold``), whose folder of its own holds no region
+(a Shadow PC without AutoOrtho, 2026-10-04). Set for the app's process by the test flights alone."""
+
+
 def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
+    named = os.environ.get(SOURCE_ENV)
     return session.Options(
+        source=Path(named) if named else None,
         provider=settings.provider,
         disk_budget_gb=settings.textures_gb,  # Live's one disk space, shared
         cache_budget_gb=settings.imagery_gb,

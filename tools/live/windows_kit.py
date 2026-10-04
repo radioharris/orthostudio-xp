@@ -1,16 +1,16 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The kit to try OrthoStudio XP Live on a Windows PC, a user's Shadow (2026-10-01): one zip, in
-``dist``, which the user unpacks there and runs in three steps (``tools/live/windows_kit``, its
-``LISEZ-MOI.txt``):
+"""The kit to fly OrthoStudio XP Live's test flights on a Windows PC, a user's Shadow (2026-10-01;
+since 2026-10-04 those of the app's one window): one zip, in ``dist``, which the user unpacks there
+and runs in three steps (``tools/live/windows_kit``, its ``LISEZ-MOI.txt``):
 
 1. Live's tests on that Windows (``uv``, installed once asked, runs them), with the stand-ins for
    X-Plane built ahead here (``tests/data/live/xpl_host.c``, ``fake_xplane.c`` and their fake
    ``XPLM_64.dll``): a Windows has no compiler, and with them the tests load the very plugins
    X-Plane will load, and fly a test flight's series from its start to its end;
-2. Live's window, for a flight;
-3. X-Plane's threads, as Live reads them, while it flies;
-4. the replayable test flights (``tools/live/flights``), zipped to be sent back.
+2. the app, in its one window, to see Live's region is there;
+3. the replayable test flights (``tools/live/flights``): Live alone in the app, and with
+   OrthoStudio XP open beside it, each cold, side by side; zipped to be sent back.
 
 The code is the commit given (``HEAD``), as git has it: nothing uncommitted, nothing ignored. The
 stand-in is built with Docker, as the plugins are (``tools/live/plugin_builds.py``).
@@ -36,12 +36,12 @@ CODE = "OrthoStudio XP Live"  # the code's folder in the zip
 HELPERS = "essai-windows"  # the scripts' own files, and the stand-in
 STEPS = (
     "1 - Tests de Live.cmd",
-    "2 - Lancer Live.cmd",
-    "3 - Fils d'X-Plane.cmd",
-    "4 - Vol de test.cmd",
+    "2 - Ouvrir l'app.cmd",
+    "3 - Vols de test.cmd",
     "LISEZ-MOI.txt",
 )
-NAME = "OrthoStudio XP Live - essai Windows"
+HELPER_FILES = ("uv.cmd", "tests.py", "vol.py")
+NAME = "OrthoStudio XP - vols de la fenêtre unique - Windows"
 
 
 STAND_INS = ("xpl_host.exe", "fake_xplane.exe", "XPLM_64.dll")
@@ -94,7 +94,7 @@ def build(commit: str, dist: Path) -> Path:
                 z.writestr(item, source.read(item))
             for step in STEPS:
                 z.writestr(f"{NAME}/{step}", crlf((KIT / step).read_bytes()))
-            for helper in ("uv.cmd", "tests.py", "fils_xplane.py", "vol.py"):
+            for helper in HELPER_FILES:
                 data = (KIT / helper).read_bytes()
                 z.writestr(
                     f"{NAME}/{HELPERS}/{helper}", crlf(data) if helper.endswith(".cmd") else data

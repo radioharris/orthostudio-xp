@@ -283,6 +283,11 @@ LATER_FIELDS = {
     "compressed": "compressed_mb",
     "swapped": "swapped_mb",
     "heat": "heat",
+    # 2026-10-04: of the app (the streamer), OrthoStudio XP's engine and the window's web view
+    "e_mb": "engine_rss_mb",
+    "e_cpu": "engine_cpu_s",
+    "w_mb": "web_rss_mb",
+    "w_cpu": "web_cpu_s",
 }
 
 
@@ -400,8 +405,23 @@ def costs(rows: list[dict], run: dict) -> dict[str, dict]:
             "streamer_cores": (b["s_cpu"] - a["s_cpu"]) / span,
             "streamer_gb": s_mem[len(s_mem) // 2] / 1024,
             "streamer_gb_most": s_mem[-1] / 1024,
+            "engine": _part(a, b, within, "e_mb", "e_cpu", span),
+            "web": _part(a, b, within, "w_mb", "w_cpu", span),
         }
     return out
+
+
+def _part(a: dict, b: dict, within: list[dict], mb: str, cpu: str, span: float) -> dict | None:
+    """A part of the app's (``sampler``: its engine, its web view) over a phase: its cores, its
+    memory (GB, median and most); None where it was not measured."""
+    mem = sorted(r[mb] for r in within if r.get(mb) is not None)
+    if not mem or a.get(cpu) is None or b.get(cpu) is None:
+        return None
+    return {
+        "cores": (b[cpu] - a[cpu]) / span,
+        "gb": mem[len(mem) // 2] / 1024,
+        "most": mem[-1] / 1024,
+    }
 
 
 def computer_lines(rows: list[dict], run: dict) -> list[str]:
@@ -426,6 +446,11 @@ def computer_lines(rows: list[dict], run: dict) -> list[str]:
                 f"streamer {c['streamer_cores']:.2f} core, "
                 f"{c['streamer_gb']:.1f} GB (most {c['streamer_gb_most']:.1f})"
             )
+            for key, what in (("engine", "OrthoStudio XP's engine"), ("web", "its web view")):
+                if c.get(key):
+                    parts[-1] += (
+                        f"; of it, {what} {c[key]['cores']:.2f} core, {c[key]['gb']:.2f} GB"
+                    )
         if c.get("mac"):
             parts.append("the computer: " + ", ".join(c["mac"]))
         out.append(f"- **{name}** ({c['minutes']:.1f} min): " + ", ".join(parts))
@@ -718,6 +743,7 @@ def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -
                     for m in ms
                 ],
             ),
+            *_app_rows(ms),
             ("X-Plane's scenery loads in the path", [str(m["loads"]) for m in ms]),
             ("screenshots' sharpness, against the first", _sharpness_row(ms)),
         ]
@@ -727,6 +753,40 @@ def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -
         out += [f"| {title} | " + " | ".join(values) + " |" for title, values in rows]
         out.append("")
     return "\n".join(out)
+
+
+def _app_rows(ms: list[dict]) -> list[tuple[str, list[str]]]:
+    """The app's own rows (``fly.py --streamer app``, 2026-10-04), where a run measured it: its
+    start, its engine and its web view in flight, and the computer's memory meanwhile."""
+    if not any(c.get("web") for m in ms for c in m["costs"].values()):
+        return []
+
+    def part(key: str) -> Callable[[dict], str]:
+        return lambda c: f"{c[key]['cores']:.2f}, {c[key]['gb']:.2f}" if c.get(key) else "-"
+
+    return [
+        (
+            "start: streamer's cores, memory most (GB)",
+            [
+                _cost(
+                    m, "start", lambda c: f"{c['streamer_cores']:.2f}, {c['streamer_gb_most']:.1f}"
+                )
+                for m in ms
+            ],
+        ),
+        (
+            "path: of it, OrthoStudio XP's engine (cores, GB)",
+            [_cost(m, "path", part("engine")) for m in ms],
+        ),
+        (
+            "path: of it, the window's web view (cores, GB)",
+            [_cost(m, "path", part("web")) for m in ms],
+        ),
+        (
+            "path: the computer",
+            [_cost(m, "path", lambda c: ", ".join(c["mac"]) or "-") for m in ms],
+        ),
+    ]
 
 
 def report(folder: Path) -> str:
@@ -744,6 +804,10 @@ def report(folder: Path) -> str:
             settings.append("Live idle during X-Plane's loads")
         if run.get("frozen_in_flight"):
             settings.append("Live frozen in flight: nothing built after the start")
+        if run.get("with_osxp") is not None:
+            settings.append(
+                "OrthoStudio XP open beside it" if run["with_osxp"] else "Live alone in it"
+            )
         lines += [
             f"- streamer: {run.get('streamer', '?')}"
             + (f" ({', '.join(settings)})" if settings else ""),

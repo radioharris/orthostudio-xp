@@ -259,19 +259,27 @@ def test_the_kit_s_flights_wait_for_windows_background_work(monkeypatch, capsys)
 
 
 def test_the_kit_s_flights_are_the_runner_s(monkeypatch):
-    """Each of the kit's choices, as the runner takes it: the fourth, Live building nothing in
-    flight, to tell whether X-Plane's stutter at a load's start is Live's work or X-Plane's."""
+    """Each of the kit's choices, as the runner takes it (2026-10-04): the first, the comparison,
+    Live alone in the app then with OrthoStudio XP open, each cold at 16/18 over Toulouse."""
     import fly
 
     vol = _kit_flight_script()
     taken = []
     monkeypatch.setattr(fly, "run", lambda a: taken.append(a) or 0)
-    for choice in ("1", "2", "3", "4"):
+    for args in vol.RUNS["1"]:
+        assert fly.main(args) == 0
+    alone, beside = taken
+    for a in (alone, beside):
+        assert (a.streamer, a.cold, a.zooms, a.scenarios) == (
+            "app",
+            True,
+            (16, 18),
+            ["toulouse-low"],
+        )
+    assert (alone.with_osxp, beside.with_osxp) == (False, True)
+    assert [vol.label_of(r) for r in vol.RUNS["5"]] == [
+        "Live seul dans l'app", "Live avec OrthoStudio XP ouvert", "X-Plane seul",
+    ]  # fmt: skip
+    for choice in ("2", "3", "4", "5"):
         for args in vol.RUNS[choice]:
             assert fly.main(args) == 0
-    frozen = taken[-1]
-    assert (frozen.streamer, frozen.cold, frozen.zooms, frozen.freeze_in_flight) == (
-        "live", True, (16, 18), True,
-    )  # fmt: skip
-    assert frozen.scenarios == ["toulouse-low"]
-    assert [a.freeze_in_flight for a in taken[:-1]] == [False] * 4

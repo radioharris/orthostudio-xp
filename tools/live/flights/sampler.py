@@ -15,7 +15,12 @@ cannot: X-Plane is signed with the hardened runtime).
 
 Since 2026-10-01, as the analysis of the late tiles asked: the cores the system lets work
 (``kern.sched_recommended_cores``: fewer when it is hot), and into ``processes.csv`` every other
-process using more than OTHERS_MIN_CORES between two lines (Spotlight, a browser in front...)."""
+process using more than OTHERS_MIN_CORES between two lines (Spotlight, a browser in front...).
+
+Since 2026-10-04, for the app itself in its one window (``fly.py --streamer app``): the streamer is
+the whole app, its web view's processes counted in (a Mac's are not under it: WebKit's, started by
+the system, are found by the program they work for), and of it, OrthoStudio XP's engine and the
+web view apart: what OrthoStudio XP open beside Live costs."""
 
 from __future__ import annotations
 
@@ -52,11 +57,18 @@ FIELDS = [
     "disk_reads",
     # 2026-10-01: the cores the system lets work
     "cores_allowed",
+    # 2026-10-04: of the app (the streamer), OrthoStudio XP's engine and the window's web view
+    "engine_rss_mb",
+    "engine_cpu_s",
+    "web_rss_mb",
+    "web_cpu_s",
 ]
 THREAD_FIELDS = ["wall", "thread", "name", "cpu_s", "state", "priority"]
 PROCESS_FIELDS = ["wall", "pid", "name", "cores"]
 OTHERS_MIN_CORES = 0.05  # a process using more between two lines goes into processes.csv
 XPLANE_NAMES = ("X-Plane", "X-Plane-x86_64", "X-Plane.exe")
+WEBKIT = "com.apple.WebKit."  # a Mac's web view processes: WebContent, GPU, Networking
+WEBVIEW2 = "msedgewebview2.exe"  # Windows': under the program that shows the window
 # a thread's state, as the kernel says it (proc_threadinfo's pth_run_state)
 THREAD_STATES = {1: "running", 2: "stopped", 3: "waiting", 4: "uninterruptible", 5: "halted"}
 # the Mac's heat, as it tells its apps (com.apple.system.thermalpressurelevel)
@@ -258,6 +270,41 @@ class _Usage(ctypes.Structure):  # struct rusage_info_v4, as far as what is read
 
 PROC_PIDTHREADINFO, PROC_PIDLISTTHREADS, RUSAGE_INFO_V4 = 5, 6, 4
 
+_RESPONSIBLE: dict[tuple[int, str], int | None] = {}
+
+
+def responsible(pid: int, command: str = "") -> int | None:
+    """The program ``pid`` works for, as macOS keeps it (``responsibility_get_pid_responsible_for_
+    pid``): a web view's processes are started by the system, not under the program that shows the
+    page, and this names that program. None off a Mac, or where it will not say."""
+    key = (pid, command)
+    if key not in _RESPONSIBLE:
+        _RESPONSIBLE[key] = None
+        if sys.platform == "darwin":
+            with contextlib.suppress(OSError, AttributeError):
+                lib = ctypes.CDLL("/usr/lib/system/libquarantine.dylib")
+                ask = lib.responsibility_get_pid_responsible_for_pid
+                ask.argtypes, ask.restype = [ctypes.c_int], ctypes.c_int
+                found = ask(pid)
+                _RESPONSIBLE[key] = found if found > 0 else None
+    return _RESPONSIBLE[key]
+
+
+def web_view(
+    rows: Iterable[tuple[int, int, float, float, str]], app: int
+) -> list[tuple[int, int, float, float, str]]:
+    """The processes of the web view of the program ``app``: on a Mac WebKit's working for it, on
+    Windows WebView2's under it."""
+    rows = list(rows)
+    if sys.platform == "darwin":
+        return [r for r in rows if WEBKIT in r[4] and responsible(r[0], r[4]) == app]
+    under = _members(rows, app)
+    return [
+        r
+        for r in rows
+        if r[0] in under and r[4].replace("\\", "/").rsplit("/", 1)[-1].lower() == WEBVIEW2
+    ]
+
 
 def threads(pid: int) -> list[tuple[int, str, float, int, int]]:
     """(thread, name, processor s, state, priority) of each of a process's threads: libproc's
@@ -434,9 +481,19 @@ class Sampler(threading.Thread):
     ``processes.csv`` beside it: X-Plane's threads and the busy processes at each line (the
     module's docstring)."""
 
-    def __init__(self, out: Path, streamer_pid: int | None = None):
+    def __init__(
+        self,
+        out: Path,
+        streamer_pid: int | None = None,
+        *,
+        engine_pid: int | None = None,
+        web_of: int | None = None,
+    ):
+        """``engine_pid``: OrthoStudio XP's engine, under the app; ``web_of``: the program whose
+        window's web view is the app's too (``fly.py --streamer app``)."""
         super().__init__(daemon=True)
         self.out, self.streamer_pid = out, streamer_pid
+        self.engine_pid, self.web_of = engine_pid, web_of
         self.threads_out = out.with_name("threads.csv")
         self.processes_out = out.with_name("processes.csv")
         self._before: dict[int, tuple[float, float]] = {}  # each process's CPU s, and when
@@ -461,6 +518,11 @@ class Sampler(threading.Thread):
         s_mem, s_cpu = tree(rows, self.streamer_pid) if self.streamer_pid else (0.0, 0.0)
         if WINDOWS and self.streamer_pid:
             s_cpu += self._ended(rows)
+        web = web_view(rows, self.web_of) if self.web_of else []
+        if web and sys.platform == "darwin":  # not under the app there: counted in by hand
+            s_mem += sum(r[2] for r in web)
+            s_cpu += sum(r[3] for r in web)
+        engine = tree(rows, self.engine_pid) if self.engine_pid else None
         disks = disk_bytes()
         pid = max(xp, key=lambda r: r[2])[0] if xp else None  # X-Plane itself, not a helper
         use = usage(pid) if pid else {}
@@ -483,6 +545,10 @@ class Sampler(threading.Thread):
             _blank(heat()),
             ";".join(f"{k}={r}" for k, (_, r) in sorted(disks.items())),
             _blank(cores_allowed()),
+            f"{engine[0]:.0f}" if engine else "",
+            f"{engine[1]:.1f}" if engine else "",
+            f"{sum(r[2] for r in web):.0f}" if self.web_of else "",
+            f"{sum(r[3] for r in web):.1f}" if self.web_of else "",
         ]
         thread_lines = [
             [f"{wall:.1f}", f"{handle:x}", name, f"{cpu:.3f}", state, priority]

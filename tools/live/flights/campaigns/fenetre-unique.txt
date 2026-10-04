@@ -1,0 +1,12 @@
+# The app's one window (2026-10-04): Live alone in it, then Live with OrthoStudio XP open beside it
+# (its engine started and its page loaded, idle), each from nothing (cold: nothing built, nothing
+# downloaded, a home of its own), over the same flight: what OrthoStudio XP open costs in memory,
+# in processor and for X-Plane, on the Mac and on a Shadow of 16 GB. X-Plane alone, the second
+# comparison's third run, for the computer without either.
+title La fenêtre unique : Live seul, puis Live avec OrthoStudio XP ouvert
+scenarios toulouse-low
+run live-seul --streamer app --zooms 16/18 --cold
+run live-et-osxp --streamer app --with-osxp --zooms 16/18 --cold
+run xplane-seul
+compare live-seul live-et-osxp
+compare xplane-seul live-seul live-et-osxp
