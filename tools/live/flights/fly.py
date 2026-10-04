@@ -528,42 +528,48 @@ def start_app(
         if proc is not None and proc.poll() is not None:
             raise RefusedError(f"the app stopped before it was ready:\n{_app_said(said)}")
 
-    _wait_until(listening.is_file, "the app's window", APP_UP_TIMEOUT_S, gone)
-    shown = json.loads(listening.read_text(encoding="utf-8"))
-    window = int(shown["pid"])
-    engine_pid = None
-    if with_osxp:
+    window, engine_pid = 0, None
+    try:
+        _wait_until(listening.is_file, "the app's window", APP_UP_TIMEOUT_S, gone)
+        shown = json.loads(listening.read_text(encoding="utf-8"))
+        window = int(shown["pid"])
+        if with_osxp:
+            _wait_until(
+                lambda: _http(f"http://127.0.0.1:{APP_PORT}/api/status") is not None,
+                "OrthoStudio XP's engine",
+                APP_UP_TIMEOUT_S,
+                gone,
+            )
+            engine = (_http(f"http://127.0.0.1:{APP_PORT}/api/engine") or {}).get("engine") or {}
+            engine_pid = int(engine["pid"]) if engine.get("pid") else None
+            with socket.create_connection(("127.0.0.1", int(shown["port"])), timeout=5.0) as w:
+                w.settimeout(30.0)
+                w.sendall(b"live\n")  # Live's side shown, as its button shows it (app_start)
+                w.recv(8)
         _wait_until(
-            lambda: _http(f"http://127.0.0.1:{APP_PORT}/api/status") is not None,
-            "OrthoStudio XP's engine",
+            lambda: (_http(LIVE_API + "status") or {}).get("state") == "idle",
+            "Live, set up in the app",
             APP_UP_TIMEOUT_S,
             gone,
         )
-        engine = (_http(f"http://127.0.0.1:{APP_PORT}/api/engine") or {}).get("engine") or {}
-        engine_pid = int(engine["pid"]) if engine.get("pid") else None
-        with socket.create_connection(("127.0.0.1", int(shown["port"])), timeout=5.0) as w:
-            w.settimeout(30.0)
-            w.sendall(b"live\n")  # Live's side shown, as its button shows it (app_start)
-            w.recv(8)
-    _wait_until(
-        lambda: (_http(LIVE_API + "status") or {}).get("state") == "idle",
-        "Live, set up in the app",
-        APP_UP_TIMEOUT_S,
-        gone,
-    )
-    if _http(LIVE_API + "start", {}) is None:
-        raise RefusedError(f"Live did not start:\n{_app_said(said)}")
-    began = time.time()
-    while time.time() - began < LIVE_READY_TIMEOUT_S:
-        status = _http(LIVE_API + "status") or {}
-        if status.get("state") == "streaming":
-            break
-        if status.get("error"):
-            raise RefusedError(f"Live stopped before it was ready: {status['error']}")
-        gone()
-        time.sleep(POLL_S)
-    else:
-        raise RefusedError("Live not ready after 20 min")
+        if _http(LIVE_API + "start", {}) is None:
+            raise RefusedError(f"Live did not start:\n{_app_said(said)}")
+        began = time.time()
+        while time.time() - began < LIVE_READY_TIMEOUT_S:
+            status = _http(LIVE_API + "status") or {}
+            if status.get("state") == "streaming":
+                break
+            if status.get("error"):
+                raise RefusedError(f"Live stopped before it was ready: {status['error']}")
+            gone()
+            time.sleep(POLL_S)
+        else:
+            raise RefusedError("Live not ready after 20 min")
+    except BaseException:
+        # an app left open holds Live's port and its engine's: no run after it could start
+        with contextlib.suppress(Exception):
+            stop_app(proc.pid if proc is not None else window, timeout_s=60.0)
+        raise
     if cold:
         live_log = home / "live" / "LogLive.txt"
     else:
@@ -586,6 +592,8 @@ def stop_app(app_pid: int, timeout_s: float = STOP_TIMEOUT_S) -> None:
     if it is still there ``timeout_s`` later. Only once X-Plane has quit."""
     _http(f"http://127.0.0.1:{APP_PORT}/api/quit", {"force": True})
     _http(LIVE_API + "quit", {"force": True})
+    if app_pid <= 0:  # the program not known: asked to quit, nothing more
+        return
     began = time.time()
     while time.time() - began < timeout_s:
         if not _alive(app_pid):

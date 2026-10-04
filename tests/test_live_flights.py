@@ -1264,3 +1264,43 @@ def test_the_app_quits_as_an_update_s_installer_quits_it(monkeypatch: pytest.Mon
         (f"http://127.0.0.1:{fly.APP_PORT}/api/quit", {"force": True}),
         (fly.LIVE_API + "quit", {"force": True}),
     ]
+
+
+def test_an_app_whose_live_cannot_start_is_closed_before_the_run_gives_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Left open, it would hold Live's port and its engine's, and no run after it could start."""
+    import orthostudio.live as live
+
+    monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
+    monkeypatch.setattr(fly, "POLL_S", 0.01)
+    monkeypatch.setattr(fly.sys, "platform", "darwin")
+    monkeypatch.setattr(fly, "app_bundle", lambda: tmp_path / "OrthoStudio XP (vols de test).app")
+    out = tmp_path / "2026-10-04 020304"
+    out.mkdir()
+    home = out / fly.LIVE_HOME
+
+    def run(cmd: list[str], **kw: object) -> None:
+        (home / "run").mkdir(parents=True, exist_ok=True)
+        (home / "run" / f"osxp-window-{fly.APP_PORT}.json").write_text('{"pid": 4242, "port": 1}')
+
+    monkeypatch.setattr(fly.subprocess, "run", run)
+    calls = iter([{"state": "idle", "error": None}, {"state": "idle", "error": "no X-Plane"}])
+    monkeypatch.setattr(
+        fly,
+        "_http",
+        lambda url, body=None, timeout_s=5.0: (
+            {}
+            if body is not None
+            else (
+                next(calls, {"state": "idle", "error": "no X-Plane"})
+                if "live/status" in url
+                else None
+            )
+        ),
+    )
+    stopped: list[tuple[int, float]] = []
+    monkeypatch.setattr(fly, "stop_app", lambda pid, timeout_s=0: stopped.append((pid, timeout_s)))
+    with pytest.raises(fly.RefusedError, match="no X-Plane"):
+        fly.start_app(tmp_path / "X-Plane 12", out, True)
+    assert stopped == [(4242, 60.0)]
