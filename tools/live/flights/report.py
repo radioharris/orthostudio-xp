@@ -418,7 +418,8 @@ def _part(a: dict, b: dict, within: list[dict], mb: str, cpu: str, span: float) 
     if not mem or a.get(cpu) is None or b.get(cpu) is None:
         return None
     return {
-        "cores": (b[cpu] - a[cpu]) / span,
+        # never below none: a process's time is read rounded, and an idle engine's went back 0.01 s
+        "cores": max(0.0, (b[cpu] - a[cpu]) / span),
         "gb": mem[len(mem) // 2] / 1024,
         "most": mem[-1] / 1024,
     }
