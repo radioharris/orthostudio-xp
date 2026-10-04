@@ -86,6 +86,14 @@ app (``tools/live/flights/fly.py --streamer app --cold``), whose folder of its o
 (a Shadow PC without AutoOrtho, 2026-10-04). Set for the app's process by the test flights alone."""
 
 
+def stream_sources(xp: Path) -> list[Path]:
+    """The regions the stream lays its photos on: a test flight's (SOURCE_ENV), else those
+    installed. The checks read the same: a cold test flight's window said « No mesh yet » while
+    Live streamed onto the region the flight gave it (the user's Shadow, 2026-10-04)."""
+    named = os.environ.get(SOURCE_ENV)
+    return [Path(named)] if named else default_sources(xp)
+
+
 def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
     named = os.environ.get(SOURCE_ENV)
     return session.Options(
@@ -187,7 +195,7 @@ def gather_checks() -> dict[str, Any]:
         check_folder(live_root(), custom_scenery=xp / "Custom Scenery")
     except FolderError as e:
         out["folder_problem"] = str(e)
-    sources = default_sources(xp)
+    sources = stream_sources(xp)
     out.update(
         xplane=str(xp),
         # the regions installed, by name, or where they would be

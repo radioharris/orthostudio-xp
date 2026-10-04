@@ -124,6 +124,27 @@ def test_the_window_is_told_of_the_computer(
     assert checks["machine"] == {"cores": 8, "ram_gb": 16, "sharp_ram_gb": 32}
 
 
+def test_the_checks_see_a_test_flight_s_region(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cold test flight's Live has no region in its own folder: it streams onto the one the
+    flight names (SOURCE_ENV). Its window said « No mesh yet » all the same, on the user's Shadow
+    (2026-10-04), while the photos came."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = tmp_path / "X-Plane 12"
+    (xp / "Custom Scenery").mkdir(parents=True)
+    monkeypatch.setattr(control.session, "xplane_dir", lambda explicit: xp)
+    region = tmp_path / "regions" / "z_ao_eur"
+    (region / "terrain").mkdir(parents=True)
+    monkeypatch.delenv(control.SOURCE_ENV, raising=False)
+    assert control.gather_checks()["mesh_found"] is False  # no region installed: true
+    monkeypatch.setenv(control.SOURCE_ENV, str(region))
+    checks = control.gather_checks()
+    assert checks["mesh_found"] is True
+    assert checks["mesh_regions"] == ["eur"]
+
+
 def test_no_osxp_engine_before_the_fork_server() -> None:
     """Reading the computer loads nothing of OrthoStudio XP's engine: PROJ must not be open
     before Live's fork server starts (``pools``), and the default number of encoders is read as
