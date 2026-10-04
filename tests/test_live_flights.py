@@ -1316,3 +1316,19 @@ def test_the_app_is_not_opened_beside_a_live_of_the_user_s(
     monkeypatch.setattr(fly.subprocess, "run", lambda *a, **k: pytest.fail("the app opened"))
     with pytest.raises(fly.RefusedError, match="Live or the app runs already"):
         fly.start_app(tmp_path / "X-Plane 12", tmp_path, True)
+
+
+def test_a_campaign_s_next_run_waits_for_the_mac_to_cool(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sampler
+
+    monkeypatch.setattr(fly, "xplane_gone", lambda: True)
+    monkeypatch.setattr(fly, "live_runs", lambda: False)
+    monkeypatch.setattr(fly, "autoortho_runs", lambda: False)
+    monkeypatch.setattr(fly, "_port_open", lambda port: False)
+    monkeypatch.setattr(fly.time, "sleep", lambda s: None)
+    readings = iter([2, 1, 0])  # heavy, moderate, nominal
+    monkeypatch.setattr(sampler, "heat", lambda: next(readings, 0))
+    fly.wait_quiet()
+    assert next(readings, "done") == "done"  # read until nominal
+    monkeypatch.setattr(sampler, "heat", lambda: None)  # Windows: no heat told, no wait
+    fly.wait_quiet()

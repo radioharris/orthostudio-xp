@@ -1387,14 +1387,26 @@ def read_campaign(ref: str) -> Campaign:
     return Campaign(path.stem, title, names, runs, comparisons)
 
 
-def wait_quiet(timeout_s: float = 600.0) -> None:
-    """Until X-Plane has quit and no streamer runs: the run before quits them in the background."""
+COOL_TIMEOUT_S = 15 * 60  # a Mac's heat back to nominal between two runs, this long at most
+
+
+def wait_quiet(timeout_s: float = 600.0, cool_s: float = COOL_TIMEOUT_S) -> None:
+    """Until X-Plane has quit and no streamer runs: the run before quits them in the background.
+    Then, on a Mac, until its heat is nominal again (``cool_s`` at most): a run begun on the heat
+    the one before left flew slower, and the comparison read the heat rather than the setup (the
+    variants of 2026-10-01; the one window's, 2026-10-04)."""
     began = time.time()
     while time.time() - began < timeout_s:
         if xplane_gone() and not live_runs() and not autoortho_runs() and not _port_open(APP_PORT):
-            return
+            break
         time.sleep(5.0)
-    raise RefusedError("X-Plane or a streamer still runs 10 min after the run before")
+    else:
+        raise RefusedError("X-Plane or a streamer still runs 10 min after the run before")
+    began = time.time()
+    while (sampler.heat() or 0) > 0 and time.time() - began < cool_s:
+        if time.time() - began < 5.0:
+            say("the Mac cools down before the next run")
+        time.sleep(5.0)
 
 
 def picks_of(text: str | None) -> list[tuple[int, list[str] | None]] | None:
