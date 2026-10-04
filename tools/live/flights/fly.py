@@ -270,7 +270,25 @@ def cold_home(home: Path) -> Path:
     text = re.sub(r"(?m)^folder\s*=.*$", 'folder = ""', text)
     text = re.sub(r"(?m)^(simbrief(?:_user)?)\s*=.*$", r'\1 = ""', text)
     (home / "live.toml").write_text(text, encoding="utf-8")
+    cold_lists(home)
     return home
+
+
+def cold_lists(home: Path) -> None:
+    """The lists of the regions' textures the user's Live keeps (``aoregions.lists_dir``) into the
+    cold home's Live folder: a region's list is made as it installs, so a user's start reads it in
+    a second, where the cold folder, without it, read the region's 400,000 files again, minutes on
+    a Shadow PC (2026-10-04). A list holds the region's names alone: nothing built, nothing
+    downloaded, the run as cold as before."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.pack import live_root
+
+    mine = aoregions.lists_dir(live_root())
+    theirs = aoregions.lists_dir(home / "live")
+    with contextlib.suppress(OSError):
+        for kept in sorted(mine.glob("*.json")):
+            theirs.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(kept, theirs / kept.name)
 
 
 def cold_source(xp: Path, series: list[scenarios.Scenario]) -> Path | None:
@@ -497,6 +515,7 @@ def start_app(
         "OSXP_START": "build" if with_osxp else "live",
         "OSXP_PORT": str(APP_PORT),
         "OSXP_LOG_NAME": f"serve-test-flight-{out.name.replace(' ', '-')}.log",
+        "PYTHONUNBUFFERED": "1",  # its output in app.txt as it comes, read while it runs
     }
     if cold:
         app_settings(home, zooms)
@@ -815,6 +834,10 @@ def clean_cold(out: Path, xp: Path | None = None) -> None:
     record = out / LIVE_HOME / "live" / "pack" / "_live" / "ortho.json"
     if record.is_file():
         shutil.copy2(record, out / "live-built.json")
+    log = out / LIVE_HOME / "live" / "LogLive.txt"  # Live's whole log, the start's included
+    with contextlib.suppress(OSError):
+        if log.is_file():
+            shutil.copy2(log, out / "LogLive.txt")
     if xp is not None:
         from orthostudio.live.filesystem import is_folder_link, link_target, remove_folder_link
         from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME

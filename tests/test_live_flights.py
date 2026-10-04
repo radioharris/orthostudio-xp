@@ -1332,3 +1332,29 @@ def test_a_campaign_s_next_run_waits_for_the_mac_to_cool(monkeypatch: pytest.Mon
     assert next(readings, "done") == "done"  # read until nominal
     monkeypatch.setattr(sampler, "heat", lambda: None)  # Windows: no heat told, no wait
     fly.wait_quiet()
+
+
+def test_a_cold_live_takes_the_regions_lists_and_leaves_its_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A region's list of textures, made as it installs, read in a second at a user's start: the
+    cold home takes the user's, and the cold run starts as quickly (the Shadow read 400,000 files
+    again, 2026-10-04). Its LogLive.txt stays with the series once its folder is deleted."""
+    import orthostudio.live as live
+    from orthostudio.live import aoregions
+    from orthostudio.live import pack as pack_module
+
+    mine = tmp_path / "mine"
+    lists = aoregions.lists_dir(mine)
+    lists.mkdir(parents=True)
+    (lists / "z_ao_eur-0123456789ab.json").write_text('{"names": []}')
+    monkeypatch.setattr(live, "settings_file", lambda: tmp_path / "none" / "live.toml")
+    monkeypatch.setattr(pack_module, "live_root", lambda: mine)
+    out = tmp_path / "series"
+    home = fly.cold_home(out / fly.LIVE_HOME)
+    kept = aoregions.lists_dir(home / "live") / "z_ao_eur-0123456789ab.json"
+    assert kept.read_text() == '{"names": []}'
+    (home / "live" / "LogLive.txt").write_text("LogLive.txt for OrthoStudio XP Live\nstarting\n")
+    fly.clean_cold(out)
+    assert not (home / "live").exists()  # the heavy folder gone
+    assert (out / "LogLive.txt").read_text().endswith("starting\n")  # its log kept
