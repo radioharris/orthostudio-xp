@@ -249,7 +249,9 @@ set the estimate alone.
 - **curl_cffi** (`requests.AsyncSession`, libcurl multi with HTTP/2 in C): 0.32 ms CPU per
   request against 0.79 ms for httpx-h2 (s. 3); at 1 400 req/s that is 0.45 core versus 1.1.
   Cancellation is `curl_multi_remove_handle`, which is what hedging needs. No browser
-  impersonation, TLS verification on (certifi bundle).
+  impersonation, TLS verification on (certifi bundle; on Windows a path to it with a letter
+  outside ASCII is given by its short 8.3 name, which libcurl opens whatever Python's
+  encoding: `net/certs.py`).
 - The one-in-10 000 hang seen in P0 with curl_cffi (s. 3) is the case R3 covers; the P1 gate
   is "5 000 tiles at 128 in flight complete with zero result missing" (section 3).
 
