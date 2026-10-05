@@ -234,7 +234,11 @@ Deterministic (no timestamps): the manifest is the pack artefact, and its digest
 install receipt. `osxp why <pack dir>` reads it and explains every artefact (`Store.explain`).
 The upstream keys (`dem`, `vectors`, `coastline`, `mesh`, `masks`, `xp12`) come from the store's
 provenance edges of the DSF artefact (`Store.why`), not from the graph: the manifest can be rebuilt
-from the store alone.
+from the store alone. The relief the tile stands on (`built.relief`, `relief_laid`, `relief_own`)
+is read the same way (`relief_read`), from the first input named `dem` built by the relief stage
+(`orthostudio.dem`): the mesh takes the tracing under that name too (`--dem vectors`, the
+default), and reading it found no relief, so every tile built without sharper airports, whose DSF
+takes no tracing of its own, said "—" for its relief until 2026-10-05.
 
 `[photo]` holds the square's colours as the textures were encoded with them:
 `PackParams.photo_brightness`, `photo_contrast` and `photo_saturation`, which `declare` copies
