@@ -51,6 +51,7 @@ from orthostudio.dem.xplane import XP12_INPUTS, XP12_SOURCE
 from orthostudio.dsf import DsfParams, Xp12Rasters, airport_covers, build_dsf
 from orthostudio.dsf.xp12 import global_scenery_dsf, rasters_from_dsf, read_global_scenery_dsf
 from orthostudio.errors import OsxpError, wrap
+from orthostudio.fsutil import atomic_write_text
 from orthostudio.graph import (
     ResolvedInput,
     Rule,
@@ -113,6 +114,7 @@ from orthostudio.pipeline.native import (
     unusable_coastline,
 )
 from orthostudio.pipeline.pack import (
+    MANIFEST_NAME,
     PARKED_OVERLAY,
     TILE_INSTALL,
     TILE_PACK,
@@ -2846,7 +2848,14 @@ def _assemble_again(
     nodes: TileNodes, env: BuildEnv, collector: _Collector, manifest: PackManifest
 ) -> None:
     """The pack written again in the workshop from the artefacts of the build, after a hit whose
-    folder was tampered with or taken away (filed elsewhere)."""
+    folder was tampered with or taken away (filed elsewhere), with the build's own manifest, as its
+    pack step wrote it.
+
+    Assembling walks the store's provenance for the artefacts upstream of the DSF, which may lead
+    by now to another artefact of the same content: a neighbour built since changes the masks'
+    recipe (their ``nb_*`` inputs), not their bytes. The folder then named other keys than the
+    build's receipt and the Library's row: the tile could never be filed, being taken for another
+    build, and each build of it assembled it again (found on the owner's tiles, 2026-10-06)."""
     spec = nodes.spec
     refs = {r: collector.done[n.id].ref for r, n in nodes.by_role.items() if n.id in collector.done}
     params = cast(PackParams, nodes.pack.params)
@@ -2871,6 +2880,8 @@ def _assemble_again(
         decal=params.decal,
         decal_on_sea=params.decal_on_sea,
     )
+    pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
+    atomic_write_text(pack_dir / MANIFEST_NAME, manifest.to_toml())
 
 
 # -- a tile filed elsewhere, built again (the atelier, step 4) -----------------------------------

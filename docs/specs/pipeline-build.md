@@ -192,7 +192,12 @@ workshop, but without `tile.install` (`install=False` in its spec): installed fr
 it took X-Plane's link and line away from its folder. After the passes, `_put_back_tile` does its
 end: nothing when its folder holds this very build (`pack_is_intact` with the receipt's manifest;
 an unchanged build is instant and leaves nothing in the workshop), else the pack, assembled again
-in the workshop if a hit found it gone (`_assemble_again`), put back in its folder
+in the workshop if a hit found it gone (`_assemble_again`, which writes the build's own manifest,
+as for any pack a hit finds tampered with: assembling walks the store's provenance, which may lead
+by now to another artefact of the same bytes, a neighbour built since changing the masks' recipe
+and not their content, and the folder named other keys than the build's receipt and the Library's
+row, so that the tile could never be filed and each build assembled it again; found on the owner's
+tiles, 2026-10-06), put back in its folder
 (`filing.put_back`), then `_settle_put_back`: the workshop's copy and its roads go, leftovers of a
 put back cut short go, the Library lists the tile once, in its folder, as this build, and the
 X-Plane of Settings that shows it is given its install again, its line kept (`reenable=False`),
