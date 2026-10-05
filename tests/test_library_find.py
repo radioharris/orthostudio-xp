@@ -355,6 +355,90 @@ def test_a_copy_of_its_roads_made_before_a_stop_is_not_left_twice(
 
 
 @pytest.mark.anyio
+async def test_a_tile_put_in_x_plane_s_own_custom_scenery_is_not_found_there(
+    app: Any, home: Path, xplane: Path
+) -> None:
+    """Ortho4XP's habit: the tile's folder dragged into Custom Scenery, in place of its link. Found
+    there, it lost its roads and forests, and could no longer be taken out: the page says to put
+    it elsewhere, and nothing changes, its roads and forests least of all (a review, 2026-10-05)."""
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    (cs / NAME).unlink()  # the Finder replaces the link with the folder
+    moved = _moved(pack, cs)
+    async with client_for(application) as c:
+        r = await c.post(f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(cs)})
+        rows = await _rows(c)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_TILE_IN_CUSTOM_SCENERY"
+    assert rows["ortho"]["path"] == str(pack)
+    assert (home / "tiles" / OVERLAY_PACK / T.dsf_relpath).is_file()
+    assert not (moved / PARKED_OVERLAY).exists()
+
+
+def test_the_one_overlay_there_is_is_never_removed_for_a_copy_of_itself(
+    home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A folder whose overlays pack is a link to the one the tile came from shows the same file
+    twice: it is the only one there is, and it stays (a review, 2026-10-05)."""
+    pack, cs = _installed(home, xplane)
+    shelf = tmp_path / "Shelf"
+    shelf.mkdir()
+    (shelf / OVERLAY_PACK).symlink_to(home / "tiles" / OVERLAY_PACK, target_is_directory=True)
+    moved = _moved(pack, shelf)
+    entry = library_pack(T.name, path=str(pack), library_path=default_library_path())
+    find_again_receipt(entry, moved, custom_sceneries=[cs], library_path=default_library_path())
+    assert (home / "tiles" / OVERLAY_PACK / T.dsf_relpath).is_file()
+
+
+def test_asked_again_after_a_stop_past_x_plane_s_link_it_finishes(
+    home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stop came after X-Plane's link led to the found folder, before its roads and forests
+    were put beside it: asked again, X-Plane's install is finished, and the tile has its roads
+    (a review, 2026-10-05)."""
+    pack, cs = _installed(home, xplane)
+    moved = _moved(pack, tmp_path / "Alps")
+    entry = library_pack(T.name, path=str(pack), library_path=default_library_path())
+    real = pack_mod._unpark_overlay
+    stops = [OSError("the power went")]
+
+    def unpark(*args: Any, **kwargs: Any) -> Any:
+        if stops:
+            raise stops.pop()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(pack_mod, "_unpark_overlay", unpark)
+    with pytest.raises(OSError):
+        find_again_receipt(entry, moved, custom_sceneries=[cs], library_path=default_library_path())
+    assert links_to(cs / NAME, moved) and (moved / PARKED_OVERLAY).is_file()
+    receipt = find_again_receipt(
+        entry, moved, custom_sceneries=[cs], library_path=default_library_path()
+    )
+    assert receipt["xplanes"] == [str(cs)] and receipt["overlay_lost"] is False
+    assert (moved.parent / OVERLAY_PACK / T.dsf_relpath).is_file()
+    assert overlay_link(cs, moved.parent / OVERLAY_PACK) is not None
+
+
+@pytest.mark.anyio
+async def test_a_line_the_user_disabled_stays_disabled(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    ini = cs / "scenery_packs.ini"
+    line = f"Custom Scenery/{NAME}/"
+    ini.write_text(ini.read_text().replace(f"SCENERY_PACK {line}", f"SCENERY_PACK_DISABLED {line}"))
+    alps = tmp_path / "Alps"
+    _moved(pack, alps)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(alps)}
+        )
+    assert r.status_code == 200, r.text
+    assert f"SCENERY_PACK_DISABLED {line}" in ini.read_text()
+    assert f"SCENERY_PACK {line}" not in ini.read_text()
+
+
+@pytest.mark.anyio
 async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     app: Any, home: Path, xplane: Path, tmp_path: Path
 ) -> None:
@@ -372,5 +456,7 @@ async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     assert rows[T.name]["present"] is False and rows[T.name]["disk_absent"] is True
     assert rows["+43+006"]["present"] is False and rows["+43+006"]["disk_absent"] is False
     assert disk_absent(tmp_path) is False  # there
+    # a folder gone two levels down on a disk that is here is not a disk away
+    assert disk_absent(tmp_path / "Gone" / "Alps" / NAME) is False
     assert disk_absent(Path("/Volumes") / f"nope {secrets.token_hex(4)}" / "x") is True
     assert disk_absent(Path("/media") / f"someone {secrets.token_hex(4)}" / "USB" / "x") is True

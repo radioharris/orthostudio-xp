@@ -238,6 +238,7 @@ def _http_status(code: str) -> int:
         "XP_DIR_NOT_FOUND",
         "XP_GLOBAL_SCENERY_NOT_FOUND",
         "SYS_WORKING_DIR_INVALID",
+        "SYS_TILE_IN_CUSTOM_SCENERY",
         "SYS_TILE_INCOMPLETE",
         "SYS_TILE_NOT_IN_FOLDER",
         "SYS_TILE_OTHER_BUILD",

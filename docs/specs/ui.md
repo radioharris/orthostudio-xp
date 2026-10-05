@@ -762,7 +762,7 @@ an osxp build of the same tile are two rows.
 
 | Column | Content |
 |---|---|
-| Tile | `+43+005`, the pack's `path` in the `title` tooltip; when `present === false`, a *Not found* pill, or *Disk absent* when `disk_absent` (its disk is away: plugged in again, the tile is back by itself) |
+| Tile | `+43+005`, the pack's `path` in the `title` tooltip; when `present === false`, a *Not found* pill, or *Disk not connected* when `disk_absent` (its disk is away: plugged in again, the tile is back by itself) |
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
@@ -801,19 +801,22 @@ ambiguous when the tile was built into two output folders):
   (user request, 2026-09-21): the Library forgets the tile and its files stay where Ortho4XP put
   them; a toast says so. Disabled while the tile is in X-Plane, with a tooltip saying to remove it
   from X-Plane first: off the list, the Library could no longer take it out;
-- not found (`present === false`, its disk here): *Find again…* in the X-Plane column for a tile
-  OrthoStudio XP built (the atelier, step 2, 2026-10-05; a user files his tiles by area with the
+- not found (`present === false`), or on a disk not connected: *Find again…* in the X-Plane
+  column for a tile OrthoStudio XP built (the atelier, step 2, 2026-10-05; a user files his tiles by area with the
   Finder). The folder dialog (`chooseFolder`, opening where the tile was when that folder is still
   there) asks for the tile's folder or the one holding it, then `POST /api/library/{name}/find`
   with `{path, folder}`: the Library row and every X-Plane that showed the tile follow, and a
   toast says where it was found ("+43+005 found again in ~/Tiles/Alps."), adding that a build
   gives back its roads and forests when they were found nowhere (`overlay_lost`). Refusals have
   the Library's own words (`LIBRARY_REFUSALS`): not that tile's folder (its name included), another
-  build, a copy not whole, X-Plane running, the tile back in its place meanwhile. Its tooltip says
-  X-Plane must be closed. An imported tile says to import again the folder it was put in. A tile
-  whose disk is absent has no button: the disk plugged in again settles it. *Delete…* stays for
-  OrthoStudio XP rows (the engine then forgets the tile). An imported tile still in X-Plane keeps
-  *Remove from X-Plane*, its way to *Remove from the list*.
+  build, a copy not whole, a folder inside X-Plane's Custom Scenery, X-Plane running, the tile
+  back in its place meanwhile. Its tooltip says X-Plane must be closed. An imported tile says to
+  import again the folder it was put in. A disk not connected comes back by itself once plugged
+  in, which its tooltip says, with *Find again…* for a tile put on another disk (a disk renamed,
+  or left for another). *Delete…* stays for OrthoStudio XP rows (the engine then forgets the
+  tile); on a disk not connected its question says the files stay on that disk and that plugging
+  it in will not bring the tile back. An imported tile still in X-Plane keeps *Remove from
+  X-Plane*, its way to *Remove from the list*.
 
 While a request runs, the row's buttons are disabled (and the row `aria-busy`), across
 re-renders too, so a double click sends nothing twice. When the engine answers, success or

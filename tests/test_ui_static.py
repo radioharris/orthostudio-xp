@@ -6922,7 +6922,7 @@ def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
     the tile's folder or the one holding it, and the Library and X-Plane follow it."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
-    assert "} else if (byOsxp && !e.disk_absent) {" in row
+    assert "} else if (byOsxp) {" in row  # not found, or on a disk away: shown where it went
     assert "onclick: () => findLibraryTile(e)" in row and 't("library.find")' in row
     assert 'pill(away ? t("library.disk_absent") : t("library.not_found"), "warn")' in row
     find = _function_body(app_js, "findLibraryTile")
@@ -6942,6 +6942,9 @@ def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
           other: words("SYS_TILE_OTHER_BUILD"),
           cut: words("SYS_TILE_INCOMPLETE"),
           back: words("SYS_TILE_NOT_MISSING"),
+          away: m.deleteQuestion({ tile: "+43+005", present: false, disk_absent: true,
+                                   installed: true }).body,
+          inXplane: words("SYS_TILE_IN_CUSTOM_SCENERY"),
           found: m.foundMessage({ tile: "+43+005", to, overlay_lost: false }, "+43+005"),
           lost: m.foundMessage({ tile: "+43+005", to, overlay_lost: true }, "+43+005"),
         }));"""
@@ -6954,6 +6957,12 @@ def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
     assert got["cut"][0].startswith("Files of the tile are missing")
     assert got["back"] == ["This tile is back in its place.", "The list is up to date now."]
     assert got["found"] == "+43+005 found again in ~/Tiles/Alps."
+    # Delete on a disk away: its files stay on that disk, and it does not come back
+    assert got["away"] == [
+        "Its disk is not plugged in: it is removed from X-Plane and from this list, and its files "
+        "stay on that disk. Plugging it in again will not bring it back."
+    ]
+    assert got["inXplane"][0] == "This folder is inside X-Plane's Custom Scenery."
     assert (
         got["lost"]
         == got["found"] + " Its roads and forests are missing: build it again to have them back."
@@ -6971,6 +6980,10 @@ def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
             "library.find_prompt",
             "library.found",
             "library.found_no_roads",
+            "library.delete_absent",
+            "library.delete_absent_xplane",
+            "library.err_in_custom_scenery",
+            "library.err_in_custom_scenery_remedy",
         ):
             assert tables[lang][key], (lang, key)
     assert tables["fr"]["library.find"] == "Retrouver…"

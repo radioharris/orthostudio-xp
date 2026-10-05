@@ -40,6 +40,7 @@ from orthostudio.install import (
     default_library_path,
     install_pack,
     is_link,
+    is_xplane_dir,
     uninstall_pack,
     xplane_running,
 )
@@ -682,6 +683,7 @@ def install_receipt(
     tile: TileRef,
     link: bool = True,
     library_path: Path | None = None,
+    reenable: bool = True,
 ) -> dict[str, Any]:
     """Install the tile pack (and the overlays pack next to it), register the library row.
 
@@ -734,8 +736,12 @@ def install_receipt(
         ini = custom_scenery / SCENERY_PACKS_INI
         packs = SceneryPacks.load(ini)
         # Above an imported tile of the same square, if one is listed: this one is drawn.
+        # ``reenable=False``: a tile found again keeps the line the user disabled
         changed = packs.ensure(
-            target.name, kind=pack_kind(target.name), above=IMPORTED_PACK_PREFIX + tile.name
+            target.name,
+            kind=pack_kind(target.name),
+            above=IMPORTED_PACK_PREFIX + tile.name,
+            reenable=reenable,
         )
         if overlay_target is not None:
             name = overlay_target.name
@@ -1521,6 +1527,10 @@ def find_again_receipt(
     pack = _found_pack(Path(chosen), old.name, tile)
     manifest = read_manifest(pack)
     context = {"tile": tile.name, "folder": str(pack)}
+    if pack.parent.name == "Custom Scenery" and is_xplane_dir(pack.parent.parent):
+        # X-Plane reads OrthoStudio XP's tiles through a link, and its overlays beside it: put
+        # there, the tile lost its roads, and could no longer be taken out (a review, 2026-10-05)
+        raise OsxpError("SYS_TILE_IN_CUSTOM_SCENERY", context=context)
     if entry.keys is not None and manifest.keys != entry.keys:
         raise OsxpError("SYS_TILE_OTHER_BUILD", context=context)
     if not pack_is_intact(pack, manifest, with_overlay=False):
@@ -1534,9 +1544,15 @@ def find_again_receipt(
         )
     with _INSTALL_LOCK:
         _bring_overlay(old, pack, tile, manifest)
-    shown = [Path(cs) for cs in custom_sceneries if links_to(Path(cs) / old.name, old)]
+    # the X-Planes that showed it; asked again after a stop, those already led to the found folder
+    # too, whose install is finished (its overlay put beside it)
+    shown = [
+        Path(cs)
+        for cs in custom_sceneries
+        if links_to(Path(cs) / old.name, old) or links_to(Path(cs) / old.name, pack)
+    ]
     for cs in shown:
-        install_receipt(pack, cs, tile=tile, library_path=library_path)
+        install_receipt(pack, cs, tile=tile, library_path=library_path, reenable=False)
     with Library(library_path) as lib:
         if not shown:  # in no X-Plane: the row alone follows
             lib.register(
@@ -1598,7 +1614,8 @@ def _bring_overlay(old: Path, pack: Path, tile: TileRef, manifest: PackManifest)
         return
     own = _own_overlay(pack, tile)
     if own is not None:
-        if filecmp.cmp(behind, own, shallow=False):
+        # the same file seen through a link is the only one there is: it stays
+        if not _same_file(behind, own) and filecmp.cmp(behind, own, shallow=False):
             behind.unlink()
         return
     part = pack / (PARKED_OVERLAY + ".part")

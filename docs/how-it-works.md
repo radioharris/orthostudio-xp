@@ -150,8 +150,10 @@ A tile whose folder you moved yourself, with the Finder or the File Explorer, sa
 with *Find again…*: show its folder, or the folder you put it in, and the Library and every X-Plane
 of the computer that showed it follow it there. X-Plane must be closed. Nothing of the tile is
 copied; only its roads and forests, a small file left in the folder it came from, join it, so
-that taking it out of X-Plane later takes them out too. A tile on a disk that is not plugged in
-says *Disk absent*: plug the disk in, and it is back by itself.
+that taking it out of X-Plane later takes them out too. Put the folder anywhere but inside X-Plane:
+X-Plane reads it through a link. A tile on a disk that is not plugged in says *Disk not
+connected*: plug the disk in, and it is back by itself; if you put it on another disk, *Find
+again…* takes it there.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they

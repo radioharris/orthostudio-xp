@@ -1036,6 +1036,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "to delete the folder itself, delete it by hand.",
     ),
     _spec(
+        "SYS_TILE_IN_CUSTOM_SCENERY",
+        _B,
+        _S,
+        "The folder of tile {tile}, {folder}, is inside X-Plane's Custom Scenery.",
+        "Nothing was changed. Put the tile's folder elsewhere, outside X-Plane, then find it "
+        "again: X-Plane reads OrthoStudio XP's tiles through a link.",
+    ),
+    _spec(
         "SYS_TILE_INCOMPLETE",
         _B,
         _S,

@@ -1373,6 +1373,10 @@ export async function mockApi(method, path, body, options = {}) {
     if (entry.present !== false) {
       throw mockError(409, "SYS_TILE_NOT_MISSING", `${entry.tile} is where the Library says, ${entry.path}: nothing to find.`, "Nothing to do.");
     }
+    mockCheckTilesFree([entry.tile], "the end of that build decides what X-Plane shows of it.");
+    if (mockXplaneRunning()) {
+      throw mockError(409, "XP_RUNNING", "X-Plane is running, and its links never change while it runs: nothing was changed.", "Quit X-Plane, then find the tile again.");
+    }
     const name = entryName(entry);
     const folder = String(body?.folder || "").replace(/[\\/]+$/, "");
     const was = entry.path;
@@ -5231,6 +5235,10 @@ export function libraryRequest(e, action) {
  * it, the size only when the engine knows it. */
 export function deleteQuestion(e) {
   const title = t("library.delete_title", { tile: e.tile });
+  if (e.present === false && e.disk_absent) {
+    // its files are on a disk away, where they stay: plugged in again, it does not come back
+    return { title, body: [e.installed ? t("library.delete_absent_xplane") : t("library.delete_absent")] };
+  }
   if (e.present === false) {
     return { title, body: [e.installed ? t("library.delete_missing_xplane") : t("library.delete_missing")] };
   }
@@ -5364,9 +5372,10 @@ function libraryRow(e, showFolder = false) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
-  } else if (byOsxp && !e.disk_absent) {
-    // its folder moved by hand, on a disk that is here: shown where it went, it is found again
-    // (the atelier, step 2, 2026-10-05); a disk away comes back by itself once plugged in
+  } else if (byOsxp) {
+    // its folder moved by hand: shown where it went, it is found again (the atelier, step 2,
+    // 2026-10-05). A disk away comes back by itself once plugged in; a disk renamed or left for
+    // another, its tiles copied there, has only this way back (a review, 2026-10-05)
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
   }
   // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
@@ -5662,6 +5671,7 @@ const LIBRARY_REFUSALS = {
   SYS_TILE_NOT_IN_FOLDER: (d) => [t("library.err_not_in_folder"), t("library.err_not_in_folder_remedy", { name: d?.context?.name || "" })],
   SYS_TILE_OTHER_BUILD: () => [t("library.err_other_build"), t("library.err_other_build_remedy")],
   SYS_TILE_INCOMPLETE: () => [t("library.err_incomplete"), t("library.err_incomplete_remedy")],
+  SYS_TILE_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_in_custom_scenery_remedy")],
   SYS_TILE_NOT_MISSING: () => [t("library.err_not_missing"), t("library.err_gone_remedy")],
 };
 
