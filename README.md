@@ -43,7 +43,8 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
   built with, found with a search, filtered by the folder it is in and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
   flew says so), its zones and its patches; the Plan says it too, over a tile and under the
-  squares chosen. A tile you moved by hand is found again where you put it, X-Plane following it.
+  squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
+  following them; a tile you moved by hand is found again where you put it.
   Remove a tile from X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and

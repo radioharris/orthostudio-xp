@@ -14,6 +14,7 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import stat
 import subprocess
 import threading
@@ -39,6 +40,8 @@ from orthostudio.api.models import (
     ChooseFolderRequest,
     CleanRequest,
     DeleteRequest,
+    FilePlanRequest,
+    FileRequest,
     FindRequest,
     ForgetRequest,
     ImportRequest,
@@ -99,6 +102,13 @@ from orthostudio.install.library import PackFacts, ortho4xp_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
+from orthostudio.pipeline.filing import (
+    ROOM_MARGIN,
+    FilingStoppedError,
+    check_destination,
+    file_tile,
+    filing_plan,
+)
 from orthostudio.pipeline.home import (
     check_data_dir,
     data_root,
@@ -140,7 +150,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 27
+API_LEVEL = 28
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -168,7 +178,9 @@ squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the li
 again) and ``radius_km`` in a flight plan, 25 = the setting ``expert.decal`` (an older engine
 refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief`` in place of
 ``data``, whose tracing (``vectors``) joined ``terrain``, 27 = finding a tile again (``POST
-/api/library/{name}/find``) and ``disk_absent`` in the library. A page
+/api/library/{name}/find``) and ``disk_absent`` in the library, 28 = filing tiles elsewhere (``POST
+/api/library/file-plan``, ``POST /api/library/{name}/file``, ``GET /api/library/filing``, ``POST
+/api/library/filing/stop``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -239,6 +251,11 @@ def _http_status(code: str) -> int:
         "XP_GLOBAL_SCENERY_NOT_FOUND",
         "SYS_WORKING_DIR_INVALID",
         "SYS_TILE_IN_CUSTOM_SCENERY",
+        "SYS_FOLDER_GONE",
+        "SYS_FOLDER_IN_CUSTOM_SCENERY",
+        "SYS_FOLDER_IN_TILE",
+        "SYS_FOLDER_IS_ATELIER",
+        "SYS_TILE_NAME_TAKEN",
         "SYS_TILE_INCOMPLETE",
         "SYS_TILE_NOT_IN_FOLDER",
         "SYS_TILE_OTHER_BUILD",
@@ -873,6 +890,19 @@ def create_app(
     # Held while a tile is deleted: deletes run one at a time, and no build starts meanwhile, since
     # the store clean that ends a delete could take an artefact a new build is about to reuse.
     deleting = asyncio.Lock()
+    # Held while a tile is filed elsewhere (the atelier, step 3): one at a time, and nothing else
+    # changes a tile or starts a build meanwhile; the request lasts as long as the copy
+    filing_lock = asyncio.Lock()
+    filing_stop = threading.Event()
+    filing_progress: dict[str, Any] = {}
+
+    def busy_filing() -> JSONResponse:
+        return _plain_error(
+            "SYS_BUSY",
+            "A tile is being filed elsewhere, and nothing else changes the tiles meanwhile.",
+            "Wait for the filing to end, or stop it, then try again.",
+            status=409,
+        )
 
     def busy_deleting() -> JSONResponse:
         return _plain_error(
@@ -1615,6 +1645,8 @@ def create_app(
         specs = await asyncio.to_thread(_specs, req, install=req.install)
         if deleting.locked():
             return busy_deleting()
+        if filing_lock.locked():
+            return busy_filing()
         try:
             job = manager.start(
                 specs,
@@ -1695,6 +1727,8 @@ def create_app(
         )
         if deleting.locked():
             return busy_deleting()
+        if filing_lock.locked():
+            return busy_filing()
         try:
             new = manager.retry(job_id, where=where, queue=req.queue)
         except JobBusyError as busy:
@@ -1810,6 +1844,8 @@ def create_app(
 
     @app.post("/api/library/{name}/install")
     async def library_install(name: str, req: InstallRequest | None = None) -> Any:
+        if filing_lock.locked():
+            return busy_filing()
         req = req or InstallRequest()
 
         def run() -> dict[str, Any]:
@@ -1837,6 +1873,8 @@ def create_app(
 
     @app.post("/api/library/{name}/uninstall")
     async def library_uninstall(name: str, req: UninstallRequest | None = None) -> Any:
+        if filing_lock.locked():
+            return busy_filing()
         req = req or UninstallRequest()
 
         def run() -> dict[str, Any]:
@@ -1885,6 +1923,8 @@ def create_app(
         """Leave the roads, forests and buildings of squares to the other packs' overlays
         (AutoOrtho's, XPME's, Ortho4XP's), or draw the tiles' own again (``install.md`` 4.3).
         Refused while X-Plane runs, and for a tile in a build under way or waiting."""
+        if filing_lock.locked():
+            return busy_filing()
 
         def run() -> dict[str, Any]:
             xp = xplane_dir(req.xplane_dir)
@@ -1933,6 +1973,8 @@ def create_app(
         Refused for a tile OrthoStudio XP built, whose way out is Delete; and while X-Plane shows
         the tile, whose link the Library would otherwise no longer know to take out.
         """
+        if filing_lock.locked():
+            return busy_filing()
         req = req or ForgetRequest()
 
         def look() -> tuple[Any, bool]:
@@ -1986,6 +2028,8 @@ def create_app(
         the Library row. Refused for an imported tile, which importing the folder it went to lists
         again; for a tile whose folder is where the Library says; and for a tile in a build under
         way or waiting, whose end decides what X-Plane shows of it."""
+        if filing_lock.locked():
+            return busy_filing()
         entry = await asyncio.to_thread(
             library_pack, name, path=req.path, library_path=default_library_path()
         )
@@ -2027,10 +2071,139 @@ def create_app(
         except TileInBuildError as err:
             return tile_in_build(err, IN_BUILD_PACK)
 
+    def sceneries_of(xplane_dir_q: str | None) -> list[Path]:
+        """The Custom Scenery folders of the X-Plane of Settings (or ``xplane_dir_q``) and of the
+        machine's others, those that are there: every X-Plane a tile moved may have shown in."""
+        xp = xplane_dir(xplane_dir_q)
+        xplanes = ([xp] if xp is not None else []) + other_xplane_dirs(xp)
+        return [cs for cs in (custom_scenery_dir(x) for x in xplanes) if cs.is_dir()]
+
+    @app.post("/api/library/file-plan")
+    async def library_file_plan(req: FilePlanRequest) -> Any:
+        """What filing these tiles into ``folder`` does, asked before it is done, reading only
+        (``filing.filing_plan``, the atelier's step 3): per tile, ``how`` it goes (``move`` on one
+        disk, ``copy`` to another with its ``bytes``, ``reuse`` a whole copy already there,
+        ``there``, ``taken``) or why it does not (``imported``, ``missing``, ``in_build``); the
+        bytes to copy, the free space there and whether there is ``room``. A folder no tile goes
+        into is refused (``filing.check_destination``)."""
+
+        def run() -> dict[str, Any]:
+            dest = Path(req.folder).expanduser()
+            check_destination(dest)
+            building = manager.building_tiles()
+            tiles: list[dict[str, Any]] = []
+            for t in req.tiles:
+                entry = library_pack(t.name, path=t.path, library_path=default_library_path())
+                row: dict[str, Any] = {"tile": entry.tile.name, "path": str(entry.path)}
+                if entry.built_by != "osxp":
+                    row["how"] = "imported"
+                elif not Path(entry.path).is_dir():
+                    row["how"] = "missing"
+                elif entry.tile.name in building:
+                    row["how"] = "in_build"
+                else:
+                    row.update(filing_plan(entry, dest))
+                tiles.append(row)
+            copy_bytes = sum(int(r.get("bytes") or 0) for r in tiles if r["how"] == "copy")
+            free = shutil.disk_usage(dest).free
+            return {
+                "folder": str(dest),
+                "tiles": tiles,
+                "copy_bytes": copy_bytes,
+                "free_bytes": free,
+                "room": copy_bytes + ROOM_MARGIN <= free,
+            }
+
+        return await asyncio.to_thread(run)
+
+    @app.post("/api/library/{name}/file")
+    async def library_file(name: str, req: FileRequest) -> Any:
+        """File one tile OrthoStudio XP built into ``folder`` (``filing.file_tile``, the atelier's
+        step 3): moved on one disk, else copied whole, read back, put in place; the Library and
+        every X-Plane that showed it follow, and it leaves the folder it came from. The request
+        lasts as long as the copy: ``GET /api/library/filing`` says how far it is, ``POST
+        /api/library/filing/stop`` stops it before its next file. One at a time, and not while a
+        build runs or waits, nor a tile is deleted."""
+        if filing_lock.locked():
+            return busy_filing()
+        # held before anything is read: a build or a delete asked meanwhile is refused
+        async with filing_lock:
+            if deleting.locked() or manager.active() is not None:
+                return _plain_error(
+                    "SYS_BUSY",
+                    "A build is running, and tiles are filed only between builds.",
+                    "Wait for the build to finish, or cancel it, then file the tile again.",
+                    status=409,
+                )
+            entry = await asyncio.to_thread(
+                library_pack, name, path=req.path, library_path=default_library_path()
+            )
+            context = {"tile": entry.tile.name, "path": str(entry.path)}
+            if entry.built_by != "osxp":
+                return _plain_error(
+                    "SYS_PACK_IMPORTED",
+                    f"{entry.tile.name} was imported from Ortho4XP: its folder is Ortho4XP's to "
+                    "move.",
+                    "Move it by hand, then import the folder it went to.",
+                    status=409,
+                    context=context,
+                )
+            if not await asyncio.to_thread(Path(entry.path).is_dir):
+                return _plain_error(
+                    "SYS_TILE_MISSING",
+                    f"{entry.tile.name} is not where the Library says, {entry.path}.",
+                    "Find it again first.",
+                    status=409,
+                    context=context,
+                )
+            filing_stop.clear()
+            filing_progress.clear()
+            filing_progress.update(tile=entry.tile.name, phase="start", done=0, total=0)
+
+            def progress(phase: str, done: int, total: int) -> None:
+                filing_progress.update(phase=phase, done=done, total=total)
+
+            def run() -> dict[str, Any]:
+                return file_tile(
+                    entry,
+                    Path(req.folder).expanduser(),
+                    custom_sceneries=sceneries_of(req.xplane_dir),
+                    library_path=default_library_path(),
+                    progress=progress,
+                    stop=filing_stop.is_set,
+                )
+
+            try:
+                return await asyncio.to_thread(run)
+            except FilingStoppedError:
+                return _plain_error(
+                    "SYS_FILING_STOPPED",
+                    f"Filing {entry.tile.name} was stopped: it is where it was.",
+                    "File it again when you wish.",
+                    status=409,
+                    context=context,
+                )
+            finally:
+                filing_progress.clear()
+
+    @app.get("/api/library/filing")
+    async def library_filing() -> Any:
+        """How far the tile being filed is: ``{tile, phase, done, total}`` (``copy`` then
+        ``check``, in bytes), or ``null`` when no tile is being filed."""
+        return {"progress": dict(filing_progress) if filing_lock.locked() else None}
+
+    @app.post("/api/library/filing/stop")
+    async def library_filing_stop() -> Any:
+        """Stop the tile being filed before its next file: it stays where it was, whole."""
+        filing_stop.set()
+        return {"stopping": filing_lock.locked()}
+
     @app.post("/api/library/{name}/delete")
     async def library_delete(name: str, req: DeleteRequest | None = None) -> Any:
         """Delete a tile OrthoStudio XP built, for good (``delete_receipt``): out of X-Plane when it
         is installed there, its folder, its library rows, and the store space no pack needs."""
+        if filing_lock.locked():
+            return busy_filing()
         req = req or DeleteRequest()
 
         def run() -> dict[str, Any]:

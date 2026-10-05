@@ -49,6 +49,8 @@ __all__ = [
     "InputRef",
     "Provenance",
     "Store",
+    "flush_disk",
+    "send_to_disk",
 ]
 
 log = logging.getLogger("orthostudio.graph.store")
@@ -1212,6 +1214,23 @@ def _open_for_flush(p: Path) -> int:
                 raise
             time.sleep(0.05 * (attempt + 1))
     raise AssertionError("unreachable")
+
+
+def send_to_disk(p: Path) -> None:
+    """A file's bytes sent to the disk, the disk's own cache left to the one :func:`flush_disk`
+    that ends a group (:func:`_flush_data`): how a tile filed elsewhere is written, as a build's
+    textures are (``pipeline/filing.py``, 2026-10-05)."""
+    _flush_data(p)
+
+
+def flush_disk(p: Path) -> None:
+    """The disk's own cache flushed once, through the file ``p``, with everything sent to it
+    before (:func:`_flush_disk`): what ends a group of :func:`send_to_disk`."""
+    fd = _open_for_flush(p) if os.name == "nt" else os.open(p, os.O_RDONLY)
+    try:
+        _flush_disk(fd)
+    finally:
+        os.close(fd)
 
 
 def _flush_dir_data(d: Path) -> None:

@@ -1,0 +1,281 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
+"""Tiles filed elsewhere (the atelier, step 3, 2026-10-05), one at a time.
+
+A tile whose new folder is on the same disk is moved, in one step. On another disk it is copied
+whole under a temporary name beside where it goes, its files sent to the disk as a group with one
+flush of the disk's own cache (``graph.store.send_to_disk``, as a build's textures are), read back
+against what was read, then put in place. Then it is switched as a tile found again
+(``pack.find_again_receipt``: the Library and every X-Plane that showed it follow, its roads and
+forests go with it), and taken out of the folder it came from, whole elsewhere by then.
+
+Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
+after. A temporary folder is a copy a stop left half made, made again. Spec ``install.md`` 4.6.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import errno
+import os
+import shutil
+from collections.abc import Callable, Iterable
+from pathlib import Path
+from typing import Any
+
+import blake3
+
+from orthostudio.errors import OsxpError
+from orthostudio.fsutil import fsync_dir, replace
+from orthostudio.graph.store import flush_disk, send_to_disk
+from orthostudio.home import data_root
+from orthostudio.install import LibraryEntry, is_xplane_dir
+from orthostudio.install import packs as install_packs
+from orthostudio.pipeline.pack import (
+    MANIFEST_NAME,
+    _delete_pack_dir,
+    find_again_receipt,
+    pack_is_intact,
+    read_manifest,
+)
+
+__all__ = [
+    "FILE_FORMAT",
+    "PART_SUFFIX",
+    "ROOM_MARGIN",
+    "FilingStoppedError",
+    "check_destination",
+    "file_tile",
+    "filing_plan",
+    "pack_bytes",
+    "same_disk",
+]
+
+FILE_FORMAT = "osxp-file-1"
+PART_SUFFIX = ".osxp-part"
+"""The name a copy is made under, beside where it goes, until it is read back and put in place."""
+CHUNK = 8 * 2**20
+"""Bytes read and written at a time: a file costs its bytes, not its calls."""
+ROOM_MARGIN = 256 * 2**20
+"""Free space kept on the disk a copy goes to, beyond the copy itself."""
+
+
+class FilingStoppedError(Exception):
+    """Asked to stop: the tile in hand is where it was, whole."""
+
+
+def _files(pack: Path) -> list[Path]:
+    """The regular files of ``pack``, in a fixed order."""
+    out: list[Path] = []
+    for dirpath, dirs, names in os.walk(pack):
+        dirs.sort()
+        out.extend(Path(dirpath) / n for n in sorted(names) if (Path(dirpath) / n).is_file())
+    return out
+
+
+def pack_bytes(pack: Path) -> int:
+    """What a copy of ``pack`` writes: every file in full, those it shares with the cache too."""
+    return sum(f.stat().st_size for f in _files(Path(pack)))
+
+
+def same_disk(a: Path, b: Path) -> bool:
+    """Whether ``a`` and ``b`` are on one disk, where a folder moves in one step."""
+    try:
+        return os.stat(a).st_dev == os.stat(b).st_dev
+    except OSError:
+        return False
+
+
+def _in_custom_scenery(folder: Path) -> bool:
+    return any(
+        p.name == "Custom Scenery" and is_xplane_dir(p.parent) for p in (folder, *folder.parents)
+    )
+
+
+def _same_folder(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def check_destination(dest: Path) -> None:
+    """Refuse a folder no tile is filed into: inside an X-Plane's Custom Scenery, where X-Plane
+    reads OrthoStudio XP's tiles through a link (``SYS_FOLDER_IN_CUSTOM_SCENERY``); the workshop,
+    which tiles are filed out of (``SYS_FOLDER_IS_ATELIER``); a folder inside a tile, which
+    deleting that tile would take away with it (``SYS_FOLDER_IN_TILE``); a folder that is not
+    there, gone since it was chosen (``SYS_FOLDER_GONE``)."""
+    if not dest.is_dir():
+        raise OsxpError("SYS_FOLDER_GONE", context={"folder": str(dest)})
+    if _in_custom_scenery(dest):
+        raise OsxpError("SYS_FOLDER_IN_CUSTOM_SCENERY", context={"folder": str(dest)})
+    if _same_folder(dest, data_root() / "tiles"):
+        raise OsxpError("SYS_FOLDER_IS_ATELIER", context={"folder": str(dest)})
+    pack = next((p for p in (dest, *dest.parents) if (p / MANIFEST_NAME).is_file()), None)
+    if pack is not None:
+        raise OsxpError("SYS_FOLDER_IN_TILE", context={"folder": str(dest), "tile": pack.name})
+
+
+def _whole_build(target: Path, entry: LibraryEntry) -> bool:
+    """Whether ``target`` holds this very build of the tile, whole, every file of the original at
+    its size: a copy a stop left in place, which taking the original away must be able to trust."""
+    try:
+        manifest = read_manifest(target)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    same = manifest.tile == entry.tile.name and (entry.keys is None or manifest.keys == entry.keys)
+    if not same or not pack_is_intact(target, manifest, with_overlay=False):
+        return False
+    old = Path(entry.path)
+    sizes = {f.relative_to(old): f.stat().st_size for f in _files(old)}
+    return all(
+        (target / rel).is_file() and (target / rel).stat().st_size == n for rel, n in sizes.items()
+    )
+
+
+def filing_plan(entry: LibraryEntry, dest: Path) -> dict[str, Any]:
+    """What filing ``entry`` into ``dest`` does: ``how`` is ``move`` (same disk, one step),
+    ``copy`` (another disk, ``bytes`` to write), ``reuse`` (a whole copy is there already),
+    ``there`` (already in that folder) or ``taken`` (another folder of that name is there)."""
+    old = Path(entry.path)
+    target = Path(dest) / old.name
+    if _same_folder(old.parent, dest):
+        return {"how": "there", "bytes": 0}
+    if target.exists():
+        return {"how": "reuse" if _whole_build(target, entry) else "taken", "bytes": 0}
+    if same_disk(old, dest):
+        return {"how": "move", "bytes": 0}
+    return {"how": "copy", "bytes": pack_bytes(old)}
+
+
+def file_tile(
+    entry: LibraryEntry,
+    dest: Path,
+    *,
+    custom_sceneries: Iterable[Path],
+    library_path: Path | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
+    stop: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
+    """File the tile of ``entry``, a pack OrthoStudio XP built that is where the Library says,
+    into the folder ``dest`` (the module's doc). ``progress(phase, done, total)`` hears the bytes
+    copied (``copy``) and read back (``check``); ``stop()`` true stops before the next file, the
+    tile left where it was (:class:`FilingStoppedError`). Returns the receipt of the tile found
+    again, with ``moved`` (one step on one disk) and ``left``: the folder it came from when it
+    could not be taken out (a file held by another program), else ``None``."""
+    old = Path(entry.path)
+    dest = Path(dest)
+    target = dest / old.name
+    tile = entry.tile.name
+    check_destination(dest)
+    if install_packs.xplane_running():
+        raise OsxpError(
+            "XP_RUNNING",
+            message="X-Plane is running, and its links never change while it runs: nothing was "
+            "changed.",
+            remedy="Quit X-Plane, then file the tile again.",
+        )
+    plan = filing_plan(entry, dest)
+    if plan["how"] == "there":
+        return {"format": FILE_FORMAT, "tile": tile, "to": str(old), "moved": False, "left": None}
+    if plan["how"] == "taken":
+        raise OsxpError("SYS_TILE_NAME_TAKEN", context={"tile": tile, "folder": str(target)})
+    moved = False
+    if plan["how"] == "move":
+        try:
+            replace(old, target)
+            moved = True
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            plan = {"how": "copy", "bytes": pack_bytes(old)}  # two disks after all
+    if plan["how"] == "copy":
+        free = shutil.disk_usage(dest).free
+        if plan["bytes"] + ROOM_MARGIN > free:
+            raise OsxpError(
+                "SYS_DISK_FULL",
+                context={"volume": str(dest), "needed": _gb(plan["bytes"]), "free": _gb(free)},
+            )
+        _copy_checked(old, target, tile, progress, stop)
+    receipt = find_again_receipt(
+        entry, target, custom_sceneries=custom_sceneries, library_path=library_path
+    )
+    left = None
+    if not moved and old.exists():
+        # whole elsewhere now, and in the Library and X-Plane from there
+        try:
+            _delete_pack_dir(old)
+        except OSError as exc:
+            left = f"{old}: {exc.strerror or exc}"
+    return {**receipt, "format": FILE_FORMAT, "moved": moved, "left": left}
+
+
+def _gb(n: int) -> str:
+    return f"{n / 1e9:.1f} GB"
+
+
+def _copy_checked(
+    src: Path,
+    target: Path,
+    tile: str,
+    progress: Callable[[str, int, int], None] | None,
+    stop: Callable[[], bool] | None,
+) -> None:
+    """``src`` copied whole to ``target``: under the temporary name, files sent to the disk as a
+    group, read back against what was read, then put in place. Any failure or stop takes the
+    temporary folder away; ``src`` is never touched."""
+    part = target.with_name(target.name + PART_SUFFIX)
+    if part.exists():
+        shutil.rmtree(part)  # a copy a stop left half made: made again
+    files = _files(src)
+    total = sum(f.stat().st_size for f in files)
+    digests: dict[Path, str] = {}
+    try:
+        part.mkdir()
+        done = 0
+        for f in files:
+            if stop is not None and stop():
+                raise FilingStoppedError(tile)
+            rel = f.relative_to(src)
+            out = part / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+            h = blake3.blake3()
+            with open(f, "rb") as r, open(out, "wb") as w:
+                while chunk := r.read(CHUNK):
+                    h.update(chunk)
+                    w.write(chunk)
+                    done += len(chunk)
+            with contextlib.suppress(OSError):  # a disk that keeps no dates or rights: no harm
+                shutil.copystat(f, out)
+            digests[rel] = h.hexdigest()
+            if progress is not None:
+                progress("copy", done, total)
+        # sent to the disk as a group, the disk's own cache flushed once: each file forced alone
+        # held a hard disk under Windows at every one (2026-09-28)
+        for rel in digests:
+            # a file a scanner holds a moment is written all the same, and read back below
+            with contextlib.suppress(PermissionError):
+                send_to_disk(part / rel)
+        if digests:
+            flush_disk(part / next(iter(digests)))
+        checked = 0
+        for rel, digest in digests.items():
+            if stop is not None and stop():
+                raise FilingStoppedError(tile)
+            h = blake3.blake3()
+            with open(part / rel, "rb") as r:
+                while chunk := r.read(CHUNK):
+                    h.update(chunk)
+                    checked += len(chunk)
+            if h.hexdigest() != digest:
+                raise OsxpError(
+                    "SYS_TILE_COPY_DIFFERS", context={"tile": tile, "file": str(target / rel)}
+                )
+            if progress is not None:
+                progress("check", checked, total)
+        replace(part, target)
+        with contextlib.suppress(OSError):
+            fsync_dir(target.parent)
+    except BaseException:
+        shutil.rmtree(part, ignore_errors=True)
+        raise

@@ -1036,6 +1036,50 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "to delete the folder itself, delete it by hand.",
     ),
     _spec(
+        "SYS_FOLDER_GONE",
+        _B,
+        _S,
+        "{folder} is not there.",
+        "Nothing was changed. Choose the folder again.",
+    ),
+    _spec(
+        "SYS_FOLDER_IN_CUSTOM_SCENERY",
+        _B,
+        _S,
+        "{folder} is inside X-Plane's Custom Scenery.",
+        "Nothing was changed. Choose a folder outside X-Plane: X-Plane reads OrthoStudio XP's "
+        "tiles through a link.",
+    ),
+    _spec(
+        "SYS_FOLDER_IN_TILE",
+        _B,
+        _S,
+        "{folder} is inside the folder of tile {tile}: deleting that tile would take it away.",
+        "Nothing was changed. Choose a folder outside every tile's folder.",
+    ),
+    _spec(
+        "SYS_FOLDER_IS_ATELIER",
+        _B,
+        _S,
+        "{folder} is the workshop: tiles are filed out of it, not into it.",
+        "Nothing was changed. Choose another folder.",
+    ),
+    _spec(
+        "SYS_TILE_COPY_DIFFERS",
+        _B,
+        _S,
+        "The copy of {file} for tile {tile} did not give back what was read: the copy was taken "
+        "away, and the tile is where it was.",
+        "Check the disk of the folder chosen, then file the tile again.",
+    ),
+    _spec(
+        "SYS_TILE_NAME_TAKEN",
+        _B,
+        _S,
+        "{folder} is already there, and it is not this tile's build, whole.",
+        "Nothing was changed. Choose another folder, or move or delete that one first.",
+    ),
+    _spec(
         "SYS_TILE_IN_CUSTOM_SCENERY",
         _B,
         _S,

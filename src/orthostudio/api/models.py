@@ -20,6 +20,9 @@ __all__ = [
     "AirportArea",
     "CleanRequest",
     "DeleteRequest",
+    "FilePlanRequest",
+    "FileRequest",
+    "FileTile",
     "FindRequest",
     "ImportRequest",
     "InstallRequest",
@@ -248,6 +251,32 @@ class ForgetRequest(BaseModel):
     xplane_dir: str | None = Field(default=None, max_length=1024)
     path: str | None = Field(default=None, max_length=4096)
     """The ``path`` of the library row, as ``GET /api/library`` gives it."""
+
+
+class FileTile(BaseModel):
+    """One tile of a filing: its pack's name and the ``path`` of its library row."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=256)
+    path: str = Field(max_length=4096)
+
+
+class FilePlanRequest(BaseModel):
+    """``POST /api/library/file-plan``: what filing these tiles into ``folder`` does."""
+
+    model_config = ConfigDict(extra="forbid")
+    tiles: list[FileTile] = Field(min_length=1, max_length=10_000)
+    folder: str = Field(min_length=1, max_length=4096)
+
+
+class FileRequest(BaseModel):
+    """``POST /api/library/{name}/file``: file one tile into ``folder``."""
+
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(max_length=4096)
+    """The ``path`` of the library row, as ``GET /api/library`` gives it."""
+    folder: str = Field(min_length=1, max_length=4096)
+    xplane_dir: str | None = Field(default=None, max_length=1024)
 
 
 class FindRequest(BaseModel):

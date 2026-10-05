@@ -329,6 +329,19 @@
         </label>
       </div>
       <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
+      <!-- the atelier, step 3: the tiles picked are filed elsewhere -->
+      <div class="library-pick" id="library-pick" hidden>
+        <label class="library-pick-all">
+          <input type="checkbox" id="library-pick-all">
+          <span data-i18n="library.pick_all">Pick all shown</span>
+        </label>
+        <span class="library-pick-count" id="library-pick-count"></span>
+        <button type="button" class="btn btn-small btn-primary" id="library-file" data-i18n="library.file" data-i18n-title="library.file_help">File elsewhere…</button>
+      </div>
+      <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
+        <span id="library-filing-text"></span>
+        <button type="button" class="btn btn-small" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
+      </p>
     </div>
     <div class="table-wrap">
       <table class="table library-table" id="library-table">
@@ -438,6 +451,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="library.delete_keep">Keep it</button>
       <button type="submit" class="btn btn-danger-solid" value="delete" data-i18n="library.delete_confirm">Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The Library's "File elsewhere…" confirmation (app.js confirmFiling), like the delete one. -->
+<dialog id="library-file-dialog" class="dialog" role="alertdialog" aria-labelledby="library-file-title" aria-describedby="library-file-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="library-file-title"></h2>
+    <div class="dialog-text" id="library-file-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.file_cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" value="file" id="library-file-go" data-i18n="library.file_go">File</button>
     </div>
   </form>
 </dialog>

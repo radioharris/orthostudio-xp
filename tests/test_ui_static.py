@@ -7013,3 +7013,149 @@ def test_the_mock_finds_a_moved_tile_again_like_the_engine() -> None:
         "present": True,
         "disk_absent": False,
     }
+
+
+# -- the atelier, step 3: tiles filed elsewhere (2026-10-05) --------------------------------------
+
+
+def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_happens() -> None:
+    """The question says, before anything is done, which tiles move (one disk), which are copied
+    and read back (their size, the free space), which a copy left whole is taken for, and which
+    stay and why; with no room, it files nothing. While tiles are filed, a line says which one of
+    how many and how far, with Stop; at the end, how many went where."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const plan = { folder: "/Users/pilot/Tiles/Alps", copy_bytes: 4.1e9, free_bytes: 480e9,
+                       room: true, tiles: [
+          { tile: "+46+006", path: "/a/zOrthoStudio_+46+006", how: "move" },
+          { tile: "+46+007", path: "/a/zOrthoStudio_+46+007", how: "copy", bytes: 4.1e9 },
+          { tile: "+47+006", path: "/a/zOrthoStudio_+47+006", how: "reuse" },
+          { tile: "+45+006", path: "/b/zOrtho4XP_+45+006", how: "imported" },
+          { tile: "+45+007", path: "/c/zOrthoStudio_+45+007", how: "taken" },
+        ] };
+        const q = m.filingQuestion(plan);
+        const full = m.filingQuestion({ ...plan, room: false });
+        const copying = { phase: "copy", done: 1.2e9, total: 4.1e9 };
+        const filing = { n: 3, i: 2, tile: "+46+007", progress: copying };
+        process.stdout.write(JSON.stringify({
+          title: q.title, body: q.body, go: q.go.map((r) => r.tile),
+          fullGo: full.go.length, fullLast: full.body[full.body.length - 1],
+          line: m.filingLine(filing),
+          check: m.filingLine({ ...filing,
+                                progress: { phase: "check", done: 4.1e9, total: 4.1e9 } }),
+          head: m.filingLine({ ...filing, progress: null }),
+          all: m.filedMessage(3, 3, "/Users/pilot/Tiles/Alps", false),
+          stopped: m.filedMessage(1, 3, "/Users/pilot/Tiles/Alps", true),
+          some: m.filedMessage(2, 3, "/Users/pilot/Tiles/Alps", false),
+        }));"""
+    )
+    assert got["title"] == "File 3 tile(s) in ~/Tiles/Alps?"
+    assert got["body"] == [
+        "1 moved: same disk, at once.",
+        "1 copied, then read back: 4.1 GB to copy, 480 GB free on that disk.",
+        "1 already copied there, whole: taken without copying again.",
+        "Another folder of the same name is there already: +45+007.",
+        "Built by Ortho4XP, to move by hand: +45+006.",
+        "The cache stays in the workshop. X-Plane must stay closed until the end.",
+    ]
+    assert got["go"] == ["+46+006", "+46+007", "+47+006"]
+    assert got["fullGo"] == 0 and got["fullLast"].startswith("Not enough room on that disk")
+    assert got["line"] == "Filing +46+007 (2 of 3): copying, 1.2 GB of 4.1 GB"
+    assert got["check"].endswith(": reading back, 4.1 GB of 4.1 GB")
+    assert got["head"] == "Filing +46+007 (2 of 3)"
+    assert got["all"] == "3 tile(s) filed in ~/Tiles/Alps."
+    assert got["stopped"].startswith("Stopped: 1 of 3 tile(s) filed in ~/Tiles/Alps")
+    assert got["some"].startswith("2 of 3 tile(s) filed")
+
+
+def test_the_pick_boxes_and_the_filing_are_wired() -> None:
+    """A box on each tile OrthoStudio XP built that is in its place and not in a build; "Pick all
+    shown" acts on the rows the search and the folder leave; nothing else changes a tile while
+    tiles are filed, one at a time."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    for needle in (
+        'id="library-pick" hidden',
+        'id="library-pick-all"',
+        'id="library-file"',
+        'id="library-filing" role="status"',
+        'id="library-filing-stop"',
+        '<dialog id="library-file-dialog"',
+        'value="file" id="library-file-go"',
+    ):
+        assert needle in html, needle
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert "const busy = libraryBusy.has(key) || Boolean(state.filing);" in row
+    assert 'pickBox(e, key, inBuild), h("span", { class: "tile-name" }, e.tile)' in row
+    assert 'if (e.built_by !== "osxp" || e.present === false || inBuild) return null;' in (
+        _function_body(app_js, "pickBox")
+    )
+    assert "renderLibraryPick(rows, view.rows);" in _function_body(app_js, "renderLibrary")
+    assert "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }" in (
+        _function_body(app_js, "shownLibraryRows")
+    )
+    assert "shownLibraryRows(libraryTiles(state.library))" in _function_body(app_js, "pickAllShown")
+    # a box ticked draws the bar again, not the table: the focus stays on it, and 800 rows are
+    # not drawn again at each tick
+    pick_one = _function_body(app_js, "pickLibraryTile")
+    assert "renderLibraryPick(rows, shownLibraryRows(rows));" in pick_one
+    assert "renderLibrary()" not in pick_one
+    assert '"button:not(:disabled), input:not(:disabled)"' in (
+        _function_body(app_js, "renderLibrary")
+    )
+    run = _function_body(app_js, "runFiling")
+    assert "const timer = setInterval(pollFiling, 1000);" in run
+    assert "if (state.filing.stop) break;" in run
+    assert (
+        'api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder })'
+        in run
+    )
+    for listener in (
+        '$("library-pick-all").addEventListener("change"',
+        '$("library-file").addEventListener("click", fileLibraryTiles);',
+        '$("library-filing-stop").addEventListener("click", stopFiling);',
+    ):
+        assert listener in app_js, listener
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.pick",
+            "library.pick_all",
+            "library.pick_count",
+            "library.file",
+            "library.file_help",
+            "library.file_title",
+            "library.file_kept",
+            "library.filing",
+            "library.filing_stop",
+            "library.filed",
+            "library.err_folder_gone",
+            "library.err_name_taken",
+            "library.err_copy_differs",
+        ):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.file"] == "Ranger ailleurs…"
+
+
+def test_the_mock_files_tiles_like_the_engine() -> None:
+    script = """
+    const atelier = "/Users/pilot/.orthostudio/tiles";
+    const tiles = [{ name: "zOrthoStudio_+43+005", path: `${atelier}/zOrthoStudio_+43+005` },
+                   { name: "zOrtho4XP_+44+005",
+                     path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" }];
+    const folder = "/Volumes/Big/Alps";
+    const plan = (await call("POST", "/api/library/file-plan", { tiles, folder })).ok;
+    const filed = (await call("POST", "/api/library/zOrthoStudio_+43+005/file",
+                              { path: tiles[0].path, folder })).ok;
+    const row = (await call("GET", "/api/library")).ok
+      .find((e) => e.tile === "+43+005" && e.kind === "ortho");
+    process.stdout.write(JSON.stringify({ hows: plan.tiles.map((r) => r.how), room: plan.room,
+                                          to: filed.to, path: row.path }), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["hows"] == ["copy", "imported"] and got["room"] is True
+    assert got["to"] == got["path"] == "/Volumes/Big/Alps/zOrthoStudio_+43+005"

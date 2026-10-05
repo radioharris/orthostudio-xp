@@ -471,6 +471,52 @@ build are not looked for; a tile whose roads went too is found and says so; a st
 before or past X-Plane's link, is finished when asked again, and a copy of the roads made before
 a stop is not left twice; a disk away says so, and a folder gone two levels down is not one.
 
+### 4.6 Tiles filed elsewhere (`pipeline/filing.py`, the atelier, step 3)
+
+A user files his tiles by area, on several disks; the page's *File elsewhere…* does it for the
+tiles picked (2026-10-05), one at a time, `file_tile(entry, dest, custom_sceneries, ...)`:
+
+* The folder must take a tile (`check_destination`): not gone (`SYS_FOLDER_GONE`), not inside an
+  X-Plane's Custom Scenery (`SYS_FOLDER_IN_CUSTOM_SCENERY`), not the workshop's `tiles`, which
+  tiles are filed out of (`SYS_FOLDER_IS_ATELIER`), not inside a tile's folder, which deleting that
+  tile would take away (`SYS_FOLDER_IN_TILE`). X-Plane running: `XP_RUNNING`. Nothing changes.
+* `filing_plan` says how: `move` when the folder is on the tile's disk (one `os.replace`, at once,
+  nothing more on the disk; a rename refused across volumes falls back to the copy); `copy` on
+  another disk, with the bytes it writes (every file in full, those shared with the cache too);
+  `reuse` when a folder of the tile's name there holds this build whole, every file at its size
+  (a copy a stop left in place); `there` when the tile is in that folder already; `taken` when
+  another folder of its name is there (`SYS_TILE_NAME_TAKEN`).
+* A copy needs its bytes and `ROOM_MARGIN` free (`SYS_DISK_FULL`). It is made under
+  `<name>.osxp-part` beside where it goes, 8 MB at a time, each file's blake3 digest taken as it is
+  read; the files are then sent to the disk as a group, the disk's own cache flushed once
+  (`graph.store.send_to_disk`, `flush_disk`: each file forced alone held a hard disk under Windows
+  at every one, 2026-09-28), read back against their digests (`SYS_TILE_COPY_DIFFERS`), and the
+  folder is renamed into place. A stop (`FilingStoppedError`, asked between two files) or any
+  failure takes the temporary folder away; a temporary folder found there is a copy a stop left
+  half made, made again. The original is never touched before the copy is in place.
+* Then the tile is switched as a tile found again (`find_again_receipt`, 4.5): every X-Plane that
+  showed it follows, its roads and forests go into the overlays pack of the folder it goes to, and
+  its row follows. A tile copied leaves the folder it came from last (`_delete_pack_dir`); a file
+  another program holds there leaves that folder as it is, named in the receipt's `left`. An
+  X-Plane that showed the copied tile takes it as a build from another folder (4.4): its line is
+  taken out and written again, enabled.
+* Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
+  after. A stop after a move and before the switch leaves the row's folder gone: *Find again…*
+  (4.5) finishes.
+
+The engine files one tile at a time, and nothing else changes a tile meanwhile: the install,
+uninstall, overlays, forget, find and delete routes, and a build or its retry, answer 409
+`SYS_BUSY` while a tile is filed; a tile is filed only between builds.
+
+Acceptance (`tests/test_library_file.py`, fake X-Planes): a tile moved on one disk keeps its
+images' files and is followed by X-Plane, the Library and its roads; a tile copied to another disk
+is the same bytes there, read back, and leaves the folder it came from; how far the copy is is
+heard, and a stop leaves the tile where it was, the copy made again when asked; a copy that reads
+back wrong is taken away; a whole copy a stop left is taken without copying, another folder of its
+name is refused; a folder no tile goes into, X-Plane running and a disk without room refuse and
+change nothing; the plan says what each tile does and reads only; one filing at a time, nothing
+else changing a tile meanwhile.
+
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with

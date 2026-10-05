@@ -209,6 +209,10 @@ const state = {
   libraryKnown: false,
   /** The folder the Library shows the tiles of (`tileFolder`'s key), or "" for every folder. */
   libraryFolder: "",
+  /** The tiles picked to be filed elsewhere, by their row's key (the atelier, step 3). */
+  libraryPicked: new Set(),
+  /** The filing under way: `{n, i, tile, folder, stop, progress}`, or null. */
+  filing: null,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -1361,6 +1365,35 @@ export async function mockApi(method, path, body, options = {}) {
     if (!libraryTiles(mock.library).some(imported)) mock.library = mock.library.filter((e) => !(imported(e) && e.kind === "overlay"));
     return { tile: entry.tile, forgotten: before - mock.library.length, path: entry.path };
   }
+  if (p === "/api/library/file-plan" && method === "POST") {
+    // Like the engine, reading only: the mock has no disks, so every tile it may file is copied.
+    if (!mock.library) mock.library = await mockFile("library");
+    const folder = String(body?.folder || "").replace(/[\\/]+$/, "");
+    const tiles = (body?.tiles || []).map((x) => {
+      const entry = mockLibraryRow(x.name, x.path ?? null);
+      const row = { tile: entry.tile, path: entry.path };
+      if (entry.built_by !== "osxp") return { ...row, how: "imported" };
+      if (entry.present === false) return { ...row, how: "missing" };
+      if (entry.path.replace(/[\\/][^\\/]*$/, "") === folder) return { ...row, how: "there", bytes: 0 };
+      return { ...row, how: "copy", bytes: Number(entry.size_bytes) || 0 };
+    });
+    const copyBytes = tiles.filter((r) => r.how === "copy").reduce((sum, r) => sum + r.bytes, 0);
+    return { folder, tiles, copy_bytes: copyBytes, free_bytes: 480e9, room: true };
+  }
+  if (p === "/api/library/filing" && method === "GET") return { progress: null };
+  if (p === "/api/library/filing/stop" && method === "POST") return { stopping: false };
+  m = p.match(/^\/api\/library\/([^/]+)\/file$/);
+  if (m) {
+    // Like the engine: the tile goes to the folder chosen, and its row with it.
+    if (!mock.library) mock.library = await mockFile("library");
+    const entry = mockLibraryRow(decodeURIComponent(m[1]), body?.path ?? null);
+    if (mockXplaneRunning()) {
+      throw mockError(409, "XP_RUNNING", "X-Plane is running, and its links never change while it runs: nothing was changed.", "Quit X-Plane, then file the tile again.");
+    }
+    const was = entry.path;
+    entry.path = `${String(body?.folder || "").replace(/[\\/]+$/, "")}/${entryName(entry)}`;
+    return { format: "osxp-file-1", tile: entry.tile, from: was, to: entry.path, xplanes: [], moved: false, left: null, overlay_lost: false };
+  }
   m = p.match(/^\/api\/library\/([^/]+)\/find$/);
   if (m) {
     // Like the engine: a tile OrthoStudio XP built, whose folder moved, is found where the user
@@ -2218,7 +2251,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 27;
+const PAGE_API_LEVEL = 28;
 
 async function loadStatus() {
   try {
@@ -5355,7 +5388,8 @@ function folderIcon() {
 
 function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
-  const busy = libraryBusy.has(key);
+  // a filing under way: one at a time, and nothing else changes the tiles meanwhile
+  const busy = libraryBusy.has(key) || Boolean(state.filing);
   const present = e.present !== false;
   const byOsxp = e.built_by === "osxp";
   const jobs = activeJobs();
@@ -5432,7 +5466,7 @@ function libraryRow(e, showFolder = false) {
   // the folder the tile is in, under its name (TinkerNZ files his tiles by area, 2026-10-04)
   const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
+    h("td", { title: e.path || null }, pickBox(e, key, inBuild), h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5521,7 +5555,8 @@ function renderLibrary() {
   const path = state.status?.xplane?.path;
   xplane.hidden = !path;
   if (path) xplane.textContent = t("library.xplane", { path: homely(path) });
-  // New buttons replace the old ones: a focused button's successor, same row and column, keeps it.
+  // New buttons replace the old ones: a focused button's successor, same row and column, keeps it
+  // (a row's box too).
   const cell = body.contains(document.activeElement) ? document.activeElement.closest("td") : null;
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;
   clear(body);
@@ -5539,6 +5574,7 @@ function renderLibrary() {
   const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
   state.libraryFolder = view.folder;
   renderLibraryFolders(view.folders, view.folder);
+  renderLibraryPick(rows, view.rows);
   const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
   note.hidden = !view.note;
@@ -5551,7 +5587,7 @@ function renderLibrary() {
   }
   // the folder under each tile only when the tiles are in more than one (a review, 2026-10-05)
   for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));
-  if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
+  if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled), input:not(:disabled)")?.focus();
   markWideTables();
 }
 
@@ -5672,6 +5708,14 @@ const LIBRARY_REFUSALS = {
   SYS_TILE_OTHER_BUILD: () => [t("library.err_other_build"), t("library.err_other_build_remedy")],
   SYS_TILE_INCOMPLETE: () => [t("library.err_incomplete"), t("library.err_incomplete_remedy")],
   SYS_TILE_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_in_custom_scenery_remedy")],
+  // a tile filed elsewhere (the atelier, step 3): a folder no tile goes into, or a copy gone wrong
+  SYS_FOLDER_GONE: () => [t("library.err_folder_gone"), t("library.err_folder_other")],
+  SYS_FOLDER_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_folder_outside_xplane")],
+  SYS_FOLDER_IN_TILE: () => [t("library.err_folder_in_tile"), t("library.err_folder_other")],
+  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_other")],
+  SYS_TILE_NAME_TAKEN: () => [t("library.err_name_taken"), t("library.err_name_taken_remedy")],
+  SYS_TILE_COPY_DIFFERS: () => [t("library.err_copy_differs"), t("library.err_copy_differs_remedy")],
+  SYS_TILE_MISSING: () => [t("library.err_tile_missing"), t("library.err_tile_missing_remedy")],
   SYS_TILE_NOT_MISSING: () => [t("library.err_not_missing"), t("library.err_gone_remedy")],
 };
 
@@ -5798,6 +5842,217 @@ export function foundMessage(res, tile) {
   const where = String(res?.to || "").replace(/[\\/][^\\/]*$/, "");
   const found = t("library.found", { tile: res?.tile || tile, folder: homely(where) });
   return res?.overlay_lost ? `${found} ${t("library.found_no_roads")}` : found;
+}
+
+// -- tiles filed elsewhere (the atelier, step 3, 2026-10-05) ------------------------------------
+
+/** Whether a row may be picked to be filed elsewhere: a tile OrthoStudio XP built, where the
+ * Library says, and not in a build (whose end decides where it is). */
+function pickable(e, building) {
+  return e.built_by === "osxp" && e.present !== false && !building.has(e.tile);
+}
+
+/** The box that picks a row to be filed elsewhere, in its first cell. */
+function pickBox(e, key, inBuild) {
+  if (e.built_by !== "osxp" || e.present === false || inBuild) return null;
+  return [h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) }), " "];
+}
+
+/** The rows the search and the folder leave, as the table shows them. */
+function shownLibraryRows(rows) {
+  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelierFolders(state.status), state.status?.platform || "").rows;
+}
+
+function pickLibraryTile(key, on) {
+  if (on) state.libraryPicked.add(key);
+  else state.libraryPicked.delete(key);
+  // the box shows its own state: only the bar is drawn again, and the focus stays on the box
+  const rows = libraryTiles(state.library);
+  renderLibraryPick(rows, shownLibraryRows(rows));
+}
+
+/** The bar over the table: "Pick all shown", how many are picked and their size, and "File
+ * elsewhere…"; the picks a row can no longer take (deleted, in a build) are let go. */
+function renderLibraryPick(rows, shown) {
+  const building = tilesInBuilds(activeJobs());
+  const can = new Set(rows.filter((e) => pickable(e, building)).map(libraryKey));
+  for (const key of [...state.libraryPicked]) if (!can.has(key)) state.libraryPicked.delete(key);
+  const shownKeys = shown.map(libraryKey).filter((key) => can.has(key));
+  const picked = rows.filter((e) => state.libraryPicked.has(libraryKey(e)));
+  $("library-pick").hidden = !can.size;
+  const all = $("library-pick-all");
+  const on = shownKeys.filter((key) => state.libraryPicked.has(key)).length;
+  all.checked = shownKeys.length > 0 && on === shownKeys.length;
+  all.indeterminate = on > 0 && on < shownKeys.length;
+  all.disabled = !shownKeys.length || Boolean(state.filing);
+  const bytes = picked.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  setText($("library-pick-count"), picked.length ? t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) }) : "");
+  $("library-file").disabled = !picked.length || Boolean(state.filing);
+}
+
+/** "Pick all shown": every row the search and the folder leave, or none of them. */
+function pickAllShown(on) {
+  const building = tilesInBuilds(activeJobs());
+  for (const e of shownLibraryRows(libraryTiles(state.library))) {
+    if (!pickable(e, building)) continue;
+    if (on) state.libraryPicked.add(libraryKey(e));
+    else state.libraryPicked.delete(libraryKey(e));
+  }
+  renderLibrary();
+}
+
+/** What the confirmation says of a filing's plan (`POST /api/library/file-plan`): `{title, body,
+ * go}`, `go` the rows filed (moved, copied, or a whole copy reused), none when the disk lacks
+ * room. */
+export function filingQuestion(plan) {
+  const rows = plan?.tiles || [];
+  const go = rows.filter((r) => ["move", "copy", "reuse"].includes(r.how));
+  const count = (how) => rows.filter((r) => r.how === how).length;
+  const names = (how) => rows.filter((r) => r.how === how).map((r) => r.tile).join(", ");
+  const folder = homely(plan?.folder || "");
+  const body = [];
+  if (count("move")) body.push(t("library.file_move", { n: fmtInt(count("move")) }));
+  if (count("copy")) body.push(t("library.file_copy", { n: fmtInt(count("copy")), size: fmtBytes(plan.copy_bytes), free: fmtBytes(plan.free_bytes) }));
+  if (count("reuse")) body.push(t("library.file_reuse", { n: fmtInt(count("reuse")) }));
+  if (count("there")) body.push(t("library.file_skip_there", { tiles: names("there") }));
+  if (count("taken")) body.push(t("library.file_skip_taken", { tiles: names("taken") }));
+  if (count("imported")) body.push(t("library.file_skip_imported", { tiles: names("imported") }));
+  if (count("missing")) body.push(t("library.file_skip_missing", { tiles: names("missing") }));
+  if (count("in_build")) body.push(t("library.file_skip_in_build", { tiles: names("in_build") }));
+  const room = plan?.room !== false;
+  if (!room) body.push(t("library.file_no_room", { size: fmtBytes(plan.copy_bytes), free: fmtBytes(plan.free_bytes) }));
+  else if (go.length) body.push(t("library.file_kept"));
+  return { title: t("library.file_title", { n: fmtInt(go.length), folder }), body, go: room ? go : [] };
+}
+
+/** The filing question in the page's modal <dialog>; resolves true for "File". */
+function confirmFiling(question) {
+  const dialog = $("library-file-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-file-title").textContent = question.title;
+  clear($("library-file-text")).append(...question.body.map((line) => h("p", null, line)));
+  $("library-file-go").hidden = !question.go.length;
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "file"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** "File elsewhere…": the folder, the plan, the question, then the tiles one at a time. */
+async function fileLibraryTiles() {
+  if (state.filing) return;
+  const building = tilesInBuilds(activeJobs());
+  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  if (!picked.length) return;
+  const folder = await chooseFolder(t("library.file_prompt", { n: fmtInt(picked.length) }));
+  if (!folder) return;
+  const errors = clear($("library-errors"));
+  let plan;
+  try {
+    plan = await api("POST", "/api/library/file-plan", { tiles: picked.map((e) => ({ name: entryName(e), path: e.path })), folder });
+  } catch (err) {
+    errors.append(libraryErrorCard(err, picked[0]));
+    return;
+  }
+  const question = filingQuestion(plan);
+  if (!(await confirmFiling(question)) || !question.go.length) return;
+  await runFiling(question.go, plan.folder);
+}
+
+/** The tiles of a plan filed one at a time (`POST /api/library/{name}/file`, a request that lasts
+ * as long as its copy), how far the one under way is read every second; "Stop" lets the one under
+ * way stop before its next file, and the next ones wait. */
+async function runFiling(go, folder) {
+  state.filing = { n: go.length, i: 0, tile: null, folder, stop: false, progress: null };
+  const errors = clear($("library-errors"));
+  renderLibrary();
+  renderFiling();
+  const timer = setInterval(pollFiling, 1000);
+  let filed = 0;
+  let failure = null;
+  let failed = null;
+  try {
+    for (const r of go) {
+      if (state.filing.stop) break;
+      Object.assign(state.filing, { i: state.filing.i + 1, tile: r.tile, progress: null });
+      renderFiling();
+      const name = String(r.path).split(/[\\/]/).pop();
+      try {
+        await api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder });
+        filed += 1;
+      } catch (err) {
+        if (errorDetail(err)?.code !== "SYS_FILING_STOPPED") {
+          failure = err;
+          failed = r;
+        }
+        break;
+      }
+    }
+  } finally {
+    clearInterval(timer);
+    const stopped = state.filing.stop;
+    state.filing = null;
+    state.libraryPicked.clear();
+    renderFiling();
+    await loadLibrary();
+    loadStatus();
+    toast(filedMessage(filed, go.length, folder, stopped));
+    if (failure) errors.append(libraryErrorCard(failure, failed));
+  }
+}
+
+/** What the page says once a filing is over: how many of how many, where. */
+export function filedMessage(filed, n, folder, stopped) {
+  const where = homely(folder);
+  if (filed === n) return t("library.filed", { n: fmtInt(filed), folder: where });
+  return stopped ? t("library.filed_stopped", { n: fmtInt(filed), total: fmtInt(n), folder: where }) : t("library.filed_some", { n: fmtInt(filed), total: fmtInt(n), folder: where });
+}
+
+async function pollFiling() {
+  if (!state.filing) return;
+  try {
+    const res = await api("GET", "/api/library/filing");
+    if (state.filing) state.filing.progress = res?.progress || null;
+  } catch (_err) {
+    return; // the line keeps what it said: the next second asks again
+  }
+  renderFiling();
+}
+
+/** The line under the search while tiles are filed: which one of how many, and how far. */
+export function filingLine(filing) {
+  if (!filing) return "";
+  const head = t("library.filing", { tile: filing.tile || "", i: fmtInt(filing.i), n: fmtInt(filing.n) });
+  const p = filing.progress;
+  if (!p || !p.total) return head;
+  const done = fmtBytes(p.done);
+  const total = fmtBytes(p.total);
+  return p.phase === "check" ? t("library.filing_check", { head, done, total }) : t("library.filing_copy", { head, done, total });
+}
+
+function renderFiling() {
+  const line = $("library-filing");
+  line.hidden = !state.filing;
+  setText($("library-filing-text"), filingLine(state.filing));
+  $("library-filing-stop").disabled = Boolean(state.filing?.stop);
+}
+
+/** "Stop": the tile under way stops before its next file, and stays where it was. */
+async function stopFiling() {
+  if (!state.filing) return;
+  state.filing.stop = true;
+  renderFiling();
+  try {
+    await api("POST", "/api/library/filing/stop", {});
+  } catch (_err) {
+    // the next tile is not sent: the stop holds at the end of this one
+  }
 }
 
 /** How long the folder dialog may take to show before the page says it is on its way (the File
@@ -6389,6 +6644,9 @@ async function boot() {
     state.libraryFolder = e.target.value;
     renderLibrary();
   });
+  $("library-pick-all").addEventListener("change", (e) => pickAllShown(e.target.checked));
+  $("library-file").addEventListener("click", fileLibraryTiles);
+  $("library-filing-stop").addEventListener("click", stopFiling);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {
     const kept = JSON.parse(localStorage.getItem(LIBRARY_SORT_KEY) || "null");
