@@ -271,12 +271,19 @@ uv run osxp uninstall +46+006 --delete          # deleted for good
 uv run osxp clean --all                         # give back all the space OrthoStudio XP can
 ```
 
-## Reporting a problem
+## Reporting a problem, asking for a feature
 
-Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)):
-its form asks for what helps find the cause, that is the version, your system, what you did and
-what you saw, the tile, a screenshot, and the log `serve.log`. Without a GitHub account, the
-comments on OrthoStudio XP's page on X-Plane.Org are read too.
+Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose))
+and choose its form:
+
+- **A problem**: it asks for what helps find the cause, that is the version, your system, what you
+  did and what you saw, the tile, a screenshot, and the log `serve.log`.
+- **A request**: what you would like, why, how you do it today, and examples. Every request carries
+  the label `enhancement`, so [the list of requests](https://github.com/radioharris/orthostudio-xp/issues?q=is%3Aissue+label%3Aenhancement)
+  is the roadmap's starting point.
+
+A question goes to the [Discussions](https://github.com/radioharris/orthostudio-xp/discussions).
+Without a GitHub account, the comments on OrthoStudio XP's page on X-Plane.Org are read too.
 
 ## Imagery and responsible use
 
