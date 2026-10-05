@@ -2536,7 +2536,9 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app_js, "renderLibrary")
-    assert "sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);" in body
+    assert (
+        "sortLibrary(rows.filter((e) => inFolder(e) && tileMatches(e.tile, query)), sort);" in body
+    )
     assert 't("library.search_found"' in body and 't("library.search_none")' in body
     assert "for (const e of shown) body.append(...libraryRow(e));" in body
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
@@ -6652,3 +6654,77 @@ def test_the_route_can_be_left_unchosen() -> None:
     along = _function_body(app_js, "setFlightPlanAlong")
     assert 'withoutPlan(state.tiles, fp, state.byHand, "along")' in along
     assert "cap: MAX_BUILD_TILES" in along and "sayTilesInBuild(" in along
+
+
+# -- the atelier, step 1: where each tile is (2026-10-05) -----------------------------------------
+
+
+def test_each_tile_says_its_folder_and_the_library_filters_by_folder() -> None:
+    """A user files hundreds of tiles by area, on several disks, and the Library listed them all
+    with no way to tell where each was (TinkerNZ, 2026-10-04): each tile says its folder under its
+    name, the atelier's own as such, and a filter shows one folder's tiles. The list alone says
+    it: nothing is read on the disk."""
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const mac = "/Users/pilot/.orthostudio";
+        const bs = String.fromCharCode(92);
+        const at = (path, dir = mac, platform = "mac") => m.tileFolder({ path }, dir, platform);
+        const rows = [
+          { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004" },
+          { tile: "+43+005", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005" },
+          { tile: "+45+006", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006" },
+          { tile: "+44+005", path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" },
+          { tile: "+45+007", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+007" },
+        ];
+        const win = ["D:", "OSXP", "Tiles", "zOrthoStudio_+45+006"].join(bs);
+        process.stdout.write(JSON.stringify({
+          atelier: at("/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004"),
+          slash: at("/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004", mac + "/"),
+          elsewhere: at("/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006"),
+          home: at("/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005"),
+          windows: m.tileFolder({ path: win }, "d:" + bs + "osxp", "win"),
+          linux: m.tileFolder({ path: "/data/OSXP/Tiles/zOrthoStudio_+45+006" }, "/data/OSXP",
+                              "lin"),
+          none: at(""),
+          folders: m.libraryFolders(rows, mac, "mac"),
+          one: m.libraryFolders(rows.slice(0, 2), mac, "mac"),
+        }));"""
+    )
+    assert got["atelier"] == {"key": "atelier", "label": "Workshop"} == got["slash"]
+    assert got["elsewhere"]["label"] == "/Volumes/Big/Tuiles/Alpes"
+    assert got["home"]["label"] == "~/Ortho4XP/Tiles"  # written as its owner knows it
+    assert got["windows"]["key"] == "atelier"  # Windows: either separator, case aside
+    assert got["linux"]["key"] != "atelier"  # Linux tells Tiles from tiles
+    assert got["none"] == {"key": "", "label": ""}
+    # the atelier first, then the others by name, each with how many tiles it holds
+    assert [(f["label"], f["n"]) for f in got["folders"]] == [
+        ("Workshop", 2),
+        ("/Volumes/Big/Tuiles/Alpes", 2),
+        ("~/Ortho4XP/Tiles", 1),
+    ]
+    assert got["one"] == []  # one folder: nothing to filter, the filter stays hidden
+
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
+    assert 'id="library-search"' in filters and 'id="library-folder"' in filters
+    assert 'id="library-folder-wrap" hidden' in filters and 'data-i18n="library.folder"' in filters
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderLibrary")
+    assert "const folders = libraryFolders(rows, dataDir, platform);" in body
+    assert (
+        'if (!folders.some((f) => f.key === state.libraryFolder)) state.libraryFolder = "";' in body
+    )
+    assert "renderLibraryFolders(folders);" in body
+    assert '$("library-folder-wrap").hidden = !folders.length;' in _function_body(
+        app_js, "renderLibraryFolders"
+    )
+    row = _function_body(app_js, "libraryRow")
+    assert 'where.label ? h("span", { class: "tile-where" }, where.label) : null' in row
+    assert '$("library-folder").addEventListener("change"' in app_js
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in ("library.folder", "library.folder_all", "library.folder_atelier"):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.folder_atelier"] == "Atelier"

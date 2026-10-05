@@ -320,8 +320,14 @@
     <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
     <div class="library-overlays" id="library-overlays" role="status" hidden></div>
     <div class="library-search">
-      <input type="search" id="library-search" class="library-search-input" spellcheck="false" autocomplete="off"
-             data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+      <div class="library-filters">
+        <input type="search" id="library-search" class="library-search-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+        <label class="library-folder" id="library-folder-wrap" hidden>
+          <span data-i18n="library.folder">Folder</span>
+          <select id="library-folder"></select>
+        </label>
+      </div>
       <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
     </div>
     <div class="table-wrap">

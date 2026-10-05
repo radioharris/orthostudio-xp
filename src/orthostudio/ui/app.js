@@ -207,6 +207,8 @@ const state = {
   /** GET /api/library answered at boot, or failed: the map waits for it, to open on the tiles
    * installed rather than on Europe and then jump (app.js boot). */
   libraryKnown: false,
+  /** The folder the Library shows the tiles of (`tileFolder`'s key), or "" for every folder. */
+  libraryFolder: "",
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -5089,6 +5091,46 @@ export function libraryTiles(rows) {
   return (Array.isArray(rows) ? rows : []).filter((e) => e && (e.kind == null || e.kind === "ortho"));
 }
 
+/** A folder as the system compares it: one separator, none at the end, and its letters' case
+ * aside, but on Linux. */
+function folderKey(folder, platform) {
+  const plain = String(folder).replace(/\\/g, "/").replace(/\/+$/, "");
+  return platform === "lin" ? plain : plain.toLowerCase();
+}
+
+/** The folder a tile's pack is in, as the Library shows it under the tile and filters by it:
+ * ``{key, label}``, the atelier (the data folder's `tiles`, ``dataDir`` being the data folder)
+ * or the folder written as its owner knows it (`homely`). Reads nothing on the disk: hundreds of
+ * tiles are sorted by folder from the list alone. */
+export function tileFolder(e, dataDir, platform) {
+  const path = String(e?.path || "");
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut <= 0) return { key: "", label: "" };
+  const folder = path.slice(0, cut);
+  const key = folderKey(folder, platform);
+  if (dataDir && key === folderKey(`${String(dataDir).replace(/[\\/]+$/, "")}/tiles`, platform)) {
+    return { key: "atelier", label: t("library.folder_atelier") };
+  }
+  return { key, label: homely(folder) };
+}
+
+/** The folders of the Library's tiles, for its filter: ``[{key, label, n}]``, the atelier first,
+ * then the others by name; none when every tile is in one folder, there being nothing to
+ * filter (a user files hundreds of tiles by area, on several disks, TinkerNZ 2026-10-04). */
+export function libraryFolders(rows, dataDir, platform) {
+  const seen = new Map();
+  for (const e of rows) {
+    const folder = tileFolder(e, dataDir, platform);
+    if (!folder.key) continue;
+    const had = seen.get(folder.key);
+    if (had) had.n += 1;
+    else seen.set(folder.key, { ...folder, n: 1 });
+  }
+  const atelier = (f) => (f.key === "atelier" ? 0 : 1);
+  const folders = [...seen.values()].sort((a, b) => atelier(a) - atelier(b) || a.label.localeCompare(b.label));
+  return folders.length > 1 ? folders : [];
+}
+
 /** Which way round each Library column sorts at its first click: its most useful order. The
  * tiles south to north then west to east, the imagery by the code its column shows then level;
  * the tiles X-Plane shows, the largest, and OrthoStudio XP's own first. */
@@ -5316,8 +5358,10 @@ function libraryRow(e) {
     });
     builtCell = toggle;
   }
+  // the folder the tile is in, under its name (TinkerNZ files his tiles by area, 2026-10-04)
+  const where = tileFolder(e, state.status?.data_dir?.path || null, state.status?.platform || "");
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null),
+    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5418,12 +5462,21 @@ function renderLibrary() {
     const way = LIBRARY_SORT_FIRST[th.dataset.sort] * (sort.dir === -1 ? -1 : 1);
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
+  // the tiles of one folder, or all: the folders come from the list itself
+  const dataDir = state.status?.data_dir?.path || null;
+  const platform = state.status?.platform || "";
+  const folders = libraryFolders(rows, dataDir, platform);
+  if (!folders.some((f) => f.key === state.libraryFolder)) state.libraryFolder = "";
+  renderLibraryFolders(folders);
+  const folder = state.libraryFolder;
   const query = (state.librarySearch || "").trim();
-  const shown = sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);
+  const inFolder = (e) => !folder || tileFolder(e, dataDir, platform).key === folder;
+  const shown = sortLibrary(rows.filter((e) => inFolder(e) && tileMatches(e.tile, query)), sort);
+  const narrowed = Boolean(query || folder);
   const note = $("library-search-note");
-  note.hidden = !query || !rows.length;
-  note.classList.toggle("is-warn", Boolean(query) && !shown.length);
-  if (query && rows.length) setText(note, shown.length ? t("library.search_found", { n: fmtInt(shown.length), total: fmtInt(rows.length) }) : t("library.search_none"));
+  note.hidden = !narrowed || !rows.length;
+  note.classList.toggle("is-warn", narrowed && !shown.length);
+  if (narrowed && rows.length) setText(note, shown.length ? t("library.search_found", { n: fmtInt(shown.length), total: fmtInt(rows.length) }) : t("library.search_none"));
   if (!rows.length) {
     body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
     markWideTables();
@@ -5432,6 +5485,17 @@ function renderLibrary() {
   for (const e of shown) body.append(...libraryRow(e));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
   markWideTables();
+}
+
+/** The folder filter above the Library: one choice per folder its tiles are in, with how many,
+ * shown only when they are in more than one. */
+function renderLibraryFolders(folders) {
+  $("library-folder-wrap").hidden = !folders.length;
+  const select = $("library-folder");
+  clear(select);
+  select.append(h("option", { value: "" }, t("library.folder_all")));
+  for (const f of folders) select.append(h("option", { value: f.key }, `${f.label} (${fmtInt(f.n)})`));
+  select.value = state.libraryFolder;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
@@ -6214,6 +6278,10 @@ async function boot() {
   });
   $("library-search").addEventListener("input", (e) => {
     state.librarySearch = e.target.value;
+    renderLibrary();
+  });
+  $("library-folder").addEventListener("change", (e) => {
+    state.libraryFolder = e.target.value;
     renderLibrary();
   });
   // The Library's sort stays from one visit to the next, a convenience of this browser only.

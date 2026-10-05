@@ -1142,6 +1142,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .settings-search-input:focus-visible, .works-search-input:focus-visible, .library-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* the search and the folder filter side by side, one above the other in a narrow window */
+.library-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) var(--block-gap); }
+.library-filters .library-search-input { flex: 1 1 260px; }
+.library-folder { display: inline-flex; align-items: center; gap: var(--label-gap); color: var(--fg-2); min-width: 0; }
+.library-folder select { max-width: 320px; min-width: 0; }
+/* the folder a tile is in, under its name */
+.table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }
 .settings-search-note, .works-search-note, .library-search-note { margin: var(--help-gap) 0 0; }
 .settings-search-note.is-warn, .works-search-note.is-warn, .library-search-note.is-warn { color: var(--warn); }
 /* the Library's headers sort their column (a user, 2026-09-26): the header's own words, a button

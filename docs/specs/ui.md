@@ -715,6 +715,17 @@ table: it ran the whole list's work every 5 s, *Free space*'s measure included, 
 takes minutes over, so the measures piled up until nothing answered, and the Plan's colour sliders
 were rebuilt under the hand (review of 0.1.19, 2026-09-29).
 
+**Where each tile is** (the atelier, step 1, 2026-10-05; TinkerNZ files hundreds of tiles by area,
+on several disks): under each tile's name, the folder its pack is in (`tileFolder`, `.tile-where`):
+*Workshop* (`library.folder_atelier`) for the data folder's `tiles` (`status.data_dir.path`), else
+the folder written with `homely` (`~/Ortho4XP/Tiles`). Folders compare as the system does: either
+separator, a trailing one or not, and the letters' case aside but on Linux. When the tiles are in
+more than one folder, *Folder* beside the search (`#library-folder-wrap`, `#library-folder`,
+`libraryFolders`) lists *All folders*, then *Workshop*, then the others by name, each with how many
+tiles it holds; one chosen shows its tiles only, with the search, and "{n} of {total} tiles."
+says so. A folder gone from the list (its tiles deleted) puts the choice back to all. The choice
+is kept for the session only. Nothing is read on the disk: the rows say where each pack is.
+
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
 of the Library asked for it, from the Plan at the start too): the data used by the tiles on
