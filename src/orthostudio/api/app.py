@@ -256,6 +256,7 @@ def _http_status(code: str) -> int:
         "SYS_FOLDER_IN_TILE",
         "SYS_FOLDER_IS_ATELIER",
         "SYS_TILE_NAME_TAKEN",
+        "SYS_TILE_NOT_WHOLE",
         "SYS_TILE_INCOMPLETE",
         "SYS_TILE_NOT_IN_FOLDER",
         "SYS_TILE_OTHER_BUILD",
@@ -2083,13 +2084,13 @@ def create_app(
         """What filing these tiles into ``folder`` does, asked before it is done, reading only
         (``filing.filing_plan``, the atelier's step 3): per tile, ``how`` it goes (``move`` on one
         disk, ``copy`` to another with its ``bytes``, ``reuse`` a whole copy already there,
-        ``there``, ``taken``) or why it does not (``imported``, ``missing``, ``in_build``); the
-        bytes to copy, the free space there and whether there is ``room``. A folder no tile goes
-        into is refused (``filing.check_destination``)."""
+        ``there``, ``taken``) or why it does not (``not_whole``, ``imported``, ``missing``,
+        ``in_build``); the bytes to copy, the free space there and whether there is ``room``. A
+        folder no tile goes into is refused (``filing.check_destination``)."""
 
         def run() -> dict[str, Any]:
             dest = Path(req.folder).expanduser()
-            check_destination(dest)
+            check_destination(dest, sceneries_of(req.xplane_dir))
             building = manager.building_tiles()
             tiles: list[dict[str, Any]] = []
             for t in req.tiles:
@@ -2128,6 +2129,7 @@ def create_app(
             return busy_filing()
         # held before anything is read: a build or a delete asked meanwhile is refused
         async with filing_lock:
+            filing_stop.clear()  # before any wait: a Stop asked from now on is this filing's
             if deleting.locked() or manager.active() is not None:
                 return _plain_error(
                     "SYS_BUSY",
@@ -2156,7 +2158,6 @@ def create_app(
                     status=409,
                     context=context,
                 )
-            filing_stop.clear()
             filing_progress.clear()
             filing_progress.update(tile=entry.tile.name, phase="start", done=0, total=0)
 

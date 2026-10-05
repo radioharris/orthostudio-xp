@@ -7034,6 +7034,7 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
           { tile: "+46+006", path: "/a/zOrthoStudio_+46+006", how: "move" },
           { tile: "+46+007", path: "/a/zOrthoStudio_+46+007", how: "copy", bytes: 4.1e9 },
           { tile: "+47+006", path: "/a/zOrthoStudio_+47+006", how: "reuse" },
+          { tile: "+44+007", path: "/a/zOrthoStudio_+44+007", how: "not_whole" },
           { tile: "+45+006", path: "/b/zOrtho4XP_+45+006", how: "imported" },
           { tile: "+45+007", path: "/c/zOrthoStudio_+45+007", how: "taken" },
         ] };
@@ -7051,6 +7052,7 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
           all: m.filedMessage(3, 3, "/Users/pilot/Tiles/Alps", false),
           stopped: m.filedMessage(1, 3, "/Users/pilot/Tiles/Alps", true),
           some: m.filedMessage(2, 3, "/Users/pilot/Tiles/Alps", false),
+          left: m.filedLeftText("+46+007", "/Users/pilot/OSXP/tiles/zOrthoStudio_+46+007"),
         }));"""
     )
     assert got["title"] == "File 3 tile(s) in ~/Tiles/Alps?"
@@ -7058,6 +7060,7 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
         "1 moved: same disk, at once.",
         "1 copied, then read back: 4.1 GB to copy, 480 GB free on that disk.",
         "1 already copied there, whole: taken without copying again.",
+        "Not whole, to build again first: +44+007.",
         "Another folder of the same name is there already: +45+007.",
         "Built by Ortho4XP, to move by hand: +45+006.",
         "The cache stays in the workshop. X-Plane must stay closed until the end.",
@@ -7070,6 +7073,11 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
     assert got["all"] == "3 tile(s) filed in ~/Tiles/Alps."
     assert got["stopped"].startswith("Stopped: 1 of 3 tile(s) filed in ~/Tiles/Alps")
     assert got["some"].startswith("2 of 3 tile(s) filed")
+    # an old folder a file held there: where it is, since nothing lists it any more
+    assert got["left"] == (
+        "+46+007 is filed, but its old folder could not be removed, likely because of a file "
+        "open in another program: ~/OSXP/tiles/zOrthoStudio_+46+007. You can delete it."
+    )
 
 
 def test_the_pick_boxes_and_the_filing_are_wired() -> None:
@@ -7120,9 +7128,25 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
         '$("library-filing-stop").addEventListener("click", stopFiling);',
     ):
         assert listener in app_js, listener
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert "file.disabled = !picked.length || Boolean(state.filing) || waits;" in pick
+    assert (
+        'setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));'
+        in (pick)
+    )
+    assert "if (res?.left) lefts.push(filedLeftText(r.tile, res.left));" in run
+    assert (
+        'SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")]'
+        in (app_js)
+    )
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         for key in (
+            "library.file_skip_not_whole",
+            "library.file_wait_build",
+            "library.filed_left",
+            "library.err_not_whole",
+            "library.err_not_whole_remedy",
             "library.pick",
             "library.pick_all",
             "library.pick_count",
@@ -7139,6 +7163,15 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
         ):
             assert tables[lang][key], (lang, key)
     assert tables["fr"]["library.file"] == "Ranger ailleurs…"
+    # it ticks the tiles shown only, and says so (a review, 2026-10-05)
+    assert tables["fr"]["library.pick_all"] == "Cocher les tuiles affichées"
+    # a build asked during a filing, or a filing during a build: words that say what runs, never
+    # "delete the tile" (a review, 2026-10-05)
+    assert "rangée ailleurs" in tables["fr"]["plan.busy_deleting"]
+    assert "filed elsewhere" in tables["en"]["plan.busy_deleting"]
+    for lang in ("fr", "en"):
+        busy = tables[lang]["library.err_busy"] + tables[lang]["library.err_busy_remedy"]
+        assert "supprimez" not in busy and "delete the tile" not in busy, lang
 
 
 def test_the_mock_files_tiles_like_the_engine() -> None:

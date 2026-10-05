@@ -439,6 +439,32 @@ async def test_a_line_the_user_disabled_stays_disabled(
 
 
 @pytest.mark.anyio
+async def test_its_new_roads_line_takes_the_state_of_the_one_it_came_from(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A user of simHeaven X-World turns OrthoStudio XP's roads off: a tile found again in a new
+    folder brought them back on, in a new overlays line added enabled (a review, 2026-10-05). That
+    line takes the state of the one the tile came from."""
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    ini = cs / "scenery_packs.ini"
+    roads = f"Custom Scenery/{OVERLAY_PACK}/"
+    ini.write_text(
+        ini.read_text().replace(f"SCENERY_PACK {roads}", f"SCENERY_PACK_DISABLED {roads}")
+    )
+    alps = tmp_path / "Alps"
+    _moved(pack, alps)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(alps)}
+        )
+    assert r.status_code == 200, r.text
+    link = overlay_link(cs, alps / OVERLAY_PACK)
+    assert link is not None and link.name != OVERLAY_PACK
+    assert f"SCENERY_PACK_DISABLED Custom Scenery/{link.name}/" in ini.read_text()
+
+
+@pytest.mark.anyio
 async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     app: Any, home: Path, xplane: Path, tmp_path: Path
 ) -> None:

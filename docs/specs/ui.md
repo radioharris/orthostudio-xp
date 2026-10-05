@@ -741,19 +741,27 @@ disk: the rows say where each pack is.
 **Tiles filed elsewhere** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
 several disks): a box before the name of each tile OrthoStudio XP built that is where the Library
 says and not in a build (`pickBox`); the bar under the search (`#library-pick`,
-`renderLibraryPick`) has *Pick all shown*, acting on the rows the search and the folder leave, how
-many tiles are picked and their size, and *File elsewhere…*. The folder dialog asks where; `POST
+`renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles affichées »), acting on the rows
+the search and the folder leave, how many tiles are picked and their size, and *File elsewhere…*,
+its box over the rows' boxes; while a build runs or waits the button is disabled, its tooltip
+saying that tiles are filed between builds (`library.file_wait_build`). The folder dialog asks
+where; `POST
 /api/library/file-plan` says what each tile does; a modal question (`#library-file-dialog`,
 `filingQuestion`) says how many move (one disk, at once), how many are copied and read back (the
 bytes, the free space), how many a whole copy there is taken for, and which stay and why (already
-there, another folder of the name, built by Ortho4XP, not found, in a build), that the cache stays
+there, not whole and to build again, another folder of the name, built by Ortho4XP, not found, in
+a build), that the cache stays
 in the workshop and that X-Plane must stay closed; with no room it files nothing. *File* sends the
 tiles one at a time (`runFiling`, `POST /api/library/{name}/file`); the line `#library-filing`
 says which one of how many and how far (`GET /api/library/filing` every second, `filingLine`),
 with *Stop* (`POST /api/library/filing/stop`: the tile under way stays where it was, the next ones
 wait). Meanwhile the rows' buttons are disabled. At the end a toast says how many went where
-(`filedMessage`), and a refusal is an error card in the Library's own words; the picks are let
-go, and those a row can no longer take are let go at each drawing.
+(`filedMessage`), and a refusal is an error card in the Library's own words; a tile whose old
+folder a file kept (the receipt's `left`) gets a notice that says where that folder is, for the
+user to delete it (`filedLeftText`); the picks are let go, and those a row can no longer take are
+let go at each drawing. A build asked for during a filing, or a Library change refused while a
+build, a delete or a filing runs, says so in words that cover each (`plan.busy_deleting`,
+`library.err_busy`), never "delete the tile again" (a review, 2026-10-05).
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list

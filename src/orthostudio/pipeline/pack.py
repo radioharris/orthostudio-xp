@@ -684,6 +684,7 @@ def install_receipt(
     link: bool = True,
     library_path: Path | None = None,
     reenable: bool = True,
+    overlay_off: bool = False,
 ) -> dict[str, Any]:
     """Install the tile pack (and the overlays pack next to it), register the library row.
 
@@ -694,9 +695,12 @@ def install_receipt(
     ``yOrthoStudio_Overlays_2``... when X-Plane already shows the overlays of another tiles folder,
     so that the tiles of both keep their roads, forests and buildings. A build of the same tile
     X-Plane shows from another folder is taken out first (:func:`_take_out_other_build`). A line of
-    the overlays pack the user disabled stays disabled. A tile built without an overlay takes the
-    overlays pack out of X-Plane when no tile's overlay is left in it (its link, when it leads to
-    that pack, and its line), and forgets its own overlay row.
+    the overlays pack the user disabled stays disabled, and ``overlay_off`` adds it disabled when
+    this install adds it: a tile found again or filed in another folder takes the state of the
+    overlays line it came from (a user of simHeaven X-World turns OrthoStudio XP's off, and they
+    came back on, 2026-10-05). A tile built without an overlay takes the overlays pack out of
+    X-Plane when no tile's overlay is left in it (its link, when it leads to that pack, and its
+    line), and forgets its own overlay row.
     """
     pack_dir = Path(pack_dir)
     custom_scenery = Path(custom_scenery)
@@ -745,7 +749,10 @@ def install_receipt(
         )
         if overlay_target is not None:
             name = overlay_target.name
+            new_line = packs.find(name) is None
             changed = packs.ensure(name, kind=pack_kind(name), reenable=False) or changed
+            if new_line and overlay_off:
+                packs.disable(name)
         if overlay_removed is not None:
             changed = packs.remove(overlay_removed) or changed
         if changed:
@@ -1519,8 +1526,9 @@ def find_again_receipt(
     changes. X-Plane must not be running (``XP_RUNNING``): its links never change while it runs.
     Its roads, forests and buildings, left in the overlays pack beside the folder it was moved
     from, are parked in it (:func:`_bring_overlay`); then every X-Plane whose link leads to the old
-    folder is given the found one by :func:`install_receipt`, which puts the overlay beside it,
-    and the Library row follows. Asked again after a stop half way, it finishes what is left.
+    folder is given the found one by :func:`install_receipt`, which puts the overlay beside it
+    (a new overlays line taking the state of the one it came from), and the Library row follows.
+    Asked again after a stop half way, it finishes what is left.
     """
     old = Path(entry.path)
     tile = entry.tile
@@ -1551,15 +1559,18 @@ def find_again_receipt(
         for cs in custom_sceneries
         if links_to(Path(cs) / old.name, old) or links_to(Path(cs) / old.name, pack)
     ]
+    behind = old.parent / OVERLAY_PACK
     for cs in shown:
-        install_receipt(pack, cs, tile=tile, library_path=library_path, reenable=False)
+        off = _overlay_line_off(cs, behind)
+        install_receipt(
+            pack, cs, tile=tile, library_path=library_path, reenable=False, overlay_off=off
+        )
     with Library(library_path) as lib:
         if not shown:  # in no X-Plane: the row alone follows
             lib.register(
                 tile, entry.provider, entry.zl, pack, entry.built_by, entry.keys, keep_built_by=True
             )
         lib.forget(tile, kind="ortho", path=old)
-        behind = old.parent / OVERLAY_PACK
         if not (behind / tile.dsf_relpath).is_file():
             lib.forget(tile, kind="overlay", path=behind)
     return {
@@ -1571,6 +1582,17 @@ def find_again_receipt(
         # a tile whose roads, forests and buildings are nowhere: built again, it has them back
         "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
     }
+
+
+def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:
+    """Whether the line of the link to ``overlay_pack`` is disabled in this X-Plane's
+    ``scenery_packs.ini``: the overlays line a tile comes from, whose state the line of the
+    overlays pack it goes to takes when that one is new."""
+    link = overlay_link(custom_scenery, overlay_pack)
+    if link is None:
+        return False
+    line = SceneryPacks.load(custom_scenery / SCENERY_PACKS_INI).find(link.name)
+    return line is not None and not line.enabled
 
 
 def _own_overlay(pack: Path, tile: TileRef) -> Path | None:

@@ -8,6 +8,7 @@ machine's is read or written."""
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -17,6 +18,7 @@ import pytest
 
 import test_api_fakes as fakes
 from orthostudio.api import app as api_app
+from orthostudio.home import data_root
 from orthostudio.install import Library, default_library_path, packs
 from orthostudio.model import OVERLAY_PACK, TileRef
 from orthostudio.pipeline import filing
@@ -318,3 +320,255 @@ async def test_one_filing_at_a_time_and_nothing_else_changes_a_tile_meanwhile(
         )
     assert during.status_code == 409 and during.json()["error"]["code"] == "SYS_BUSY", during.text
     assert "between builds" in during.json()["error"]["message"]
+
+
+# -- the review of 2026-10-05 -------------------------------------------------------------------
+
+
+def _symlink(target: Path, link: Path) -> None:
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except OSError:
+        pytest.skip("no symbolic links here")
+
+
+def _plan(c: Any, pack: Path, folder: Path) -> Any:
+    return c.post(
+        "/api/library/file-plan",
+        json={"tiles": [{"name": NAME, "path": str(pack)}], "folder": str(folder)},
+    )
+
+
+def _file(c: Any, pack: Path, folder: Path) -> Any:
+    return c.post(f"/api/library/{T.name}/file", json={"path": str(pack), "folder": str(folder)})
+
+
+def _lines(cs: Path) -> list[str]:
+    """The pack lines of X-Plane's scenery_packs.ini, in their order."""
+    text = (cs / "scenery_packs.ini").read_text()
+    return [line for line in text.splitlines() if line.startswith("SCENERY_PACK")]
+
+
+@pytest.mark.anyio
+async def test_a_link_of_the_tile_s_name_is_never_taken_for_a_copy_of_it(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A folder holding a link of the tile's name that leads to the tile itself: taken for a whole
+    copy already there, the original was deleted, and the only copy of the tile with it. A link is
+    never a copy: refused, and the tile is where it was."""
+    application, _mgr = app
+    pack = _built(home)
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+    _symlink(pack, alps / NAME)
+    async with client_for(application) as c:
+        plan = (await _plan(c, pack, alps)).json()
+        r = await _file(c, pack, alps)
+        rows = await _rows(c)
+    assert plan["tiles"][0]["how"] == "taken"
+    assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_TILE_NAME_TAKEN", r.text
+    assert (pack / "textures" / "a.dds").is_file() and rows["ortho"]["path"] == str(pack)
+
+
+@pytest.mark.anyio
+async def test_x_plane_s_custom_scenery_reached_another_way_is_refused(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """X-Plane's Custom Scenery moved to a big disk and linked back, and its real folder chosen,
+    or a folder in it, or its name in another case on a disk that ignores case: still X-Plane's.
+    Taken for a folder like any other, the tile's own link there passed for a copy of it, and the
+    tile went. Refused, and nothing changes."""
+    application, _mgr = app
+    real = tmp_path / "Big disk" / "XP scenery"
+    real.parent.mkdir(parents=True)
+    shutil.move(str(xplane / "Custom Scenery"), str(real))
+    _symlink(real, xplane / "Custom Scenery")
+    pack, cs = _installed(home, xplane)
+    (real / "Mine").mkdir()
+    folders = [real, real / "Mine"]
+    if (xplane / "custom scenery").is_dir():  # a disk that ignores case (APFS, NTFS)
+        folders.append(xplane / "custom scenery")
+    async with client_for(application) as c:
+        for folder in folders:
+            for got in (await _plan(c, pack, folder), await _file(c, pack, folder)):
+                assert got.status_code == 422, (folder, got.text)
+                assert got.json()["error"]["code"] == "SYS_FOLDER_IN_CUSTOM_SCENERY", folder
+    assert links_to(cs / NAME, pack) and (pack / "textures" / "a.dds").is_file()
+
+
+@pytest.mark.anyio
+async def test_a_copy_found_there_is_taken_only_when_it_reads_back_the_same_bytes(
+    app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand copy cut short keeps its files at their full size, written later: its sizes alone
+    passed for a whole copy, and the original was deleted. It is read back first, as a copy made
+    here is: it differs, so it is refused, and the tile is where it was."""
+    application, _mgr = app
+    _copied(monkeypatch)
+    pack, cs = _installed(home, xplane)
+    cut = tmp_path / "Cut"
+    shutil.copytree(pack, cut / NAME)
+    dds = cut / NAME / "textures" / "a.dds"
+    dds.write_bytes(b"\0" * dds.stat().st_size)  # its size, not yet its bytes
+    async with client_for(application) as c:
+        assert (await _plan(c, pack, cut)).json()["tiles"][0]["how"] == "reuse"
+        r = await _file(c, pack, cut)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_TILE_NAME_TAKEN", r.text
+    assert links_to(cs / NAME, pack) and (pack / "textures" / "a.dds").read_bytes()[:4] == b"DDS "
+
+
+@pytest.mark.anyio
+async def test_the_workshop_s_own_folders_are_refused(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A folder inside the workshop's tiles, or one of the data folder's caches, which Free space
+    empties whole (the tile filed there would go with them): refused, and nothing changes."""
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    folders = [data_root() / "tiles" / "Alps", data_root() / "chunks", data_root() / "store" / "x"]
+    for folder in folders:
+        folder.mkdir(parents=True, exist_ok=True)
+    async with client_for(application) as c:
+        for folder in folders:
+            r = await _file(c, pack, folder)
+            assert r.status_code == 422, (folder, r.text)
+            assert r.json()["error"]["code"] == "SYS_FOLDER_IS_ATELIER", folder
+    assert links_to(cs / NAME, pack) and all(not (f / NAME).exists() for f in folders)
+
+
+@pytest.mark.anyio
+async def test_a_tile_not_whole_is_refused_before_anything_of_it_moves(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A tile missing a file, or holding another build than the Library's, was moved, then
+    refused by the switch: X-Plane no longer found it, and Find again refused it too. It is
+    refused first, the plan says so, and nothing moves."""
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+    (pack / "textures" / "a.dds").unlink()
+    async with client_for(application) as c:
+        plan = (await _plan(c, pack, alps)).json()
+        r = await _file(c, pack, alps)
+        rows = await _rows(c)
+    assert plan["tiles"][0]["how"] == "not_whole"
+    assert r.status_code == 422 and r.json()["error"]["code"] == "SYS_TILE_NOT_WHOLE", r.text
+    assert links_to(cs / NAME, pack) and rows["ortho"]["path"] == str(pack)
+    assert list(alps.iterdir()) == []
+    with Library(default_library_path()) as lib:  # another build than the Library's
+        lib.register(T, "BI", 16, pack, "osxp", {"dsf": "k9"})
+    assert not filing._is_whole(_entry(pack), pack)
+
+
+@pytest.mark.anyio
+async def test_an_old_folder_that_cannot_be_taken_away_is_said_with_its_path(
+    app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file held by another program keeps the tile's old folder, whole and listed nowhere: the
+    receipt names it, for the page to say where it is."""
+    application, _mgr = app
+    _copied(monkeypatch)
+    pack, cs = _installed(home, xplane)
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+
+    def held(folder: Path) -> None:
+        raise PermissionError(13, "held by another program", str(folder / "textures" / "a.dds"))
+
+    monkeypatch.setattr(filing, "_delete_pack_dir", held)
+    async with client_for(application) as c:
+        r = await _file(c, pack, alps)
+    assert r.status_code == 200, r.text
+    assert r.json()["left"] == str(pack) and links_to(cs / NAME, alps / NAME)
+
+
+@pytest.mark.anyio
+async def test_a_stop_asked_as_the_filing_starts_is_kept(
+    app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Stop asked while the engine still reads the tile's row was cleared by the filing it
+    asked to stop, which went on. Asked once the filing holds its turn, it is kept."""
+    application, _mgr = app
+    pack, _cs = _installed(home, xplane)
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+    reading, release = threading.Event(), threading.Event()
+    read_row = api_app.library_pack
+
+    def slow_row(*args: Any, **kwargs: Any) -> Any:
+        reading.set()
+        release.wait(10)
+        return read_row(*args, **kwargs)
+
+    def filed(entry: Any, dest: Path, **kwargs: Any) -> dict[str, Any]:
+        if kwargs["stop"]():
+            raise FilingStoppedError(entry.tile.name)
+        return {"tile": entry.tile.name}
+
+    monkeypatch.setattr(api_app, "library_pack", slow_row)
+    monkeypatch.setattr(api_app, "file_tile", filed)
+    async with client_for(application) as c:
+        task = asyncio.create_task(_file(c, pack, alps))
+        assert await asyncio.to_thread(reading.wait, 10)
+        stop = await c.post("/api/library/filing/stop", json={})
+        release.set()
+        r = await task
+    assert stop.json() == {"stopping": True}
+    assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_FILING_STOPPED", r.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("disk", ["same", "other"])
+async def test_the_tile_s_line_stays_as_the_user_left_it(
+    disk: str, app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A user who disabled the tile in X-Plane and put its line below his other scenery: filed on
+    another disk, it was taken out and installed again, enabled, at its default place. Led to the
+    copy first, X-Plane keeps the line as it was, on one disk or two."""
+    application, _mgr = app
+    if disk == "other":
+        _copied(monkeypatch)
+    pack, cs = _installed(home, xplane)
+    ini = cs / "scenery_packs.ini"
+    line = f"Custom Scenery/{NAME}/"
+    text = ini.read_text().replace(f"SCENERY_PACK {line}\n", "")
+    ini.write_text(
+        text + f"SCENERY_PACK Custom Scenery/my_airport/\nSCENERY_PACK_DISABLED {line}\n"
+    )
+    before = _lines(cs)
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+    async with client_for(application) as c:
+        r = await _file(c, pack, alps)
+    assert r.status_code == 200, r.text
+    assert links_to(cs / NAME, alps / NAME)
+    after = [x for x in _lines(cs) if "Overlays" not in x]
+    assert after == [x for x in before if "Overlays" not in x]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("disk", ["same", "other"])
+async def test_a_new_roads_line_takes_the_state_of_the_one_the_tile_came_from(
+    disk: str, app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A user of simHeaven X-World turns OrthoStudio XP's roads off: filed in a new folder, the
+    tile's roads came back on, in a new overlays line added enabled. That line takes the state of
+    the one the tile came from."""
+    application, _mgr = app
+    if disk == "other":
+        _copied(monkeypatch)
+    pack, cs = _installed(home, xplane)
+    ini = cs / "scenery_packs.ini"
+    roads = f"Custom Scenery/{OVERLAY_PACK}/"
+    ini.write_text(
+        ini.read_text().replace(f"SCENERY_PACK {roads}", f"SCENERY_PACK_DISABLED {roads}")
+    )
+    alps = tmp_path / "Alps"
+    alps.mkdir()
+    async with client_for(application) as c:
+        r = await _file(c, pack, alps)
+    assert r.status_code == 200, r.text
+    link = overlay_link(cs, alps / OVERLAY_PACK)
+    assert link is not None and link.name != OVERLAY_PACK
+    assert f"SCENERY_PACK_DISABLED Custom Scenery/{link.name}/" in _lines(cs)

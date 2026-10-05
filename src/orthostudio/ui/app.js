@@ -5714,6 +5714,7 @@ const LIBRARY_REFUSALS = {
   SYS_FOLDER_IN_TILE: () => [t("library.err_folder_in_tile"), t("library.err_folder_other")],
   SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_other")],
   SYS_TILE_NAME_TAKEN: () => [t("library.err_name_taken"), t("library.err_name_taken_remedy")],
+  SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")],
   SYS_TILE_COPY_DIFFERS: () => [t("library.err_copy_differs"), t("library.err_copy_differs_remedy")],
   SYS_TILE_MISSING: () => [t("library.err_tile_missing"), t("library.err_tile_missing_remedy")],
   SYS_TILE_NOT_MISSING: () => [t("library.err_not_missing"), t("library.err_gone_remedy")],
@@ -5887,7 +5888,11 @@ function renderLibraryPick(rows, shown) {
   all.disabled = !shownKeys.length || Boolean(state.filing);
   const bytes = picked.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
   setText($("library-pick-count"), picked.length ? t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) }) : "");
-  $("library-file").disabled = !picked.length || Boolean(state.filing);
+  // tiles are filed between builds: the button says why it waits (a review, 2026-10-05)
+  const file = $("library-file");
+  const waits = activeJobs().length > 0;
+  file.disabled = !picked.length || Boolean(state.filing) || waits;
+  setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));
 }
 
 /** "Pick all shown": every row the search and the folder leave, or none of them. */
@@ -5915,6 +5920,7 @@ export function filingQuestion(plan) {
   if (count("copy")) body.push(t("library.file_copy", { n: fmtInt(count("copy")), size: fmtBytes(plan.copy_bytes), free: fmtBytes(plan.free_bytes) }));
   if (count("reuse")) body.push(t("library.file_reuse", { n: fmtInt(count("reuse")) }));
   if (count("there")) body.push(t("library.file_skip_there", { tiles: names("there") }));
+  if (count("not_whole")) body.push(t("library.file_skip_not_whole", { tiles: names("not_whole") }));
   if (count("taken")) body.push(t("library.file_skip_taken", { tiles: names("taken") }));
   if (count("imported")) body.push(t("library.file_skip_imported", { tiles: names("imported") }));
   if (count("missing")) body.push(t("library.file_skip_missing", { tiles: names("missing") }));
@@ -5977,6 +5983,7 @@ async function runFiling(go, folder) {
   let filed = 0;
   let failure = null;
   let failed = null;
+  const lefts = [];
   try {
     for (const r of go) {
       if (state.filing.stop) break;
@@ -5984,8 +5991,9 @@ async function runFiling(go, folder) {
       renderFiling();
       const name = String(r.path).split(/[\\/]/).pop();
       try {
-        await api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder });
+        const res = await api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder });
         filed += 1;
+        if (res?.left) lefts.push(filedLeftText(r.tile, res.left));
       } catch (err) {
         if (errorDetail(err)?.code !== "SYS_FILING_STOPPED") {
           failure = err;
@@ -6003,8 +6011,16 @@ async function runFiling(go, folder) {
     await loadLibrary();
     loadStatus();
     toast(filedMessage(filed, go.length, folder, stopped));
+    // an old folder a file held there stays until the user deletes it: said where, not a toast
+    for (const text of lefts) errors.append(h("div", { class: "overlay-notice overlay-notice-fail" }, h("p", null, text)));
     if (failure) errors.append(libraryErrorCard(failure, failed));
   }
+}
+
+/** A tile filed whose old folder could not be taken away (a file another program holds there):
+ * where that folder is, for the user to delete it, since nothing lists it any more. */
+export function filedLeftText(tile, path) {
+  return t("library.filed_left", { tile, path: homely(path) });
 }
 
 /** What the page says once a filing is over: how many of how many, where. */

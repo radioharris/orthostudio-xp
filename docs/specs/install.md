@@ -446,8 +446,11 @@ finds it again where the user shows it (2026-10-05):
 * Every Custom Scenery given (the X-Plane of Settings and the machine's others) whose link
   `zOrthoStudio_<tile>` leads to the old folder gets the found one through `install_receipt`: the
   broken link replaced, the overlay put beside the tile and its overlays pack linked (4.4), the
-  lines kept, a line the user disabled included (`reenable=False`). An X-Plane that did not show
-  the tile gets nothing. The Library row follows; the overlay row of the folder left goes once it
+  lines kept, a line the user disabled included (`reenable=False`). A new overlays line, for a
+  folder X-Plane showed no overlays of, takes the state of the overlays line of the folder the tile
+  came from (`overlay_off`, `_overlay_line_off`): a user of simHeaven X-World turns OrthoStudio
+  XP's roads off, and they came back on (a review, 2026-10-05). An X-Plane that did not show the
+  tile gets nothing. The Library row follows; the overlay row of the folder left goes once it
   holds nothing of the tile.
 * Asked again after a stop half way, it finishes what is left: the X-Planes whose link already
   leads to the found folder are given its install again, which puts the overlay beside it. The
@@ -466,7 +469,8 @@ same files; a tile in no X-Plane is found by the Library alone, its overlay park
 that showed it follows and no other; a wrong folder, a renamed copy, another build and a copy cut
 short change nothing; nor does X-Plane running; a tile put in X-Plane's own Custom Scenery is
 refused and keeps its roads; the one overlay there is is never removed for itself seen through a
-link; a line the user disabled stays disabled; a tile in its place, an imported one and one in a
+link; a line the user disabled stays disabled, and a new overlays line takes the state of the one
+the tile came from; a tile in its place, an imported one and one in a
 build are not looked for; a tile whose roads went too is found and says so; a stop half way,
 before or past X-Plane's link, is finished when asked again, and a copy of the roads made before
 a stop is not left twice; a disk away says so, and a folder gone two levels down is not one.
@@ -476,16 +480,29 @@ a stop is not left twice; a disk away says so, and a folder gone two levels down
 A user files his tiles by area, on several disks; the page's *File elsewhere…* does it for the
 tiles picked (2026-10-05), one at a time, `file_tile(entry, dest, custom_sceneries, ...)`:
 
-* The folder must take a tile (`check_destination`): not gone (`SYS_FOLDER_GONE`), not inside an
-  X-Plane's Custom Scenery (`SYS_FOLDER_IN_CUSTOM_SCENERY`), not the workshop's `tiles`, which
-  tiles are filed out of (`SYS_FOLDER_IS_ATELIER`), not inside a tile's folder, which deleting that
-  tile would take away (`SYS_FOLDER_IN_TILE`). X-Plane running: `XP_RUNNING`. Nothing changes.
+* The folder must take a tile (`check_destination`), seen as named and with its links followed:
+  not gone (`SYS_FOLDER_GONE`); not inside an X-Plane's Custom Scenery, one named so or the Custom
+  Scenery of a known X-Plane however reached, through a link, a junction or another case
+  (`SYS_FOLDER_IN_CUSTOM_SCENERY`: a Custom Scenery moved to a big disk and linked back, its real
+  folder chosen, made the tile's own link there pass for a copy of it, and the tile was deleted, a
+  review, 2026-10-05); not the workshop's `tiles` or another of the data folder's own folders
+  (`WORKSHOP_FOLDERS`: `store`, `chunks`, `work`, `mapcache`, `elevation`, `dem`, which the builds
+  write and Free space empties whole), nor a folder inside one (`SYS_FOLDER_IS_ATELIER`); not
+  inside a tile's folder, which deleting that tile would take away (`SYS_FOLDER_IN_TILE`). X-Plane
+  running: `XP_RUNNING`. Nothing changes.
+* The tile must be whole where the Library says, its manifest's tile and keys the row's, every
+  file it lists there (`pack_is_intact`, its overlay DSF aside): else `not_whole` in the plan and
+  `SYS_TILE_NOT_WHOLE`, before anything of it moves. Moved first, it was refused by the switch,
+  and left where X-Plane no longer found it (a review, 2026-10-05).
 * `filing_plan` says how: `move` when the folder is on the tile's disk (one `os.replace`, at once,
   nothing more on the disk; a rename refused across volumes falls back to the copy); `copy` on
   another disk, with the bytes it writes (every file in full, those shared with the cache too);
-  `reuse` when a folder of the tile's name there holds this build whole, every file at its size
-  (a copy a stop left in place); `there` when the tile is in that folder already; `taken` when
-  another folder of its name is there (`SYS_TILE_NAME_TAKEN`).
+  `reuse` when a real folder of the tile's name there, not the tile's own, holds this build whole,
+  every file at its size (a copy a stop left in place), then read back the same bytes as the
+  tile's before it is taken (`_same_bytes`: a hand copy cut short keeps its sizes); `there` when
+  the tile is in that folder already; `taken` when another folder, or a link, of its name is there,
+  or a copy that reads back otherwise (`SYS_TILE_NAME_TAKEN`). A link is never a copy: one leading
+  to the tile itself passed for it, and the original was deleted.
 * A copy needs its bytes and `ROOM_MARGIN` free (`SYS_DISK_FULL`). It is made under
   `<name>.osxp-part` beside where it goes, 8 MB at a time, each file's blake3 digest taken as it is
   read; the files are then sent to the disk as a group, the disk's own cache flushed once
@@ -496,10 +513,14 @@ tiles picked (2026-10-05), one at a time, `file_tile(entry, dest, custom_sceneri
   half made, made again. The original is never touched before the copy is in place.
 * Then the tile is switched as a tile found again (`find_again_receipt`, 4.5): every X-Plane that
   showed it follows, its roads and forests go into the overlays pack of the folder it goes to, and
-  its row follows. A tile copied leaves the folder it came from last (`_delete_pack_dir`); a file
-  another program holds there leaves that folder as it is, named in the receipt's `left`. An
-  X-Plane that showed the copied tile takes it as a build from another folder (4.4): its line is
-  taken out and written again, enabled.
+  its row follows. A tile copied, the original still there, has every X-Plane that showed it led
+  to the copy first (`_lead_to`: its link only, a link that cannot be made giving the old one
+  back), so that the switch finds what a move leaves: its line in `scenery_packs.ini` stays as the
+  user left it, enabled or not and where he put it (taken out and installed again as a build from
+  another folder, 4.4, it came back enabled at its default place, a review, 2026-10-05). It leaves
+  the folder it came from last (`_delete_pack_dir`), never when that folder is the copy itself; a
+  file another program holds there leaves that folder as it is, its path in the receipt's `left`,
+  which the page says.
 * Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
   after. A stop after a move and before the switch leaves the row's folder gone: *Find again…*
   (4.5) finishes.
@@ -515,7 +536,12 @@ heard, and a stop leaves the tile where it was, the copy made again when asked; 
 back wrong is taken away; a whole copy a stop left is taken without copying, another folder of its
 name is refused; a folder no tile goes into, X-Plane running and a disk without room refuse and
 change nothing; the plan says what each tile does and reads only; one filing at a time, nothing
-else changing a tile meanwhile.
+else changing a tile meanwhile. From the review of 2026-10-05: a link of the tile's name, a Custom
+Scenery reached through a link or in another case, and a copy cut short at its full size are
+refused, the tile where it was; the workshop's own folders are refused; a tile not whole is
+refused before anything moves; an old folder a file holds is named in `left`; a Stop asked as the
+filing starts is kept; a tile filed to another disk keeps its line as the user left it, and a new
+overlays line takes the state of the one the tile came from (4.5).
 
 ## 5. Library (`library.py`)
 

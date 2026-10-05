@@ -267,6 +267,7 @@ class FilePlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tiles: list[FileTile] = Field(min_length=1, max_length=10_000)
     folder: str = Field(min_length=1, max_length=4096)
+    xplane_dir: str | None = Field(default=None, max_length=1024)
 
 
 class FileRequest(BaseModel):

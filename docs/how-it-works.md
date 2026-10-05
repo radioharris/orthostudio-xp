@@ -158,10 +158,11 @@ again…* takes it there.
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
 the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
-copied, read back file by file, and only then taken out of the workshop, the cache staying there
-until you free it. X-Plane must stay closed. A line shows how far the copy is, with *Stop*: the
-tile under way stays where it was. Then the Library and X-Plane follow the tiles to their new
-folder, roads and forests included.
+copied, read back file by file, and only then taken out of the workshop, the cache staying there.
+X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
+with *Stop*: the tile under way stays where it was. Then the Library and X-Plane follow the tiles
+to their new folder, roads and forests included, and X-Plane keeps each line as you left it,
+enabled or not.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they

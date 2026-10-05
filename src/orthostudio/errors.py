@@ -1061,7 +1061,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "SYS_FOLDER_IS_ATELIER",
         _B,
         _S,
-        "{folder} is the workshop: tiles are filed out of it, not into it.",
+        "{folder} is the workshop, or one of its folders: tiles are filed out of it, not into it.",
         "Nothing was changed. Choose another folder.",
     ),
     _spec(
@@ -1078,6 +1078,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _S,
         "{folder} is already there, and it is not this tile's build, whole.",
         "Nothing was changed. Choose another folder, or move or delete that one first.",
+    ),
+    _spec(
+        "SYS_TILE_NOT_WHOLE",
+        _B,
+        _S,
+        "The folder {folder} of tile {tile} is not whole, or holds another build than the "
+        "Library's.",
+        "Nothing was changed. Build the tile again, then file it.",
     ),
     _spec(
         "SYS_TILE_IN_CUSTOM_SCENERY",

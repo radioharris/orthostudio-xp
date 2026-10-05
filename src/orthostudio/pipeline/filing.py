@@ -10,7 +10,9 @@ against what was read, then put in place. Then it is switched as a tile found ag
 forests go with it), and taken out of the folder it came from, whole elsewhere by then.
 
 Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
-after. A temporary folder is a copy a stop left half made, made again. Spec ``install.md`` 4.6.
+after. A temporary folder is a copy a stop left half made, made again. A tile is checked whole
+before anything of it moves, and a folder of its name found where it goes is taken for a copy only
+when it is not a link and reads back the same bytes. Spec ``install.md`` 4.6.
 """
 
 from __future__ import annotations
@@ -32,9 +34,11 @@ from orthostudio.home import data_root
 from orthostudio.install import LibraryEntry, is_xplane_dir
 from orthostudio.install import packs as install_packs
 from orthostudio.pipeline.pack import (
+    _INSTALL_LOCK,
     MANIFEST_NAME,
     _delete_pack_dir,
     find_again_receipt,
+    links_to,
     pack_is_intact,
     read_manifest,
 )
@@ -43,6 +47,7 @@ __all__ = [
     "FILE_FORMAT",
     "PART_SUFFIX",
     "ROOM_MARGIN",
+    "WORKSHOP_FOLDERS",
     "FilingStoppedError",
     "check_destination",
     "file_tile",
@@ -58,6 +63,9 @@ CHUNK = 8 * 2**20
 """Bytes read and written at a time: a file costs its bytes, not its calls."""
 ROOM_MARGIN = 256 * 2**20
 """Free space kept on the disk a copy goes to, beyond the copy itself."""
+WORKSHOP_FOLDERS = ("tiles", "store", "chunks", "work", "mapcache", "elevation", "dem")
+"""The data folder's own folders: the workshop's tiles, which tiles are filed out of, and what the
+builds write and Free space empties whole (a tile filed there would go with it)."""
 
 
 class FilingStoppedError(Exception):
@@ -86,12 +94,6 @@ def same_disk(a: Path, b: Path) -> bool:
         return False
 
 
-def _in_custom_scenery(folder: Path) -> bool:
-    return any(
-        p.name == "Custom Scenery" and is_xplane_dir(p.parent) for p in (folder, *folder.parents)
-    )
-
-
 def _same_folder(a: Path, b: Path) -> bool:
     try:
         return os.path.samefile(a, b)
@@ -99,34 +101,54 @@ def _same_folder(a: Path, b: Path) -> bool:
         return False
 
 
-def check_destination(dest: Path) -> None:
+def _around(folder: Path) -> list[Path]:
+    """``folder`` and the folders holding it, as named and with its links followed: a folder
+    reached through a link, or named in another case, is the folder it leads to."""
+    real = Path(os.path.realpath(folder))
+    return [folder, *folder.parents, real, *real.parents]
+
+
+def check_destination(dest: Path, custom_sceneries: Iterable[Path] = ()) -> None:
     """Refuse a folder no tile is filed into: inside an X-Plane's Custom Scenery, where X-Plane
-    reads OrthoStudio XP's tiles through a link (``SYS_FOLDER_IN_CUSTOM_SCENERY``); the workshop,
-    which tiles are filed out of (``SYS_FOLDER_IS_ATELIER``); a folder inside a tile, which
+    reads OrthoStudio XP's tiles through a link, named so or one of ``custom_sceneries`` however
+    reached (``SYS_FOLDER_IN_CUSTOM_SCENERY``); the workshop or another of the data folder's own
+    folders (:data:`WORKSHOP_FOLDERS`, ``SYS_FOLDER_IS_ATELIER``); a folder inside a tile, which
     deleting that tile would take away with it (``SYS_FOLDER_IN_TILE``); a folder that is not
     there, gone since it was chosen (``SYS_FOLDER_GONE``)."""
     if not dest.is_dir():
         raise OsxpError("SYS_FOLDER_GONE", context={"folder": str(dest)})
-    if _in_custom_scenery(dest):
+    around = _around(dest)
+    sceneries = [Path(cs) for cs in custom_sceneries]
+    if any(p.name == "Custom Scenery" and is_xplane_dir(p.parent) for p in around) or any(
+        _same_folder(p, cs) for p in around for cs in sceneries
+    ):
         raise OsxpError("SYS_FOLDER_IN_CUSTOM_SCENERY", context={"folder": str(dest)})
-    if _same_folder(dest, data_root() / "tiles"):
+    data = data_root()
+    if any(_same_folder(p, data / name) for p in around for name in WORKSHOP_FOLDERS):
         raise OsxpError("SYS_FOLDER_IS_ATELIER", context={"folder": str(dest)})
-    pack = next((p for p in (dest, *dest.parents) if (p / MANIFEST_NAME).is_file()), None)
+    pack = next((p for p in around if (p / MANIFEST_NAME).is_file()), None)
     if pack is not None:
         raise OsxpError("SYS_FOLDER_IN_TILE", context={"folder": str(dest), "tile": pack.name})
 
 
-def _whole_build(target: Path, entry: LibraryEntry) -> bool:
-    """Whether ``target`` holds this very build of the tile, whole, every file of the original at
-    its size: a copy a stop left in place, which taking the original away must be able to trust."""
+def _is_whole(entry: LibraryEntry, folder: Path) -> bool:
+    """Whether ``folder`` holds the build of ``entry``, whole: its manifest's tile and keys, and
+    what that manifest lists (``pack_is_intact``, the overlay DSF aside: it may sit beside it)."""
     try:
-        manifest = read_manifest(target)
+        manifest = read_manifest(folder)
     except (OSError, ValueError, KeyError, TypeError):
         return False
     same = manifest.tile == entry.tile.name and (entry.keys is None or manifest.keys == entry.keys)
-    if not same or not pack_is_intact(target, manifest, with_overlay=False):
-        return False
+    return same and pack_is_intact(folder, manifest, with_overlay=False)
+
+
+def _whole_build(target: Path, entry: LibraryEntry) -> bool:
+    """Whether ``target``, a real folder that is not the tile's own, holds this very build of it,
+    whole, every file of the original at its size: what the plan sees of a copy a stop left in
+    place, before :func:`_same_bytes` reads it back."""
     old = Path(entry.path)
+    if install_packs.is_link(target) or _same_folder(target, old) or not _is_whole(entry, target):
+        return False
     sizes = {f.relative_to(old): f.stat().st_size for f in _files(old)}
     return all(
         (target / rel).is_file() and (target / rel).stat().st_size == n for rel, n in sizes.items()
@@ -136,12 +158,15 @@ def _whole_build(target: Path, entry: LibraryEntry) -> bool:
 def filing_plan(entry: LibraryEntry, dest: Path) -> dict[str, Any]:
     """What filing ``entry`` into ``dest`` does: ``how`` is ``move`` (same disk, one step),
     ``copy`` (another disk, ``bytes`` to write), ``reuse`` (a whole copy is there already),
-    ``there`` (already in that folder) or ``taken`` (another folder of that name is there)."""
+    ``there`` (already in that folder), ``taken`` (another folder or a link of that name is there)
+    or ``not_whole`` (the tile's own folder lacks files, or holds another build: to build again)."""
     old = Path(entry.path)
     target = Path(dest) / old.name
     if _same_folder(old.parent, dest):
         return {"how": "there", "bytes": 0}
-    if target.exists():
+    if not _is_whole(entry, old):
+        return {"how": "not_whole", "bytes": 0}
+    if os.path.lexists(target):  # a broken link too
         return {"how": "reuse" if _whole_build(target, entry) else "taken", "bytes": 0}
     if same_disk(old, dest):
         return {"how": "move", "bytes": 0}
@@ -167,7 +192,8 @@ def file_tile(
     dest = Path(dest)
     target = dest / old.name
     tile = entry.tile.name
-    check_destination(dest)
+    sceneries = [Path(cs) for cs in custom_sceneries]
+    check_destination(dest, sceneries)
     if install_packs.xplane_running():
         raise OsxpError(
             "XP_RUNNING",
@@ -178,7 +204,14 @@ def file_tile(
     plan = filing_plan(entry, dest)
     if plan["how"] == "there":
         return {"format": FILE_FORMAT, "tile": tile, "to": str(old), "moved": False, "left": None}
-    if plan["how"] == "taken":
+    if plan["how"] == "not_whole":
+        # refused before anything of it moves: the switch would refuse it after, where X-Plane no
+        # longer finds it (a review, 2026-10-05)
+        raise OsxpError("SYS_TILE_NOT_WHOLE", context={"tile": tile, "folder": str(old)})
+    taken = plan["how"] == "taken"
+    if taken or (plan["how"] == "reuse" and not _same_bytes(old, target, tile, progress, stop)):
+        # a copy found there is trusted only read back whole: taking the original away after one
+        # cut short, or after a link to the original itself, lost the tile (a review, 2026-10-05)
         raise OsxpError("SYS_TILE_NAME_TAKEN", context={"tile": tile, "folder": str(target)})
     moved = False
     if plan["how"] == "move":
@@ -197,17 +230,69 @@ def file_tile(
                 context={"volume": str(dest), "needed": _gb(plan["bytes"]), "free": _gb(free)},
             )
         _copy_checked(old, target, tile, progress, stop)
+    if not moved:
+        _lead_to(sceneries, old, target)
     receipt = find_again_receipt(
-        entry, target, custom_sceneries=custom_sceneries, library_path=library_path
+        entry, target, custom_sceneries=sceneries, library_path=library_path
     )
     left = None
-    if not moved and old.exists():
+    if not moved and old.exists() and not _same_folder(old, target):
         # whole elsewhere now, and in the Library and X-Plane from there
         try:
             _delete_pack_dir(old)
-        except OSError as exc:
-            left = f"{old}: {exc.strerror or exc}"
+        except OSError:
+            left = str(old)  # a file another program holds: the page says where it is
     return {**receipt, "format": FILE_FORMAT, "moved": moved, "left": left}
+
+
+def _lead_to(custom_sceneries: list[Path], old: Path, target: Path) -> None:
+    """Every X-Plane whose link leads to ``old``, the tile still there, given a link to ``target``
+    instead, its line in ``scenery_packs.ini`` left as the user left it, enabled or not and where
+    he put it: the switch then finds what a move leaves. Taken out and installed again, the line
+    came back enabled, at its default place (a review, 2026-10-05). A link that cannot be made
+    gives the old one back."""
+    with _INSTALL_LOCK:
+        for cs in custom_sceneries:
+            if not links_to(cs / old.name, old):
+                continue
+            install_packs.uninstall_pack(old.name, cs, update_ini=False)
+            try:
+                install_packs.install_pack(target, cs, update_ini=False)
+            except BaseException:
+                install_packs.install_pack(old, cs, update_ini=False)
+                raise
+
+
+def _same_bytes(
+    src: Path,
+    target: Path,
+    tile: str,
+    progress: Callable[[str, int, int], None] | None,
+    stop: Callable[[], bool] | None,
+) -> bool:
+    """Whether every file of ``src`` is in ``target`` with the same bytes: a copy found there is
+    read back as a copy made here is. Its sizes alone vouched for a copy cut short, whose files
+    a system writes at their full size first."""
+    files = _files(src)
+    total = sum(f.stat().st_size for f in files)
+    done = 0
+    for f in files:
+        if stop is not None and stop():
+            raise FilingStoppedError(tile)
+        try:
+            with open(f, "rb") as a, open(target / f.relative_to(src), "rb") as b:
+                while True:
+                    chunk = a.read(CHUNK)
+                    if b.read(CHUNK) != chunk:
+                        return False
+                    if not chunk:
+                        break
+                    done += len(chunk)
+        except OSError:
+            return False
+        if progress is not None:
+            progress("check", done, total)
+    return True
 
 
 def _gb(n: int) -> str:
