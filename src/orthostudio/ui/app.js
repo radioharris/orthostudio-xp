@@ -3736,7 +3736,7 @@ function costIcon(kind) {
 
 function kv(rows) {
   const dl = h("dl", { class: "kv" });
-  for (const [k, v, cls] of rows) dl.append(h("dt", null, k), h("dd", { class: cls || null }, v));
+  for (const [k, v, cls, title] of rows) dl.append(h("dt", null, k), h("dd", { class: cls || null, title: title || null }, v));
   return dl;
 }
 
@@ -5164,15 +5164,58 @@ function imageryCell(e) {
   return h("td", { title: tip || null }, text, level ? [" ", h("span", { class: "library-zl" }, `ZL${zl}`)] : null);
 }
 
+/** Whether a relief code is a file or a folder of one's own rather than a source. */
+function ownRelief(code) {
+  return /[\\/]/.test(String(code || "")) && code !== "NED1/3";
+}
+
+/** "your file N50E011.hgt": a file of one's own, by its name. */
+function ownFileWords(path) {
+  return t("relief.name.own_file", { file: String(path || "").split(/[\\/]/).pop() });
+}
+
 /** The relief a tile stands on, in words: the base, what was laid over it, and what was asked for
- * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). */
+ * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). A file of
+ * one's own is named, and one not used says why: a user saw two reliefs come out of one folder of
+ * lidar files, and nothing said his file had been left aside (2026-10-05). A relief made before
+ * says nothing of them (no `relief_own`), and keeps the words it had. */
 export function reliefSentence(facts) {
   const laidCodes = facts?.relief_laid || [];
-  const base = facts?.relief ? reliefName(facts.relief) : "—";
-  const laid = laidCodes.map(reliefName);
-  const missing = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a)).map(reliefName);
+  const own = Array.isArray(facts?.relief_own) ? facts.relief_own.filter(Boolean) : null;
+  let base = "—";
+  if (ownRelief(facts?.relief)) {
+    const words = ownFileWords(facts.relief);
+    base = words.charAt(0).toUpperCase() + words.slice(1);
+  } else if (facts?.relief) {
+    base = reliefName(facts.relief);
+  }
+  const used = (own || []).filter((o) => o.used).map((o) => ownFileWords(o.file));
+  const laid = [...laidCodes.filter((c) => !(used.length && ownRelief(c))).map(reliefName), ...used];
+  const asked = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a));
+  const missing = asked.filter((a) => !(own && ownRelief(a))).map(reliefName);
   const over = laid.length ? t("library.built_relief_laid", { base, over: laid.join(", ") }) : base;
-  return missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
+  const said = missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
+  if (!own) return said;
+  const notes = own.filter((o) => !o.used).map((o) => ownFileNote(o, base));
+  if (!own.length && asked.some(ownRelief)) notes.push(t("library.built_relief_no_file"));
+  return notes.length ? `${said}. ${notes.join(" ")}` : said;
+}
+
+/** Why a file of one's own was not used (`Dem.own` in the engine), in one sentence. */
+function ownFileNote(o, base) {
+  const file = String(o.file || "").split(/[\\/]/).pop();
+  if (o.why === "coarser") return t("library.built_relief_coarser", { file, own_m: fmtInt(o.own_m), base_m: fmtInt(o.base_m), base });
+  if (o.why === "unreadable") return t("library.built_relief_unreadable", { file });
+  if (o.why === "empty") return t("library.built_relief_empty", { file });
+  return t("library.built_relief_unused", { file });
+}
+
+/** The full paths of the files of one's own a tile's relief names, one a line: the tooltip of its
+ * Relief line, where the sentence gives the names alone. */
+export function reliefFiles(facts) {
+  const own = Array.isArray(facts?.relief_own) ? facts.relief_own.map((o) => o?.file) : [];
+  const files = [ownRelief(facts?.relief) ? facts.relief : null, ...own].filter(Boolean).map(String);
+  return [...new Set(files)].join("\n");
 }
 
 function coloursWords(photo) {
@@ -5210,7 +5253,10 @@ export function builtLines(e, providers = []) {
     [t("library.built_imagery"), source ? sourceLabel(source) : String(e.provider || "—")],
     [t("library.built_detail"), zl ? [level, `ZL${zl}`].filter(Boolean).join(" · ") : "—"],
   ];
-  if (!old) lines.push([t("library.built_relief"), reliefSentence(facts)]);
+  if (!old) {
+    const files = reliefFiles(facts);
+    lines.push(files ? [t("library.built_relief"), reliefSentence(facts), null, files] : [t("library.built_relief"), reliefSentence(facts)]);
+  }
   lines.push([t("library.built_colours"), coloursWords(e.photo)]);
   if (!old) {
     lines.push([t("library.built_zones"), zonesWords(facts.zones)]);

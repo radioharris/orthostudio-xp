@@ -546,7 +546,10 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
     ``{"relief": base source, "relief_laid": overlays really laid}``, as the relief stage wrote
     them in its ``meta.json``; empty when there is none to read (a store cleaned since, or a test
     without one). An overlay asked for that had nothing on the square is not in ``relief_laid``:
-    that is how a lidar relief chosen where the lidar never flew shows for what it is.
+    that is how a lidar relief chosen where the lidar never flew shows for what it is. And
+    ``relief_own``, what became of each file of one's own found for the square (``Dem.own``):
+    the Library names the file, or says why it was not used (2026-10-05). A relief made before
+    has no such record, and the key is then left out.
     """
     if key is None:
         return {}
@@ -563,10 +566,13 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
                     continue
                 if ref.name == "dem":
                     meta = json.loads((store.path(ref.key) / "meta.json").read_text("utf-8"))
-                    return {
+                    facts: dict[str, Any] = {
                         "relief": str(meta.get("source", "")),
                         "relief_laid": [str(x) for x in meta.get("laid_over", [])],
                     }
+                    if isinstance(meta.get("own"), list):
+                        facts["relief_own"] = [dict(x) for x in meta["own"] if isinstance(x, dict)]
+                    return facts
                 todo.append(ref.key)
     return {}
 

@@ -1873,6 +1873,14 @@ are written into the raster (``dem/dem.py`` ``_lay_into``). Up to 0.1.6 they wer
 and never reached the scenery, so a tile of the store built then must be built again; a relief
 without overlays keeps the key it has always had, and nothing else is rebuilt."""
 
+OWN_TOLD = "3"
+"""The head of ``own_stamp`` when a file of one's own is among the overlays: the relief then says
+what became of that file (``Dem.own``), which the Library names, or why it was not used (a user
+saw two reliefs come out of one folder of lidar files, and nothing said his file had been left
+aside, 2026-10-05). A relief made before has no such record, and taken from the store it would
+leave the Library with the old words: such a relief is made again once, at the next build of its
+tile. Every other relief keeps its key, and nothing else is rebuilt."""
+
 
 @lru_cache(maxsize=512)
 def _contents_of(path_s: str, _size: int, _mtime_ns: int) -> str:
@@ -1903,14 +1911,22 @@ def _by_its_contents(path: Path) -> str | None:
 
 
 RELIEF_SAID = frozenset(
-    {"DEM_FILE_UNREADABLE", "DEM_FILE_TOO_LARGE", "DEM_EPSG_UNSUPPORTED", "DEM_OVERLAY_NOT_REFINED"}
+    {
+        "DEM_FILE_UNREADABLE",
+        "DEM_FILE_TOO_LARGE",
+        "DEM_EPSG_UNSUPPORTED",
+        "DEM_OVERLAY_NOT_REFINED",
+        "DEM_OVERLAY_COARSER",
+    }
 )
-"""What the relief node says in Works, as its last line: a file it could not use, or laid on a
-coarser grid than its own. The relief recorded them and nobody was told, so a folder's file refused
-for its size left a user with a tile built on another relief and no word of it (a user on La
-Réunion, 2026-10-01). ``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with
-them and never alone: alone it is a folder or Canada's lidar with nothing for the square, which is
-how they are meant to be, and a build that said nothing before says nothing now."""
+"""What the relief node says in Works, as its last line: a file it could not use, laid on a
+coarser grid than its own, or left aside for being coarser than the relief chosen. The relief
+recorded them and nobody was told, so a folder's file refused for its size left a user with a tile
+built on another relief and no word of it (a user on La Réunion, 2026-10-01), and a file coarser
+than Copernicus gave another user two reliefs out of one folder (2026-10-05).
+``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with them and never alone:
+alone it is a folder or Canada's lidar with nothing for the square, which is how they are meant to
+be, and a build that said nothing before says nothing now."""
 
 RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
 """Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
@@ -1973,6 +1989,7 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     source is still left out, so nobody using one is rebuilt for this.
     """
     marks = []
+    told = False  # a file of one's own among the overlays: the relief says what became of it
     for index, part in enumerate(p for p in str(params.get("custom_dem") or "").split(";") if p):
         path = Path(part)
         if path.is_dir():
@@ -1987,8 +2004,9 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
             continue
         if mark is not None:
             marks.append(mark)
+            told = told or index > 0
     if marks:
-        params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
+        params["own_stamp"] = f"{OWN_TOLD if told else LAID_IN}:" + " ".join(marks)
     return params
 
 

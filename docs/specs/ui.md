@@ -743,7 +743,7 @@ an osxp build of the same tile are two rows.
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
-| Built by | *OrthoStudio XP* / *Ortho4XP* |
+| Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
 | (actions) | two columns, so that the buttons line up from row to row |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
@@ -1291,8 +1291,9 @@ at all is still the *stopped* screen, through the presence ping.
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
 like the other folders of Settings). It says what the files must be called, that subfolders are
-searched and any resolution read, and that the relief chosen above answers wherever the folder has
-nothing. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
+searched and any resolution read, and the rule: a file is used where it is at least as fine as the
+relief chosen above, which answers wherever the folder has nothing or only a coarser file (it said
+"whatever its resolution", and a user saw two reliefs come out of one folder, 2026-10-05). A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
 name the folder once (`dem.md` 3.0a).
 
 **Paths with a tilde** (2026-09-19): wherever the page *reads out* a folder (this bar, the

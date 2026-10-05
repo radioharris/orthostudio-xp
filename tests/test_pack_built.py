@@ -75,6 +75,21 @@ def test_a_lidar_that_never_flew_there_is_asked_but_not_laid(tmp_path: Path) -> 
     assert relief_read(alone, "dsf") == {"relief": "COP30", "relief_laid": []}  # type: ignore[arg-type]
 
 
+def test_what_became_of_his_own_file_comes_with_the_relief(tmp_path: Path) -> None:
+    """The Library names a file of one's own, or says why it was not used (2026-10-05): the relief
+    says it in its meta.json. A relief made before says nothing of it, and gives no such fact
+    (``test_the_relief_really_read_comes_from_the_relief_artefact``)."""
+    own = [
+        {"file": "/lidar/N50E011.hgt", "used": False, "why": "coarser", "own_m": 93, "base_m": 31}
+    ]
+    told = _store(tmp_path, {"source": "COP30", "laid_over": [], "own": own})
+    assert relief_read(told, "dsf") == {  # type: ignore[arg-type]
+        "relief": "COP30",
+        "relief_laid": [],
+        "relief_own": own,
+    }
+
+
 def test_no_relief_to_read_is_no_fact_rather_than_an_error(tmp_path: Path) -> None:
     assert relief_read(FakeStore(), "dsf") == {}  # type: ignore[arg-type]
     assert relief_read(FakeStore(), None) == {}  # type: ignore[arg-type]
