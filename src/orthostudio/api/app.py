@@ -246,6 +246,14 @@ def _error_response(err: OsxpError | dict[str, Any], status: int | None = None) 
     return JSONResponse({"error": body}, status_code=status or _http_status(str(body["code"])))
 
 
+def _real_path(path: Path) -> str | None:
+    """``path`` with its links followed, or None when the system cannot say."""
+    try:
+        return str(path.resolve())
+    except (OSError, RuntimeError):
+        return None
+
+
 def _plain_error(
     code: str,
     message: str,
@@ -1082,8 +1090,15 @@ def create_app(
             "home": str(home),
             # the page writes the paths under it with "~": docs/specs/ui.md 1.9
             "user_home": str(Path.home()),
-            # where the tiles and the downloads go: an external disk may be unplugged
-            "data_dir": {"path": str(root), "chosen": root != home, "present": missing is None},
+            # where the tiles and the downloads go: an external disk may be unplugged. Its tiles
+            # folder also with its links followed: a tile built without installing it is listed
+            # under that form, and the Library calls both the atelier (a review, 2026-10-05)
+            "data_dir": {
+                "path": str(root),
+                "chosen": root != home,
+                "present": missing is None,
+                "tiles_real": _real_path(root / "tiles"),
+            },
             "library_count": count,
             "language": _language(request),
             "active_job": None if active is None else active.id,

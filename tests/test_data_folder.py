@@ -236,7 +236,12 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
     disk.mkdir()
     async with client_for(application) as c:
         status = (await c.get("/api/status")).json()
-        assert status["data_dir"] == {"path": str(home), "chosen": False, "present": True}
+        assert status["data_dir"] == {
+            "path": str(home),
+            "chosen": False,
+            "present": True,
+            "tiles_real": str((home / "tiles").resolve()),
+        }
         settings = (await c.get("/api/settings")).json()
         assert settings["essential"]["data_dir"] is None
 
@@ -279,7 +284,12 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
             saved["essential"]["data_dir"] == str(disk.resolve()) and data_root() == disk.resolve()
         )
         status = (await c.get("/api/status")).json()
-        assert status["data_dir"] == {"path": str(disk.resolve()), "chosen": True, "present": True}
+        assert status["data_dir"] == {
+            "path": str(disk.resolve()),
+            "chosen": True,
+            "present": True,
+            "tiles_real": str((disk.resolve() / "tiles").resolve()),
+        }
         folder = disk / "tiles" / "zOrthoStudio_+43+005"
         folder.mkdir(parents=True)
         r = await c.post("/api/reveal", json={"path": str(folder)})
@@ -503,3 +513,33 @@ def test_the_overlays_name_of_an_unplugged_disk_waits_for_it_and_a_deleted_folde
     install_receipt(new, cs, tile=T2, library_path=library)
     assert links_to(cs / OVERLAY_PACK, new.parent / OVERLAY_PACK)  # the broken link replaced
     assert not os.path.lexists(cs / "yOrthoStudio_Overlays_2")
+
+
+
+@pytest.mark.anyio
+async def test_the_status_gives_the_atelier_s_tiles_folder_with_its_links_followed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A data folder reached through a link: a tile built without being installed is listed under
+    the folder with its links followed, and the Library showed it outside the atelier (a review,
+    2026-10-05). The status gives both forms, and the page calls both the atelier."""
+    (tmp_path / "var" / "home" / "pilot").mkdir(parents=True)
+    (tmp_path / "home").symlink_to(tmp_path / "var" / "home", target_is_directory=True)
+    linked = tmp_path / "home" / "pilot" / ".orthostudio"
+    monkeypatch.setenv("OSXP_HOME", str(linked))
+    monkeypatch.setenv("OSXP_API_NO_AIRPORTS", "1")
+    mgr = JobManager(jobs_dir=linked / "jobs", build=FakeBuild(), env_factory=None)
+    application = create_app(
+        env_factory=None,
+        jobs=mgr,
+        airports=FakeIndex(),
+        settings_path=linked / "config.toml",
+        reveal=lambda path: None,
+    )
+    try:
+        async with client_for(application) as c:
+            data = (await c.get("/api/status")).json()["data_dir"]
+    finally:
+        mgr.close()
+    real = tmp_path.resolve() / "var" / "home" / "pilot" / ".orthostudio" / "tiles"
+    assert data["path"] == str(linked) and data["tiles_real"] == str(real)

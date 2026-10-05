@@ -140,10 +140,11 @@ the field shows everything again. The Library has the same field above its table
 sort it: a click on *Tile*, *Imagery*, *In X-Plane*, *Size* or *Built by* sorts by that column in
 its most useful order (south to north, the tiles in X-Plane first, the largest first...), a
 second click reverses it, and an arrow shows the column the rows follow. The sort is kept from
-one visit to the next. Under each tile, the Library writes the folder it is in: *Workshop* for
-the data folder's own tiles, else the folder itself (`~/Ortho4XP/Tiles`, `D:\Tiles\Alps`). When the
-tiles are in more than one folder, a *Folder* list beside the search shows one folder's tiles,
-each folder with how many it holds. It reads the list only, nothing on the disk.
+one visit to the next. When the tiles are in more than one folder, the Library writes under each
+tile the folder it is in: *Workshop* for the data folder's own tiles, else the folder itself
+(`~/Ortho4XP/Tiles`, `D:\Tiles\Alps`), and a *Folder* list beside the search shows one folder's
+tiles, each folder with how many it holds. A search that finds no tile in the folder chosen says
+how many it finds in the others. It reads the list only, nothing on the disk.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they

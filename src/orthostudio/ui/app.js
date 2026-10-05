@@ -5091,44 +5091,77 @@ export function libraryTiles(rows) {
   return (Array.isArray(rows) ? rows : []).filter((e) => e && (e.kind == null || e.kind === "ortho"));
 }
 
-/** A folder as the system compares it: one separator, none at the end, and its letters' case
- * aside, but on Linux. */
+/** A folder as the Library compares it, by its text: either separator, none at the end, and its
+ * letters' case aside but on Linux. */
 function folderKey(folder, platform) {
   const plain = String(folder).replace(/\\/g, "/").replace(/\/+$/, "");
   return platform === "lin" ? plain : plain.toLowerCase();
 }
 
+/** The atelier's tiles folders, from the status: the data folder's `tiles` as Settings name it,
+ * and with its links followed (`data_dir.tiles_real`), under which a tile built without being
+ * installed is listed: a data folder reached through a link showed that tile elsewhere (a
+ * review, 2026-10-05). */
+export function atelierFolders(status) {
+  const data = status?.data_dir;
+  if (!data?.path) return [];
+  return [`${String(data.path).replace(/[\\/]+$/, "")}/tiles`, data.tiles_real].filter(Boolean);
+}
+
 /** The folder a tile's pack is in, as the Library shows it under the tile and filters by it:
- * ``{key, label}``, the atelier (the data folder's `tiles`, ``dataDir`` being the data folder)
- * or the folder written as its owner knows it (`homely`). Reads nothing on the disk: hundreds of
- * tiles are sorted by folder from the list alone. */
-export function tileFolder(e, dataDir, platform) {
+ * ``{key, label}``, the atelier (one of ``atelier``, `atelierFolders`) or the folder written as
+ * its owner knows it (`homely`; a drive's root with its separator, "E:\\"). Reads nothing on the
+ * disk: hundreds of tiles are sorted by folder from the list alone. */
+export function tileFolder(e, atelier, platform) {
   const path = String(e?.path || "");
   const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   if (cut <= 0) return { key: "", label: "" };
   const folder = path.slice(0, cut);
   const key = folderKey(folder, platform);
-  if (dataDir && key === folderKey(`${String(dataDir).replace(/[\\/]+$/, "")}/tiles`, platform)) {
+  if ((atelier || []).some((a) => folderKey(a, platform) === key)) {
     return { key: "atelier", label: t("library.folder_atelier") };
   }
-  return { key, label: homely(folder) };
+  return { key, label: homely(/^[A-Za-z]:$/.test(folder) ? `${folder}\\` : folder) };
 }
 
 /** The folders of the Library's tiles, for its filter: ``[{key, label, n}]``, the atelier first,
  * then the others by name; none when every tile is in one folder, there being nothing to
  * filter (a user files hundreds of tiles by area, on several disks, TinkerNZ 2026-10-04). */
-export function libraryFolders(rows, dataDir, platform) {
+export function libraryFolders(rows, atelier, platform) {
   const seen = new Map();
-  for (const e of rows) {
-    const folder = tileFolder(e, dataDir, platform);
+  for (const e of libraryTiles(rows)) {
+    const folder = tileFolder(e, atelier, platform);
     if (!folder.key) continue;
     const had = seen.get(folder.key);
     if (had) had.n += 1;
     else seen.set(folder.key, { ...folder, n: 1 });
   }
-  const atelier = (f) => (f.key === "atelier" ? 0 : 1);
-  const folders = [...seen.values()].sort((a, b) => atelier(a) - atelier(b) || a.label.localeCompare(b.label));
+  const first = (f) => (f.key === "atelier" ? 0 : 1);
+  const folders = [...seen.values()].sort((a, b) => first(a) - first(b) || a.label.localeCompare(b.label));
   return folders.length > 1 ? folders : [];
+}
+
+/** What the Library shows of its tiles (``tiles``, overlay rows left out), given the search and
+ * the folder chosen: ``{folders, folder, rows, note}``, the folders of its filter, the folder
+ * kept (none once it is gone), the rows both keep, and the note under the search (``{text,
+ * warn}``, or null). A search that finds tiles in other folders only says so, where it said no
+ * tile matched (a review, 2026-10-05). */
+export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = [], platform = "") {
+  const folders = libraryFolders(tiles, atelier, platform);
+  const kept = folders.some((f) => f.key === folder) ? folder : "";
+  const inFolder = (e) => !kept || tileFolder(e, atelier, platform).key === kept;
+  const q = String(query || "").trim();
+  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));
+  let note = null;
+  if ((q || kept) && tiles.length) {
+    if (rows.length) {
+      note = { text: t("library.search_found", { n: fmtInt(rows.length), total: fmtInt(tiles.length) }), warn: false };
+    } else {
+      const elsewhere = kept && q ? tiles.filter((e) => !inFolder(e) && tileMatches(e.tile, q)).length : 0;
+      note = { text: elsewhere ? t("library.search_none_folder", { n: fmtInt(elsewhere) }) : t("library.search_none"), warn: true };
+    }
+  }
+  return { folders, folder: kept, rows, note };
 }
 
 /** Which way round each Library column sorts at its first click: its most useful order. The
@@ -5289,7 +5322,7 @@ function folderIcon() {
   return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
 }
 
-function libraryRow(e) {
+function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
   const busy = libraryBusy.has(key);
   const present = e.present !== false;
@@ -5359,9 +5392,9 @@ function libraryRow(e) {
     builtCell = toggle;
   }
   // the folder the tile is in, under its name (TinkerNZ files his tiles by area, 2026-10-04)
-  const where = tileFolder(e, state.status?.data_dir?.path || null, state.status?.platform || "");
+  const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where.label ? h("span", { class: "tile-where" }, where.label) : null),
+    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5463,26 +5496,23 @@ function renderLibrary() {
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
   // the tiles of one folder, or all: the folders come from the list itself
-  const dataDir = state.status?.data_dir?.path || null;
+  const atelier = atelierFolders(state.status);
   const platform = state.status?.platform || "";
-  const folders = libraryFolders(rows, dataDir, platform);
-  if (!folders.some((f) => f.key === state.libraryFolder)) state.libraryFolder = "";
-  renderLibraryFolders(folders);
-  const folder = state.libraryFolder;
-  const query = (state.librarySearch || "").trim();
-  const inFolder = (e) => !folder || tileFolder(e, dataDir, platform).key === folder;
-  const shown = sortLibrary(rows.filter((e) => inFolder(e) && tileMatches(e.tile, query)), sort);
-  const narrowed = Boolean(query || folder);
+  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
+  state.libraryFolder = view.folder;
+  renderLibraryFolders(view.folders);
+  const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
-  note.hidden = !narrowed || !rows.length;
-  note.classList.toggle("is-warn", narrowed && !shown.length);
-  if (narrowed && rows.length) setText(note, shown.length ? t("library.search_found", { n: fmtInt(shown.length), total: fmtInt(rows.length) }) : t("library.search_none"));
+  note.hidden = !view.note;
+  note.classList.toggle("is-warn", Boolean(view.note?.warn));
+  if (view.note) setText(note, view.note.text);
   if (!rows.length) {
     body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
-  for (const e of shown) body.append(...libraryRow(e));
+  // the folder under each tile only when the tiles are in more than one (a review, 2026-10-05)
+  for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));
   if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
   markWideTables();
 }
@@ -5492,10 +5522,19 @@ function renderLibrary() {
 function renderLibraryFolders(folders) {
   $("library-folder-wrap").hidden = !folders.length;
   const select = $("library-folder");
-  clear(select);
-  select.append(h("option", { value: "" }, t("library.folder_all")));
-  for (const f of folders) select.append(h("option", { value: f.key }, `${f.label} (${fmtInt(f.n)})`));
-  select.value = state.libraryFolder;
+  // its choices are made again only when they change: the Library is drawn again every 5 s
+  // while sizes are measured, and an open list lost its items under the hand (a review,
+  // 2026-10-05)
+  const all = t("library.folder_all");
+  const choices = folders.map((f) => [f.key, `${f.label} (${fmtInt(f.n)})`]);
+  const signature = JSON.stringify([all, choices]);
+  if (select.dataset.choices !== signature) {
+    clear(select);
+    select.append(h("option", { value: "" }, all));
+    for (const [key, label] of choices) select.append(h("option", { value: key }, label));
+    select.dataset.choices = signature;
+  }
+  if (select.value !== state.libraryFolder) select.value = state.libraryFolder;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.

@@ -1145,8 +1145,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* the search and the folder filter side by side, one above the other in a narrow window */
 .library-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) var(--block-gap); }
 .library-filters .library-search-input { flex: 1 1 260px; }
-.library-folder { display: inline-flex; align-items: center; gap: var(--label-gap); color: var(--fg-2); min-width: 0; }
-.library-folder select { max-width: 320px; min-width: 0; }
+.library-folder { display: inline-flex; align-items: center; gap: var(--label-gap); min-width: 0; }
+/* the page's label and the search field's height (a review, 2026-10-05) */
+.library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }
+.library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }
 /* the folder a tile is in, under its name */
 .table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }
 .settings-search-note, .works-search-note, .library-search-note { margin: var(--help-gap) 0 0; }

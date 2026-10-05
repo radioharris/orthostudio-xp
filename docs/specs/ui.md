@@ -716,15 +716,23 @@ takes minutes over, so the measures piled up until nothing answered, and the Pla
 were rebuilt under the hand (review of 0.1.19, 2026-09-29).
 
 **Where each tile is** (the atelier, step 1, 2026-10-05; TinkerNZ files hundreds of tiles by area,
-on several disks): under each tile's name, the folder its pack is in (`tileFolder`, `.tile-where`):
-*Workshop* (`library.folder_atelier`) for the data folder's `tiles` (`status.data_dir.path`), else
-the folder written with `homely` (`~/Ortho4XP/Tiles`). Folders compare as the system does: either
-separator, a trailing one or not, and the letters' case aside but on Linux. When the tiles are in
-more than one folder, *Folder* beside the search (`#library-folder-wrap`, `#library-folder`,
-`libraryFolders`) lists *All folders*, then *Workshop*, then the others by name, each with how many
-tiles it holds; one chosen shows its tiles only, with the search, and "{n} of {total} tiles."
-says so. A folder gone from the list (its tiles deleted) puts the choice back to all. The choice
-is kept for the session only. Nothing is read on the disk: the rows say where each pack is.
+on several disks): when the tiles are in more than one folder, each tile's name has under it the
+folder its pack is in (`tileFolder`, `.tile-where`): *Workshop* (`library.folder_atelier`) for the
+atelier, else the folder written with `homely` (`~/Ortho4XP/Tiles`; a drive's root as `E:\`, not
+`E:`, which Windows reads as that drive's current folder). The atelier is the data folder's
+`tiles` in two forms (`atelierFolders`): as Settings name it (`status.data_dir.path`) and with its
+links followed (`status.data_dir.tiles_real`), under which a tile built without being installed is
+listed; a data folder reached through a link showed that tile elsewhere. Folders compare by their
+text: either separator, a trailing one or not, and the letters' case aside but on Linux; two names
+of one folder through a link other than the atelier's are two folders. *Folder* beside the search
+(`#library-folder-wrap`, `#library-folder`, `libraryFolders`) lists *All folders*, then *Workshop*,
+then the others by name, each with how many tiles it holds (an overlay row is not a tile); its
+choices are made again only when they change, the Library being drawn again every 5 s while sizes
+are measured, which closed an open list under the hand. One chosen shows its tiles only, with the
+search (`libraryView`), and "{n} of {total} tiles." says so; a search that finds no tile in it but
+finds some in other folders says "No tile of this folder matches; {n} in other folders." A folder
+gone from the list (its tiles deleted) puts the choice back to all. The choice is kept for the
+session only. Nothing is read on the disk: the rows say where each pack is.
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list

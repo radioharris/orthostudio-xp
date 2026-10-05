@@ -2536,11 +2536,10 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app_js, "renderLibrary")
-    assert (
-        "sortLibrary(rows.filter((e) => inFolder(e) && tileMatches(e.tile, query)), sort);" in body
-    )
-    assert 't("library.search_found"' in body and 't("library.search_none")' in body
-    assert "for (const e of shown) body.append(...libraryRow(e));" in body
+    assert "const shown = sortLibrary(view.rows, sort);" in body
+    view = _function_body(app_js, "libraryView")
+    assert "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));" in view
+    assert 't("library.search_found"' in view and 't("library.search_none")' in view
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
     assert (
         "state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };" in app_js
@@ -5000,7 +4999,9 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them
     assert 'classList.contains("library-built")' in _function_body(app_js, "libraryRows")
-    assert "body.append(...libraryRow(e));" in _function_body(app_js, "renderLibrary")
+    assert "body.append(...libraryRow(e, view.folders.length > 0));" in _function_body(
+        app_js, "renderLibrary"
+    )
 
 
 def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
@@ -6659,72 +6660,163 @@ def test_the_route_can_be_left_unchosen() -> None:
 # -- the atelier, step 1: where each tile is (2026-10-05) -----------------------------------------
 
 
-def test_each_tile_says_its_folder_and_the_library_filters_by_folder() -> None:
-    """A user files hundreds of tiles by area, on several disks, and the Library listed them all
-    with no way to tell where each was (TinkerNZ, 2026-10-04): each tile says its folder under its
-    name, the atelier's own as such, and a filter shows one folder's tiles. The list alone says
-    it: nothing is read on the disk."""
-    got = _run_node(
-        """const i = await import("./i18n.js");
+def _step1(script: str) -> Any:
+    """Run ``script``, an expression, with the page's modules as ``i`` (i18n) and ``m`` (app), the
+    home folder ``/Users/pilot``, and three helpers: ``bs`` (a backslash), ``mac`` (the atelier of
+    a Mac's data folder) and ``at(path, atelier, platform)``, ``tileFolder`` of a row at
+    ``path``."""
+    return _run_node(
+        f"""const i = await import("./i18n.js");
         const m = await import("./app.js");
         i.setUserHome("/Users/pilot");
-        const mac = "/Users/pilot/.orthostudio";
         const bs = String.fromCharCode(92);
-        const at = (path, dir = mac, platform = "mac") => m.tileFolder({ path }, dir, platform);
-        const rows = [
-          { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004" },
-          { tile: "+43+005", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005" },
-          { tile: "+45+006", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006" },
-          { tile: "+44+005", path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" },
-          { tile: "+45+007", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+007" },
-        ];
-        const win = ["D:", "OSXP", "Tiles", "zOrthoStudio_+45+006"].join(bs);
-        process.stdout.write(JSON.stringify({
+        const mac = ["/Users/pilot/.orthostudio/tiles"];
+        const at = (path, atelier = mac, platform = "mac") =>
+          m.tileFolder({{ path }}, atelier, platform);
+        process.stdout.write(JSON.stringify({script}));"""
+    )
+
+
+def test_each_tile_s_folder_is_read_from_the_list_alone() -> None:
+    """A user files hundreds of tiles by area, on several disks, and the Library listed them all
+    with no way to tell where each was (TinkerNZ, 2026-10-04): each tile's folder comes from the
+    list alone, the atelier's own named as such, in the form Settings give it or with its links
+    followed, under which a tile built without being installed is listed (a review,
+    2026-10-05)."""
+    got = _step1(
+        """{
           atelier: at("/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004"),
-          slash: at("/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004", mac + "/"),
+          linked: at("/Volumes/X/.orthostudio/tiles/zOrthoStudio_+43+005",
+                     m.atelierFolders({ data_dir: {
+                       path: "/Users/pilot/.orthostudio/",
+                       tiles_real: "/Volumes/X/.orthostudio/tiles",
+                     } })),
+          folders: m.atelierFolders({ data_dir: { path: "/Users/pilot/.orthostudio/",
+                                                  tiles_real: null } }),
+          nostatus: m.atelierFolders(null),
           elsewhere: at("/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006"),
           home: at("/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005"),
-          windows: m.tileFolder({ path: win }, "d:" + bs + "osxp", "win"),
-          linux: m.tileFolder({ path: "/data/OSXP/Tiles/zOrthoStudio_+45+006" }, "/data/OSXP",
-                              "lin"),
+          windows: m.tileFolder({ path: ["D:", "OSXP", "tiles", "zOrthoStudio_+45+006"].join(bs) },
+                                ["d:/osxp/Tiles"], "win"),
+          root: m.tileFolder({ path: ["E:", "zOrthoStudio_+45+006"].join(bs) }, [], "win"),
+          linux: m.tileFolder({ path: "/data/OSXP/Tiles/zOrthoStudio_+45+006" },
+                              ["/data/OSXP/tiles"], "lin"),
           none: at(""),
-          folders: m.libraryFolders(rows, mac, "mac"),
-          one: m.libraryFolders(rows.slice(0, 2), mac, "mac"),
-        }));"""
+        }"""
     )
-    assert got["atelier"] == {"key": "atelier", "label": "Workshop"} == got["slash"]
+    assert got["atelier"] == {"key": "atelier", "label": "Workshop"} == got["linked"]
+    assert got["folders"] == ["/Users/pilot/.orthostudio/tiles"] and got["nostatus"] == []
     assert got["elsewhere"]["label"] == "/Volumes/Big/Tuiles/Alpes"
     assert got["home"]["label"] == "~/Ortho4XP/Tiles"  # written as its owner knows it
-    assert got["windows"]["key"] == "atelier"  # Windows: either separator, case aside
+    assert got["windows"]["key"] == "atelier"  # either separator, case aside
+    assert got["root"]["label"] == "E:\\"  # a drive's root, not "E:" (its current folder)
     assert got["linux"]["key"] != "atelier"  # Linux tells Tiles from tiles
     assert got["none"] == {"key": "", "label": ""}
-    # the atelier first, then the others by name, each with how many tiles it holds
-    assert [(f["label"], f["n"]) for f in got["folders"]] == [
-        ("Workshop", 2),
-        ("/Volumes/Big/Tuiles/Alpes", 2),
-        ("~/Ortho4XP/Tiles", 1),
-    ]
-    assert got["one"] == []  # one folder: nothing to filter, the filter stays hidden
 
+
+def test_the_folder_filter_and_the_note_under_the_search() -> None:
+    """The folders of the filter, the atelier first, with how many tiles each holds, an overlay
+    row never counted; the folder chosen applied with the search, kept while it is there and
+    dropped once it is gone; and the note: how many of all, or that the tiles searched for are in
+    other folders, where it said that no tile matched (a review, 2026-10-05)."""
+    got = _step1(
+        """(() => {
+          const rows = [
+            { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004" },
+            { tile: "+43+004", kind: "overlay",
+              path: "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays" },
+            { tile: "+43+005", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005" },
+            { tile: "+45+006", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006" },
+            { tile: "+44+005", path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" },
+            { tile: "+45+007", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+007" },
+          ];
+          const tiles = m.libraryTiles(rows);
+          const view = (asked) => {
+            const v = m.libraryView(tiles, asked, mac, "mac");
+            return { folder: v.folder, rows: v.rows.map((e) => e.tile), note: v.note,
+                     folders: v.folders.map((f) => [f.label, f.n]) };
+          };
+          const alps = "/volumes/big/tuiles/alpes";
+          return {
+            all: view({}),
+            withOverlays: m.libraryFolders(rows, mac, "mac").map((f) => [f.label, f.n]),
+            one: m.libraryFolders(rows.slice(0, 3), mac, "mac"),
+            alps: view({ folder: alps }),
+            both: view({ folder: alps, query: "+45+007" }),
+            elsewhere: view({ folder: "atelier", query: "+44" }),
+            nowhere: view({ folder: "atelier", query: "+60" }),
+            gone: view({ folder: "/volumes/gone" }),
+            search: view({ query: " +43 " }),
+          };
+        })()"""
+    )
+    assert got["all"]["folders"] == [
+        ["Workshop", 2],
+        ["/Volumes/Big/Tuiles/Alpes", 2],
+        ["~/Ortho4XP/Tiles", 1],
+    ]
+    assert got["withOverlays"] == got["all"]["folders"]  # an overlay row is not a tile
+    assert got["one"] == []  # one folder: nothing to filter, the filter stays hidden
+    assert got["all"]["note"] is None and len(got["all"]["rows"]) == 5
+    assert got["alps"]["rows"] == ["+45+006", "+45+007"]
+    assert got["alps"]["folder"] == "/volumes/big/tuiles/alpes"
+    assert got["alps"]["note"] == {"text": "2 of 5 tiles.", "warn": False}  # a folder narrows too
+    assert got["both"]["rows"] == ["+45+007"]
+    assert got["elsewhere"]["rows"] == []
+    assert got["elsewhere"]["note"] == {
+        "text": "No tile of this folder matches; 1 in other folders.",
+        "warn": True,
+    }
+    assert got["nowhere"]["note"] == {"text": "No tile matches.", "warn": True}
+    assert got["gone"]["folder"] == "" and len(got["gone"]["rows"]) == 5  # back to all
+    assert got["gone"]["note"] is None
+    assert got["search"]["rows"] == ["+43+004", "+43+005"]
+
+
+def test_the_folder_filter_is_wired_and_drawn_again_only_when_it_changes() -> None:
+    """The filter beside the search, hidden with one folder; its choices made again only when they
+    change, since the Library is drawn again every 5 s while sizes are measured and an open list
+    lost its items under the hand; the folder under each tile only when there is more than one;
+    the label and height of the page's other fields (a review, 2026-10-05)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
     assert 'id="library-search"' in filters and 'id="library-folder"' in filters
     assert 'id="library-folder-wrap" hidden' in filters and 'data-i18n="library.folder"' in filters
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app_js, "renderLibrary")
-    assert "const folders = libraryFolders(rows, dataDir, platform);" in body
-    assert (
-        'if (!folders.some((f) => f.key === state.libraryFolder)) state.libraryFolder = "";' in body
-    )
-    assert "renderLibraryFolders(folders);" in body
-    assert '$("library-folder-wrap").hidden = !folders.length;' in _function_body(
-        app_js, "renderLibraryFolders"
-    )
+    for needle in (
+        "const atelier = atelierFolders(state.status);",
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier",
+        "state.libraryFolder = view.folder;",
+        "renderLibraryFolders(view.folders);",
+        "note.hidden = !view.note;",
+        "for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));",
+    ):
+        assert needle in body, needle
+    folders = _function_body(app_js, "renderLibraryFolders")
+    for needle in (
+        '$("library-folder-wrap").hidden = !folders.length;',
+        "if (select.dataset.choices !== signature) {",
+        "if (select.value !== state.libraryFolder) select.value = state.libraryFolder;",
+    ):
+        assert needle in folders, needle
     row = _function_body(app_js, "libraryRow")
-    assert 'where.label ? h("span", { class: "tile-where" }, where.label) : null' in row
+    assert "const where = showFolder ? tileFolder(e, atelierFolders(state.status)" in row
+    assert 'where?.label ? h("span", { class: "tile-where" }, where.label) : null' in row
     assert '$("library-folder").addEventListener("change"' in app_js
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    for rule in (
+        ".library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }",
+        ".library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }",
+    ):
+        assert rule in css, rule
     tables = _i18n_tables()
     for lang in ("fr", "en"):
-        for key in ("library.folder", "library.folder_all", "library.folder_atelier"):
+        for key in (
+            "library.folder",
+            "library.folder_all",
+            "library.folder_atelier",
+            "library.search_none_folder",
+        ):
             assert tables[lang][key], (lang, key)
     assert tables["fr"]["library.folder_atelier"] == "Atelier"
