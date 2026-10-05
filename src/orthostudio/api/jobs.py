@@ -1416,10 +1416,15 @@ class JobManager:
             job._append("failed", tile=None, stage=None, node=None, role=None, error=job.job_error)
         finally:
             job.stop_ticker()
-            job._finish(status, report, env if isinstance(env, BuildEnv) else None)
-            with contextlib.suppress(OSError):
-                job.save_state()
+            # The end is one step for whoever asks the manager: the job announced, written, and
+            # out of the active slot together. A page hears `finished` and asks the status at
+            # once, and the status named the job still while its state was being written (a run
+            # of the suite under load, 2026-10-05). Written before it leaves the slot: a job out
+            # of it may be removed from the list, files and all.
             with self._lock:
+                job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+                with contextlib.suppress(OSError):
+                    job.save_state()
                 if self._active is job:
                     self._active = None
                 self._threads.pop(job.id, None)

@@ -766,6 +766,13 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   dependency on the server's loop (the CLI could drive a `JobManager` too).
 * `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s;
   `active_job` is the id of the queued or running job, else `null`.
+* A job's end is one step under the manager's lock: its `finished` event, its `<id>.json`
+  written, the job out of the active slot and the next queued job started. A page that hears
+  `finished` asks the status at once, and the status named the job still while its state was
+  being written (a run of the suite under load, 2026-10-05); a caller of the manager meanwhile
+  waits for the end. The state is written before the job leaves the slot: a job out of it may be
+  removed from the list with its files, and a file written after that would bring it back at the
+  next start.
 * `/api/airports` with the real index: `default_index` builds `~/.orthostudio/airports.sqlite` from
   `apt.dat` on first use (a few seconds, in a worker thread; its progress callback is not
   relayed to the page in P2b). Without an X-Plane folder it answers 422 `XP_DIR_NOT_FOUND`.
