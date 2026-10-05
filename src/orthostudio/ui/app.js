@@ -6067,6 +6067,7 @@ function rerenderAll() {
   renderJobList();
   renderJob();
   renderLibrary();
+  renderDisk(); // from the last measure: measuring again takes minutes on a hard disk
   renderSettings();
   planMap?.rerender();
 }

@@ -725,7 +725,9 @@ downloaded images and one for the relief: a square of relief is 40 MB from Coper
 800 MB of imagery at ZL16, and comes back much faster, so the choices are separate. The relief was
 counted by nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is
 disabled while a build runs and when there is nothing to free, and ends with a toast of what came
-back. A 409 `SYS_BUSY` shows as a card in the Library's words.
+back. A 409 `SYS_BUSY` shows as a card in the Library's words. A language switch writes its lines
+again from the last measure, measuring nothing (`rerenderAll` calls `renderDisk`): they stayed in
+the former language, under a title in the new one, until the next measure (2026-10-05).
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
