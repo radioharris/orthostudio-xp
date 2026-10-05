@@ -1873,14 +1873,6 @@ are written into the raster (``dem/dem.py`` ``_lay_into``). Up to 0.1.6 they wer
 and never reached the scenery, so a tile of the store built then must be built again; a relief
 without overlays keeps the key it has always had, and nothing else is rebuilt."""
 
-OWN_TOLD = "3"
-"""The head of ``own_stamp`` when a file of one's own is among the overlays: the relief then says
-what became of that file (``Dem.own``), which the Library names, or why it was not used (a user
-saw two reliefs come out of one folder of lidar files, and nothing said his file had been left
-aside, 2026-10-05). A relief made before has no such record, and taken from the store it would
-leave the Library with the old words: such a relief is made again once, at the next build of its
-tile. Every other relief keeps its key, and nothing else is rebuilt."""
-
 
 @lru_cache(maxsize=512)
 def _contents_of(path_s: str, _size: int, _mtime_ns: int) -> str:
@@ -1989,7 +1981,6 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
     source is still left out, so nobody using one is rebuilt for this.
     """
     marks = []
-    told = False  # a file of one's own among the overlays: the relief says what became of it
     for index, part in enumerate(p for p in str(params.get("custom_dem") or "").split(";") if p):
         path = Path(part)
         if path.is_dir():
@@ -2004,9 +1995,8 @@ def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
             continue
         if mark is not None:
             marks.append(mark)
-            told = told or index > 0
     if marks:
-        params["own_stamp"] = f"{OWN_TOLD if told else LAID_IN}:" + " ".join(marks)
+        params["own_stamp"] = f"{LAID_IN}:" + " ".join(marks)
     return params
 
 

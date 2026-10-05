@@ -598,10 +598,7 @@ def test_a_relief_file_of_ones_own_is_weighed_so_a_better_one_is_read(tmp_path: 
     was = stamp(f"COP30;{folder}")
     assert stamp("COP30") == "", "a named source alone keeps the key it has always had"
     assert stamp("COP30;HRDEM") == "2:HRDEM", "and so does a source named as an overlay"
-    assert before.startswith("2:"), "his file as the relief itself keeps its key"
-    # a folder's file among the overlays: its relief now says what became of the file, which one
-    # made before does not, so it is made again once (2026-10-05)
-    assert was.startswith("3:N49W122.hgt:"), "a folder of one's own is weighed as before"
+    assert was.startswith("2:N49W122.hgt:"), "a folder of one's own is weighed as before"
 
 
 def test_the_relief_of_ones_own_says_what_to_do_about_it(tmp_path: Path) -> None:

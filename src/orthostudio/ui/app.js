@@ -5178,7 +5178,8 @@ function ownFileWords(path) {
  * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). A file of
  * one's own is named, and one not used says why: a user saw two reliefs come out of one folder of
  * lidar files, and nothing said his file had been left aside (2026-10-05). A relief made before
- * says nothing of them (no `relief_own`), and keeps the words it had. */
+ * says nothing of them (no `relief_own`): its files asked and not laid were not used, and no more
+ * is said. */
 export function reliefSentence(facts) {
   const laidCodes = facts?.relief_laid || [];
   const own = Array.isArray(facts?.relief_own) ? facts.relief_own.filter(Boolean) : null;
@@ -5192,10 +5193,15 @@ export function reliefSentence(facts) {
   const used = (own || []).filter((o) => o.used).map((o) => ownFileWords(o.file));
   const laid = [...laidCodes.filter((c) => !(used.length && ownRelief(c))).map(reliefName), ...used];
   const asked = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a));
-  const missing = asked.filter((a) => !(own && ownRelief(a))).map(reliefName);
+  // a source asked and not laid had nothing on the square: Canada's lidar where it never flew
+  const missing = asked.filter((a) => !ownRelief(a)).map(reliefName);
   const over = laid.length ? t("library.built_relief_laid", { base, over: laid.join(", ") }) : base;
   const said = missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
-  if (!own) return said;
+  if (!own) {
+    // a relief made before says nothing of his files: they were not used, whatever the reason. It
+    // said "none on this square" of a file left aside for being coarser (2026-10-05).
+    return asked.some(ownRelief) ? t("library.built_relief_own_unused", { base: said }) : said;
+  }
   const notes = own.filter((o) => !o.used).map((o) => ownFileNote(o, base));
   if (!own.length && asked.some(ownRelief)) notes.push(t("library.built_relief_no_file"));
   return notes.length ? `${said}. ${notes.join(" ")}` : said;

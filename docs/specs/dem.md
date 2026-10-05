@@ -508,9 +508,10 @@ one's own found for the square, in `own`: `{"file", "used"}`, and for one not us
 `empty`, no height on the square). The Library names the file a tile stands on, or says why it was
 not used, and `DEM_OVERLAY_COARSER` is said in Works: a user saw two reliefs come out of one folder
 of lidar files, X-Plane's taking his 3" file and Copernicus leaving it aside, and nothing said so
-(2026-10-05). Such a relief's `own_stamp` starts with `3` (`OWN_TOLD`): one made before has no
-`own`, and is made again once, at the next build of its tile; no other relief changes key.
-Difference: Ortho4XP returns a float32 array when every
+(2026-10-05). No key changes for it: a relief made before has no `own`, and is not made again to
+get one, since its heights would be the same bytes and the tile, taken from the store, would keep
+its record as it was; the Library then says the files were asked and not used, which is true
+whatever the reason. Difference: Ortho4XP returns a float32 array when every
 point is inside and float64 otherwise (`numpy.array` of a mixed list); OrthoStudio XP always returns
 float64 (**fix**, value-preserving, float32 -> float64 is exact).
 

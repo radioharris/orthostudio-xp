@@ -68,9 +68,7 @@ class DemParams(RuleParams):
     was, and the tile would come back from the store unchanged. An overlay that is a source is
     named as it is, ``2:HRDEM``. The leading number is how the overlays are put together
     (``pipeline/build.py`` ``LAID_IN``): they are written into the raster from 0.1.7, and a tile
-    built when they were kept beside it is not the tile this rule now writes. It is ``3`` when a
-    file of one's own is among the overlays (``OWN_TOLD``): the relief then says what became of
-    it, which one made before does not."""
+    built when they were kept beside it is not the tile this rule now writes."""
 
     @property
     def fill(self) -> FillNodata:

@@ -5052,7 +5052,9 @@ def test_the_library_names_his_relief_file_or_says_why_it_was_not_used() -> None
         "Copernicus, with Canada's lidar over it. Your file N50E011.hgt was not used: "
         "93 m between points, where Copernicus has 31 m."
     )
-    assert got["before"] == "Copernicus: your own files asked, none on this square"
+    # a relief made before says nothing of his files: not used, which is true whatever the reason,
+    # where "none on this square" was false of a file left aside for being coarser
+    assert got["before"] == "Copernicus: your own files asked, not used on this square"
     assert got["line"] == ["Relief", got["coarser"], None, "/Users/me/lidar/Bavaria/N50E011.hgt"]
     assert got["files"] == "/Users/me/N50E011.hgt\n/Users/me/lidar/Bavaria/N50E011.hgt"
     assert got["french"] == (
@@ -5070,6 +5072,7 @@ def test_the_library_names_his_relief_file_or_says_why_it_was_not_used() -> None
             "library.built_relief_empty",
             "library.built_relief_unused",
             "library.built_relief_no_file",
+            "library.built_relief_own_unused",
         ):
             assert tables[lang][key], (lang, key)
     # the rule is written where the folder is chosen, where it said "whatever its resolution"

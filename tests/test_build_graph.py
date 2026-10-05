@@ -592,8 +592,7 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     params, _ = dem_declaration(spec, cfg, lambda _tile: None, None)
     assert params["custom_dem"] == f"COP30;{tmp_path / 'Sonny'}"
     # the file's bytes, not its date: a backup restore kept every byte and rebuilt everything
-    # (3: the relief says what became of the file, ``OWN_TOLD``)
-    assert params["own_stamp"].startswith("3:N47E011.hgt:")
+    assert params["own_stamp"].startswith("2:N47E011.hgt:")
     # a square the folder does not hold: the same node, and nothing of its own to mark
     other, _ = dem_declaration(
         _spec(tmp_path, TileRef(47, 10), relief="copernicus"), cfg, lambda _tile: None, None
