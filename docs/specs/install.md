@@ -543,6 +543,53 @@ refused before anything moves; an old folder a file holds is named in `left`; a 
 filing starts is kept; a tile filed to another disk keeps its line as the user left it, and a new
 overlays line takes the state of the one the tile came from (4.5).
 
+### 4.7 A tile filed elsewhere, built again (`filing.put_back`, the atelier, step 4)
+
+A tile filed elsewhere and built again (from the Plan, or *Build again* in Works) is built in the
+workshop, beside the cache, then its new version is put back in its folder in place of the old
+one (2026-10-05): built as any tile, then moved, or copied when its folder is on another disk:
+
+* Its folder (`tile_home`): the one the X-Plane of Settings takes (its link leads there); else the
+  workshop when the Library lists the tile there; else the latest of its folders elsewhere. A
+  folder gone from a disk that is here does not count: the tile is built in the workshop as a new
+  one, and its rows there follow it. A folder on a disk away does: the tile is not built
+  (`SYS_TILE_DISK_ABSENT`), and the others of the build are.
+* It is never installed from the workshop: X-Plane's link leads to its folder all along, and its
+  line in `scenery_packs.ini` stays as the user left it.
+* Unchanged, its folder holds this very build already: nothing is copied, nothing is left in the
+  workshop, and the build is instant.
+* Else, with X-Plane closed (`XP_RUNNING`): on the workshop's disk the new version is moved into
+  place in one step, its images staying the cache's files; on another it is copied under
+  `<name>.osxp-part`, sent to the disk as a group, read back (`SYS_TILE_COPY_DIFFERS`), with room
+  for it and `ROOM_MARGIN` (`SYS_DISK_FULL`). Its roads and forests, which the build wrote in the
+  workshop's overlays pack, go with it: parked in it, or left to another pack's when the old ones
+  were. Then the old version takes the name `<name>.osxp-old`, the new one its name, and the old
+  one goes; its roads are drawn where the old ones were, or the old ones go when the new version
+  has none. A put back cut between those two renames finds the old version under its name first.
+  Until the old version is renamed, nothing of it is touched: a stop or a failure before leaves it
+  as it was, the new version back in the workshop, and *Build again* finishes in a moment.
+* Then the workshop keeps nothing of the tile (the cache keeps its images), the Library lists it
+  once, in its folder, as this build, and the X-Plane of Settings that shows it is given its
+  install again, its line kept, or the install asked for when it did not show it. Every X-Plane
+  that showed it sees the new version, its link leading to the same folder.
+
+Works shows the put back in the Installation cell, with how far the copy is in the tile's line
+and the cell's tooltip (« retour à sa place : copie, 1,2 Go sur 4,1 Go »), no bar of its own: one
+more takes too much room.
+
+Acceptance (`tests/test_put_back.py`, fake X-Planes): where the new version goes, by the rules
+above; on another disk copied, read back and in place of the old one, its new roads where the
+old ones were drawn and none left in the workshop; on the workshop's disk moved in one step, its
+images the cache's files; its new roads parked when the old ones were not drawn, and the old ones
+gone with a new version that has none; X-Plane running, no room, a Stop and a copy that reads back
+wrong leave the old version and the new one in the workshop, no temporary folder; a move refused
+at the swap goes back to the workshop; a put back cut between its two renames finds the old
+version first, even when it is refused next; at the end of a build the tile is in its folder,
+X-Plane's line as it was, one Library row, the workshop's copy and row gone, and built again
+unchanged nothing is copied; a Stop leaves the old version and stops the next ones; a tile on a
+disk away is not built; a tile filed elsewhere has no install node; the rows of its folders gone
+follow it to the workshop.
+
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with

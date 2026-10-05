@@ -1070,7 +1070,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _S,
         "The copy of {file} for tile {tile} did not give back what was read: the copy was taken "
         "away, and the tile is where it was.",
-        "Check the disk of the folder chosen, then file the tile again.",
+        "Check the disk of that folder, then try again.",
     ),
     _spec(
         "SYS_TILE_NAME_TAKEN",
@@ -1078,6 +1078,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _S,
         "{folder} is already there, and it is not this tile's build, whole.",
         "Nothing was changed. Choose another folder, or move or delete that one first.",
+    ),
+    _spec(
+        "SYS_TILE_DISK_ABSENT",
+        _B,
+        _S,
+        "The folder tile {tile} is filed in, {folder}, is not there: its disk is likely not "
+        "connected. The tile was not built again.",
+        "Connect its disk, then build the tile again; or take it out of the selection.",
     ),
     _spec(
         "SYS_TILE_NOT_WHOLE",

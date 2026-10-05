@@ -111,6 +111,7 @@ export const ROLE_STEP = {
   overlay: "assembly",
   pack: "assembly",
   install: "install",
+  put_back: "install",
 };
 
 /** Rule name → user step, for the node ids of the P2b contract (`+43+005/tile.dsf#2`) that older
@@ -4649,9 +4650,24 @@ function nodeWords(n, message) {
       const words = t("works.act_images_count", { done: fmtInt(Number(count[1])), total: fmtInt(Number(count[2])) });
       return /nothing to download/.test(line) ? `${words}, ${t("works.act_images_cache")}` : words;
     }
+    case "put_back": {
+      // a tile filed elsewhere put back in its folder (the atelier, step 4): `putBackWords`
+      return putBackWords(line);
+    }
     default:
       return Object.hasOwn(ROLE_WORDS, n.role) ? ROLE_WORDS[n.role]() : "";
   }
+}
+
+/** The words of a tile filed elsewhere put back in its folder, from the engine's line
+ * (`putting back: copy 1200000000 of 4100000000 bytes`, build.py `_put_back_tile`): in the
+ * Installation cell's tooltip and the tile's line, not a bar of its own (2026-10-05). */
+export function putBackWords(line) {
+  const got = /putting back: (copy|check) (\d+) of (\d+) bytes/.exec(String(line || ""));
+  if (!got) return t("works.act_put_back");
+  const done = fmtBytes(Number(got[2]));
+  const total = fmtBytes(Number(got[3]));
+  return got[1] === "check" ? t("works.act_put_back_check", { done, total }) : t("works.act_put_back_copy", { done, total });
 }
 
 /** The words of the nodes that report nothing but their end (their bar moves by their time). */

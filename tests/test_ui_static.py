@@ -332,7 +332,8 @@ def test_mock_events_follow_the_engine_journal() -> None:
                 assert (data["weight_s"] == 0) is data["skipped"]  # skipped before it started
     assert roles["osm"] == roles["osm_hit"] == {"osm"}
     assert doc["osm_hit"][0]["event"] == "done" and doc["osm_hit"][0]["hit"] is True
-    assert roles["tile"] == set(ROLE_STAGE) - {"osm"}
+    # the mock builds tiles of the workshop: none filed elsewhere is put back (the atelier, step 4)
+    assert roles["tile"] == set(ROLE_STAGE) - {"osm", "put_back"}
     tile = doc["tile"]
     assert any(e["event"] == "done" and e["hit"] for e in tile)  # a cache hit in every build
     failing = [e for e in tile if e.get("only") == "failing"]
@@ -7077,6 +7078,32 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
     assert got["left"] == (
         "+46+007 is filed, but its old folder could not be removed, likely because of a file "
         "open in another program: ~/OSXP/tiles/zOrthoStudio_+46+007. You can delete it."
+    )
+
+
+def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
+    """A tile filed elsewhere, built again, is put back in its folder (the atelier, step 4): the
+    Installation cell's tooltip and the tile's line say how far the copy is, from the engine's
+    line; no bar of its own (2026-10-05)."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        process.stdout.write(JSON.stringify({
+          copy: m.putBackWords("putting back: copy 1200000000 of 4100000000 bytes"),
+          check: m.putBackWords("putting back: check 4100000000 of 4100000000 bytes"),
+          plain: m.putBackWords(""),
+          step: m.ROLE_STEP.put_back,
+        }));"""
+    )
+    assert got["copy"] == "back to its folder: copying, 1.2 GB of 4.1 GB"
+    assert got["check"] == "back to its folder: reading back, 4.1 GB of 4.1 GB"
+    assert got["plain"] == "back to its folder" and got["step"] == "install"
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'case "put_back": {' in _function_body(app_js, "nodeWords")
+    tables = _i18n_tables()
+    assert (
+        tables["fr"]["works.act_put_back_copy"] == "retour à sa place : copie, {done} sur {total}"
     )
 
 

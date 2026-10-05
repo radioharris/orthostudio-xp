@@ -13,6 +13,12 @@ Wherever a stop comes, a whole tile is left: the original until the copy is in p
 after. A temporary folder is a copy a stop left half made, made again. A tile is checked whole
 before anything of it moves, and a folder of its name found where it goes is taken for a copy only
 when it is not a link and reads back the same bytes. Spec ``install.md`` 4.6.
+
+A tile filed elsewhere and built again (the atelier, step 4) is built in the workshop, beside the
+cache, then put back in its folder in place of the old version (:func:`put_back`): moved there
+when that folder is on the workshop's disk, else copied, read back, and swapped with the old one,
+which goes only once the new one is in place. Its folder is :func:`tile_home`. Spec
+``install.md`` 4.7.
 """
 
 from __future__ import annotations
@@ -30,21 +36,27 @@ import blake3
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import fsync_dir, replace
 from orthostudio.graph.store import flush_disk, send_to_disk
-from orthostudio.home import data_root
-from orthostudio.install import LibraryEntry, is_xplane_dir
+from orthostudio.home import data_root, disk_absent
+from orthostudio.install import Library, LibraryEntry, is_xplane_dir
 from orthostudio.install import packs as install_packs
+from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.pipeline.pack import (
     _INSTALL_LOCK,
+    LEFT_OVERLAY,
     MANIFEST_NAME,
+    PARKED_OVERLAY,
     _delete_pack_dir,
+    _unpark_overlay,
     find_again_receipt,
     links_to,
+    overlay_dsf_path,
     pack_is_intact,
     read_manifest,
 )
 
 __all__ = [
     "FILE_FORMAT",
+    "OLD_SUFFIX",
     "PART_SUFFIX",
     "ROOM_MARGIN",
     "WORKSHOP_FOLDERS",
@@ -53,12 +65,16 @@ __all__ = [
     "file_tile",
     "filing_plan",
     "pack_bytes",
+    "put_back",
     "same_disk",
+    "tile_home",
 ]
 
 FILE_FORMAT = "osxp-file-1"
 PART_SUFFIX = ".osxp-part"
 """The name a copy is made under, beside where it goes, until it is read back and put in place."""
+OLD_SUFFIX = ".osxp-old"
+"""The name the old version of a tile put back takes while the new one takes its place."""
 CHUNK = 8 * 2**20
 """Bytes read and written at a time: a file costs its bytes, not its calls."""
 ROOM_MARGIN = 256 * 2**20
@@ -306,10 +322,29 @@ def _copy_checked(
     progress: Callable[[str, int, int], None] | None,
     stop: Callable[[], bool] | None,
 ) -> None:
-    """``src`` copied whole to ``target``: under the temporary name, files sent to the disk as a
-    group, read back against what was read, then put in place. Any failure or stop takes the
-    temporary folder away; ``src`` is never touched."""
+    """``src`` copied whole to ``target``: made and read back under the temporary name
+    (:func:`_copy_part`), then put in place. Any failure or stop takes the temporary folder away;
+    ``src`` is never touched."""
     part = target.with_name(target.name + PART_SUFFIX)
+    _copy_part(src, part, tile, progress, stop)
+    try:
+        replace(part, target)
+    except BaseException:
+        shutil.rmtree(part, ignore_errors=True)
+        raise
+    with contextlib.suppress(OSError):
+        fsync_dir(target.parent)
+
+
+def _copy_part(
+    src: Path,
+    part: Path,
+    tile: str,
+    progress: Callable[[str, int, int], None] | None,
+    stop: Callable[[], bool] | None,
+) -> None:
+    """``src`` copied whole to ``part``: files sent to the disk as a group, read back against what
+    was read. Any failure or stop takes ``part`` away; ``src`` is never touched."""
     if part.exists():
         shutil.rmtree(part)  # a copy a stop left half made: made again
     files = _files(src)
@@ -354,13 +389,159 @@ def _copy_checked(
                     checked += len(chunk)
             if h.hexdigest() != digest:
                 raise OsxpError(
-                    "SYS_TILE_COPY_DIFFERS", context={"tile": tile, "file": str(target / rel)}
+                    "SYS_TILE_COPY_DIFFERS", context={"tile": tile, "file": str(part / rel)}
                 )
             if progress is not None:
                 progress("check", checked, total)
-        replace(part, target)
-        with contextlib.suppress(OSError):
-            fsync_dir(target.parent)
     except BaseException:
         shutil.rmtree(part, ignore_errors=True)
         raise
+
+
+# -- a tile filed elsewhere, built again (the atelier, step 4) -----------------------------------
+
+
+def _same_place(a: Path, b: Path) -> bool:
+    """Whether ``a`` and ``b`` name one folder, there or not (a disk away keeps its paths)."""
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
+def tile_home(
+    tile: TileRef,
+    *,
+    atelier: Path,
+    custom_scenery: Path | None,
+    library_path: Path | None = None,
+) -> tuple[Path | None, list[Path]]:
+    """Where a build of ``tile`` puts the new version, when that is not the workshop (``atelier``,
+    its tiles folder): the folder of its build X-Plane takes (``custom_scenery``'s link leads
+    there), else the workshop when the Library lists it there, else the latest of its folders
+    elsewhere. ``None`` for the workshop. A folder gone from a disk that is here does not count:
+    the tile is built in the workshop as a new one, and those folders are the second item, for
+    the Library to let go once it is. A folder on a disk away does count: the build refuses it."""
+    here = Path(atelier) / pack_dir_name(tile)
+    with Library(library_path) as lib:
+        rows = [r for r in lib.list(tile=tile, kind="ortho") if r.built_by == "osxp"]
+    live: list[tuple[float, Path]] = []
+    gone: list[Path] = []
+    for r in rows:
+        folder = Path(r.path)
+        if folder.is_dir() or disk_absent(folder):
+            live.append((r.updated_at, folder))
+        elif not _same_place(folder, here):
+            gone.append(folder)
+    if custom_scenery is not None:
+        link = Path(custom_scenery) / here.name
+        shown = next((f for _at, f in live if links_to(link, f)), None)
+        if shown is not None:
+            return (None if _same_place(shown, here) else shown), gone
+    if not live or any(_same_place(f, here) for _at, f in live):
+        return None, gone
+    return max(live, key=lambda row: row[0])[1], gone
+
+
+def put_back(
+    new: Path,
+    home: Path,
+    *,
+    tile: TileRef,
+    overlay: bool,
+    progress: Callable[[str, int, int], None] | None = None,
+    stop: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
+    """Put ``new``, the new version of a tile the workshop built, in place of ``home``, the old
+    one in the folder it is filed in. On the workshop's disk it is moved there, in one step; on
+    another it is copied and read back under the temporary name (:func:`_copy_part`). Its roads
+    and forests, which the build wrote in the workshop's overlays pack, go with it: parked in it,
+    or left to another pack's when the old ones were, then put where the old ones were drawn.
+    The old version takes the name :data:`OLD_SUFFIX` for the moment the new one takes its place,
+    then goes. Until that moment it is not touched: a stop or a failure before leaves it as it
+    was, the new version back in the workshop. ``home``'s link in X-Plane leads to the same
+    folder, so its line does not change. Returns ``{tile, to, moved, left}``, ``left`` the old
+    version's folder when a file there could not be removed."""
+    name = tile.name
+    part = home.with_name(home.name + PART_SUFFIX)
+    old = home.with_name(home.name + OLD_SUFFIX)
+    if not os.path.lexists(home) and old.is_dir():
+        # a put back cut between its two renames: the old version under its name first, whatever
+        # comes next, so that X-Plane and the Library find it again
+        replace(old, home)
+    if install_packs.xplane_running():
+        raise OsxpError(
+            "XP_RUNNING",
+            message=f"X-Plane is running: the new version of {name} waits in the workshop, and "
+            f"the one in {home.parent} is untouched.",
+            remedy="Quit X-Plane, then build the tile again: it is a moment's work.",
+        )
+    if not home.parent.is_dir():
+        raise OsxpError("SYS_TILE_DISK_ABSENT", context={"tile": name, "folder": str(home)})
+    roads = overlay_dsf_path(new.parent, tile) if overlay else None
+    moved = same_disk(new, home.parent)
+    if moved:
+        if os.path.lexists(part):
+            shutil.rmtree(part)
+        try:
+            replace(new, part)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            moved = False  # two disks after all
+    if not moved:
+        need = pack_bytes(new) + (roads.stat().st_size if roads and roads.is_file() else 0)
+        free = shutil.disk_usage(home.parent).free
+        if need + ROOM_MARGIN > free:
+            raise OsxpError(
+                "SYS_DISK_FULL",
+                context={"volume": str(home.parent), "needed": _gb(need), "free": _gb(free)},
+            )
+        _copy_part(new, part, name, progress, stop)
+    added: Path | None = None
+    try:
+        if roads is not None and roads.is_file():
+            # with the tile, as its old ones were: left to another pack's, or parked
+            added = part / (LEFT_OVERLAY if (home / LEFT_OVERLAY).is_file() else PARKED_OVERLAY)
+            shutil.copyfile(roads, added)
+            send_to_disk(added)
+            flush_disk(added)
+        beside = overlay_dsf_path(home.parent, tile).is_file()  # its old roads drawn beside it
+        if os.path.lexists(old):
+            _delete_pack_dir(old)  # an old version a put back could not remove
+        had = os.path.lexists(home)  # its folder taken away during the build: the new one goes in
+        if had:
+            replace(home, old)
+        try:
+            replace(part, home)
+        except BaseException:
+            if had:
+                replace(old, home)
+            raise
+        with contextlib.suppress(OSError):
+            fsync_dir(home.parent)
+    except BaseException:
+        # the old version as it was; the new one back in the workshop
+        if moved and part.is_dir():
+            if added is not None:
+                added.unlink(missing_ok=True)
+            replace(part, new)
+        elif not moved:
+            shutil.rmtree(part, ignore_errors=True)
+        raise
+    if beside:
+        # drawn where the old ones were, by every X-Plane that showed the tile; none when the new
+        # version has none
+        if (home / PARKED_OVERLAY).is_file():
+            _unpark_overlay(home, tile)
+        elif not overlay:
+            overlay_dsf_path(home.parent, tile).unlink(missing_ok=True)
+    if roads is not None:
+        roads.unlink(missing_ok=True)  # the workshop's copy, which X-Plane could draw too
+    left = None
+    try:
+        if os.path.lexists(old):
+            _delete_pack_dir(old)
+    except OSError:
+        left = str(old)
+    if not moved:
+        with contextlib.suppress(OSError):
+            _delete_pack_dir(new)  # the workshop keeps nothing of it, the cache its images
+    return {"tile": name, "to": str(home), "moved": moved, "left": left}

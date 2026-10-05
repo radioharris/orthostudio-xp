@@ -763,6 +763,13 @@ let go at each drawing. A build asked for during a filing, or a Library change r
 build, a delete or a filing runs, says so in words that cover each (`plan.busy_deleting`,
 `library.err_busy`), never "delete the tile again" (a review, 2026-10-05).
 
+**A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
+Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
+its own (one more takes too much room); the tile's line and the cell's tooltip say how
+far the copy is (`putBackWords`: « retour à sa place : copie, 1,2 Go sur 4,1 Go », then
+« relecture »). A tile whose folder is on a disk away fails there at once, with its words
+(`SYS_TILE_DISK_ABSENT`).
+
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
 of the Library asked for it, from the Plan at the start too): the data used by the tiles on

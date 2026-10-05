@@ -164,6 +164,14 @@ with *Stop*: the tile under way stays where it was. Then the Library and X-Plane
 to their new folder, roads and forests included, and X-Plane keeps each line as you left it,
 enabled or not.
 
+A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
+back in its folder in place of the old version: moved there at once on the workshop's disk,
+copied and read back on another, the old version taken away only once the new one is in place.
+Built again unchanged, it is instant and nothing is copied. X-Plane keeps showing it from its
+folder, its line as you left it, and the Library lists it once, there. Works says how far the copy
+is in the Installation cell. If its disk is not connected, the tile is not built, and Works says
+why.
+
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
 are. If it was the build on screen, the next one in the list takes its place. The trash above the

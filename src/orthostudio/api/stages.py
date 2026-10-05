@@ -47,6 +47,9 @@ ROLE_STAGE: dict[str, Stage] = {
     "overlay": "assembly",
     "pack": "assembly",
     "install": "install",
+    # a tile filed elsewhere put back in its folder after its build (the atelier, step 4): in the
+    # Installation cell, which says how far the copy is, not a bar of its own
+    "put_back": "install",
 }
 
 _SUFFIX = re.compile(r"#\d+$")

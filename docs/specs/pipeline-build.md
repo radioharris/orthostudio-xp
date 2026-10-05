@@ -184,6 +184,25 @@ list), then `Library.register(tile, provider, zl, pack_dir, "osxp", keys)` with 
 of the manifest. `XP_RUNNING` refuses the install while X-Plane runs; the build itself is
 unaffected.
 
+**A tile filed elsewhere** (the atelier, step 4, 2026-10-05; `install.md` 4.7). `build_tiles` asks,
+before anything runs, where each tile is filed (`filing.tile_home`, `_homes`). A tile whose folder
+is on a disk away is not built: a `put_back` node fails at once with `SYS_TILE_DISK_ABSENT`, in
+the Installation cell. A tile filed in a folder that is there is built as any other, in the
+workshop, but without `tile.install` (`install=False` in its spec): installed from the workshop,
+it took X-Plane's link and line away from its folder. After the passes, `_put_back_tile` does its
+end: nothing when its folder holds this very build (`pack_is_intact` with the receipt's manifest;
+an unchanged build is instant and leaves nothing in the workshop), else the pack, assembled again
+in the workshop if a hit found it gone (`_assemble_again`), put back in its folder
+(`filing.put_back`), then `_settle_put_back`: the workshop's copy and its roads go, the Library
+lists the tile once, in its folder, as this build, and the X-Plane of Settings that shows it is
+given its install again, its line kept (`reenable=False`), or the install asked for when it did
+not. The step reports as a node of role `put_back` (`Started`, `Progress` with
+`putting back: copy|check <done> of <total> bytes`, `Done` or `Failed`), which the page shows in
+the Installation cell, not a bar of its own; a Stop of the job (its callback raises) stops it
+before its next file, and the tiles after it are not put back either (`SYS_CANCELLED`). A tile
+whose folder is gone from a disk that is here is built in the workshop as a new one, and its rows
+there are let go (`_let_go`). The tile's `pack_dir` in the report is its folder.
+
 ### 2.4 Global Scenery and the XP12 rasters
 
 `--global-scenery DIR` names the X-Plane 12 Global Scenery (or the X-Plane folder); by default

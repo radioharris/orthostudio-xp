@@ -417,6 +417,7 @@ Node ids are `<tile>/<role>` or `<tile>/<provider><zl>/<role>` (`#n` suffix poss
 | `textures` (`tile.textures`) | `imagery` |
 | `xp12`, `dsf`, `overlay`, `pack` (`xp12.rasters`, `tile.dsf`, `tile.overlay`, `tile.pack`) | `assembly` |
 | `install` (`tile.install`) | `install` |
+| `put_back` (no rule: a tile filed elsewhere put back in its folder after its build, the atelier, step 4, `pipeline-build.md` 2.3) | `install` |
 
 The three P3 data roles were missing from `ROLE_STAGE` until review 4: their events carried
 `stage: null` and the page showed no progress for a node that takes 24 s on a cold tile.
