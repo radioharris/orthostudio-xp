@@ -7105,6 +7105,21 @@ def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
     assert (
         tables["fr"]["works.act_put_back_copy"] == "retour à sa place : copie, {done} sur {total}"
     )
+    # X-Plane running at the put back: wait and build again, never "install from the Library";
+    # a disk away at either end: the tile was not put there (a review, 2026-10-05)
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), [m.codeText("SYS_PUT_BACK_XP_RUNNING", {tile: "+46+006", '
+        'folder: "/Tiles"}), m.codeText("SYS_TILE_DISK_ABSENT", {tile: "+46+006", '
+        'folder: "/Tiles/zOrthoStudio_+46+006"})])))',
+    )
+    (fr_xp, fr_away), (en_xp, en_away) = words
+    assert fr_xp[0].startswith("X-Plane est ouvert : la nouvelle version de la tuile +46+006")
+    assert "reconstruisez" in fr_xp[1] and "Bibliothèque" not in fr_xp[1]
+    assert "build the tile again" in en_xp[1] and "Library" not in en_xp[1]
+    assert fr_away[0].endswith("La tuile n'y a pas été mise.")
+    assert en_away[0].endswith("The tile was not put there.")
 
 
 def test_the_pick_boxes_and_the_filing_are_wired() -> None:

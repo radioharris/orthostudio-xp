@@ -65,6 +65,7 @@ __all__ = [
     "file_tile",
     "filing_plan",
     "pack_bytes",
+    "park_roads",
     "put_back",
     "same_disk",
     "tile_home",
@@ -418,7 +419,9 @@ def tile_home(
     there), else the workshop when the Library lists it there, else the latest of its folders
     elsewhere. ``None`` for the workshop. A folder gone from a disk that is here does not count:
     the tile is built in the workshop as a new one, and those folders are the second item, for
-    the Library to let go once it is. A folder on a disk away does count: the build refuses it."""
+    the Library to let go once it is. A folder on a disk away does count: the build refuses it.
+    A folder whose old version a put back cut short left under :data:`OLD_SUFFIX` has it back
+    under its name first."""
     here = Path(atelier) / pack_dir_name(tile)
     with Library(library_path) as lib:
         rows = [r for r in lib.list(tile=tile, kind="ortho") if r.built_by == "osxp"]
@@ -426,6 +429,12 @@ def tile_home(
     gone: list[Path] = []
     for r in rows:
         folder = Path(r.path)
+        cut = folder.with_name(folder.name + OLD_SUFFIX)
+        if not os.path.lexists(folder) and cut.is_dir():
+            # a put back cut between its two renames: the old version under its name again,
+            # before anything takes the folder for gone (a review, 2026-10-05)
+            with contextlib.suppress(OSError):
+                replace(cut, folder)
         if folder.is_dir() or disk_absent(folder):
             live.append((r.updated_at, folder))
         elif not _same_place(folder, here):
@@ -440,6 +449,23 @@ def tile_home(
     return max(live, key=lambda row: row[0])[1], gone
 
 
+def park_roads(pack: Path, tile: TileRef) -> None:
+    """The roads and forests a build wrote beside ``pack``, in its tiles folder's overlays pack,
+    moved into it (:data:`PARKED_OVERLAY`), where X-Plane does not read them. A tile filed elsewhere
+    has its roads drawn from its own folder: the new ones, left drawn from the workshop when its
+    put back did not end, made roads twice (a review, 2026-10-05)."""
+    beside = overlay_dsf_path(pack.parent, tile)
+    if beside.is_file() and pack.is_dir():
+        replace(beside, pack / PARKED_OVERLAY)
+
+
+def _refuse_while_xplane_runs(name: str, home: Path) -> None:
+    if install_packs.xplane_running():
+        raise OsxpError(
+            "SYS_PUT_BACK_XP_RUNNING", context={"tile": name, "folder": str(home.parent)}
+        )
+
+
 def put_back(
     new: Path,
     home: Path,
@@ -450,15 +476,17 @@ def put_back(
     stop: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Put ``new``, the new version of a tile the workshop built, in place of ``home``, the old
-    one in the folder it is filed in. On the workshop's disk it is moved there, in one step; on
-    another it is copied and read back under the temporary name (:func:`_copy_part`). Its roads
-    and forests, which the build wrote in the workshop's overlays pack, go with it: parked in it,
-    or left to another pack's when the old ones were, then put where the old ones were drawn.
-    The old version takes the name :data:`OLD_SUFFIX` for the moment the new one takes its place,
-    then goes. Until that moment it is not touched: a stop or a failure before leaves it as it
-    was, the new version back in the workshop. ``home``'s link in X-Plane leads to the same
-    folder, so its line does not change. Returns ``{tile, to, moved, left}``, ``left`` the old
-    version's folder when a file there could not be removed."""
+    one in the folder it is filed in. Its roads and forests, which the build wrote in the
+    workshop's overlays pack, are first parked in it (:func:`park_roads`): wherever this ends,
+    they are not drawn from the workshop. On the workshop's disk it is moved there, in one step;
+    on another it is copied and read back under the temporary name (:func:`_copy_part`), its roads
+    with it. X-Plane must be closed, before the copy and again before the swap: the old version
+    then takes the name :data:`OLD_SUFFIX`, the new one its name, and the old one goes. Until that
+    swap the old version is not touched: a stop or a failure leaves it as it was, the new version
+    back in the workshop. What follows the swap cannot fail the put back: the roads drawn where the
+    old ones were, the old version removed (``left``, its folder, when a file there could not be
+    removed). ``home``'s link in X-Plane leads to the same folder, so its line does not change.
+    Returns ``{tile, to, moved, left}``."""
     name = tile.name
     part = home.with_name(home.name + PART_SUFFIX)
     old = home.with_name(home.name + OLD_SUFFIX)
@@ -466,16 +494,10 @@ def put_back(
         # a put back cut between its two renames: the old version under its name first, whatever
         # comes next, so that X-Plane and the Library find it again
         replace(old, home)
-    if install_packs.xplane_running():
-        raise OsxpError(
-            "XP_RUNNING",
-            message=f"X-Plane is running: the new version of {name} waits in the workshop, and "
-            f"the one in {home.parent} is untouched.",
-            remedy="Quit X-Plane, then build the tile again: it is a moment's work.",
-        )
+    park_roads(new, tile)
+    _refuse_while_xplane_runs(name, home)
     if not home.parent.is_dir():
         raise OsxpError("SYS_TILE_DISK_ABSENT", context={"tile": name, "folder": str(home)})
-    roads = overlay_dsf_path(new.parent, tile) if overlay else None
     moved = same_disk(new, home.parent)
     if moved:
         if os.path.lexists(part):
@@ -487,7 +509,7 @@ def put_back(
                 raise
             moved = False  # two disks after all
     if not moved:
-        need = pack_bytes(new) + (roads.stat().st_size if roads and roads.is_file() else 0)
+        need = pack_bytes(new)
         free = shutil.disk_usage(home.parent).free
         if need + ROOM_MARGIN > free:
             raise OsxpError(
@@ -495,17 +517,12 @@ def put_back(
                 context={"volume": str(home.parent), "needed": _gb(need), "free": _gb(free)},
             )
         _copy_part(new, part, name, progress, stop)
-    added: Path | None = None
+    left_to_others = (home / LEFT_OVERLAY).is_file()  # the old roads left to another pack's
+    beside = overlay_dsf_path(home.parent, tile).is_file()  # the old roads drawn beside it
     try:
-        if roads is not None and roads.is_file():
-            # with the tile, as its old ones were: left to another pack's, or parked
-            added = part / (LEFT_OVERLAY if (home / LEFT_OVERLAY).is_file() else PARKED_OVERLAY)
-            shutil.copyfile(roads, added)
-            send_to_disk(added)
-            flush_disk(added)
-        beside = overlay_dsf_path(home.parent, tile).is_file()  # its old roads drawn beside it
-        if os.path.lexists(old):
+        if os.path.lexists(home) and os.path.lexists(old):
             _delete_pack_dir(old)  # an old version a put back could not remove
+        _refuse_while_xplane_runs(name, home)  # started during the copy
         had = os.path.lexists(home)  # its folder taken away during the build: the new one goes in
         if had:
             replace(home, old)
@@ -515,26 +532,28 @@ def put_back(
             if had:
                 replace(old, home)
             raise
-        with contextlib.suppress(OSError):
-            fsync_dir(home.parent)
     except BaseException:
-        # the old version as it was; the new one back in the workshop
+        # the old version as it was; the new one back in the workshop, its roads parked in it
+        if not os.path.lexists(home) and old.is_dir():
+            with contextlib.suppress(OSError):
+                replace(old, home)
         if moved and part.is_dir():
-            if added is not None:
-                added.unlink(missing_ok=True)
-            replace(part, new)
+            with contextlib.suppress(OSError):
+                replace(part, new)
         elif not moved:
             shutil.rmtree(part, ignore_errors=True)
         raise
-    if beside:
-        # drawn where the old ones were, by every X-Plane that showed the tile; none when the new
-        # version has none
-        if (home / PARKED_OVERLAY).is_file():
-            _unpark_overlay(home, tile)
-        elif not overlay:
-            overlay_dsf_path(home.parent, tile).unlink(missing_ok=True)
-    if roads is not None:
-        roads.unlink(missing_ok=True)  # the workshop's copy, which X-Plane could draw too
+    with contextlib.suppress(OSError):
+        fsync_dir(home.parent)
+    try:
+        if left_to_others and (home / PARKED_OVERLAY).is_file():
+            replace(home / PARKED_OVERLAY, home / LEFT_OVERLAY)
+        elif beside and (home / PARKED_OVERLAY).is_file():
+            _unpark_overlay(home, tile)  # drawn where the old ones were, by every X-Plane
+        elif beside and not overlay:
+            overlay_dsf_path(home.parent, tile).unlink(missing_ok=True)  # the new one has none
+    except OSError:
+        pass  # parked in the tile, not drawn: the next build or install puts them beside
     left = None
     try:
         if os.path.lexists(old):

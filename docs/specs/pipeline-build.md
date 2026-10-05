@@ -193,15 +193,24 @@ it took X-Plane's link and line away from its folder. After the passes, `_put_ba
 end: nothing when its folder holds this very build (`pack_is_intact` with the receipt's manifest;
 an unchanged build is instant and leaves nothing in the workshop), else the pack, assembled again
 in the workshop if a hit found it gone (`_assemble_again`), put back in its folder
-(`filing.put_back`), then `_settle_put_back`: the workshop's copy and its roads go, the Library
-lists the tile once, in its folder, as this build, and the X-Plane of Settings that shows it is
-given its install again, its line kept (`reenable=False`), or the install asked for when it did
-not. The step reports as a node of role `put_back` (`Started`, `Progress` with
-`putting back: copy|check <done> of <total> bytes`, `Done` or `Failed`), which the page shows in
-the Installation cell, not a bar of its own; a Stop of the job (its callback raises) stops it
-before its next file, and the tiles after it are not put back either (`SYS_CANCELLED`). A tile
-whose folder is gone from a disk that is here is built in the workshop as a new one, and its rows
-there are let go (`_let_go`). The tile's `pack_dir` in the report is its folder.
+(`filing.put_back`), then `_settle_put_back`: the workshop's copy and its roads go, leftovers of a
+put back cut short go, the Library lists the tile once, in its folder, as this build, and the
+X-Plane of Settings that shows it is given its install again, its line kept (`reenable=False`),
+or the install asked for when it did not; while that X-Plane runs, nothing of it changes (its
+link leads there already). When only its roads are gone, they come back from the store
+(`_roads_back`). Whatever fails, the new roads are parked in the workshop's version, not drawn
+twice. The step reports as a node of role `put_back`, declared with the build's nodes and
+weighing its copy (`_put_back_rows`, `Phase.learned`), so that the tile is in the build until it
+is back and the job's time left counts it (`Started`, `Progress` with
+`putting back: copy|check <done> of <total> bytes`, `Done`, a hit when nothing was copied, or
+`Failed`); the page shows it in the Installation cell, not a bar of its own, and the job takes it
+for the tile's last step. A Stop of the job (its callback raises `CancelRequested`, a
+`BaseException`, which `_put_back_tile` catches) stops it before its next file; the tiles after it
+are not put back (`SYS_CANCELLED`), the others are settled, and `build_tiles` returns its report,
+stopped. X-Plane running is `SYS_PUT_BACK_XP_RUNNING`. Its failures count in the report's
+`failed`. A tile whose folder is gone from a disk that is here is built in the workshop as a new
+one, and its rows there are let go (`_let_go`). The tile's `pack_dir` in the report is its
+folder.
 
 ### 2.4 Global Scenery and the XP12 rasters
 

@@ -553,42 +553,58 @@ one (2026-10-05): built as any tile, then moved, or copied when its folder is on
   workshop when the Library lists the tile there; else the latest of its folders elsewhere. A
   folder gone from a disk that is here does not count: the tile is built in the workshop as a new
   one, and its rows there follow it. A folder on a disk away does: the tile is not built
-  (`SYS_TILE_DISK_ABSENT`), and the others of the build are.
+  (`SYS_TILE_DISK_ABSENT`), and the others of the build are. A folder whose old version a put
+  back cut short left under `<name>.osxp-old` has it back under its name first.
 * It is never installed from the workshop: X-Plane's link leads to its folder all along, and its
-  line in `scenery_packs.ini` stays as the user left it.
-* Unchanged, its folder holds this very build already: nothing is copied, nothing is left in the
-  workshop, and the build is instant.
-* Else, with X-Plane closed (`XP_RUNNING`): on the workshop's disk the new version is moved into
-  place in one step, its images staying the cache's files; on another it is copied under
-  `<name>.osxp-part`, sent to the disk as a group, read back (`SYS_TILE_COPY_DIFFERS`), with room
-  for it and `ROOM_MARGIN` (`SYS_DISK_FULL`). Its roads and forests, which the build wrote in the
-  workshop's overlays pack, go with it: parked in it, or left to another pack's when the old ones
-  were. Then the old version takes the name `<name>.osxp-old`, the new one its name, and the old
-  one goes; its roads are drawn where the old ones were, or the old ones go when the new version
-  has none. A put back cut between those two renames finds the old version under its name first.
-  Until the old version is renamed, nothing of it is touched: a stop or a failure before leaves it
-  as it was, the new version back in the workshop, and *Build again* finishes in a moment.
-* Then the workshop keeps nothing of the tile (the cache keeps its images), the Library lists it
-  once, in its folder, as this build, and the X-Plane of Settings that shows it is given its
-  install again, its line kept, or the install asked for when it did not show it. Every X-Plane
-  that showed it sees the new version, its link leading to the same folder.
+  line in `scenery_packs.ini` stays as the user left it. Its put back is declared with the build's
+  nodes, weighing its bytes copied then read back on another disk (`_put_back_rows`): the tile is
+  in the build until it is back in its folder, and Works' bar and time left count the copy.
+* Unchanged, its folder holds this very build already, its roads with it: nothing is copied,
+  nothing is left in the workshop, and the step says already there. When only its roads are gone
+  (a tile found again without them), they come back from the store, parked in it.
+* Else, with X-Plane closed (`SYS_PUT_BACK_XP_RUNNING`, asked before the copy and again before
+  the swap): its new roads and forests, which the build wrote in the workshop's overlays pack,
+  are first parked in the new version (`park_roads`), where X-Plane does not read them; on the
+  workshop's disk the new version is moved into place in one step, its images staying the
+  cache's files; on another it is copied under `<name>.osxp-part`, its roads with it, sent to the
+  disk as a group, read back (`SYS_TILE_COPY_DIFFERS`), with room for it and `ROOM_MARGIN`
+  (`SYS_DISK_FULL`). Then the old version takes the name `<name>.osxp-old`, the new one its name,
+  and the old one goes; its roads are put where the old ones were drawn, or left to another pack's
+  when the old ones were, or the old ones go when the new version has none. Until that swap
+  nothing of the old version is touched: a stop or a failure leaves it as it was, the new version
+  back in the workshop, its roads parked in it (left beside it, they were drawn twice), and
+  *Build again* finishes. What follows the swap cannot fail the put back.
+* Then the workshop keeps nothing of the tile (the cache keeps its images), what a put back cut
+  short left beside its folder goes, the Library lists it once, in its folder, as this build, and
+  the X-Plane of Settings that shows it is given its install again, its line kept, or the install
+  asked for when it did not show it; while that X-Plane runs, the tile it shows has its parked
+  roads put beside it and its row, nothing of X-Plane changed. An old version a file held is said
+  in Works, with where it is. Every X-Plane that showed it sees the new version, its link leading
+  to the same folder.
+* A Stop of the build (the job's callback raises `CancelRequested`) stops the put back under way
+  before its next file, and the tiles after it are not put back; the build ends stopped, with its
+  report, the other tiles settled.
 
 Works shows the put back in the Installation cell, with how far the copy is in the tile's line
 and the cell's tooltip (« retour à sa place : copie, 1,2 Go sur 4,1 Go »), no bar of its own: one
 more takes too much room.
 
-Acceptance (`tests/test_put_back.py`, fake X-Planes): where the new version goes, by the rules
-above; on another disk copied, read back and in place of the old one, its new roads where the
-old ones were drawn and none left in the workshop; on the workshop's disk moved in one step, its
-images the cache's files; its new roads parked when the old ones were not drawn, and the old ones
-gone with a new version that has none; X-Plane running, no room, a Stop and a copy that reads back
-wrong leave the old version and the new one in the workshop, no temporary folder; a move refused
-at the swap goes back to the workshop; a put back cut between its two renames finds the old
-version first, even when it is refused next; at the end of a build the tile is in its folder,
-X-Plane's line as it was, one Library row, the workshop's copy and row gone, and built again
-unchanged nothing is copied; a Stop leaves the old version and stops the next ones; a tile on a
-disk away is not built; a tile filed elsewhere has no install node; the rows of its folders gone
-follow it to the workshop.
+Acceptance (`tests/test_put_back.py`, fake X-Planes; the build's own tests run `build_tiles` with
+a scheduler that answers every node as built, and the job's real Stop): where the new version
+goes, by the rules above; on another disk copied, read back and in place of the old one, its new
+roads where the old ones were drawn and none left in the workshop; on the workshop's disk moved
+in one step, its images the cache's files; its new roads parked when the old ones were not drawn,
+and the old ones gone with a new version that has none; X-Plane running, no room, a Stop and a
+copy that reads back wrong leave the old version, the new one in the workshop with its roads
+parked, no temporary folder; X-Plane started during the copy is seen before the swap; a move
+refused at the swap goes back to the workshop; a put back cut between its two renames is mended
+by the next build; what follows the swap cannot fail it; an old version a file kept is said, then
+taken away by the next build; at the end of a build the tile is in its folder, X-Plane's line as
+it was, one Library row, the workshop's copy and row gone, and built again unchanged nothing is
+copied, X-Plane running or not; lost roads come back; the job's Stop ends the build stopped, the
+tile after it settled and the stopped one not done; a tile on a disk away is not built and shows
+nothing of it done; a tile filed elsewhere has no install node; the put back weighs its copy; the
+rows of its folders gone follow it to the workshop.
 
 ## 5. Library (`library.py`)
 

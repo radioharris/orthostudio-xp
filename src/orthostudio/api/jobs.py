@@ -50,6 +50,7 @@ from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import load_registry
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
+    PUT_BACK_ROLE,
     BuildEnv,
     BuildEvent,
     BuildReport,
@@ -219,7 +220,9 @@ class _TileState:
     def status(self, job_status: str) -> str:
         if any(n.status == "failed" for n in self.nodes.values()):
             return "failed"
-        target = [n for n in self.nodes.values() if n.role == self.target_role]
+        # a tile filed elsewhere ends when it is back in its folder (the atelier, step 4): until
+        # then it is in the build, and a put back stopped leaves it unfinished, not done
+        target = [n for n in self.nodes.values() if n.role in (self.target_role, PUT_BACK_ROLE)]
         if target and all(n.status in ("done", "hit") for n in target):
             return "done"
         if job_status == "cancelled":
@@ -676,10 +679,12 @@ class Job:
             if st.status == "pending":
                 self._weigh(st)
         for ts in self._tiles.values():
+            # a tile whose folder is on a disk away is not built: nothing of it ran or was there
+            away = any(n.role == PUT_BACK_ROLE and n.status == "failed" for n in ts.nodes.values())
             for node_id, st in list(ts.nodes.items()):
                 if node_id in ids or st.status != "pending":
                     continue
-                if st.role == "osm":
+                if st.role == "osm" and not away:
                     self._reuse(node_id, None)
                 else:
                     del ts.nodes[node_id]

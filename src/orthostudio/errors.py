@@ -1084,8 +1084,17 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "The folder tile {tile} is filed in, {folder}, is not there: its disk is likely not "
-        "connected. The tile was not built again.",
+        "connected. The tile was not put there.",
         "Connect its disk, then build the tile again; or take it out of the selection.",
+    ),
+    _spec(
+        "SYS_PUT_BACK_XP_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running: the new version of tile {tile} waits in the workshop, and the one "
+        "in {folder} is untouched.",
+        "Quit X-Plane, then build the tile again: what was built is reused, only the copy is "
+        "made again.",
     ),
     _spec(
         "SYS_TILE_NOT_WHOLE",

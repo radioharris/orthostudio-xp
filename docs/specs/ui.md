@@ -767,8 +767,11 @@ build, a delete or a filing runs, says so in words that cover each (`plan.busy_d
 Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
 its own (one more takes too much room); the tile's line and the cell's tooltip say how
 far the copy is (`putBackWords`: « retour à sa place : copie, 1,2 Go sur 4,1 Go », then
-« relecture »). A tile whose folder is on a disk away fails there at once, with its words
-(`SYS_TILE_DISK_ABSENT`).
+« relecture »). The step is declared with the build's nodes, weighing its copy: the job's bar and
+time left count it, and the tile is in the build until it is back. A tile whose folder is on a
+disk away fails there at once, with its words (`SYS_TILE_DISK_ABSENT`), and nothing of it reads
+done; X-Plane running at the put back has its own words (`SYS_PUT_BACK_XP_RUNNING`: quit X-Plane,
+build the tile again).
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
