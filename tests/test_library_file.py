@@ -275,7 +275,8 @@ async def test_one_filing_at_a_time_and_nothing_else_changes_a_tile_meanwhile(
     app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """While a tile is filed: how far it is can be asked, it can be stopped, and a second filing,
-    a change of a tile or a build waits its turn."""
+    a change of a tile, a build or "Free space" (the atelier, step 5: the filing moves a tile out of
+    the atelier) waits its turn."""
     application, _mgr = app
     pack, _cs = _installed(home, xplane)
     alps = tmp_path / "Alps"
@@ -302,13 +303,15 @@ async def test_one_filing_at_a_time_and_nothing_else_changes_a_tile_meanwhile(
         )
         install = await c.post(f"/api/library/{T.name}/install", json={"path": str(pack)})
         build = await c.post("/api/jobs", json={"tiles": ["+43+005"]})
+        free = await c.post("/api/clean", json={"filed": True})
         stop = await c.post("/api/library/filing/stop", json={})
         release.set()
         r = await filed
         after = (await c.get("/api/library/filing")).json()["progress"]
     assert progress == {"tile": T.name, "phase": "copy", "done": 5, "total": 10}
-    for busy in (second, install, build):
+    for busy in (second, install, build, free):
         assert busy.status_code == 409 and busy.json()["error"]["code"] == "SYS_BUSY", busy.text
+    assert "filed elsewhere" in free.json()["error"]["message"]
     assert stop.json() == {"stopping": True}
     assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_FILING_STOPPED"
     assert after is None

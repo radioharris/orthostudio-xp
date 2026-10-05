@@ -44,8 +44,9 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   built with, found with a search, filtered by the folder it is in and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
   flew says so), its zones and its patches; the Plan says it too, over a tile and under the
   squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
-  following them; built again, a filed tile goes back to its folder; a tile you moved by hand is
-  found again where you put it.
+  following them; built again, a filed tile goes back to its folder; the cache the workshop keeps
+  for the tiles filed elsewhere can be freed on its own, the tiles staying whole; a tile you moved
+  by hand is found again where you put it.
   Remove a tile from X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and

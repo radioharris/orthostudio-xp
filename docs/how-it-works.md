@@ -172,6 +172,15 @@ folder, its line as you left it, and the Library lists it once, there. Works say
 is in the Installation cell. If its disk is not connected, the tile is not built, and Works says
 why.
 
+The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
+*Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,
+what only those tiles need goes, their data and their downloaded images, and the workshop's disk
+gets the room back. The tiles themselves are not touched: they stay whole and in X-Plane, and
+building one again later downloads its images again, like the first time. What a tile of the
+workshop uses too stays, such as the images astride the border with a neighbour. A tile filed on
+the workshop's own disk shares its textures with the cache, one file under two names: deleting the
+cache's name would give nothing back, so those stay.
+
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
 are. If it was the build on screen, the next one in the list takes its place. The trash above the
@@ -543,8 +552,9 @@ and built again.
 | `osxp clean` | - | what no tile on disk needs, unless used in the last hour | stays | stays |
 | `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
-| `osxp clean --all` | - | everything no tile on disk needs, however recent | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box | emptied if you tick its own box |
+| `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent, and the cache of the tiles filed outside the workshop | emptied, with the map cache | emptied |
+| Free space (Library) | - | everything no tile on disk needs, however recent; the cache of the tiles filed outside the workshop if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 

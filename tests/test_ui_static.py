@@ -2198,10 +2198,10 @@ def test_the_library_frees_disk_space_after_asking() -> None:
         f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true)]",
     )
     assert plans == [
-        {"unused": 5, "pictures": 0, "heights": 0, "total": 5},
-        {"unused": 5, "pictures": 8, "heights": 0, "total": 13},
-        {"unused": 5, "pictures": 0, "heights": 9, "total": 14},
-        {"unused": 0, "pictures": 0, "heights": 0, "total": 0},
+        {"unused": 5, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
+        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2219,6 +2219,74 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     refused = 'process.stdout.write(JSON.stringify(await call("POST", "/api/clean", {})));'
     busy = _node_mock(refused, fail="busy")
     assert busy == {"status": 409, "code": "SYS_BUSY"}
+
+
+def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
+    """The atelier, step 5: "Free space" offers the cache of the tiles filed outside the atelier as
+    a line and a choice of its own, shown only while some tile is filed outside. Each choice frees
+    its own line: the image pieces of those tiles are theirs, not the images'."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    choice = re.search(r'<div id="disk-filed-choice" hidden>.*?</div>', html, re.S)
+    assert choice is not None and 'id="disk-filed"' in choice.group(0)
+    assert html.index('id="disk-filed"') < html.index('id="disk-images"')
+    disk = (
+        "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9, "
+        "filed_tiles: 2, filed_bytes: 3, filed_images_bytes: 4}"
+    )
+    plans = _node_json(
+        "app.js",
+        f"[m.freeSpacePlan({disk}, false, false, true), m.freeSpacePlan({disk}, true, true, true),"
+        f" m.freeSpacePlan({disk}, true, false),"
+        f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
+    )
+    assert plans == [
+        {"unused": 5, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        {"unused": 5, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
+        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+    ]
+    offered = _node_json(
+        "app.js",
+        "[m.filedOffered({filed_tiles: 2, filed_bytes: 3, filed_images_bytes: 0}),"
+        " m.filedOffered({filed_tiles: 2, filed_bytes: 0, filed_images_bytes: 0}),"
+        " m.filedOffered({filed_tiles: 0, filed_bytes: 3}), m.filedOffered(null)]",
+    )
+    # a tile of a data folder chosen before has its cache there: no line of 0 bytes for ever
+    assert offered == [True, False, False, False]
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    render = re.search(r"\nfunction renderDisk\(\) \{.*?\n\}\n", app, re.S)
+    assert render is not None
+    body = render.group(0)
+    # the line and the choice only while some tile is filed outside, the choice read only then
+    assert '$("disk-filed-choice").hidden = !offered;' in body
+    assert 'offered && $("disk-filed").checked' in body
+    assert "(Number(d.filed_bytes) || 0)" in body  # the data in use leaves their cache out
+    # "Free space" waits for a filing, which the engine refuses meanwhile
+    assert "Boolean(state.filing)" in body and 't("disk.filing_note")' in body
+    free = re.search(r"\nasync function freeSpace\(\) \{.*?\n\}\n", app, re.S)
+    assert free is not None and "{ images, relief, filed }" in free.group(0)
+    assert "res?.filed_freed_bytes" in free.group(0)
+    script = """
+    const file = await call("POST", "/api/library/zOrthoStudio_%2B43%2B004/file", {
+      path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004",
+      folder: "/Volumes/Tiles/Alps",
+    });
+    const before = (await call("GET", "/api/disk")).ok;
+    const freed = (await call("POST", "/api/clean", {filed: true})).ok;
+    const after = (await call("GET", "/api/disk")).ok;
+    process.stdout.write(JSON.stringify({file: file.ok, before, freed, after}));
+    """
+    got = _node_mock(script)
+    assert got["file"]["to"] == "/Volumes/Tiles/Alps/zOrthoStudio_+43+004"
+    assert got["before"]["filed_tiles"] == 1 and got["before"]["filed_bytes"] > 0
+    cache = got["before"]["filed_bytes"] + got["before"]["filed_images_bytes"]
+    assert got["freed"]["filed_freed_bytes"] == cache
+    assert got["after"]["filed_tiles"] == 1  # the tile stays filed, its cache went
+    assert got["after"]["filed_bytes"] == got["after"]["filed_images_bytes"] == 0
+    untouched = _node_mock(
+        'process.stdout.write(JSON.stringify((await call("GET", "/api/disk")).ok));'
+    )
+    assert untouched["filed_tiles"] == 0 and untouched["filed_bytes"] == 0
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:

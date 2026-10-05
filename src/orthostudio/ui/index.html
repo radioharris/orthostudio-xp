@@ -363,6 +363,10 @@
     <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
       <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>
       <dl class="disk-list" id="disk-list"></dl>
+      <div id="disk-filed-choice" hidden>
+        <label class="disk-check"><input type="checkbox" id="disk-filed"> <span data-i18n="disk.also_filed">Also delete the cache of the tiles filed outside the workshop</span></label>
+        <p class="help" data-i18n="disk.filed_check_help">The filed tiles are not touched: they stay whole and in X-Plane. Building them again downloads their images again.</p>
+      </div>
       <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
       <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
       <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>

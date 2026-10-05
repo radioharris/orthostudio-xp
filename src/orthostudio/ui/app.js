@@ -443,6 +443,20 @@ function mockDataDir() {
   return MOCK_FAIL === "no-data-disk" ? MOCK_AWAY_DISK : null;
 }
 
+/** The mock's tiles OrthoStudio XP built and filed outside the atelier (its `tiles` folder). */
+function mockFiledTiles() {
+  const atelier = `${mockDataDir() || "/Users/pilot/.orthostudio"}/tiles`;
+  return libraryTiles(mock.library || []).filter((e) => e.built_by === "osxp" && String(e.path).replace(/[\\/][^\\/]*$/, "") !== atelier);
+}
+
+/** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
+ * and 0.7 GB of image pieces a tile, nothing for one whose cache was freed (`POST /api/clean`). */
+function mockFiledCache() {
+  const filed = mockFiledTiles();
+  const kept = filed.filter((e) => !mock.filedFreed?.has(e.path)).length;
+  return { filed_tiles: filed.length, filed_bytes: kept * 2.1e9, filed_images_bytes: kept * 0.7e9 };
+}
+
 /** Like the engine: nothing is estimated or built while the data folder's disk is unplugged. */
 function mockCheckDataDisk() {
   const dir = mockDataDir();
@@ -1318,20 +1332,27 @@ export async function mockApi(method, path, body, options = {}) {
   if (p === "/api/disk" && method === "GET") {
     if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
-    return { ...mock.disk, tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
+    return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
     if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
+    const filed = Boolean(body?.filed);
+    const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - freed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, removed: freed ? 12 : 0 };
+    const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
+    if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
+    // the filed tiles' data is the store's too: it leaves the store with them
+    const storeFreed = freed + (filed ? cache.filed_bytes : 0);
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
@@ -2252,7 +2273,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 28;
+const PAGE_API_LEVEL = 29;
 
 async function loadStatus() {
   try {
@@ -5048,15 +5069,31 @@ async function loadDisk() {
   renderDisk();
 }
 
-/** The sizes a confirmation and the panel show: the unused tile data, and with `images` the
- * downloaded image pieces and the map background. Exported for the tests. */
-export function freeSpacePlan(disk, images, relief) {
+/** The sizes a confirmation and the panel show: the unused tile data, with `images` the
+ * downloaded image pieces and the map background, and with `filed` the cache of the tiles filed
+ * outside the atelier. Each choice frees its own line: the image pieces of those tiles are theirs,
+ * not counted in the images'. Exported for the tests. */
+export function freeSpacePlan(disk, images, relief, filed = false) {
   const unused = Math.max(0, Number(disk?.unused_bytes) || 0);
   const pictures = images ? Math.max(0, Number(disk?.images_bytes) || 0) + Math.max(0, Number(disk?.mapcache_bytes) || 0) : 0;
   // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
   const heights = relief ? Math.max(0, Number(disk?.relief_bytes) || 0) : 0;
-  return { unused, pictures, heights, total: unused + pictures + heights };
+  const away = filed ? filedCacheBytes(disk) : 0;
+  return { unused, pictures, heights, filed: away, total: unused + pictures + heights + away };
+}
+
+/** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
+ * need and the image pieces only they use. */
+function filedCacheBytes(disk) {
+  return Math.max(0, Number(disk?.filed_bytes) || 0) + Math.max(0, Number(disk?.filed_images_bytes) || 0);
+}
+
+/** Whether the panel offers to free that cache: only while tiles filed outside have some here. A
+ * tile of a data folder chosen before has its cache there, not here: a line of 0 bytes, and a box
+ * freeing nothing, would stay for ever. Exported for the tests. */
+export function filedOffered(disk) {
+  return (Number(disk?.filed_tiles) || 0) > 0 && filedCacheBytes(disk) > 0;
 }
 
 function renderDisk() {
@@ -5071,10 +5108,12 @@ function renderDisk() {
     setText(note, "");
     return;
   }
-  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0));
+  const offered = filedOffered(d);
+  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0));
   const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
   list.append(
     ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
+    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
     ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
     ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
     ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
@@ -5085,9 +5124,11 @@ function renderDisk() {
   reveal.hidden = !dataFolderShown(state.status);
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
-  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked);
-  button.disabled = Boolean(d.building) || plan.total <= 0 || state.diskBusy;
-  let said = d.building ? t("disk.busy_note") : plan.total <= 0 ? t("disk.nothing") : "";
+  $("disk-filed-choice").hidden = !offered;
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked);
+  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
+  button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
+  let said = d.building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
   if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
   setText(note, said);
 }
@@ -5099,6 +5140,7 @@ function confirmFreeSpace(plan) {
   $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
+  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
   if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
   lines.push(t("disk.confirm_kept"));
@@ -5120,14 +5162,15 @@ async function freeSpace() {
   if (state.diskBusy || !state.disk) return;
   const images = $("disk-images").checked;
   const relief = $("disk-relief").checked;
-  const plan = freeSpacePlan(state.disk, images, relief);
+  const filed = filedOffered(state.disk) && $("disk-filed").checked;
+  const plan = freeSpacePlan(state.disk, images, relief, filed);
   if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();
   try {
-    const res = await api("POST", "/api/clean", { images, relief });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0);
+    const res = await api("POST", "/api/clean", { images, relief, filed });
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
@@ -5995,6 +6038,7 @@ async function runFiling(go, folder) {
   const errors = clear($("library-errors"));
   renderLibrary();
   renderFiling();
+  renderDisk(); // "Free space" waits for the filing
   const timer = setInterval(pollFiling, 1000);
   let filed = 0;
   let failure = null;
@@ -6659,6 +6703,7 @@ async function boot() {
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);
   $("disk-relief").addEventListener("change", renderDisk);
+  $("disk-filed").addEventListener("change", renderDisk);
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();

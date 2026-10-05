@@ -83,6 +83,40 @@ async def test_disk_measures_and_free_space_frees_what_no_tile_needs(home: Path)
 
 
 @pytest.mark.anyio
+async def test_the_cache_of_the_tiles_filed_outside_is_measured_and_freed_on_request(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The atelier, step 5: the measure gives the cache of the tiles filed outside the atelier
+    apart, the images' choice leaves it, and "Free space" deletes it when asked; the tile stays
+    whole."""
+    from test_clean_filed import F, World
+
+    monkeypatch.setenv("OSXP_DATA_DIR", str(tmp_path / "data"))
+    w = World(tmp_path)
+    w.build(F, 2, osm=w.osm)
+    w.pack(F, tmp_path / "Other disk" / "Alps", link=False)
+    piece = w.piece(46.5, 7.5, 4000)
+    app, mgr = _app(home)
+    try:
+        async with client_for(app) as c:
+            doc = (await c.get("/api/disk")).json()
+            assert doc["filed_tiles"] == 1 and doc["filed_images_bytes"] == 4000
+            assert doc["filed_bytes"] > 0 and doc["images_bytes"] == doc["unused_bytes"] == 0
+            r = await c.post("/api/clean", json={"images": True})
+            assert r.status_code == 200 and r.json()["filed_freed_bytes"] == 0, r.text
+            assert piece.is_file()
+            r = await c.post("/api/clean", json={"filed": True})
+            assert r.status_code == 200, r.text
+            assert r.json()["filed_freed_bytes"] == doc["filed_bytes"] + 4000
+            after = (await c.get("/api/disk")).json()
+            assert after["filed_tiles"] == 1
+            assert after["filed_bytes"] == after["filed_images_bytes"] == 0
+    finally:
+        mgr.close()
+    assert not piece.exists() and w.whole(F)
+
+
+@pytest.mark.anyio
 async def test_free_space_waits_for_builds_here_and_in_a_terminal(home: Path) -> None:
     """Without a grace period, a running build could lose what it is about to use."""
     files = _world(home)
@@ -135,7 +169,14 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
         started.set()
         release.wait(10)
         return SimpleNamespace(
-            freed_bytes=1, images_bytes=5, mapcache_bytes=2, relief_bytes=4, packs=[]
+            freed_bytes=1,
+            images_bytes=5,
+            mapcache_bytes=2,
+            relief_bytes=4,
+            filed_tiles=0,
+            filed_bytes=0,
+            filed_images_bytes=0,
+            packs=[],
         )
 
     monkeypatch.setattr(api_app, "clean", slow_clean)

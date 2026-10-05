@@ -775,14 +775,22 @@ def clean(
             "--relief", help="also empty the elevation cells (downloaded again if needed)"
         ),
     ] = False,
+    filed: Annotated[
+        bool,
+        typer.Option(
+            "--filed",
+            help="also delete the cache of the tiles filed outside the atelier (the tiles stay "
+            "whole; building them again downloads their images again)",
+        ),
+    ] = False,
     everything: Annotated[
         bool,
         typer.Option(
             "--all",
             help="free all the space OrthoStudio XP can give back: every built result no tile on "
             "disk needs, even from a build that just ended, plus the downloaded image pieces, the "
-            "map cache and the elevation cells (a tile built again downloads them again); refused "
-            "while a build runs",
+            "map cache, the elevation cells and the cache of the tiles filed outside the atelier "
+            "(a tile built again downloads them again); refused while a build runs",
         ),
     ] = False,
     store: Annotated[Path | None, _STORE_OPT] = None,
@@ -803,14 +811,16 @@ def clean(
     )
 
     store_root = store or default_store_root()
-    if everything and store_root.is_dir():
-        # Without the hour of grace, a build running now could lose what it is about to use.
+    if (everything or filed) and store_root.is_dir():
+        # Without the hour of grace, a build running now could lose what it is about to use; and
+        # the image pieces of a tile filed outside have none: a build of it may be fetching them.
         with Store(store_root) as st:
             busy = sorted(st.building_pids())
         if busy:
+            again = "--all" if everything else "--filed"
             typer.echo(
                 f"a build is running (process {', '.join(map(str, busy))}): nothing was deleted. "
-                "Wait for it to finish (or stop it), then run osxp clean --all again.",
+                f"Wait for it to finish (or stop it), then run osxp clean {again} again.",
                 err=True,
             )
             raise typer.Exit(EXIT_ERROR)
@@ -825,6 +835,7 @@ def clean(
         mapcache_root=default_mapcache_root(),
         elevation_root=default_elevation_dir(),
         relief=relief or everything,
+        filed=filed or everything,
     )
     if json_output:
         typer.echo(json.dumps(report.to_dict(), indent=1))
@@ -836,7 +847,12 @@ def clean(
         f"{verb} {_size(report.freed_bytes)}"
     )
     if report.images_removed:
-        typer.echo(f"imagery cache emptied: freed {_size(report.images_bytes)}")
+        but = (
+            ", but for the pieces of the tiles filed outside the atelier (--filed)"
+            if report.filed_images_bytes and not report.filed_removed
+            else ""
+        )
+        typer.echo(f"imagery cache emptied{but}: freed {_size(report.images_bytes)}")
     elif images or everything:
         typer.echo(f"imagery cache: {verb} {_size(report.images_bytes)}")
     else:
@@ -853,11 +869,26 @@ def clean(
             f"elevation cells: {_size(report.relief_bytes)}, kept (--relief empties them; a tile "
             "built later downloads them again, which is far quicker than its images)"
         )
-    if everything:
+    filed_cache = report.filed_bytes + report.filed_images_bytes
+    if report.filed_removed:
         typer.echo(
-            f"in total: {verb} "
-            f"{_size(report.freed_bytes + report.images_bytes + report.relief_bytes)}"
+            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: freed "
+            f"{_size(filed_cache)}"
         )
+    elif filed or everything:
+        typer.echo(
+            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: {verb} "
+            f"{_size(filed_cache)}"
+        )
+    elif report.filed_tiles and filed_cache:  # tiles of a data folder chosen before have none here
+        typer.echo(
+            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: "
+            f"{_size(filed_cache)}, kept (--filed deletes it; the tiles stay whole, and building "
+            "them again downloads their images again)"
+        )
+    if everything:
+        total = report.freed_bytes + report.images_bytes + report.relief_bytes + filed_cache
+        typer.echo(f"in total: {verb} {_size(total)}")
 
 
 @app.command("import-ortho4xp")

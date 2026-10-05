@@ -776,14 +776,20 @@ build the tile again).
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
 of the Library asked for it, from the Plan at the start too): the data used by the tiles on
-this computer, the data no tile needs any more, the downloaded images, the map background and the
-**downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a modal dialog that
-says what goes and how much (Escape keeps everything), with **two** checkboxes, one for the
-downloaded images and one for the relief: a square of relief is 40 MB from Copernicus against
-800 MB of imagery at ZL16, and comes back much faster, so the choices are separate. The relief was
-counted by nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is
-disabled while a build runs and when there is nothing to free, and ends with a toast of what came
-back. A 409 `SYS_BUSY` shows as a card in the Library's words.
+this computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their
+data only they need and the image pieces only they use, a line shown only while they have some
+here: a tile of a data folder chosen before has its cache there), the data no tile needs any more, the downloaded images (those of the filed tiles
+excepted: they are in their line), the map background and the **downloaded relief**, each with a
+plain tooltip. *Free space…* asks first, in a modal dialog that says what goes and how much
+(Escape keeps everything), with a checkbox per choice, each freeing its own line: the cache of the
+filed tiles (shown with its line; its help says the tiles stay whole and in X-Plane, and building
+them again downloads their images again), the downloaded images, and the relief: a square of
+relief is 40 MB from Copernicus against 800 MB of imagery at ZL16, and comes back much faster, so
+the choices are separate. The relief was counted by nothing until a user emptied everything and
+found 1.4 GB of it left (2026-09-18). It is disabled while a build runs, while this page files
+tiles (the engine refuses meanwhile: a filing moves a tile out of the atelier) and when there is
+nothing to free, and ends with a toast of what came back. A 409 `SYS_BUSY` shows as a card in the
+Library's words, which name builds and filings.
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can

@@ -307,6 +307,9 @@ class CleanRequest(BaseModel):
     """Also empty the elevation cells downloaded and kept: its own checkbox, since the relief of a
     square costs far less to fetch again than its imagery (a user found 1.4 GB left after emptying
     everything, 2026-09-18)."""
+    filed: bool = False
+    """Also delete the cache of the tiles filed outside the atelier: what only they need, and the
+    image pieces only they use (the atelier, step 5). The tiles themselves are not touched."""
 
 
 class DeleteRequest(BaseModel):

@@ -150,7 +150,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 28
+API_LEVEL = 29
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -180,7 +180,9 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 ``data``, whose tracing (``vectors``) joined ``terrain``, 27 = finding a tile again (``POST
 /api/library/{name}/find``) and ``disk_absent`` in the library, 28 = filing tiles elsewhere (``POST
 /api/library/file-plan``, ``POST /api/library/{name}/file``, ``GET /api/library/filing``, ``POST
-/api/library/filing/stop``). A page
+/api/library/filing/stop``), 29 = the cache of the tiles filed outside the atelier in ``GET
+/api/disk`` (``filed_tiles``, ``filed_bytes``, ``filed_images_bytes``) and ``POST /api/clean``
+(``filed``, ``filed_freed_bytes``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2238,7 +2240,7 @@ def create_app(
         with Store(root) as st:
             return st.building_pids()
 
-    def collect(*, images: bool, relief: bool, dry_run: bool) -> Any:
+    def collect(*, images: bool, relief: bool, filed: bool, dry_run: bool) -> Any:
         # No grace period: the callers check first that nothing is building (osxp clean --all).
         return clean(
             default_store_root(),
@@ -2251,6 +2253,7 @@ def create_app(
             mapcache_root=default_mapcache_root(),
             elevation_root=default_elevation_dir(),
             relief=relief,
+            filed=filed,
         )
 
     def busy_building(other: bool) -> JSONResponse:
@@ -2266,7 +2269,9 @@ def create_app(
     async def disk() -> Any:
         """What the Library's "Free space" would give back, measured without deleting anything:
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
-        image pieces, the map background, and the relief downloaded and kept.
+        image pieces, the map background, the relief downloaded and kept, and the cache of the
+        ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``)
+        and the image pieces only they use (``filed_images_bytes``, not in ``images_bytes``).
 
         Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
         takes minutes, and the Library asked again every five seconds while sizes were pending,
@@ -2279,13 +2284,16 @@ def create_app(
 
     def measure_disk() -> dict[str, Any]:
         """``GET /api/disk``'s figures, measured once for every page waiting on them."""
-        report = collect(images=True, relief=True, dry_run=True)
+        report = collect(images=True, relief=True, filed=True, dry_run=True)
         return {
             "store_bytes": _store_bytes(default_store_root()),
             "unused_bytes": report.freed_bytes,
             "images_bytes": report.images_bytes - report.mapcache_bytes,
             "mapcache_bytes": report.mapcache_bytes,
             "relief_bytes": report.relief_bytes,
+            "filed_tiles": report.filed_tiles,
+            "filed_bytes": report.filed_bytes,
+            "filed_images_bytes": report.filed_images_bytes,
             "tiles": len(report.packs),
             "building": manager.active() is not None or bool(other_builds()),
         }
@@ -2293,23 +2301,29 @@ def create_app(
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:
         """Free the space: every piece of tile data no tile on disk needs, with ``images`` the
-        downloaded image pieces and the map background, and with ``relief`` the elevation cells.
-        Refused while a build runs, here or in another process, since nothing protects what a
-        build is about to use otherwise."""
+        downloaded image pieces and the map background, with ``relief`` the elevation cells, and
+        with ``filed`` the cache of the tiles filed outside the atelier. Refused while a build
+        runs, here or in another process, since nothing protects what a build is about to use
+        otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
         async with deleting:  # no build starts meanwhile, and deletes wait
+            # asked once this lock is held: a filing that starts now finds it held and refuses
+            if filing_lock.locked():
+                return busy_filing()
             if manager.active() is not None:
                 return busy_building(other=False)
             if await asyncio.to_thread(other_builds):
                 return busy_building(other=True)
             report = await asyncio.to_thread(
-                collect, images=req.images, relief=req.relief, dry_run=False
+                collect, images=req.images, relief=req.relief, filed=req.filed, dry_run=False
             )
+            filed = report.filed_bytes + report.filed_images_bytes
             return {
                 "format": "osxp-clean-1",
                 "freed_bytes": report.freed_bytes,
                 "images_freed_bytes": report.images_bytes if req.images else 0,
                 "relief_freed_bytes": report.relief_bytes if req.relief else 0,
+                "filed_freed_bytes": filed if req.filed else 0,
                 "removed": report.removed,
             }
 
