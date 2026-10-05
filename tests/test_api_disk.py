@@ -93,8 +93,7 @@ async def test_the_cache_of_the_tiles_filed_outside_is_measured_and_freed_on_req
 
     monkeypatch.setenv("OSXP_DATA_DIR", str(tmp_path / "data"))
     w = World(tmp_path)
-    w.build(F, 2, osm=w.osm)
-    w.pack(F, tmp_path / "Other disk" / "Alps", link=False)
+    w.pack(F, w.build(F, 2, osm=w.osm), tmp_path / "Other disk" / "Alps", link=False)
     piece = w.piece(46.5, 7.5, 4000)
     app, mgr = _app(home)
     try:
@@ -109,7 +108,7 @@ async def test_the_cache_of_the_tiles_filed_outside_is_measured_and_freed_on_req
             assert r.status_code == 200, r.text
             assert r.json()["filed_freed_bytes"] == doc["filed_bytes"] + 4000
             after = (await c.get("/api/disk")).json()
-            assert after["filed_tiles"] == 1
+            assert after["filed_tiles"] == 0  # still filed, with no cache here any more
             assert after["filed_bytes"] == after["filed_images_bytes"] == 0
     finally:
         mgr.close()

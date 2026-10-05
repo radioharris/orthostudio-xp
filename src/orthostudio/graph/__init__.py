@@ -10,6 +10,7 @@ from __future__ import annotations
 from orthostudio.graph.canon import canonical_bytes, canonical_json
 from orthostudio.graph.digest import digest_bytes, digest_dir, digest_file, digest_path
 from orthostudio.graph.errors import (
+    ArtifactHeldError,
     ArtifactInUseError,
     BudgetExceededError,
     CanonError,
@@ -50,6 +51,7 @@ from orthostudio.graph.store import (
 __all__ = [
     "KEY_FORMAT",
     "SCHEMA_VERSION",
+    "ArtifactHeldError",
     "ArtifactInUseError",
     "ArtifactInfo",
     "BudgetExceededError",

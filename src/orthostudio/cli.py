@@ -767,7 +767,11 @@ def clean(
     ] = False,
     images: Annotated[
         bool,
-        typer.Option("--images", help="also empty the imagery cache (downloaded again if needed)"),
+        typer.Option(
+            "--images",
+            help="also empty the imagery cache (downloaded again if needed), but for the pieces "
+            "of the tiles filed outside the workshop, which --filed deletes",
+        ),
     ] = False,
     relief: Annotated[
         bool,
@@ -779,7 +783,7 @@ def clean(
         bool,
         typer.Option(
             "--filed",
-            help="also delete the cache of the tiles filed outside the atelier (the tiles stay "
+            help="also delete the cache of the tiles filed outside the workshop (the tiles stay "
             "whole; building them again downloads their images again)",
         ),
     ] = False,
@@ -789,7 +793,7 @@ def clean(
             "--all",
             help="free all the space OrthoStudio XP can give back: every built result no tile on "
             "disk needs, even from a build that just ended, plus the downloaded image pieces, the "
-            "map cache, the elevation cells and the cache of the tiles filed outside the atelier "
+            "map cache, the elevation cells and the cache of the tiles filed outside the workshop "
             "(a tile built again downloads them again); refused while a build runs",
         ),
     ] = False,
@@ -848,7 +852,7 @@ def clean(
     )
     if report.images_removed:
         but = (
-            ", but for the pieces of the tiles filed outside the atelier (--filed)"
+            ", but for the pieces of the tiles filed outside the workshop (--filed)"
             if report.filed_images_bytes and not report.filed_removed
             else ""
         )
@@ -872,17 +876,17 @@ def clean(
     filed_cache = report.filed_bytes + report.filed_images_bytes
     if report.filed_removed:
         typer.echo(
-            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: freed "
+            f"cache of the {report.filed_tiles} tile(s) filed outside the workshop: freed "
             f"{_size(filed_cache)}"
         )
     elif filed or everything:
         typer.echo(
-            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: {verb} "
+            f"cache of the {report.filed_tiles} tile(s) filed outside the workshop: {verb} "
             f"{_size(filed_cache)}"
         )
     elif report.filed_tiles and filed_cache:  # tiles of a data folder chosen before have none here
         typer.echo(
-            f"cache of the {report.filed_tiles} tile(s) filed outside the atelier: "
+            f"cache of the {report.filed_tiles} tile(s) filed outside the workshop: "
             f"{_size(filed_cache)}, kept (--filed deletes it; the tiles stay whole, and building "
             "them again downloads their images again)"
         )

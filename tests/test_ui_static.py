@@ -2259,6 +2259,8 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
     body = render.group(0)
     # the line and the choice only while some tile is filed outside, the choice read only then
     assert '$("disk-filed-choice").hidden = !offered;' in body
+    # unticked as it hides: it came back ticked with the next tile filed (a review, 2026-10-06)
+    assert 'if (!offered) $("disk-filed").checked = false;' in body
     assert 'offered && $("disk-filed").checked' in body
     assert "(Number(d.filed_bytes) || 0)" in body  # the data in use leaves their cache out
     # "Free space" waits for a filing, which the engine refuses meanwhile

@@ -31,6 +31,7 @@ from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
+    ArtifactHeldError,
     ArtifactInUseError,
     CommitError,
     IncompatibleIndexError,
@@ -812,7 +813,13 @@ class Store:
     # -- deletion and collection ---------------------------------------------------------
 
     def delete(self, key: str, *, force: bool = False) -> bool:
-        """Remove an artefact. Refuses (ArtifactInUseError) if referenced, unless ``force``."""
+        """Remove an artefact. Refuses (ArtifactInUseError) if referenced, unless ``force``.
+
+        One that cannot be moved aside first (a file another program holds, on Windows) is left
+        whole, its row and its files (:class:`ArtifactHeldError`): removed where it lay, what
+        could not be removed stayed under the name of a finished artefact, its row gone, and the
+        next build of that key adopted the remains (a review, 2026-10-06; :func:`_move_aside`).
+        """
         with self._lock:
             info = self.info(key)
             if info is None:
@@ -820,6 +827,8 @@ class Store:
             if not force and self.refcount(key) > 0:
                 raise ArtifactInUseError(f"{key[:16]} is pinned or used by another artefact")
             doomed = _move_aside(info.path)
+            if doomed == info.path and os.path.lexists(info.path):
+                raise ArtifactHeldError(f"{key[:16]} cannot be moved aside: left whole")
             with self._tx():
                 self._db.execute("DELETE FROM artifacts WHERE key = ?", (key,))
         _remove_path(doomed)
@@ -1092,13 +1101,16 @@ def _move_aside(p: Path) -> Path:
 
     Renamed first, an interruption leaves a ``*.tmp-*`` directory, which :meth:`sweep_tmp`
     already knows how to clear, and never a partial artefact. The other order is harmless: a row
-    whose files are gone is dropped by :meth:`has` the next time it is looked up.
+    whose files are gone is dropped by :meth:`has` the next time it is looked up. When the rename
+    is refused (a file another program holds, on Windows), ``p`` itself comes back, and the
+    callers leave it whole rather than remove it where it lies (:meth:`Store.delete`,
+    :func:`_replace`).
     """
     aside = p.with_name(f"{p.name}{TMP_MARKER}{os.getpid()}-{secrets.token_hex(4)}")
     try:
         os.rename(p, aside)
     except OSError:
-        return p  # not there, or the file system will not have it: remove it where it lies
+        return p  # not there, or the file system will not have it
     return aside
 
 

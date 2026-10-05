@@ -20,11 +20,13 @@ map (``docs/specs/map-zones.md`` section 6). The map cache is touched only when 
 it: no directory is ever guessed from another one.
 
 The cache of the tiles filed outside the atelier (``filed``, the atelier's step 5) goes only on
-request too: what only those tiles need, and the downloaded image pieces only they use. The tiles
-themselves are never touched, nor need it: a pack holds its files under its own names, copies on
-another disk, hard links on the atelier's. Those links make a file of the store a file of the tile
-as well: deleting the store's names of it would give nothing back, so an artefact whose files all
-have such a name elsewhere stays (the textures of a tile filed on the atelier's disk).
+request too, all of it: what only those tiles need, and the downloaded image pieces only they use.
+The tiles themselves are never touched, nor need it: a pack holds its files under its own names,
+copies on another disk, hard links on the atelier's. A tile filed on the atelier's disk keeps its
+textures and DSF that way, and their bytes do not come back: the figures count only what does.
+Keeping the store's names of those files kept nothing whole: its DSF and textures folders hold
+other files too, and a texture no longer listed by a kept folder was collected by the next clean
+as data no tile needs (a review, 2026-10-06).
 
 Sizes are what the disk gets back, not what the index adds up. A DDS is hard-linked into its
 ``texture.dds`` artefact, into a ``tile.textures`` artefact and into the pack: its bytes are
@@ -166,13 +168,13 @@ def _built(
     review, 2026-09-23). A tile imported from Ortho4XP has neither, and needs none: it was not built
     here.
     """
-    home = None if tiles_root is None else os.path.realpath(tiles_root)
+    home = None if tiles_root is None else _folder_id(Path(tiles_root))
     atelier: list[_Built] = []
     away: list[_Built] = []
 
     def add(path: Path, tile: TileRef | None, keys: Iterable[object], ortho: bool) -> None:
         built = _Built(os.path.realpath(path), tile, frozenset(str(k) for k in keys if k), ortho)
-        here = home is None or os.path.realpath(Path(path).parent) == home
+        here = home is None or _folder_id(Path(path).parent) == home
         (atelier if here else away).append(built)
 
     for pack in packs:
@@ -190,6 +192,18 @@ def _built(
                 if entry.keys and not (Path(entry.path) / MANIFEST_NAME).is_file():
                     add(Path(entry.path), entry.tile, entry.keys.values(), entry.kind == "ortho")
     return atelier, away
+
+
+def _folder_id(folder: Path) -> tuple[int, int] | str:
+    """What tells a folder from another: its disk and inode when it is there, however it is
+    spelt (a letter case the Mac's disk ignores, a link); else its path with the links followed (a
+    disk away). A tile of the atelier listed under another spelling was taken for one filed
+    outside, and its cache freed with theirs (a review, 2026-10-06)."""
+    try:
+        st = os.stat(folder)
+    except OSError:
+        return os.path.realpath(folder)
+    return (st.st_dev, st.st_ino)
 
 
 def _roots(built: Iterable[_Built]) -> set[str]:
@@ -255,6 +269,8 @@ def _files(root: Path, *, links: bool = True) -> Iterator[tuple[str, os.stat_res
         first = False
         for entry in entries:
             try:
+                if entry.is_junction():  # a Windows link to a folder elsewhere: not entered
+                    continue
                 if entry.is_dir(follow_symlinks=False):
                     folders.append(entry.path)
                     continue
@@ -345,18 +361,6 @@ class _Names:
         held = self._held(keys)
         return sum(self.size[i] for i, n in held.items() if n >= self.nlink[i])
 
-    def giving_back(
-        self, infos: Iterable[ArtifactInfo], *, beside: Iterable[ArtifactInfo]
-    ) -> list[ArtifactInfo]:
-        """Of ``infos``, those whose delete, with that of ``beside``, gives something back: one
-        file of theirs at least has all its links among them. The others hold only files that
-        something else keeps (a tile filed on the atelier's disk, its textures hard-linked):
-        deleting them would only lose what a build of that tile would reuse."""
-        infos = list(infos)
-        held = self._held(i.key for i in [*beside, *infos])
-        whole = {i for i, n in held.items() if n >= self.nlink[i]}
-        return [info for info in infos if any(i in whole for i in self.of.get(info.key, ()))]
-
 
 def _squares(built: Iterable[_Built]) -> set[tuple[int, int]]:
     return {(b.tile.lat, b.tile.lon) for b in built if b.tile is not None}
@@ -386,24 +390,28 @@ def _texture_squares(parts: list[str]) -> set[tuple[int, int]]:
 
 def _image_pieces(
     chunks: Path, atelier: set[tuple[int, int]], away: set[tuple[int, int]]
-) -> tuple[list[tuple[str, int]], int]:
+) -> tuple[list[tuple[str, int]], int, set[tuple[int, int]]]:
     """The downloaded image pieces only the tiles filed outside the atelier use, with their sizes:
     the texture containers whose texture touches the square of such a tile (``away``) and of no
-    tile of the atelier, a texture of a neighbour in the atelier staying. And the bytes of all the
-    others. One walk of the cache, its sizes read from the listings: its files are never linked."""
+    tile of the atelier, a texture of a neighbour in the atelier staying (at any level of detail:
+    one only a filed neighbour uses, astride the border, counts with the images). Then the bytes of
+    all the others, and the squares of ``away`` those pieces touch. One walk of the cache, its
+    sizes read from the listings: its files are never linked."""
     root = os.fspath(chunks)
     pieces: list[tuple[str, int]] = []
     rest = 0
+    touched: set[tuple[int, int]] = set()
     try:
         for path, st in _files(chunks, links=False):
             squares = _texture_squares(os.path.relpath(path, root).split(os.sep)) if away else set()
             if squares & away and not squares & atelier:
                 pieces.append((path, st.st_size))
+                touched |= squares & away
             else:
                 rest += st.st_size
     except OSError:
-        return [], 0
-    return pieces, rest
+        return [], 0, set()
+    return pieces, rest, touched
 
 
 def clean(
@@ -440,7 +448,7 @@ def clean(
     packs = pack_dirs(library_path, tiles_root)
     report.packs = [str(p) for p in packs]
     atelier, away = _built(packs, library_path, tiles_root)
-    report.filed_tiles = len({b.path for b in away if b.ortho})
+    theirs: set[str] = set()
     if Path(store_root).is_dir():
         with Store(store_root) as store:
             mine = needed_keys(store, _roots(atelier))
@@ -449,7 +457,6 @@ def clean(
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
             names = _Names([*unused, *cache])
-            cache = names.giving_back(cache, beside=unused)
             first = [i.key for i in unused]
             report.removed = len(unused)
             report.freed_bytes = names.freed(first)
@@ -466,9 +473,22 @@ def clean(
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     chunks = Path(chunks_root)
     pieces: list[tuple[str, int]] = []
+    touched: set[tuple[int, int]] = set()
     if chunks.is_dir():
-        pieces, report.images_bytes = _image_pieces(chunks, _squares(atelier), _squares(away))
+        pieces, report.images_bytes, touched = _image_pieces(
+            chunks, _squares(atelier), _squares(away)
+        )
         report.filed_images_bytes = sum(size for _path, size in pieces)
+    # the tiles filed outside that have some cache here (measured before anything goes): a tile of
+    # a data folder chosen before has its cache there, and one freed has none any more
+    report.filed_tiles = len(
+        {
+            b.path
+            for b in away
+            if b.ortho
+            and (b.keys & theirs or (b.tile is not None and (b.tile.lat, b.tile.lon) in touched))
+        }
+    )
     mapcache = Path(mapcache_root) if mapcache_root is not None else None
     if mapcache is not None and (not mapcache.is_dir() or _overlap(mapcache, chunks)):
         mapcache = None
@@ -600,6 +620,11 @@ def _empty(directory: Path, keep: Collection[str] = ()) -> int:
         left = False
         for entry in entries:
             try:
+                if entry.is_junction():
+                    # a Windows link to a folder elsewhere: what it leads to is not ours to empty,
+                    # and it is left as it is (shutil.rmtree, used before, refused it too)
+                    left = True
+                    continue
                 if entry.is_dir(follow_symlinks=False):
                     if empty(entry.path):
                         os.rmdir(entry.path)

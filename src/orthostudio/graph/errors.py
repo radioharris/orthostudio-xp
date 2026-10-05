@@ -48,6 +48,11 @@ class ArtifactInUseError(StoreError):
     """Deleting an artefact that is pinned or referenced by another artefact."""
 
 
+class ArtifactHeldError(StoreError, OSError):
+    """Deleting an artefact that cannot be moved aside first (a file another program holds, on
+    Windows): it is left whole, its index row and its files."""
+
+
 class CommitError(StoreError):
     """The rule finished but left no valid output at the expected path."""
 

@@ -208,6 +208,9 @@ def test_disk_bytes_without_links_reads_the_listing_alone(
         def __init__(self, entry: os.DirEntry[str]) -> None:
             self._entry, self.name, self.path = entry, entry.name, entry.path
 
+        def is_junction(self) -> bool:
+            return self._entry.is_junction()
+
         def is_dir(self, follow_symlinks: bool = True) -> bool:
             return self._entry.is_dir(follow_symlinks=follow_symlinks)
 

@@ -5125,6 +5125,8 @@ function renderDisk() {
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
   $("disk-filed-choice").hidden = !offered;
+  // unticked as it hides: ticked once, it came back ticked with the next tile filed (a review)
+  if (!offered) $("disk-filed").checked = false;
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked);
   // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
   button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;

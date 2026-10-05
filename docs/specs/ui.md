@@ -777,9 +777,11 @@ build the tile again).
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
 of the Library asked for it, from the Plan at the start too): the data used by the tiles on
 this computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their
-data only they need and the image pieces only they use, a line shown only while they have some
-here: a tile of a data folder chosen before has its cache there), the data no tile needs any more, the downloaded images (those of the filed tiles
-excepted: they are in their line), the map background and the **downloaded relief**, each with a
+data only they need and the image pieces only they use, all of it, a line shown only while they
+have some here: a tile of a data folder chosen before has its cache there; its box is unticked as
+it hides), the data no tile needs any more, the downloaded images (those of the filed tiles
+excepted: they are in their line; a piece astride the border with a tile of the atelier counts
+here, even at a level of detail only the filed tile uses), the map background and the **downloaded relief**, each with a
 plain tooltip. *Free space…* asks first, in a modal dialog that says what goes and how much
 (Escape keeps everything), with a checkbox per choice, each freeing its own line: the cache of the
 filed tiles (shown with its line; its help says the tiles stay whole and in X-Plane, and building

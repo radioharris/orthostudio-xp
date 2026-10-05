@@ -114,7 +114,8 @@ and add another of the same name with another address, or change the address in 
 and builds and the map used to go on reading the first address's images without asking the new
 one once (reproduced through `build_textures`, 2026-09-25). Its codes are letters and digits only,
 so no such folder is a shipped code. The images of an address no longer used stay until *Free
-space* or `osxp clean --images` empties the cache. The chunk store (`ChunkStore(folders=...)`), the
+space* or `osxp clean --images` empties the cache (those of the tiles filed outside the atelier with
+their own choice, `--filed`). The chunk store (`ChunkStore(folders=...)`), the
 parent cache, the estimate and the map route all read the folder from this one function.
 `GET /api/providers` gives it as `cache` for a source of the user's only, and the page ends its map
 tile URLs with it (`?v=`, map.js `tileVersion`): a browser keeps a map tile a day under its URL,

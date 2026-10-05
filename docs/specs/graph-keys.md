@@ -291,8 +291,9 @@ collects by reachability from the packs on disk instead:
 * **reported size**: the bytes the disk gets back, inode by inode. A file counts when all its
   hard links are among the deleted paths; a DDS still linked from a pack frees nothing;
 * `--images` also empties `<data folder>/chunks`, the raw imagery a rebuilt texture would otherwise
-  download again, and `<data folder>/mapcache`, the base-map tiles of the page (`map-zones.md` section
-  6), both counted in the imagery size of the report; `--dry-run` deletes nothing and reports the
+  download again, but for the pieces only the tiles filed outside the atelier use (`--filed` deletes
+  them, with the rest of those tiles' cache), and `<data folder>/mapcache`, the base-map tiles of the
+  page (`map-zones.md` section 6), both counted in the imagery size of the report; `--dry-run` deletes nothing and reports the
   same numbers. `--all` frees everything OrthoStudio XP can give back: it collects without the hour
   of grace (a result used a second ago goes too, unless a pack on disk needs it) and implies
   `--images`. It refuses to run while another process builds into the store (`Store.building_pids`,
