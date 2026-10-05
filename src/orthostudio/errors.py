@@ -1035,6 +1035,27 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Nothing was deleted. Uninstall takes the tile out of X-Plane without deleting anything; "
         "to delete the folder itself, delete it by hand.",
     ),
+    _spec(
+        "SYS_TILE_INCOMPLETE",
+        _B,
+        _S,
+        "The folder {folder} lacks files of tile {tile}: it is not the whole tile.",
+        "Nothing was changed. Copy the whole folder of the tile again, then find it again.",
+    ),
+    _spec(
+        "SYS_TILE_NOT_IN_FOLDER",
+        _B,
+        _S,
+        "No tile {tile} in {folder}: neither its own folder, {name}, nor a folder holding it.",
+        "Nothing was changed. Choose the folder named {name}, or the folder it is in.",
+    ),
+    _spec(
+        "SYS_TILE_OTHER_BUILD",
+        _B,
+        _S,
+        "{folder} holds another build of tile {tile} than the one the Library lists.",
+        "Nothing was changed. Choose the folder this build was moved to.",
+    ),
     # ---------------------------------------------------------------- ZONE
     _spec(
         "ZONE_INVALID",

@@ -423,6 +423,46 @@ overlay is parked, and the old build installed again takes it back; an unplugged
 first name (the second folder's link is `_2`, both tiles `own` once it is back), and a folder
 deleted by hand, its tiles taken out, frees it.
 
+### 4.5 A tile moved by hand (`pipeline/pack.py`, the atelier, step 2)
+
+A user files his tiles by area with the Finder: the Library listed the tile as missing, and X-Plane
+kept a link into nothing. `find_again_receipt(entry, chosen, custom_sceneries, library_path)`
+finds it again where the user shows it (2026-10-05):
+
+* The folder shown is the tile's own or the one holding it, under its name `zOrthoStudio_<tile>`
+  (X-Plane's link and the Library both go by it), holding that very build: the manifest's tile and
+  keys are the row's, and every file it lists is there, the overlay DSF aside
+  (`pack_is_intact(..., with_overlay=False)`). Else `SYS_TILE_NOT_IN_FOLDER`,
+  `SYS_TILE_OTHER_BUILD` or `SYS_TILE_INCOMPLETE`, and nothing changes. X-Plane running:
+  `XP_RUNNING`, nothing changes.
+* Nothing of the tile moves. Its overlay DSF, left in the overlays pack beside the folder it was
+  moved from, is parked in it (`_bring_overlay`: copied, then removed, since the two folders may
+  be on two disks), as `uninstall_receipt` parks it; a tile taken out of X-Plane later from its new
+  place would otherwise have left its roads drawn. A copy made before a stop leaves the one behind
+  only until it is asked again, which removes it when it is the same file: X-Plane would draw it
+  twice.
+* Every Custom Scenery given (the X-Plane of Settings and the machine's others) whose link
+  `zOrthoStudio_<tile>` leads to the old folder gets the found one through `install_receipt`: the
+  broken link replaced, the overlay put beside the tile and its overlays pack linked (4.4), the
+  lines kept. An X-Plane that did not show the tile gets nothing. The Library row follows; the
+  overlay row of the folder left goes once it holds nothing of the tile.
+* Asked again after a stop half way, it finishes what is left. The receipt says when the tile's
+  roads and forests are nowhere (`overlay_lost`): a build gives them back.
+
+The Library tells a tile whose disk is away from one whose folder is gone (`home.disk_absent`): on
+Windows its drive is not there, elsewhere the first folder above it that is there is where disks
+are mounted (`/Volumes`, `/media`, `/run/media`, `/mnt`) or the root. A disk away comes back by
+itself once plugged in, and is not looked for.
+
+Acceptance (`tests/test_library_find.py`, fake X-Planes): a tile moved alone is found from the
+folder holding it or from its own, X-Plane's link and its overlay follow and its images are the
+same files; a tile in no X-Plane is found by the Library alone, its overlay parked; every X-Plane
+that showed it follows and no other; a wrong folder, a renamed copy, another build and a copy cut
+short change nothing; nor does X-Plane running; a tile in its place, an imported one and one in a
+build are not looked for; a tile whose roads went too is found and says so; a stop half way is
+finished when asked again, and a copy of the roads made before a stop is not left twice; a disk
+away says so.
+
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with

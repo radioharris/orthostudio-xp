@@ -39,6 +39,7 @@ from orthostudio.api.models import (
     ChooseFolderRequest,
     CleanRequest,
     DeleteRequest,
+    FindRequest,
     ForgetRequest,
     ImportRequest,
     InstallRequest,
@@ -106,6 +107,7 @@ from orthostudio.pipeline.home import (
     default_mapcache_root,
     default_store_root,
     default_tiles_root,
+    disk_absent,
     osxp_home,
 )
 from orthostudio.pipeline.pack import (
@@ -113,6 +115,7 @@ from orthostudio.pipeline.pack import (
     MANIFEST_NAME,
     PackManifest,
     delete_receipt,
+    find_again_receipt,
     install_receipt,
     is_installed,
     leave_overlay,
@@ -137,7 +140,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 26
+API_LEVEL = 27
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -164,7 +167,8 @@ squares alone), 22 = ``DELETE /api/jobs/{id}`` (one finished build leaves the li
 ``GET /api/simbrief``, 24 = ``POST /api/flightplan`` (a route the page kept, its squares computed
 again) and ``radius_km`` in a flight plan, 25 = the setting ``expert.decal`` (an older engine
 refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief`` in place of
-``data``, whose tracing (``vectors``) joined ``terrain``. A page
+``data``, whose tracing (``vectors``) joined ``terrain``, 27 = finding a tile again (``POST
+/api/library/{name}/find``) and ``disk_absent`` in the library. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -234,6 +238,9 @@ def _http_status(code: str) -> int:
         "XP_DIR_NOT_FOUND",
         "XP_GLOBAL_SCENERY_NOT_FOUND",
         "SYS_WORKING_DIR_INVALID",
+        "SYS_TILE_INCOMPLETE",
+        "SYS_TILE_NOT_IN_FOLDER",
+        "SYS_TILE_OTHER_BUILD",
     ):
         return 422
     if code.startswith("NET_"):
@@ -647,6 +654,8 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
                 # being measured in the background: the page asks again (PACK_SIZES_BUDGET_S)
                 "size_pending": r.path in pending,
                 "present": present[r.path],
+                # gone with its disk, or gone from a disk that is here (the atelier, step 2)
+                "disk_absent": not present[r.path] and disk_absent(r.path),
                 "photo": photos.get(r.path) if r.kind == "ortho" else None,
                 # an imported tile's settings are Ortho4XP's, which nothing here can read
                 "built": built.get(r.path) if r.kind == "ortho" and r.built_by == "osxp" else None,
@@ -1967,6 +1976,55 @@ def create_app(
             return {"tile": entry.tile.name, "forgotten": n, "path": str(entry.path)}
 
         return await asyncio.to_thread(forget)
+
+    @app.post("/api/library/{name}/find")
+    async def library_find(name: str, req: FindRequest) -> Any:
+        """Find again a tile OrthoStudio XP built whose folder was moved by hand: ``folder`` is the
+        tile's own folder or the one holding it (``pack.find_again_receipt``, the atelier's step 2,
+        2026-10-05). Every X-Plane of this computer whose link led to the old folder follows, and
+        the Library row. Refused for an imported tile, which importing the folder it went to lists
+        again; for a tile whose folder is where the Library says; and for a tile in a build under
+        way or waiting, whose end decides what X-Plane shows of it."""
+        entry = await asyncio.to_thread(
+            library_pack, name, path=req.path, library_path=default_library_path()
+        )
+        context = {"tile": entry.tile.name, "path": str(entry.path)}
+        if entry.built_by != "osxp":
+            return _plain_error(
+                "SYS_PACK_IMPORTED",
+                f"{entry.tile.name} was imported from Ortho4XP: importing the folder it was moved "
+                "to lists it there.",
+                "Import the folder you moved it to, then remove the missing one from the list.",
+                status=409,
+                context=context,
+            )
+        if await asyncio.to_thread(Path(entry.path).exists):
+            return _plain_error(
+                "SYS_TILE_NOT_MISSING",
+                f"{entry.tile.name} is where the Library says, {entry.path}: nothing to find.",
+                "Nothing to do.",
+                status=409,
+                context=context,
+            )
+
+        def run() -> dict[str, Any]:
+            job_id = manager.building_tiles().get(entry.tile.name)
+            if job_id is not None:
+                raise TileInBuildError([entry.tile.name], [job_id])
+            xp = xplane_dir(req.xplane_dir)
+            xplanes = ([xp] if xp is not None else []) + other_xplane_dirs(xp)
+            sceneries = [custom_scenery_dir(x) for x in xplanes]
+            return find_again_receipt(
+                entry,
+                Path(req.folder).expanduser(),
+                custom_sceneries=[cs for cs in sceneries if cs.is_dir()],
+                library_path=default_library_path(),
+            )
+
+        try:
+            return await asyncio.to_thread(run)
+        except TileInBuildError as err:
+            return tile_in_build(err, IN_BUILD_PACK)
 
     @app.post("/api/library/{name}/delete")
     async def library_delete(name: str, req: DeleteRequest | None = None) -> Any:

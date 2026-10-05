@@ -16,6 +16,7 @@
   "updated_at": 1788012000.0,
   "size_bytes": null,
   "present": false,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": {
@@ -59,6 +60,7 @@
   "updated_at": 1788012000.0,
   "size_bytes": null,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": null
@@ -80,6 +82,7 @@
   "updated_at": 1789290600.0,
   "size_bytes": 1318420480,
   "present": true,
+  "disk_absent": false,
   "overlay": {
    "state": "double",
    "others": [
@@ -119,6 +122,7 @@
   "updated_at": 1789290600.0,
   "size_bytes": null,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": null
@@ -140,6 +144,7 @@
   "updated_at": 1789200000.0,
   "size_bytes": 3874560000,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": {
@@ -161,6 +166,7 @@
   "updated_at": 1789200000.0,
   "size_bytes": null,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": null
@@ -179,6 +185,7 @@
   "updated_at": 1787400000.0,
   "size_bytes": 1104000000,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": null
@@ -197,6 +204,7 @@
   "updated_at": 1787400000.0,
   "size_bytes": 2950000000,
   "present": true,
+  "disk_absent": false,
   "overlay": null,
   "photo": null,
   "built": null

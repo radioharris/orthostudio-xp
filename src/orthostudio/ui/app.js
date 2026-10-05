@@ -1361,6 +1361,25 @@ export async function mockApi(method, path, body, options = {}) {
     if (!libraryTiles(mock.library).some(imported)) mock.library = mock.library.filter((e) => !(imported(e) && e.kind === "overlay"));
     return { tile: entry.tile, forgotten: before - mock.library.length, path: entry.path };
   }
+  m = p.match(/^\/api\/library\/([^/]+)\/find$/);
+  if (m) {
+    // Like the engine: a tile OrthoStudio XP built, whose folder moved, is found where the user
+    // shows it, and its row follows; nothing on the disk changes in the mock.
+    if (!mock.library) mock.library = await mockFile("library");
+    const entry = mockLibraryRow(decodeURIComponent(m[1]), body?.path ?? null);
+    if (entry.built_by !== "osxp") {
+      throw mockError(409, "SYS_PACK_IMPORTED", `${entry.tile} was imported from Ortho4XP: importing the folder it was moved to lists it there.`, "Import the folder you moved it to, then remove the missing one from the list.");
+    }
+    if (entry.present !== false) {
+      throw mockError(409, "SYS_TILE_NOT_MISSING", `${entry.tile} is where the Library says, ${entry.path}: nothing to find.`, "Nothing to do.");
+    }
+    const name = entryName(entry);
+    const folder = String(body?.folder || "").replace(/[\\/]+$/, "");
+    const was = entry.path;
+    entry.path = folder.split(/[\\/]/).pop() === name ? folder : `${folder}/${name}`;
+    Object.assign(entry, { present: true, disk_absent: false });
+    return { format: "osxp-find-1", tile: entry.tile, from: was, to: entry.path, xplanes: [], overlay_lost: false };
+  }
   m = p.match(/^\/api\/library\/([^/]+)\/(install|uninstall|delete)$/);
   if (m) {
     if (!mock.library) mock.library = await mockFile("library");
@@ -2195,7 +2214,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 26;
+const PAGE_API_LEVEL = 27;
 
 async function loadStatus() {
   try {
@@ -5345,6 +5364,10 @@ function libraryRow(e, showFolder = false) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
+  } else if (byOsxp && !e.disk_absent) {
+    // its folder moved by hand, on a disk that is here: shown where it went, it is found again
+    // (the atelier, step 2, 2026-10-05); a disk away comes back by itself once plugged in
+    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
   }
   // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
   // is said in the lead and in the "Built by" column, and a user still looked for the button
@@ -5357,8 +5380,10 @@ function libraryRow(e, showFolder = false) {
     : h("button", { type: "button", class: "btn btn-small", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
   let missing = null;
   if (!present) {
-    missing = pill(t("library.missing"), "warn");
-    missing.title = t("library.missing_help");
+    const away = Boolean(e.disk_absent);
+    missing = pill(away ? t("library.disk_absent") : t("library.not_found"), "warn");
+    if (away) missing.title = t("library.disk_absent_help");
+    else missing.title = byOsxp ? t("library.not_found_help") : t("library.not_found_help_o4xp");
   }
   let inBuildPill = null;
   if (inBuild) {
@@ -5633,6 +5658,11 @@ const LIBRARY_REFUSALS = {
   SYS_WRITE_FAILED: () => [t("library.err_write_failed"), t("library.err_write_failed_remedy")],
   SYS_WORKING_DIR_INVALID: () => [t("library.err_gone"), t("library.err_gone_remedy")],
   XP_PACK_CONFLICT: () => [t("library.err_conflict"), t("library.err_conflict_remedy")],
+  // a tile found again (the atelier, step 2): the folder shown is not it, not that build, not whole
+  SYS_TILE_NOT_IN_FOLDER: (d) => [t("library.err_not_in_folder"), t("library.err_not_in_folder_remedy", { name: d?.context?.name || "" })],
+  SYS_TILE_OTHER_BUILD: () => [t("library.err_other_build"), t("library.err_other_build_remedy")],
+  SYS_TILE_INCOMPLETE: () => [t("library.err_incomplete"), t("library.err_incomplete_remedy")],
+  SYS_TILE_NOT_MISSING: () => [t("library.err_not_missing"), t("library.err_gone_remedy")],
 };
 
 /**
@@ -5641,7 +5671,7 @@ const LIBRARY_REFUSALS = {
  * any other error as the engine sent it.
  */
 export function libraryCardContent(detail) {
-  const words = LIBRARY_REFUSALS[detail?.code]?.() ?? null;
+  const words = LIBRARY_REFUSALS[detail?.code]?.(detail) ?? null;
   return { error: words ? { ...detail, severity: "blocking", action: "none" } : detail, words };
 }
 
@@ -5737,6 +5767,27 @@ async function deleteLibraryTile(e) {
 function forgetLibraryTile(e) {
   const req = libraryRequest(e, "forget");
   return runLibraryChange(e, () => api("POST", req.path, req.body), () => toast(t("library.forgotten", { tile: e.tile })));
+}
+
+/** "Find again…" (a tile OrthoStudio XP built whose folder was moved by hand, its disk here): the
+ * user shows the tile's folder or the one holding it, and the Library and every X-Plane that showed
+ * the tile follow (`POST /api/library/{name}/find`, the atelier's step 2, 2026-10-05). The dialog
+ * opens where the tile was, when that folder is still there. */
+async function findLibraryTile(e) {
+  if (libraryBusy.has(libraryKey(e))) return;
+  const was = String(e.path || "").replace(/[\\/][^\\/]*$/, "");
+  const folder = await chooseFolder(t("library.find_prompt", { tile: e.tile }), was || null);
+  if (!folder) return;
+  const req = libraryRequest(e, "find");
+  await runLibraryChange(e, () => api("POST", req.path, { ...req.body, folder }), (res) => toast(foundMessage(res, e.tile)));
+}
+
+/** What the page says of a tile found again: where, and, when its roads, forests and buildings were
+ * found nowhere, that a build gives them back. */
+export function foundMessage(res, tile) {
+  const where = String(res?.to || "").replace(/[\\/][^\\/]*$/, "");
+  const found = t("library.found", { tile: res?.tile || tile, folder: homely(where) });
+  return res?.overlay_lost ? `${found} ${t("library.found_no_roads")}` : found;
 }
 
 /** How long the folder dialog may take to show before the page says it is on its way (the File

@@ -146,6 +146,13 @@ tile the folder it is in: *Workshop* for the data folder's own tiles, else the f
 tiles, each folder with how many it holds. A search that finds no tile in the folder chosen says
 how many it finds in the others. It reads the list only, nothing on the disk.
 
+A tile whose folder you moved yourself, with the Finder or the File Explorer, says *Not found*,
+with *Find again…*: show its folder, or the folder you put it in, and the Library and every X-Plane
+of the computer that showed it follow it there. X-Plane must be closed. Nothing of the tile is
+copied; only its roads and forests, a small file left in the folder it came from, join it, so
+that taking it out of X-Plane later takes them out too. A tile on a disk that is not plugged in
+says *Disk absent*: plug the disk in, and it is back by itself.
+
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
 are. If it was the build on screen, the next one in the list takes its place. The trash above the

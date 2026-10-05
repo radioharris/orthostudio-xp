@@ -770,6 +770,7 @@ LIBRARY_ROW_KEYS = {
     "updated_at",
     "size_bytes",
     "present",
+    "disk_absent",  # gone with its disk rather than from a disk that is here (the atelier, step 2)
     "overlay",
 }
 MOCK_PRELUDE = """
@@ -2768,7 +2769,8 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
     row = _function_body(app_js, "libraryRow")
-    assert row.count("disabled: busy || inBuild") == 2 and "disabled: busy || building" in row
+    # Add, Remove and Find again (a moved tile in a build waits for the build's end as well)
+    assert row.count("disabled: busy || inBuild") == 3 and "disabled: busy || building" in row
     assert 't("library.in_build")' in row
     library = _function_body(app_js, "renderLibrary")
     assert '$("library-building").hidden = !activeJobs().length;' in library
@@ -6909,3 +6911,92 @@ def test_the_folder_filter_is_wired() -> None:
         ):
             assert tables[lang][key], (lang, key)
     assert tables["fr"]["library.folder_atelier"] == "Atelier"
+
+
+# -- the atelier, step 2: a tile moved by hand, found again (2026-10-05) --------------------------
+
+
+def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
+    """A tile whose folder is gone from a disk that is here says *Not found*, with *Find again…*;
+    one whose disk is away says *Disk absent*, which plugging the disk in settles. The user shows
+    the tile's folder or the one holding it, and the Library and X-Plane follow it."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert "} else if (byOsxp && !e.disk_absent) {" in row
+    assert "onclick: () => findLibraryTile(e)" in row and 't("library.find")' in row
+    assert 'pill(away ? t("library.disk_absent") : t("library.not_found"), "warn")' in row
+    find = _function_body(app_js, "findLibraryTile")
+    assert 'chooseFolder(t("library.find_prompt", { tile: e.tile }), was || null)' in find
+    assert 'libraryRequest(e, "find")' in find and "{ ...req.body, folder }" in find
+    assert "toast(foundMessage(res, e.tile))" in find
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const words = (code, context) => m.libraryCardContent({ code, context }).words;
+        const to = "/Users/pilot/Tiles/Alps/zOrthoStudio_+43+005";
+        process.stdout.write(JSON.stringify({
+          here: words("SYS_TILE_NOT_IN_FOLDER", { name: "zOrthoStudio_+43+005" }),
+          other: words("SYS_TILE_OTHER_BUILD"),
+          cut: words("SYS_TILE_INCOMPLETE"),
+          back: words("SYS_TILE_NOT_MISSING"),
+          found: m.foundMessage({ tile: "+43+005", to, overlay_lost: false }, "+43+005"),
+          lost: m.foundMessage({ tile: "+43+005", to, overlay_lost: true }, "+43+005"),
+        }));"""
+    )
+    assert got["here"] == [
+        "This folder is neither the tile's folder nor one holding it.",
+        "Choose the folder zOrthoStudio_+43+005, or the folder it is in. Nothing was changed.",
+    ]
+    assert got["other"][0].startswith("This folder holds another build")
+    assert got["cut"][0].startswith("Files of the tile are missing")
+    assert got["back"] == ["This tile is back in its place.", "The list is up to date now."]
+    assert got["found"] == "+43+005 found again in ~/Tiles/Alps."
+    assert (
+        got["lost"]
+        == got["found"] + " Its roads and forests are missing: build it again to have them back."
+    )
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.not_found",
+            "library.not_found_help",
+            "library.not_found_help_o4xp",
+            "library.disk_absent",
+            "library.disk_absent_help",
+            "library.find",
+            "library.find_help",
+            "library.find_prompt",
+            "library.found",
+            "library.found_no_roads",
+        ):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.find"] == "Retrouver…"
+    assert tables["fr"]["library.disk_absent"] == "Disque absent"
+    assert "fermé" in tables["fr"]["library.find_help"]  # X-Plane closed, said before the click
+
+
+def test_the_mock_finds_a_moved_tile_again_like_the_engine() -> None:
+    script = """
+    const alps = { folder: "/Volumes/Big/Alps" };
+    const out = {
+      imported: await call("POST", "/api/library/zOrtho4XP_+44+005/find", alps),
+      here: await call("POST", "/api/library/+43+005/find", alps),
+      found: await call("POST", "/api/library/+43+004/find", alps),
+    };
+    const row = (await call("GET", "/api/library")).ok
+      .find((e) => e.tile === "+43+004" && e.kind === "ortho");
+    out.row = { path: row.path, present: row.present, disk_absent: row.disk_absent };
+    process.stdout.write(JSON.stringify(out), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["imported"] == {"status": 409, "code": "SYS_PACK_IMPORTED"}
+    assert got["here"] == {"status": 409, "code": "SYS_TILE_NOT_MISSING"}
+    assert got["found"]["ok"]["to"] == "/Volumes/Big/Alps/zOrthoStudio_+43+004"
+    assert got["row"] == {
+        "path": "/Volumes/Big/Alps/zOrthoStudio_+43+004",
+        "present": True,
+        "disk_absent": False,
+    }

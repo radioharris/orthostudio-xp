@@ -17,6 +17,7 @@ a context variable set by :func:`pack_env`; the scheduler's ``run`` wrapper in
 from __future__ import annotations
 
 import contextlib
+import filecmp
 import json
 import os
 import re
@@ -71,6 +72,7 @@ __all__ = [
     "PackParams",
     "assemble_pack",
     "delete_receipt",
+    "find_again_receipt",
     "install_is_intact",
     "install_receipt",
     "is_installed",
@@ -104,6 +106,7 @@ CREDITS_NAME = "CREDITS.txt"
 RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
 DELETE_FORMAT = "osxp-delete-1"
+FIND_FORMAT = "osxp-find-1"
 PARKED_OVERLAY = "osxp-overlay.dsf.uninstalled"
 """Where :func:`uninstall_receipt` parks the tile's DSF of the shared overlay pack: inside the
 tile pack, which X-Plane no longer reads, and where :func:`install_receipt` finds it again."""
@@ -480,9 +483,11 @@ def _count(directory: Path, pattern: str) -> int:
     return sum(1 for _ in directory.glob(pattern)) if directory.is_dir() else 0
 
 
-def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
+def pack_is_intact(pack_dir: Path, manifest: PackManifest, *, with_overlay: bool = True) -> bool:
     """True when the pack directory still holds what the manifest lists (sizes and counts), and
-    holds that very assembly: the manifest written in it is this one.
+    holds that very assembly: the manifest written in it is this one. ``with_overlay=False``
+    leaves out the overlay DSF beside it: a tile moved by hand left it beside the folder it was
+    moved from (:func:`find_again_receipt`).
 
     Another build of the tile writes its own there, and counting files did not see it: coming back
     to a state built before finds its receipt in the store, so colours taken back to earlier ones
@@ -500,7 +505,8 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
         return False
     overlay = files.get("overlay")
     if (
-        overlay
+        with_overlay
+        and overlay
         and not (pack_dir / str(overlay)).is_file()
         and not (pack_dir / LEFT_OVERLAY).is_file()
     ):
@@ -1485,6 +1491,120 @@ def install_is_intact(receipt: dict[str, Any]) -> bool:
     packs = SceneryPacks.load(ini)
     listed = set(packs.names())
     return all(name in listed for name in names)
+
+
+# -- a tile found again (the atelier, step 2) ----------------------------------------------------
+
+
+def find_again_receipt(
+    entry: LibraryEntry,
+    chosen: Path,
+    *,
+    custom_sceneries: Iterable[Path],
+    library_path: Path | None = None,
+) -> dict[str, Any]:
+    """Find again a tile OrthoStudio XP built whose folder was moved by hand: ``entry`` is its
+    Library row, whose folder is gone, and ``chosen`` the folder the user shows, the tile's own or
+    the one holding it (the atelier, step 2, 2026-10-05).
+
+    Nothing of the tile moves. Its folder must keep its name and hold that very build, the
+    manifest's tile and keys being the row's, with every file the manifest lists: else
+    ``SYS_TILE_NOT_IN_FOLDER``, ``SYS_TILE_OTHER_BUILD`` or ``SYS_TILE_INCOMPLETE``, and nothing
+    changes. X-Plane must not be running (``XP_RUNNING``): its links never change while it runs.
+    Its roads, forests and buildings, left in the overlays pack beside the folder it was moved
+    from, are parked in it (:func:`_bring_overlay`); then every X-Plane whose link leads to the old
+    folder is given the found one by :func:`install_receipt`, which puts the overlay beside it,
+    and the Library row follows. Asked again after a stop half way, it finishes what is left.
+    """
+    old = Path(entry.path)
+    tile = entry.tile
+    pack = _found_pack(Path(chosen), old.name, tile)
+    manifest = read_manifest(pack)
+    context = {"tile": tile.name, "folder": str(pack)}
+    if entry.keys is not None and manifest.keys != entry.keys:
+        raise OsxpError("SYS_TILE_OTHER_BUILD", context=context)
+    if not pack_is_intact(pack, manifest, with_overlay=False):
+        raise OsxpError("SYS_TILE_INCOMPLETE", context=context)
+    if install_packs.xplane_running():
+        raise OsxpError(
+            "XP_RUNNING",
+            message="X-Plane is running, and its links never change while it runs: nothing was "
+            "changed.",
+            remedy="Quit X-Plane, then find the tile again.",
+        )
+    with _INSTALL_LOCK:
+        _bring_overlay(old, pack, tile, manifest)
+    shown = [Path(cs) for cs in custom_sceneries if links_to(Path(cs) / old.name, old)]
+    for cs in shown:
+        install_receipt(pack, cs, tile=tile, library_path=library_path)
+    with Library(library_path) as lib:
+        if not shown:  # in no X-Plane: the row alone follows
+            lib.register(
+                tile, entry.provider, entry.zl, pack, entry.built_by, entry.keys, keep_built_by=True
+            )
+        lib.forget(tile, kind="ortho", path=old)
+        behind = old.parent / OVERLAY_PACK
+        if not (behind / tile.dsf_relpath).is_file():
+            lib.forget(tile, kind="overlay", path=behind)
+    return {
+        "format": FIND_FORMAT,
+        "tile": tile.name,
+        "from": str(old),
+        "to": str(pack),
+        "xplanes": [str(cs) for cs in shown],
+        # a tile whose roads, forests and buildings are nowhere: built again, it has them back
+        "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
+    }
+
+
+def _own_overlay(pack: Path, tile: TileRef) -> Path | None:
+    """The tile's overlay DSF when it is with ``pack``: parked in it, in the overlays pack beside
+    it, or left to another pack's overlays (then kept in it too); else ``None``."""
+    own = (
+        pack / PARKED_OVERLAY,
+        pack.parent / OVERLAY_PACK / tile.dsf_relpath,
+        pack / LEFT_OVERLAY,
+    )
+    return next((p for p in own if p.is_file()), None)
+
+
+def _found_pack(chosen: Path, name: str, tile: TileRef) -> Path:
+    """The folder of ``tile`` the user shows: ``chosen`` itself or the folder of that ``name`` in
+    it, holding a manifest of that tile. Its name is kept: X-Plane's link and the Library both go
+    by it."""
+    for candidate in (chosen, chosen / name):
+        if candidate.name != name or not (candidate / MANIFEST_NAME).is_file():
+            continue
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+            if read_manifest(candidate).tile == tile.name:
+                return candidate
+    raise OsxpError(
+        "SYS_TILE_NOT_IN_FOLDER", context={"tile": tile.name, "folder": str(chosen), "name": name}
+    )
+
+
+def _bring_overlay(old: Path, pack: Path, tile: TileRef, manifest: PackManifest) -> None:
+    """Park in ``pack`` the tile's DSF of the overlays pack beside ``old``, the folder it was moved
+    from by hand, as :func:`uninstall_receipt` parks it. A tile moved by hand takes its folder and
+    leaves its roads, forests and buildings behind, and taken out of X-Plane later from its new
+    place it would have left them drawn. Copied, then removed: the two folders may be on two
+    disks. Nothing when the tile has none or none was left behind; when it has its own already
+    (parked, beside its new folder, or left to another pack's overlays), the one behind goes if
+    it is the same file, a copy made before a stop, which X-Plane would otherwise draw twice."""
+    if not manifest.files.get("overlay"):
+        return
+    behind = old.parent / OVERLAY_PACK / tile.dsf_relpath
+    if not behind.is_file():
+        return
+    own = _own_overlay(pack, tile)
+    if own is not None:
+        if filecmp.cmp(behind, own, shallow=False):
+            behind.unlink()
+        return
+    part = pack / (PARKED_OVERLAY + ".part")
+    shutil.copy2(behind, part)
+    os.replace(part, pack / PARKED_OVERLAY)
+    behind.unlink()
 
 
 # -- rules ---------------------------------------------------------------------------------------

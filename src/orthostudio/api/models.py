@@ -20,6 +20,7 @@ __all__ = [
     "AirportArea",
     "CleanRequest",
     "DeleteRequest",
+    "FindRequest",
     "ImportRequest",
     "InstallRequest",
     "JobRequest",
@@ -247,6 +248,17 @@ class ForgetRequest(BaseModel):
     xplane_dir: str | None = Field(default=None, max_length=1024)
     path: str | None = Field(default=None, max_length=4096)
     """The ``path`` of the library row, as ``GET /api/library`` gives it."""
+
+
+class FindRequest(BaseModel):
+    """``POST /api/library/{name}/find``: find again a tile whose folder was moved by hand."""
+
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(max_length=4096)
+    """The ``path`` of the library row, as ``GET /api/library`` gives it: the folder gone."""
+    folder: str = Field(min_length=1, max_length=4096)
+    """The folder the user shows: the tile's own, or the one holding it."""
+    xplane_dir: str | None = Field(default=None, max_length=1024)
 
 
 class UninstallRequest(BaseModel):
