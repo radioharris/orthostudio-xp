@@ -6665,6 +6665,8 @@ def _step1(script: str) -> Any:
     home folder ``/Users/pilot``, and three helpers: ``bs`` (a backslash), ``mac`` (the atelier of
     a Mac's data folder) and ``at(path, atelier, platform)``, ``tileFolder`` of a row at
     ``path``."""
+    if NODE is None:
+        pytest.skip("node is not installed")
     return _run_node(
         f"""const i = await import("./i18n.js");
         const m = await import("./app.js");
@@ -6705,7 +6707,8 @@ def test_each_tile_s_folder_is_read_from_the_list_alone() -> None:
         }"""
     )
     assert got["atelier"] == {"key": "atelier", "label": "Workshop"} == got["linked"]
-    assert got["folders"] == ["/Users/pilot/.orthostudio/tiles"] and got["nostatus"] == []
+    assert got["folders"] == ["/Users/pilot/.orthostudio/tiles"]
+    assert got["nostatus"] is None  # not known yet: no folder is told (a review, 2026-10-05)
     assert got["elsewhere"]["label"] == "/Volumes/Big/Tuiles/Alpes"
     assert got["home"]["label"] == "~/Ortho4XP/Tiles"  # written as its owner knows it
     assert got["windows"]["key"] == "atelier"  # either separator, case aside
@@ -6747,6 +6750,11 @@ def test_the_folder_filter_and_the_note_under_the_search() -> None:
             nowhere: view({ folder: "atelier", query: "+60" }),
             gone: view({ folder: "/volumes/gone" }),
             search: view({ query: " +43 " }),
+            unknown: (() => {
+              const v = m.libraryView(tiles, { folder: "atelier", query: "+43" }, null, "mac");
+              return { folders: v.folders, folder: v.folder, rows: v.rows.map((e) => e.tile),
+                       note: v.note, none: m.libraryFolders(rows, null, "mac") };
+            })(),
           };
         })()"""
     )
@@ -6771,13 +6779,101 @@ def test_the_folder_filter_and_the_note_under_the_search() -> None:
     assert got["gone"]["folder"] == "" and len(got["gone"]["rows"]) == 5  # back to all
     assert got["gone"]["note"] is None
     assert got["search"]["rows"] == ["+43+004", "+43+005"]
+    # until the status says where the atelier is, no folder is told: the atelier's own tiles read
+    # as their full path, the user's name in it, while a page opened on the Library waited for it
+    # (a review, 2026-10-05); the search alone applies
+    assert got["unknown"] == {
+        "folders": [],
+        "folder": "",
+        "rows": ["+43+004", "+43+005"],
+        "note": {"text": "2 of 5 tiles.", "warn": False},
+        "none": [],
+    }
 
 
-def test_the_folder_filter_is_wired_and_drawn_again_only_when_it_changes() -> None:
-    """The filter beside the search, hidden with one folder; its choices made again only when they
-    change, since the Library is drawn again every 5 s while sizes are measured and an open list
-    lost its items under the hand; the folder under each tile only when there is more than one;
-    the label and height of the page's other fields (a review, 2026-10-05)."""
+def test_the_folder_list_is_made_again_only_when_its_choices_change() -> None:
+    """The Library is drawn again every 5 s while sizes are measured, and its folder list was made
+    again each time: an open list lost its items under the hand (a review, 2026-10-05). Its
+    choices are made again only when they change (a count, a folder, the language), the choice
+    shown is written only when it differs, and the filter hides with no folder to choose."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """class El {
+          constructor(tag) {
+            Object.assign(this, { tag, kids: [], attrs: {}, dataset: {}, textContent: "" });
+            Object.assign(this, { hidden: false, removed: 0, writes: 0, held: "" });
+          }
+          get firstChild() { return this.kids[0] || null; }
+          removeChild(kid) {
+            this.kids.splice(this.kids.indexOf(kid), 1);
+            this.removed += 1;
+            return kid;
+          }
+          append(...kids) { this.kids.push(...kids); }
+          setAttribute(k, v) { this.attrs[k] = String(v); }
+          addEventListener() {}
+          get value() { return this.held; }
+          set value(v) { this.held = String(v); this.writes += 1; }
+        }
+        const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        const wrap = new El("label");
+        const select = new El("select");
+        const byId = { "library-folder-wrap": wrap, "library-folder": select };
+        globalThis.Node = El;
+        globalThis.document = {
+          documentElement: {},
+          getElementById: (id) => byId[id] || null,
+          createElement: (tag) => new El(tag),
+          createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+        };
+        const folders = (n) => [
+          { key: "atelier", label: "Workshop", n },
+          { key: "/volumes/big/alpes", label: "/Volumes/Big/Alpes", n: 1 },
+        ];
+        const shown = () =>
+          select.kids.map((o) => [o.attrs.value, o.kids.map((k) => k.textContent).join("")]);
+        m.renderLibraryFolders(folders(2), "");
+        const first = { shown: shown(), hidden: wrap.hidden, writes: select.writes };
+        const options = [...select.kids];
+        for (let k = 0; k < 5; k += 1) m.renderLibraryFolders(folders(2), "");
+        const same = select.kids.every((o, k) => o === options[k]);
+        const redrawn = { same, removed: select.removed, writes: select.writes };
+        m.renderLibraryFolders(folders(2), "atelier");
+        m.renderLibraryFolders(folders(2), "atelier");
+        const chosen = { value: select.value, writes: select.writes, removed: select.removed };
+        m.renderLibraryFolders(folders(3), "atelier");
+        const counted = { shown: shown(), removed: select.removed };
+        i.setLanguage("fr");
+        m.renderLibraryFolders(folders(3), "atelier");
+        const french = shown()[0];
+        m.renderLibraryFolders([], "");
+        process.stdout.write(JSON.stringify({
+          first, redrawn, chosen, counted, french, hidden: wrap.hidden,
+        }));"""
+    )
+    assert got["first"] == {
+        "shown": [
+            ["", "All folders"],
+            ["atelier", "Workshop (2)"],
+            ["/volumes/big/alpes", "/Volumes/Big/Alpes (1)"],
+        ],
+        "hidden": False,
+        "writes": 0,
+    }
+    assert got["redrawn"] == {"same": True, "removed": 0, "writes": 0}  # the open list stays
+    assert got["chosen"] == {"value": "atelier", "writes": 1, "removed": 0}
+    assert got["counted"]["shown"][1] == ["atelier", "Workshop (3)"]
+    assert got["counted"]["removed"] == 3  # a tile more: its count changes, the list too
+    assert got["french"] == ["", "Tous les dossiers"]
+    assert got["hidden"] is True
+
+
+def test_the_folder_filter_is_wired() -> None:
+    """The filter beside the search, hidden with one folder; the folder under each tile only when
+    there is more than one; the label and height of the page's other fields (a review,
+    2026-10-05)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
     assert 'id="library-search"' in filters and 'id="library-folder"' in filters
@@ -6788,18 +6884,11 @@ def test_the_folder_filter_is_wired_and_drawn_again_only_when_it_changes() -> No
         "const atelier = atelierFolders(state.status);",
         "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier",
         "state.libraryFolder = view.folder;",
-        "renderLibraryFolders(view.folders);",
+        "renderLibraryFolders(view.folders, view.folder);",
         "note.hidden = !view.note;",
         "for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));",
     ):
         assert needle in body, needle
-    folders = _function_body(app_js, "renderLibraryFolders")
-    for needle in (
-        '$("library-folder-wrap").hidden = !folders.length;',
-        "if (select.dataset.choices !== signature) {",
-        "if (select.value !== state.libraryFolder) select.value = state.libraryFolder;",
-    ):
-        assert needle in folders, needle
     row = _function_body(app_js, "libraryRow")
     assert "const where = showFolder ? tileFolder(e, atelierFolders(state.status)" in row
     assert 'where?.label ? h("span", { class: "tile-where" }, where.label) : null' in row

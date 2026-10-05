@@ -1057,7 +1057,8 @@ def create_app(
             with Library(lib) as library:
                 return len({r.tile for r in library.list(kind="ortho")})
 
-        checks, running, others, own, missing, count = await asyncio.gather(
+        root = data_root()
+        checks, running, others, own, missing, tiles_real, count = await asyncio.gather(
             asyncio.to_thread(_timed("checks", doctor_checks)),
             asyncio.to_thread(
                 _timed("X-Plane running", lambda: xp is not None and xplane_running())
@@ -1067,11 +1068,13 @@ def create_app(
                 _timed("packs of their own", lambda: [] if xp is None else packs_of_their_own(xp))
             ),
             asyncio.to_thread(_timed("data folder", data_root_missing)),
+            # a network drive that stopped answering holds this one, not the loop (a review,
+            # 2026-10-05)
+            asyncio.to_thread(_timed("data folder links", lambda: _real_path(root / "tiles"))),
             asyncio.to_thread(_timed("library count", library_count)),
         )
         home = osxp_home()
         active = manager.active()
-        root = data_root()
         return {
             "version": __version__,
             "api_level": API_LEVEL,
@@ -1097,7 +1100,7 @@ def create_app(
                 "path": str(root),
                 "chosen": root != home,
                 "present": missing is None,
-                "tiles_real": _real_path(root / "tiles"),
+                "tiles_real": tiles_real,
             },
             "library_count": count,
             "language": _language(request),

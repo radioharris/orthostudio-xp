@@ -319,6 +319,7 @@ async def test_the_status_names_its_slow_parts_and_the_doctors_slow_checks(  # t
         "other X-Planes",
         "packs of their own",
         "data folder",
+        "data folder links",
         "library count",
     }
     checks = {

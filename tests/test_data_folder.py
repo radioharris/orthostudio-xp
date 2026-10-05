@@ -6,6 +6,7 @@ Temporary folders and a fake X-Plane only; nothing of the machine's is read or w
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
 import shutil
@@ -515,14 +516,30 @@ def test_the_overlays_name_of_an_unplugged_disk_waits_for_it_and_a_deleted_folde
     assert not os.path.lexists(cs / "yOrthoStudio_Overlays_2")
 
 
-
 @pytest.mark.anyio
 async def test_the_status_gives_the_atelier_s_tiles_folder_with_its_links_followed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A data folder reached through a link: a tile built without being installed is listed under
     the folder with its links followed, and the Library showed it outside the atelier (a review,
-    2026-10-05). The status gives both forms, and the page calls both the atelier."""
+    2026-10-05). The status gives both forms, and the page calls both the atelier. The links are
+    followed in a worker thread, as the status's other slow parts are: on a network drive that
+    stopped answering, the loop would have held every request of the page (a review,
+    2026-10-05)."""
+    from orthostudio.api import app as appmod
+
+    where: list[str] = []
+    real_path = appmod._real_path
+
+    def followed(path: Path) -> str | None:
+        try:
+            asyncio.get_running_loop()
+            where.append("loop")
+        except RuntimeError:
+            where.append("thread")
+        return real_path(path)
+
+    monkeypatch.setattr(appmod, "_real_path", followed)
     (tmp_path / "var" / "home" / "pilot").mkdir(parents=True)
     (tmp_path / "home").symlink_to(tmp_path / "var" / "home", target_is_directory=True)
     linked = tmp_path / "home" / "pilot" / ".orthostudio"
@@ -543,3 +560,4 @@ async def test_the_status_gives_the_atelier_s_tiles_folder_with_its_links_follow
         mgr.close()
     real = tmp_path.resolve() / "var" / "home" / "pilot" / ".orthostudio" / "tiles"
     assert data["path"] == str(linked) and data["tiles_real"] == str(real)
+    assert where == ["thread"]

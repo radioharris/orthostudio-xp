@@ -727,12 +727,16 @@ text: either separator, a trailing one or not, and the letters' case aside but o
 of one folder through a link other than the atelier's are two folders. *Folder* beside the search
 (`#library-folder-wrap`, `#library-folder`, `libraryFolders`) lists *All folders*, then *Workshop*,
 then the others by name, each with how many tiles it holds (an overlay row is not a tile); its
-choices are made again only when they change, the Library being drawn again every 5 s while sizes
-are measured, which closed an open list under the hand. One chosen shows its tiles only, with the
-search (`libraryView`), and "{n} of {total} tiles." says so; a search that finds no tile in it but
-finds some in other folders says "No tile of this folder matches; {n} in other folders." A folder
-gone from the list (its tiles deleted) puts the choice back to all. The choice is kept for the
-session only. Nothing is read on the disk: the rows say where each pack is.
+choices are made again only when they change (a count, a folder, the language), the Library being
+drawn again every 5 s while sizes are measured, which closed an open list under the hand
+(`renderLibraryFolders`). Until the status says where the atelier is, no folder is told, under the
+tiles or in the filter (`atelierFolders` null): a page opened on the Library drew it before the
+status came, and the atelier's own tiles read for that moment as their full path, the user's name
+in it. One chosen shows its tiles only, with the search (`libraryView`), and "{n} of {total}
+tiles." says so; a search that finds no tile in it but finds some in other folders says "No tile
+of this folder matches; {n} in other folders." A folder gone from the list (its tiles deleted)
+puts the choice back to all. The choice is kept for the session only. Nothing is read on the
+disk: the rows say where each pack is.
 
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list

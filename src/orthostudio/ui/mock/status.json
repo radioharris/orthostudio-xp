@@ -22,7 +22,7 @@
   ],
   "home": "/Users/pilot/.orthostudio",
   "user_home": "/Users/pilot",
-  "data_dir": {"path": "/Users/pilot/.orthostudio", "chosen": false, "present": true},
+  "data_dir": {"path": "/Users/pilot/.orthostudio", "chosen": false, "present": true, "tiles_real": "/Users/pilot/.orthostudio/tiles"},
   "library_count": 5,
   "language": "fr"
 }

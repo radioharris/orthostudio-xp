@@ -5101,10 +5101,12 @@ function folderKey(folder, platform) {
 /** The atelier's tiles folders, from the status: the data folder's `tiles` as Settings name it,
  * and with its links followed (`data_dir.tiles_real`), under which a tile built without being
  * installed is listed: a data folder reached through a link showed that tile elsewhere (a
- * review, 2026-10-05). */
+ * review, 2026-10-05). Null while the status is not known, and no folder is told then: a page
+ * opened on the Library drew it before the status came, and for that moment the atelier's own
+ * tiles read as their full path, the user's name in it (a review, 2026-10-05). */
 export function atelierFolders(status) {
   const data = status?.data_dir;
-  if (!data?.path) return [];
+  if (!data?.path) return null;
   return [`${String(data.path).replace(/[\\/]+$/, "")}/tiles`, data.tiles_real].filter(Boolean);
 }
 
@@ -5126,8 +5128,10 @@ export function tileFolder(e, atelier, platform) {
 
 /** The folders of the Library's tiles, for its filter: ``[{key, label, n}]``, the atelier first,
  * then the others by name; none when every tile is in one folder, there being nothing to
- * filter (a user files hundreds of tiles by area, on several disks, TinkerNZ 2026-10-04). */
+ * filter (a user files hundreds of tiles by area, on several disks, TinkerNZ 2026-10-04), and
+ * none while the atelier is not known (``atelier`` null, `atelierFolders`). */
 export function libraryFolders(rows, atelier, platform) {
+  if (!atelier) return [];
   const seen = new Map();
   for (const e of libraryTiles(rows)) {
     const folder = tileFolder(e, atelier, platform);
@@ -5142,11 +5146,11 @@ export function libraryFolders(rows, atelier, platform) {
 }
 
 /** What the Library shows of its tiles (``tiles``, overlay rows left out), given the search and
- * the folder chosen: ``{folders, folder, rows, note}``, the folders of its filter, the folder
- * kept (none once it is gone), the rows both keep, and the note under the search (``{text,
- * warn}``, or null). A search that finds tiles in other folders only says so, where it said no
- * tile matched (a review, 2026-10-05). */
-export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = [], platform = "") {
+ * the folder chosen, ``atelier`` being `atelierFolders`: ``{folders, folder, rows, note}``, the
+ * folders of its filter, the folder kept (none once it is gone), the rows both keep, and the
+ * note under the search (``{text, warn}``, or null). A search that finds tiles in other folders
+ * only says so, where it said no tile matched (a review, 2026-10-05). */
+export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = null, platform = "") {
   const folders = libraryFolders(tiles, atelier, platform);
   const kept = folders.some((f) => f.key === folder) ? folder : "";
   const inFolder = (e) => !kept || tileFolder(e, atelier, platform).key === kept;
@@ -5500,7 +5504,7 @@ function renderLibrary() {
   const platform = state.status?.platform || "";
   const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
   state.libraryFolder = view.folder;
-  renderLibraryFolders(view.folders);
+  renderLibraryFolders(view.folders, view.folder);
   const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
   note.hidden = !view.note;
@@ -5517,9 +5521,10 @@ function renderLibrary() {
   markWideTables();
 }
 
-/** The folder filter above the Library: one choice per folder its tiles are in, with how many,
- * shown only when they are in more than one. */
-function renderLibraryFolders(folders) {
+/** The folder filter above the Library: one choice per folder its tiles are in (``folders``,
+ * `libraryFolders`), with how many, shown only when they are in more than one; ``chosen`` the
+ * one shown. */
+export function renderLibraryFolders(folders, chosen) {
   $("library-folder-wrap").hidden = !folders.length;
   const select = $("library-folder");
   // its choices are made again only when they change: the Library is drawn again every 5 s
@@ -5534,7 +5539,7 @@ function renderLibraryFolders(folders) {
     for (const [key, label] of choices) select.append(h("option", { value: key }, label));
     select.dataset.choices = signature;
   }
-  if (select.value !== state.libraryFolder) select.value = state.libraryFolder;
+  if (select.value !== chosen) select.value = chosen;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
