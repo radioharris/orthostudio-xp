@@ -156,7 +156,7 @@ in, and it is back by itself; if you put it on another disk, *Find again…* tak
 and forests stayed on the disk away, where X-Plane no longer draws them once it is back: build the
 tile again to have them, drawn even if you had turned that folder's roads off in X-Plane. Plug it in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
-at the bottom, where the mesh of AutoOrtho or of another pack may hide it.
+at the bottom, where another pack's mesh may hide it.
 
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
 the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
@@ -544,7 +544,7 @@ list* takes an imported tile off the list again (once it is out of X-Plane), and
 where they are.
 
 In `scenery_packs.ini`, OrthoStudio XP puts the overlays just above the photo tiles, both below
-custom airports and object packs (such as simHeaven) and above AutoOrtho and base meshes. Before its
+custom airports and object packs (such as simHeaven) and above the base meshes. Before its
 first change it keeps the original as `scenery_packs.ini.bak`, and before every change the previous
 version as `scenery_packs.ini.osxp-previous`.
 
