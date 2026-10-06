@@ -859,7 +859,9 @@ ambiguous when the tile was built into two output folders):
   back in its place meanwhile. Its tooltip says X-Plane must be closed. An imported tile says to
   import again the folder it was put in. A disk not connected comes back by itself once plugged
   in, which its tooltip says, with *Find again…* for a tile put on another disk (a disk renamed,
-  or left for another). *Delete…* stays for OrthoStudio XP rows (the engine then forgets the
+  or left for another); it also says to plug it in before starting X-Plane, which, started without
+  it, takes the tile off `scenery_packs.ini` and later puts it back at the bottom, under the mesh
+  of AutoOrtho (measured on the owner's Mac, 2026-10-06). *Delete…* stays for OrthoStudio XP rows (the engine then forgets the
   tile); on a disk not connected its question says the files stay on that disk and that plugging
   it in will not bring the tile back. An imported tile still in X-Plane keeps *Remove from
   X-Plane*, its way to *Remove from the list*.

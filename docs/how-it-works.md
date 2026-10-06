@@ -153,7 +153,9 @@ copied; only its roads and forests, a small file left in the folder it came from
 that taking it out of X-Plane later takes them out too. Put the folder anywhere but inside X-Plane:
 X-Plane reads it through a link. A tile on a disk that is not plugged in says *Disk not
 connected*: plug the disk in, and it is back by itself; if you put it on another disk, *Find
-again…* takes it there.
+again…* takes it there. Plug it in before starting X-Plane: started without it, X-Plane takes the
+tile off its list, then puts it back at the bottom, where the mesh of AutoOrtho or of another pack
+may hide it.
 
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
 the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
@@ -178,7 +180,8 @@ The workshop keeps the cache of the tiles filed elsewhere, so that building them
 what only those tiles need goes, their data and their downloaded images, and the workshop's disk
 gets the room back. The tiles themselves are not touched: they stay whole and in X-Plane, and
 building one again later downloads its images again and makes its textures again, like the
-first time. What a tile of the workshop uses too stays, such as the images astride the border with
+first time. A neighbour built after that makes its water masks along their border as if that tile
+were not built, as a tile built before its neighbours does. What a tile of the workshop uses too stays, such as the images astride the border with
 a neighbour. A tile filed on the workshop's own disk shares its textures and DSF with the cache, one
 file under two names: its cache goes all the same, but those files stay, the tile's own, so their
 room does not come back and the line does not count it.
