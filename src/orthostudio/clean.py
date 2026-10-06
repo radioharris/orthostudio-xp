@@ -20,7 +20,8 @@ map (``docs/specs/map-zones.md`` section 6). The map cache is touched only when 
 it: no directory is ever guessed from another one.
 
 The cache of the tiles filed outside the atelier (``filed``, the atelier's step 5) goes only on
-request too, all of it: what only those tiles need, and the downloaded image pieces only they use.
+request too, all of it but their own meshes, which their neighbours' masks read (:data:`MESH_RULE`):
+what only those tiles need, and the downloaded image pieces only they use.
 The tiles themselves are never touched, nor need it: a pack holds its files under its own names,
 copies on another disk, hard links on the atelier's. A tile filed on the atelier's disk keeps its
 textures and DSF that way, and their bytes do not come back: the figures count only what does.
@@ -93,7 +94,9 @@ MESH_RULE = "orthostudio.mesh"
 """The rule of a tile's mesh (``orthostudio.mesh.rule.OSXP_MESH``, not imported: it brings the
 mesh builder). The mesh of a tile filed outside stays when its cache is freed: the masks of its
 neighbours read it, and built again without it a neighbour drew its shore along their border as if
-that tile did not exist (his choice, 2026-10-06)."""
+that tile did not exist (his choice, 2026-10-06). It goes once its tile is deleted or built again
+otherwise, but for a neighbour whose masks were made from it, which keeps it as an input of theirs:
+the water it draws is there all the same."""
 
 _CONTAINER = re.compile(r"(\d+)_(\d+)\.chunks")
 """A texture container's name in the imagery cache, ``<til_y>_<til_x>.chunks``
@@ -465,9 +468,12 @@ def clean(
     if Path(store_root).is_dir():
         with Store(store_root) as store:
             mine = needed_keys(store, _roots(atelier))
-            needed = needed_keys(store, _roots(away)) - mine
-            theirs = needed - _own_meshes(store, away)
-            unused = _doomed(store, store.iter_artifacts(), mine | needed, grace_s)
+            # their meshes stay; walked from, they kept what they were made of past the free, a
+            # file held then staying on no line (a review, 2026-10-06)
+            meshes = _own_meshes(store, away)
+            needed = needed_keys(store, _roots(away) - meshes) - mine
+            theirs = needed - meshes
+            unused = _doomed(store, store.iter_artifacts(), mine | needed | meshes, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
             names = _Names([*unused, *cache])

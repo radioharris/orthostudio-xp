@@ -1174,6 +1174,19 @@ BuildFn = Callable[..., BuildReport]
 EnvFactory = Callable[..., Any]
 
 
+def _drop_frames(exc: BaseException) -> None:
+    """``exc`` and the exceptions it came from, without their tracebacks."""
+    seen: set[int] = set()
+    chain: list[BaseException | None] = [exc]
+    while chain:
+        e = chain.pop()
+        if e is None or id(e) in seen:
+            continue
+        seen.add(id(e))
+        e.__traceback__ = None
+        chain += [e.__cause__, e.__context__]
+
+
 def _call_env_factory(factory: EnvFactory | None, specs: Sequence[BuildSpec]) -> Any:
     """``factory(specs)``; a zero-argument factory (the P2b contract's literal form) too."""
     if factory is None:
@@ -1419,6 +1432,11 @@ class JobManager:
             log.warning("job %s failed: %s", job.id, err)
             job.job_error = error_json(err)
             job._append("failed", tile=None, stage=None, node=None, role=None, error=job.job_error)
+            # the frames of the failure hold the environment, and the store's index it opened:
+            # kept by the error (in a log record, say), they lived on until Python looked for
+            # cycles, and the data folder's disk would not eject (a review, 2026-10-06). Without
+            # them, both go once nothing uses them, a step the scheduler left running included
+            _drop_frames(err)
         finally:
             job.stop_ticker()
             job._finish(status, report, env if isinstance(env, BuildEnv) else None)

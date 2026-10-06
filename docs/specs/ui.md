@@ -778,23 +778,24 @@ shows: the measure goes over the whole store, the downloaded pieces and the reli
 the Library asked for it, from the Plan at the start too): the data used by the tiles on this
 computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
 they need and the image pieces only they use, all of it but their meshes, which their neighbours'
-masks read, a line shown only while they have some of their data here, and counting only those
-tiles: a tile of a data folder chosen before has its cache there, and a filed neighbour whose square
-only the pieces astride a border touch has nothing here, so filing one tile no longer reads "Cache
-of 5 tile(s)"; its box is unticked as it hides), the data no tile needs any more, the downloaded
-images (those of the filed tiles excepted: they are in their line; a piece astride the border with a
-tile of the atelier counts here, even at a level of detail only the filed tile uses, and so does a
-piece only a filed tile with nothing here touches), the map background and the **downloaded
-relief**, each with a plain tooltip. *Free space…* asks first, in a modal dialog that says what goes
-and how much (Escape keeps everything), with a checkbox per choice, each freeing its own line: the
-cache of the filed tiles (shown with its line; its help says the tiles stay whole and in X-Plane,
-and building them again downloads their images again), the downloaded images, and the relief: a
-square of relief is 40 MB from Copernicus against 800 MB of imagery at ZL16, and comes back much
-faster, so the choices are separate. The relief was counted by nothing until a user emptied
-everything and found 1.4 GB of it left (2026-09-18). It is disabled while a build runs, while this
-page files tiles (the engine refuses meanwhile: a filing moves a tile out of the atelier) and when
-there is nothing to free, and ends with a toast of what came back. A 409 `SYS_BUSY` shows as a card
-in the Library's words, which name builds and filings.
+masks read (counted with the data used by the tiles, whose tooltip says so; a mesh goes with its
+tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
+their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
+there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
+so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the data
+no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
+line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
+only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
+background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a
+modal dialog that says what goes and how much (Escape keeps everything), with a checkbox per choice,
+each freeing its own line: the cache of the filed tiles (shown with its line; its help says the
+tiles stay whole and in X-Plane, and building them again downloads their images again), the
+downloaded images, and the relief: a square of relief is 40 MB from Copernicus against 800 MB of
+imagery at ZL16, and comes back much faster, so the choices are separate. The relief was counted by
+nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
+while a build runs, while this page files tiles (the engine refuses meanwhile: a filing moves a tile
+out of the atelier) and when there is nothing to free, and ends with a toast of what came back. A
+409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings.
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can

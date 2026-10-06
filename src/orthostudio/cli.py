@@ -795,7 +795,8 @@ def clean(
             help="free all the space OrthoStudio XP can give back: every built result no tile on "
             "disk needs, even from a build that just ended, plus the downloaded image pieces, the "
             "map cache, the elevation cells and the cache of the tiles filed outside the workshop "
-            "(a tile built again downloads them again); refused while a build runs",
+            "but their meshes, which their neighbours read (a tile built again downloads them "
+            "again); refused while a build runs",
         ),
     ] = False,
     store: Annotated[Path | None, _STORE_OPT] = None,

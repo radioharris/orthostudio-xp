@@ -560,6 +560,33 @@ def test_an_artefact_that_cannot_be_moved_aside_is_left_whole(world: World) -> N
     assert masks not in w.stored()
 
 
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
+def test_what_a_kept_mesh_was_made_of_and_could_not_go_stays_on_a_line(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The kept meshes were walked from: what a filed tile's mesh was made of, held by another
+    program during the free, stayed on no line, neither the filed tiles' (the tile having nothing
+    else here) nor the data no tile needs, and only the command could free it (a review,
+    2026-10-06). It is data no tile needs, which a plain Free space frees."""
+    w = world
+    g = TileRef(46, 8)
+    with Store(w.store, fsync=False) as s:
+        source = _put(s, "orthostudio.dem", 50, data=b"h" * 900)  # read by its mesh alone
+        shard = s.path(source).parent
+    w.pack(g, w.build(g, 6, osm=source), w.tiles)
+    w.file(g, tmp_path / "Other disk" / "Alps", monkeypatch, away=True)
+    shard.chmod(0o555)  # held: it cannot be moved aside
+    try:
+        w.run(filed=True)
+    finally:
+        shard.chmod(0o755)
+    assert source in w.stored()
+    seen = w.run(dry_run=True)
+    assert seen.filed_tiles == 0 and seen.filed_bytes == 0 and seen.freed_bytes > 0
+    w.run()
+    assert source not in w.stored() and _own_mesh(w, g) <= w.stored()
+
+
 class _Junction:
     """A listed folder as Windows lists a junction (a link to a folder elsewhere): a folder that
     is not a symbolic link, whose listing is the folder it leads to."""

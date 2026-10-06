@@ -1624,11 +1624,13 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
     A tile found again elsewhere while the disk of the folder it left was away left its roads
     there, and the day that disk came back X-Plane drew them twice (found on the owner's tiles,
     2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there. A line
-    the user disabled draws nothing, and stays: a user of simHeaven X-World turns OrthoStudio XP's
-    roads off, and the next overlays pack taking that name keeps them off (a review, 2026-10-06)."""
+    the user disabled stays, disabled, its link alone going: a user of simHeaven X-World turns
+    OrthoStudio XP's roads off, and the next overlays pack taking that name keeps them off; the
+    link kept with it, X-Plane started without the disk dropped the line and gave it back enabled
+    once the disk was back (two reviews, 2026-10-06)."""
     cs = Path(custom_scenery)
     link = overlay_link(cs, overlay_pack)
-    if link is None or os.path.isdir(overlay_pack) or _overlay_line_off(cs, overlay_pack):
+    if link is None or os.path.isdir(overlay_pack):
         return
     folder = os.path.realpath(Path(overlay_pack).parent)
     if any(
@@ -1638,7 +1640,7 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
         for name in _entry_names(cs)
     ):
         return
-    uninstall_pack(link.name, cs)
+    uninstall_pack(link.name, cs, update_ini=not _overlay_line_off(cs, overlay_pack))
 
 
 def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:

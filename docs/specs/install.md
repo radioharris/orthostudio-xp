@@ -454,10 +454,11 @@ finds it again where the user shows it (2026-10-05):
   no tile link leads into that folder (`_let_go_of_overlays_out_of_reach`, under the lock of every
   install): the tile's roads stayed there, and the day the disk came back X-Plane drew them twice
   (found on the owner's tiles, 2026-10-06). A tile of that folder still in X-Plane keeps it, its own
-  roads being there, and so does a line the user disabled, which draws nothing: the next overlays
-  pack taking that name keeps the roads off (a review, 2026-10-06). An X-Plane that did not show the
-  tile gets nothing. The Library row follows; the overlay row of the folder left goes once it holds
-  nothing of the tile.
+  roads being there. A line the user disabled stays, disabled, its link alone going: the next
+  overlays pack taking that name keeps the roads off; the link kept with it, X-Plane started without
+  the disk dropped the line and gave it back enabled once the disk was back (two reviews,
+  2026-10-06). An X-Plane that did not show the tile gets nothing. The Library row follows; the
+  overlay row of the folder left goes once it holds nothing of the tile.
 * Asked again after a stop half way, it finishes what is left: the X-Planes whose link already
   leads to the found folder are given its install again, which puts the overlay beside it. The
   receipt says when the tile's roads and forests are nowhere (`overlay_lost`): a build gives them

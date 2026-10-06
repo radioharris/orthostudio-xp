@@ -578,6 +578,10 @@ async def test_a_roads_line_the_user_disabled_stays_through_find_again_and_the_n
             f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
         )
     assert r.status_code == 200, r.text
+    # its link goes, its line stays disabled
+    assert not os.path.lexists(roads)
+    kept = SceneryPacks.load(ini).find(roads.name)
+    assert kept is not None and not kept.enabled
     # built again: its roads parked in it, installed as the put back installs it
     (copy / PARKED_OVERLAY).write_bytes(b"XPLNEDSF overlay")
     install_receipt(copy, cs, tile=T, library_path=default_library_path(), reenable=False)
@@ -585,6 +589,53 @@ async def test_a_roads_line_the_user_disabled_stays_through_find_again_and_the_n
     assert new is not None
     line = SceneryPacks.load(ini).find(new.name)
     assert line is not None and not line.enabled
+
+
+def _x_plane_starts(cs: Path) -> None:
+    """X-Plane 12's start as measured on the owner's Mac (2026-10-06): the lines of the packs it
+    cannot reach go, the packs of Custom Scenery it does not list come at the end, enabled."""
+    ini = cs / "scenery_packs.ini"
+    listed = SceneryPacks.load(ini)
+    for name in list(listed.names()):
+        if not name.startswith("*") and not (cs / name).exists():
+            listed.remove(name)
+    listed.save(ini)
+    known = set(SceneryPacks.load(ini).names())
+    with ini.open("ab") as f:
+        for name in sorted(os.listdir(cs)):
+            if name not in known and (cs / name).is_dir():
+                f.write(f"SCENERY_PACK Custom Scenery/{name}/\n".encode())
+
+
+@pytest.mark.anyio
+async def test_x_plane_started_without_the_disk_brings_no_old_roads_back(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """The roads line of the folder left is disabled, its link kept: X-Plane started without the
+    disk dropped the line, and gave it back enabled once the disk was back, the old roads over
+    X-World's (a review, 2026-10-06). The link going, nothing of that folder comes back."""
+    application, _mgr = app
+    pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
+    ini = cs / "scenery_packs.ini"
+    roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
+    assert roads is not None
+    listed = SceneryPacks.load(ini)
+    assert listed.disable(roads.name)
+    listed.save(ini)
+    aside = _unplugged(disk)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
+        )
+    assert r.status_code == 200, r.text
+    _x_plane_starts(cs)  # the disk away
+    aside.rename(disk)
+    _x_plane_starts(cs)  # the disk back
+    assert overlay_link(cs, pack.parent / OVERLAY_PACK) is None
+    assert all(
+        os.path.realpath(cs / name) != os.path.realpath(pack.parent / OVERLAY_PACK)
+        for name in SceneryPacks.load(ini).names()
+    )
 
 
 def test_the_tidying_up_and_an_install_do_not_lose_each_other_s_line(

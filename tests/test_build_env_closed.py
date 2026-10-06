@@ -10,8 +10,10 @@ environment closed it. The environments here are the real ones, on a fake X-Plan
 
 from __future__ import annotations
 
+import gc
 import sqlite3
 import time
+import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -104,3 +106,35 @@ def test_after_a_stop_the_store_stays_open_for_the_steps_still_running(
     assert not _closed(env.store)
     env.store.close()
     mgr.close()
+
+
+def test_a_build_that_fails_lets_its_store_go(home: Path, xplane: Path) -> None:
+    """A build that raised kept its environment, and the store's index it opened, until Python
+    looked for cycles: the error's traceback held the job's frame (a review, 2026-10-06). It goes
+    as soon as nothing uses it, without waiting for that."""
+    from orthostudio.errors import OsxpError
+
+    stores: list[weakref.ref[Store]] = []
+
+    def factory(specs: Sequence[BuildSpec]) -> BuildEnv:
+        env = BuildEnv.create(specs)
+        stores.append(weakref.ref(env.store))
+        return env
+
+    def fails(specs: Sequence[BuildSpec], *, on_event: object, env: object) -> None:
+        raise OsxpError("SYS_INTERNAL_ERROR", context={"detail": "refused at its start"})
+
+    gc.disable()  # what is freed here is freed by the references alone
+    try:
+        mgr = JobManager(jobs_dir=home / "jobs", build=fails, env_factory=factory)
+        job = mgr.start([make_spec(home=home)], install=False, request={"tiles": ["+43+005"]})
+        assert job.wait(10.0) and job.status == "failed"
+        (store,) = stores
+        for _ in range(250):  # the job's thread ends just after its job
+            if store() is None:
+                break
+            time.sleep(0.02)
+        assert store() is None
+        mgr.close()
+    finally:
+        gc.enable()
