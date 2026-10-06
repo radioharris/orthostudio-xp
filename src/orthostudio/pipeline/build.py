@@ -474,6 +474,8 @@ class BuildEnv:
     hedge_after_s: float = 1.0
     prepared: Any = None
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
+    own_store: bool = False
+    """Whether :meth:`create` opened ``store``, which :meth:`close` then closes."""
 
     @classmethod
     def create(cls, specs: Sequence[BuildSpec], *, store: Store | None = None) -> BuildEnv:
@@ -514,7 +516,15 @@ class BuildEnv:
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
             prepared=_prepared_chain(first, workdir),
+            own_store=store is None,
         )
+
+    def close(self) -> None:
+        """Let go of the store's index when this environment opened it. Left open after each
+        build and each plan, it was only closed when Python collected the environment: the disk of
+        a data folder left for another could not be ejected while the app ran (2026-10-06)."""
+        if self.own_store:
+            self.store.close()
 
     @property
     def logs(self) -> Path:

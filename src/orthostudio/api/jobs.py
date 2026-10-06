@@ -1422,6 +1422,9 @@ class JobManager:
         finally:
             job.stop_ticker()
             job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+            if isinstance(env, BuildEnv):
+                with contextlib.suppress(Exception):
+                    env.close()  # the store's index is not held between builds
             with contextlib.suppress(OSError):
                 job.save_state()
             with self._lock:

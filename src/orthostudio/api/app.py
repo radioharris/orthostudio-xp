@@ -1638,7 +1638,11 @@ def create_app(
                 from orthostudio.api.jobs import _call_env_factory
 
                 env = _call_env_factory(factory, specs)
-            est = estimate(specs, online=req.online, env=env)
+            try:
+                est = estimate(specs, online=req.online, env=env)
+            finally:
+                if isinstance(env, BuildEnv):
+                    env.close()  # each plan opened the store's index and left it open
             return plan_answer(est, specs)
 
         return await asyncio.to_thread(run)
