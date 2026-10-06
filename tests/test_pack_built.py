@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 from orthostudio import __version__
 from orthostudio.model import TileRef
@@ -35,31 +36,43 @@ class Why:
 
 @dataclass
 class FakeStore:
-    """The two calls relief_read makes: the inputs of a key, and where a key lies."""
+    """The three calls relief_read makes: the inputs of a key, by name as the store gives them,
+    the rule a key was built by, and where a key lies."""
 
     edges: dict[str, tuple[Ref, ...]] = field(default_factory=dict)
     paths: dict[str, Path] = field(default_factory=dict)
+    rules: dict[str, str] = field(default_factory=dict)
 
     def why(self, key: str) -> Why:
-        return Why(self.edges.get(key, ()))
+        return Why(tuple(sorted(self.edges.get(key, ()), key=lambda ref: ref.name)))
+
+    def info(self, key: str) -> SimpleNamespace | None:
+        return SimpleNamespace(rule=self.rules[key]) if key in self.rules else None
 
     def path(self, key: str) -> Path:
         return self.paths[key]
 
 
-def _store(tmp_path: Path, meta: object) -> FakeStore:
-    """dsf -> vectors -> dem, the way the build graph wires them."""
+def _store(tmp_path: Path, meta: object, *, airports: bool = True) -> FakeStore:
+    """The DSF, its mesh and its tracing, and the relief, the way the build graph wires them: the
+    mesh takes the tracing under the name ``dem`` too (``--dem vectors``, the default), and the DSF
+    takes the tracing only for sharper airports."""
     dem_dir = tmp_path / "dem"
     dem_dir.mkdir()
     (dem_dir / "meta.json").write_text(
         meta if isinstance(meta, str) else json.dumps(meta), encoding="utf-8"
     )
+    vec_dir = tmp_path / "vec"
+    vec_dir.mkdir()  # the tracing's artefact: no meta.json of a relief in it
+    dsf = (Ref("masks", "masks"), Ref("mesh", "mesh"), Ref("rasters", "xp12"))
     return FakeStore(
         edges={
-            "dsf": (Ref("vectors", "vec"), Ref("mesh", "mesh")),
+            "dsf": (*dsf, Ref("vectors", "vec")) if airports else dsf,
+            "mesh": (Ref("coastline", "coast"), Ref("dem", "vec"), Ref("vectors", "vec")),
             "vec": (Ref("osm", "osm"), Ref("dem", "dem")),
         },
-        paths={"dem": dem_dir},
+        paths={"dem": dem_dir, "vec": vec_dir},
+        rules={"dem": "orthostudio.dem", "vec": "orthostudio.vectors", "mesh": "orthostudio.mesh"},
     )
 
 
@@ -68,11 +81,34 @@ def test_the_relief_really_read_comes_from_the_relief_artefact(tmp_path: Path) -
     assert relief_read(laid, "dsf") == {"relief": "COP30", "relief_laid": ["HRDEM"]}  # type: ignore[arg-type]
 
 
+def test_a_tile_built_without_sharper_airports_says_its_relief_too(tmp_path: Path) -> None:
+    """Its DSF takes no tracing of its own, and the walk reached the mesh's input named ``dem``
+    first, which is the tracing: the Library said "—" for the relief of every such tile, and
+    "none on this square" for files of one's own that were laid (a user, 2026-10-05)."""
+    plain = _store(tmp_path, {"source": "XP12", "laid_over": ["/lidar"]}, airports=False)
+    assert relief_read(plain, "dsf") == {"relief": "XP12", "relief_laid": ["/lidar"]}  # type: ignore[arg-type]
+
+
 def test_a_lidar_that_never_flew_there_is_asked_but_not_laid(tmp_path: Path) -> None:
     """Banff: Canada's lidar was chosen, the square has none, Copernicus answered alone. The
     relief stage leaves an overlay that had nothing out of ``laid_over``."""
     alone = _store(tmp_path, {"source": "COP30", "laid_over": []})
     assert relief_read(alone, "dsf") == {"relief": "COP30", "relief_laid": []}  # type: ignore[arg-type]
+
+
+def test_what_became_of_his_own_file_comes_with_the_relief(tmp_path: Path) -> None:
+    """The Library names a file of one's own, or says why it was not used (2026-10-05): the relief
+    says it in its meta.json. A relief made before says nothing of it, and gives no such fact
+    (``test_the_relief_really_read_comes_from_the_relief_artefact``)."""
+    own = [
+        {"file": "/lidar/N50E011.hgt", "used": False, "why": "coarser", "own_m": 93, "base_m": 31}
+    ]
+    told = _store(tmp_path, {"source": "COP30", "laid_over": [], "own": own})
+    assert relief_read(told, "dsf") == {  # type: ignore[arg-type]
+        "relief": "COP30",
+        "relief_laid": [],
+        "relief_own": own,
+    }
 
 
 def test_no_relief_to_read_is_no_fact_rather_than_an_error(tmp_path: Path) -> None:

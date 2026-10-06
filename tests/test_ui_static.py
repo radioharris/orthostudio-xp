@@ -5013,6 +5013,85 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     assert "body.append(...libraryRow(e));" in _function_body(app_js, "renderLibrary")
 
 
+def test_the_library_names_his_relief_file_or_says_why_it_was_not_used() -> None:
+    """A user saw two reliefs come out of one folder of lidar files, X-Plane's taking his file and
+    Copernicus not, and nothing said which file a tile stood on (2026-10-05). The Relief line names
+    the file, or says why it was not used, the whole path in its tooltip; a relief made before,
+    which says nothing of it, keeps the words it had. Settings say the rule."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        const folder = ["/Users/me/lidar"];
+        const file = "/Users/me/lidar/Bavaria/N50E011.hgt";
+        const coarser = { file, used: false, why: "coarser", own_m: 93, base_m: 31 };
+        const say = (relief, laid, own) =>
+          m.reliefSentence({ relief, relief_laid: laid, relief_asked: folder, relief_own: own });
+        const bs = String.fromCharCode(92);
+        const got = {
+          used: say("XP12", folder, [{ file, used: true }]),
+          coarser: say("COP30", [], [coarser]),
+          unreadable: say("COP30", [], [{ file, used: false, why: "unreadable" }]),
+          empty: say("COP30", [], [{ file, used: false, why: "empty" }]),
+          nofile: say("COP30", [], []),
+          windows: say("XP12", ["D:" + bs + "lidar"],
+                       [{ file: ["D:", "lidar", "N50E011.hgt"].join(bs), used: true }]),
+          base: m.reliefSentence({ relief: "/Users/me/N50E011.hgt", relief_laid: [],
+                                   relief_asked: [], relief_own: [] }),
+          canada: m.reliefSentence({ relief: "COP30", relief_laid: ["HRDEM"],
+                                     relief_asked: ["HRDEM", ...folder], relief_own: [coarser] }),
+          before: say("COP30", [], undefined),
+          line: m.builtLines({ provider: "BI", zl: 16, photo: null, built: { at: 1790000000,
+            facts: { version: "0.1.22", relief: "COP30", relief_laid: [], relief_asked: folder,
+                     relief_own: [coarser] } } }).lines[2],
+          files: m.reliefFiles({ relief: "/Users/me/N50E011.hgt",
+                                 relief_own: [{ file, used: true }] }),
+        };
+        globalThis.document = { documentElement: {} };
+        i.setLanguage("fr");
+        got.french = say("COP30", [], [coarser]);
+        process.stdout.write(JSON.stringify(got));"""
+    )
+    left = "Copernicus. Your file N50E011.hgt was not used: "
+    assert got["used"] == "X-Plane 12, with your file N50E011.hgt over it" == got["windows"]
+    assert got["coarser"] == left + "93 m between points, where Copernicus has 31 m."
+    assert got["unreadable"] == left + "it could not be read."
+    assert got["empty"] == left + "it has no height on this square."
+    assert got["nofile"] == "Copernicus. Your folder has no file for this square."
+    assert got["base"] == "Your file N50E011.hgt"  # a file of his as the relief itself
+    assert got["canada"] == (
+        "Copernicus, with Canada's lidar over it. Your file N50E011.hgt was not used: "
+        "93 m between points, where Copernicus has 31 m."
+    )
+    # a relief made before says nothing of his files: not used, which is true whatever the reason,
+    # where "none on this square" was false of a file left aside for being coarser
+    assert got["before"] == "Copernicus: your own files asked, not used on this square"
+    assert got["line"] == ["Relief", got["coarser"], None, "/Users/me/lidar/Bavaria/N50E011.hgt"]
+    assert got["files"] == "/Users/me/N50E011.hgt\n/Users/me/lidar/Bavaria/N50E011.hgt"
+    assert got["french"] == (
+        "Copernicus. Votre fichier N50E011.hgt n'a pas servi : "
+        "93 m entre deux points, contre 31 m pour Copernicus."
+    )
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "title: title || null" in _function_body(app_js, "kv")  # the path, on hovering
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "relief.name.own_file",
+            "library.built_relief_coarser",
+            "library.built_relief_unreadable",
+            "library.built_relief_empty",
+            "library.built_relief_unused",
+            "library.built_relief_no_file",
+            "library.built_relief_own_unused",
+        ):
+            assert tables[lang][key], (lang, key)
+    # the rule is written where the folder is chosen, where it said "whatever its resolution"
+    assert "at least as fine as the relief chosen" in tables["en"]["settings.q.own_rest"]
+    assert "au moins aussi fin que le relief choisi" in tables["fr"]["settings.q.own_rest"]
+
+
 def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     """Where the user decides to build again (2026-09-21): a tooltip over a built tile's green
     outline, and under the chosen squares a line for each one already built, with what a build

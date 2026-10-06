@@ -355,6 +355,9 @@ def test_build_of_a_composite_writes_the_overlay_into_the_raster(tmp_path: Path)
     again = Dem.load(out)  # what the next stage reads
     assert again.alt_vec(np.array([[0.5, 0.5]]))[0] == pytest.approx(20.0, abs=1e-4)
     assert json.loads((out / "meta.json").read_text())["laid_over"] == [str(over)]
+    # and which file of his own it stands on, for the Library to name it (2026-10-05)
+    assert dem.own == ({"file": str(over), "used": True},)
+    assert json.loads((out / "meta.json").read_text())["own"] == [{"file": str(over), "used": True}]
 
 
 def test_an_overlay_finer_than_the_base_raises_the_whole_grid(tmp_path: Path) -> None:
@@ -386,10 +389,28 @@ def test_a_file_of_ones_own_coarser_than_the_relief_is_left_aside(tmp_path: Path
     assert dem.alt_dem.min() == 10 and dem.alt_dem.max() == 10
     (told,) = [e for e in events if e.code == "DEM_OVERLAY_COARSER"]
     assert told.context["own"] == "N43E005.hgt" and told.message
+    # and the relief keeps it, for the Library to say why his file was not used: a user saw two
+    # reliefs come out of one folder of lidar files, and nothing said it (2026-10-05)
+    file = str(mine / "N43E005.hgt")
+    assert dem.own == ({"file": file, "used": False, "why": "coarser", "own_m": 93, "base_m": 31},)
     # the same file over a coarser relief is laid, and raises the grid
     coarse = _hgt(tmp_path / "coarse.hgt", 601, 10)
     over = Dem.build(TileRef(43, 5), opts, custom_dem=f"{coarse};{mine}")
     assert over.laid_over == (str(mine),) and (over.nxdem, over.nydem) == (1201, 1201)
+    assert over.own == ({"file": file, "used": True},)
+
+
+def test_a_file_of_ones_own_with_no_height_on_the_square_is_said(tmp_path: Path) -> None:
+    """A file of the square that holds only voids lays nothing, and the relief chosen answers:
+    the relief keeps that the file was there, and why it gave nothing (2026-10-05)."""
+    base = _hgt(tmp_path / "base.hgt", 1201, 10)
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    _hgt(mine / "N43E005.hgt", 1201, -32768)
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    dem = Dem.build(TileRef(43, 5), opts, custom_dem=f"{base};{mine}")
+    assert dem.laid_over == () and dem.alt_dem.min() == 10 and dem.alt_dem.max() == 10
+    assert dem.own == ({"file": str(mine / "N43E005.hgt"), "used": False, "why": "empty"},)
 
 
 def test_a_hole_in_the_overlay_lets_the_relief_under_it_through(tmp_path: Path) -> None:
@@ -428,6 +449,7 @@ def test_a_folder_without_this_square_leaves_the_relief_alone(tmp_path: Path) ->
     assert dem.laid_over == ()
     assert dem.alt_dem.min() == 250 and dem.alt_dem.max() == 250
     assert any(e.code == "DEM_OVERLAY_UNAVAILABLE" for e in events)
+    assert dem.own == ()  # no file of his for this square: nothing to name
 
 
 # -- artefact (spec 9, acceptance A7) ------------------------------------------------------
@@ -628,6 +650,7 @@ def test_a_file_of_ones_own_that_cannot_be_read_gives_way_to_the_relief_chosen(
     assert dem is not None, "the tile is built on the relief he chose"
     assert int(dem.alt_dem.min()) == 100 and int(dem.alt_dem.max()) == 100
     assert "DEM_FILE_UNREADABLE" in {e.code for e in said}, "and the file is named"
+    assert dem.own == ({"file": str(folder / "N43E005.hgt"), "used": False, "why": "unreadable"},)
 
     # but when his folder *is* the relief, giving way would mean a flat tile: still refused,
     # with words about his folder rather than about the X-Plane installer

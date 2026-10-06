@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
@@ -546,7 +547,10 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
     ``{"relief": base source, "relief_laid": overlays really laid}``, as the relief stage wrote
     them in its ``meta.json``; empty when there is none to read (a store cleaned since, or a test
     without one). An overlay asked for that had nothing on the square is not in ``relief_laid``:
-    that is how a lidar relief chosen where the lidar never flew shows for what it is.
+    that is how a lidar relief chosen where the lidar never flew shows for what it is. And
+    ``relief_own``, what became of each file of one's own found for the square (``Dem.own``):
+    the Library names the file, or says why it was not used (2026-10-05). A relief made before
+    has no such record, and the key is then left out.
     """
     if key is None:
         return {}
@@ -561,14 +565,26 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
             for ref in store.why(current).inputs:
                 if ref.key is None:
                     continue
-                if ref.name == "dem":
+                if ref.name == "dem" and _is_relief(store, ref.key):
                     meta = json.loads((store.path(ref.key) / "meta.json").read_text("utf-8"))
-                    return {
+                    facts: dict[str, Any] = {
                         "relief": str(meta.get("source", "")),
                         "relief_laid": [str(x) for x in meta.get("laid_over", [])],
                     }
+                    if isinstance(meta.get("own"), list):
+                        facts["relief_own"] = [dict(x) for x in meta["own"] if isinstance(x, dict)]
+                    return facts
                 todo.append(ref.key)
     return {}
+
+
+def _is_relief(store: Store, key: str) -> bool:
+    """Whether ``key`` is the relief stage's artefact. The mesh takes the tracing's under the name
+    ``dem`` too (``--dem vectors``, the default), and reading that one found no relief: every tile
+    built without sharper airports, whose DSF takes no tracing of its own, said "—" for its relief
+    and "none on this square" for files of one's own that were laid (a user, 2026-10-05)."""
+    info = store.info(key)
+    return info is not None and info.rule == DEM_RULE.name
 
 
 _UPSTREAM_NAMES = {"vectors": "vectors", "mesh": "mesh", "masks": "masks", "rasters": "xp12"}

@@ -185,7 +185,12 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   the manifest's `[built]` (`PackManifest.built`, empty for a pack written before 0.1.10) and the
   time the manifest was written, which is when the pack was assembled (a user asked where to see
   it, 2026-09-21); `null` when the manifest cannot be read, and for an imported tile, whose
-  settings are Ortho4XP's;
+  settings are Ortho4XP's. Its `relief_own` says what became of each file of one's own found for
+  the square (`dem.md` 8.2, `own`), which the page's *Relief* line names: "X-Plane 12, with your
+  file N50E011.hgt over it", or "Copernicus. Your file N50E011.hgt was not used: 93 m between
+  points, where Copernicus has 31 m.", the whole path in its tooltip (a user saw two reliefs come
+  out of one folder of lidar files, 2026-10-05). A relief made before has none: its line then says
+  "your own files asked, not used on this square", true whatever the reason;
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as
