@@ -1097,6 +1097,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "made again.",
     ),
     _spec(
+        "SYS_REBUILD_XP_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running and shows tile {tile}: its files are not rewritten while it runs. "
+        "Nothing of the tile was changed.",
+        "Quit X-Plane, then build the tile again: what was built is reused.",
+    ),
+    _spec(
         "SYS_TILE_NOT_WHOLE",
         _B,
         _S,

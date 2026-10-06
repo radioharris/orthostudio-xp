@@ -7283,6 +7283,22 @@ def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
     assert en_away[0].endswith("The tile was not put there.")
 
 
+def test_a_tile_x_plane_shows_rebuilt_while_it_runs_says_build_again() -> None:
+    """A tile X-Plane shows, rebuilt while it runs, is not rewritten in its place: on the
+    owner's Shadow the card said to install from the Library, where only building again helps
+    (2026-10-06)."""
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), m.codeText("SYS_REBUILD_XP_RUNNING", {tile: "+46+006"}))))',
+    )
+    fr, en = words
+    assert fr[0].startswith("X-Plane est ouvert et affiche la tuile +46+006")
+    assert "reconstruisez" in fr[1] and "Bibliothèque" not in fr[1]
+    assert en[0].startswith("X-Plane is running and shows tile +46+006")
+    assert "build the tile again" in en[1] and "Library" not in en[1]
+
+
 def test_the_pick_boxes_and_the_filing_are_wired() -> None:
     """A box on each tile OrthoStudio XP built that is in its place and not in a build; "Pick all
     shown" acts on the rows the search and the folder leave; nothing else changes a tile while

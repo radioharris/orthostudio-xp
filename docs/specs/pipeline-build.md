@@ -163,17 +163,22 @@ user asked for the choice, 2026-09-25; a second, 2026-09-26); a tile built befor
 decals, or with `decal_on_sea` ticked and the decals off, is built again once.
 
 An existing DSF of a different content becomes `<name>.dsf.bak` (Ortho4XP convention, `write_dsf`;
-the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per
-re-encoded texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and
-`terrain/` are swept) and DDS and `.ter` files that are no longer referenced by the new DSF
-are removed from the pack (they stay in the store). The pack directory is named by the tile
-only, so `declare` **refuses** two specs of a batch that would write different content
-(another level, another parameter set) into the same `<out>/zOrthoStudio_<tile>/`
-(`CFG_VALUE_INVALID`: one level per output directory). On Windows, `tile.pack`
-refuses (`XP_RUNNING`) to rewrite a pack that is installed while X-Plane runs (it holds the
-DSF open; `os.replace` would fail), and a `PermissionError` on a file is `XP_PACK_CONFLICT`
-with the path. Group mode (several tiles sharing `terrain/` and `textures/`) is not offered
-in P2a: one pack per tile, the overlays pack shared.
+the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per re-encoded
+texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and `terrain/` are swept)
+and DDS and `.ter` files that are no longer referenced by the new DSF are removed from the pack
+(they stay in the store). The pack directory is named by the tile only, so `declare` **refuses** two
+specs of a batch that would write different content (another level, another parameter set) into the
+same `<out>/zOrthoStudio_<tile>/` (`CFG_VALUE_INVALID`: one level per output directory). On every
+system, `tile.pack` refuses (`SYS_REBUILD_XP_RUNNING`) to rewrite in its place a pack X-Plane shows
+(the link of Custom Scenery leads to the pack being assembled) while X-Plane runs, before writing
+anything: Windows will not replace a file X-Plane holds open (`os.replace` would fail), and
+elsewhere X-Plane read old and new files mixed. The steps before are kept, so building again once
+X-Plane is closed only assembles. A tile filed elsewhere is assembled in the workshop, beside what
+X-Plane reads, and only its put back waits (`SYS_PUT_BACK_XP_RUNNING`). The refusal was Windows
+only, as `XP_RUNNING` with an installation's words, and looked at the link alone: it refused a filed
+tile before it was built (found on the owner's Shadow, 2026-10-06). A `PermissionError` on a file is
+`XP_PACK_CONFLICT` with the path. Group mode (several tiles sharing `terrain/` and `textures/`) is
+not offered in P2a: one pack per tile, the overlays pack shared.
 
 `tile.install` (with `--install`; serialised by a process-wide lock because `scenery_packs.ini` is
 edited): `install_pack(pack_dir, custom_scenery, update_ini=False)` for the tile pack and for

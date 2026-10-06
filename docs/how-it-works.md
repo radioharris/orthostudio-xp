@@ -168,13 +168,16 @@ to their new folder, roads and forests included, and X-Plane keeps each line as 
 enabled or not.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
-back in its folder in place of the old version: moved there at once on the workshop's disk,
-copied and read back on another, the old version taken away only once the new one is in place.
-Built again unchanged, it is instant and nothing is copied; after its cache was freed, its images
-are downloaded again, and nothing is copied either when they give the same tile. X-Plane keeps
-showing it from its folder, its line as you left it, and the Library lists it once, there. Works
-says how far the copy is in the Installation cell. If its disk is not connected, the tile is not
-built, and Works says why.
+back in its folder in place of the old version: moved there at once on the workshop's disk, copied
+and read back on another, the old version taken away only once the new one is in place. Built again
+unchanged, it is instant and nothing is copied; after its cache was freed, its images are downloaded
+again, and nothing is copied either when they give the same tile. X-Plane keeps showing it from its
+folder, its line as you left it, and the Library lists it once, there. Works says how far the copy
+is in the Installation cell. If its disk is not connected, the tile is not built, and Works says
+why. With X-Plane open it is built all the same, and put back once you have quit X-Plane and built
+it again, which only copies. A tile of the workshop that X-Plane shows is never rewritten while
+X-Plane runs: quit X-Plane, then build it again, what was built is reused. macOS, Windows and Linux
+do the same.
 
 The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
 *Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,

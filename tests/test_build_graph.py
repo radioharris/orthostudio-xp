@@ -17,6 +17,7 @@ from orthostudio.dsf.xp12 import DEMO_AREAS
 from orthostudio.errors import OsxpError
 from orthostudio.graph import Store
 from orthostudio.imagery.providers import load_registry
+from orthostudio.install import packs as install_packs
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
 from orthostudio.mesh.rule import OSXP_MESH
@@ -555,6 +556,50 @@ def test_the_pack_records_the_colours_its_textures_are_encoded_with(
     assert PackManifest.from_toml(refs[g.pack.id].path.read_text()).photo == recorded
     written = Path(params.out_dir) / pack_dir_name(T) / "orthostudio.toml"
     assert PackManifest.from_toml(written.read_text()).photo == recorded
+
+
+@pytest.mark.parametrize("filed", [False, True], ids=["in-its-place", "filed-elsewhere"])
+def test_a_pack_x_plane_shows_is_not_rewritten_in_its_place_while_x_plane_runs(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, filed: bool
+) -> None:
+    """On every system, X-Plane running: a pack it shows is not rewritten in its place, and the
+    refusal has words of its own (build again, not install); a tile filed elsewhere, whose new
+    version is built in the workshop, is assembled there, only its put back waiting. The refusal
+    was Windows only and looked at the tile's link alone: on Windows a filed tile was refused
+    before it was built (found on the owner's Shadow, 2026-10-06)."""
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    params = g.pack.params
+    assert isinstance(params, PackParams)
+    pack_dir = Path(params.out_dir) / pack_dir_name(T)
+    cs = tmp_path / "X-Plane 12" / "Custom Scenery"
+    cs.mkdir(parents=True)
+    shown = tmp_path / "Alps" / pack_dir_name(T) if filed else pack_dir
+    shown.mkdir(parents=True)
+    (cs / pack_dir_name(T)).symlink_to(shown, target_is_directory=True)
+    monkeypatch.setattr(install_packs, "xplane_running", lambda: True)
+    penv = _PackEnv(env.store, Path(params.out_dir), cs, None)
+
+    def pack_run(ctx):
+        with pack_env(penv):
+            return run_p0_rule(ctx)
+
+    def fill_dsf(out: Path) -> None:
+        (out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF")
+        (out / "terrain").mkdir()
+
+    dsf = _artefact_dir(env.store, "tile.dsf", "34" * 32, fill_dsf)
+    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    sched = _sched(env)
+    sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
+    asyncio.run(sched.run([g.pack.id]))
+    written = (pack_dir / "orthostudio.toml").is_file()
+    if filed:
+        assert not sched.failed, sched.failed
+        assert written
+    else:
+        assert sched.failed[g.pack.id].code == "SYS_REBUILD_XP_RUNNING"
+        assert sched.failed[g.pack.id].context["tile"] == T.name
+        assert not written and not any(pack_dir.iterdir())
 
 
 def test_source_ref_is_content_addressed(tmp_path: Path) -> None:

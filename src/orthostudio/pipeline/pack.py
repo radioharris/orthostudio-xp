@@ -43,7 +43,6 @@ from orthostudio.install import (
     is_link,
     is_xplane_dir,
     uninstall_pack,
-    xplane_running,
 )
 from orthostudio.install import packs as install_packs
 from orthostudio.install.library import pack_tile
@@ -1771,7 +1770,7 @@ def _tile_pack(ctx: RunContext) -> None:
     params = ctx.params
     assert isinstance(params, PackParams)
     tile = TileRef.parse(params.tile)
-    _refuse_rewrite_under_running_xplane(env, tile)
+    _refuse_rewrite_under_running_xplane(env, tile, Path(params.out_dir) / pack_dir_name(tile))
     # Its textures and .ter files were not forced to disk one by one (graph/store.py
     # DEFERRED_RULES): they are, as a group, before X-Plane is handed any of them. One another
     # program holds is left to the next build's check, and the tile goes on.
@@ -1799,18 +1798,21 @@ def _tile_pack(ctx: RunContext) -> None:
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 
 
-def _refuse_rewrite_under_running_xplane(env: PackEnv, tile: TileRef) -> None:
-    """Windows only: a DSF or DDS of an installed pack cannot be replaced while X-Plane holds
-    it open (``os.replace`` -> ``PermissionError``); refuse before writing anything."""
-    if os.name != "nt" or env.custom_scenery is None:
+def _refuse_rewrite_under_running_xplane(env: PackEnv, tile: TileRef, pack_dir: Path) -> None:
+    """A pack X-Plane shows is not rewritten in its place while X-Plane runs, on every system:
+    Windows will not replace a DSF or DDS X-Plane holds open (``os.replace`` ->
+    ``PermissionError``), and elsewhere X-Plane read old and new files mixed. Refused before
+    anything is written, what the build made before is kept for the next one
+    (``SYS_REBUILD_XP_RUNNING``). It was Windows only, and looked at the tile's link alone: a tile
+    filed elsewhere, whose new version is built in the workshop beside what X-Plane reads and only
+    put in place once X-Plane is closed (``SYS_PUT_BACK_XP_RUNNING``), was refused there before
+    it was built, with an installation's words (found on the owner's Shadow, 2026-10-06)."""
+    if env.custom_scenery is None:
         return
-    if (Path(env.custom_scenery) / pack_dir_name(tile)).exists() and xplane_running():
-        raise OsxpError(
-            "XP_RUNNING",
-            message="X-Plane is running and this tile is installed: its files cannot be "
-            "replaced now.",
-            remedy="Quit X-Plane, then run osxp build again.",
-        )
+    if links_to(Path(env.custom_scenery) / pack_dir_name(tile), pack_dir) and (
+        install_packs.xplane_running()
+    ):
+        raise OsxpError("SYS_REBUILD_XP_RUNNING", context={"tile": tile.name})
 
 
 def _tile_install(ctx: RunContext) -> None:
