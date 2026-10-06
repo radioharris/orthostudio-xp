@@ -116,13 +116,13 @@ class CleanReport:
     invisible until a user emptied everything and found 1.4 GB left (2026-09-18)."""
     relief_removed: bool = False
     filed_tiles: int = 0
-    """The tiles OrthoStudio XP built that are filed outside the atelier (the atelier's step 5):
-    their cache is ``filed_bytes`` and ``filed_images_bytes``."""
+    """The tiles OrthoStudio XP built that are filed outside the atelier with some of their data
+    here (the atelier's step 5): their cache is ``filed_bytes`` and ``filed_images_bytes``."""
     filed_bytes: int = 0
     """What deleting the tile data only they need gives back, beyond ``freed_bytes``."""
     filed_images_bytes: int = 0
-    """Their downloaded image pieces: the texture containers whose texture touches the square of a
-    tile filed outside and of no tile of the atelier."""
+    """Their downloaded image pieces: the texture containers whose texture touches the square of
+    one of them and of no tile of the atelier."""
     filed_removed: bool = False
 
     def to_dict(self) -> dict[str, object]:
@@ -390,28 +390,26 @@ def _texture_squares(parts: list[str]) -> set[tuple[int, int]]:
 
 def _image_pieces(
     chunks: Path, atelier: set[tuple[int, int]], away: set[tuple[int, int]]
-) -> tuple[list[tuple[str, int]], int, set[tuple[int, int]]]:
-    """The downloaded image pieces only the tiles filed outside the atelier use, with their sizes:
-    the texture containers whose texture touches the square of such a tile (``away``) and of no
-    tile of the atelier, a texture of a neighbour in the atelier staying (at any level of detail:
-    one only a filed neighbour uses, astride the border, counts with the images). Then the bytes of
-    all the others, and the squares of ``away`` those pieces touch. One walk of the cache, its
-    sizes read from the listings: its files are never linked."""
+) -> tuple[list[tuple[str, int]], int]:
+    """The downloaded image pieces only the tiles filed outside the atelier with some of their data
+    here use, with their sizes: the texture containers whose texture touches the square of such a
+    tile (``away``) and of no tile of the atelier, a texture of a neighbour in the atelier staying
+    (at any level of detail: one only a filed neighbour uses, astride the border, counts with the
+    images). Then the bytes of all the others. One walk of the cache, its sizes read from the
+    listings: its files are never linked."""
     root = os.fspath(chunks)
     pieces: list[tuple[str, int]] = []
     rest = 0
-    touched: set[tuple[int, int]] = set()
     try:
         for path, st in _files(chunks, links=False):
             squares = _texture_squares(os.path.relpath(path, root).split(os.sep)) if away else set()
             if squares & away and not squares & atelier:
                 pieces.append((path, st.st_size))
-                touched |= squares & away
             else:
                 rest += st.st_size
     except OSError:
-        return [], 0, set()
-    return pieces, rest, touched
+        return [], 0
+    return pieces, rest
 
 
 def clean(
@@ -471,24 +469,18 @@ def clean(
                     report.filed_bytes = names.freed([*gone, *taken]) - report.freed_bytes
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
+    # the tiles filed outside with some of their data here (measured before anything goes): a tile
+    # of a data folder chosen before has its cache there, and one freed has none any more. Their
+    # image pieces are theirs; a piece of a filed neighbour with nothing here counts with the
+    # images: filing one tile counted its four filed neighbours too, whose squares the pieces
+    # astride its borders touch (found on the owner's tiles, 2026-10-06)
+    cached = [b for b in away if b.ortho and b.keys & theirs]
+    report.filed_tiles = len({b.path for b in cached})
     chunks = Path(chunks_root)
     pieces: list[tuple[str, int]] = []
-    touched: set[tuple[int, int]] = set()
     if chunks.is_dir():
-        pieces, report.images_bytes, touched = _image_pieces(
-            chunks, _squares(atelier), _squares(away)
-        )
+        pieces, report.images_bytes = _image_pieces(chunks, _squares(atelier), _squares(cached))
         report.filed_images_bytes = sum(size for _path, size in pieces)
-    # the tiles filed outside that have some cache here (measured before anything goes): a tile of
-    # a data folder chosen before has its cache there, and one freed has none any more
-    report.filed_tiles = len(
-        {
-            b.path
-            for b in away
-            if b.ortho
-            and (b.keys & theirs or (b.tile is not None and (b.tile.lat, b.tile.lon) in touched))
-        }
-    )
     mapcache = Path(mapcache_root) if mapcache_root is not None else None
     if mapcache is not None and (not mapcache.is_dir() or _overlap(mapcache, chunks)):
         mapcache = None

@@ -411,8 +411,33 @@ def test_only_the_tiles_with_some_cache_here_are_counted(world: World, tmp_path:
     assert w.run(dry_run=True).filed_tiles == 2
     w.run(filed=True)
     assert w.run(dry_run=True).filed_tiles == 0
-    w.piece(46.5, 7.5, 4000)  # image pieces of F's square only: F has some cache here again
-    assert w.run(dry_run=True).filed_tiles == 1
+    piece = w.piece(46.5, 7.5, 4000)  # of F's square only, F having nothing else here
+    seen = w.run(dry_run=True)
+    assert seen.filed_tiles == 0 and seen.filed_images_bytes == 0 and seen.images_bytes == 4000
+    w.run(filed=True)
+    assert piece.is_file()  # with the images, which their own box frees
+    w.run(images=True)
+    assert not piece.exists()
+
+
+def test_a_filed_neighbour_with_nothing_here_is_not_counted_and_its_pieces_are_images(
+    world: World, tmp_path: Path
+) -> None:
+    """Filing one tile counted its filed neighbours too: the image pieces astride its borders touch
+    their squares ("Cache of 5 tile(s)" for one tile filed, on the owner's tiles, 2026-10-06). A
+    tile counts with some of its data here; a piece astride its border is its cache, a piece only
+    a filed neighbour with nothing here touches counts with the images."""
+    w = world
+    g = TileRef(46, 8)  # filed on a disk away, its cache in another data folder
+    with Library(w.library) as lib:
+        lib.register(g, "BI", 16, tmp_path / "Away" / pack_dir_name(g), "osxp", {"dsf": "e" * 64})
+    astride = w.piece(46.5, 7.99999, 2500)  # F's square and G's
+    alone = w.piece(46.5, 8.5, 1500)  # G's square only
+    seen = w.run(dry_run=True)
+    assert seen.filed_tiles == 2  # F and S, not G
+    assert seen.filed_images_bytes == 2500 and seen.images_bytes == 1500
+    w.run(filed=True)
+    assert not astride.exists() and alone.is_file()
 
 
 def test_an_inode_the_unused_data_shares_with_a_filed_tile_is_counted_once(
@@ -464,7 +489,11 @@ def test_a_file_another_program_holds_stays_and_is_not_counted(
     assert not (w.keys[F] - {mesh}) & w.stored()  # the others went
     assert done.filed_bytes + done.filed_images_bytes == before - w.disk()
     monkeypatch.undo()
-    assert w.run(filed=True).filed_images_bytes == 4000  # once let go, it goes
+    again = w.run(dry_run=True)  # F has nothing else here: its piece counts with the images
+    assert again.filed_tiles == 0 and again.filed_images_bytes == 0
+    assert again.images_bytes == 4000 + 2000 + 1000
+    w.run(images=True)
+    assert not pieces["F"].exists()  # once let go, it goes
 
 
 @pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
