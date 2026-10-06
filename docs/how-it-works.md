@@ -146,16 +146,17 @@ tile the folder it is in: *Workshop* for the data folder's own tiles, else the f
 tiles, each folder with how many it holds. A search that finds no tile in the folder chosen says
 how many it finds in the others. It reads the list only, nothing on the disk.
 
-A tile whose folder you moved yourself, with the Finder or the File Explorer, says *Not found*,
-with *Find again…*: show its folder, or the folder you put it in, and the Library and every X-Plane
-of the computer that showed it follow it there. X-Plane must be closed. Nothing of the tile is
-copied; only its roads and forests, a small file left in the folder it came from, join it, so
-that taking it out of X-Plane later takes them out too. Put the folder anywhere but inside X-Plane:
-X-Plane reads it through a link. A tile on a disk that is not plugged in says *Disk not
-connected*: plug the disk in, and it is back by itself; if you put it on another disk, *Find
-again…* takes it there. Plug it in before starting X-Plane: started without it, X-Plane takes the
-tile off its list, then puts it back at the bottom, where the mesh of AutoOrtho or of another pack
-may hide it.
+A tile whose folder you moved yourself, with the Finder or the File Explorer, says *Not found*, with
+*Find again…*: show its folder, or the folder you put it in, and the Library and every X-Plane of
+the computer that showed it follow it there. X-Plane must be closed. Nothing of the tile is copied;
+only its roads and forests, a small file left in the folder it came from, join it, so that taking it
+out of X-Plane later takes them out too. Put the folder anywhere but inside X-Plane: X-Plane reads
+it through a link. A tile on a disk that is not plugged in says *Disk not connected*: plug the disk
+in, and it is back by itself; if you put it on another disk, *Find again…* takes it there. Its roads
+and forests stayed on the disk away, where X-Plane no longer draws them once it is back: build the
+tile again to have them, drawn even if you had turned that folder's roads off in X-Plane. Plug it in
+before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
+at the bottom, where the mesh of AutoOrtho or of another pack may hide it.
 
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
 the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says

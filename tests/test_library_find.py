@@ -557,38 +557,121 @@ async def test_a_tile_of_that_folder_still_in_x_plane_keeps_its_roads_pack(
 
 
 @pytest.mark.anyio
-async def test_a_roads_line_the_user_disabled_stays_through_find_again_and_the_next_build(
+async def test_a_roads_line_turned_off_goes_with_its_link_and_the_next_build_draws_the_roads(
     app: Any, home: Path, xplane: Path, tmp_path: Path
 ) -> None:
-    """A user of simHeaven X-World turns OrthoStudio XP's roads off. Found again while the disk of
-    its folder is away, then built again, the tile had its roads line come back enabled: the line
-    went with the link, and the next overlays pack taking that name had a new one (a review,
-    2026-10-06). A disabled line draws nothing, and stays."""
+    """A user of simHeaven X-World turns OrthoStudio XP's roads off, and the tile is found again
+    while the disk of its folder is away. That folder's roads line was kept alone, disabled, for
+    the next overlays pack taking that name to keep the roads off (a review, 2026-10-06): it did
+    only when that name was the first one free, and on the owner's Mac the roads came back on
+    under another name, the lone line left behind (2026-10-06). The line goes with its link; built
+    again, the tile's roads are drawn under a line of their own, which the user turns off again if
+    they want."""
     application, _mgr = app
     pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
     ini = cs / "scenery_packs.ini"
     roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
     assert roads is not None
-    packs = SceneryPacks.load(ini)
-    assert packs.disable(roads.name)
-    packs.save(ini)
+    listed = SceneryPacks.load(ini)
+    assert listed.disable(roads.name)
+    listed.save(ini)
     _unplugged(disk)
     async with client_for(application) as c:
         r = await c.post(
             f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
         )
     assert r.status_code == 200, r.text
-    # its link goes, its line stays disabled
+    # its link and its line go
     assert not os.path.lexists(roads)
-    kept = SceneryPacks.load(ini).find(roads.name)
-    assert kept is not None and not kept.enabled
+    assert SceneryPacks.load(ini).find(roads.name) is None
     # built again: its roads parked in it, installed as the put back installs it
     (copy / PARKED_OVERLAY).write_bytes(b"XPLNEDSF overlay")
     install_receipt(copy, cs, tile=T, library_path=default_library_path(), reenable=False)
     new = overlay_link(cs, copy.parent / OVERLAY_PACK)
     assert new is not None
     line = SceneryPacks.load(ini).find(new.name)
+    assert line is not None and line.enabled
+
+
+@pytest.mark.anyio
+async def test_a_roads_link_name_taken_over_starts_its_line_again(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """The overlays link of a folder deleted by hand is broken, its name free: the roads of a new
+    folder took it over with the line the user had turned off for the folder before, and X-Plane
+    drew none of them, the Library saying nothing (found on the owner's Mac, 2026-10-06). A name
+    taken anew starts its line as a new one."""
+    from test_api_app import _osxp_pack
+    from test_put_back import W  # it imports this module: imported once both are
+
+    application, _mgr = app
+    pack, cs = _installed(home, xplane)
+    ini = cs / "scenery_packs.ini"
+    listed = SceneryPacks.load(ini)
+    assert listed.disable(OVERLAY_PACK)  # the user turned that folder's roads off
+    listed.save(ini)
+    alps = tmp_path / "Alps"
+    _moved(pack, alps)
+    async with client_for(application) as c:  # its roads go with it, still off
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(alps)}
+        )
+    assert r.status_code == 200, r.text
+    shutil.rmtree(home / "tiles")  # the folder it left deleted by hand
+    assert packs.is_link(cs / OVERLAY_PACK) and not (cs / OVERLAY_PACK).exists()
+    new = _osxp_pack(home, W.name, out=tmp_path / "SSD" / "tiles")  # a new folder, with roads
+
+    install_receipt(new, cs, tile=W, library_path=default_library_path())
+
+    assert links_to(cs / OVERLAY_PACK, new.parent / OVERLAY_PACK)  # the name taken over
+    line = SceneryPacks.load(ini).find(OVERLAY_PACK)
+    assert line is not None and line.enabled
+    assert pack_mod.overlay_states(cs)[W.name].state == "own"
+
+
+@pytest.mark.anyio
+async def test_roads_turned_off_stay_off_under_a_name_taken_over_whose_line_was_on(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """The other way round: a tile whose roads the user turned off, found again in a new folder
+    whose overlays take over the name of a folder deleted by hand, whose line was on, had its
+    roads drawn again."""
+    from test_api_app import _osxp_pack
+    from test_put_back import W  # it imports this module: imported once both are
+
+    application, _mgr = app
+    cs = xplane / "Custom Scenery"
+    ini = cs / "scenery_packs.ini"
+    library = default_library_path()
+    other = _osxp_pack(home, W.name)  # W in the atelier, its roads on
+    install_receipt(other, cs, tile=W, library_path=library)
+    pack = _pack(tmp_path / "Disk B" / "Alps")  # T in another folder, its roads turned off
+    install_receipt(pack, cs, tile=T, library_path=library)
+    roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
+    assert roads is not None and roads.name != OVERLAY_PACK
+    listed = SceneryPacks.load(ini)
+    assert listed.disable(roads.name)
+    listed.save(ini)
+    async with client_for(application) as c:
+        # W moved by hand and found again: the atelier's overlays pack is left empty, its line on
+        _moved(other, tmp_path / "Valais")
+        r = await c.post(
+            f"/api/library/{W.name}/find",
+            json={"path": str(other), "folder": str(tmp_path / "Valais")},
+        )
+        assert r.status_code == 200, r.text
+        shutil.rmtree(home / "tiles")  # the atelier's folder deleted by hand
+        # T moved by hand and found again: its roads come from a line turned off
+        _moved(pack, tmp_path / "Jura")
+        r = await c.post(
+            f"/api/library/{T.name}/find",
+            json={"path": str(pack), "folder": str(tmp_path / "Jura")},
+        )
+        assert r.status_code == 200, r.text
+    assert links_to(cs / OVERLAY_PACK, tmp_path / "Jura" / OVERLAY_PACK)  # the name taken over
+    line = SceneryPacks.load(ini).find(OVERLAY_PACK)
     assert line is not None and not line.enabled
+    assert T.name not in pack_mod.overlay_states(cs)
 
 
 def _x_plane_starts(cs: Path) -> None:
@@ -613,7 +696,8 @@ async def test_x_plane_started_without_the_disk_brings_no_old_roads_back(
 ) -> None:
     """The roads line of the folder left is disabled, its link kept: X-Plane started without the
     disk dropped the line, and gave it back enabled once the disk was back, the old roads over
-    X-World's (a review, 2026-10-06). The link going, nothing of that folder comes back."""
+    X-World's (a review, 2026-10-06). The link and its line going, nothing of that folder comes
+    back."""
     application, _mgr = app
     pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
     ini = cs / "scenery_packs.ini"

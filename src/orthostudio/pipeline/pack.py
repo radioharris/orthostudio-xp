@@ -728,9 +728,12 @@ def install_receipt(
     the overlays pack the user disabled stays disabled, and ``overlay_off`` adds it disabled when
     this install adds it: a tile found again or filed in another folder takes the state of the
     overlays line it came from (a user of simHeaven X-World turns OrthoStudio XP's off, and they
-    came back on, 2026-10-05). A tile built without an overlay takes the overlays pack out of
-    X-Plane when no tile's overlay is left in it (its link, when it leads to that pack, and its
-    line), and forgets its own overlay row.
+    came back on, 2026-10-05). A link name new to this folder's overlays pack starts its line the
+    same way, whatever line that name had for the folder it led to before: the roads of a new
+    folder took a disabled line over, and were not drawn (found on the owner's Mac, 2026-10-06).
+    A tile built without an overlay takes the overlays pack out of X-Plane when no tile's overlay
+    is left in it (its link, when it leads to that pack, and its line), and forgets its own
+    overlay row.
     """
     pack_dir = Path(pack_dir)
     custom_scenery = Path(custom_scenery)
@@ -742,13 +745,13 @@ def install_receipt(
         overlay_pack = pack_dir.parent / OVERLAY_PACK
         has_overlay = bool(manifest.files.get("overlay"))
         overlay_removed: str | None = None
+        taken_anew = False
         if has_overlay:
             _unpark_overlay(pack_dir, tile)
             if (overlay_pack / "Earth nav data").is_dir():
+                shown = overlay_link(custom_scenery, overlay_pack)
                 # a copy keeps the pack's own name, as it always did
-                where = overlay_link(custom_scenery, overlay_pack) or _new_overlay_link(
-                    custom_scenery
-                )
+                where = shown or _new_overlay_link(custom_scenery)
                 overlay_target = install_pack(
                     overlay_pack,
                     custom_scenery,
@@ -756,6 +759,7 @@ def install_receipt(
                     update_ini=False,
                     name=where.name if link else None,
                 )
+                taken_anew = shown is None
         else:
             shared = overlay_link(custom_scenery, overlay_pack)
             empty = not any((overlay_pack / "Earth nav data").glob("*/*.dsf"))
@@ -779,10 +783,14 @@ def install_receipt(
         )
         if overlay_target is not None:
             name = overlay_target.name
-            new_line = packs.find(name) is None
-            changed = packs.ensure(name, kind=pack_kind(name), reenable=False) or changed
+            # a line the name had before is the other folder's: it starts again as a new one
+            new_line = taken_anew or packs.find(name) is None
+            changed = (
+                packs.ensure(name, kind=pack_kind(name), reenable=new_line and not overlay_off)
+                or changed
+            )
             if new_line and overlay_off:
-                packs.disable(name)
+                changed = packs.disable(name) or changed
         if overlay_removed is not None:
             changed = packs.remove(overlay_removed) or changed
         if changed:
@@ -1624,10 +1632,10 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
     A tile found again elsewhere while the disk of the folder it left was away left its roads
     there, and the day that disk came back X-Plane drew them twice (found on the owner's tiles,
     2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there. A line
-    the user disabled stays, disabled, its link alone going: a user of simHeaven X-World turns
-    OrthoStudio XP's roads off, and the next overlays pack taking that name keeps them off; the
-    link kept with it, X-Plane started without the disk dropped the line and gave it back enabled
-    once the disk was back (two reviews, 2026-10-06)."""
+    the user disabled goes too: the link kept with it, X-Plane started without the disk dropped the
+    line and gave it back enabled once the disk was back (two reviews, 2026-10-06); the line kept
+    alone, the next overlays pack taking that name kept it off only when that name was the first
+    one free, and a name taken anew starts its line again (:func:`install_receipt`)."""
     cs = Path(custom_scenery)
     link = overlay_link(cs, overlay_pack)
     if link is None or os.path.isdir(overlay_pack):
@@ -1640,7 +1648,7 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
         for name in _entry_names(cs)
     ):
         return
-    uninstall_pack(link.name, cs, update_ini=not _overlay_line_off(cs, overlay_pack))
+    uninstall_pack(link.name, cs)
 
 
 def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:

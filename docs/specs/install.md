@@ -399,11 +399,14 @@ tiles folder has its overlays pack beside its tiles, and X-Plane shows both:
   `yOrthoStudio_Overlays`, `yOrthoStudio_Overlays_2`, `_3`...), or `None`. `install_receipt`
   installs the overlays pack under that link, else under the first free name: absent, or a broken
   link into a folder no tile link of Custom Scenery leads into (deleted by hand; while tile links
-  lead there, its disk may only be unplugged and the name waits for it). A copy (`link=False`)
-  keeps the pack's own name. `uninstall_receipt` parks the tile's DSF when its folder's overlays
-  pack has a link, and takes that link and its line out once the pack is empty; `overlay_states`
-  and the Library's `installed` read the link the same way. `pack_kind` counts the numbered names
-  as overlay packs, so their lines sit with the overlays (3.2).
+  lead there, its disk may only be unplugged and the name waits for it). A copy (`link=False`) keeps
+  the pack's own name. A name new to the folder, a copy's too, starts its line as a new one,
+  whatever line that name had for a folder before: enabled, or disabled with `overlay_off`, the
+  state of the line the tile's roads came from; the roads of a new folder took over a disabled line
+  and were not drawn (found on the owner's Mac, 2026-10-06). `uninstall_receipt` parks the tile's
+  DSF when its folder's overlays pack has a link, and takes that link and its line out once the pack
+  is empty; `overlay_states` and the Library's `installed` read the link the same way. `pack_kind`
+  counts the numbered names as overlay packs, so their lines sit with the overlays (3.2).
 * A tile built again into another folder takes the place of its old build:
   `install_receipt` first takes the link `zOrthoStudio_<tile>` out when it leads to an OrthoStudio
   XP pack of the same tile elsewhere, as `uninstall_receipt` does (its overlay parked in that pack,
@@ -454,10 +457,11 @@ finds it again where the user shows it (2026-10-05):
   no tile link leads into that folder (`_let_go_of_overlays_out_of_reach`, under the lock of every
   install): the tile's roads stayed there, and the day the disk came back X-Plane drew them twice
   (found on the owner's tiles, 2026-10-06). A tile of that folder still in X-Plane keeps it, its own
-  roads being there. A line the user disabled stays, disabled, its link alone going: the next
-  overlays pack taking that name keeps the roads off; the link kept with it, X-Plane started without
-  the disk dropped the line and gave it back enabled once the disk was back (two reviews,
-  2026-10-06). An X-Plane that did not show the tile gets nothing. The Library row follows; the
+  roads being there. A line the user disabled goes as well: kept with its link, X-Plane started
+  without the disk dropped the line and gave it back enabled once the disk was back; kept alone, it
+  kept the next overlays pack taking that name off only when that name was the first one free (two
+  reviews and the owner's Mac, 2026-10-06). Built again, the tile has its roads back under a line of
+  its own, enabled. An X-Plane that did not show the tile gets nothing. The Library row follows; the
   overlay row of the folder left goes once it holds nothing of the tile.
 * Asked again after a stop half way, it finishes what is left: the X-Planes whose link already
   leads to the found folder are given its install again, which puts the overlay beside it. The
@@ -477,12 +481,14 @@ showed it follows and no other; a wrong folder, a renamed copy, another build an
 change nothing; nor does X-Plane running; a tile put in X-Plane's own Custom Scenery is refused and
 keeps its roads; the one overlay there is is never removed for itself seen through a link; a line
 the user disabled stays disabled, and a new overlays line takes the state of the one the tile came
-from; found while the disk of the folder it left is away, that folder's overlays pack leaves X-Plane
-when no tile of X-Plane is in it any more, and stays while one is or while its line is disabled, an
-install saving meanwhile keeping its own line; a tile in its place, an imported one and one in a
-build are not looked for; a tile whose roads went too is found and says so; a stop half way, before
-or past X-Plane's link, is finished when asked again, and a copy of the roads made before a stop is
-not left twice; a disk away says so, and a folder gone two levels down is not one.
+from, under a name taken over from a folder deleted by hand too, whose old line, on or off, is not
+kept; found while the disk of the folder it left is away, that folder's overlays pack leaves
+X-Plane, its link and its line, on or off, when no tile of X-Plane is in it any more, and stays
+while one is, an install saving meanwhile keeping its own line; built again, the tile's roads are
+drawn under a line of their own; a tile in its place, an imported one and one in a build are not
+looked for; a tile whose roads went too is found and says so; a stop half way, before or past
+X-Plane's link, is finished when asked again, and a copy of the roads made before a stop is not left
+twice; a disk away says so, and a folder gone two levels down is not one.
 
 ### 4.6 Tiles filed elsewhere (`pipeline/filing.py`, the atelier, step 3)
 
