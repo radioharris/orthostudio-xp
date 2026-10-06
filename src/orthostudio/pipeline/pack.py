@@ -77,6 +77,7 @@ __all__ = [
     "install_is_intact",
     "install_receipt",
     "is_installed",
+    "lays_the_same",
     "leave_overlay",
     "library_pack",
     "library_packs",
@@ -90,6 +91,7 @@ __all__ = [
     "read_manifest",
     "take_back_overlay",
     "uninstall_receipt",
+    "write_manifest",
     "write_pack",
 ]
 
@@ -521,6 +523,35 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest, *, with_overlay: bool
         return False
 
 
+_LAID = ("dsf", "textures", "overlay")
+"""The artefacts whose files a pack holds; the others of its manifest say how they were made."""
+
+
+def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
+    """True when ``pack_dir`` holds, whole, a build laying the very files of ``manifest``: the
+    same DSF, textures and roads, at the same sizes and with the same decal. Only what its
+    manifest says of their making may differ: a neighbour built, or its cache freed, since gives
+    the masks another key for the same bytes (their ``nb_*`` inputs), and the DSF, the same,
+    leads to it (the atelier, 2026-10-06)."""
+    try:
+        own = read_manifest(pack_dir)
+    except (OSError, ValueError, KeyError):
+        return False
+    same = (own.tile, own.provider, own.zl, own.files) == (
+        manifest.tile,
+        manifest.provider,
+        manifest.zl,
+        manifest.files,
+    ) and all(own.artefacts.get(label) == manifest.artefacts.get(label) for label in _LAID)
+    return same and pack_is_intact(pack_dir, own, with_overlay=False)
+
+
+def write_manifest(pack_dir: Path, tile: TileRef, manifest: PackManifest) -> None:
+    """``manifest`` written in ``pack_dir``, with the imagery's credit it gives."""
+    atomic_write_text(Path(pack_dir) / MANIFEST_NAME, manifest.to_toml())
+    _write_credits(Path(pack_dir), tile, manifest.built)
+
+
 # -- provenance -> manifest ------------------------------------------------------------------
 
 
@@ -645,8 +676,7 @@ def assemble_pack(
             **({"decal": decal, "decal_on_sea": decal_on_sea} if decal else {}),
         },
     )
-    atomic_write_text(files.pack_dir / MANIFEST_NAME, manifest.to_toml())
-    _write_credits(files.pack_dir, tile, facts)
+    write_manifest(files.pack_dir, tile, manifest)
     return manifest, files
 
 

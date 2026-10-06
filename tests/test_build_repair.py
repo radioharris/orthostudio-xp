@@ -34,12 +34,17 @@ from test_clean_filed import A, World, _put, _ref
 
 
 def _built_again(
-    w: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keys: dict[str, str]
+    w: World,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    keys: dict[str, str],
+    manifest: str | None = None,
 ) -> Any:
     """``build_tiles`` as the app runs it for ``A``, every node answered as already built with
-    the store's artefacts, the pack node with the manifest its pack step wrote."""
+    the store's artefacts, the pack node with the manifest its pack step wrote (``manifest``, or
+    the one of ``A``'s folder)."""
     receipt = tmp_path / "pack-artefact.toml"
-    receipt.write_text((w.packs[A] / "orthostudio.toml").read_text())
+    receipt.write_text(manifest or (w.packs[A] / "orthostudio.toml").read_text())
     dummy = tmp_path / "dummy"
     dummy.write_text("x")
     store = Store(w.store, fsync=False)

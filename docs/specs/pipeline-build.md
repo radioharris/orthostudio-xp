@@ -191,7 +191,10 @@ the Installation cell. A tile filed in a folder that is there is built as any ot
 workshop, but without `tile.install` (`install=False` in its spec): installed from the workshop,
 it took X-Plane's link and line away from its folder. After the passes, `_put_back_tile` does its
 end: nothing when its folder holds this very build (`pack_is_intact` with the receipt's manifest;
-an unchanged build is instant and leaves nothing in the workshop), else the pack, assembled again
+an unchanged build is instant and leaves nothing in the workshop), only the receipt's manifest
+written there when the folder holds its very files (`lays_the_same`: a neighbour built or freed
+since gives the masks another key for the same bytes; the whole tile was copied again, and refused
+while X-Plane ran, 2026-10-06), else the pack, assembled again
 in the workshop if a hit found it gone (`_assemble_again`, which writes the build's own manifest,
 as for any pack a hit finds tampered with: assembling walks the store's provenance, which may lead
 by now to another artefact of the same bytes, a neighbour built since changing the masks' recipe

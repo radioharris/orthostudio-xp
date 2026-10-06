@@ -51,7 +51,6 @@ from orthostudio.dem.xplane import XP12_INPUTS, XP12_SOURCE
 from orthostudio.dsf import DsfParams, Xp12Rasters, airport_covers, build_dsf
 from orthostudio.dsf.xp12 import global_scenery_dsf, rasters_from_dsf, read_global_scenery_dsf
 from orthostudio.errors import OsxpError, wrap
-from orthostudio.fsutil import atomic_write_text
 from orthostudio.graph import (
     ResolvedInput,
     Rule,
@@ -114,7 +113,6 @@ from orthostudio.pipeline.native import (
     unusable_coastline,
 )
 from orthostudio.pipeline.pack import (
-    MANIFEST_NAME,
     PARKED_OVERLAY,
     TILE_INSTALL,
     TILE_PACK,
@@ -128,11 +126,13 @@ from orthostudio.pipeline.pack import (
     assemble_pack,
     install_is_intact,
     install_receipt,
+    lays_the_same,
     links_to,
     overlay_dsf_path,
     pack_dir_name,
     pack_env,
     pack_is_intact,
+    write_manifest,
 )
 from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
@@ -2881,7 +2881,7 @@ def _assemble_again(
         decal_on_sea=params.decal_on_sea,
     )
     pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
-    atomic_write_text(pack_dir / MANIFEST_NAME, manifest.to_toml())
+    write_manifest(pack_dir, spec.tile, manifest)
 
 
 # -- a tile filed elsewhere, built again (the atelier, step 4) -----------------------------------
@@ -3020,6 +3020,12 @@ def _put_back_tile(
     left: str | None = None
     try:
         same = pack_is_intact(home, manifest, with_overlay=False)
+        if not same and lays_the_same(home, manifest):
+            # the very files, only their manifest apart (a neighbour built or freed since gives
+            # the masks another key for the same bytes): it is written there, nothing is copied.
+            # The whole tile was copied again, and refused while X-Plane ran (2026-10-06)
+            write_manifest(home, spec.tile, manifest)
+            same = True
         if same and not _roads_with(home, spec.tile, manifest):
             # its roads gone, found again without them: "build it again" brings them back
             _roads_back(nodes, collector, home, spec.tile)

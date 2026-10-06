@@ -560,7 +560,12 @@ one (2026-10-05): built as any tile, then moved, or copied when its folder is on
   nodes, weighing its bytes copied then read back on another disk (`_put_back_rows`): the tile is
   in the build until it is back in its folder, and Works' bar and time left count the copy.
 * Unchanged, its folder holds this very build already, its roads with it: nothing is copied,
-  nothing is left in the workshop, and the step says already there. When only its roads are gone
+  nothing is left in the workshop, and the step says already there. So it is when its folder
+  holds the very files of the build and only their manifest differs (`lays_the_same`: the same
+  DSF, textures and roads, sizes and decal): a neighbour built since, or its cache freed, gives
+  the masks another key for the same bytes (their `nb_*` inputs), and the new manifest is written
+  in the folder, nothing copied, X-Plane running or not (the whole tile was copied again, and
+  refused while X-Plane ran, found on the owner's tiles, 2026-10-06). When only its roads are gone
   (a tile found again without them), they come back from the store, parked in it.
 * Else, with X-Plane closed (`SYS_PUT_BACK_XP_RUNNING`, asked before the copy and again before
   the swap): its new roads and forests, which the build wrote in the workshop's overlays pack,
@@ -601,7 +606,9 @@ refused at the swap goes back to the workshop; a put back cut between its two re
 by the next build; what follows the swap cannot fail it; an old version a file kept is said, then
 taken away by the next build; at the end of a build the tile is in its folder, X-Plane's line as
 it was, one Library row, the workshop's copy and row gone, and built again unchanged nothing is
-copied, X-Plane running or not; lost roads come back; the job's Stop ends the build stopped, the
+copied, X-Plane running or not, nor when only its manifest differs, the masks under another key
+(`tests/test_put_back_same_files.py`, the store and packs as a build lays them out), another decal,
+another texture or a folder not whole being other files; lost roads come back; the job's Stop ends the build stopped, the
 tile after it settled and the stopped one not done; a tile on a disk away is not built and shows
 nothing of it done; a tile filed elsewhere has no install node; the put back weighs its copy; the
 rows of its folders gone follow it to the workshop.
