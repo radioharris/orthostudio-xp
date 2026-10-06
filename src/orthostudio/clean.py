@@ -60,6 +60,7 @@ __all__ = [
     "DELETE_GRACE_S",
     "GRACE_S",
     "MAPCACHE_DIR",
+    "MESH_RULE",
     "CleanReport",
     "clean",
     "clean_after_delete",
@@ -87,6 +88,12 @@ MAPCACHE_DIR = "mapcache"
 """The map cache's directory under ``$OSXP_HOME`` (``orthostudio.api.map_api`` has the same name; it
 is not imported from there, fastapi being an optional extra). ``clean`` empties it only when it is
 given as ``mapcache_root``."""
+
+MESH_RULE = "orthostudio.mesh"
+"""The rule of a tile's mesh (``orthostudio.mesh.rule.OSXP_MESH``, not imported: it brings the
+mesh builder). The mesh of a tile filed outside stays when its cache is freed: the masks of its
+neighbours read it, and built again without it a neighbour drew its shore along their border as if
+that tile did not exist (his choice, 2026-10-06)."""
 
 _CONTAINER = re.compile(r"(\d+)_(\d+)\.chunks")
 """A texture container's name in the imagery cache, ``<til_y>_<til_x>.chunks``
@@ -119,7 +126,8 @@ class CleanReport:
     """The tiles OrthoStudio XP built that are filed outside the atelier with some of their data
     here (the atelier's step 5): their cache is ``filed_bytes`` and ``filed_images_bytes``."""
     filed_bytes: int = 0
-    """What deleting the tile data only they need gives back, beyond ``freed_bytes``."""
+    """What deleting the tile data only they need gives back, beyond ``freed_bytes``: all of it
+    but their own meshes, which stay (:data:`MESH_RULE`)."""
     filed_images_bytes: int = 0
     """Their downloaded image pieces: the texture containers whose texture touches the square of
     one of them and of no tile of the atelier."""
@@ -362,6 +370,12 @@ class _Names:
         return sum(self.size[i] for i, n in held.items() if n >= self.nlink[i])
 
 
+def _own_meshes(store: Store, built: Iterable[_Built]) -> set[str]:
+    """The meshes of these tiles themselves (:data:`MESH_RULE`), kept with them."""
+    keys = {k for b in built if b.ortho for k in b.keys}
+    return {k for k in keys if (info := store.info(k)) is not None and info.rule == MESH_RULE}
+
+
 def _squares(built: Iterable[_Built]) -> set[tuple[int, int]]:
     return {(b.tile.lat, b.tile.lon) for b in built if b.tile is not None}
 
@@ -427,7 +441,8 @@ def clean(
     filed: bool = False,
 ) -> CleanReport:
     """Collect what no pack needs; with ``images``, empty the imagery caches as well; with
-    ``filed``, the cache of the tiles filed outside the atelier (``tiles_root``).
+    ``filed``, the cache of the tiles filed outside the atelier (``tiles_root``), but their own
+    meshes, which their neighbours' masks read (:data:`MESH_RULE`).
 
     The imagery caches are ``chunks_root`` and the map cache ``mapcache_root``; both count in
     ``images_bytes``. Without ``mapcache_root`` (the default) no map cache is counted or
@@ -450,8 +465,9 @@ def clean(
     if Path(store_root).is_dir():
         with Store(store_root) as store:
             mine = needed_keys(store, _roots(atelier))
-            theirs = needed_keys(store, _roots(away)) - mine
-            unused = _doomed(store, store.iter_artifacts(), mine | theirs, grace_s)
+            needed = needed_keys(store, _roots(away)) - mine
+            theirs = needed - _own_meshes(store, away)
+            unused = _doomed(store, store.iter_artifacts(), mine | needed, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
             names = _Names([*unused, *cache])

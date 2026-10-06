@@ -25,7 +25,7 @@ import pytest
 from typer.testing import CliRunner
 
 import orthostudio.clean as clean_module
-from orthostudio.clean import clean, disk_bytes
+from orthostudio.clean import MESH_RULE, clean, disk_bytes
 from orthostudio.cli import app
 from orthostudio.graph import InputRef, ResolvedInput, Store, artifact_key
 from orthostudio.graph import store as store_module
@@ -34,6 +34,7 @@ from orthostudio.install import Library
 from orthostudio.install import packs as install_packs
 from orthostudio.model import OVERLAY_PACK, TileRef, pack_dir_name
 from orthostudio.pipeline import filing
+from orthostudio.pipeline.build import stored_neighbour_mesh
 from orthostudio.pipeline.filing import file_tile
 from orthostudio.pipeline.pack import (
     assemble_pack,
@@ -98,6 +99,7 @@ class World:
         self.chunks.mkdir(parents=True)
         self.library.parent.mkdir(parents=True, exist_ok=True)
         self.keys: dict[TileRef, set[str]] = {}
+        self.meshes: dict[TileRef, str] = {}
         self.packs: dict[TileRef, Path] = {}
         with Store(self.store, fsync=False) as s:
             self.osm = _put(s, "orthostudio.osm", 1, files={
@@ -135,6 +137,7 @@ class World:
                 "textures": folder, "overlay": overlay}  # fmt: skip
         if remember:
             self.keys[tile] = set(keys.values())
+            self.meshes[tile] = mesh
         return keys
 
     def pack(self, tile: TileRef, keys: dict[str, str], folder: Path, *, link: bool = True) -> Path:
@@ -230,6 +233,11 @@ def _rule_keys(w: World, rule: str) -> set[str]:
         return {i.key for i in s.iter_artifacts(rule)}
 
 
+def _own_mesh(w: World, tile: TileRef) -> set[str]:
+    """The tile's own mesh, as its build laid it out, which freeing its cache keeps."""
+    return {w.meshes[tile]}
+
+
 def test_the_whole_cache_of_the_tiles_filed_outside_goes_on_request_and_they_stay_whole(
     world: World,
 ) -> None:
@@ -254,7 +262,8 @@ def test_the_whole_cache_of_the_tiles_filed_outside_goes_on_request_and_they_sta
     assert done.filed_bytes == seen.filed_bytes and done.filed_images_bytes == 7000
     assert done.filed_bytes + done.filed_images_bytes == before - w.disk()
     left = w.stored()
-    assert not left & (w.keys[F] | w.keys[S])  # all of their cache, whatever their disk
+    # all of their cache, whatever their disk, but their meshes, which their neighbours read
+    assert left & (w.keys[F] | w.keys[S]) == _own_mesh(w, F) | _own_mesh(w, S)
     assert w.keys[A] | {w.osm} <= left  # the atelier's, and what it shares
     assert not pieces["F"].exists() and not pieces["S"].exists()
     assert pieces["AF"].is_file() and pieces["none"].is_file()
@@ -274,7 +283,7 @@ def test_a_tile_filed_on_the_atelier_s_disk_keeps_its_files_and_a_second_clean_f
     before = w.disk()
     done = w.run(filed=True)
     assert done.filed_bytes == before - w.disk()  # the shared files' room is not counted
-    assert not w.stored() & w.keys[S]
+    assert w.stored() & w.keys[S] == _own_mesh(w, S)
     assert w.whole(S) and all(f.stat().st_nlink == 1 for f in dds)  # the tile's own files now
     again = w.run()
     assert again.removed == 0 and again.freed_bytes == 0
@@ -295,7 +304,7 @@ def test_a_tile_on_a_disk_away_or_gone_has_its_cache_freed_from_the_library_s_ke
     w.run()  # not data no tile needs: without the choice, it stays
     assert w.keys[F] <= w.stored()
     w.run(filed=True)
-    assert not w.stored() & w.keys[F]
+    assert w.stored() & w.keys[F] == _own_mesh(w, F)
     assert w.keys[A] | {w.osm} <= w.stored()
 
 
@@ -344,13 +353,45 @@ def test_the_atelier_reached_through_a_link_is_the_atelier(world: World, tmp_pat
 
 def test_what_is_pinned_or_was_just_used_stays(world: World) -> None:
     w = world
-    (mesh,) = w.keys[F] & _rule_keys(w, "orthostudio.mesh")
+    (masks,) = w.keys[F] & _rule_keys(w, "orthostudio.masks")
     with Store(w.store, fsync=False) as s:
-        s.pin("mine", mesh)
+        s.pin("mine", masks)
     w.run(filed=True, grace_s=3600.0)  # a build of another process may be about to use them
     assert w.keys[F] <= w.stored()
     w.run(filed=True)
-    assert w.stored() & w.keys[F] == {mesh}
+    assert w.stored() & w.keys[F] == {masks} | _own_mesh(w, F)
+
+
+def test_the_mesh_of_a_filed_tile_stays_for_its_neighbours(world: World) -> None:
+    """Freed with the rest of its cache, the mesh of a filed tile left its neighbours to draw
+    their shore along their border as if it did not exist (his choice, 2026-10-06). It stays, a
+    neighbour built again finds it, and the line, which counts what goes, is not shown for it."""
+    w = world
+    done = w.run(filed=True)
+    assert done.filed_bytes > 0
+    with Store(w.store, fsync=False) as s:
+        found = stored_neighbour_mesh(s, F)
+    assert found is not None and {found.key} == _own_mesh(w, F)
+    after = w.run(dry_run=True)
+    assert after.filed_tiles == 0 and after.filed_bytes == 0 and after.filed_images_bytes == 0
+    assert w.run().removed == 0  # nor is it data no tile needs
+
+
+def test_a_kept_mesh_goes_once_its_tile_is_gone(world: World) -> None:
+    w = world
+    w.run(filed=True)
+    mesh = _own_mesh(w, F)
+    with Library(w.library) as lib:
+        lib.forget(F, kind="ortho", path=w.packs[F])
+    shutil.rmtree(w.packs[F])
+    w.run()
+    assert not mesh & w.stored()
+
+
+def test_the_mesh_rule_is_the_mesh_builder_s() -> None:
+    from orthostudio.mesh.rule import OSXP_MESH
+
+    assert OSXP_MESH.name == MESH_RULE
 
 
 def test_each_choice_frees_its_own_line(world: World) -> None:
@@ -383,7 +424,7 @@ def test_two_builds_of_one_square_keep_its_image_pieces(world: World, tmp_path: 
     inside = w.piece(46.5, 6.5, 1500)  # in the square both builds cover
     assert w.run(filed=True).filed_tiles == 3
     assert inside.is_file()
-    assert not w.stored() & set(keys.values())
+    assert w.stored() & set(keys.values()) == {keys["mesh"]}
     assert w.keys[A] <= w.stored()
     assert pack_is_intact(second, read_manifest(second), with_overlay=False)
 
@@ -467,11 +508,11 @@ def test_a_file_another_program_holds_stays_and_is_not_counted(
     "Free space" says only what went."""
     w = world
     pieces = _pieces(w)
-    (mesh,) = w.keys[F] & _rule_keys(w, "orthostudio.mesh")
+    (masks,) = w.keys[F] & _rule_keys(w, "orthostudio.masks")
     real_remove, real_unlink = store_module._remove_path, os.unlink
 
     def remove(p: Path) -> None:
-        if p.name.startswith(mesh):
+        if p.name.startswith(masks):
             raise PermissionError(13, "held by another program", str(p))
         real_remove(p)
 
@@ -486,7 +527,7 @@ def test_a_file_another_program_holds_stays_and_is_not_counted(
     done = w.run(filed=True)
     assert pieces["F"].is_file() and not pieces["S"].exists()
     assert done.filed_images_bytes == 3000
-    assert not (w.keys[F] - {mesh}) & w.stored()  # the others went
+    assert (w.keys[F] - {masks}) & w.stored() == _own_mesh(w, F)  # the others went
     assert done.filed_bytes + done.filed_images_bytes == before - w.disk()
     monkeypatch.undo()
     again = w.run(dry_run=True)  # F has nothing else here: its piece counts with the images
@@ -503,20 +544,20 @@ def test_an_artefact_that_cannot_be_moved_aside_is_left_whole(world: World) -> N
     the remains: a tile built without its roads, said built (a review, 2026-10-06). It is left
     whole now, row and files, and the others go."""
     w = world
-    (mesh,) = w.keys[F] & _rule_keys(w, "orthostudio.mesh")
+    (masks,) = w.keys[F] & _rule_keys(w, "orthostudio.masks")
     with Store(w.store, fsync=False) as s:
-        path = s.path(mesh)
+        path = s.path(masks)
     names = sorted(p.name for p in path.iterdir())
     path.parent.chmod(0o555)  # its shard: nothing in it can be renamed
     try:
         done = w.run(filed=True)
     finally:
         path.parent.chmod(0o755)
-    assert mesh in w.stored() and sorted(p.name for p in path.iterdir()) == names
-    assert not (w.keys[F] - {mesh}) & w.stored()
+    assert masks in w.stored() and sorted(p.name for p in path.iterdir()) == names
+    assert (w.keys[F] - {masks}) & w.stored() == _own_mesh(w, F)
     assert done.filed_removed
     w.run(filed=True)  # once it can move, it goes
-    assert mesh not in w.stored()
+    assert masks not in w.stored()
 
 
 class _Junction:
@@ -593,5 +634,5 @@ def test_the_command(world: World) -> None:
     done = runner.invoke(app, ["clean", "--all"])
     assert done.exit_code == 0, done.output
     assert "cache of the 2 tile(s) filed outside the workshop: freed" in done.output
-    assert not w.stored() & (w.keys[F] | w.keys[S])
+    assert w.stored() & (w.keys[F] | w.keys[S]) == _own_mesh(w, F) | _own_mesh(w, S)
     assert w.whole(F) and w.whole(S)

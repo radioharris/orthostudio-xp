@@ -783,8 +783,9 @@ def clean(
         bool,
         typer.Option(
             "--filed",
-            help="also delete the cache of the tiles filed outside the workshop (the tiles stay "
-            "whole; building them again downloads their images again)",
+            help="also delete the cache of the tiles filed outside the workshop but their meshes, "
+            "which their neighbours read (the tiles stay whole; building them again downloads "
+            "their images again)",
         ),
     ] = False,
     everything: Annotated[

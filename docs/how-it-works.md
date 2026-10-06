@@ -178,13 +178,14 @@ built, and Works says why.
 The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
 *Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,
 what only those tiles need goes, their data and their downloaded images, and the workshop's disk
-gets the room back. The tiles themselves are not touched: they stay whole and in X-Plane, and
-building one again later downloads its images again and makes its textures again, like the first
-time. A neighbour built after that makes its water masks along their border as if that tile were not
-built, as a tile built before its neighbours does. What a tile of the workshop uses too stays, such
-as the images astride the border with a neighbour. A tile filed on the workshop's own disk shares
-its textures and DSF with the cache, one file under two names: its cache goes all the same, but
-those files stay, the tile's own, so their room does not come back and the line does not count it.
+gets the room back. Their mesh stays, about 240 MB a tile: a neighbour built again reads it to draw
+its shores along their border, which without it were drawn as if that tile did not exist. The tiles
+themselves are not touched: they stay whole and in X-Plane, and building one again later downloads
+its images again and makes its textures again, like the first time. What a tile of the workshop uses
+too stays, such as the images astride the border with a neighbour. A tile filed on the workshop's
+own disk shares its textures and DSF with the cache, one file under two names: its cache goes all
+the same, but those files stay, the tile's own, so their room does not come back and the line does
+not count it.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
