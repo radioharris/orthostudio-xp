@@ -90,6 +90,13 @@ the map do not grow: that is the zoom's work. In a browser too: the page draws i
 
 ## 2. The four screens
 
+Each screen keeps its own scroll position, as tabs do (`app.js` `showScreen`, `screenScroll`): the
+window scrolls, not the screens, so a screen opened where the last one was left, which a user
+noticed once a screen had been scrolled two or three times (2026-10-07). The position is written
+down as a screen is left, while it still shows, and given back once the screen shown is drawn;
+the screen shown again from its own button stays where it is. Works opened on the build just
+started shows that build from its top.
+
 ### 2.1 Plan
 
 The Plan is **four numbered steps beside a map**, each with one sentence saying what it does
@@ -740,8 +747,12 @@ disk: the rows say where each pack is.
 
 **Tiles filed elsewhere** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
 several disks): a box before the name of each tile OrthoStudio XP built that is where the Library
-says and not in a build (`pickBox`); the bar under the search (`#library-pick`,
-`renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles affichées »), acting on the rows
+says and not in a build (`pickBox`), in a narrow column of its own, the table's first
+(`.library-pick-cell`, its header named for screen readers only), so that the names line up with
+or without a box (a user, 2026-10-07); when the folder under the name makes the row two lines
+high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
+search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
+affichées »), acting on the rows
 the search and the folder leave, how many tiles are picked and their size, and *File elsewhere…*,
 its box over the rows' boxes; while a build runs or waits the button is disabled, its tooltip
 saying that tiles are filed between builds (`library.file_wait_build`). The folder dialog asks

@@ -3631,6 +3631,34 @@ def test_settings_keep_their_scroll_position_when_an_answer_changes() -> None:
     assert got == {"calls": [[0, 640]], "none": None}
 
 
+def test_each_screen_keeps_its_own_scroll_place() -> None:
+    """The window scrolls, not the screens: a screen opened where the last one was left, which a
+    user saw once a screen had been scrolled two or three times (2026-10-07). Each screen keeps its
+    own place, as tabs do; Works opened on the build just started shows it from its top (the fourth
+    campaign, 2026-10-06: it opened halfway down, its head above the window)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "const screenScroll = new Map();" in app_js
+    body = _function_body(app_js, "showScreen")
+    leave = body.index("if (left !== name) screenScroll.set(left, window.scrollY);")
+    # written down while the screen left still shows: hidden, a shorter page scrolls it up
+    assert body.index("const left = state.screen;") < leave < body.index("state.screen = name;")
+    assert leave < body.index("for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;")
+    # given back last, once the screen shown is drawn; the same screen shown again stays put
+    back = "if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);"
+    assert body.rstrip().endswith(back + "\n}")
+    assert body.index("markWideTables();") < body.index(back)
+    # a screen is opened on something only by its address and by the build just started
+    assert 'showScreen("works", res.job_id);' in _function_body(app_js, "build")
+    calls = re.findall(r"(?<!function )showScreen\(([^)]*)\)", app_js)
+    assert [c for c in calls if "," in c] == [
+        'm ? m[1] : "plan", m ? m[2] : undefined',
+        '"works", res.job_id',
+    ]
+    # the Settings field a refusal points to is scrolled to after, so the field wins
+    focus = _function_body(app_js, "focusSettingsField")
+    assert focus.index('showScreen("settings");') < focus.index("field.scrollIntoView?.(")
+
+
 def test_the_plan_map_shows_what_the_running_build_does() -> None:
     """A user building tiles lost the blue of the selection (it empties on purpose when a build
     starts), saw no green appear as tiles went into X-Plane, and asked to see on the map what is
@@ -5079,7 +5107,7 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
-    assert 'class: "library-built"' in row and "colspan: 8" in row
+    assert 'class: "library-built"' in row and "colspan: 9" in row
     assert "byOsxp ?" in row  # none for an imported tile
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them
@@ -7317,7 +7345,6 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "const busy = libraryBusy.has(key) || Boolean(state.filing);" in row
-    assert 'pickBox(e, key, inBuild), h("span", { class: "tile-name" }, e.tile)' in row
     assert 'if (e.built_by !== "osxp" || e.present === false || inBuild) return null;' in (
         _function_body(app_js, "pickBox")
     )
@@ -7391,6 +7418,101 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
     for lang in ("fr", "en"):
         busy = tables[lang]["library.err_busy"] + tables[lang]["library.err_busy_remedy"]
         assert "supprimez" not in busy and "delete the tile" not in busy, lang
+
+
+def test_the_pick_boxes_have_a_narrow_column_before_the_names() -> None:
+    """A user asked for the boxes in a narrow column of their own, left of the tile names
+    (2026-10-07): the names line up whether a row has a box or not. The box stays on the name's
+    line when the folder under the name makes the row two lines high."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    table = re.search(r'<table[^>]*id="library-table".*?</thead>', html, re.S)
+    assert table is not None
+    heads = re.findall(r"<th\b.*?</th>", table.group(0), re.S)
+    spans = [re.search(r'colspan="(\d+)"', th) for th in heads]
+    columns = sum(int(span.group(1)) if span else 1 for span in spans)
+    # its header is the first, named for a screen reader only; the sorted "Tile" comes next
+    assert 'class="library-pick-cell"' in heads[0] and "data-sort" not in heads[0]
+    assert '<span class="sr-only" data-i18n="library.pick_column">' in heads[0]
+    assert 'data-sort="tile"' in heads[1]
+    got = _run_node(
+        """
+class El {
+  constructor(tag) {
+    Object.assign(this, { tag, attrs: {}, kids: [], dataset: {}, className: "", textContent: "" });
+  }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  addEventListener() {}
+  append(...kids) { this.kids.push(...kids); }
+  cloneNode() { return new El("svg"); }
+}
+globalThis.Node = El;
+const icon = { content: { firstElementChild: new El("svg") } };
+globalThis.document = {
+  documentElement: {},
+  getElementById: (id) => (id === "tpl-folder-icon" ? icon : null),
+  createElement: (tag) => new El(tag),
+  createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+};
+const m = await import("./app.js");
+const built = { tile: "+46+006", name: "zOrthoStudio_+46+006", path: "/T/zOrthoStudio_+46+006",
+  built_by: "osxp", installed: true, present: true, kind: "ortho", size_bytes: 1e9, zl: 16 };
+const imported = { tile: "+44+005", name: "zOrtho4XP_+44+005", path: "/O/zOrtho4XP_+44+005",
+  built_by: "ortho4xp", installed: false, present: true, kind: "ortho", size_bytes: 1e9, zl: 16 };
+const text = (el) => (el.tag === "#text" ? el.textContent : el.kids.map(text).join(""));
+const look = (rows) => {
+  const [row, detail] = rows;
+  const [pick, tile] = row.kids;
+  const box = pick.kids[0] || null;
+  const said = box && [box.tag, box.attrs.type, box.className, box.attrs["aria-label"]];
+  return {
+    cells: row.kids.length,
+    pick: [pick.className, said],
+    tile: [tile.className, tile.attrs.title, tile.kids[0].className, text(tile.kids[0])],
+    where: tile.kids.filter((k) => k.className === "tile-where").map(text),
+    span: detail ? Number(detail.kids[0].attrs.colspan) : null,
+  };
+};
+process.stdout.write(JSON.stringify({
+  built: look(m.libraryRow(built)),
+  folder: look(m.libraryRow(built, true)),
+  imported: look(m.libraryRow(imported, true)),
+}));
+"""
+    )
+    box = ["input", "checkbox", "tile-pick", "Pick +46+006"]
+    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name", "+46+006"]
+    assert got["built"] == {
+        "cells": columns,
+        "pick": ["library-pick-cell", box],
+        "tile": name,
+        "where": [],
+        "span": columns,  # what it was built with, unfolded, spans the whole table
+    }
+    # the folder under the name: the box on the name's line, not between the two lines
+    top = ["library-pick-cell is-top", box]
+    assert got["folder"] == {**got["built"], "pick": top, "where": ["/T"]}
+    # a tile Ortho4XP built has no box: its column stays, empty, and its name lines up
+    assert got["imported"] == {
+        "cells": columns,
+        "pick": ["library-pick-cell is-top", None],
+        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name", "+44+005"],
+        "where": ["/O"],
+        "span": None,
+    }
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    for rule in (
+        ".library-table .library-pick-cell { width: 1%; padding-right: 0; }",
+        ".library-table td.library-pick-cell.is-top { vertical-align: top; }",
+        ".table .tile-pick { margin: 0; vertical-align: middle; }",
+        # the name's pills wrap under it in a narrow window, as do the rows that span the table
+        ".library-table td.library-tile, .library-table td[colspan] { white-space: normal; }",
+    ):
+        assert rule in css, rule
+    tables = _i18n_tables()
+    assert tables["fr"]["library.pick_column"] == "Cocher"
+    assert tables["en"]["library.pick_column"] == "Pick"
 
 
 def test_the_mock_files_tiles_like_the_engine() -> None:

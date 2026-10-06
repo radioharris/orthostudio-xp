@@ -808,8 +808,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A header with an explanation in its tooltip (Size) says so. */
 .library-table th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 /* A tile's pills go under its name when the window is narrow, rather than the table growing a
-   scroll bar at the smallest window (1024px). */
-.library-table td:first-child { white-space: normal; }
+   scroll bar at the smallest window (1024px); the rows that span the table wrap too. */
+.library-table td.library-tile, .library-table td[colspan] { white-space: normal; }
+/* the box that picks a tile, in a narrow column of its own before the name, so that the names line
+   up with or without one (a user, 2026-10-07); on the name's line when the folder under the name
+   makes the row two lines high, not between the two */
+.library-table .library-pick-cell { width: 1%; padding-right: 0; }
+.library-table td.library-pick-cell.is-top { vertical-align: top; }
 .library-table td.library-action { width: 1%; padding-left: 4px; }
 .library-table td.library-action:last-child { padding-right: 10px; }
 .library-action .btn-danger:hover { background: var(--fail-soft); }
@@ -1156,7 +1161,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .library-pick-all input { margin: 0; }
 .library-pick-count { font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .library-filing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); margin: 0 0 var(--block-gap); font-variant-numeric: tabular-nums; }
-.table .tile-pick { margin: 0 2px 0 0; vertical-align: middle; }
+.table .tile-pick { margin: 0; vertical-align: middle; }
 /* the folder a tile is in, under its name */
 .table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }
 .settings-search-note, .works-search-note, .library-search-note { margin: var(--help-gap) 0 0; }

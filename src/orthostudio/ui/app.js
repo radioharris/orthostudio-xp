@@ -2230,12 +2230,23 @@ function markWideTables() {
   }
 }
 
+/**
+ * Where each screen was left. The window scrolls, not the screens, so a screen opened where the
+ * last one was left, which showed only once a screen had been scrolled two or three times (a user,
+ * 2026-10-07): each screen keeps its own place, as tabs do, written down as it is left and given
+ * back as it shows again.
+ */
+const screenScroll = new Map();
+
 function showScreen(name, arg) {
   if (!SCREENS.includes(name)) name = "plan";
   if (state.screen === "settings" && name !== "settings" && state.settingsDraft && !sameValue(state.settingsDraft, state.settings)) {
     // an answer changed without Save changes nothing yet: say it rather than let the Plan look stale
     toast(t("settings.left_unsaved"));
   }
+  // read while the screen left still shows: hidden, a shorter page would have scrolled it up
+  const left = state.screen;
+  if (left !== name) screenScroll.set(left, window.scrollY);
   state.screen = name;
   hideStepTip(); // the steps' tooltip belongs to Works
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
@@ -2261,6 +2272,9 @@ function showScreen(name, arg) {
     if (state.libraryKnown) planMap?.show(); // else boot shows it when the library answers
   }
   markWideTables(); // the screen's tables measured now that it shows
+  // Opened on the build just started, Works shows it from its top: at Works' old place its head
+  // was above the window (the fourth campaign, 2026-10-06).
+  if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);
 }
 
 function routeFromHash() {
@@ -5499,7 +5513,7 @@ function folderIcon() {
   return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
 }
 
-function libraryRow(e, showFolder = false) {
+export function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
   // a filing under way: one at a time, and nothing else changes the tiles meanwhile
   const busy = libraryBusy.has(key) || Boolean(state.filing);
@@ -5561,7 +5575,7 @@ function libraryRow(e, showFolder = false) {
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
   const open = libraryOpen.has(key);
-  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 8 }, builtBlock(e))) : null;
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 9 }, builtBlock(e))) : null;
   let builtCell = t("library.by_ortho4xp");
   if (byOsxp) {
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
@@ -5578,8 +5592,11 @@ function libraryRow(e, showFolder = false) {
   }
   // the folder the tile is in, under its name (TinkerNZ files his tiles by area, 2026-10-04)
   const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
+  // the box in a narrow column of its own, so that the names line up with or without one (a user,
+  // 2026-10-07); on the name's line when the folder under the name makes the row two lines high
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, pickBox(e, key, inBuild), h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
+    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, pickBox(e, key, inBuild)),
+    h("td", { class: "library-tile", title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5694,7 +5711,7 @@ function renderLibrary() {
   note.classList.toggle("is-warn", Boolean(view.note?.warn));
   if (view.note) setText(note, view.note.text);
   if (!rows.length) {
-    body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
+    body.append(h("tr", null, h("td", { colspan: 9, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
@@ -5966,10 +5983,10 @@ function pickable(e, building) {
   return e.built_by === "osxp" && e.present !== false && !building.has(e.tile);
 }
 
-/** The box that picks a row to be filed elsewhere, in its first cell. */
+/** The box that picks a row to be filed elsewhere, in the row's first column. */
 function pickBox(e, key, inBuild) {
   if (e.built_by !== "osxp" || e.present === false || inBuild) return null;
-  return [h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) }), " "];
+  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
 }
 
 /** The rows the search and the folder leave, as the table shows them. */
