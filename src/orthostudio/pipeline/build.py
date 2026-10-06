@@ -2831,7 +2831,8 @@ def _resolved(name: str, ref: ArtifactRef | None) -> ResolvedInput:
 def _verify_effects(
     nodes: TileNodes, env: BuildEnv, collector: _Collector
 ) -> tuple[list[str], bool]:
-    """Redo the pack / install effects after a hit whose destination was tampered with."""
+    """Redo the pack / install effects after a hit whose destination was tampered with, and put
+    the tile's row in the library with the build its folder holds."""
     repaired: list[str] = []
     spec = nodes.spec
     pack_done = collector.done.get(nodes.pack.id)
@@ -2857,8 +2858,7 @@ def _verify_effects(
             )
             repaired.append("install")
         installed = True
-    if not installed:
-        _remember_the_tile(spec, pack_dir, manifest, env)
+    _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
 
 
@@ -3173,7 +3173,7 @@ def _what_the_source_answered(missing: Sequence[Any]) -> list[str]:
 def _remember_the_tile(
     spec: BuildSpec, pack_dir: Path, manifest: PackManifest, env: BuildEnv
 ) -> None:
-    """Put a tile that was built but not installed into the library.
+    """Put a tile into the library with the build its folder holds, installed or not.
 
     Only ``install_receipt`` ever wrote a row, so a user who built without installing saw "No
     tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
@@ -3181,7 +3181,12 @@ def _remember_the_tile(
     were (found in review, 2026-09-23).
 
     Here rather than in the pack rule, because the rule is cached: a tile whose pack was already
-    in the store would never have been recorded. ``keep_built_by`` so that a tile imported from
+    in the store would never have been recorded. The install rule is cached too: a tile built
+    with its airports sharp, then without, then sharp again found its third build whole in the
+    cache, the install step did not run, and its row kept the second build's keys; the Library
+    then took the tile's own folder for another build, File elsewhere asked to build it again,
+    and building it again changed nothing (the owner's +44+009, 2026-10-06; the row was so since
+    0.1.0, read by nothing before the atelier). ``keep_built_by`` so that a tile imported from
     Ortho4XP and rebuilt here does not lose what it is.
     """
     # a build is not lost over its library row

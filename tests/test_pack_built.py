@@ -256,9 +256,12 @@ def test_a_tile_built_without_installing_is_in_the_library(tmp_path: Path) -> No
     broken = JustTheLibrary(tmp_path / "no" / "such.sqlite")
     _remember_the_tile(_spec_for(tile, tmp_path), pack_dir, manifest, broken)
 
-    # the wiring, read rather than run: building a TileNodes costs more than the change itself
+    # the wiring, read rather than run: building a TileNodes costs more than the change itself.
+    # Every build writes it, installed or not: an installed tile whose install step came from the
+    # cache kept the keys of the build before (test_build_repair.py runs that case).
     body = inspect.getsource(_verify_effects)
-    assert "if not installed:\n        _remember_the_tile(" in body
+    assert "\n    _remember_the_tile(spec, pack_dir, manifest, env)\n    return repaired" in body
+    assert "if not installed:" not in body
 
 
 def test_a_failed_tile_says_what_the_source_answered() -> None:

@@ -13,12 +13,14 @@ answers that every node is already built.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import test_api_fakes as fakes
 from orthostudio.graph import InputRef, Store
 from orthostudio.imagery.providers import load_registry
 from orthostudio.install import Library
@@ -28,9 +30,11 @@ from orthostudio.pipeline import build as build_mod
 from orthostudio.pipeline import native
 from orthostudio.pipeline.build import BuildEnv, BuildSpec
 from orthostudio.pipeline.filing import filing_plan
-from orthostudio.pipeline.pack import library_pack, pack_is_intact, read_manifest
+from orthostudio.pipeline.pack import install_receipt, library_pack, pack_is_intact, read_manifest
 from orthostudio.sched import Done, Scheduler
 from test_clean_filed import A, World, _put, _ref
+
+xplane = fakes.xplane
 
 
 def _built_again(
@@ -39,16 +43,22 @@ def _built_again(
     monkeypatch: pytest.MonkeyPatch,
     keys: dict[str, str],
     manifest: str | None = None,
+    *,
+    installed: Path | None = None,
+    custom_scenery: Path | None = None,
 ) -> Any:
     """``build_tiles`` as the app runs it for ``A``, every node answered as already built with
     the store's artefacts, the pack node with the manifest its pack step wrote (``manifest``, or
-    the one of ``A``'s folder)."""
+    the one of ``A``'s folder), and the install node, when the build installs into
+    ``custom_scenery``, with the receipt its install step wrote (``installed``)."""
     receipt = tmp_path / "pack-artefact.toml"
     receipt.write_text(manifest or (w.packs[A] / "orthostudio.toml").read_text())
     dummy = tmp_path / "dummy"
     dummy.write_text("x")
     store = Store(w.store, fsync=False)
     refs = {"tile.pack": ArtifactRef("c" * 64, "d" * 64, receipt, "tile.pack", "file")}
+    if installed is not None:
+        refs["tile.install"] = ArtifactRef("e" * 64, "f" * 64, installed, "tile.install", "file")
     for rule, label, kind in (("tile.dsf", "dsf", "dir"), ("tile.textures", "textures", "dir"),
                               ("tile.overlay", "overlay", "file")):  # fmt: skip
         key = keys[label]
@@ -72,8 +82,8 @@ def _built_again(
     )  # fmt: skip
     spec = BuildSpec(
         tile=A, provider="BI", zl=16, out_dir=w.tiles, store_root=w.store, chunks_root=w.chunks,
-        workdir=tmp_path / "work", relief="xplane", install=False, overlay=True,
-        xp12_rasters=False,
+        workdir=tmp_path / "work", relief="xplane", install=installed is not None,
+        custom_scenery=custom_scenery, overlay=True, xp12_rasters=False,
     )  # fmt: skip
     monkeypatch.setattr(Scheduler, "run", every_node_built)
     monkeypatch.setattr(build_mod, "snapshot_label_of", lambda p: "x")
@@ -115,3 +125,55 @@ def test_a_repaired_tile_keeps_its_build_s_manifest_and_can_be_filed(
     # and the next build finds it whole: nothing to repair
     report = _built_again(w, tmp_path, monkeypatch, keys)
     assert report.tiles[0].repaired == []
+
+
+def _row(w: World) -> Any:
+    """The Library's one row of ``A``'s tile."""
+    with Library(w.library) as lib:
+        (row,) = lib.list(tile=A, kind="ortho")
+    return row
+
+
+def test_a_build_found_whole_in_the_cache_puts_its_own_keys_in_the_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, xplane: Path
+) -> None:
+    """Built with its airports sharp, then without, then sharp again (the owner's +44+009,
+    2026-10-06): the third build is found whole in the cache, its install step too, and the
+    tile's row kept the second build's keys. The Library then took the tile's own folder for
+    another build, File elsewhere asked to build it again, and building it again changed
+    nothing: the row was so since 0.1.0, and nothing read it before the atelier."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OSXP_DATA_DIR", str(tmp_path / "data"))
+    cs = xplane / "Custom Scenery"
+    w = World(tmp_path)
+    sharp_keys = w.build(A, 1, osm=w.osm)
+    pack = w.pack(A, sharp_keys, w.tiles)
+    sharp = read_manifest(pack)
+    sharp_text = (pack / "orthostudio.toml").read_text()
+    installed = tmp_path / "install-artefact.json"
+    receipt = install_receipt(pack, cs, tile=A, library_path=w.library)
+    installed.write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
+    roads = Path(receipt["overlay_target"]) / A.dsf_relpath
+    sharp_roads = roads.read_bytes()
+    # the second build, in the same folder, installed the same way
+    w.pack(A, w.build(A, 2, osm=w.osm, remember=False), w.tiles)
+    install_receipt(pack, cs, tile=A, library_path=w.library)
+    assert _row(w).keys != sharp.keys and roads.read_bytes() != sharp_roads
+
+    def third() -> Any:
+        report = _built_again(
+            w, tmp_path, monkeypatch, sharp_keys, sharp_text, installed=installed, custom_scenery=cs
+        )
+        (tile,) = report.tiles
+        assert tile.ok and tile.installed
+        return tile
+
+    assert third().repaired == ["pack"]  # the folder held the second build: laid again
+    assert read_manifest(pack) == sharp and pack_is_intact(pack, sharp)
+    assert _row(w).keys == sharp.keys
+    assert roads.read_bytes() == sharp_roads  # X-Plane reads the first build's roads again
+    entry = library_pack(A.name, path=str(pack), library_path=w.library)
+    assert filing_plan(entry, tmp_path / "Elsewhere")["how"] != "not_whole"
+    # the next build of it finds the tile whole and its row right: nothing to do
+    assert third().repaired == []
+    assert _row(w).keys == sharp.keys

@@ -132,7 +132,12 @@ executes nothing, `build_tiles` **verifies the effects after the run**: a pack w
 hit but whose directory lacks a listed file, or holds another assembly (the manifest written in
 it is not the receipt's: the tile was built since with other colours, say), is re-assembled (hard
 links, under a second), an install whose link or `scenery_packs.ini` line is gone is redone. Both operations are
-idempotent.
+idempotent. Then the tile's Library row is written with the keys of the build its folder holds,
+installed or not (`_remember_the_tile`): a build found whole in the cache, its install step too,
+left the row with the keys of the build before (a tile built with its airports sharp, then
+without, then sharp again), and the atelier took the tile's own folder for another build, to
+build again, which changed nothing (the owner's +44+009, 2026-10-06; so since 0.1.0, read by
+nothing before the atelier).
 
 `tile.pack` first makes the store durable (`Store.make_durable`, `graph-keys.md` 6): the tile's
 textures, DSF and `.ter` files are committed without being forced to disk one by one, and are
