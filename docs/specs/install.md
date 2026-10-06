@@ -435,14 +435,28 @@ tiles(lat INTEGER, lon INTEGER, kind TEXT ('ortho'|'overlay'), path TEXT,
 ```
 
 - `register(tile, provider, zl, path, built_by, keys=None, *, kind="ortho")`: upsert on
-  the primary key (`registered_at` kept, `updated_at` refreshed). `path` is stored absolute:
-  `osxp build --out tiles --install` registered a relative one, which `osxp serve` then read from
-  its own working directory (`tests/test_library_register.py`). `keys` is the dict of
+  the primary key (`registered_at` kept, `updated_at` refreshed). `path` is stored as
+  `real_pack_path` spells it: absolute, as `osxp build --out tiles --install` registered a
+  relative one, which `osxp serve` then read from its own working directory; and with the folder
+  holding the pack followed to where its links lead, the pack's own name kept (X-Plane knows the
+  pack by it). The default data folder may be a link, `~/.orthostudio` leading to another disk: a
+  build that did not install registered its pack where the links lead, the install rule where they
+  are, and the Library listed the one pack twice (2026-10-05). `keys` is the dict of
   store keys of the artefacts that made the pack (`None` for Ortho4XP builds: "installable, not
-  incremental").
+  incremental"). The facts read of a pack's files (`pack_facts`) are kept under the same spelling.
 - `list(*, tile=None, kind=None)`: entries ordered by (lat, lon, kind, path).
 - `forget(tile, *, kind=None, path=None)`: deletes the matching rows, returns the count
-  (the delete of 4.2 forgets a pack's rows with it).
+  (the delete of 4.2 forgets a pack's rows with it); `path` is spelled as `register` spells it.
+- The first opening of the library in a process rewrites what an older version kept under another
+  spelling, and the rows that then name one pack become one: what the pack holds is the newest
+  row's, when it came the first one's, and a row of Ortho4XP keeps the pack Ortho4XP's, as
+  `keep_built_by` keeps it in one row (the install that wrote the other row found none under its
+  spelling and said `osxp` without knowing); its facts keep their latest reading. The paths are
+  read first, the folders above the packs followed once each, and the library is written only
+  when something is to rewrite (`tests/test_library_register.py`). The first opening only:
+  following those folders reads every disk that holds a pack, a network drive that stopped
+  answering holds whoever asks while it waits, and the status opens the library at each change;
+  a link changed while the app runs is taken at its next start.
 - Connection in WAL mode, `busy_timeout` 30 s, like the store index.
 
 `import_ortho4xp(folder)`, `<ortho4xp>` being that folder:

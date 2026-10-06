@@ -596,6 +596,18 @@ def test_the_library_asks_again_for_sizes_and_measures_the_disk_only_when_shown(
     assert got == [True, False, False, 5000]
 
 
+def test_the_disk_space_lines_follow_the_language() -> None:
+    """The Library's Disk space lines are written by renderDisk alone: after a switch from English
+    to French they still said "Data used by your 5 tile(s)" and "7.4 GB" under a French title,
+    until the next measure (2026-10-05). The switch draws them again from the last measure and
+    measures nothing: that walk takes minutes on a hard disk."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    switch = _function_body(app_js, "rerenderAll")
+    assert "renderDisk();" in switch
+    assert "loadDisk(" not in switch
+    assert "api(" not in _function_body(app_js, "renderDisk")
+
+
 def test_saved_zones_with_problems_stay_listed() -> None:
     """A zone the engine flags stays in the list, marked; problems naming no zone of the list are
     kept for the notice; ids stay unique so that a row never acts on its twin."""

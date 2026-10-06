@@ -233,6 +233,10 @@ takes space in its **data folder**: `~/.orthostudio` too, unless Settings name a
 The status bar names that folder at its right end, and the button beside it shows it in the
 Finder, the Windows File Explorer or the Linux file manager: `.orthostudio` starts with a dot,
 which hides it in the Finder, and a user looked for their tiles there in vain (2026-09-22).
+`~/.orthostudio` may itself be a link to another disk: the Library knows each tile by the folder
+the link leads to, and lists it once whether it was built alone or added to X-Plane. A tile built
+without installing, then built again with the install, had two rows until 2026-10-05; they become
+one when the app starts.
 
 ```
 ~/.orthostudio/
