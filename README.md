@@ -46,7 +46,7 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
   following them; built again, a filed tile goes back to its folder; the cache the workshop keeps
   for the tiles filed elsewhere can be freed on its own, the tiles staying whole; a tile you moved
-  by hand is found again where you put it.
+  by hand is found again where you put it ([docs/workshop.md](docs/workshop.md)).
   Remove a tile from X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and
@@ -96,9 +96,10 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **A cache.** Every step's result is kept under a fingerprint of what produced it: an unchanged
   tile builds again in a second, a new zone rebuilds only what it touches, and imagery is never
   downloaded twice. `osxp clean --all` gives the space back when you want it.
-- **Your disk of choice.** The tiles, the cache and the downloaded imagery can go to a folder on an
-  external disk, chosen in Settings; an unplugged disk is said as such, and nothing is written in
-  its place on the computer's own disk.
+- **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings,
+  with the cache and the downloaded imagery, on an external disk if you like; then you file them
+  wherever you want ([docs/workshop.md](docs/workshop.md)). An unplugged disk is said as such, and
+  nothing is written in its place on the computer's own disk.
 - **Text as large as you need.** `− 100 % +` at the foot of the window zooms the whole page (Ctrl
   or ⌘ with plus, minus and 0 too), and `Aa` beside it makes the text alone larger, at once, on
   a big or far screen. The window opens where you left it, the size it had.

@@ -158,6 +158,7 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
+The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
 the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
