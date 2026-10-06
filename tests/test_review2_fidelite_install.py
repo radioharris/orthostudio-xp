@@ -16,9 +16,10 @@ from orthostudio.install.scenery_packs import SceneryPacks
 
 REAL_INI = Path.home() / "X-Plane 12" / "Custom Scenery" / "scenery_packs.ini"
 TILE_PACK = re.compile(
-    r"^(y(OrthoStudio|Ortho4XP)_Overlays|z(OrthoStudio|Ortho4XP)_[+-]\d{2}[+-]\d{3})$"
+    r"^(y(OrthoStudio|Ortho4XP)_Overlays(_\d+)?|z(OrthoStudio|Ortho4XP)_[+-]\d{2}[+-]\d{3})$"
 )
-"""The tile packs a real install may already hold: OrthoStudio XP's, or tiles Ortho4XP built."""
+"""The tile packs a real install may already hold: OrthoStudio XP's, or tiles Ortho4XP built, and
+the overlays packs of several tiles folders (``yOrthoStudio_Overlays_2``...)."""
 
 
 def _ini(*lines: str, nl: str = "\n") -> bytes:
