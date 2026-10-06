@@ -855,16 +855,16 @@ ambiguous when the tile was built into two output folders):
   toast says where it was found ("+43+005 found again in ~/Tiles/Alps."), adding that a build
   gives back its roads and forests when they were found nowhere (`overlay_lost`). Refusals have
   the Library's own words (`LIBRARY_REFUSALS`): not that tile's folder (its name included), another
-  build, a copy not whole, a folder inside X-Plane's Custom Scenery, X-Plane running, the tile
-  back in its place meanwhile. Its tooltip says X-Plane must be closed. An imported tile says to
-  import again the folder it was put in. A disk not connected comes back by itself once plugged
-  in, which its tooltip says, with *Find again…* for a tile put on another disk (a disk renamed,
-  or left for another); it also says to plug it in before starting X-Plane, which, started without
-  it, takes the tile off `scenery_packs.ini` and later puts it back at the bottom, under the mesh
-  of AutoOrtho (measured on the owner's Mac, 2026-10-06). *Delete…* stays for OrthoStudio XP rows (the engine then forgets the
-  tile); on a disk not connected its question says the files stay on that disk and that plugging
-  it in will not bring the tile back. An imported tile still in X-Plane keeps *Remove from
-  X-Plane*, its way to *Remove from the list*.
+  build, a copy not whole, a folder inside X-Plane's Custom Scenery, X-Plane running, the tile back
+  in its place meanwhile. Its tooltip says X-Plane must be closed. An imported tile says to import
+  again the folder it was put in. A disk not connected comes back by itself once plugged in, which
+  its tooltip says, with *Find again…* for a tile put on another disk (a disk renamed, or left for
+  another); it also says to plug it in before starting X-Plane, which, started without it, takes the
+  tile off `scenery_packs.ini` and later puts it back at the bottom, under the mesh of AutoOrtho
+  (measured on the owner's Mac, 2026-10-06). *Delete…* stays for OrthoStudio XP rows (the engine
+  then forgets the tile); on a disk not connected its question says the files stay on that disk and
+  that plugging it in will not bring the tile back. An imported tile still in X-Plane keeps *Remove
+  from X-Plane*, its way to *Remove from the list*.
 
 While a request runs, the row's buttons are disabled (and the row `aria-busy`), across
 re-renders too, so a double click sends nothing twice. When the engine answers, success or

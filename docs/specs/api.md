@@ -40,11 +40,13 @@ Job.state() -> dict   # section 5 ; Job.events(after_seq) -> list[dict] ; Job.wa
 ```
 
 `env_factory(specs) -> BuildEnv` builds the environment of a plan or a job (the default is
-`BuildEnv.create`; a zero-argument factory, the literal form of the P2b contract, is accepted
-too). Once the plan is answered or the job has ended, `BuildEnv.close()` lets go of the store's
-index it opened: held until Python collected the environment, it kept the disk of a data folder
-left for another from being ejected while the app ran (2026-10-06). `build(specs, *, on_event, env) -> BuildReport` is `orthostudio.pipeline.build.build_tiles`
-by default; tests inject a generator of synthetic events.
+`BuildEnv.create`; a zero-argument factory, the literal form of the P2b contract, is accepted too).
+Once the plan is answered, or the job has ended on its own, `BuildEnv.close()` lets go of the
+store's index it opened: held until Python collected the environment, it kept the disk of a data
+folder left for another from being ejected while the app ran (2026-10-06). After a Stop it is left
+open: a step still running past the scheduler's grace commits into it later. `build(specs, *,
+on_event, env) -> BuildReport` is `orthostudio.pipeline.build.build_tiles` by default; tests inject
+a generator of synthetic events.
 
 ### 2.1 Endpoints
 

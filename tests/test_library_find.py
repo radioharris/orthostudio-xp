@@ -554,3 +554,76 @@ async def test_a_tile_of_that_folder_still_in_x_plane_keeps_its_roads_pack(
     assert r.status_code == 200, r.text
     assert links_to(cs / NAME, copy) and os.path.lexists(roads)
     assert SceneryPacks.load(cs / "scenery_packs.ini").find(roads.name) is not None
+
+
+@pytest.mark.anyio
+async def test_a_roads_line_the_user_disabled_stays_through_find_again_and_the_next_build(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """A user of simHeaven X-World turns OrthoStudio XP's roads off. Found again while the disk of
+    its folder is away, then built again, the tile had its roads line come back enabled: the line
+    went with the link, and the next overlays pack taking that name had a new one (a review,
+    2026-10-06). A disabled line draws nothing, and stays."""
+    application, _mgr = app
+    pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
+    ini = cs / "scenery_packs.ini"
+    roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
+    assert roads is not None
+    packs = SceneryPacks.load(ini)
+    assert packs.disable(roads.name)
+    packs.save(ini)
+    _unplugged(disk)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
+        )
+    assert r.status_code == 200, r.text
+    # built again: its roads parked in it, installed as the put back installs it
+    (copy / PARKED_OVERLAY).write_bytes(b"XPLNEDSF overlay")
+    install_receipt(copy, cs, tile=T, library_path=default_library_path(), reenable=False)
+    new = overlay_link(cs, copy.parent / OVERLAY_PACK)
+    assert new is not None
+    line = SceneryPacks.load(ini).find(new.name)
+    assert line is not None and not line.enabled
+
+
+def test_the_tidying_up_and_an_install_do_not_lose_each_other_s_line(
+    home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every install edits scenery_packs.ini under one lock: the tidying up of Find again did not
+    take it, and an install saving meanwhile lost its line (a review, 2026-10-06)."""
+    import threading
+
+    from test_put_back import W, _pack_of  # it imports this module: imported once both are
+
+    pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
+    other = _pack_of(W, tmp_path / "Atelier" / "tiles", "w1")
+    _unplugged(disk)
+    read = threading.Event()
+    saved = threading.Event()
+    real_update = packs._update_ini
+
+    def slow_update(custom_scenery: Path, name: str, *, add: bool) -> bool:
+        """The tidying up has read the file when the other install would save it."""
+        if add:
+            return real_update(custom_scenery, name, add=add)
+        listed = SceneryPacks.load(custom_scenery / "scenery_packs.ini")
+        read.set()
+        saved.wait(0.5)
+        changed = listed.remove(name)
+        if changed:
+            listed.save(custom_scenery / "scenery_packs.ini", backup=True)
+        return changed
+
+    def install_meanwhile() -> None:
+        assert read.wait(10)
+        install_receipt(other, cs, tile=W, library_path=default_library_path())
+        saved.set()
+
+    monkeypatch.setattr(packs, "_update_ini", slow_update)
+    meanwhile = threading.Thread(target=install_meanwhile)
+    meanwhile.start()
+    entry = library_pack(T.name, path=str(pack), library_path=default_library_path())
+    find_again_receipt(entry, copy, custom_sceneries=[cs], library_path=default_library_path())
+    meanwhile.join(10)
+    assert other.name in SceneryPacks.load(cs / "scenery_packs.ini").names()

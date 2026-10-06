@@ -1422,9 +1422,11 @@ class JobManager:
         finally:
             job.stop_ticker()
             job._finish(status, report, env if isinstance(env, BuildEnv) else None)
-            if isinstance(env, BuildEnv):
+            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
+                # the store's index is not held between builds; after a Stop, a step still running
+                # past the scheduler's grace commits into it later (a review, 2026-10-06)
                 with contextlib.suppress(Exception):
-                    env.close()  # the store's index is not held between builds
+                    env.close()
             with contextlib.suppress(OSError):
                 job.save_state()
             with self._lock:

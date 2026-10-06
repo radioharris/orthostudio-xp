@@ -448,14 +448,16 @@ finds it again where the user shows it (2026-10-05):
   broken link replaced, the overlay put beside the tile and its overlays pack linked (4.4), the
   lines kept, a line the user disabled included (`reenable=False`). A new overlays line, for a
   folder X-Plane showed no overlays of, takes the state of the overlays line of the folder the tile
-  came from (`overlay_off`, `_overlay_line_off`): a user of simHeaven X-World turns OrthoStudio
-  XP's roads off, and they came back on (a review, 2026-10-05). The overlays pack of the folder the
-  tile left, out of reach (its disk away, or deleted), leaves that X-Plane, its link and its line,
-  once no tile link leads into that folder (`_let_go_of_overlays_out_of_reach`): the tile's roads
-  stayed there, and the day the disk came back X-Plane drew them twice (found on the owner's tiles,
-  2026-10-06); a tile of that folder still in X-Plane keeps it, its own roads being there. An
-  X-Plane that did not show the tile gets nothing. The Library row follows; the overlay row of the folder left goes once it
-  holds nothing of the tile.
+  came from (`overlay_off`, `_overlay_line_off`): a user of simHeaven X-World turns OrthoStudio XP's
+  roads off, and they came back on (a review, 2026-10-05). The overlays pack of the folder the tile
+  left, out of reach (its disk away, or deleted), leaves that X-Plane, its link and its line, once
+  no tile link leads into that folder (`_let_go_of_overlays_out_of_reach`, under the lock of every
+  install): the tile's roads stayed there, and the day the disk came back X-Plane drew them twice
+  (found on the owner's tiles, 2026-10-06). A tile of that folder still in X-Plane keeps it, its own
+  roads being there, and so does a line the user disabled, which draws nothing: the next overlays
+  pack taking that name keeps the roads off (a review, 2026-10-06). An X-Plane that did not show the
+  tile gets nothing. The Library row follows; the overlay row of the folder left goes once it holds
+  nothing of the tile.
 * Asked again after a stop half way, it finishes what is left: the X-Planes whose link already
   leads to the found folder are given its install again, which puts the overlay beside it. The
   receipt says when the tile's roads and forests are nowhere (`overlay_lost`): a build gives them
@@ -468,17 +470,18 @@ itself once plugged in; a disk renamed, or left for another the tiles were copie
 again…* as its way back, and the page offers it there too.
 
 Acceptance (`tests/test_library_find.py`, fake X-Planes): a tile moved alone is found from the
-folder holding it or from its own, X-Plane's link and its overlay follow and its images are the
-same files; a tile in no X-Plane is found by the Library alone, its overlay parked; every X-Plane
-that showed it follows and no other; a wrong folder, a renamed copy, another build and a copy cut
-short change nothing; nor does X-Plane running; a tile put in X-Plane's own Custom Scenery is
-refused and keeps its roads; the one overlay there is is never removed for itself seen through a
-link; a line the user disabled stays disabled, and a new overlays line takes the state of the one
-the tile came from; found while the disk of the folder it left is away, that folder's overlays
-pack leaves X-Plane when no tile of X-Plane is in it any more, and stays while one is; a tile in its place, an imported one and one in a
-build are not looked for; a tile whose roads went too is found and says so; a stop half way,
-before or past X-Plane's link, is finished when asked again, and a copy of the roads made before
-a stop is not left twice; a disk away says so, and a folder gone two levels down is not one.
+folder holding it or from its own, X-Plane's link and its overlay follow and its images are the same
+files; a tile in no X-Plane is found by the Library alone, its overlay parked; every X-Plane that
+showed it follows and no other; a wrong folder, a renamed copy, another build and a copy cut short
+change nothing; nor does X-Plane running; a tile put in X-Plane's own Custom Scenery is refused and
+keeps its roads; the one overlay there is is never removed for itself seen through a link; a line
+the user disabled stays disabled, and a new overlays line takes the state of the one the tile came
+from; found while the disk of the folder it left is away, that folder's overlays pack leaves X-Plane
+when no tile of X-Plane is in it any more, and stays while one is or while its line is disabled, an
+install saving meanwhile keeping its own line; a tile in its place, an imported one and one in a
+build are not looked for; a tile whose roads went too is found and says so; a stop half way, before
+or past X-Plane's link, is finished when asked again, and a copy of the roads made before a stop is
+not left twice; a disk away says so, and a folder gone two levels down is not one.
 
 ### 4.6 Tiles filed elsewhere (`pipeline/filing.py`, the atelier, step 3)
 

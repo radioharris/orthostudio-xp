@@ -11,6 +11,7 @@ environment closed it. The environments here are the real ones, on a fake X-Plan
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -83,3 +84,23 @@ def test_a_store_given_to_the_environment_stays_open(home: Path, xplane: Path) -
         env = BuildEnv.create([spec], store=store)
         env.close()
         assert not _closed(store)
+
+
+def test_after_a_stop_the_store_stays_open_for_the_steps_still_running(
+    home: Path, xplane: Path
+) -> None:
+    """On a Stop the scheduler waits a few seconds, then leaves the steps still running: one that
+    commits later found the index closed, its download moved into the store with no row, fetched
+    again by the next build (a review, 2026-10-06). After a Stop the store is left to them."""
+    envs: list[BuildEnv] = []
+    mgr = JobManager(
+        jobs_dir=home / "jobs", build=FakeBuild(delay_s=0.05), env_factory=_recording(envs)
+    )
+    job = mgr.start([make_spec(home=home)], install=False, request={"tiles": ["+43+005"]})
+    time.sleep(0.12)
+    assert mgr.cancel(job.id)
+    assert job.wait(10.0) and job.status == "cancelled"
+    (env,) = envs
+    assert not _closed(env.store)
+    env.store.close()
+    mgr.close()

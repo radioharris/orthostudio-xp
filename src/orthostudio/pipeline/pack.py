@@ -1595,7 +1595,9 @@ def find_again_receipt(
         install_receipt(
             pack, cs, tile=tile, library_path=library_path, reenable=False, overlay_off=off
         )
-        with contextlib.suppress(OsxpError, OSError):  # a tidying up never fails the find
+        # a tidying up never fails the find; scenery_packs.ini edited under the lock of every
+        # install, or an install saving meanwhile lost its line (a review, 2026-10-06)
+        with contextlib.suppress(OsxpError, OSError), _INSTALL_LOCK:
             _let_go_of_overlays_out_of_reach(cs, behind)
     with Library(library_path) as lib:
         if not shown:  # in no X-Plane: the row alone follows
@@ -1621,10 +1623,12 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
     cannot be reached (its disk away, or deleted) and no tile link leads into its folder any more.
     A tile found again elsewhere while the disk of the folder it left was away left its roads
     there, and the day that disk came back X-Plane drew them twice (found on the owner's tiles,
-    2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there."""
+    2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there. A line
+    the user disabled draws nothing, and stays: a user of simHeaven X-World turns OrthoStudio XP's
+    roads off, and the next overlays pack taking that name keeps them off (a review, 2026-10-06)."""
     cs = Path(custom_scenery)
     link = overlay_link(cs, overlay_pack)
-    if link is None or os.path.isdir(overlay_pack):
+    if link is None or os.path.isdir(overlay_pack) or _overlay_line_off(cs, overlay_pack):
         return
     folder = os.path.realpath(Path(overlay_pack).parent)
     if any(
