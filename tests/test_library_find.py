@@ -6,6 +6,7 @@ only; nothing of the machine's is read or written."""
 
 from __future__ import annotations
 
+import os
 import secrets
 import shutil
 from pathlib import Path
@@ -19,6 +20,7 @@ from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
 from orthostudio.home import disk_absent
 from orthostudio.install import Library, default_library_path, packs
+from orthostudio.install.scenery_packs import SceneryPacks
 from orthostudio.model import OVERLAY_PACK, TileRef
 from orthostudio.pipeline import pack as pack_mod
 from orthostudio.pipeline.pack import (
@@ -486,3 +488,69 @@ async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     assert disk_absent(tmp_path / "Gone" / "Alps" / NAME) is False
     assert disk_absent(Path("/Volumes") / f"nope {secrets.token_hex(4)}" / "x") is True
     assert disk_absent(Path("/media") / f"someone {secrets.token_hex(4)}" / "USB" / "x") is True
+
+
+def _unplugged(disk: Path) -> Path:
+    """The disk holding a folder unplugged: its folders are out of reach, the disk renamed aside."""
+    return disk.rename(disk.with_name(disk.name + " (away)"))
+
+
+def _found_on_the_mac(home: Path, xplane: Path, tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    """+43+005 filed on disk D, in X-Plane with its roads beside it, copied to the Mac's disk by
+    hand: its pack, the copy, X-Plane's Custom Scenery and disk D."""
+    cs = xplane / "Custom Scenery"
+    disk = tmp_path / "Disk D"
+    pack = _pack(disk / "Alps")
+    install_receipt(pack, cs, tile=T, library_path=default_library_path())
+    copy = tmp_path / "Mac" / "Alps" / NAME
+    shutil.copytree(pack, copy)
+    return pack, copy, cs, disk
+
+
+@pytest.mark.anyio
+async def test_roads_left_on_a_disk_away_are_not_drawn_once_it_is_back(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """Found again elsewhere while the disk of its folder was away, a tile left its roads in the
+    overlays pack there, and the day the disk came back X-Plane drew them twice (found on the
+    owner's tiles, 2026-10-06). That pack, which no tile of X-Plane is in any more, leaves X-Plane:
+    its link and its line."""
+    application, _mgr = app
+    pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
+    roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
+    assert roads is not None
+    aside = _unplugged(disk)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
+        )
+    assert r.status_code == 200, r.text
+    assert links_to(cs / NAME, copy) and r.json()["overlay_lost"] is True
+    aside.rename(disk)  # plugged in again: the old roads are there, drawn by nothing
+    assert (pack.parent / OVERLAY_PACK / T.dsf_relpath).is_file()
+    assert overlay_link(cs, pack.parent / OVERLAY_PACK) is None
+    assert SceneryPacks.load(cs / "scenery_packs.ini").find(roads.name) is None
+
+
+@pytest.mark.anyio
+async def test_a_tile_of_that_folder_still_in_x_plane_keeps_its_roads_pack(
+    app: Any, home: Path, xplane: Path, tmp_path: Path
+) -> None:
+    """Another tile of the folder left is still in X-Plane: the overlays pack there holds its
+    roads, and stays for the day its disk comes back."""
+    from test_put_back import W, _pack_of  # it imports this module: imported once both are
+
+    application, _mgr = app
+    pack, copy, cs, disk = _found_on_the_mac(home, xplane, tmp_path)
+    neighbour = _pack_of(W, pack.parent, "w1")
+    install_receipt(neighbour, cs, tile=W, library_path=default_library_path())
+    roads = overlay_link(cs, pack.parent / OVERLAY_PACK)
+    assert roads is not None
+    _unplugged(disk)
+    async with client_for(application) as c:
+        r = await c.post(
+            f"/api/library/{T.name}/find", json={"path": str(pack), "folder": str(copy)}
+        )
+    assert r.status_code == 200, r.text
+    assert links_to(cs / NAME, copy) and os.path.lexists(roads)
+    assert SceneryPacks.load(cs / "scenery_packs.ini").find(roads.name) is not None

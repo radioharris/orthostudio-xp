@@ -1595,6 +1595,8 @@ def find_again_receipt(
         install_receipt(
             pack, cs, tile=tile, library_path=library_path, reenable=False, overlay_off=off
         )
+        with contextlib.suppress(OsxpError, OSError):  # a tidying up never fails the find
+            _let_go_of_overlays_out_of_reach(cs, behind)
     with Library(library_path) as lib:
         if not shown:  # in no X-Plane: the row alone follows
             lib.register(
@@ -1612,6 +1614,27 @@ def find_again_receipt(
         # a tile whose roads, forests and buildings are nowhere: built again, it has them back
         "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
     }
+
+
+def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -> None:
+    """The link of ``overlay_pack`` and its line out of this X-Plane, when that overlays pack
+    cannot be reached (its disk away, or deleted) and no tile link leads into its folder any more.
+    A tile found again elsewhere while the disk of the folder it left was away left its roads
+    there, and the day that disk came back X-Plane drew them twice (found on the owner's tiles,
+    2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there."""
+    cs = Path(custom_scenery)
+    link = overlay_link(cs, overlay_pack)
+    if link is None or os.path.isdir(overlay_pack):
+        return
+    folder = os.path.realpath(Path(overlay_pack).parent)
+    if any(
+        name.startswith(PACK_PREFIX)
+        and is_link(cs / name)
+        and os.path.dirname(os.path.realpath(cs / name)) == folder
+        for name in _entry_names(cs)
+    ):
+        return
+    uninstall_pack(link.name, cs)
 
 
 def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:
