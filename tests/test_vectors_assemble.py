@@ -8,7 +8,10 @@ checks are structural.
 
 from __future__ import annotations
 
+import itertools
 import json
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,8 +22,9 @@ from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
 
 from orthostudio.dem.dem import Dem
 from orthostudio.errors import OsxpError
-from orthostudio.graph import ResolvedInput, RunContext
-from orthostudio.model import TileRef
+from orthostudio.graph import ResolvedInput, RunContext, Store
+from orthostudio.model import ArtifactRef, TileRef
+from orthostudio.sched.workers import execute
 from orthostudio.vectors.assemble import (
     LAYERS_NPZ,
     STATS_JSON,
@@ -324,6 +328,45 @@ def test_the_rule_assembles_the_layers_it_is_given(tmp_path: Path) -> None:
     assert (ctx.out / poly_file_name(TILE)).is_file()
     assert (ctx.out / LAYERS_NPZ).is_file() and (ctx.out / STATS_JSON).is_file()
     assert result.stats["seeds"] == 6
+
+
+def test_the_same_tile_built_again_is_the_same_artefact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Built, its cache freed, built again, as the store builds it: the same files, the same
+    digest, so nothing after it is built again. The stats said how long the noding and the
+    assembly took: each build of the same tile was another artefact, and its mesh, masks, DSF and
+    whole folder were made again (found on the owner's Shadow, 2026-10-06). The clock here, as a
+    real one, never gives the same duration twice."""
+    ticks = itertools.count()
+    monkeypatch.setattr(time, "perf_counter", lambda: next(ticks) ** 2 / 1000)
+    store = Store(tmp_path / "store", fsync=False)
+    osm = tmp_path / "osm"
+    osm.mkdir()
+    key = "1" * 64
+    inputs = {
+        "osm": ArtifactRef("a" * 64, "a" * 64, osm, "orthostudio.osm", "dir"),
+        "dem": ArtifactRef("b" * 64, "b" * 64, _dem_dir(tmp_path), "orthostudio.dem", "dir"),
+        "patches": None,
+        "airports": None,
+    }
+
+    def built() -> str | None:
+        job = VectorsJob(build_layers=lambda request: LayerBuild(sample_layers(), dem=_dem()))
+        with vectors_job(job):
+            outcome = execute(
+                node_id=f"{TILE.name}/vectors", rule=VECTORS,
+                params=VectorsParams(tile=TILE.name, mesh_zl=14), key=key, recipe="r",
+                inputs=inputs, store=store, workdir=tmp_path / "work",
+                progress=lambda fraction, message: None, cancel_event=threading.Event(),
+                run=None,
+            )  # fmt: skip
+        assert outcome.error is None, outcome.error
+        return store.digest_of(key)
+
+    first = built()
+    assert store.delete(key, force=True)  # its cache freed
+    assert built() == first
 
 
 def test_without_an_injected_builder_the_rule_resolves_the_wired_one(tmp_path: Path) -> None:

@@ -394,11 +394,18 @@ does the zoom-dependent half with two vectorised `wgs84_to_orthogrid` calls. Rec
  "n_input_segments": 271320, "n_vertices": 603649, "n_triangles": 1197758,
  "n_water_tris": 198798, "weight_cells_changed": 41336, "weight_max": 4.0,
  "n_coast_nodes": 39545, "n_airports": 18, "steiner_budget": 1331665.3684210528,
- "triangle_argv": ["…"], "retried_without_min_angle": false,
- "timings_s": {"weights": …, "inputs": …, "triangle": …, "read_outputs": …,
-               "postprocess": …, "mesh_text": …, "npz": …, "total": …},
+ "triangle_argv": ["Triangle4XP", "-pq…", "…", "Data+43+005.alt", "Data+43+005.weight",
+                   "Data+43+005.poly"], "retried_without_min_angle": false,
  "warnings": [{"code": "MESH_WEIGHT_MAP_INCOMPLETE", "context": {…}}]}
 ```
+
+The stats are part of the artefact, so they hold what was built, not how: the command names its
+files without their folders, and how long each step took (`weights`, `inputs`, `triangle`,
+`read_outputs`, `postprocess`, `mesh_text`, `npz`, `total`) goes to the log, with the command in
+full at debug level. The scratch folder's name holds the process number and a random part: with it
+and the timings in the stats, the same tile built again was another mesh each time, and its masks,
+DSF and whole folder were made again after its cache was freed (found on the owner's Shadow,
+2026-10-06).
 
 `MESH_TRIANGLE_BUDGET_REACHED` (info) is recorded when the number of output triangles
 reaches `0.99 * limit_tris * 1e6`: that is how the user learns the mesh is coarser than

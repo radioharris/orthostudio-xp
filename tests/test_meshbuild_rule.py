@@ -16,13 +16,14 @@ import re
 import stat
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from orthostudio.errors import OsxpError
-from orthostudio.graph import ResolvedInput, RunContext, key_for
+from orthostudio.graph import ResolvedInput, RunContext, Store, key_for
 from orthostudio.mesh import triangle_io as tio
 from orthostudio.mesh.build import (
     DemSpec,
@@ -34,7 +35,8 @@ from orthostudio.mesh.build import (
     triangle_switches,
 )
 from orthostudio.mesh.rule import OSXP_MESH, MeshParams, run_mesh, triangle_binary
-from orthostudio.model import TileRef
+from orthostudio.model import ArtifactRef, TileRef
+from orthostudio.sched.workers import execute
 
 TILE = TileRef(43, 5)
 TRIANGLE = triangle_binary()
@@ -439,6 +441,40 @@ def test_rule_runs_through_a_run_context(synthetic: dict) -> None:
     }
     assert result.stats["n_coast_nodes"] == 0
     OSXP_MESH.fn(ctx)  # the rule body itself runs and rewrites the artefact
+
+
+@needs_binary
+def test_the_same_tile_built_again_is_the_same_artefact(synthetic: dict) -> None:
+    """Built, its cache freed, built again, as the store builds it: the same files, the same
+    digest, so nothing after it is built again. The stats held the Triangle command, whose
+    scratch folder is named after the process and a random part, and how long each step took:
+    each build of the same tile was another mesh, and its masks, DSF and whole folder were made
+    again (found on the owner's Shadow, 2026-10-06)."""
+    root = synthetic["root"]
+    store = Store(root / "store", fsync=False)
+    key = "1" * 64
+    inputs = {
+        "vectors": ArtifactRef(
+            "a" * 64, "a" * 64, synthetic["vectors"], "orthostudio.vectors", "dir"
+        ),
+        "dem": ArtifactRef("b" * 64, "b" * 64, synthetic["dem"], "orthostudio.dem", "dir"),
+        "coastline": None,
+    }
+
+    def built() -> str | None:
+        outcome = execute(
+            node_id="+43+005/mesh", rule=OSXP_MESH, params=MeshParams(tile="+43+005"), key=key,
+            recipe="r", inputs=inputs, store=store, workdir=root / "work",
+            progress=lambda fraction, message: None, cancel_event=threading.Event(), run=None,
+        )  # fmt: skip
+        assert outcome.error is None, outcome.error
+        return store.digest_of(key)
+
+    first = built()
+    stats = json.loads((store.path(key) / "stats.json").read_text(encoding="utf-8"))
+    assert stats["triangle_argv"][0] == TRIANGLE.name  # the command, by its names
+    assert store.delete(key, force=True)  # its cache freed
+    assert built() == first
 
 
 @needs_binary
