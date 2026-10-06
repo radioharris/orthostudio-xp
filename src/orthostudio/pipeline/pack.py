@@ -1666,6 +1666,33 @@ def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -
     uninstall_pack(link.name, cs)
 
 
+def let_go_of_roads(folder: Path, tile: TileRef, custom_scenery: Path | None) -> None:
+    """The roads, forests and buildings of ``tile`` taken out of the overlays pack beside
+    ``folder``, the tile's folder gone from a disk that is here: built again in the workshop, the
+    tile has its own there, and X-Plane drew both, roads flickering, trees and buildings twice,
+    while the page could say "no roads" (found on the owner's Mac and Shadow, 2026-10-06). An
+    overlays pack left without any tile's roads is taken out of ``custom_scenery``, its link and
+    its line, as when a tile is uninstalled (:func:`uninstall_receipt`)."""
+    overlay_dir = Path(folder).parent / OVERLAY_PACK
+    dsf = overlay_dir / tile.dsf_relpath
+    if not dsf.is_file():
+        return
+    with _INSTALL_LOCK:
+        dsf.unlink()
+        if custom_scenery is None:
+            return
+        cs = Path(custom_scenery)
+        shared = overlay_link(cs, overlay_dir)
+        empty = not any((overlay_dir / "Earth nav data").glob("*/*.dsf"))
+        if shared is None or not empty or not uninstall_pack(shared.name, cs, update_ini=False):
+            return
+        ini = cs / SCENERY_PACKS_INI
+        if ini.is_file():
+            packs = SceneryPacks.load(ini)
+            if packs.remove(shared.name):
+                packs.save(ini, backup=True)
+
+
 def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:
     """Whether the line of the link to ``overlay_pack`` is disabled in this X-Plane's
     ``scenery_packs.ini``: the overlays line a tile comes from, whose state the line of the

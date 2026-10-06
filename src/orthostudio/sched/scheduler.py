@@ -442,7 +442,11 @@ class Scheduler:
             error = error_from_dict(outcome.error)
             if outcome.traceback:
                 error.context["traceback"] = outcome.traceback
-                log.debug("node %s failed:\n%s", rec.node.id, outcome.traceback)
+                # an internal error is a fault of ours, and its remedy asks for serve.log, which
+                # held nothing of it (found on the owner's Shadow, 2026-10-06)
+                internal = error.code == "SYS_INTERNAL_ERROR"
+                level = logging.ERROR if internal else logging.DEBUG
+                log.log(level, "node %s failed:\n%s", rec.node.id, outcome.traceback)
             self._fail(rec, error)
             for w in waiters:
                 self._fail_downstream(self._recs[w], rec, error)

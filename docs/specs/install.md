@@ -567,7 +567,9 @@ one (2026-10-05): built as any tile, then moved, or copied when its folder is on
 * Its folder (`tile_home`): the one the X-Plane of Settings takes (its link leads there); else the
   workshop when the Library lists the tile there; else the latest of its folders elsewhere. A
   folder gone from a disk that is here does not count: the tile is built in the workshop as a new
-  one, and its rows there follow it. A folder on a disk away does: the tile is not built
+  one, and its rows there follow it; the roads that folder left in the overlays pack beside it go
+  (`let_go_of_roads`), and that pack, left without any tile's roads, goes out of X-Plane, its link
+  and its line. While X-Plane runs, nothing of that folder changes until the next build. A folder on a disk away does: the tile is not built
   (`SYS_TILE_DISK_ABSENT`), and the others of the build are. A folder whose old version a put
   back cut short left under `<name>.osxp-old` has it back under its name first.
 * It is never installed from the workshop: X-Plane's link leads to its folder all along, and its

@@ -9,6 +9,7 @@ their start / end instants. Everything runs in thread mode except the process-po
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -495,6 +496,22 @@ def test_wrong_key_is_an_internal_error(store: Store) -> None:
     refs, _ = _run(sched, ["w"])
     assert refs == {} and sched.failed["w"].code == "SYS_INTERNAL_ERROR"
     assert "KeyMismatch" in sched.failed["w"].message
+
+
+def test_an_internal_error_is_written_in_the_log_with_its_traceback(
+    store: Store, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Its remedy says to send serve.log, which held nothing of it (found on the owner's Shadow,
+    2026-10-06). An error a node raises on purpose, with its own words, stays out of it."""
+    sched = _sched(store)
+    sched.add(_node("crash", SRC, run=run_crash))
+    sched.add(_node("refused", SRC, seconds=0.01, tag="r", fail=True))
+    with caplog.at_level(logging.INFO, logger="orthostudio"):
+        _run(sched, ["crash", "refused"])
+    assert sched.failed["crash"].code == "SYS_INTERNAL_ERROR"
+    assert sched.failed["refused"].code == "MESH_TRIANGULATION_FAILED"
+    (error,) = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert "crash" in error and "RuntimeError: simulated crash" in error
 
 
 # --- S13, S15: events, P0 rules, plan, validation -----------------------------------------------

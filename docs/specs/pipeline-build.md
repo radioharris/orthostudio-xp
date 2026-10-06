@@ -139,6 +139,17 @@ without, then sharp again), and the atelier took the tile's own folder for anoth
 build again, which changed nothing (the owner's +44+009, 2026-10-06; so since 0.1.0, read by
 nothing before the atelier).
 
+A tile the build installs has its folder checked earlier, as soon as its pack hits: the scheduler
+hands a node's `Done` to the build's listener before it starts what follows, and a folder that is
+not the receipt's is laid again there (`_Collector.installs`), before the install reads it, and is
+said repaired as above. A tile filed elsewhere, put in the Trash, then built again comes back to
+the workshop: its pack, found in the cache, wrote nothing there, and its install, never run for
+that build (a tile filed elsewhere is put back, not installed), read the folder before the end of
+the build laid it again, and failed with `SYS_INTERNAL_ERROR` (`FileNotFoundError`); a second
+build mended it (found on the owner's Shadow, 2026-10-06). A node's internal error is written in
+the log with its traceback (`sched/scheduler.py`): its remedy asks for `serve.log`, which held
+nothing of it; an error a node raises on purpose, with its own words, stays out of it.
+
 `tile.pack` first makes the store durable (`Store.make_durable`, `graph-keys.md` 6): the tile's
 textures, DSF and `.ter` files are committed without being forced to disk one by one, and are
 forced as a group here, before X-Plane is handed any of them (2026-09-28, a user's builds on a
@@ -227,8 +238,13 @@ for the tile's last step. A Stop of the job (its callback raises `CancelRequeste
 are not put back (`SYS_CANCELLED`), the others are settled, and `build_tiles` returns its report,
 stopped. X-Plane running is `SYS_PUT_BACK_XP_RUNNING`. Its failures count in the report's
 `failed`. A tile whose folder is gone from a disk that is here is built in the workshop as a new
-one, and its rows there are let go (`_let_go`). The tile's `pack_dir` in the report is its
-folder.
+one, and its rows there are let go (`_let_go`), with the roads that folder left in the overlays
+pack beside it (`pack.let_go_of_roads`): X-Plane drew them beside the tile's new ones, roads
+flickering, trees and buildings twice, and the page could say *no roads* (found on the owner's Mac
+and Shadow, 2026-10-06). That overlays pack, left without any tile's roads, goes out of X-Plane, its
+link and its line, as when a tile is uninstalled. While X-Plane runs, nothing of the folder
+changes, as a tile is not deleted then: its roads and rows stay, and the next build after X-Plane
+is closed lets go of them. The tile's `pack_dir` in the report is its folder.
 
 ### 2.4 Global Scenery and the XP12 rasters
 

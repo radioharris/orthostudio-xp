@@ -127,6 +127,7 @@ from orthostudio.pipeline.pack import (
     install_is_intact,
     install_receipt,
     lays_the_same,
+    let_go_of_roads,
     links_to,
     overlay_dsf_path,
     pack_dir_name,
@@ -2791,20 +2792,52 @@ def osm_artefact_refs(outcomes: Mapping[TileRef, OsmOutcome]) -> dict[TileRef, A
 
 
 class _Collector:
-    """Records every node's outcome from the events (and forwards them)."""
+    """Records every node's outcome from the events (and forwards them), and lays again the folder
+    of a tile the build installs, found in the cache without it, before its install reads it
+    (:meth:`installs`)."""
 
     def __init__(self, on_event: Callable[[Event], None] | None) -> None:
         self.on_event = on_event
         self.done: dict[str, Done] = {}
         self.failed: dict[str, Failed] = {}
+        self.laid: set[str] = set()
+        """The pack nodes whose folder was laid again so."""
+        self._installs: dict[str, TileNodes] = {}
+        self._env: BuildEnv | None = None
+
+    def installs(self, graphs: Iterable[TileNodes], env: BuildEnv) -> None:
+        """Watch the packs of the tiles of ``graphs`` the build installs. A tile filed elsewhere,
+        put in the Trash, then built again comes back to the workshop: its pack, found in the
+        cache, wrote nothing there, and its install, which had never run for that build (a tile
+        filed elsewhere is put back, not installed), read the folder before the end of the build
+        laid it again, and failed with an internal error (found on the owner's Shadow,
+        2026-10-06). The scheduler hands a node's ``Done`` here before it starts what follows."""
+        self._installs.update({g.pack.id: g for g in graphs if g.install is not None})
+        self._env = env
 
     def __call__(self, event: Event) -> None:
         if isinstance(event, Done):
             self.done[event.node_id] = event
+            nodes = self._installs.get(event.node_id)
+            if nodes is not None and event.hit:
+                self._lay(nodes, event)
         elif isinstance(event, Failed):
             self.failed[event.node_id] = event
         if self.on_event is not None:
             self.on_event(event)
+
+    def _lay(self, nodes: TileNodes, done: Done) -> None:
+        assert self._env is not None
+        spec = nodes.spec
+        try:
+            manifest = PackManifest.from_toml(done.ref.path.read_text(encoding="utf-8"))
+            pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
+            if not pack_is_intact(pack_dir, manifest):
+                _assemble_again(nodes, self._env, self, manifest)
+                self.laid.add(done.node_id)
+        except Exception:  # the end of the build lays it again, and says what stops it
+            log.warning("%s could not be laid again before its install", spec.tile.name,
+                        exc_info=True)  # fmt: skip
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
@@ -2832,7 +2865,8 @@ def _verify_effects(
     nodes: TileNodes, env: BuildEnv, collector: _Collector
 ) -> tuple[list[str], bool]:
     """Redo the pack / install effects after a hit whose destination was tampered with, and put
-    the tile's row in the library with the build its folder holds."""
+    the tile's row in the library with the build its folder holds. A folder laid again before its
+    install (:meth:`_Collector.installs`) is said repaired too."""
     repaired: list[str] = []
     spec = nodes.spec
     pack_done = collector.done.get(nodes.pack.id)
@@ -2841,8 +2875,11 @@ def _verify_effects(
     out_root = Path(spec.out_dir).expanduser().resolve()
     pack_dir = out_root / pack_dir_name(spec.tile)
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
+    laid = nodes.pack.id in collector.laid
     if not pack_is_intact(pack_dir, manifest):
         _assemble_again(nodes, env, collector, manifest)
+        laid = True
+    if laid:
         repaired.append("pack")
     installed = False
     if nodes.install is not None and nodes.install.id in collector.done:
@@ -3139,13 +3176,31 @@ def _settle_put_back(
     return False
 
 
-def _let_go(tile: TileRef, folders: Sequence[Path], env: BuildEnv) -> None:
+def _let_go(
+    tile: TileRef, folders: Sequence[Path], env: BuildEnv, custom_scenery: Path | None
+) -> None:
     """The rows of the tile's folders gone from a disk that is here: built again in the workshop,
-    the tile is there now, and its row with it (the atelier, step 4)."""
+    the tile is there now, and its row with it (the atelier, step 4). The roads such a folder
+    left beside it go too (:func:`let_go_of_roads`). While X-Plane runs, it may be reading them,
+    and nothing of it changes, as a tile is not deleted then: its rows stay, for the next build
+    after X-Plane is closed to let go of all of it."""
     if not folders:
         return
+    if install_packs.xplane_running():
+        log.info("X-Plane is running: what %s left beside %s goes at its next build", tile.name,
+                 ", ".join(str(f) for f in folders))  # fmt: skip
+        return
+    cs = None if custom_scenery is None else Path(custom_scenery).expanduser()
+    out: list[Path] = []
+    for folder in folders:
+        try:
+            let_go_of_roads(folder, tile, cs)
+        except OSError:  # its rows stay too, for the next build to try again
+            log.warning("the roads %s left beside %s stay", tile.name, folder, exc_info=True)
+        else:
+            out.append(folder)
     with contextlib.suppress(Exception), Library(env.library_path) as lib:
-        for folder in folders:
+        for folder in out:
             lib.forget(tile, kind="ortho", path=folder)
             if not overlay_dsf_path(folder.parent, tile).is_file():
                 lib.forget(tile, kind="overlay", path=folder.parent / OVERLAY_PACK)
@@ -3317,6 +3372,7 @@ def build_tiles(
     )
     targets = [g.target.id for g in graphs]
     collector = _Collector(on_event)
+    collector.installs(graphs, env)
 
     async def main() -> dict[str, ArtifactRef]:
         loop = asyncio.get_running_loop()
@@ -3399,6 +3455,7 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
+            collector.installs(redone, env)
             _emit_phase(
                 on_event,
                 Phase(
@@ -3460,7 +3517,7 @@ def build_tiles(
                     )
                 )
             else:
-                _let_go(spec.tile, gone.get(name, []), env)
+                _let_go(spec.tile, gone.get(name, []), env, spec.custom_scenery)
         ok = g.target.id in collector.done and not any(o.status == "failed" for o in outcomes)
         out_root = Path(g.spec.out_dir).expanduser().resolve()
         pack_dir = out_root / pack_dir_name(g.spec.tile) if home is None or not ok else home

@@ -174,10 +174,14 @@ unchanged, it is instant and nothing is copied; after its cache was freed, its i
 again, and nothing is copied either when they give the same tile. X-Plane keeps showing it from its
 folder, its line as you left it, and the Library lists it once, there. Works says how far the copy
 is in the Installation cell. If its disk is not connected, the tile is not built, and Works says
-why. With X-Plane open it is built all the same, and put back once you have quit X-Plane and built
-it again, which only copies. A tile of the workshop that X-Plane shows is never rewritten while
-X-Plane runs: quit X-Plane, then build it again, what was built is reused. macOS, Windows and Linux
-do the same.
+why. If you put its folder in the Trash, building it again brings it back to the workshop and into
+X-Plane, with its roads; the roads of the folder you threw away go from the overlays pack beside it,
+and that pack goes out of X-Plane when no tile's roads are left in it. With X-Plane open it is
+built in the workshop but not installed, and the old roads stay: build it again once you have quit
+X-Plane. A tile still filed is built all the same with X-Plane open, and put back once you have
+quit X-Plane and built it again, which only copies. A tile of the workshop that X-Plane shows is
+never rewritten while X-Plane runs: quit X-Plane, then build it again, what was built is reused.
+macOS, Windows and Linux do the same.
 
 The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
 *Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,

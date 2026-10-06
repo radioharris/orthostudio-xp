@@ -210,7 +210,10 @@ def test_a_pack_reached_through_a_link_has_one_row(
     # built without installing: the end of the build puts the tile in the library
     built = SimpleNamespace(ref=SimpleNamespace(path=files.pack_dir / "orthostudio.toml"))
     nodes = SimpleNamespace(spec=spec, pack=SimpleNamespace(id="pack"), install=None)
-    assert _verify_effects(nodes, env, SimpleNamespace(done={"pack": built})) == ([], False)  # type: ignore[arg-type]
+    assert _verify_effects(nodes, env, SimpleNamespace(done={"pack": built}, laid=set())) == (
+        [],
+        False,
+    )  # type: ignore[arg-type]
 
     # built again, installed this time: the install rule of that build
     @contextlib.contextmanager
