@@ -590,9 +590,9 @@ one (2026-10-05): built as any tile, then moved, or copied when its folder is on
   before its next file, and the tiles after it are not put back; the build ends stopped, with its
   report, the other tiles settled.
 
-Works shows the put back in the Installation cell, with how far the copy is in the tile's line
-and the cell's tooltip (« retour à sa place : copie, 1,2 Go sur 4,1 Go »), no bar of its own: one
-more takes too much room.
+Works shows the put back in the Installation cell, with how far the copy is in the cell's tooltip
+(« retour à sa place : copie, 1,2 Go sur 4,1 Go »), no bar of its own: one more takes too much
+room.
 
 Acceptance (`tests/test_put_back.py`, fake X-Planes; the build's own tests run `build_tiles` with
 a scheduler that answers every node as built, and the job's real Stop): where the new version
