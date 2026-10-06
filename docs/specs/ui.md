@@ -33,7 +33,7 @@ Overpass).
 
 Language: **English by default, whatever the browser's language** (the user's decision,
 `map-zones.md` 7.0.7); the switch in the top bar offers French and remembers a choice under
-`localStorage["orthostudio.language"]` (the former key `orthostudio.lang` was written from the
+`localStorage["osxp.language"]` (the former key `osxp.lang` was written from the
 browser's language on every visit, so it is not read). `index.html` carries English text. Every
 visible string goes through `t(key)`; keys are literal so the test can check that each one exists in
 both languages, and dynamic keys go through `tOpt()` or a table of literal calls.
