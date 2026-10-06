@@ -33,7 +33,7 @@ Overpass).
 
 Language: **English by default, whatever the browser's language** (the user's decision,
 `map-zones.md` 7.0.7); the switch in the top bar offers French and remembers a choice under
-`localStorage["orthostudio.language"]` (the former key `orthostudio.lang` was written from the
+`localStorage["osxp.language"]` (the former key `osxp.lang` was written from the
 browser's language on every visit, so it is not read). `index.html` carries English text. Every
 visible string goes through `t(key)`; keys are literal so the test can check that each one exists in
 both languages, and dynamic keys go through `tOpt()` or a table of literal calls.
@@ -795,7 +795,10 @@ imagery at ZL16, and comes back much faster, so the choices are separate. The re
 nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
 while a build runs, while this page files tiles (the engine refuses meanwhile: a filing moves a tile
 out of the atelier) and when there is nothing to free, and ends with a toast of what came back. A
-409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings.
+409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings. A language
+switch writes its lines again from the last measure, measuring nothing (`rerenderAll` calls
+`renderDisk`): they stayed in the former language, under a title in the new one, until the next
+measure (2026-10-05).
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
@@ -813,7 +816,7 @@ an osxp build of the same tile are two rows.
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
-| Built by | *OrthoStudio XP* / *Ortho4XP* |
+| Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
 | (actions) | two columns, so that the buttons line up from row to row |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
@@ -1376,8 +1379,9 @@ at all is still the *stopped* screen, through the presence ping.
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
 like the other folders of Settings). It says what the files must be called, that subfolders are
-searched and any resolution read, and that the relief chosen above answers wherever the folder has
-nothing. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
+searched and any resolution read, and the rule: a file is used where it is at least as fine as the
+relief chosen above, which answers wherever the folder has nothing or only a coarser file (it said
+"whatever its resolution", and a user saw two reliefs come out of one folder, 2026-10-05). A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
 name the folder once (`dem.md` 3.0a).
 
 **Paths with a tilde** (2026-09-19): wherever the page *reads out* a folder (this bar, the

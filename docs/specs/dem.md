@@ -502,7 +502,16 @@ of one's own are made from that very source). Equal steps go to the overlay, whi
 of one's own is for. The comparison is on the *file*, not on the raster in hand (`_file_step`):
 `read_elevation_from_file` refines a 1201 point `.hgt` to 3601 as Ortho4XP does, so a 3" file would
 otherwise pass for a 1" one. `meta.json` names what was
-laid in `laid_over`, and the overlay's file joins `cells`. Difference: Ortho4XP returns a float32 array when every
+laid in `laid_over`, and the overlay's file joins `cells`. It says too what became of each file of
+one's own found for the square, in `own`: `{"file", "used"}`, and for one not used `"why"`
+(`coarser`, with `own_m` and `base_m`, the metres between two points of each; `unreadable`; or
+`empty`, no height on the square). The Library names the file a tile stands on, or says why it was
+not used, and `DEM_OVERLAY_COARSER` is said in Works: a user saw two reliefs come out of one folder
+of lidar files, X-Plane's taking his 3" file and Copernicus leaving it aside, and nothing said so
+(2026-10-05). No key changes for it: a relief made before has no `own`, and is not made again to
+get one, since its heights would be the same bytes and the tile, taken from the store, would keep
+its record as it was; the Library then says the files were asked and not used, which is true
+whatever the reason. Difference: Ortho4XP returns a float32 array when every
 point is inside and float64 otherwise (`numpy.array` of a mixed list); OrthoStudio XP always returns
 float64 (**fix**, value-preserving, float32 -> float64 is exact).
 
@@ -549,6 +558,7 @@ Data<tile>.alt   the raster, float32 row-major, no header (4 * nxdem * nydem byt
 dem.npy          the same array as a .npy (mmap-able by the mesh and the masks rules)
 meta.json        {"format": "osxp-dem-1", "tile", "source", "epsg", "x0", "y0", "x1", "y1",
                   "nodata", "nxdem", "nydem", "min", "max", "mean", "nodata_pixels",
+                  "laid_over", "own": [{"file", "used", "why"}],
                   "cells": [{"cell", "state", "path"} x 9]}
 ```
 

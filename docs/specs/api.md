@@ -198,7 +198,12 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   the manifest's `[built]` (`PackManifest.built`, empty for a pack written before 0.1.10) and the
   time the manifest was written, which is when the pack was assembled (a user asked where to see
   it, 2026-09-21); `null` when the manifest cannot be read, and for an imported tile, whose
-  settings are Ortho4XP's;
+  settings are Ortho4XP's. Its `relief_own` says what became of each file of one's own found for
+  the square (`dem.md` 8.2, `own`), which the page's *Relief* line names: "X-Plane 12, with your
+  file N50E011.hgt over it", or "Copernicus. Your file N50E011.hgt was not used: 93 m between
+  points, where Copernicus has 31 m.", the whole path in its tooltip (a user saw two reliefs come
+  out of one folder of lidar files, 2026-10-05). A relief made before has none: its line then says
+  "your own files asked, not used on this square", true whatever the reason;
 * `overlay`: for the `ortho` row of an OrthoStudio XP tile X-Plane shows, whose roads, forests and
   buildings X-Plane draws on its square, `{state, others}` (`install.md` 4.3: `own`, `double`,
   `left`, `missing`; `others` the other active overlay packs holding the square, such as
@@ -780,6 +785,13 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   dependency on the server's loop (the CLI could drive a `JobManager` too).
 * `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s;
   `active_job` is the id of the queued or running job, else `null`.
+* A job's end is one step under the manager's lock: its `finished` event, its `<id>.json`
+  written, the job out of the active slot and the next queued job started. A page that hears
+  `finished` asks the status at once, and the status named the job still while its state was
+  being written (a run of the suite under load, 2026-10-05); a caller of the manager meanwhile
+  waits for the end. The state is written before the job leaves the slot: a job out of it may be
+  removed from the list with its files, and a file written after that would bring it back at the
+  next start.
 * `/api/airports` with the real index: `default_index` builds `~/.orthostudio/airports.sqlite` from
   `apt.dat` on first use (a few seconds, in a worker thread; its progress callback is not
   relayed to the page in P2b). Without an X-Plane folder it answers 422 `XP_DIR_NOT_FOUND`.

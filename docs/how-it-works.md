@@ -279,6 +279,10 @@ takes space in its **data folder**: `~/.orthostudio` too, unless Settings name a
 The status bar names that folder at its right end, and the button beside it shows it in the
 Finder, the Windows File Explorer or the Linux file manager: `.orthostudio` starts with a dot,
 which hides it in the Finder, and a user looked for their tiles there in vain (2026-09-22).
+`~/.orthostudio` may itself be a link to another disk: the Library knows each tile by the folder
+the link leads to, and lists it once whether it was built alone or added to X-Plane. A tile built
+without installing, then built again with the install, had two rows until 2026-10-05; they become
+one when the app starts.
 
 ```
 ~/.orthostudio/
@@ -483,7 +487,10 @@ same place, 3", 1" and 0.5" for instance, the finest file is used for each squar
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
 downloaded is what is built. The finest wins the other way round too: where the relief you chose is
 sharper than your file, as the United States relief at a third of an arc-second is against a file
-of one second, the relief answers and the report names the file it left aside. Where your folder has nothing, the relief you chose stays in charge, so
+of one second, the relief answers and the report names the file it left aside. In the Library,
+*Built by* unfolds what a tile was built with: its *Relief* line names the file of yours the tile
+stands on, "with your file N50E011.hgt over it", or says why it was not used, "93 m between
+points, where Copernicus has 31 m". Where your folder has nothing, the relief you chose stays in charge, so
 a collection that covers one country is no trouble. Change a file and the tiles that use it are built again; the rest are not. A single file
 works too, under *My own elevation file*, and writing `{latlon}` in its path where the name of the
 square goes (`/my-relief/{latlon}.hgt`) makes it one file per tile without naming a folder.

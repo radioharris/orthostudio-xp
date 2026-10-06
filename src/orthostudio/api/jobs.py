@@ -1439,18 +1439,24 @@ class JobManager:
             _drop_frames(err)
         finally:
             job.stop_ticker()
-            job._finish(status, report, env if isinstance(env, BuildEnv) else None)
-            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
-                # the store's index is not held between builds; after a Stop, a step still running
-                # past the scheduler's grace commits into it later (a review, 2026-10-06)
-                with contextlib.suppress(Exception):
-                    env.close()
-            with contextlib.suppress(OSError):
-                job.save_state()
+            # The end is one step for whoever asks the manager: the job announced, written, and
+            # out of the active slot together. A page hears `finished` and asks the status at
+            # once, and the status named the job still while its state was being written (a run
+            # of the suite under load, 2026-10-05). Written before it leaves the slot: a job out
+            # of it may be removed from the list, files and all.
             with self._lock:
+                job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+                with contextlib.suppress(OSError):
+                    job.save_state()
                 if self._active is job:
                     self._active = None
                 self._threads.pop(job.id, None)
                 if self._queue:
                     self._launch(self._queue.popleft())
+            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
+                # the store's index is not held between builds; after a Stop, a step still running
+                # past the scheduler's grace commits into it later (a review, 2026-10-06). Out of
+                # the lock: a slow disk's closing never holds the page's status
+                with contextlib.suppress(Exception):
+                    env.close()
             job._done.set()

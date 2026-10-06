@@ -42,7 +42,7 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   what it may take and what it is by default.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
   built with, found with a search, filtered by the folder it is in and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
-  flew says so), its zones and its patches; the Plan says it too, over a tile and under the
+  flew says so, and a file of your own is named, or why it was not used), its zones and its patches; the Plan says it too, over a tile and under the
   squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
   following them; built again, a filed tile goes back to its folder; the cache the workshop keeps
   for the tiles filed elsewhere can be freed on its own, the tiles staying whole; a tile you moved
@@ -277,12 +277,19 @@ uv run osxp uninstall +46+006 --delete          # deleted for good
 uv run osxp clean --all                         # give back all the space OrthoStudio XP can
 ```
 
-## Reporting a problem
+## Reporting a problem, asking for a feature
 
-Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)):
-its form asks for what helps find the cause, that is the version, your system, what you did and
-what you saw, the tile, a screenshot, and the log `serve.log`. Without a GitHub account, the
-comments on OrthoStudio XP's page on X-Plane.Org are read too.
+Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose))
+and choose its form:
+
+- **A problem**: it asks for what helps find the cause, that is the version, your system, what you
+  did and what you saw, the tile, a screenshot, and the log `serve.log`.
+- **A request**: what you would like, why, how you do it today, and examples. Every request carries
+  the label `enhancement`, so [the list of requests](https://github.com/radioharris/orthostudio-xp/issues?q=is%3Aissue+label%3Aenhancement)
+  is the roadmap's starting point.
+
+A question goes to the [Discussions](https://github.com/radioharris/orthostudio-xp/discussions).
+Without a GitHub account, the comments on OrthoStudio XP's page on X-Plane.Org are read too.
 
 ## Imagery and responsible use
 

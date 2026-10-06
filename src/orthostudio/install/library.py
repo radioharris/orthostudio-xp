@@ -22,7 +22,7 @@ import re
 import sqlite3
 import time
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -46,6 +46,7 @@ __all__ = [
     "PackKind",
     "default_library_path",
     "pack_tile",
+    "real_pack_path",
     "tile_from_name",
 ]
 
@@ -117,6 +118,29 @@ def pack_tile(name: str) -> TileRef | None:
     return tile_from_name(name)
 
 
+def real_pack_path(path: Path | str, *, folders: dict[Path, Path] | None = None) -> Path:
+    """The one spelling the library keeps a pack under: absolute, the folder holding the pack
+    followed to where its links lead, and the pack's own name kept, the name X-Plane knows it by.
+
+    The default data folder may be a link, ``~/.orthostudio`` leading to another disk: a build
+    that did not install registered its pack where the links lead, the install rule where they
+    are, and the Library listed one pack twice (2026-10-05). ``folders`` keeps the folders already
+    followed, for a pass over many packs, which share a few."""
+    path = Path(path).absolute()
+    seen = {} if folders is None else folders
+    real = seen.get(path.parent)
+    if real is None:
+        real = seen[path.parent] = Path(os.path.realpath(path.parent))
+    return real / path.name
+
+
+_ONE_SPELLING: set[str] = set()
+"""The library files this process has brought to one spelling (:meth:`Library._one_spelling`):
+at their first opening only. Following the folders of every pack reads every disk that holds one,
+and a network drive that stopped answering holds whoever asks for as long as it waits; the status
+opens the library at each change. A link changed while the app runs is taken at its next start."""
+
+
 @dataclass(frozen=True, slots=True)
 class LibraryEntry:
     """One row of the library."""
@@ -166,6 +190,75 @@ class Library:
             "INSERT OR IGNORE INTO meta (k, v) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
+        opened = str(self.path.absolute())
+        if opened not in _ONE_SPELLING:
+            self._one_spelling()
+            _ONE_SPELLING.add(opened)
+
+    def _one_spelling(self) -> None:
+        """Rewrite what an older version kept under another spelling of a pack's folder
+        (:func:`real_pack_path`), and make the rows that then name one pack one row. Read first:
+        written only when something is to rewrite, then under the write lock, read again."""
+        folders: dict[Path, Path] = {}
+
+        def real(text: str) -> str:
+            return str(real_pack_path(text, folders=folders))
+
+        paths = self._db.execute("SELECT path FROM tiles UNION SELECT path FROM pack_facts")
+        if all(real(text) == text for (text,) in paths.fetchall()):
+            return
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            self._merge_rows(real)
+            self._merge_facts(real)
+        except BaseException:
+            self._db.execute("ROLLBACK")
+            raise
+        self._db.execute("COMMIT")
+
+    def _merge_rows(self, real: Callable[[str], str]) -> None:
+        """One row per pack: the newest says what the pack holds, the first registration when it
+        came, and a row of Ortho4XP who built it, as ``keep_built_by`` keeps it in one row (an
+        install that found no row under its spelling said ``osxp`` without knowing)."""
+        groups: dict[tuple[int, int, str, str], list[sqlite3.Row]] = {}
+        for row in self._db.execute("SELECT * FROM tiles").fetchall():
+            key = (row["lat"], row["lon"], row["kind"], real(row["path"]))
+            groups.setdefault(key, []).append(row)
+        for (lat, lon, kind, path), same in groups.items():
+            if [r["path"] for r in same] == [path]:
+                continue
+            newest = max(same, key=lambda r: r["updated_at"])
+            built_by = "ortho4xp" if any(r["built_by"] == "ortho4xp" for r in same) else "osxp"
+            first = min(r["registered_at"] for r in same)
+            self._db.executemany(
+                "DELETE FROM tiles WHERE lat = ? AND lon = ? AND kind = ? AND path = ?",
+                [(lat, lon, kind, r["path"]) for r in same],
+            )
+            self._db.execute(
+                "INSERT INTO tiles (lat, lon, kind, path, provider, zl, built_by, keys, "
+                "registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (lat, lon, kind, path, newest["provider"], newest["zl"], built_by,
+                 newest["keys"], first, newest["updated_at"]),
+            )  # fmt: skip
+
+    def _merge_facts(self, real: Callable[[str], str]) -> None:
+        """One pack's facts: its latest measure."""
+        groups: dict[str, list[sqlite3.Row]] = {}
+        for row in self._db.execute("SELECT * FROM pack_facts").fetchall():
+            groups.setdefault(real(row["path"]), []).append(row)
+        for path, same in groups.items():
+            if [f["path"] for f in same] == [path]:
+                continue
+            latest = max(same, key=lambda f: f["measured_at"])
+            self._db.executemany(
+                "DELETE FROM pack_facts WHERE path = ?", [(f["path"],) for f in same]
+            )
+            self._db.execute(
+                "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (path, latest["stamp"], latest["bytes"], latest["photo"], latest["built"],
+                 latest["measured_at"]),
+            )  # fmt: skip
 
     def close(self) -> None:
         self._db.close()
@@ -211,7 +304,7 @@ class Library:
             "bytes = excluded.bytes, photo = excluded.photo, built = excluded.built, "
             "measured_at = excluded.measured_at",
             (
-                str(path),
+                str(real_pack_path(path)),
                 facts.stamp,
                 int(facts.bytes),
                 text(facts.photo),
@@ -250,8 +343,10 @@ class Library:
     ) -> LibraryEntry:
         """Insert or update the row of (``tile``, ``kind``, ``path``).
 
-        ``path`` is stored absolute: ``osxp build --out tiles --install`` gave a relative one,
-        which ``osxp serve`` then read from its own working directory.
+        ``path`` is stored as :func:`real_pack_path` spells it: absolute, as ``osxp build --out
+        tiles --install`` gave a relative one, which ``osxp serve`` then read from its own working
+        directory; and with the links of its folder followed, so that a pack has one row whichever
+        way a caller reached it.
 
         ``keep_built_by`` is for a caller that does not know who built the pack and must not
         guess: installing one came through here with ``"osxp"`` whatever the row said, so adding
@@ -261,7 +356,7 @@ class Library:
         says so and is believed, so importing a folder again puts a wrong answer right.
         """
         now = time.time()
-        path_s = str(Path(path).absolute())
+        path_s = str(real_pack_path(path))
         if keep_built_by:
             was = self._db.execute(
                 "SELECT built_by FROM tiles WHERE lat = ? AND lon = ? AND kind = ? AND path = ?",
@@ -316,7 +411,7 @@ class Library:
             args.append(kind)
         if path is not None:
             clauses.append("path = ?")
-            args.append(str(Path(path)))
+            args.append(str(real_pack_path(path)))
         cur = self._db.execute(f"DELETE FROM tiles WHERE {' AND '.join(clauses)}", args)
         return int(cur.rowcount)
 
