@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: An idea or a request
+    url: https://github.com/radioharris/orthostudio-xp/discussions/new?category=ideas
+    about: Something you would like OrthoStudio XP to do. Others can vote for it.
   - name: A question
-    url: https://github.com/radioharris/orthostudio-xp/discussions
+    url: https://github.com/radioharris/orthostudio-xp/discussions/new?category=q-a
     about: How to do something, or whether something is possible.

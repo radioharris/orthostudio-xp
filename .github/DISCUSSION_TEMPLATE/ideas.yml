@@ -1,11 +1,9 @@
-name: A request
-description: Something you would like OrthoStudio XP to do
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for the idea. Every request lands on one list, read before each version is planned. One request per issue, please: two ideas, two issues.
+        Thank you for the idea. The ideas are read before each version is planned, and the ones with the most votes come first. One idea per discussion, please: two ideas, two discussions. If someone already asked for yours, vote for it and add what you need.
   - type: textarea
     id: want
     attributes:
@@ -24,7 +22,7 @@ body:
     id: today
     attributes:
       label: How you do it today
-      description: Another tool (Ortho4XP, AutoOrtho...), a workaround, or nothing.
+      description: Another tool, a workaround, or nothing.
   - type: textarea
     id: examples
     attributes:
