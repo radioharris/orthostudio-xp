@@ -174,6 +174,13 @@ export function nativeCeiling(p) {
   return Number.isInteger(p?.max_zl) ? Math.min(MAX_NATIVE_ZOOM, p.max_zl) : MAX_NATIVE_ZOOM;
 }
 
+/** Whether the engine's answer for a map tile says that the source refuses this computer: its
+ * server answered 403, which the engine passes on as a 502 carrying `NET_FORBIDDEN`
+ * (`api/map_api.py`). Esri's network answers so, "Access Denied", to an address it has blocked. */
+export function tileRefused(status, body) {
+  return status === 502 && body?.error?.code === "NET_FORBIDDEN";
+}
+
 /** What the view on screen is worth in a build's terms, for the legend.
  *
  * The map's zoom **is** the web-mercator level, so what a pilot sees while panning is what that
@@ -1795,18 +1802,46 @@ export function createPlanMap(ctx) {
       bounds: WORLD,
     });
     let came = 0; // tiles of the view being drawn that brought an image
+    let failed = null; // a tile of that view that brought none, asked again to learn why
     layer.on("loading", () => {
       came = 0;
+      failed = null;
       if (layer === base) setNotice(""); // a new view: nothing to say until it is drawn
     });
     layer.on("tileload", () => {
       came += 1;
     });
+    layer.on("tileerror", (ev) => {
+      failed = ev.coords;
+    });
     // A 204 (no image there) is an error for an <img>: it counts as nothing that came.
     layer.on("load", () => {
-      if (layer === base) setNotice(imageryNotice(code, came));
+      if (layer !== base) return;
+      setNotice(imageryNotice(code, came));
+      // Not one image came: the engine knows why, which an <img> cannot read. Esri's network
+      // answered "Access Denied" to a user's address for two days, and the map said only that no
+      // imagery came (2026-10-07): a source that refuses this computer now says so.
+      const tile = failed;
+      if (came || !tile) return;
+      tileRefusal(layer.getTileUrl(tile)).then((refused) => {
+        // a new view or another source since then: its own notice stands
+        if (refused && layer === base && failed === tile) setNotice(t("map.base_refused", { provider: providerLabel(code) }));
+      });
     });
     return layer;
+  }
+
+  /** Whether the engine's answer for a map tile says that the source refuses this computer
+   * (`tileRefused`). The tile is asked again through `api()`, which reads the answer an <img>
+   * cannot; the engine keeps no failure, so it asks the source once more. An image or nothing
+   * this time, or no engine, leaves the notice as it is. */
+  async function tileRefusal(url) {
+    try {
+      await ctx.api("GET", url);
+      return false;
+    } catch (err) {
+      return tileRefused(err?.status, err?.detail);
+    }
   }
 
 
