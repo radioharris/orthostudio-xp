@@ -1206,7 +1206,9 @@ centre at ZL12 and ZL16.
 zones too, and the engine's map route serves nothing deeper (`MAX_NATIVE_ZOOM`). It went one step
 further, to 20, where every source was only enlarged (a user, 2026-09-25).
 
-**One yellow line when the source has nothing here** (`#map-notice`, at the bottom of the map).
+**One yellow line when the source has nothing here** (`#map-notice`, at the bottom right of the
+map, above the credits, as wide as its words up to what the legend leaves: centred, a longer
+line ran under the legend, 2026-10-07).
 It is decided once per view, when Leaflet has every tile of it back, arrived or failed (`load`),
 and nowhere else, so it is the same at every zoom and in every window (`imageryNotice`):
 
@@ -1218,6 +1220,14 @@ and nowhere else, so it is the same at every zoom and in every window (`imageryN
 2. otherwise, not one tile of the view brought an image: "No imagery received from {provider}
    for this view." Esri Clarity has ZL19 over New York and nothing past ZL18 over Lyon or Paris
    (the engine turns its 404 into a 204, an error for an `<img>`), and a source may be down.
+3. when not one image came, one tile of the view is asked again through the page's `api()`
+   (`tileRefusal`), which reads what an `<img>` cannot: if the engine's answer is its 502
+   carrying `NET_FORBIDDEN`, what it makes of a 403 from the source (`tileRefused`), line 2
+   becomes "{provider} refuses your connection (access denied): choose another source
+   meanwhile." Esri's network answered "Access Denied" to a user's address for two days, the day
+   after he had built 37 tiles at ZL17 from it in an afternoon, and the map said only that no
+   imagery came (2026-10-07). It is said only while that view of that source is still the one
+   on screen; any other answer leaves line 2 as it is.
 
 A new view (`loading`) clears the line until it is drawn. The rule used to count failed tiles and
 speak at six: at the deepest zoom a view holds four, so a switch from Bing to Clarity there left

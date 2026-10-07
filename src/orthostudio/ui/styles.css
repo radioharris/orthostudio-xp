@@ -521,9 +521,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-banner.flash { animation: banner-flash 0.45s ease-in-out 2; }
 @keyframes banner-flash { 50% { box-shadow: 0 0 0 4px var(--accent); } }
 .map-hint { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+/* At the bottom right, above the credits, as wide as its words up to what the legend leaves (the
+   legend takes at most 45 % at the bottom left): centred, a longer notice ran under the legend,
+   and `left: 50%` held its box to half the map, a refusal on seven lines (2026-10-07). */
 .map-notice {
-  position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 2; margin: 0;
-  max-width: calc(100% - 40px); padding: 4px 10px; border-radius: var(--radius); font-size: 12px;
+  position: absolute; bottom: 34px; right: 10px; z-index: 2; margin: 0;
+  width: max-content; max-width: calc(55% - 30px); padding: 4px 10px; border-radius: var(--radius); font-size: 12px;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn);
 }
 .map-wrap.is-drawing::after {

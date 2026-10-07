@@ -6011,9 +6011,12 @@ def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
     loading = layer[layer.index('layer.on("loading", () => {') :]
     assert "came = 0;" in loading[: loading.index("});")], "a new view starts with nothing counted"
     assert 'layer.on("tileload", () => {' in layer and "came += 1;" in layer
-    assert "if (layer === base) setNotice(imageryNotice(code, came));" in layer, "decided on load"
-    assert 'layer.on("load", () => {' in layer
-    assert "tileerror" not in layer and ">= 6" not in layer, "no count of failures, no threshold"
+    load = layer[layer.index('layer.on("load", () => {') :]
+    decided = "if (layer !== base) return;\n      setNotice(imageryNotice(code, came));"
+    assert decided in load, "decided on load"
+    assert ">= 6" not in layer and "failed += " not in layer, "no count of failures, no threshold"
+    # an error keeps one tile of the view, asked again to learn why (the next test), not a count
+    assert 'layer.on("tileerror", (ev) => {\n      failed = ev.coords;\n    });' in layer
 
     rule = code[code.index("function imageryNotice(") : code.index("function setNotice(")]
     outside = rule.index("!sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))")
@@ -6034,6 +6037,70 @@ def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         assert "map.base_outside" in tables[lang] and "map.base_failed" in tables[lang]
+
+
+def test_the_map_says_when_its_source_refuses_this_computer() -> None:
+    """Esri's network answered "Access Denied" to a user's address for two days, and the map said
+    only that no imagery came (his log, 2026-10-07). When not one image of a view came, the page
+    asks one of its tiles again through api(), which reads what an <img> cannot: the engine's 502
+    carrying NET_FORBIDDEN, its answer to a 403 from the source (`test_api_map.py`), is said as a
+    refusal of this computer. Any other answer leaves the notice as it was, and a new view or
+    another source since then keeps its own."""
+    from orthostudio.api.map_api import _failed
+    from orthostudio.errors import OsxpError
+
+    def answer(code: str) -> list[Any]:
+        """The engine's own answer for a tile of Esri World Imagery that failed with ``code``."""
+        context = {
+            "provider": "Arc",
+            "host": "services.arcgisonline.com",
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"
+            "/tile/8/154/213",
+            "tile": "8/213/154",
+            "chunk": "8/213/154",
+            "status": 403,
+            "timeout": 20,
+            "reason": "no answer after 3 attempt(s)",
+        }
+        res = _failed(OsxpError(code, context=context)).response()
+        return [res.status_code, json.loads(bytes(res.body))]
+
+    refused = answer("NET_FORBIDDEN")
+    others = [answer(c) for c in ("NET_TIMEOUT", "NET_UNEXPECTED_STATUS", "NET_RATE_LIMITED")]
+    cases = [refused, *others, [204, None], [502, None], [403, refused[1]]]
+    got = _node_json("map.js", f"{json.dumps(cases)}.map(([s, b]) => m.tileRefused(s, b))")
+    assert got == [True, False, False, False, False, False, False]
+
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    load = layer[layer.index('layer.on("load", () => {') :]
+    # asked only when not one image of the view came, with a tile of that very view
+    assert "if (came || !tile) return;" in load
+    assert "tileRefusal(layer.getTileUrl(tile)).then((refused) => {" in load
+    # said only while that view of that source is still the one on screen
+    assert (
+        "if (refused && layer === base && failed === tile) "
+        'setNotice(t("map.base_refused", { provider: providerLabel(code) }));'
+    ) in load
+    ask = code[code.index("async function tileRefusal(") :]
+    ask = ask[: ask.index("\n  }\n")]
+    # through api(), as every request to the engine (the one fetch left reads the borders)
+    assert 'await ctx.api("GET", url);' in ask
+    assert "return tileRefused(err?.status, err?.detail);" in ask
+    tables = _i18n_tables()
+    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion (accès")
+    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection (access")
+    # the line never runs under the legend: at the bottom right, as wide as its words up to what
+    # the legend, at most 45 % at the bottom left, leaves
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    notice, legend = rules[".map-notice"], rules[".map-legend"]
+    for needle in ("bottom: 34px;", "right: 10px;", "width: max-content;"):
+        assert needle in notice, needle
+    assert "max-width: calc(55% - 30px);" in notice
+    assert "left:" not in notice and "transform" not in notice
+    assert "left: 10px;" in legend and "max-width: 45%;" in legend
 
 
 def test_the_map_asks_a_users_source_under_its_address() -> None:

@@ -433,11 +433,13 @@ ZL14: the map still lets you zoom past that, which is handy for clicking precise
 enlarging the last photo it downloaded, not fetching a sharper one. The line says so, and names
 the best that source really has, so you never ask for a level your source cannot give.
 
-When the source you chose has nothing where you are looking, a yellow line at the bottom of the
-map says so once the view is drawn. A country's source outside its country says "Netherlands ·
+When the source you chose has nothing where you are looking, a yellow line at the bottom right of
+the map says so once the view is drawn. A country's source outside its country says "Netherlands ·
 PDOK does not cover this view.", the same at every zoom; a source with no photo this deep here,
-like Esri Clarity past ZL18 over France, says "No imagery received". A build over squares a
-source does not reach is refused outright, with the squares named.
+like Esri Clarity past ZL18 over France, says "No imagery received". A source whose server
+refuses your connection says that instead, "access denied": Esri's servers may block an internet
+address for a while after a great many downloads, and another source works meanwhile. A build over
+squares a source does not reach is refused outright, with the squares named.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
