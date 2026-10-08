@@ -199,6 +199,10 @@ start then reads lists only. Five minutes at most; a region cut short keeps no l
 window reads it as it opens (`docs/specs/live.md`). Where Live is switched off, the command
 refuses and the setup goes on.
 
+Every install keeps its log (`SetupLogging`): `Setup Log <date> #<n>.txt` in the user's temporary
+folder (`%TEMP%`), each step with its time. An install on a cloud PC spent a minute and a half
+before its first-start step, and nothing said where (2026-10-08).
+
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of
