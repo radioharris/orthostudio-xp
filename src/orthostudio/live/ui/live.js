@@ -194,6 +194,10 @@ function drawState(status) {
   const error = status.state === "idle" && status.error;
   $("state-error").hidden = !error;
   $("state-error").textContent = error ? t("state.error", { error: status.error }) : "";
+  const refused = refusedText(status);
+  $("source-refused").hidden = !refused;
+  // written when it changes only: an alert is read aloud again each time it is written
+  if ($("source-refused").textContent !== refused) $("source-refused").textContent = refused;
 
   const { state, checks } = status;
   const idle = state === "idle";
@@ -221,6 +225,13 @@ function drawState(status) {
   else if ((idle || state === "starting") && !checks.xplane_running) help = t("action.xplane_wait");
   $("action-help").textContent = help;
   $("action-help").hidden = !help;
+}
+
+/** While Live runs, the sources whose server refuses this computer (Downloader.refusing), in
+ * OrthoStudio XP's words for its map (map.base_refused) and what to do with Live; "" otherwise. */
+export function refusedText(status) {
+  const names = status.state === "streaming" ? status.stream?.streamer?.refused_by || [] : [];
+  return names.length ? t("source.refused", { provider: names.join(", ") }) : "";
 }
 
 let noticeDrawn = ""; // what the flight's notice says
@@ -313,7 +324,8 @@ export function buildView(status) {
   // says so, with its bar
   const starting = Boolean(stream.start && !stream.start.ready);
   let state = [t("build.state_nothing"), ""];
-  if (s.failed && !s.downloaded) state = [t("build.state_failed"), "fail"];
+  if (s.refused_by?.length) state = [t("build.state_refused"), "fail"]; // said under the source
+  else if (s.failed && !s.downloaded) state = [t("build.state_failed"), "fail"];
   else if (s.urgent && !starting) state = [t("build.state_late", { n: number(s.urgent) }), "warn"];
   else if (queued || s.building) state = [t("build.state_building"), "running"];
   else if (built) state = [t("build.state_done"), "ok"];

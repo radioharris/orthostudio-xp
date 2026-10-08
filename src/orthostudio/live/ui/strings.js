@@ -103,6 +103,7 @@ export const STRINGS = {
     "build.state_building": "Building",
     "build.state_late": "Late: {n} urgent",
     "build.state_failed": "Downloads failing",
+    "build.state_refused": "Downloads refused",
     "build.queued": "to build, none urgent",
     "build.queued_urgent": "to build, {n} of them urgent",
     "build.building": "being built",
@@ -246,6 +247,7 @@ export const STRINGS = {
     "source.group_country": "One country",
     "source.fallback": "It covers one country only ({country}): elsewhere, Live takes Bing Maps.",
     "source.low_zoom": "It stops at zoom {zl}: up close, the ortho is blurrier.",
+    "source.refused": "{provider} refuses your connection (access denied): stop Live and choose another source meanwhile.",
 
     "zoom.title": "Zoom",
     "zoom.help":
@@ -448,6 +450,7 @@ export const STRINGS = {
     "build.state_building": "En construction",
     "build.state_late": "En retard : {n} urgentes",
     "build.state_failed": "Téléchargements en échec",
+    "build.state_refused": "Téléchargements refusés",
     "build.queued": "à construire, aucune urgente",
     "build.queued_urgent": "à construire, dont {n} urgentes",
     "build.building": "en construction",
@@ -592,6 +595,7 @@ export const STRINGS = {
     "source.group_country": "Un seul pays",
     "source.fallback": "Elle ne couvre qu'un pays ({country}) : ailleurs, Live prend Bing Maps.",
     "source.low_zoom": "Elle s'arrête au zoom {zl} : de près, l'ortho est plus floue.",
+    "source.refused": "{provider} refuse votre connexion (accès refusé) : arrêtez Live et choisissez une autre source en attendant.",
 
     "zoom.title": "Zoom",
     "zoom.help":

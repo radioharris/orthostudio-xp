@@ -1511,6 +1511,9 @@ class Streamer:
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
+            # the sources whose server refuses this computer (Downloader.refusing): the window
+            # says so
+            "refused_by": dl.refusing() if hasattr(dl, "refusing") else [],
             "disk_bytes": usage(built, self.top_of),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
@@ -1549,6 +1552,17 @@ class Streamer:
             + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
             + (" | X-Plane read early" if s["read_early"] else "")
         )
+
+
+def why_nothing_comes(downloader) -> str:
+    """Why no piece comes, for the log: the sources refusing this computer, else how the requests
+    fail in curl's words, else the internet."""
+    refusing = downloader.refusing() if hasattr(downloader, "refusing") else []
+    if refusing:
+        verb = "refuses" if len(refusing) == 1 else "refuse"
+        return f"{' and '.join(refusing)} {verb} this computer: access denied"
+    failing = getattr(downloader, "last_error", "")
+    return f"the requests fail: {failing}" if failing else "is the internet there?"
 
 
 def read_before_ready(ready_at: float | None, xplane_started: float | None) -> bool:
@@ -1875,15 +1889,10 @@ def run(
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
-                            failing = getattr(streamer.downloader, "last_error", "")
                             log(
                                 f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
                                 f"{left} textures to build around {arrival.name} "
-                                + (
-                                    f"(the requests fail: {failing})"
-                                    if failing
-                                    else "(is the internet there?)"
-                                )
+                                f"({why_nothing_comes(streamer.downloader)})"
                             )
                         elif ready and not arrival.released:
                             arrival.released = True

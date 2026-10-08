@@ -64,8 +64,9 @@ tabs, as OrthoStudio XP's screens:
   (its 4096 px), the SimBrief plan while the aircraft follows it, the camera when it is away from
   the aircraft, and the departure. The textures say beside their title what they are doing: all
   built, building, late (textures X-Plane may already show are not built yet; not said while a
-  departure is built, which the state above counts down) or downloads failing (every request has
-  failed); the download rate is on the right. Four boxes count the textures to build (and the
+  departure is built, which the state above counts down), downloads refused (the source's server
+  refuses your connection, which the window says under the source) or downloads failing (every
+  request has failed); the download rate is on the right. Four boxes count the textures to build (and the
   urgent ones, by size under them), those being built (and the pieces of imagery they wait for),
   those built since the start, and what was downloaded (the pieces, those taken from the cache
   and those that failed); the textures built are counted by size under them, and a bar shows
@@ -413,6 +414,10 @@ it. Measured: 158 textures made coarser in 0.3 s, 0.87 GB given back to the disk
 - If OrthoStudio XP Live stops, X-Plane goes on flying over what is on the disk.
 - If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring. It
   never freezes waiting for it.
+- If the imagery source refuses your connection (access denied: Esri's servers did so to a user's
+  address after very heavy use), Live says so under the source while it runs, and the textures'
+  label reads "Downloads refused": stop Live, choose another source and start it again. Textures
+  already built keep their photos; "From scratch" builds them all again with the new source.
 - Stop OrthoStudio XP Live after quitting X-Plane: it takes its scenery and its plugin out of X-Plane
   when it stops, and if X-Plane is still running it waits for it to quit first.
 - If the streamer stops on an error, the window (or the terminal) says so at once, with the error,

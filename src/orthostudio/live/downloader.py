@@ -12,6 +12,8 @@ behind one slow piece.
 A 429 or 503 pauses every request to the provider for its Retry-After (5 s when it names none);
 transport errors and other 5xx are retried after 0.5, 1, 2 s; "no imagery here" (the provider's
 placeholder answer, 204 or 404) is reported as such, and so is a piece that failed every attempt.
+A source whose server answers nothing but 403 refuses this computer (:meth:`Downloader.refusing`),
+which the Live window and the log say.
 
 A piece not there after HEDGE_S is asked of another of the provider's servers as well, and the first
 good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
@@ -38,6 +40,10 @@ from .providers import provider as provider_named
 
 FAILED = 3
 HEDGE_S = 2.0
+# a source's server answering 403 this many times in a row refuses this computer (Esri's edge
+# answered « Access Denied » to a user's address, 2026-10-07); a 403 now and then among its images
+# is a piece it lacks
+REFUSED_IN_A_ROW = 32
 
 
 class Downloader:
@@ -76,6 +82,8 @@ class Downloader:
         # how the last request failed, in curl's words, until a piece comes: the reason when
         # nothing downloads any more (Streamer, STALL_S)
         self.last_error = ""
+        # by source, the 403s in a row since its server last answered otherwise (refusing)
+        self._refusals: dict[str, int] = {}
         self._paused_until = 0.0
         # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
         # those ahead of what it shows while its workers are all busy (Streamer.holds)
@@ -98,6 +106,12 @@ class Downloader:
 
     def queued(self) -> int:
         return self._queue.qsize()
+
+    def refusing(self) -> list[str]:
+        """The sources whose server refuses this computer, by name: REFUSED_IN_A_ROW answers 403
+        and no other answer since. The Live window says so, until the server answers otherwise:
+        before, a refusal read as « is the internet there? » in the log (2026-10-08)."""
+        return [name for name, n in tuple(self._refusals.items()) if n >= REFUSED_IN_A_ROW]
 
     def close(self) -> None:
         if self._thread.is_alive():
@@ -197,6 +211,21 @@ class Downloader:
                 f"{self.attempts} times before it counts as failed"
             )
 
+    def _answered(self, p: Provider, status: int) -> None:
+        """The source's server answered: a 403 counts towards a refusal, said once in the log when
+        it is one; an image or a "no imagery here" ends it."""
+        name = p.name or p.code
+        if status != 403:
+            self._refusals.pop(name, None)
+            return
+        n = self._refusals.get(name, 0) + 1
+        self._refusals[name] = n
+        if n == REFUSED_IN_A_ROW and self.log is not None:
+            self.log(
+                f"  {name} refuses this computer (HTTP 403, access denied): nothing comes from it "
+                "until it answers again; stop Live and choose another source meanwhile"
+            )
+
     async def _hedged(self, p: Provider, x: int, y: int, z: int, attempt: int):
         """One request, and the same of another server if the first is slow: the first good answer
         (or the last bad one)."""
@@ -244,6 +273,8 @@ class Downloader:
             if wait > 0:
                 await asyncio.sleep(wait)
             r = await self._hedged(p, x, y, z, attempt)
+            if r is not None and r.status_code in (200, 204, 403, 404):
+                self._answered(p, r.status_code)
             if r is not None:
                 if r.status_code == 200 and r.content:
                     if no_imagery(p, dict(r.headers.items()), r.content):

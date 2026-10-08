@@ -484,6 +484,58 @@ class _Server:
         self.httpd.shutdown()
 
 
+class _EdgeServer:
+    """A local tile server in front of which an edge refuses some requests as Akamai's refused a
+    user's address for Esri World Imagery (2026-10-07): 403, its « Access Denied » page."""
+
+    DENIED = (
+        b"<HTML><HEAD>\n<TITLE>Access Denied</TITLE>\n</HEAD><BODY>\n<H1>Access Denied</H1>\n \n"
+        b"You don't have permission to access this resource on this server.<P>\n"
+        b"Reference&#32;&#35;18&#46;5c2f1002&#46;1728300000&#46;1a2b3c4d\n"
+        b"<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18&#46;5c2f1002</P>\n"
+        b"</BODY>\n</HTML>\n"
+    )
+
+    def __init__(self, body, refuse):
+        import http.server
+        import threading
+
+        self.refuse = refuse
+        server = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                _, z, x, y = self.path.split("/")
+                denied = server.refuse((int(z), int(x), int(y)))
+                answer = server.DENIED if denied else body
+                self.send_response(403 if denied else 200)
+                self.send_header("Server", "AkamaiGHost" if denied else "local")
+                self.send_header("Content-Type", "text/html" if denied else "image/jpeg")
+                self.send_header("Content-Length", str(len(answer)))
+                self.end_headers()
+                self.wfile.write(answer)
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def provider(self):
+        from orthostudio.live.providers import Provider
+
+        return Provider(
+            code="LOCAL",
+            name="Local imagery",
+            url_template=f"http://127.0.0.1:{self.port}/{{zoom}}/{{x}}/{{y}}",
+            max_zl=19,
+        )
+
+    def close(self):
+        self.httpd.shutdown()
+
+
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
 class DownloaderTest(unittest.TestCase):
     def test_pieces_arrive_as_they_come(self):
@@ -643,6 +695,72 @@ class DownloaderTest(unittest.TestCase):
         from orthostudio.live.downloader import Downloader
 
         self.assertIn("verify=ca_bundle()", inspect.getsource(Downloader._main))
+
+    def test_a_source_refusing_this_computer_is_said(self):
+        """A server that answers every request 403, as Esri's edge (Akamai) answered a user's
+        address on 2026-10-07: the source is named as refusing this computer, the log says so
+        once, and an image from it again ends it."""
+        import queue
+
+        from orthostudio.live.cache import IMAGE
+        from orthostudio.live.downloader import FAILED, REFUSED_IN_A_ROW, Downloader
+
+        server = _EdgeServer(jpeg_body(), refuse=lambda key: True)
+        got, logged = queue.Queue(), []
+        d = Downloader(
+            server.provider(),
+            lambda k, st, b: got.put((k, st)),
+            max_in_flight=8,
+            attempts=1,
+            fallback=None,
+            log=logged.append,
+        )
+        try:
+            keys = [(15, 100 + i, 100) for i in range(REFUSED_IN_A_ROW + 8)]
+            for i, k in enumerate(keys):
+                d.submit(k, float(i))
+            answers = dict(got.get(timeout=20) for _ in keys)
+            self.assertEqual(answers, dict.fromkeys(keys, FAILED))
+            self.assertEqual(d.refusing(), ["Local imagery"])
+            told = [line for line in logged if "refuses this computer" in line]
+            self.assertEqual(len(told), 1, logged)
+            self.assertIn("Local imagery refuses this computer (HTTP 403, access denied)", told[0])
+            server.refuse = lambda key: False  # the edge lets this computer in again
+            d.submit((15, 200, 200), 0.0)
+            self.assertEqual(got.get(timeout=20), ((15, 200, 200), IMAGE))
+            self.assertEqual(d.refusing(), [])
+        finally:
+            d.close()
+            server.close()
+
+    def test_a_403_now_and_then_is_no_refusal(self):
+        """A server that answers 403 for a piece it lacks, among its images, as one that keeps
+        them in a store answering 403 for a missing file: nothing refuses this computer."""
+        import queue
+
+        from orthostudio.live.downloader import REFUSED_IN_A_ROW, Downloader
+
+        server = _EdgeServer(jpeg_body(), refuse=lambda key: key[1] % 4 == 0)
+        got, logged = queue.Queue(), []
+        d = Downloader(
+            server.provider(),
+            lambda k, st, b: got.put(st),
+            max_in_flight=8,
+            attempts=1,
+            fallback=None,
+            log=logged.append,
+        )
+        try:
+            keys = [(15, 100 + i, 100) for i in range(2 * REFUSED_IN_A_ROW)]
+            for i, k in enumerate(keys):
+                d.submit(k, float(i))
+            for _ in keys:
+                got.get(timeout=20)
+        finally:
+            d.close()
+            server.close()
+        self.assertEqual(d.refusing(), [])
+        self.assertFalse([line for line in logged if "refuses this computer" in line], logged)
 
     def test_a_piece_that_comes_clears_the_failure(self):
         import queue

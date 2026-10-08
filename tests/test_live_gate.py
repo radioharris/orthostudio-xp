@@ -1712,6 +1712,13 @@ class RefusedDownloader(SilentDownloader):
     last_error = "SSLError: Failed to perform, curl: (77) error adding trust anchors"
 
 
+class DeniedDownloader(SilentDownloader):
+    """Asked for pieces, answers none: the source's server refuses this computer (403)."""
+
+    def refusing(self):
+        return ["Esri World Imagery"]
+
+
 class NoTimeLimitTest(unittest.TestCase):
     """The plugin holds X-Plane as long as pieces arrive, with no time limit; once none has arrived
     for STALL_S, the streamer lets X-Plane go, and reloads the scenery once all is built."""
@@ -1734,6 +1741,15 @@ class NoTimeLimitTest(unittest.TestCase):
         stalled = [line for line in logged if "nothing downloaded for" in line]
         self.assertTrue(stalled, logged[-5:])
         self.assertIn(f"(the requests fail: {RefusedDownloader.last_error})", stalled[0])
+
+    def test_a_source_refusing_this_computer(self):
+        """Its server answers every request 403, as Esri's edge did to a user's address
+        (2026-10-07): the message names it, where it asked whether the internet was there."""
+        answers, _took, logged = self.fly(DeniedDownloader)
+        self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
+        stalled = [line for line in logged if "nothing downloaded for" in line]
+        self.assertTrue(stalled, logged[-5:])
+        self.assertIn("(Esri World Imagery refuses this computer: access denied)", stalled[0])
 
     def fly(self, downloader):
         with tempfile.TemporaryDirectory() as tmp:

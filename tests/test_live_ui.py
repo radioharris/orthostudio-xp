@@ -996,6 +996,47 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_window_says_a_source_refuses_this_computer() -> None:
+    """While Live runs, a source whose server refuses this computer (403, access denied) is said
+    under the source, in OrthoStudio XP's words for its map, with what to do; the textures' label
+    says their downloads are refused. Nothing is said otherwise, or once Live stops."""
+    refused = _streaming(refused_by=["Esri World Imagery"])
+    stopped = {"state": "idle", "checks": {"xplane_running": False}}
+    script = (
+        f"import {{ refusedText, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"const all = {json.dumps([refused, _streaming(), stopped])}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { setLanguage(lang);"
+        " out[lang] = [all.map(refusedText), buildView(all[0]).state]; }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    said = json.loads(out.stdout)
+    assert said["fr"] == [
+        [
+            "Esri World Imagery refuse votre connexion (accès refusé) : arrêtez Live et "
+            "choisissez une autre source en attendant.",
+            "",
+            "",
+        ],
+        ["Téléchargements refusés", "fail"],
+    ]
+    assert said["en"][0][0] == (
+        "Esri World Imagery refuses your connection (access denied): stop Live and choose "
+        "another source meanwhile."
+    )
+    assert said["en"][1] == ["Downloads refused", "fail"]
+    html = (UI_DIR / "index.html").read_text()
+    source = html[html.index('id="set-provider"') : html.index('id="source-error"')]
+    assert 'class="error-inline" id="source-refused" role="alert" hidden' in source
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_departure_box_and_a_new_simbrief_plan() -> None:
     """The first plan fills an empty box; a newer one (another briefing) is offered, never put in
     the box unasked; a plan comes into a box the pilot typed in only when asked."""

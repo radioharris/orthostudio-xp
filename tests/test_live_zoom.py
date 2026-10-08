@@ -797,6 +797,21 @@ def test_one_build_at_a_time_per_texture(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def test_the_window_hears_of_a_source_refusing_this_computer(tmp_path: Path) -> None:
+    """The sources whose server refuses this computer (Downloader.refusing) go to the window with
+    the streamer's figures; a downloader that cannot tell, none."""
+    s = row_streamer(tmp_path)
+
+    class Denied:
+        def refusing(self):
+            return ["Esri World Imagery"]
+
+    assert s.snapshot()["refused_by"] == []
+    s.downloader = Denied()
+    assert s.snapshot()["refused_by"] == ["Esri World Imagery"]
+    s.cache.close()
+
+
 def test_an_8192_px_texture_made_coarser_keeps_its_size(tmp_path: Path) -> None:
     """Beyond the disk budget, far away: as any texture, its levels kept from 256 px down, the
     copy above them, in its 8192 px file still: X-Plane may have read its size."""
