@@ -466,6 +466,18 @@ async def test_its_new_roads_line_takes_the_state_of_the_one_it_came_from(
     assert f"SCENERY_PACK_DISABLED Custom Scenery/{link.name}/" in ini.read_text()
 
 
+def _a_disk_that_is_away() -> Path:
+    """Where a disk that is not plugged in would be: a drive letter no disk has on Windows, a mount
+    point that is not there elsewhere. Under Windows ``/Volumes/...`` is a folder of the current
+    drive, which is here: the Library stores it as ``C:\\Volumes\\...`` and rightly says *Not
+    found* (windows-latest failed on it from 0.1.22; checked on the Shadow, a real disk taken
+    offline saying *Disk absent*, 2026-10-08)."""
+    if os.name == "nt":
+        free = next(letter for letter in "ZYXWVUTSRQ" if not Path(f"{letter}:\\").exists())
+        return Path(f"{free}:\\")
+    return Path("/Volumes") / f"OSXP test disk {secrets.token_hex(4)}"
+
+
 @pytest.mark.anyio
 async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     app: Any, home: Path, xplane: Path, tmp_path: Path
@@ -473,7 +485,7 @@ async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     """A disk unplugged comes back by itself: the Library says *Disk absent* and offers nothing
     to do. A folder gone from a disk that is here says *Not found*, with *Find again…*."""
     application, _mgr = app
-    away = Path("/Volumes") / f"OSXP test disk {secrets.token_hex(4)}" / "Tiles" / NAME
+    away = _a_disk_that_is_away() / "Tiles" / NAME
     (tmp_path / "Tiles").mkdir()
     gone = tmp_path / "Tiles" / "zOrthoStudio_+43+006"
     with Library(default_library_path()) as lib:
@@ -486,8 +498,9 @@ async def test_a_tile_whose_disk_is_away_says_so_rather_than_not_found(
     assert disk_absent(tmp_path) is False  # there
     # a folder gone two levels down on a disk that is here is not a disk away
     assert disk_absent(tmp_path / "Gone" / "Alps" / NAME) is False
-    assert disk_absent(Path("/Volumes") / f"nope {secrets.token_hex(4)}" / "x") is True
-    assert disk_absent(Path("/media") / f"someone {secrets.token_hex(4)}" / "USB" / "x") is True
+    assert disk_absent(_a_disk_that_is_away() / "x") is True
+    if os.name != "nt":  # Linux mounts a USB disk under /media/<user>
+        assert disk_absent(Path("/media") / f"someone {secrets.token_hex(4)}" / "USB" / "x") is True
 
 
 def _unplugged(disk: Path) -> Path:
