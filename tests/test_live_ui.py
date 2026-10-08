@@ -1174,6 +1174,26 @@ def test_the_page_uses_osxp_parts_and_no_outside_script() -> None:
     assert "http" not in re.sub(r"<!--.*?-->", "", html, flags=re.S).replace("http-equiv", "")
 
 
+def test_the_flight_and_the_textures_are_osxp_parts() -> None:
+    """Their heads are OrthoStudio XP's job head (a title and what stands beside it on one
+    baseline, its title-gap under them), their boxes its .cost, their sizes a row of its .chips,
+    and their own rules place them with its tokens only (a user, 2026-10-08: a title and its text
+    beside it not aligned)."""
+    html = (UI_DIR / "index.html").read_text()
+    assert 'class="job-head" id="flight-head"' in html
+    assert 'class="job-head" id="build-head"' in html
+    assert 'class="chips" id="build-sizes"' in html
+    assert 'class="help" id="build-idle"' in html  # OrthoStudio XP's text beside a title
+    js = (UI_DIR / "live.js").read_text()
+    assert 'figure.className = "cost live-figure"' in js
+    css = (UI_DIR / "live.css").read_text()
+    rules = css[css.index(".live .job-head.is-alone") : css.index(".live-checks")]
+    spacing = re.findall(r"(?:margin[\w-]*|gap|padding[\w-]*):\s*([^;]+);", rules)
+    assert spacing
+    for value in spacing:
+        assert all(part == "0" or part.startswith("var(--") for part in value.split()), value
+
+
 def test_threads_are_not_left_behind(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     before = {t.name for t in threading.enumerate()}

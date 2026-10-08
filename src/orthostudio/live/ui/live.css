@@ -26,28 +26,21 @@
 .live .kv > div { display: contents; }
 .live .kv dd { overflow-wrap: anywhere; }
 
-/* the flight's and the textures' title, their state beside it (OrthoStudio XP's pills), the rate
-   on the right: as its step heads (.plan-step-head) */
-.live-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-bottom: var(--title-gap); }
-.live-head > * { margin: 0; }
-.live-aside { margin-left: auto; color: var(--fg-2); font-size: var(--fs-2); }
-.live-aside b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* the flight's and the textures' title with their state beside it: OrthoStudio XP's job head
+   (.job-head, its Works'), its title-gap above what follows; nothing under it, no gap either
+   (live.js drawFlight, drawBuild) */
+.live .job-head.is-alone { margin-bottom: 0; }
 /* the figures one looks at, each in OrthoStudio XP's box (.cost, live.js drawFigures): the value
-   large, what it is under it, then its detail */
-.live-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); margin: var(--gap) 0 var(--block-gap); }
+   large (as its .kv dd.big), what it is under it (.help), its detail (.cost .sub) */
+.live-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); margin-bottom: var(--block-gap); }
 .live-figures.is-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 760px) { .live-figures.is-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .live-figure { min-width: 0; }
-.live-figure b { display: block; font-size: var(--fs-title-2); font-weight: 600; font-variant-numeric: tabular-nums; }
-.live-figure > span, .live-figure small { display: block; margin-top: 2px; font-size: var(--fs-3); }
-.live-figure > span { color: var(--fg-2); }
-.live-figure small { color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.live-figure > * { display: block; }
+.live-figure b { font-size: var(--fs-title-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .live-figure .is-fail { color: var(--fail); }
-/* the textures built, by size: OrthoStudio XP's pills on a line */
-.live-sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.live-sizes-title { color: var(--fg-2); font-size: var(--fs-2); }
-/* the disk: its name, OrthoStudio XP's bar, what it holds */
-.live-disk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); margin-top: var(--block-gap); color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
+/* the disk: its name, OrthoStudio XP's bar, what it holds; a block of the card */
+.live-disk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); margin-top: var(--block-gap); }
 .live-disk .progress.warn > span { background: var(--warn); }
 
 .live-checks { list-style: none; margin: 0; padding: 0; }

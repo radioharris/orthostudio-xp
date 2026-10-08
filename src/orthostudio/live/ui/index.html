@@ -156,7 +156,7 @@
       <!-- the flight: X-Plane's state beside the title, the aircraft's three figures in boxes,
            then the rest -->
       <section class="plan-step">
-        <div class="live-head">
+        <div class="job-head" id="flight-head">
           <h2 class="question-title" data-i18n="flight.title">Flight</h2>
           <span class="pill" id="flight-state"></span>
         </div>
@@ -167,22 +167,23 @@
     </div>
   </div>
 
-  <!-- the textures: their state beside the title and the rate on the right, four figures in
-       boxes, the textures built by size, the disk -->
+  <!-- the textures: their state beside the title and the rate on the right, as a job's head in
+       OrthoStudio XP's Works, four figures in boxes, the textures built by size, the disk -->
   <section class="question">
-    <div class="live-head">
+    <div class="job-head" id="build-head">
       <h2 class="question-title" data-i18n="build.title">Textures</h2>
       <span class="pill" id="build-state" hidden></span>
-      <p class="question-help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</p>
-      <span class="live-aside" id="build-rate" hidden></span>
+      <span class="help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</span>
+      <span class="spacer"></span>
+      <span class="help num" id="build-rate" hidden></span>
     </div>
     <div id="build" hidden>
       <div class="live-figures is-4" id="build-figures"></div>
-      <div class="live-sizes" id="build-sizes" hidden></div>
+      <div class="chips" id="build-sizes" hidden></div>
       <div class="live-disk">
-        <span data-i18n="build.disk">Disk</span>
+        <span class="help" data-i18n="build.disk">Disk</span>
         <div class="progress" id="disk"><span id="disk-bar"></span></div>
-        <span id="disk-text"></span>
+        <span class="help num" id="disk-text"></span>
       </div>
     </div>
   </section>

@@ -88,7 +88,7 @@ function drawPill(pill, [text, kind]) {
 }
 
 /** Figures in OrthoStudio XP's boxes (.cost, its estimate's): the value large, what it is under
- * it, then a detail and what failed. */
+ * it (its secondary text), then a detail (its box's .sub) and what failed. */
 function drawFigures(box, figures) {
   box.hidden = !figures.length;
   box.replaceChildren(...figures.map(({ value, label, more, problem }) => {
@@ -97,10 +97,12 @@ function drawFigures(box, figures) {
     const big = document.createElement("b");
     big.textContent = value;
     const name = document.createElement("span");
+    name.className = "help";
     name.textContent = label;
     figure.append(big, name);
     if (more || problem) {
-      const detail = document.createElement("small");
+      const detail = document.createElement("span");
+      detail.className = "sub num";
       detail.textContent = more || "";
       if (problem) {
         const failed = document.createElement("span");
@@ -296,6 +298,7 @@ function drawFlight(status) {
   drawPill($("flight-state"), view.state);
   drawFigures($("flight-figures"), view.figures);
   kv($("flight"), view.rows);
+  $("flight-head").classList.toggle("is-alone", !view.figures.length && !view.rows.length && !notice);
 }
 
 /** What the textures' card shows while Live runs, null when it does not: their state as a pill,
@@ -356,14 +359,13 @@ function drawBuild(status) {
   $("build-state").hidden = !view;
   $("build-rate").hidden = !view;
   $("build-idle").hidden = Boolean(view);
+  $("build-head").classList.toggle("is-alone", !view);
   if (!view) return;
   drawPill($("build-state"), view.state);
-  const rate = document.createElement("b");
-  rate.textContent = view.rate[1];
-  $("build-rate").replaceChildren(`${view.rate[0]} `, rate);
+  $("build-rate").textContent = `${view.rate[0]} ${view.rate[1]}`;
   drawFigures($("build-figures"), view.figures);
   const title = document.createElement("span");
-  title.className = "live-sizes-title";
+  title.className = "help";
   title.textContent = t("build.sizes");
   $("build-sizes").hidden = !view.sizes.length;
   $("build-sizes").replaceChildren(title, ...view.sizes.map((text) => {
