@@ -140,7 +140,61 @@ the field shows everything again. The Library has the same field above its table
 sort it: a click on *Tile*, *Imagery*, *In X-Plane*, *Size* or *Built by* sorts by that column in
 its most useful order (south to north, the tiles in X-Plane first, the largest first...), a
 second click reverses it, and an arrow shows the column the rows follow. The sort is kept from
-one visit to the next.
+one visit to the next. When the tiles are in more than one folder, the Library writes under each
+tile the folder it is in: *Workshop* for the data folder's own tiles, else the folder itself
+(`~/Ortho4XP/Tiles`, `D:\Tiles\Alps`), and a *Folder* list beside the search shows one folder's
+tiles, each folder with how many it holds. A search that finds no tile in the folder chosen says
+how many it finds in the others. It reads the list only, nothing on the disk.
+
+A tile whose folder you moved yourself, with the Finder or the File Explorer, says *Not found*, with
+*Find again…*: show its folder, or the folder you put it in, and the Library and every X-Plane of
+the computer that showed it follow it there. X-Plane must be closed. Nothing of the tile is copied;
+only its roads and forests, a small file left in the folder it came from, join it, so that taking it
+out of X-Plane later takes them out too. Put the folder anywhere but inside X-Plane: X-Plane reads
+it through a link. A tile on a disk that is not plugged in says *Disk not connected*: plug the disk
+in, and it is back by itself; if you put it on another disk, *Find again…* takes it there. Its roads
+and forests stayed on the disk away, where X-Plane no longer draws them once it is back: build the
+tile again to have them, drawn even if you had turned that folder's roads off in X-Plane. Plug it in
+before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
+at the bottom, where another pack's mesh may hide it.
+
+The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
+To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
+the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
+first what will happen: on the same disk the tiles are moved, at once; on another they are
+copied, read back file by file, and only then taken out of the workshop, the cache staying there.
+X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
+with *Stop*: the tile under way stays where it was. Then the Library and X-Plane follow the tiles
+to their new folder, roads and forests included, and X-Plane keeps each line as you left it,
+enabled or not.
+
+A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
+back in its folder in place of the old version: moved there at once on the workshop's disk, copied
+and read back on another, the old version taken away only once the new one is in place. Built again
+unchanged, it is instant and nothing is copied; after its cache was freed, its images are downloaded
+again, and nothing is copied either when they give the same tile. X-Plane keeps showing it from its
+folder, its line as you left it, and the Library lists it once, there. Works says how far the copy
+is in the Installation cell. If its disk is not connected, the tile is not built, and Works says
+why. If you put its folder in the Trash, building it again brings it back to the workshop and into
+X-Plane, with its roads; the roads of the folder you threw away go from the overlays pack beside it,
+and that pack goes out of X-Plane when no tile's roads are left in it. With X-Plane open it is
+built in the workshop but not installed, and the old roads stay: build it again once you have quit
+X-Plane. A tile still filed is built all the same with X-Plane open, and put back once you have
+quit X-Plane and built it again, which only copies. A tile of the workshop that X-Plane shows is
+never rewritten while X-Plane runs: quit X-Plane, then build it again, what was built is reused.
+macOS, Windows and Linux do the same.
+
+The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
+*Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,
+what only those tiles need goes, their data and their downloaded images, and the workshop's disk
+gets the room back. Their mesh stays, about 240 MB a tile: a neighbour built again reads it to draw
+its shores along their border, which without it were drawn as if that tile did not exist. The tiles
+themselves are not touched: they stay whole and in X-Plane, and building one again later downloads
+its images again and makes its textures again, like the first time. What a tile of the workshop uses
+too stays, such as the images astride the border with a neighbour. A tile filed on the workshop's
+own disk shares its textures and DSF with the cache, one file under two names: its cache goes all
+the same, but those files stay, the tile's own, so their room does not come back and the line does
+not count it.
 
 **Tidying the list.** A build that has finished carries a small cross on the top right corner of
 its row: it leaves the list, with its progress and its log, and the tiles it built stay where they
@@ -233,6 +287,10 @@ takes space in its **data folder**: `~/.orthostudio` too, unless Settings name a
 The status bar names that folder at its right end, and the button beside it shows it in the
 Finder, the Windows File Explorer or the Linux file manager: `.orthostudio` starts with a dot,
 which hides it in the Finder, and a user looked for their tiles there in vain (2026-09-22).
+`~/.orthostudio` may itself be a link to another disk: the Library knows each tile by the folder
+the link leads to, and lists it once whether it was built alone or added to X-Plane. A tile built
+without installing, then built again with the install, had two rows until 2026-10-05; they become
+one when the app starts.
 
 ```
 ~/.orthostudio/
@@ -375,11 +433,13 @@ ZL14: the map still lets you zoom past that, which is handy for clicking precise
 enlarging the last photo it downloaded, not fetching a sharper one. The line says so, and names
 the best that source really has, so you never ask for a level your source cannot give.
 
-When the source you chose has nothing where you are looking, a yellow line at the bottom of the
-map says so once the view is drawn. A country's source outside its country says "Netherlands ·
+When the source you chose has nothing where you are looking, a yellow line at the bottom right of
+the map says so once the view is drawn. A country's source outside its country says "Netherlands ·
 PDOK does not cover this view.", the same at every zoom; a source with no photo this deep here,
-like Esri Clarity past ZL18 over France, says "No imagery received". A build over squares a
-source does not reach is refused outright, with the squares named.
+like Esri Clarity past ZL18 over France, says "No imagery received". A source whose server
+refuses your connection says that instead, "access denied": Esri's servers may block an internet
+address for a while after a great many downloads, and another source works meanwhile. A build over
+squares a source does not reach is refused outright, with the squares named.
 
 **A street map, if you want one.** The legend has a box that swaps the aerial photo for
 OpenStreetMap, to read towns, roads and names before choosing a square. The map comes from
@@ -437,7 +497,10 @@ same place, 3", 1" and 0.5" for instance, the finest file is used for each squar
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
 downloaded is what is built. The finest wins the other way round too: where the relief you chose is
 sharper than your file, as the United States relief at a third of an arc-second is against a file
-of one second, the relief answers and the report names the file it left aside. Where your folder has nothing, the relief you chose stays in charge, so
+of one second, the relief answers and the report names the file it left aside. In the Library,
+*Built by* unfolds what a tile was built with: its *Relief* line names the file of yours the tile
+stands on, "with your file N50E011.hgt over it", or says why it was not used, "93 m between
+points, where Copernicus has 31 m". Where your folder has nothing, the relief you chose stays in charge, so
 a collection that covers one country is no trouble. Change a file and the tiles that use it are built again; the rest are not. A single file
 works too, under *My own elevation file*, and writing `{latlon}` in its path where the name of the
 square goes (`/my-relief/{latlon}.hgt`) makes it one file per tile without naming a folder.
@@ -484,7 +547,7 @@ list* takes an imported tile off the list again (once it is out of X-Plane), and
 where they are.
 
 In `scenery_packs.ini`, OrthoStudio XP puts the overlays just above the photo tiles, both below
-custom airports and object packs (such as simHeaven) and above AutoOrtho and base meshes. Before its
+custom airports and object packs (such as simHeaven) and above the base meshes. Before its
 first change it keeps the original as `scenery_packs.ini.bak`, and before every change the previous
 version as `scenery_packs.ini.osxp-previous`.
 
@@ -511,10 +574,11 @@ and built again.
 | Add to X-Plane (Library) | the link comes back, at once | stays | stays | stays |
 | Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays | stays |
 | `osxp clean` | - | what no tile on disk needs, unless used in the last hour | stays | stays |
-| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache | stays |
+| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
-| `osxp clean --all` | - | everything no tile on disk needs, however recent | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent | emptied with the map cache if you tick the box | emptied if you tick its own box |
+| `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent, and the cache of the tiles filed outside the workshop | emptied, with the map cache | emptied |
+| Free space (Library) | - | everything no tile on disk needs, however recent; the cache of the tiles filed outside the workshop if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 

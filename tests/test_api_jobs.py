@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from orthostudio.api import (
     stage_of,
 )
 from orthostudio.api.app import create_app
-from orthostudio.api.jobs import error_json
+from orthostudio.api.jobs import Job, error_json
 from orthostudio.errors import OsxpError
 from orthostudio.sources.osm import MIRRORS, shared_board
 from test_api_fakes import FakeBuild, client_for, make_spec, sse_messages
@@ -418,6 +419,39 @@ async def test_http_job_lifecycle_and_sse(home: Path, xplane: Path) -> None:
         assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_BUSY"
         r = await c.get("/api/status")
         assert r.json()["active_job"] is None
+    mgr.close()
+
+
+@pytest.mark.anyio
+async def test_a_job_heard_finished_is_no_longer_active(
+    home: Path, xplane: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page asks the status as soon as it hears ``finished``: the job is no longer active
+    there, and its file is written. The manager announced the end, wrote the job's state, and only
+    then let the job go, so the status still named it while the state was written (a full run of
+    the suite, under load, 2026-10-05). The writing is held here, as a slow disk holds it."""
+    saving = threading.Event()
+    go_on = threading.Event()
+    save_state = Job.save_state
+
+    def slow_save(job: Job) -> None:
+        saving.set()
+        go_on.wait(10.0)
+        save_state(job)
+
+    monkeypatch.setattr(Job, "save_state", slow_save)
+    app, mgr = _app(home, FakeBuild())
+    body = {"tiles": ["+43+005"], "provider": "BI", "zoom_level": 14, "xplane_dir": str(xplane)}
+    async with client_for(app) as c:
+        r = await c.post("/api/jobs", json=body)
+        job_id = r.json()["job_id"]
+        r = await c.get(f"/api/jobs/{job_id}/events")
+        assert list(sse_messages(r.text))[-1]["event"] == "finished"
+        assert await asyncio.to_thread(saving.wait, 10.0)
+        threading.Timer(0.2, go_on.set).start()  # whoever asks meanwhile waits for the end
+        r = await c.get("/api/engine")
+        assert r.json()["active_job"] is None
+        assert (home / "jobs" / f"{job_id}.json").is_file()
     mgr.close()
 
 

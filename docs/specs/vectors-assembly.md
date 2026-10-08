@@ -207,9 +207,11 @@ layers.npz        the layers as they were inserted, one entry per *part* (a Line
                   A tile can be re-noded and profiled from it with no network and no OSM
                   parsing; re-noding it gives back the same graph, bit for bit
                   (test_vectors_assemble.py::test_the_replay_file_holds_the_segments...)
-stats.json        counts, per-marker edge and seed counts, timings, planarity. Edge markers
+stats.json        counts, per-marker edge and seed counts, planarity. Edge markers
                   are labelled by their bits ("WATER|SEA"): an edge carries the OR of
-                  everything covering it, unlike a layer or a seed
+                  everything covering it, unlike a layer or a seed. No timings: they go to
+                  the log, since with them the same tile built again was another artefact,
+                  and all that follows was made again (the owner's Shadow, 2026-10-06)
 airports.json     the (A, 4) tile-local bounding boxes, for the curvature weight map of the
                   mesh stage (mesh-build.md 3.2)
 Data<tile>.alt    wave 2: the elevation raster AFTER the airport smoothing -- the one Ortho4XP

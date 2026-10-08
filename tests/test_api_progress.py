@@ -1841,6 +1841,36 @@ def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPa
     assert not any("HRDEM" in message for message in seen)
 
 
+def test_the_relief_says_in_works_when_his_file_is_coarser_than_the_relief_chosen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A file of one's own coarser than the relief chosen is left aside, and nothing said it: a
+    user saw two reliefs come out of one folder of lidar files, X-Plane's taking his file and
+    Copernicus not (2026-10-05). The node's last line names the file and both steps."""
+    from orthostudio.dem import rule as dem_rule
+
+    seen: list[str] = []
+
+    class Ctx:
+        cancel_event = None
+
+        def progress(self, fraction: float, message: str) -> None:
+            seen.append(message)
+
+    def rule(ctx: Any) -> None:
+        hear = dem_rule._job().on_event
+        assert hear is not None
+        context = {"cell": "N50E011", "own": "N50E011.hgt", "own_m": "93", "base_m": "31"}
+        hear(OsxpError("DEM_OVERLAY_COARSER", context={**context, "source": "COP30"}))
+
+    monkeypatch.setattr(build_mod, "run_p0_rule", rule)
+    monkeypatch.setattr(build_mod, "RELIEF_TICK_S", 60.0)
+    build_mod._dem_run(cast(Any, None), _spec("+50+011", zl=14))(Ctx())
+    last = seen[-1]
+    assert last.startswith("+50+011: ") and "N50E011.hgt" in last
+    assert "93 m" in last and "31 m" in last
+
+
 def test_a_mesh_that_reached_its_budget_says_so(tmp_path: Path) -> None:
     """The mesh found it had reached its triangle budget and kept it to itself. A relief of one's
     own at 4 m makes it likely: the line says it, and where the budget is raised."""

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import math
 import shutil
 import subprocess
@@ -61,6 +62,8 @@ __all__ = [
     "mesh_file_name",
     "triangle_command",
 ]
+
+log = logging.getLogger(__name__)
 
 DEM_SPEC_FORMAT = "osxp-dem-1"
 STATS_FORMAT = "osxp-mesh-stats-1"
@@ -579,6 +582,13 @@ def build_mesh_native(
         _write_post_nodes(workdir / f"{out_stem}.node", points)
 
     timings["total"] = time.perf_counter() - t_total
+    # how long it took, and the command in full, go to the log, not into the artefact
+    log.info(
+        "mesh %s: %s",
+        tile.name,
+        ", ".join(f"{name} {seconds:.1f} s" for name, seconds in timings.items()),
+    )
+    log.debug("mesh %s: %s", tile.name, argv)
     stats: dict[str, object] = {
         "format": STATS_FORMAT,
         "tile": tile.name,
@@ -594,10 +604,9 @@ def build_mesh_native(
         "n_coast_nodes": int(coast_nodes.shape[0]) if coast_nodes is not None else 0,
         "n_airports": int(apt_bounds.shape[0]),
         "steiner_budget": steiner_budget(params.limit_tris, input_nodes),
-        "triangle_argv": argv,
+        "triangle_argv": _named(argv),
         "retried_without_min_angle": retried,
         "binary_exchange": binary,
-        "timings_s": {k: round(v, 4) for k, v in timings.items()},
         "warnings": [{"code": w.code, "context": w.context} for w in warnings],
     }
     if out_dir is not None:
@@ -613,6 +622,16 @@ def build_mesh_native(
         warnings=warnings,
         mesh_path=mesh_path,
     )
+
+
+def _named(argv: list[str]) -> list[str]:
+    """``argv`` with each path given by its file name: the stats are part of the artefact, and
+    the scratch folder's name holds the process number and a random part. With it, and the time
+    each step took (``timings_s``), the same tile built again was another mesh each time, so its
+    masks and DSF were made again and its whole folder copied again after its cache was freed
+    (found on the owner's Shadow, 2026-10-06). The folders of the program and of the data said
+    where they were installed, not what was built."""
+    return [Path(arg).name if Path(arg).is_absolute() else arg for arg in argv]
 
 
 def _write_post_nodes(path: Path, points: NDArray[np.float64]) -> None:

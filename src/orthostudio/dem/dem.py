@@ -154,6 +154,13 @@ class Dem:
     overlays: tuple[Dem, ...] = ()
     laid_over: tuple[str, ...] = ()
     """The overlays of a composite written into :attr:`alt_dem`, in the order they were laid."""
+    own: tuple[dict[str, object], ...] = ()
+    """The files of one's own found for this square among the overlays (a folder's file, or a
+    file named as one), and what became of each: ``{"file", "used"}``, and for one not used
+    ``"why"``: ``coarser`` than the relief under it (with ``own_m`` and ``base_m``, the metres
+    between two points of each), ``unreadable``, or ``empty`` (no height on the square). The
+    Library names the file, or says why it was not used: a user saw two reliefs come out of one
+    folder of lidar files, and nothing said his file had been left aside (2026-10-05)."""
     events: list[OsxpError] = field(default_factory=list)
 
     # -- construction ------------------------------------------------------------------------
@@ -208,8 +215,14 @@ class Dem:
             # An overlay is what it can be: Canada's lidar covers the part of the country that
             # has been flown, so a cell without it lays the base alone rather than refusing the
             # tile (a user asked for a Canadian source, 2026-09-18).
-            laid = cls._load_one(tile, name, opts, record, optional=True)
+            found: list[Path] = []
+            laid = cls._load_one(tile, name, opts, record, optional=True, found=found)
             if laid is None:
+                if found:  # his file for the square, which could not be read
+                    dem.own = (
+                        *dem.own,
+                        {"file": str(found[0]), "used": False, "why": "unreadable"},
+                    )
                 record(
                     OsxpError(
                         "DEM_OVERLAY_UNAVAILABLE",
@@ -240,9 +253,11 @@ class Dem:
         record: Callable[[OsxpError], None],
         *,
         optional: bool = False,
+        found: list[Path] | None = None,
     ) -> Dem | None:
         """One source of the composite. ``optional`` (an overlay) answers ``None`` where the
-        source has no data for the tile, instead of refusing the build."""
+        source has no data for the tile, instead of refusing the build. ``found`` is given the
+        file of one's own taken for the square, before it is read."""
         if source in GEOMETRY:
             combined: CombinedRaster = build_combined_raster(
                 source, tile.lat, tile.lon, opts, on_event=record
@@ -294,6 +309,8 @@ class Dem:
             path = own
         if optional and not path.is_file():
             return None
+        if found is not None:
+            found.append(path)
         try:
             read = _read_whole_file(path, tile, str(path), record)
         except OsxpError as exc:
@@ -430,6 +447,7 @@ class Dem:
             "nodata_pixels": _count_equal(self.alt_dem, self.nodata),
             "alt_layout": ALT_FILE_FORMAT,
             "laid_over": list(self.laid_over),
+            "own": [dict(o) for o in self.own],
             "cells": [
                 {
                     "cell": c.cell,
@@ -558,15 +576,17 @@ def _lay_into(
     under = _file_step(base)
     coarse = [(name, over) for name, over in overlays if _file_step(over) > under * 1.000001]
     for name, over in coarse:
+        own_m, base_m = _file_step(over) * 111_320, under * 111_320
+        _tell_own(base, over, used=False, why="coarser", own_m=round(own_m), base_m=round(base_m))
         record(
             OsxpError(
                 "DEM_OVERLAY_COARSER",
                 context={
                     "cell": hem_latlon(base.tile.lat, base.tile.lon),
                     "own": _file_name(over) or Path(name).name,
-                    "own_m": f"{_file_step(over) * 111_320:.0f}",
+                    "own_m": f"{own_m:.0f}",
                     "source": base.source,
-                    "base_m": f"{under * 111_320:.0f}",
+                    "base_m": f"{base_m:.0f}",
                 },
             )
         )
@@ -605,6 +625,7 @@ def _lay_into(
     for name, over in overlays:
         points = _lay_one(base, over)
         if not points:
+            _tell_own(base, over, used=False, why="empty")
             record(
                 OsxpError(
                     "DEM_OVERLAY_UNAVAILABLE",
@@ -612,9 +633,21 @@ def _lay_into(
                 )
             )
             continue
+        _tell_own(base, over, used=True)
         laid.append(name)
         base.cells = (*base.cells, *over.cells)
     base.laid_over = tuple(laid)
+
+
+def _tell_own(base: Dem, over: Dem, **fate: object) -> None:
+    """Note in ``base.own`` what became of ``over`` when it is a file of one's own. A source laid
+    as an overlay (Canada's lidar) is not: what it holds for a square is the service's business,
+    and the Library names it as it is."""
+    if over.source in GEOMETRY or over.source in SOURCES:
+        return
+    cell = over.cells[0] if over.cells else None
+    file = str(cell.path) if cell is not None and cell.path is not None else over.source
+    base.own = (*base.own, {"file": file, **fate})
 
 
 def _refine(dem: Dem, step: float) -> None:

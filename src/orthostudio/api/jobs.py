@@ -50,6 +50,7 @@ from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import load_registry
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
+    PUT_BACK_ROLE,
     BuildEnv,
     BuildEvent,
     BuildReport,
@@ -207,7 +208,9 @@ class _TileState:
     def status(self, job_status: str) -> str:
         if any(n.status == "failed" for n in self.nodes.values()):
             return "failed"
-        target = [n for n in self.nodes.values() if n.role == self.target_role]
+        # a tile filed elsewhere ends when it is back in its folder (the atelier, step 4): until
+        # then it is in the build, and a put back stopped leaves it unfinished, not done
+        target = [n for n in self.nodes.values() if n.role in (self.target_role, PUT_BACK_ROLE)]
         if target and all(n.status in ("done", "hit") for n in target):
             return "done"
         if job_status == "cancelled":
@@ -664,10 +667,12 @@ class Job:
             if st.status == "pending":
                 self._weigh(st)
         for ts in self._tiles.values():
+            # a tile whose folder is on a disk away is not built: nothing of it ran or was there
+            away = any(n.role == PUT_BACK_ROLE and n.status == "failed" for n in ts.nodes.values())
             for node_id, st in list(ts.nodes.items()):
                 if node_id in ids or st.status != "pending":
                     continue
-                if st.role == "osm":
+                if st.role == "osm" and not away:
                     self._reuse(node_id, None)
                 else:
                     del ts.nodes[node_id]
@@ -1157,6 +1162,19 @@ BuildFn = Callable[..., BuildReport]
 EnvFactory = Callable[..., Any]
 
 
+def _drop_frames(exc: BaseException) -> None:
+    """``exc`` and the exceptions it came from, without their tracebacks."""
+    seen: set[int] = set()
+    chain: list[BaseException | None] = [exc]
+    while chain:
+        e = chain.pop()
+        if e is None or id(e) in seen:
+            continue
+        seen.add(id(e))
+        e.__traceback__ = None
+        chain += [e.__cause__, e.__context__]
+
+
 def _call_env_factory(factory: EnvFactory | None, specs: Sequence[BuildSpec]) -> Any:
     """``factory(specs)``; a zero-argument factory (the P2b contract's literal form) too."""
     if factory is None:
@@ -1402,15 +1420,31 @@ class JobManager:
             log.warning("job %s failed: %s", job.id, err)
             job.job_error = error_json(err)
             job._append("failed", tile=None, stage=None, node=None, role=None, error=job.job_error)
+            # the frames of the failure hold the environment, and the store's index it opened:
+            # kept by the error (in a log record, say), they lived on until Python looked for
+            # cycles, and the data folder's disk would not eject (a review, 2026-10-06). Without
+            # them, both go once nothing uses them, a step the scheduler left running included
+            _drop_frames(err)
         finally:
             job.stop_ticker()
-            job._finish(status, report, env if isinstance(env, BuildEnv) else None)
-            with contextlib.suppress(OSError):
-                job.save_state()
+            # The end is one step for whoever asks the manager: the job announced, written, and
+            # out of the active slot together. A page hears `finished` and asks the status at
+            # once, and the status named the job still while its state was being written (a run
+            # of the suite under load, 2026-10-05). Written before it leaves the slot: a job out
+            # of it may be removed from the list, files and all.
             with self._lock:
+                job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+                with contextlib.suppress(OSError):
+                    job.save_state()
                 if self._active is job:
                     self._active = None
                 self._threads.pop(job.id, None)
                 if self._queue:
                     self._launch(self._queue.popleft())
+            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
+                # the store's index is not held between builds; after a Stop, a step still running
+                # past the scheduler's grace commits into it later (a review, 2026-10-06). Out of
+                # the lock: a slow disk's closing never holds the page's status
+                with contextlib.suppress(Exception):
+                    env.close()
             job._done.set()

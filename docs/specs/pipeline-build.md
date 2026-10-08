@@ -132,7 +132,23 @@ executes nothing, `build_tiles` **verifies the effects after the run**: a pack w
 hit but whose directory lacks a listed file, or holds another assembly (the manifest written in
 it is not the receipt's: the tile was built since with other colours, say), is re-assembled (hard
 links, under a second), an install whose link or `scenery_packs.ini` line is gone is redone. Both operations are
-idempotent.
+idempotent. Then the tile's Library row is written with the keys of the build its folder holds,
+installed or not (`_remember_the_tile`): a build found whole in the cache, its install step too,
+left the row with the keys of the build before (a tile built with its airports sharp, then
+without, then sharp again), and the atelier took the tile's own folder for another build, to
+build again, which changed nothing (the owner's +44+009, 2026-10-06; so since 0.1.0, read by
+nothing before the atelier).
+
+A tile the build installs has its folder checked earlier, as soon as its pack hits: the scheduler
+hands a node's `Done` to the build's listener before it starts what follows, and a folder that is
+not the receipt's is laid again there (`_Collector.installs`), before the install reads it, and is
+said repaired as above. A tile filed elsewhere, put in the Trash, then built again comes back to
+the workshop: its pack, found in the cache, wrote nothing there, and its install, never run for
+that build (a tile filed elsewhere is put back, not installed), read the folder before the end of
+the build laid it again, and failed with `SYS_INTERNAL_ERROR` (`FileNotFoundError`); a second
+build mended it (found on the owner's Shadow, 2026-10-06). A node's internal error is written in
+the log with its traceback (`sched/scheduler.py`): its remedy asks for `serve.log`, which held
+nothing of it; an error a node raises on purpose, with its own words, stays out of it.
 
 `tile.pack` first makes the store durable (`Store.make_durable`, `graph-keys.md` 6): the tile's
 textures, DSF and `.ter` files are committed without being forced to disk one by one, and are
@@ -163,17 +179,22 @@ user asked for the choice, 2026-09-25; a second, 2026-09-26); a tile built befor
 decals, or with `decal_on_sea` ticked and the decals off, is built again once.
 
 An existing DSF of a different content becomes `<name>.dsf.bak` (Ortho4XP convention, `write_dsf`;
-the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per
-re-encoded texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and
-`terrain/` are swept) and DDS and `.ter` files that are no longer referenced by the new DSF
-are removed from the pack (they stay in the store). The pack directory is named by the tile
-only, so `declare` **refuses** two specs of a batch that would write different content
-(another level, another parameter set) into the same `<out>/zOrthoStudio_<tile>/`
-(`CFG_VALUE_INVALID`: one level per output directory). On Windows, `tile.pack`
-refuses (`XP_RUNNING`) to rewrite a pack that is installed while X-Plane runs (it holds the
-DSF open; `os.replace` would fail), and a `PermissionError` on a file is `XP_PACK_CONFLICT`
-with the path. Group mode (several tiles sharing `terrain/` and `textures/`) is not offered
-in P2a: one pack per tile, the overlays pack shared.
+the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per re-encoded
+texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and `terrain/` are swept)
+and DDS and `.ter` files that are no longer referenced by the new DSF are removed from the pack
+(they stay in the store). The pack directory is named by the tile only, so `declare` **refuses** two
+specs of a batch that would write different content (another level, another parameter set) into the
+same `<out>/zOrthoStudio_<tile>/` (`CFG_VALUE_INVALID`: one level per output directory). On every
+system, `tile.pack` refuses (`SYS_REBUILD_XP_RUNNING`) to rewrite in its place a pack X-Plane shows
+(the link of Custom Scenery leads to the pack being assembled) while X-Plane runs, before writing
+anything: Windows will not replace a file X-Plane holds open (`os.replace` would fail), and
+elsewhere X-Plane read old and new files mixed. The steps before are kept, so building again once
+X-Plane is closed only assembles. A tile filed elsewhere is assembled in the workshop, beside what
+X-Plane reads, and only its put back waits (`SYS_PUT_BACK_XP_RUNNING`). The refusal was Windows
+only, as `XP_RUNNING` with an installation's words, and looked at the link alone: it refused a filed
+tile before it was built (found on the owner's Shadow, 2026-10-06). A `PermissionError` on a file is
+`XP_PACK_CONFLICT` with the path. Group mode (several tiles sharing `terrain/` and `textures/`) is
+not offered in P2a: one pack per tile, the overlays pack shared.
 
 `tile.install` (with `--install`; serialised by a process-wide lock because `scenery_packs.ini` is
 edited): `install_pack(pack_dir, custom_scenery, update_ini=False)` for the tile pack and for
@@ -183,6 +204,47 @@ edited): `install_pack(pack_dir, custom_scenery, update_ini=False)` for the tile
 list), then `Library.register(tile, provider, zl, pack_dir, "osxp", keys)` with every artefact key
 of the manifest. `XP_RUNNING` refuses the install while X-Plane runs; the build itself is
 unaffected.
+
+**A tile filed elsewhere** (the atelier, step 4, 2026-10-05; `install.md` 4.7). `build_tiles` asks,
+before anything runs, where each tile is filed (`filing.tile_home`, `_homes`). A tile whose folder
+is on a disk away is not built: a `put_back` node fails at once with `SYS_TILE_DISK_ABSENT`, in
+the Installation cell. A tile filed in a folder that is there is built as any other, in the
+workshop, but without `tile.install` (`install=False` in its spec): installed from the workshop,
+it took X-Plane's link and line away from its folder. After the passes, `_put_back_tile` does its
+end: nothing when its folder holds this very build (`pack_is_intact` with the receipt's manifest;
+an unchanged build is instant and leaves nothing in the workshop), only the receipt's manifest
+written there when the folder holds its very files (`lays_the_same`: a neighbour built or freed
+since gives the masks another key for the same bytes; the whole tile was copied again, and refused
+while X-Plane ran, 2026-10-06), else the pack, assembled again
+in the workshop if a hit found it gone (`_assemble_again`, which writes the build's own manifest,
+as for any pack a hit finds tampered with: assembling walks the store's provenance, which may lead
+by now to another artefact of the same bytes, a neighbour built since changing the masks' recipe
+and not their content, and the folder named other keys than the build's receipt and the Library's
+row, so that the tile could never be filed and each build assembled it again; found on the owner's
+tiles, 2026-10-06), put back in its folder
+(`filing.put_back`), then `_settle_put_back`: the workshop's copy and its roads go, leftovers of a
+put back cut short go, the Library lists the tile once, in its folder, as this build, and the
+X-Plane of Settings that shows it is given its install again, its line kept (`reenable=False`),
+or the install asked for when it did not; while that X-Plane runs, nothing of it changes (its
+link leads there already). When only its roads are gone, they come back from the store
+(`_roads_back`). Whatever fails, the new roads are parked in the workshop's version, not drawn
+twice. The step reports as a node of role `put_back`, declared with the build's nodes and
+weighing its copy (`_put_back_rows`, `Phase.learned`), so that the tile is in the build until it
+is back and the job's time left counts it (`Started`, `Progress` with
+`putting back: copy|check <done> of <total> bytes`, `Done`, a hit when nothing was copied, or
+`Failed`); the page shows it in the Installation cell, not a bar of its own, and the job takes it
+for the tile's last step. A Stop of the job (its callback raises `CancelRequested`, a
+`BaseException`, which `_put_back_tile` catches) stops it before its next file; the tiles after it
+are not put back (`SYS_CANCELLED`), the others are settled, and `build_tiles` returns its report,
+stopped. X-Plane running is `SYS_PUT_BACK_XP_RUNNING`. Its failures count in the report's
+`failed`. A tile whose folder is gone from a disk that is here is built in the workshop as a new
+one, and its rows there are let go (`_let_go`), with the roads that folder left in the overlays
+pack beside it (`pack.let_go_of_roads`): X-Plane drew them beside the tile's new ones, roads
+flickering, trees and buildings twice, and the page could say *no roads* (found on the owner's Mac
+and Shadow, 2026-10-06). That overlays pack, left without any tile's roads, goes out of X-Plane, its
+link and its line, as when a tile is uninstalled. While X-Plane runs, nothing of the folder
+changes, as a tile is not deleted then: its roads and rows stay, and the next build after X-Plane
+is closed lets go of them. The tile's `pack_dir` in the report is its folder.
 
 ### 2.4 Global Scenery and the XP12 rasters
 
@@ -234,7 +296,11 @@ Deterministic (no timestamps): the manifest is the pack artefact, and its digest
 install receipt. `osxp why <pack dir>` reads it and explains every artefact (`Store.explain`).
 The upstream keys (`dem`, `vectors`, `coastline`, `mesh`, `masks`, `xp12`) come from the store's
 provenance edges of the DSF artefact (`Store.why`), not from the graph: the manifest can be rebuilt
-from the store alone.
+from the store alone. The relief the tile stands on (`built.relief`, `relief_laid`, `relief_own`)
+is read the same way (`relief_read`), from the first input named `dem` built by the relief stage
+(`orthostudio.dem`): the mesh takes the tracing under that name too (`--dem vectors`, the
+default), and reading it found no relief, so every tile built without sharper airports, whose DSF
+takes no tracing of its own, said "—" for its relief until 2026-10-05.
 
 `[photo]` holds the square's colours as the textures were encoded with them:
 `PackParams.photo_brightness`, `photo_contrast` and `photo_saturation`, which `declare` copies

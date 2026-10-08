@@ -124,8 +124,9 @@ class Relief(BaseModel):
         hint=(
             "A folder of elevation files of your own, one per one-degree square, named after that "
             "square as the SRTM format does (N47E011.hgt, or .tif), subfolders included. Each tile "
-            "takes its own file from it, whatever its resolution; where the folder has nothing, "
-            "the relief chosen above is used. A user of the X-Plane.Org page has the lidar models "
+            "takes its own file from it where that file is at least as fine as the relief chosen "
+            "above; where the folder has nothing, or only a coarser file, that relief is used. A "
+            "user of the X-Plane.Org page has the lidar models "
             "of Europe by the hundred and asked to name the folder once (2026-09-19)."
         ),
     )

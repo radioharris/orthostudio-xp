@@ -320,14 +320,34 @@
     <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
     <div class="library-overlays" id="library-overlays" role="status" hidden></div>
     <div class="library-search">
-      <input type="search" id="library-search" class="library-search-input" spellcheck="false" autocomplete="off"
-             data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+      <div class="library-filters">
+        <input type="search" id="library-search" class="library-search-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="library.search_ph" data-i18n-aria-label="library.search" placeholder="Search for a tile: +49+011, +49…" aria-label="Search for a tile">
+        <label class="library-folder" id="library-folder-wrap" hidden>
+          <span data-i18n="library.folder">Folder</span>
+          <select id="library-folder"></select>
+        </label>
+      </div>
       <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
+      <!-- the atelier, step 3: the tiles picked are filed elsewhere -->
+      <div class="library-pick" id="library-pick" hidden>
+        <label class="library-pick-all">
+          <input type="checkbox" id="library-pick-all">
+          <span data-i18n="library.pick_all">Pick all shown</span>
+        </label>
+        <span class="library-pick-count" id="library-pick-count"></span>
+        <button type="button" class="btn btn-small btn-primary" id="library-file" data-i18n="library.file">File elsewhere…</button>
+      </div>
+      <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
+        <span id="library-filing-text"></span>
+        <button type="button" class="btn btn-small" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
+      </p>
     </div>
     <div class="table-wrap">
       <table class="table library-table" id="library-table">
         <thead>
           <tr>
+            <th scope="col" class="library-pick-cell"><span class="sr-only" data-i18n="library.pick_column">Pick</span></th>
             <th scope="col" data-sort="tile" aria-sort="ascending"><button type="button" class="th-sort" data-i18n="library.tile" data-i18n-title="library.sort_help" title="Sort by this column">Tile</button></th>
             <th scope="col" data-sort="imagery" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.imagery" data-i18n-title="library.sort_help" title="Sort by this column">Imagery</button></th>
             <th scope="col" data-sort="xplane" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.in_xplane" data-i18n-title="library.sort_help" title="Sort by this column">In X-Plane</button></th>
@@ -344,6 +364,10 @@
     <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
       <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>
       <dl class="disk-list" id="disk-list"></dl>
+      <div id="disk-filed-choice" hidden>
+        <label class="disk-check"><input type="checkbox" id="disk-filed"> <span data-i18n="disk.also_filed">Also delete the cache of the tiles filed outside the workshop</span></label>
+        <p class="help" data-i18n="disk.filed_check_help">The filed tiles are not touched: they stay whole and in X-Plane. Building them again downloads their images again.</p>
+      </div>
       <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
       <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
       <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>
@@ -432,6 +456,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="library.delete_keep">Keep it</button>
       <button type="submit" class="btn btn-danger-solid" value="delete" data-i18n="library.delete_confirm">Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The Library's "File elsewhere…" confirmation (app.js confirmFiling), like the delete one. -->
+<dialog id="library-file-dialog" class="dialog" role="alertdialog" aria-labelledby="library-file-title" aria-describedby="library-file-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="library-file-title"></h2>
+    <div class="dialog-text" id="library-file-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.file_cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" value="file" id="library-file-go" data-i18n="library.file_go">File</button>
     </div>
   </form>
 </dialog>

@@ -20,6 +20,10 @@ __all__ = [
     "AirportArea",
     "CleanRequest",
     "DeleteRequest",
+    "FilePlanRequest",
+    "FileRequest",
+    "FileTile",
+    "FindRequest",
     "ImportRequest",
     "InstallRequest",
     "JobRequest",
@@ -249,6 +253,44 @@ class ForgetRequest(BaseModel):
     """The ``path`` of the library row, as ``GET /api/library`` gives it."""
 
 
+class FileTile(BaseModel):
+    """One tile of a filing: its pack's name and the ``path`` of its library row."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=256)
+    path: str = Field(max_length=4096)
+
+
+class FilePlanRequest(BaseModel):
+    """``POST /api/library/file-plan``: what filing these tiles into ``folder`` does."""
+
+    model_config = ConfigDict(extra="forbid")
+    tiles: list[FileTile] = Field(min_length=1, max_length=10_000)
+    folder: str = Field(min_length=1, max_length=4096)
+    xplane_dir: str | None = Field(default=None, max_length=1024)
+
+
+class FileRequest(BaseModel):
+    """``POST /api/library/{name}/file``: file one tile into ``folder``."""
+
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(max_length=4096)
+    """The ``path`` of the library row, as ``GET /api/library`` gives it."""
+    folder: str = Field(min_length=1, max_length=4096)
+    xplane_dir: str | None = Field(default=None, max_length=1024)
+
+
+class FindRequest(BaseModel):
+    """``POST /api/library/{name}/find``: find again a tile whose folder was moved by hand."""
+
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(max_length=4096)
+    """The ``path`` of the library row, as ``GET /api/library`` gives it: the folder gone."""
+    folder: str = Field(min_length=1, max_length=4096)
+    """The folder the user shows: the tile's own, or the one holding it."""
+    xplane_dir: str | None = Field(default=None, max_length=1024)
+
+
 class UninstallRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     xplane_dir: str | None = Field(default=None, max_length=1024)
@@ -265,6 +307,9 @@ class CleanRequest(BaseModel):
     """Also empty the elevation cells downloaded and kept: its own checkbox, since the relief of a
     square costs far less to fetch again than its imagery (a user found 1.4 GB left after emptying
     everything, 2026-09-18)."""
+    filed: bool = False
+    """Also delete the cache of the tiles filed outside the atelier: what only they need, and the
+    image pieces only they use (the atelier, step 5). The tiles themselves are not touched."""
 
 
 class DeleteRequest(BaseModel):

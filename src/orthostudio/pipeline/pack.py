@@ -17,6 +17,7 @@ a context variable set by :func:`pack_env`; the scheduler's ``run`` wrapper in
 from __future__ import annotations
 
 import contextlib
+import filecmp
 import json
 import os
 import re
@@ -29,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
@@ -39,8 +41,8 @@ from orthostudio.install import (
     default_library_path,
     install_pack,
     is_link,
+    is_xplane_dir,
     uninstall_pack,
-    xplane_running,
 )
 from orthostudio.install import packs as install_packs
 from orthostudio.install.library import pack_tile
@@ -71,9 +73,11 @@ __all__ = [
     "PackParams",
     "assemble_pack",
     "delete_receipt",
+    "find_again_receipt",
     "install_is_intact",
     "install_receipt",
     "is_installed",
+    "lays_the_same",
     "leave_overlay",
     "library_pack",
     "library_packs",
@@ -87,6 +91,7 @@ __all__ = [
     "read_manifest",
     "take_back_overlay",
     "uninstall_receipt",
+    "write_manifest",
     "write_pack",
 ]
 
@@ -104,6 +109,7 @@ CREDITS_NAME = "CREDITS.txt"
 RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
 DELETE_FORMAT = "osxp-delete-1"
+FIND_FORMAT = "osxp-find-1"
 PARKED_OVERLAY = "osxp-overlay.dsf.uninstalled"
 """Where :func:`uninstall_receipt` parks the tile's DSF of the shared overlay pack: inside the
 tile pack, which X-Plane no longer reads, and where :func:`install_receipt` finds it again."""
@@ -480,9 +486,11 @@ def _count(directory: Path, pattern: str) -> int:
     return sum(1 for _ in directory.glob(pattern)) if directory.is_dir() else 0
 
 
-def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
+def pack_is_intact(pack_dir: Path, manifest: PackManifest, *, with_overlay: bool = True) -> bool:
     """True when the pack directory still holds what the manifest lists (sizes and counts), and
-    holds that very assembly: the manifest written in it is this one.
+    holds that very assembly: the manifest written in it is this one. ``with_overlay=False``
+    leaves out the overlay DSF beside it: a tile moved by hand left it beside the folder it was
+    moved from (:func:`find_again_receipt`).
 
     Another build of the tile writes its own there, and counting files did not see it: coming back
     to a state built before finds its receipt in the store, so colours taken back to earlier ones
@@ -500,7 +508,8 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
         return False
     overlay = files.get("overlay")
     if (
-        overlay
+        with_overlay
+        and overlay
         and not (pack_dir / str(overlay)).is_file()
         and not (pack_dir / LEFT_OVERLAY).is_file()
     ):
@@ -512,6 +521,35 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest) -> bool:
         return read_manifest(pack_dir) == manifest
     except (OSError, ValueError, KeyError):  # absent, unreadable, or not a manifest of ours
         return False
+
+
+_LAID = ("dsf", "textures", "overlay")
+"""The artefacts whose files a pack holds; the others of its manifest say how they were made."""
+
+
+def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
+    """True when ``pack_dir`` holds, whole, a build laying the very files of ``manifest``: the
+    same DSF, textures and roads, at the same sizes and with the same decal. Only what its
+    manifest says of their making may differ: a neighbour built, or its cache freed, since gives
+    the masks another key for the same bytes (their ``nb_*`` inputs), and the DSF, the same,
+    leads to it (the atelier, 2026-10-06)."""
+    try:
+        own = read_manifest(pack_dir)
+    except (OSError, ValueError, KeyError):
+        return False
+    same = (own.tile, own.provider, own.zl, own.files) == (
+        manifest.tile,
+        manifest.provider,
+        manifest.zl,
+        manifest.files,
+    ) and all(own.artefacts.get(label) == manifest.artefacts.get(label) for label in _LAID)
+    return same and pack_is_intact(pack_dir, own, with_overlay=False)
+
+
+def write_manifest(pack_dir: Path, tile: TileRef, manifest: PackManifest) -> None:
+    """``manifest`` written in ``pack_dir``, with the imagery's credit it gives."""
+    atomic_write_text(Path(pack_dir) / MANIFEST_NAME, manifest.to_toml())
+    _write_credits(Path(pack_dir), tile, manifest.built)
 
 
 # -- provenance -> manifest ------------------------------------------------------------------
@@ -546,7 +584,10 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
     ``{"relief": base source, "relief_laid": overlays really laid}``, as the relief stage wrote
     them in its ``meta.json``; empty when there is none to read (a store cleaned since, or a test
     without one). An overlay asked for that had nothing on the square is not in ``relief_laid``:
-    that is how a lidar relief chosen where the lidar never flew shows for what it is.
+    that is how a lidar relief chosen where the lidar never flew shows for what it is. And
+    ``relief_own``, what became of each file of one's own found for the square (``Dem.own``):
+    the Library names the file, or says why it was not used (2026-10-05). A relief made before
+    has no such record, and the key is then left out.
     """
     if key is None:
         return {}
@@ -561,14 +602,26 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
             for ref in store.why(current).inputs:
                 if ref.key is None:
                     continue
-                if ref.name == "dem":
+                if ref.name == "dem" and _is_relief(store, ref.key):
                     meta = json.loads((store.path(ref.key) / "meta.json").read_text("utf-8"))
-                    return {
+                    facts: dict[str, Any] = {
                         "relief": str(meta.get("source", "")),
                         "relief_laid": [str(x) for x in meta.get("laid_over", [])],
                     }
+                    if isinstance(meta.get("own"), list):
+                        facts["relief_own"] = [dict(x) for x in meta["own"] if isinstance(x, dict)]
+                    return facts
                 todo.append(ref.key)
     return {}
+
+
+def _is_relief(store: Store, key: str) -> bool:
+    """Whether ``key`` is the relief stage's artefact. The mesh takes the tracing's under the name
+    ``dem`` too (``--dem vectors``, the default), and reading that one found no relief: every tile
+    built without sharper airports, whose DSF takes no tracing of its own, said "—" for its relief
+    and "none on this square" for files of one's own that were laid (a user, 2026-10-05)."""
+    info = store.info(key)
+    return info is not None and info.rule == DEM_RULE.name
 
 
 _UPSTREAM_NAMES = {"vectors": "vectors", "mesh": "mesh", "masks": "masks", "rasters": "xp12"}
@@ -638,8 +691,7 @@ def assemble_pack(
             **({"decal": decal, "decal_on_sea": decal_on_sea} if decal else {}),
         },
     )
-    atomic_write_text(files.pack_dir / MANIFEST_NAME, manifest.to_toml())
-    _write_credits(files.pack_dir, tile, facts)
+    write_manifest(files.pack_dir, tile, manifest)
     return manifest, files
 
 
@@ -676,6 +728,8 @@ def install_receipt(
     tile: TileRef,
     link: bool = True,
     library_path: Path | None = None,
+    reenable: bool = True,
+    overlay_off: bool = False,
 ) -> dict[str, Any]:
     """Install the tile pack (and the overlays pack next to it), register the library row.
 
@@ -686,9 +740,15 @@ def install_receipt(
     ``yOrthoStudio_Overlays_2``... when X-Plane already shows the overlays of another tiles folder,
     so that the tiles of both keep their roads, forests and buildings. A build of the same tile
     X-Plane shows from another folder is taken out first (:func:`_take_out_other_build`). A line of
-    the overlays pack the user disabled stays disabled. A tile built without an overlay takes the
-    overlays pack out of X-Plane when no tile's overlay is left in it (its link, when it leads to
-    that pack, and its line), and forgets its own overlay row.
+    the overlays pack the user disabled stays disabled, and ``overlay_off`` adds it disabled when
+    this install adds it: a tile found again or filed in another folder takes the state of the
+    overlays line it came from (a user of simHeaven X-World turns OrthoStudio XP's off, and they
+    came back on, 2026-10-05). A link name new to this folder's overlays pack starts its line the
+    same way, whatever line that name had for the folder it led to before: the roads of a new
+    folder took a disabled line over, and were not drawn (found on the owner's Mac, 2026-10-06).
+    A tile built without an overlay takes the overlays pack out of X-Plane when no tile's overlay
+    is left in it (its link, when it leads to that pack, and its line), and forgets its own
+    overlay row.
     """
     pack_dir = Path(pack_dir)
     custom_scenery = Path(custom_scenery)
@@ -700,13 +760,13 @@ def install_receipt(
         overlay_pack = pack_dir.parent / OVERLAY_PACK
         has_overlay = bool(manifest.files.get("overlay"))
         overlay_removed: str | None = None
+        taken_anew = False
         if has_overlay:
             _unpark_overlay(pack_dir, tile)
             if (overlay_pack / "Earth nav data").is_dir():
+                shown = overlay_link(custom_scenery, overlay_pack)
                 # a copy keeps the pack's own name, as it always did
-                where = overlay_link(custom_scenery, overlay_pack) or _new_overlay_link(
-                    custom_scenery
-                )
+                where = shown or _new_overlay_link(custom_scenery)
                 overlay_target = install_pack(
                     overlay_pack,
                     custom_scenery,
@@ -714,6 +774,7 @@ def install_receipt(
                     update_ini=False,
                     name=where.name if link else None,
                 )
+                taken_anew = shown is None
         else:
             shared = overlay_link(custom_scenery, overlay_pack)
             empty = not any((overlay_pack / "Earth nav data").glob("*/*.dsf"))
@@ -728,12 +789,23 @@ def install_receipt(
         ini = custom_scenery / SCENERY_PACKS_INI
         packs = SceneryPacks.load(ini)
         # Above an imported tile of the same square, if one is listed: this one is drawn.
+        # ``reenable=False``: a tile found again keeps the line the user disabled
         changed = packs.ensure(
-            target.name, kind=pack_kind(target.name), above=IMPORTED_PACK_PREFIX + tile.name
+            target.name,
+            kind=pack_kind(target.name),
+            above=IMPORTED_PACK_PREFIX + tile.name,
+            reenable=reenable,
         )
         if overlay_target is not None:
             name = overlay_target.name
-            changed = packs.ensure(name, kind=pack_kind(name), reenable=False) or changed
+            # a line the name had before is the other folder's: it starts again as a new one
+            new_line = taken_anew or packs.find(name) is None
+            changed = (
+                packs.ensure(name, kind=pack_kind(name), reenable=new_line and not overlay_off)
+                or changed
+            )
+            if new_line and overlay_off:
+                changed = packs.disable(name) or changed
         if overlay_removed is not None:
             changed = packs.remove(overlay_removed) or changed
         if changed:
@@ -1487,6 +1559,202 @@ def install_is_intact(receipt: dict[str, Any]) -> bool:
     return all(name in listed for name in names)
 
 
+# -- a tile found again (the atelier, step 2) ----------------------------------------------------
+
+
+def find_again_receipt(
+    entry: LibraryEntry,
+    chosen: Path,
+    *,
+    custom_sceneries: Iterable[Path],
+    library_path: Path | None = None,
+) -> dict[str, Any]:
+    """Find again a tile OrthoStudio XP built whose folder was moved by hand: ``entry`` is its
+    Library row, whose folder is gone, and ``chosen`` the folder the user shows, the tile's own or
+    the one holding it (the atelier, step 2, 2026-10-05).
+
+    Nothing of the tile moves. Its folder must keep its name and hold that very build, the
+    manifest's tile and keys being the row's, with every file the manifest lists: else
+    ``SYS_TILE_NOT_IN_FOLDER``, ``SYS_TILE_OTHER_BUILD`` or ``SYS_TILE_INCOMPLETE``, and nothing
+    changes. X-Plane must not be running (``XP_RUNNING``): its links never change while it runs.
+    Its roads, forests and buildings, left in the overlays pack beside the folder it was moved
+    from, are parked in it (:func:`_bring_overlay`); then every X-Plane whose link leads to the old
+    folder is given the found one by :func:`install_receipt`, which puts the overlay beside it
+    (a new overlays line taking the state of the one it came from), and the Library row follows.
+    Asked again after a stop half way, it finishes what is left.
+    """
+    old = Path(entry.path)
+    tile = entry.tile
+    pack = _found_pack(Path(chosen), old.name, tile)
+    manifest = read_manifest(pack)
+    context = {"tile": tile.name, "folder": str(pack)}
+    if pack.parent.name == "Custom Scenery" and is_xplane_dir(pack.parent.parent):
+        # X-Plane reads OrthoStudio XP's tiles through a link, and its overlays beside it: put
+        # there, the tile lost its roads, and could no longer be taken out (a review, 2026-10-05)
+        raise OsxpError("SYS_TILE_IN_CUSTOM_SCENERY", context=context)
+    if entry.keys is not None and manifest.keys != entry.keys:
+        raise OsxpError("SYS_TILE_OTHER_BUILD", context=context)
+    if not pack_is_intact(pack, manifest, with_overlay=False):
+        raise OsxpError("SYS_TILE_INCOMPLETE", context=context)
+    if install_packs.xplane_running():
+        raise OsxpError(
+            "XP_RUNNING",
+            message="X-Plane is running, and its links never change while it runs: nothing was "
+            "changed.",
+            remedy="Quit X-Plane, then find the tile again.",
+        )
+    with _INSTALL_LOCK:
+        _bring_overlay(old, pack, tile, manifest)
+    # the X-Planes that showed it; asked again after a stop, those already led to the found folder
+    # too, whose install is finished (its overlay put beside it)
+    shown = [
+        Path(cs)
+        for cs in custom_sceneries
+        if links_to(Path(cs) / old.name, old) or links_to(Path(cs) / old.name, pack)
+    ]
+    behind = old.parent / OVERLAY_PACK
+    for cs in shown:
+        off = _overlay_line_off(cs, behind)
+        install_receipt(
+            pack, cs, tile=tile, library_path=library_path, reenable=False, overlay_off=off
+        )
+        # a tidying up never fails the find; scenery_packs.ini edited under the lock of every
+        # install, or an install saving meanwhile lost its line (a review, 2026-10-06)
+        with contextlib.suppress(OsxpError, OSError), _INSTALL_LOCK:
+            _let_go_of_overlays_out_of_reach(cs, behind)
+    with Library(library_path) as lib:
+        if not shown:  # in no X-Plane: the row alone follows
+            lib.register(
+                tile, entry.provider, entry.zl, pack, entry.built_by, entry.keys, keep_built_by=True
+            )
+        lib.forget(tile, kind="ortho", path=old)
+        if not (behind / tile.dsf_relpath).is_file():
+            lib.forget(tile, kind="overlay", path=behind)
+    return {
+        "format": FIND_FORMAT,
+        "tile": tile.name,
+        "from": str(old),
+        "to": str(pack),
+        "xplanes": [str(cs) for cs in shown],
+        # a tile whose roads, forests and buildings are nowhere: built again, it has them back
+        "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
+    }
+
+
+def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -> None:
+    """The link of ``overlay_pack`` and its line out of this X-Plane, when that overlays pack
+    cannot be reached (its disk away, or deleted) and no tile link leads into its folder any more.
+    A tile found again elsewhere while the disk of the folder it left was away left its roads
+    there, and the day that disk came back X-Plane drew them twice (found on the owner's tiles,
+    2026-10-06). A tile of that folder still in X-Plane keeps it: its own roads are there. A line
+    the user disabled goes too: the link kept with it, X-Plane started without the disk dropped the
+    line and gave it back enabled once the disk was back (two reviews, 2026-10-06); the line kept
+    alone, the next overlays pack taking that name kept it off only when that name was the first
+    one free, and a name taken anew starts its line again (:func:`install_receipt`)."""
+    cs = Path(custom_scenery)
+    link = overlay_link(cs, overlay_pack)
+    if link is None or os.path.isdir(overlay_pack):
+        return
+    folder = os.path.realpath(Path(overlay_pack).parent)
+    if any(
+        name.startswith(PACK_PREFIX)
+        and is_link(cs / name)
+        and os.path.dirname(os.path.realpath(cs / name)) == folder
+        for name in _entry_names(cs)
+    ):
+        return
+    uninstall_pack(link.name, cs)
+
+
+def let_go_of_roads(folder: Path, tile: TileRef, custom_scenery: Path | None) -> None:
+    """The roads, forests and buildings of ``tile`` taken out of the overlays pack beside
+    ``folder``, the tile's folder gone from a disk that is here: built again in the workshop, the
+    tile has its own there, and X-Plane drew both, roads flickering, trees and buildings twice,
+    while the page could say "no roads" (found on the owner's Mac and Shadow, 2026-10-06). An
+    overlays pack left without any tile's roads is taken out of ``custom_scenery``, its link and
+    its line, as when a tile is uninstalled (:func:`uninstall_receipt`)."""
+    overlay_dir = Path(folder).parent / OVERLAY_PACK
+    dsf = overlay_dir / tile.dsf_relpath
+    if not dsf.is_file():
+        return
+    with _INSTALL_LOCK:
+        dsf.unlink()
+        if custom_scenery is None:
+            return
+        cs = Path(custom_scenery)
+        shared = overlay_link(cs, overlay_dir)
+        empty = not any((overlay_dir / "Earth nav data").glob("*/*.dsf"))
+        if shared is None or not empty or not uninstall_pack(shared.name, cs, update_ini=False):
+            return
+        ini = cs / SCENERY_PACKS_INI
+        if ini.is_file():
+            packs = SceneryPacks.load(ini)
+            if packs.remove(shared.name):
+                packs.save(ini, backup=True)
+
+
+def _overlay_line_off(custom_scenery: Path, overlay_pack: Path) -> bool:
+    """Whether the line of the link to ``overlay_pack`` is disabled in this X-Plane's
+    ``scenery_packs.ini``: the overlays line a tile comes from, whose state the line of the
+    overlays pack it goes to takes when that one is new."""
+    link = overlay_link(custom_scenery, overlay_pack)
+    if link is None:
+        return False
+    line = SceneryPacks.load(custom_scenery / SCENERY_PACKS_INI).find(link.name)
+    return line is not None and not line.enabled
+
+
+def _own_overlay(pack: Path, tile: TileRef) -> Path | None:
+    """The tile's overlay DSF when it is with ``pack``: parked in it, in the overlays pack beside
+    it, or left to another pack's overlays (then kept in it too); else ``None``."""
+    own = (
+        pack / PARKED_OVERLAY,
+        pack.parent / OVERLAY_PACK / tile.dsf_relpath,
+        pack / LEFT_OVERLAY,
+    )
+    return next((p for p in own if p.is_file()), None)
+
+
+def _found_pack(chosen: Path, name: str, tile: TileRef) -> Path:
+    """The folder of ``tile`` the user shows: ``chosen`` itself or the folder of that ``name`` in
+    it, holding a manifest of that tile. Its name is kept: X-Plane's link and the Library both go
+    by it."""
+    for candidate in (chosen, chosen / name):
+        if candidate.name != name or not (candidate / MANIFEST_NAME).is_file():
+            continue
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+            if read_manifest(candidate).tile == tile.name:
+                return candidate
+    raise OsxpError(
+        "SYS_TILE_NOT_IN_FOLDER", context={"tile": tile.name, "folder": str(chosen), "name": name}
+    )
+
+
+def _bring_overlay(old: Path, pack: Path, tile: TileRef, manifest: PackManifest) -> None:
+    """Park in ``pack`` the tile's DSF of the overlays pack beside ``old``, the folder it was moved
+    from by hand, as :func:`uninstall_receipt` parks it. A tile moved by hand takes its folder and
+    leaves its roads, forests and buildings behind, and taken out of X-Plane later from its new
+    place it would have left them drawn. Copied, then removed: the two folders may be on two
+    disks. Nothing when the tile has none or none was left behind; when it has its own already
+    (parked, beside its new folder, or left to another pack's overlays), the one behind goes if
+    it is the same file, a copy made before a stop, which X-Plane would otherwise draw twice."""
+    if not manifest.files.get("overlay"):
+        return
+    behind = old.parent / OVERLAY_PACK / tile.dsf_relpath
+    if not behind.is_file():
+        return
+    own = _own_overlay(pack, tile)
+    if own is not None:
+        # the same file seen through a link is the only one there is: it stays
+        if not _same_file(behind, own) and filecmp.cmp(behind, own, shallow=False):
+            behind.unlink()
+        return
+    part = pack / (PARKED_OVERLAY + ".part")
+    shutil.copy2(behind, part)
+    os.replace(part, pack / PARKED_OVERLAY)
+    behind.unlink()
+
+
 # -- rules ---------------------------------------------------------------------------------------
 
 
@@ -1529,7 +1797,7 @@ def _tile_pack(ctx: RunContext) -> None:
     params = ctx.params
     assert isinstance(params, PackParams)
     tile = TileRef.parse(params.tile)
-    _refuse_rewrite_under_running_xplane(env, tile)
+    _refuse_rewrite_under_running_xplane(env, tile, Path(params.out_dir) / pack_dir_name(tile))
     # Its textures and .ter files were not forced to disk one by one (graph/store.py
     # DEFERRED_RULES): they are, as a group, before X-Plane is handed any of them. One another
     # program holds is left to the next build's check, and the tile goes on.
@@ -1557,18 +1825,21 @@ def _tile_pack(ctx: RunContext) -> None:
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 
 
-def _refuse_rewrite_under_running_xplane(env: PackEnv, tile: TileRef) -> None:
-    """Windows only: a DSF or DDS of an installed pack cannot be replaced while X-Plane holds
-    it open (``os.replace`` -> ``PermissionError``); refuse before writing anything."""
-    if os.name != "nt" or env.custom_scenery is None:
+def _refuse_rewrite_under_running_xplane(env: PackEnv, tile: TileRef, pack_dir: Path) -> None:
+    """A pack X-Plane shows is not rewritten in its place while X-Plane runs, on every system:
+    Windows will not replace a DSF or DDS X-Plane holds open (``os.replace`` ->
+    ``PermissionError``), and elsewhere X-Plane read old and new files mixed. Refused before
+    anything is written, what the build made before is kept for the next one
+    (``SYS_REBUILD_XP_RUNNING``). It was Windows only, and looked at the tile's link alone: a tile
+    filed elsewhere, whose new version is built in the workshop beside what X-Plane reads and only
+    put in place once X-Plane is closed (``SYS_PUT_BACK_XP_RUNNING``), was refused there before
+    it was built, with an installation's words (found on the owner's Shadow, 2026-10-06)."""
+    if env.custom_scenery is None:
         return
-    if (Path(env.custom_scenery) / pack_dir_name(tile)).exists() and xplane_running():
-        raise OsxpError(
-            "XP_RUNNING",
-            message="X-Plane is running and this tile is installed: its files cannot be "
-            "replaced now.",
-            remedy="Quit X-Plane, then run osxp build again.",
-        )
+    if links_to(Path(env.custom_scenery) / pack_dir_name(tile), pack_dir) and (
+        install_packs.xplane_running()
+    ):
+        raise OsxpError("SYS_REBUILD_XP_RUNNING", context={"tile": tile.name})
 
 
 def _tile_install(ctx: RunContext) -> None:

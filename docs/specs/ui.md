@@ -33,7 +33,7 @@ Overpass).
 
 Language: **English by default, whatever the browser's language** (the user's decision,
 `map-zones.md` 7.0.7); the switch in the top bar offers French and remembers a choice under
-`localStorage["orthostudio.language"]` (the former key `orthostudio.lang` was written from the
+`localStorage["osxp.language"]` (the former key `osxp.lang` was written from the
 browser's language on every visit, so it is not read). `index.html` carries English text. Every
 visible string goes through `t(key)`; keys are literal so the test can check that each one exists in
 both languages, and dynamic keys go through `tOpt()` or a table of literal calls.
@@ -90,6 +90,13 @@ first, saved with the rest, and the user wanted it at hand and at once. The cont
 the map do not grow: that is the zoom's work. In a browser too: the page draws its text itself.
 
 ## 2. The four screens
+
+Each screen keeps its own scroll position, as tabs do (`app.js` `showScreen`, `screenScroll`): the
+window scrolls, not the screens, so a screen opened where the last one was left, which a user
+noticed once a screen had been scrolled two or three times (2026-10-07). The position is written
+down as a screen is left, while it still shows, and given back once the screen shown is drawn;
+the screen shown again from its own button stays where it is. Works opened on the build just
+started shows that build from its top.
 
 ### 2.1 Plan
 
@@ -716,17 +723,94 @@ table: it ran the whole list's work every 5 s, *Free space*'s measure included, 
 takes minutes over, so the measures piled up until nothing answered, and the Plan's colour sliders
 were rebuilt under the hand (review of 0.1.19, 2026-09-29).
 
+**Where each tile is** (the atelier, step 1, 2026-10-05; TinkerNZ files hundreds of tiles by area,
+on several disks): when the tiles are in more than one folder, each tile's name has under it the
+folder its pack is in (`tileFolder`, `.tile-where`): *Workshop* (`library.folder_atelier`) for the
+atelier, else the folder written with `homely` (`~/Ortho4XP/Tiles`; a drive's root as `E:\`, not
+`E:`, which Windows reads as that drive's current folder). The atelier is the data folder's
+`tiles` in two forms (`atelierFolders`): as Settings name it (`status.data_dir.path`) and with its
+links followed (`status.data_dir.tiles_real`), under which a tile built without being installed is
+listed; a data folder reached through a link showed that tile elsewhere. Folders compare by their
+text: either separator, a trailing one or not, and the letters' case aside but on Linux; two names
+of one folder through a link other than the atelier's are two folders. *Folder* beside the search
+(`#library-folder-wrap`, `#library-folder`, `libraryFolders`) lists *All folders*, then *Workshop*,
+then the others by name, each with how many tiles it holds (an overlay row is not a tile); its
+choices are made again only when they change (a count, a folder, the language), the Library being
+drawn again every 5 s while sizes are measured, which closed an open list under the hand
+(`renderLibraryFolders`). Until the status says where the atelier is, no folder is told, under the
+tiles or in the filter (`atelierFolders` null): a page opened on the Library drew it before the
+status came, and the atelier's own tiles read for that moment as their full path, the user's name
+in it. One chosen shows its tiles only, with the search (`libraryView`), and "{n} of {total}
+tiles." says so; a search that finds no tile in it but finds some in other folders says "No tile
+of this folder matches; {n} in other folders." A folder gone from the list (its tiles deleted)
+puts the choice back to all. The choice is kept for the session only. Nothing is read on the
+disk: the rows say where each pack is.
+
+**Tiles filed elsewhere** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
+several disks): a box before the name of each tile OrthoStudio XP built that is where the Library
+says and not in a build (`pickBox`), in a narrow column of its own, the table's first
+(`.library-pick-cell`, its header named for screen readers only), so that the names line up with
+or without a box (a user, 2026-10-07); when the folder under the name makes the row two lines
+high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
+search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
+affichées »), acting on the rows
+the search and the folder leave, how many tiles are picked and their size, and *File elsewhere…*,
+its box over the rows' boxes; while a build runs or waits the button is disabled, its tooltip
+saying that tiles are filed between builds (`library.file_wait_build`). The folder dialog asks
+where; `POST
+/api/library/file-plan` says what each tile does; a modal question (`#library-file-dialog`,
+`filingQuestion`) says how many move (one disk, at once), how many are copied and read back (the
+bytes, the free space), how many a whole copy there is taken for, and which stay and why (already
+there, not whole and to build again, another folder of the name, built by Ortho4XP, not found, in
+a build), that the cache stays
+in the workshop and that X-Plane must stay closed; with no room it files nothing. *File* sends the
+tiles one at a time (`runFiling`, `POST /api/library/{name}/file`); the line `#library-filing`
+says which one of how many and how far (`GET /api/library/filing` every second, `filingLine`),
+with *Stop* (`POST /api/library/filing/stop`: the tile under way stays where it was, the next ones
+wait). Meanwhile the rows' buttons are disabled. At the end a toast says how many went where
+(`filedMessage`), and a refusal is an error card in the Library's own words; a tile whose old
+folder a file kept (the receipt's `left`) gets a notice that says where that folder is, for the
+user to delete it (`filedLeftText`); the picks are let go, and those a row can no longer take are
+let go at each drawing. A build asked for during a filing, or a Library change refused while a
+build, a delete or a filing runs, says so in words that cover each (`plan.busy_deleting`,
+`library.err_busy`), never "delete the tile again" (a review, 2026-10-05).
+
+**A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
+Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
+its own (one more takes too much room); the cell's tooltip says how far the copy is
+(`putBackWords`: « retour à sa place : copie, 1,2 Go sur 4,1 Go », then « relecture »), the line
+under the tile's steps being set aside since 2026-10-02. The step is declared with the build's nodes, weighing its copy: the job's bar and
+time left count it, and the tile is in the build until it is back. A tile whose folder is on a
+disk away fails there at once, with its words (`SYS_TILE_DISK_ABSENT`), and nothing of it reads
+done; X-Plane running at the put back has its own words (`SYS_PUT_BACK_XP_RUNNING`: quit X-Plane,
+build the tile again).
+
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
-shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list
-of the Library asked for it, from the Plan at the start too): the data used by the tiles on
-this computer, the data no tile needs any more, the downloaded images, the map background and the
-**downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a modal dialog that
-says what goes and how much (Escape keeps everything), with **two** checkboxes, one for the
-downloaded images and one for the relief: a square of relief is 40 MB from Copernicus against
-800 MB of imagery at ZL16, and comes back much faster, so the choices are separate. The relief was
-counted by nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is
-disabled while a build runs and when there is nothing to free, and ends with a toast of what came
-back. A 409 `SYS_BUSY` shows as a card in the Library's words.
+shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list of
+the Library asked for it, from the Plan at the start too): the data used by the tiles on this
+computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
+they need and the image pieces only they use, all of it but their meshes, which their neighbours'
+masks read (counted with the data used by the tiles, whose tooltip says so; a mesh goes with its
+tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
+their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
+there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
+so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the data
+no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
+line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
+only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
+background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a
+modal dialog that says what goes and how much (Escape keeps everything), with a checkbox per choice,
+each freeing its own line: the cache of the filed tiles (shown with its line; its help says the
+tiles stay whole and in X-Plane, and building them again downloads their images again), the
+downloaded images, and the relief: a square of relief is 40 MB from Copernicus against 800 MB of
+imagery at ZL16, and comes back much faster, so the choices are separate. The relief was counted by
+nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
+while a build runs, while this page files tiles (the engine refuses meanwhile: a filing moves a tile
+out of the atelier) and when there is nothing to free, and ends with a toast of what came back. A
+409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings. A language
+switch writes its lines again from the last measure, measuring nothing (`rerenderAll` calls
+`renderDisk`): they stayed in the former language, under a title in the new one, until the next
+measure (2026-10-05).
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
@@ -740,11 +824,11 @@ an osxp build of the same tile are two rows.
 
 | Column | Content |
 |---|---|
-| Tile | `+43+005`, the pack's `path` in the `title` tooltip; a *files missing* pill when `present === false` |
+| Tile | `+43+005`, the pack's `path` in the `title` tooltip; when `present === false`, a *Not found* pill, or *Disk not connected* when `disk_absent` (its disk is away: plugged in again, the tile is back by itself) |
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
-| Built by | *OrthoStudio XP* / *Ortho4XP* |
+| Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
 | (actions) | two columns, so that the buttons line up from row to row |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
@@ -779,9 +863,24 @@ ambiguous when the tile was built into two output folders):
   (user request, 2026-09-21): the Library forgets the tile and its files stay where Ortho4XP put
   them; a toast says so. Disabled while the tile is in X-Plane, with a tooltip saying to remove it
   from X-Plane first: off the list, the Library could no longer take it out;
-- files missing (`present === false`): no X-Plane button, only *Delete…* (OrthoStudio XP rows); the
-  engine then forgets the tile. An imported tile still in X-Plane keeps *Remove from X-Plane*, its
-  way to *Remove from the list*.
+- not found (`present === false`), or on a disk not connected: *Find again…* in the X-Plane
+  column for a tile OrthoStudio XP built (the atelier, step 2, 2026-10-05; a user files his tiles by area with the
+  Finder). The folder dialog (`chooseFolder`, opening where the tile was when that folder is still
+  there) asks for the tile's folder or the one holding it, then `POST /api/library/{name}/find`
+  with `{path, folder}`: the Library row and every X-Plane that showed the tile follow, and a
+  toast says where it was found ("+43+005 found again in ~/Tiles/Alps."), adding that a build
+  gives back its roads and forests when they were found nowhere (`overlay_lost`). Refusals have
+  the Library's own words (`LIBRARY_REFUSALS`): not that tile's folder (its name included), another
+  build, a copy not whole, a folder inside X-Plane's Custom Scenery, X-Plane running, the tile back
+  in its place meanwhile. Its tooltip says X-Plane must be closed. An imported tile says to import
+  again the folder it was put in. A disk not connected comes back by itself once plugged in, which
+  its tooltip says, with *Find again…* for a tile put on another disk (a disk renamed, or left for
+  another); it also says to plug it in before starting X-Plane, which, started without it, takes the
+  tile off `scenery_packs.ini` and later puts it back at the bottom, under another pack's mesh
+  (measured on the owner's Mac, 2026-10-06). *Delete…* stays for OrthoStudio XP rows (the engine
+  then forgets the tile); on a disk not connected its question says the files stay on that disk and
+  that plugging it in will not bring the tile back. An imported tile still in X-Plane keeps *Remove
+  from X-Plane*, its way to *Remove from the list*.
 
 While a request runs, the row's buttons are disabled (and the row `aria-busy`), across
 re-renders too, so a double click sends nothing twice. When the engine answers, success or
@@ -1108,7 +1207,9 @@ centre at ZL12 and ZL16.
 zones too, and the engine's map route serves nothing deeper (`MAX_NATIVE_ZOOM`). It went one step
 further, to 20, where every source was only enlarged (a user, 2026-09-25).
 
-**One yellow line when the source has nothing here** (`#map-notice`, at the bottom of the map).
+**One yellow line when the source has nothing here** (`#map-notice`, at the bottom right of the
+map, above the credits, as wide as its words up to what the legend leaves: centred, a longer
+line ran under the legend, 2026-10-07).
 It is decided once per view, when Leaflet has every tile of it back, arrived or failed (`load`),
 and nowhere else, so it is the same at every zoom and in every window (`imageryNotice`):
 
@@ -1120,6 +1221,14 @@ and nowhere else, so it is the same at every zoom and in every window (`imageryN
 2. otherwise, not one tile of the view brought an image: "No imagery received from {provider}
    for this view." Esri Clarity has ZL19 over New York and nothing past ZL18 over Lyon or Paris
    (the engine turns its 404 into a 204, an error for an `<img>`), and a source may be down.
+3. when not one image came, one tile of the view is asked again through the page's `api()`
+   (`tileRefusal`), which reads what an `<img>` cannot: if the engine's answer is its 502
+   carrying `NET_FORBIDDEN`, what it makes of a 403 from the source (`tileRefused`), line 2
+   becomes "{provider} refuses your connection (access denied): choose another source
+   meanwhile." Esri's network answered "Access Denied" to a user's address for two days, the day
+   after he had built 37 tiles at ZL17 from it in an afternoon, and the map said only that no
+   imagery came (2026-10-07). It is said only while that view of that source is still the one
+   on screen; any other answer leaves line 2 as it is.
 
 A new view (`loading`) clears the line until it is drawn. The rule used to count failed tiles and
 speak at six: at the deepest zoom a view holds four, so a switch from Bing to Clarity there left
@@ -1292,8 +1401,9 @@ at all is still the *stopped* screen, through the presence ping.
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
 like the other folders of Settings). It says what the files must be called, that subfolders are
-searched and any resolution read, and that the relief chosen above answers wherever the folder has
-nothing. A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
+searched and any resolution read, and the rule: a file is used where it is at least as fine as the
+relief chosen above, which answers wherever the folder has nothing or only a coarser file (it said
+"whatever its resolution", and a user saw two reliefs come out of one folder, 2026-10-05). A user of the X-Plane.Org page has the lidar models of Europe by the hundred and asked to
 name the folder once (`dem.md` 3.0a).
 
 **Paths with a tilde** (2026-09-19): wherever the page *reads out* a folder (this bar, the

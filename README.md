@@ -46,10 +46,13 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   Ortho4XP setting still there under "For experts" with a plain label; every number says first
   what it may take and what it is by default.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
-  built with, found with a search and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
-  flew says so), its zones and its patches; the Plan says it too, over a tile and under the
-  squares chosen. Remove a tile from
-  X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
+  built with, found with a search, filtered by the folder it is in and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
+  flew says so, and a file of your own is named, or why it was not used), its zones and its patches; the Plan says it too, over a tile and under the
+  squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
+  following them; built again, a filed tile goes back to its folder; the cache the workshop keeps
+  for the tiles filed elsewhere can be freed on its own, the tiles staying whole; a tile you moved
+  by hand is found again where you put it ([docs/workshop.md](docs/workshop.md)).
+  Remove a tile from X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
   and free that space in one click, the downloaded relief and the map background included. Tiles
   imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and
   OrthoStudio XP never deletes them: *Remove from the
@@ -98,9 +101,10 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
 - **A cache.** Every step's result is kept under a fingerprint of what produced it: an unchanged
   tile builds again in a second, a new zone rebuilds only what it touches, and imagery is never
   downloaded twice. `osxp clean --all` gives the space back when you want it.
-- **Your disk of choice.** The tiles, the cache and the downloaded imagery can go to a folder on an
-  external disk, chosen in Settings; an unplugged disk is said as such, and nothing is written in
-  its place on the computer's own disk.
+- **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings,
+  with the cache and the downloaded imagery, on an external disk if you like; then you file them
+  wherever you want ([docs/workshop.md](docs/workshop.md)). An unplugged disk is said as such, and
+  nothing is written in its place on the computer's own disk.
 - **Text as large as you need.** `− 100 % +` at the foot of the window zooms the whole page (Ctrl
   or ⌘ with plus, minus and 0 too), and `Aa` beside it makes the text alone larger, at once, on
   a big or far screen. The window opens where you left it, the size it had.
@@ -279,12 +283,20 @@ uv run osxp uninstall +46+006 --delete          # deleted for good
 uv run osxp clean --all                         # give back all the space OrthoStudio XP can
 ```
 
-## Reporting a problem
+## Reporting a problem, asking for a feature
 
-Open an issue in this repository ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)):
-its form asks for what helps find the cause, that is the version, your system, what you did and
-what you saw, the tile, a screenshot, and the log `serve.log`. Without a GitHub account, the
-comments on OrthoStudio XP's page on X-Plane.Org are read too.
+- **A problem**: open an issue in this repository
+  ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)). Its form asks for
+  what helps find the cause: the version, your system, what you did and what you saw, the tile, a
+  screenshot, and the log `serve.log`. The issues are kept for what goes wrong.
+- **An idea or a request**: start a discussion in
+  [Ideas](https://github.com/radioharris/orthostudio-xp/discussions/categories/ideas). Its form asks
+  what you would like, why, how you do it today, and examples. Others can vote for it and add what
+  they need, so the ideas with the most votes are the roadmap's starting point.
+- **A question**: ask it in
+  [Q&A](https://github.com/radioharris/orthostudio-xp/discussions/categories/q-a).
+
+Without a GitHub account, the comments on OrthoStudio XP's page on X-Plane.Org are read too.
 
 ## Imagery and responsible use
 

@@ -521,9 +521,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .map-banner.flash { animation: banner-flash 0.45s ease-in-out 2; }
 @keyframes banner-flash { 50% { box-shadow: 0 0 0 4px var(--accent); } }
 .map-hint { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+/* At the bottom right, above the credits, as wide as its words up to what the legend leaves (the
+   legend takes at most 45 % at the bottom left): centred, a longer notice ran under the legend,
+   and `left: 50%` held its box to half the map, a refusal on seven lines (2026-10-07). */
 .map-notice {
-  position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 2; margin: 0;
-  max-width: calc(100% - 40px); padding: 4px 10px; border-radius: var(--radius); font-size: 12px;
+  position: absolute; bottom: 34px; right: 10px; z-index: 2; margin: 0;
+  width: max-content; max-width: calc(55% - 30px); padding: 4px 10px; border-radius: var(--radius); font-size: 12px;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn);
 }
 .map-wrap.is-drawing::after {
@@ -808,8 +811,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A header with an explanation in its tooltip (Size) says so. */
 .library-table th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 /* A tile's pills go under its name when the window is narrow, rather than the table growing a
-   scroll bar at the smallest window (1024px). */
-.library-table td:first-child { white-space: normal; }
+   scroll bar at the smallest window (1024px); the rows that span the table wrap too. */
+.library-table td.library-tile, .library-table td[colspan] { white-space: normal; }
+/* the box that picks a tile, in a narrow column of its own before the name, so that the names line
+   up with or without one (a user, 2026-10-07); on the name's line when the folder under the name
+   makes the row two lines high, not between the two */
+.library-table .library-pick-cell { width: 1%; padding-right: 0; }
+.library-table td.library-pick-cell.is-top { vertical-align: top; }
 .library-table td.library-action { width: 1%; padding-left: 4px; }
 .library-table td.library-action:last-child { padding-right: 10px; }
 .library-action .btn-danger:hover { background: var(--fail-soft); }
@@ -1152,6 +1160,23 @@ html.in-frame .statusbar { padding-right: var(--frame-foot-w, 236px); min-height
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .settings-search-input:focus-visible, .works-search-input:focus-visible, .library-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* the search and the folder filter side by side, one above the other in a narrow window */
+.library-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) var(--block-gap); }
+.library-filters .library-search-input { flex: 1 1 260px; }
+.library-folder { display: inline-flex; align-items: center; gap: var(--label-gap); min-width: 0; }
+/* the page's label and the search field's height (a review, 2026-10-05) */
+.library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }
+.library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }
+/* the tiles picked to be filed elsewhere, and the filing under way (the atelier, step 3) */
+.library-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) var(--block-gap); margin: var(--section-gap) 0 var(--block-gap); }
+/* its box over the rows' boxes: the table's border and its cells' left padding */
+.library-pick-all { display: inline-flex; align-items: center; gap: var(--label-gap); padding-left: 9px; font-size: var(--fs-2); color: var(--fg-2); }
+.library-pick-all input { margin: 0; }
+.library-pick-count { font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.library-filing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); margin: 0 0 var(--block-gap); font-variant-numeric: tabular-nums; }
+.table .tile-pick { margin: 0; vertical-align: middle; }
+/* the folder a tile is in, under its name */
+.table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }
 .settings-search-note, .works-search-note, .library-search-note { margin: var(--help-gap) 0 0; }
 .settings-search-note.is-warn, .works-search-note.is-warn, .library-search-note.is-warn { color: var(--warn); }
 /* the Library's headers sort their column (a user, 2026-09-26): the header's own words, a button

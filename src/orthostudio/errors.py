@@ -1035,6 +1035,112 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Nothing was deleted. Uninstall takes the tile out of X-Plane without deleting anything; "
         "to delete the folder itself, delete it by hand.",
     ),
+    _spec(
+        "SYS_FOLDER_GONE",
+        _B,
+        _S,
+        "{folder} is not there.",
+        "Nothing was changed. Choose the folder again.",
+    ),
+    _spec(
+        "SYS_FOLDER_IN_CUSTOM_SCENERY",
+        _B,
+        _S,
+        "{folder} is inside X-Plane's Custom Scenery.",
+        "Nothing was changed. Choose a folder outside X-Plane: X-Plane reads OrthoStudio XP's "
+        "tiles through a link.",
+    ),
+    _spec(
+        "SYS_FOLDER_IN_TILE",
+        _B,
+        _S,
+        "{folder} is inside the folder of tile {tile}: deleting that tile would take it away.",
+        "Nothing was changed. Choose a folder outside every tile's folder.",
+    ),
+    _spec(
+        "SYS_FOLDER_IS_ATELIER",
+        _B,
+        _S,
+        "{folder} is the workshop, or one of its folders: tiles are filed out of it, not into it.",
+        "Nothing was changed. Choose another folder.",
+    ),
+    _spec(
+        "SYS_TILE_COPY_DIFFERS",
+        _B,
+        _S,
+        "The copy of {file} for tile {tile} did not give back what was read: the copy was taken "
+        "away, and the tile is where it was.",
+        "Check the disk of that folder, then try again.",
+    ),
+    _spec(
+        "SYS_TILE_NAME_TAKEN",
+        _B,
+        _S,
+        "{folder} is already there, and it is not this tile's build, whole.",
+        "Nothing was changed. Choose another folder, or move or delete that one first.",
+    ),
+    _spec(
+        "SYS_TILE_DISK_ABSENT",
+        _B,
+        _S,
+        "The folder tile {tile} is filed in, {folder}, is not there: its disk is likely not "
+        "connected. The tile was not put there.",
+        "Connect its disk, then build the tile again; or take it out of the selection.",
+    ),
+    _spec(
+        "SYS_PUT_BACK_XP_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running: the new version of tile {tile} waits in the workshop, and the one "
+        "in {folder} is untouched.",
+        "Quit X-Plane, then build the tile again: what was built is reused, only the copy is "
+        "made again.",
+    ),
+    _spec(
+        "SYS_REBUILD_XP_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running and shows tile {tile}: its files are not rewritten while it runs. "
+        "Nothing of the tile was changed.",
+        "Quit X-Plane, then build the tile again: what was built is reused.",
+    ),
+    _spec(
+        "SYS_TILE_NOT_WHOLE",
+        _B,
+        _S,
+        "The folder {folder} of tile {tile} is not whole, or holds another build than the "
+        "Library's.",
+        "Nothing was changed. Build the tile again, then file it.",
+    ),
+    _spec(
+        "SYS_TILE_IN_CUSTOM_SCENERY",
+        _B,
+        _S,
+        "The folder of tile {tile}, {folder}, is inside X-Plane's Custom Scenery.",
+        "Nothing was changed. Put the tile's folder elsewhere, outside X-Plane, then find it "
+        "again: X-Plane reads OrthoStudio XP's tiles through a link.",
+    ),
+    _spec(
+        "SYS_TILE_INCOMPLETE",
+        _B,
+        _S,
+        "The folder {folder} lacks files of tile {tile}: it is not the whole tile.",
+        "Nothing was changed. Copy the whole folder of the tile again, then find it again.",
+    ),
+    _spec(
+        "SYS_TILE_NOT_IN_FOLDER",
+        _B,
+        _S,
+        "No tile {tile} in {folder}: neither its own folder, {name}, nor a folder holding it.",
+        "Nothing was changed. Choose the folder named {name}, or the folder it is in.",
+    ),
+    _spec(
+        "SYS_TILE_OTHER_BUILD",
+        _B,
+        _S,
+        "{folder} holds another build of tile {tile} than the one the Library lists.",
+        "Nothing was changed. Choose the folder this build was moved to.",
+    ),
     # ---------------------------------------------------------------- ZONE
     _spec(
         "ZONE_INVALID",

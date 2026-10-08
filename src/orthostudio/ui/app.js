@@ -113,6 +113,7 @@ export const ROLE_STEP = {
   overlay: "assembly",
   pack: "assembly",
   install: "install",
+  put_back: "install",
 };
 
 /** Rule name → user step, for the node ids of the P2b contract (`+43+005/tile.dsf#2`) that older
@@ -209,6 +210,12 @@ const state = {
   /** GET /api/library answered at boot, or failed: the map waits for it, to open on the tiles
    * installed rather than on Europe and then jump (app.js boot). */
   libraryKnown: false,
+  /** The folder the Library shows the tiles of (`tileFolder`'s key), or "" for every folder. */
+  libraryFolder: "",
+  /** The tiles picked to be filed elsewhere, by their row's key (the atelier, step 3). */
+  libraryPicked: new Set(),
+  /** The filing under way: `{n, i, tile, folder, stop, progress}`, or null. */
+  filing: null,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -436,6 +443,20 @@ const MOCK_AWAY_DISK = "/Volumes/SSD/OrthoStudio";
 function mockDataDir() {
   if (mock.settingsSaved) return mock.cache.get("settings")?.essential?.data_dir || null;
   return MOCK_FAIL === "no-data-disk" ? MOCK_AWAY_DISK : null;
+}
+
+/** The mock's tiles OrthoStudio XP built and filed outside the atelier (its `tiles` folder). */
+function mockFiledTiles() {
+  const atelier = `${mockDataDir() || "/Users/pilot/.orthostudio"}/tiles`;
+  return libraryTiles(mock.library || []).filter((e) => e.built_by === "osxp" && String(e.path).replace(/[\\/][^\\/]*$/, "") !== atelier);
+}
+
+/** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
+ * and 0.7 GB of image pieces a tile, nothing for one whose cache was freed (`POST /api/clean`). */
+function mockFiledCache() {
+  const filed = mockFiledTiles();
+  const kept = filed.filter((e) => !mock.filedFreed?.has(e.path)).length;
+  return { filed_tiles: filed.length, filed_bytes: kept * 2.1e9, filed_images_bytes: kept * 0.7e9 };
 }
 
 /** Like the engine: nothing is estimated or built while the data folder's disk is unplugged. */
@@ -1313,20 +1334,27 @@ export async function mockApi(method, path, body, options = {}) {
   if (p === "/api/disk" && method === "GET") {
     if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
-    return { ...mock.disk, tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
+    return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
     if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
+    const filed = Boolean(body?.filed);
+    const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - freed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, removed: freed ? 12 : 0 };
+    const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
+    if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
+    // the filed tiles' data is the store's too: it leaves the store with them
+    const storeFreed = freed + (filed ? cache.filed_bytes : 0);
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
@@ -1360,6 +1388,58 @@ export async function mockApi(method, path, body, options = {}) {
     const imported = (e) => e.tile === entry.tile && e.built_by === "ortho4xp";
     if (!libraryTiles(mock.library).some(imported)) mock.library = mock.library.filter((e) => !(imported(e) && e.kind === "overlay"));
     return { tile: entry.tile, forgotten: before - mock.library.length, path: entry.path };
+  }
+  if (p === "/api/library/file-plan" && method === "POST") {
+    // Like the engine, reading only: the mock has no disks, so every tile it may file is copied.
+    if (!mock.library) mock.library = await mockFile("library");
+    const folder = String(body?.folder || "").replace(/[\\/]+$/, "");
+    const tiles = (body?.tiles || []).map((x) => {
+      const entry = mockLibraryRow(x.name, x.path ?? null);
+      const row = { tile: entry.tile, path: entry.path };
+      if (entry.built_by !== "osxp") return { ...row, how: "imported" };
+      if (entry.present === false) return { ...row, how: "missing" };
+      if (entry.path.replace(/[\\/][^\\/]*$/, "") === folder) return { ...row, how: "there", bytes: 0 };
+      return { ...row, how: "copy", bytes: Number(entry.size_bytes) || 0 };
+    });
+    const copyBytes = tiles.filter((r) => r.how === "copy").reduce((sum, r) => sum + r.bytes, 0);
+    return { folder, tiles, copy_bytes: copyBytes, free_bytes: 480e9, room: true };
+  }
+  if (p === "/api/library/filing" && method === "GET") return { progress: null };
+  if (p === "/api/library/filing/stop" && method === "POST") return { stopping: false };
+  m = p.match(/^\/api\/library\/([^/]+)\/file$/);
+  if (m) {
+    // Like the engine: the tile goes to the folder chosen, and its row with it.
+    if (!mock.library) mock.library = await mockFile("library");
+    const entry = mockLibraryRow(decodeURIComponent(m[1]), body?.path ?? null);
+    if (mockXplaneRunning()) {
+      throw mockError(409, "XP_RUNNING", "X-Plane is running, and its links never change while it runs: nothing was changed.", "Quit X-Plane, then file the tile again.");
+    }
+    const was = entry.path;
+    entry.path = `${String(body?.folder || "").replace(/[\\/]+$/, "")}/${entryName(entry)}`;
+    return { format: "osxp-file-1", tile: entry.tile, from: was, to: entry.path, xplanes: [], moved: false, left: null, overlay_lost: false };
+  }
+  m = p.match(/^\/api\/library\/([^/]+)\/find$/);
+  if (m) {
+    // Like the engine: a tile OrthoStudio XP built, whose folder moved, is found where the user
+    // shows it, and its row follows; nothing on the disk changes in the mock.
+    if (!mock.library) mock.library = await mockFile("library");
+    const entry = mockLibraryRow(decodeURIComponent(m[1]), body?.path ?? null);
+    if (entry.built_by !== "osxp") {
+      throw mockError(409, "SYS_PACK_IMPORTED", `${entry.tile} was imported from Ortho4XP: importing the folder it was moved to lists it there.`, "Import the folder you moved it to, then remove the missing one from the list.");
+    }
+    if (entry.present !== false) {
+      throw mockError(409, "SYS_TILE_NOT_MISSING", `${entry.tile} is where the Library says, ${entry.path}: nothing to find.`, "Nothing to do.");
+    }
+    mockCheckTilesFree([entry.tile], "the end of that build decides what X-Plane shows of it.");
+    if (mockXplaneRunning()) {
+      throw mockError(409, "XP_RUNNING", "X-Plane is running, and its links never change while it runs: nothing was changed.", "Quit X-Plane, then find the tile again.");
+    }
+    const name = entryName(entry);
+    const folder = String(body?.folder || "").replace(/[\\/]+$/, "");
+    const was = entry.path;
+    entry.path = folder.split(/[\\/]/).pop() === name ? folder : `${folder}/${name}`;
+    Object.assign(entry, { present: true, disk_absent: false });
+    return { format: "osxp-find-1", tile: entry.tile, from: was, to: entry.path, xplanes: [], overlay_lost: false };
   }
   m = p.match(/^\/api\/library\/([^/]+)\/(install|uninstall|delete)$/);
   if (m) {
@@ -2152,12 +2232,23 @@ function markWideTables() {
   }
 }
 
+/**
+ * Where each screen was left. The window scrolls, not the screens, so a screen opened where the
+ * last one was left, which showed only once a screen had been scrolled two or three times (a user,
+ * 2026-10-07): each screen keeps its own place, as tabs do, written down as it is left and given
+ * back as it shows again.
+ */
+const screenScroll = new Map();
+
 function showScreen(name, arg) {
   if (!SCREENS.includes(name)) name = "plan";
   if (state.screen === "settings" && name !== "settings" && state.settingsDraft && !sameValue(state.settingsDraft, state.settings)) {
     // an answer changed without Save changes nothing yet: say it rather than let the Plan look stale
     toast(t("settings.left_unsaved"));
   }
+  // read while the screen left still shows: hidden, a shorter page would have scrolled it up
+  const left = state.screen;
+  if (left !== name) screenScroll.set(left, window.scrollY);
   state.screen = name;
   hideStepTip(); // the steps' tooltip belongs to Works
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
@@ -2184,6 +2275,9 @@ function showScreen(name, arg) {
     if (state.libraryKnown) planMap?.show(); // else boot shows it when the library answers
   }
   markWideTables(); // the screen's tables measured now that it shows
+  // Opened on the build just started, Works shows it from its top: at Works' old place its head
+  // was above the window (the fourth campaign, 2026-10-06).
+  if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);
 }
 
 function routeFromHash() {
@@ -2196,7 +2290,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 26;
+const PAGE_API_LEVEL = 29;
 
 async function loadStatus() {
   try {
@@ -3776,7 +3870,7 @@ function costIcon(kind) {
 
 function kv(rows) {
   const dl = h("dl", { class: "kv" });
-  for (const [k, v, cls] of rows) dl.append(h("dt", null, k), h("dd", { class: cls || null }, v));
+  for (const [k, v, cls, title] of rows) dl.append(h("dt", null, k), h("dd", { class: cls || null, title: title || null }, v));
   return dl;
 }
 
@@ -4632,9 +4726,24 @@ function nodeWords(n, message) {
       const words = t("works.act_images_count", { done: fmtInt(Number(count[1])), total: fmtInt(Number(count[2])) });
       return /nothing to download/.test(line) ? `${words}, ${t("works.act_images_cache")}` : words;
     }
+    case "put_back": {
+      // a tile filed elsewhere put back in its folder (the atelier, step 4): `putBackWords`
+      return putBackWords(line);
+    }
     default:
       return Object.hasOwn(ROLE_WORDS, n.role) ? ROLE_WORDS[n.role]() : "";
   }
+}
+
+/** The words of a tile filed elsewhere put back in its folder, from the engine's line
+ * (`putting back: copy 1200000000 of 4100000000 bytes`, build.py `_put_back_tile`): in the
+ * Installation cell's tooltip and the tile's line, not a bar of its own (2026-10-05). */
+export function putBackWords(line) {
+  const got = /putting back: (copy|check) (\d+) of (\d+) bytes/.exec(String(line || ""));
+  if (!got) return t("works.act_put_back");
+  const done = fmtBytes(Number(got[2]));
+  const total = fmtBytes(Number(got[3]));
+  return got[1] === "check" ? t("works.act_put_back_check", { done, total }) : t("works.act_put_back_copy", { done, total });
 }
 
 /** The words of the nodes that report nothing but their end (their bar moves by their time). */
@@ -5016,15 +5125,31 @@ async function loadDisk() {
   renderDisk();
 }
 
-/** The sizes a confirmation and the panel show: the unused tile data, and with `images` the
- * downloaded image pieces and the map background. Exported for the tests. */
-export function freeSpacePlan(disk, images, relief) {
+/** The sizes a confirmation and the panel show: the unused tile data, with `images` the
+ * downloaded image pieces and the map background, and with `filed` the cache of the tiles filed
+ * outside the atelier. Each choice frees its own line: the image pieces of those tiles are theirs,
+ * not counted in the images'. Exported for the tests. */
+export function freeSpacePlan(disk, images, relief, filed = false) {
   const unused = Math.max(0, Number(disk?.unused_bytes) || 0);
   const pictures = images ? Math.max(0, Number(disk?.images_bytes) || 0) + Math.max(0, Number(disk?.mapcache_bytes) || 0) : 0;
   // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
   const heights = relief ? Math.max(0, Number(disk?.relief_bytes) || 0) : 0;
-  return { unused, pictures, heights, total: unused + pictures + heights };
+  const away = filed ? filedCacheBytes(disk) : 0;
+  return { unused, pictures, heights, filed: away, total: unused + pictures + heights + away };
+}
+
+/** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
+ * need and the image pieces only they use. */
+function filedCacheBytes(disk) {
+  return Math.max(0, Number(disk?.filed_bytes) || 0) + Math.max(0, Number(disk?.filed_images_bytes) || 0);
+}
+
+/** Whether the panel offers to free that cache: only while tiles filed outside have some here. A
+ * tile of a data folder chosen before has its cache there, not here: a line of 0 bytes, and a box
+ * freeing nothing, would stay for ever. Exported for the tests. */
+export function filedOffered(disk) {
+  return (Number(disk?.filed_tiles) || 0) > 0 && filedCacheBytes(disk) > 0;
 }
 
 function renderDisk() {
@@ -5039,10 +5164,12 @@ function renderDisk() {
     setText(note, "");
     return;
   }
-  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0));
+  const offered = filedOffered(d);
+  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0));
   const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
   list.append(
     ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
+    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
     ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
     ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
     ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
@@ -5053,9 +5180,13 @@ function renderDisk() {
   reveal.hidden = !dataFolderShown(state.status);
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
-  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked);
-  button.disabled = Boolean(d.building) || plan.total <= 0 || state.diskBusy;
-  let said = d.building ? t("disk.busy_note") : plan.total <= 0 ? t("disk.nothing") : "";
+  $("disk-filed-choice").hidden = !offered;
+  // unticked as it hides: ticked once, it came back ticked with the next tile filed (a review)
+  if (!offered) $("disk-filed").checked = false;
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked);
+  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
+  button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
+  let said = d.building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
   if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
   setText(note, said);
 }
@@ -5067,6 +5198,7 @@ function confirmFreeSpace(plan) {
   $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
+  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
   if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
   lines.push(t("disk.confirm_kept"));
@@ -5088,14 +5220,15 @@ async function freeSpace() {
   if (state.diskBusy || !state.disk) return;
   const images = $("disk-images").checked;
   const relief = $("disk-relief").checked;
-  const plan = freeSpacePlan(state.disk, images, relief);
+  const filed = filedOffered(state.disk) && $("disk-filed").checked;
+  const plan = freeSpacePlan(state.disk, images, relief, filed);
   if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();
   try {
-    const res = await api("POST", "/api/clean", { images, relief });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0);
+    const res = await api("POST", "/api/clean", { images, relief, filed });
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
@@ -5129,6 +5262,83 @@ function libraryKey(e) {
  */
 export function libraryTiles(rows) {
   return (Array.isArray(rows) ? rows : []).filter((e) => e && (e.kind == null || e.kind === "ortho"));
+}
+
+/** A folder as the Library compares it, by its text: either separator, none at the end, and its
+ * letters' case aside but on Linux. */
+function folderKey(folder, platform) {
+  const plain = String(folder).replace(/\\/g, "/").replace(/\/+$/, "");
+  return platform === "lin" ? plain : plain.toLowerCase();
+}
+
+/** The atelier's tiles folders, from the status: the data folder's `tiles` as Settings name it,
+ * and with its links followed (`data_dir.tiles_real`), under which a tile built without being
+ * installed is listed: a data folder reached through a link showed that tile elsewhere (a
+ * review, 2026-10-05). Null while the status is not known, and no folder is told then: a page
+ * opened on the Library drew it before the status came, and for that moment the atelier's own
+ * tiles read as their full path, the user's name in it (a review, 2026-10-05). */
+export function atelierFolders(status) {
+  const data = status?.data_dir;
+  if (!data?.path) return null;
+  return [`${String(data.path).replace(/[\\/]+$/, "")}/tiles`, data.tiles_real].filter(Boolean);
+}
+
+/** The folder a tile's pack is in, as the Library shows it under the tile and filters by it:
+ * ``{key, label}``, the atelier (one of ``atelier``, `atelierFolders`) or the folder written as
+ * its owner knows it (`homely`; a drive's root with its separator, "E:\\"). Reads nothing on the
+ * disk: hundreds of tiles are sorted by folder from the list alone. */
+export function tileFolder(e, atelier, platform) {
+  const path = String(e?.path || "");
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut <= 0) return { key: "", label: "" };
+  const folder = path.slice(0, cut);
+  const key = folderKey(folder, platform);
+  if ((atelier || []).some((a) => folderKey(a, platform) === key)) {
+    return { key: "atelier", label: t("library.folder_atelier") };
+  }
+  return { key, label: homely(/^[A-Za-z]:$/.test(folder) ? `${folder}\\` : folder) };
+}
+
+/** The folders of the Library's tiles, for its filter: ``[{key, label, n}]``, the atelier first,
+ * then the others by name; none when every tile is in one folder, there being nothing to
+ * filter (a user files hundreds of tiles by area, on several disks, TinkerNZ 2026-10-04), and
+ * none while the atelier is not known (``atelier`` null, `atelierFolders`). */
+export function libraryFolders(rows, atelier, platform) {
+  if (!atelier) return [];
+  const seen = new Map();
+  for (const e of libraryTiles(rows)) {
+    const folder = tileFolder(e, atelier, platform);
+    if (!folder.key) continue;
+    const had = seen.get(folder.key);
+    if (had) had.n += 1;
+    else seen.set(folder.key, { ...folder, n: 1 });
+  }
+  const first = (f) => (f.key === "atelier" ? 0 : 1);
+  const folders = [...seen.values()].sort((a, b) => first(a) - first(b) || a.label.localeCompare(b.label));
+  return folders.length > 1 ? folders : [];
+}
+
+/** What the Library shows of its tiles (``tiles``, overlay rows left out), given the search and
+ * the folder chosen, ``atelier`` being `atelierFolders`: ``{folders, folder, rows, note}``, the
+ * folders of its filter, the folder kept (none once it is gone), the rows both keep, and the
+ * note under the search (``{text, warn}``, or null). A search that finds tiles in other folders
+ * only says so, where it said no tile matched (a review, 2026-10-05). */
+export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = null, platform = "") {
+  const folders = libraryFolders(tiles, atelier, platform);
+  const kept = folders.some((f) => f.key === folder) ? folder : "";
+  const inFolder = (e) => !kept || tileFolder(e, atelier, platform).key === kept;
+  const q = String(query || "").trim();
+  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));
+  let note = null;
+  if ((q || kept) && tiles.length) {
+    if (rows.length) {
+      note = { text: t("library.search_found", { n: fmtInt(rows.length), total: fmtInt(tiles.length) }), warn: false };
+    } else {
+      const elsewhere = kept && q ? tiles.filter((e) => !inFolder(e) && tileMatches(e.tile, q)).length : 0;
+      note = { text: elsewhere ? t("library.search_none_folder", { n: fmtInt(elsewhere) }) : t("library.search_none"), warn: true };
+    }
+  }
+  return { folders, folder: kept, rows, note };
 }
 
 /** Which way round each Library column sorts at its first click: its most useful order. The
@@ -5175,6 +5385,10 @@ export function libraryRequest(e, action) {
  * it, the size only when the engine knows it. */
 export function deleteQuestion(e) {
   const title = t("library.delete_title", { tile: e.tile });
+  if (e.present === false && e.disk_absent) {
+    // its files are on a disk away, where they stay: plugged in again, it does not come back
+    return { title, body: [e.installed ? t("library.delete_absent_xplane") : t("library.delete_absent")] };
+  }
   if (e.present === false) {
     return { title, body: [e.installed ? t("library.delete_missing_xplane") : t("library.delete_missing")] };
   }
@@ -5206,15 +5420,64 @@ function imageryCell(e) {
   return h("td", { title: tip || null }, text, level ? [" ", h("span", { class: "library-zl" }, `ZL${zl}`)] : null);
 }
 
+/** Whether a relief code is a file or a folder of one's own rather than a source. */
+function ownRelief(code) {
+  return /[\\/]/.test(String(code || "")) && code !== "NED1/3";
+}
+
+/** "your file N50E011.hgt": a file of one's own, by its name. */
+function ownFileWords(path) {
+  return t("relief.name.own_file", { file: String(path || "").split(/[\\/]/).pop() });
+}
+
 /** The relief a tile stands on, in words: the base, what was laid over it, and what was asked for
- * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). */
+ * and not laid -- Canada's lidar chosen where it never flew (a user at Banff, 2026-09-20). A file of
+ * one's own is named, and one not used says why: a user saw two reliefs come out of one folder of
+ * lidar files, and nothing said his file had been left aside (2026-10-05). A relief made before
+ * says nothing of them (no `relief_own`): its files asked and not laid were not used, and no more
+ * is said. */
 export function reliefSentence(facts) {
   const laidCodes = facts?.relief_laid || [];
-  const base = facts?.relief ? reliefName(facts.relief) : "—";
-  const laid = laidCodes.map(reliefName);
-  const missing = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a)).map(reliefName);
+  const own = Array.isArray(facts?.relief_own) ? facts.relief_own.filter(Boolean) : null;
+  let base = "—";
+  if (ownRelief(facts?.relief)) {
+    const words = ownFileWords(facts.relief);
+    base = words.charAt(0).toUpperCase() + words.slice(1);
+  } else if (facts?.relief) {
+    base = reliefName(facts.relief);
+  }
+  const used = (own || []).filter((o) => o.used).map((o) => ownFileWords(o.file));
+  const laid = [...laidCodes.filter((c) => !(used.length && ownRelief(c))).map(reliefName), ...used];
+  const asked = (facts?.relief_asked || []).filter((a) => !laidCodes.includes(a));
+  // a source asked and not laid had nothing on the square: Canada's lidar where it never flew
+  const missing = asked.filter((a) => !ownRelief(a)).map(reliefName);
   const over = laid.length ? t("library.built_relief_laid", { base, over: laid.join(", ") }) : base;
-  return missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
+  const said = missing.length ? t("library.built_relief_missing", { base: over, asked: missing.join(", ") }) : over;
+  if (!own) {
+    // a relief made before says nothing of his files: they were not used, whatever the reason. It
+    // said "none on this square" of a file left aside for being coarser (2026-10-05).
+    return asked.some(ownRelief) ? t("library.built_relief_own_unused", { base: said }) : said;
+  }
+  const notes = own.filter((o) => !o.used).map((o) => ownFileNote(o, base));
+  if (!own.length && asked.some(ownRelief)) notes.push(t("library.built_relief_no_file"));
+  return notes.length ? `${said}. ${notes.join(" ")}` : said;
+}
+
+/** Why a file of one's own was not used (`Dem.own` in the engine), in one sentence. */
+function ownFileNote(o, base) {
+  const file = String(o.file || "").split(/[\\/]/).pop();
+  if (o.why === "coarser") return t("library.built_relief_coarser", { file, own_m: fmtInt(o.own_m), base_m: fmtInt(o.base_m), base });
+  if (o.why === "unreadable") return t("library.built_relief_unreadable", { file });
+  if (o.why === "empty") return t("library.built_relief_empty", { file });
+  return t("library.built_relief_unused", { file });
+}
+
+/** The full paths of the files of one's own a tile's relief names, one a line: the tooltip of its
+ * Relief line, where the sentence gives the names alone. */
+export function reliefFiles(facts) {
+  const own = Array.isArray(facts?.relief_own) ? facts.relief_own.map((o) => o?.file) : [];
+  const files = [ownRelief(facts?.relief) ? facts.relief : null, ...own].filter(Boolean).map(String);
+  return [...new Set(files)].join("\n");
 }
 
 function coloursWords(photo) {
@@ -5252,7 +5515,10 @@ export function builtLines(e, providers = []) {
     [t("library.built_imagery"), source ? sourceLabel(source) : String(e.provider || "—")],
     [t("library.built_detail"), zl ? [level, `ZL${zl}`].filter(Boolean).join(" · ") : "—"],
   ];
-  if (!old) lines.push([t("library.built_relief"), reliefSentence(facts)]);
+  if (!old) {
+    const files = reliefFiles(facts);
+    lines.push(files ? [t("library.built_relief"), reliefSentence(facts), null, files] : [t("library.built_relief"), reliefSentence(facts)]);
+  }
   lines.push([t("library.built_colours"), coloursWords(e.photo)]);
   if (!old) {
     lines.push([t("library.built_zones"), zonesWords(facts.zones)]);
@@ -5289,9 +5555,10 @@ function folderIcon() {
   return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
 }
 
-function libraryRow(e) {
+export function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
-  const busy = libraryBusy.has(key);
+  // a filing under way: one at a time, and nothing else changes the tiles meanwhile
+  const busy = libraryBusy.has(key) || Boolean(state.filing);
   const present = e.present !== false;
   const byOsxp = e.built_by === "osxp";
   const jobs = activeJobs();
@@ -5308,6 +5575,11 @@ function libraryRow(e) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
     xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
+  } else if (byOsxp) {
+    // its folder moved by hand: shown where it went, it is found again (the atelier, step 2,
+    // 2026-10-05). A disk away comes back by itself once plugged in; a disk renamed or left for
+    // another, its tiles copied there, has only this way back (a review, 2026-10-05)
+    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
   }
   // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
   // is said in the lead and in the "Built by" column, and a user still looked for the button
@@ -5320,8 +5592,10 @@ function libraryRow(e) {
     : h("button", { type: "button", class: "btn btn-small", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
   let missing = null;
   if (!present) {
-    missing = pill(t("library.missing"), "warn");
-    missing.title = t("library.missing_help");
+    const away = Boolean(e.disk_absent);
+    missing = pill(away ? t("library.disk_absent") : t("library.not_found"), "warn");
+    if (away) missing.title = t("library.disk_absent_help");
+    else missing.title = byOsxp ? t("library.not_found_help") : t("library.not_found_help_o4xp");
   }
   let inBuildPill = null;
   if (inBuild) {
@@ -5343,7 +5617,7 @@ function libraryRow(e) {
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
   const open = libraryOpen.has(key);
-  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 8 }, builtBlock(e))) : null;
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 9 }, builtBlock(e))) : null;
   let builtCell = t("library.by_ortho4xp");
   if (byOsxp) {
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
@@ -5358,8 +5632,13 @@ function libraryRow(e) {
     });
     builtCell = toggle;
   }
+  // the folder the tile is in, under its name (TinkerNZ files his tiles by area, 2026-10-04)
+  const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
+  // the box in a narrow column of its own, so that the names line up with or without one (a user,
+  // 2026-10-07); on the name's line when the folder under the name makes the row two lines high
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null),
+    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, pickBox(e, key, inBuild)),
+    h("td", { class: "library-tile", title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5448,7 +5727,8 @@ function renderLibrary() {
   const path = state.status?.xplane?.path;
   xplane.hidden = !path;
   if (path) xplane.textContent = t("library.xplane", { path: homely(path) });
-  // New buttons replace the old ones: a focused button's successor, same row and column, keeps it.
+  // New buttons replace the old ones: a focused button's successor, same row and column, keeps it
+  // (a row's box too).
   const cell = body.contains(document.activeElement) ? document.activeElement.closest("td") : null;
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;
   clear(body);
@@ -5460,20 +5740,48 @@ function renderLibrary() {
     const way = LIBRARY_SORT_FIRST[th.dataset.sort] * (sort.dir === -1 ? -1 : 1);
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
-  const query = (state.librarySearch || "").trim();
-  const shown = sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);
+  // the tiles of one folder, or all: the folders come from the list itself
+  const atelier = atelierFolders(state.status);
+  const platform = state.status?.platform || "";
+  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
+  state.libraryFolder = view.folder;
+  renderLibraryFolders(view.folders, view.folder);
+  renderLibraryPick(rows, view.rows);
+  const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
-  note.hidden = !query || !rows.length;
-  note.classList.toggle("is-warn", Boolean(query) && !shown.length);
-  if (query && rows.length) setText(note, shown.length ? t("library.search_found", { n: fmtInt(shown.length), total: fmtInt(rows.length) }) : t("library.search_none"));
+  note.hidden = !view.note;
+  note.classList.toggle("is-warn", Boolean(view.note?.warn));
+  if (view.note) setText(note, view.note.text);
   if (!rows.length) {
-    body.append(h("tr", null, h("td", { colspan: 8, class: "placeholder" }, t("library.empty"))));
+    body.append(h("tr", null, h("td", { colspan: 9, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
-  for (const e of shown) body.append(...libraryRow(e));
-  if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled)")?.focus();
+  // the folder under each tile only when the tiles are in more than one (a review, 2026-10-05)
+  for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));
+  if (kept) libraryRowByKey(kept.key)?.cells[kept.column]?.querySelector("button:not(:disabled), input:not(:disabled)")?.focus();
   markWideTables();
+}
+
+/** The folder filter above the Library: one choice per folder its tiles are in (``folders``,
+ * `libraryFolders`), with how many, shown only when they are in more than one; ``chosen`` the
+ * one shown. */
+export function renderLibraryFolders(folders, chosen) {
+  $("library-folder-wrap").hidden = !folders.length;
+  const select = $("library-folder");
+  // its choices are made again only when they change: the Library is drawn again every 5 s
+  // while sizes are measured, and an open list lost its items under the hand (a review,
+  // 2026-10-05)
+  const all = t("library.folder_all");
+  const choices = folders.map((f) => [f.key, `${f.label} (${fmtInt(f.n)})`]);
+  const signature = JSON.stringify([all, choices]);
+  if (select.dataset.choices !== signature) {
+    clear(select);
+    select.append(h("option", { value: "" }, all));
+    for (const [key, label] of choices) select.append(h("option", { value: key }, label));
+    select.dataset.choices = signature;
+  }
+  if (select.value !== chosen) select.value = chosen;
 }
 
 /** Whether the pack on the disk was built with other colours than its square asks for now.
@@ -5567,6 +5875,21 @@ const LIBRARY_REFUSALS = {
   SYS_WRITE_FAILED: () => [t("library.err_write_failed"), t("library.err_write_failed_remedy")],
   SYS_WORKING_DIR_INVALID: () => [t("library.err_gone"), t("library.err_gone_remedy")],
   XP_PACK_CONFLICT: () => [t("library.err_conflict"), t("library.err_conflict_remedy")],
+  // a tile found again (the atelier, step 2): the folder shown is not it, not that build, not whole
+  SYS_TILE_NOT_IN_FOLDER: (d) => [t("library.err_not_in_folder"), t("library.err_not_in_folder_remedy", { name: d?.context?.name || "" })],
+  SYS_TILE_OTHER_BUILD: () => [t("library.err_other_build"), t("library.err_other_build_remedy")],
+  SYS_TILE_INCOMPLETE: () => [t("library.err_incomplete"), t("library.err_incomplete_remedy")],
+  SYS_TILE_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_in_custom_scenery_remedy")],
+  // a tile filed elsewhere (the atelier, step 3): a folder no tile goes into, or a copy gone wrong
+  SYS_FOLDER_GONE: () => [t("library.err_folder_gone"), t("library.err_folder_other")],
+  SYS_FOLDER_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_folder_outside_xplane")],
+  SYS_FOLDER_IN_TILE: () => [t("library.err_folder_in_tile"), t("library.err_folder_other")],
+  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_other")],
+  SYS_TILE_NAME_TAKEN: () => [t("library.err_name_taken"), t("library.err_name_taken_remedy")],
+  SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")],
+  SYS_TILE_COPY_DIFFERS: () => [t("library.err_copy_differs"), t("library.err_copy_differs_remedy")],
+  SYS_TILE_MISSING: () => [t("library.err_tile_missing"), t("library.err_tile_missing_remedy")],
+  SYS_TILE_NOT_MISSING: () => [t("library.err_not_missing"), t("library.err_gone_remedy")],
 };
 
 /**
@@ -5575,7 +5898,7 @@ const LIBRARY_REFUSALS = {
  * any other error as the engine sent it.
  */
 export function libraryCardContent(detail) {
-  const words = LIBRARY_REFUSALS[detail?.code]?.() ?? null;
+  const words = LIBRARY_REFUSALS[detail?.code]?.(detail) ?? null;
   return { error: words ? { ...detail, severity: "blocking", action: "none" } : detail, words };
 }
 
@@ -5671,6 +5994,254 @@ async function deleteLibraryTile(e) {
 function forgetLibraryTile(e) {
   const req = libraryRequest(e, "forget");
   return runLibraryChange(e, () => api("POST", req.path, req.body), () => toast(t("library.forgotten", { tile: e.tile })));
+}
+
+/** "Find again…" (a tile OrthoStudio XP built whose folder was moved by hand, its disk here): the
+ * user shows the tile's folder or the one holding it, and the Library and every X-Plane that showed
+ * the tile follow (`POST /api/library/{name}/find`, the atelier's step 2, 2026-10-05). The dialog
+ * opens where the tile was, when that folder is still there. */
+async function findLibraryTile(e) {
+  if (libraryBusy.has(libraryKey(e))) return;
+  const was = String(e.path || "").replace(/[\\/][^\\/]*$/, "");
+  const folder = await chooseFolder(t("library.find_prompt", { tile: e.tile }), was || null);
+  if (!folder) return;
+  const req = libraryRequest(e, "find");
+  await runLibraryChange(e, () => api("POST", req.path, { ...req.body, folder }), (res) => toast(foundMessage(res, e.tile)));
+}
+
+/** What the page says of a tile found again: where, and, when its roads, forests and buildings were
+ * found nowhere, that a build gives them back. */
+export function foundMessage(res, tile) {
+  const where = String(res?.to || "").replace(/[\\/][^\\/]*$/, "");
+  const found = t("library.found", { tile: res?.tile || tile, folder: homely(where) });
+  return res?.overlay_lost ? `${found} ${t("library.found_no_roads")}` : found;
+}
+
+// -- tiles filed elsewhere (the atelier, step 3, 2026-10-05) ------------------------------------
+
+/** Whether a row may be picked to be filed elsewhere: a tile OrthoStudio XP built, where the
+ * Library says, and not in a build (whose end decides where it is). */
+function pickable(e, building) {
+  return e.built_by === "osxp" && e.present !== false && !building.has(e.tile);
+}
+
+/** The box that picks a row to be filed elsewhere, in the row's first column. */
+function pickBox(e, key, inBuild) {
+  if (e.built_by !== "osxp" || e.present === false || inBuild) return null;
+  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+}
+
+/** The rows the search and the folder leave, as the table shows them. */
+function shownLibraryRows(rows) {
+  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelierFolders(state.status), state.status?.platform || "").rows;
+}
+
+function pickLibraryTile(key, on) {
+  if (on) state.libraryPicked.add(key);
+  else state.libraryPicked.delete(key);
+  // the box shows its own state: only the bar is drawn again, and the focus stays on the box
+  const rows = libraryTiles(state.library);
+  renderLibraryPick(rows, shownLibraryRows(rows));
+}
+
+/** The bar over the table: "Pick all shown", how many are picked and their size, and "File
+ * elsewhere…"; the picks a row can no longer take (deleted, in a build) are let go. */
+function renderLibraryPick(rows, shown) {
+  const building = tilesInBuilds(activeJobs());
+  const can = new Set(rows.filter((e) => pickable(e, building)).map(libraryKey));
+  for (const key of [...state.libraryPicked]) if (!can.has(key)) state.libraryPicked.delete(key);
+  const shownKeys = shown.map(libraryKey).filter((key) => can.has(key));
+  const picked = rows.filter((e) => state.libraryPicked.has(libraryKey(e)));
+  $("library-pick").hidden = !can.size;
+  const all = $("library-pick-all");
+  const on = shownKeys.filter((key) => state.libraryPicked.has(key)).length;
+  all.checked = shownKeys.length > 0 && on === shownKeys.length;
+  all.indeterminate = on > 0 && on < shownKeys.length;
+  all.disabled = !shownKeys.length || Boolean(state.filing);
+  const bytes = picked.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  setText($("library-pick-count"), picked.length ? t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) }) : "");
+  // tiles are filed between builds: the button says why it waits (a review, 2026-10-05)
+  const file = $("library-file");
+  const waits = activeJobs().length > 0;
+  file.disabled = !picked.length || Boolean(state.filing) || waits;
+  setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));
+}
+
+/** "Pick all shown": every row the search and the folder leave, or none of them. */
+function pickAllShown(on) {
+  const building = tilesInBuilds(activeJobs());
+  for (const e of shownLibraryRows(libraryTiles(state.library))) {
+    if (!pickable(e, building)) continue;
+    if (on) state.libraryPicked.add(libraryKey(e));
+    else state.libraryPicked.delete(libraryKey(e));
+  }
+  renderLibrary();
+}
+
+/** What the confirmation says of a filing's plan (`POST /api/library/file-plan`): `{title, body,
+ * go}`, `go` the rows filed (moved, copied, or a whole copy reused), none when the disk lacks
+ * room. */
+export function filingQuestion(plan) {
+  const rows = plan?.tiles || [];
+  const go = rows.filter((r) => ["move", "copy", "reuse"].includes(r.how));
+  const count = (how) => rows.filter((r) => r.how === how).length;
+  const names = (how) => rows.filter((r) => r.how === how).map((r) => r.tile).join(", ");
+  const folder = homely(plan?.folder || "");
+  const body = [];
+  if (count("move")) body.push(t("library.file_move", { n: fmtInt(count("move")) }));
+  if (count("copy")) body.push(t("library.file_copy", { n: fmtInt(count("copy")), size: fmtBytes(plan.copy_bytes), free: fmtBytes(plan.free_bytes) }));
+  if (count("reuse")) body.push(t("library.file_reuse", { n: fmtInt(count("reuse")) }));
+  if (count("there")) body.push(t("library.file_skip_there", { tiles: names("there") }));
+  if (count("not_whole")) body.push(t("library.file_skip_not_whole", { tiles: names("not_whole") }));
+  if (count("taken")) body.push(t("library.file_skip_taken", { tiles: names("taken") }));
+  if (count("imported")) body.push(t("library.file_skip_imported", { tiles: names("imported") }));
+  if (count("missing")) body.push(t("library.file_skip_missing", { tiles: names("missing") }));
+  if (count("in_build")) body.push(t("library.file_skip_in_build", { tiles: names("in_build") }));
+  const room = plan?.room !== false;
+  if (!room) body.push(t("library.file_no_room", { size: fmtBytes(plan.copy_bytes), free: fmtBytes(plan.free_bytes) }));
+  else if (go.length) body.push(t("library.file_kept"));
+  return { title: t("library.file_title", { n: fmtInt(go.length), folder }), body, go: room ? go : [] };
+}
+
+/** The filing question in the page's modal <dialog>; resolves true for "File". */
+function confirmFiling(question) {
+  const dialog = $("library-file-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-file-title").textContent = question.title;
+  clear($("library-file-text")).append(...question.body.map((line) => h("p", null, line)));
+  $("library-file-go").hidden = !question.go.length;
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "file"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** "File elsewhere…": the folder, the plan, the question, then the tiles one at a time. */
+async function fileLibraryTiles() {
+  if (state.filing) return;
+  const building = tilesInBuilds(activeJobs());
+  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  if (!picked.length) return;
+  const folder = await chooseFolder(t("library.file_prompt", { n: fmtInt(picked.length) }));
+  if (!folder) return;
+  const errors = clear($("library-errors"));
+  let plan;
+  try {
+    plan = await api("POST", "/api/library/file-plan", { tiles: picked.map((e) => ({ name: entryName(e), path: e.path })), folder });
+  } catch (err) {
+    errors.append(libraryErrorCard(err, picked[0]));
+    return;
+  }
+  const question = filingQuestion(plan);
+  if (!(await confirmFiling(question)) || !question.go.length) return;
+  await runFiling(question.go, plan.folder);
+}
+
+/** The tiles of a plan filed one at a time (`POST /api/library/{name}/file`, a request that lasts
+ * as long as its copy), how far the one under way is read every second; "Stop" lets the one under
+ * way stop before its next file, and the next ones wait. */
+async function runFiling(go, folder) {
+  state.filing = { n: go.length, i: 0, tile: null, folder, stop: false, progress: null };
+  const errors = clear($("library-errors"));
+  renderLibrary();
+  renderFiling();
+  renderDisk(); // "Free space" waits for the filing
+  const timer = setInterval(pollFiling, 1000);
+  let filed = 0;
+  let failure = null;
+  let failed = null;
+  const lefts = [];
+  try {
+    for (const r of go) {
+      if (state.filing.stop) break;
+      Object.assign(state.filing, { i: state.filing.i + 1, tile: r.tile, progress: null });
+      renderFiling();
+      const name = String(r.path).split(/[\\/]/).pop();
+      try {
+        const res = await api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder });
+        filed += 1;
+        if (res?.left) lefts.push(filedLeftText(r.tile, res.left));
+      } catch (err) {
+        if (errorDetail(err)?.code !== "SYS_FILING_STOPPED") {
+          failure = err;
+          failed = r;
+        }
+        break;
+      }
+    }
+  } finally {
+    clearInterval(timer);
+    const stopped = state.filing.stop;
+    state.filing = null;
+    state.libraryPicked.clear();
+    renderFiling();
+    await loadLibrary();
+    loadStatus();
+    toast(filedMessage(filed, go.length, folder, stopped));
+    // an old folder a file held there stays until the user deletes it: said where, not a toast
+    for (const text of lefts) errors.append(h("div", { class: "overlay-notice overlay-notice-fail" }, h("p", null, text)));
+    if (failure) errors.append(libraryErrorCard(failure, failed));
+  }
+}
+
+/** A tile filed whose old folder could not be taken away (a file another program holds there):
+ * where that folder is, for the user to delete it, since nothing lists it any more. */
+export function filedLeftText(tile, path) {
+  return t("library.filed_left", { tile, path: homely(path) });
+}
+
+/** What the page says once a filing is over: how many of how many, where. */
+export function filedMessage(filed, n, folder, stopped) {
+  const where = homely(folder);
+  if (filed === n) return t("library.filed", { n: fmtInt(filed), folder: where });
+  return stopped ? t("library.filed_stopped", { n: fmtInt(filed), total: fmtInt(n), folder: where }) : t("library.filed_some", { n: fmtInt(filed), total: fmtInt(n), folder: where });
+}
+
+async function pollFiling() {
+  if (!state.filing) return;
+  try {
+    const res = await api("GET", "/api/library/filing");
+    if (state.filing) state.filing.progress = res?.progress || null;
+  } catch (_err) {
+    return; // the line keeps what it said: the next second asks again
+  }
+  renderFiling();
+}
+
+/** The line under the search while tiles are filed: which one of how many, and how far. */
+export function filingLine(filing) {
+  if (!filing) return "";
+  const head = t("library.filing", { tile: filing.tile || "", i: fmtInt(filing.i), n: fmtInt(filing.n) });
+  const p = filing.progress;
+  if (!p || !p.total) return head;
+  const done = fmtBytes(p.done);
+  const total = fmtBytes(p.total);
+  return p.phase === "check" ? t("library.filing_check", { head, done, total }) : t("library.filing_copy", { head, done, total });
+}
+
+function renderFiling() {
+  const line = $("library-filing");
+  line.hidden = !state.filing;
+  setText($("library-filing-text"), filingLine(state.filing));
+  $("library-filing-stop").disabled = Boolean(state.filing?.stop);
+}
+
+/** "Stop": the tile under way stops before its next file, and stays where it was. */
+async function stopFiling() {
+  if (!state.filing) return;
+  state.filing.stop = true;
+  renderFiling();
+  try {
+    await api("POST", "/api/library/filing/stop", {});
+  } catch (_err) {
+    // the next tile is not sent: the stop holds at the end of this one
+  }
 }
 
 /** How long the folder dialog may take to show before the page says it is on its way (the File
@@ -6052,6 +6623,7 @@ function rerenderAll() {
   renderJobList();
   renderJob();
   renderLibrary();
+  renderDisk(); // from the last measure: measuring again takes minutes on a hard disk
   renderSettings();
   planMap?.rerender();
 }
@@ -6233,6 +6805,7 @@ async function boot() {
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);
   $("disk-relief").addEventListener("change", renderDisk);
+  $("disk-filed").addEventListener("change", renderDisk);
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();
@@ -6246,6 +6819,13 @@ async function boot() {
     state.librarySearch = e.target.value;
     renderLibrary();
   });
+  $("library-folder").addEventListener("change", (e) => {
+    state.libraryFolder = e.target.value;
+    renderLibrary();
+  });
+  $("library-pick-all").addEventListener("change", (e) => pickAllShown(e.target.checked));
+  $("library-file").addEventListener("click", fileLibraryTiles);
+  $("library-filing-stop").addEventListener("click", stopFiling);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {
     const kept = JSON.parse(localStorage.getItem(LIBRARY_SORT_KEY) || "null");

@@ -38,6 +38,7 @@ __all__ = [
     "default_store_root",
     "default_tiles_root",
     "default_work_root",
+    "disk_absent",
     "make_patches_dir",
     "osxp_home",
     "require_data_root",
@@ -101,6 +102,29 @@ def data_root_missing() -> Path | None:
     if root == osxp_home() or root.is_dir():
         return None
     return root
+
+
+_MOUNTS = (Path("/Volumes"), Path("/media"), Path("/run/media"), Path("/mnt"))
+"""Where disks are mounted: on a Mac, and on Linux (``/media`` and ``/run/media`` with the user's
+folder in them)."""
+
+
+def disk_absent(path: Path) -> bool:
+    """Whether the disk ``path`` is on is away (unplugged, or a network share not mounted), rather
+    than the folder gone from a disk that is here. The Library says *Disk absent* for the first,
+    which plugging the disk in again settles, and *Not found* for the second, with *Find again…*
+    (the atelier, step 2, 2026-10-05). On Windows its drive is not there; elsewhere the first
+    folder above it that is there is where disks are mounted (``/Volumes``, ``/media`` or
+    ``/run/media`` and the user's folder in them, ``/mnt``), or the root."""
+    path = Path(path)
+    if path.exists():
+        return False
+    if path.drive:
+        return not Path(path.anchor).exists()
+    above = path.parent
+    while not above.exists() and above.parent != above:
+        above = above.parent
+    return above == Path(above.anchor) or above in _MOUNTS or above.parent in _MOUNTS[1:3]
 
 
 def require_data_root() -> Path:

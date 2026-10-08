@@ -399,11 +399,14 @@ tiles folder has its overlays pack beside its tiles, and X-Plane shows both:
   `yOrthoStudio_Overlays`, `yOrthoStudio_Overlays_2`, `_3`...), or `None`. `install_receipt`
   installs the overlays pack under that link, else under the first free name: absent, or a broken
   link into a folder no tile link of Custom Scenery leads into (deleted by hand; while tile links
-  lead there, its disk may only be unplugged and the name waits for it). A copy (`link=False`)
-  keeps the pack's own name. `uninstall_receipt` parks the tile's DSF when its folder's overlays
-  pack has a link, and takes that link and its line out once the pack is empty; `overlay_states`
-  and the Library's `installed` read the link the same way. `pack_kind` counts the numbered names
-  as overlay packs, so their lines sit with the overlays (3.2).
+  lead there, its disk may only be unplugged and the name waits for it). A copy (`link=False`) keeps
+  the pack's own name. A name new to the folder, a copy's too, starts its line as a new one,
+  whatever line that name had for a folder before: enabled, or disabled with `overlay_off`, the
+  state of the line the tile's roads came from; the roads of a new folder took over a disabled line
+  and were not drawn (found on the owner's Mac, 2026-10-06). `uninstall_receipt` parks the tile's
+  DSF when its folder's overlays pack has a link, and takes that link and its line out once the pack
+  is empty; `overlay_states` and the Library's `installed` read the link the same way. `pack_kind`
+  counts the numbered names as overlay packs, so their lines sit with the overlays (3.2).
 * A tile built again into another folder takes the place of its old build:
   `install_receipt` first takes the link `zOrthoStudio_<tile>` out when it leads to an OrthoStudio
   XP pack of the same tile elsewhere, as `uninstall_receipt` does (its overlay parked in that pack,
@@ -423,6 +426,210 @@ overlay is parked, and the old build installed again takes it back; an unplugged
 first name (the second folder's link is `_2`, both tiles `own` once it is back), and a folder
 deleted by hand, its tiles taken out, frees it.
 
+### 4.5 A tile moved by hand (`pipeline/pack.py`, the atelier, step 2)
+
+A user files his tiles by area with the Finder: the Library listed the tile as missing, and X-Plane
+kept a link into nothing. `find_again_receipt(entry, chosen, custom_sceneries, library_path)`
+finds it again where the user shows it (2026-10-05):
+
+* The folder shown is the tile's own or the one holding it, under its name `zOrthoStudio_<tile>`
+  (X-Plane's link and the Library both go by it), holding that very build: the manifest's tile and
+  keys are the row's, and what it lists is there, the DSF at its size, as many textures and
+  terrain files, the overlay DSF aside (`pack_is_intact(..., with_overlay=False)`). Else
+  `SYS_TILE_NOT_IN_FOLDER`, `SYS_TILE_OTHER_BUILD` or `SYS_TILE_INCOMPLETE`, and nothing changes.
+  A folder inside an X-Plane's Custom Scenery, put there in place of its link, is refused with
+  `SYS_TILE_IN_CUSTOM_SCENERY`: found there it lost its roads and forests, and could no longer be
+  taken out. X-Plane running: `XP_RUNNING`, nothing changes.
+* Nothing of the tile moves. Its overlay DSF, left in the overlays pack beside the folder it was
+  moved from, is parked in it (`_bring_overlay`: copied, then removed, since the two folders may
+  be on two disks), as `uninstall_receipt` parks it; a tile taken out of X-Plane later from its new
+  place would otherwise have left its roads drawn. A copy made before a stop leaves the one behind
+  only until it is asked again, which removes it when it holds the same bytes: X-Plane would draw
+  it twice. The same file seen twice, through a link, is the only one there is, and stays.
+* Every Custom Scenery given (the X-Plane of Settings and the machine's others) whose link
+  `zOrthoStudio_<tile>` leads to the old folder gets the found one through `install_receipt`: the
+  broken link replaced, the overlay put beside the tile and its overlays pack linked (4.4), the
+  lines kept, a line the user disabled included (`reenable=False`). A new overlays line, for a
+  folder X-Plane showed no overlays of, takes the state of the overlays line of the folder the tile
+  came from (`overlay_off`, `_overlay_line_off`): a user of simHeaven X-World turns OrthoStudio XP's
+  roads off, and they came back on (a review, 2026-10-05). The overlays pack of the folder the tile
+  left, out of reach (its disk away, or deleted), leaves that X-Plane, its link and its line, once
+  no tile link leads into that folder (`_let_go_of_overlays_out_of_reach`, under the lock of every
+  install): the tile's roads stayed there, and the day the disk came back X-Plane drew them twice
+  (found on the owner's tiles, 2026-10-06). A tile of that folder still in X-Plane keeps it, its own
+  roads being there. A line the user disabled goes as well: kept with its link, X-Plane started
+  without the disk dropped the line and gave it back enabled once the disk was back; kept alone, it
+  kept the next overlays pack taking that name off only when that name was the first one free (two
+  reviews and the owner's Mac, 2026-10-06). Built again, the tile has its roads back under a line of
+  its own, enabled. An X-Plane that did not show the tile gets nothing. The Library row follows; the
+  overlay row of the folder left goes once it holds nothing of the tile.
+* Asked again after a stop half way, it finishes what is left: the X-Planes whose link already
+  leads to the found folder are given its install again, which puts the overlay beside it. The
+  receipt says when the tile's roads and forests are nowhere (`overlay_lost`): a build gives them
+  back.
+
+The Library tells a tile whose disk is away from one whose folder is gone (`home.disk_absent`): on
+Windows its drive is not there, elsewhere the first folder above it that is there is where disks
+are mounted (`/Volumes`, `/media`, `/run/media`, `/mnt`) or the root. A disk away comes back by
+itself once plugged in; a disk renamed, or left for another the tiles were copied to, has *Find
+again…* as its way back, and the page offers it there too.
+
+Acceptance (`tests/test_library_find.py`, fake X-Planes): a tile moved alone is found from the
+folder holding it or from its own, X-Plane's link and its overlay follow and its images are the same
+files; a tile in no X-Plane is found by the Library alone, its overlay parked; every X-Plane that
+showed it follows and no other; a wrong folder, a renamed copy, another build and a copy cut short
+change nothing; nor does X-Plane running; a tile put in X-Plane's own Custom Scenery is refused and
+keeps its roads; the one overlay there is is never removed for itself seen through a link; a line
+the user disabled stays disabled, and a new overlays line takes the state of the one the tile came
+from, under a name taken over from a folder deleted by hand too, whose old line, on or off, is not
+kept; found while the disk of the folder it left is away, that folder's overlays pack leaves
+X-Plane, its link and its line, on or off, when no tile of X-Plane is in it any more, and stays
+while one is, an install saving meanwhile keeping its own line; built again, the tile's roads are
+drawn under a line of their own; a tile in its place, an imported one and one in a build are not
+looked for; a tile whose roads went too is found and says so; a stop half way, before or past
+X-Plane's link, is finished when asked again, and a copy of the roads made before a stop is not left
+twice; a disk away says so, and a folder gone two levels down is not one.
+
+### 4.6 Tiles filed elsewhere (`pipeline/filing.py`, the atelier, step 3)
+
+A user files his tiles by area, on several disks; the page's *File elsewhere…* does it for the
+tiles picked (2026-10-05), one at a time, `file_tile(entry, dest, custom_sceneries, ...)`:
+
+* The folder must take a tile (`check_destination`), seen as named and with its links followed:
+  not gone (`SYS_FOLDER_GONE`); not inside an X-Plane's Custom Scenery, one named so or the Custom
+  Scenery of a known X-Plane however reached, through a link, a junction or another case
+  (`SYS_FOLDER_IN_CUSTOM_SCENERY`: a Custom Scenery moved to a big disk and linked back, its real
+  folder chosen, made the tile's own link there pass for a copy of it, and the tile was deleted, a
+  review, 2026-10-05); not the workshop's `tiles` or another of the data folder's own folders
+  (`WORKSHOP_FOLDERS`: `store`, `chunks`, `work`, `mapcache`, `elevation`, `dem`, which the builds
+  write and Free space empties whole), nor a folder inside one (`SYS_FOLDER_IS_ATELIER`); not
+  inside a tile's folder, which deleting that tile would take away (`SYS_FOLDER_IN_TILE`). X-Plane
+  running: `XP_RUNNING`. Nothing changes.
+* The tile must be whole where the Library says, its manifest's tile and keys the row's, every
+  file it lists there (`pack_is_intact`, its overlay DSF aside): else `not_whole` in the plan and
+  `SYS_TILE_NOT_WHOLE`, before anything of it moves. Moved first, it was refused by the switch,
+  and left where X-Plane no longer found it (a review, 2026-10-05).
+* `filing_plan` says how: `move` when the folder is on the tile's disk (one `os.replace`, at once,
+  nothing more on the disk; a rename refused across volumes falls back to the copy); `copy` on
+  another disk, with the bytes it writes (every file in full, those shared with the cache too);
+  `reuse` when a real folder of the tile's name there, not the tile's own, holds this build whole,
+  every file at its size (a copy a stop left in place), then read back the same bytes as the
+  tile's before it is taken (`_same_bytes`: a hand copy cut short keeps its sizes); `there` when
+  the tile is in that folder already; `taken` when another folder, or a link, of its name is there,
+  or a copy that reads back otherwise (`SYS_TILE_NAME_TAKEN`). A link is never a copy: one leading
+  to the tile itself passed for it, and the original was deleted.
+* A copy needs its bytes and `ROOM_MARGIN` free (`SYS_DISK_FULL`). It is made under
+  `<name>.osxp-part` beside where it goes, 8 MB at a time, each file's blake3 digest taken as it is
+  read; the files are then sent to the disk as a group, the disk's own cache flushed once
+  (`graph.store.send_to_disk`, `flush_disk`: each file forced alone held a hard disk under Windows
+  at every one, 2026-09-28), read back against their digests (`SYS_TILE_COPY_DIFFERS`), and the
+  folder is renamed into place. A stop (`FilingStoppedError`, asked between two files) or any
+  failure takes the temporary folder away; a temporary folder found there is a copy a stop left
+  half made, made again. The original is never touched before the copy is in place.
+* Then the tile is switched as a tile found again (`find_again_receipt`, 4.5): every X-Plane that
+  showed it follows, its roads and forests go into the overlays pack of the folder it goes to, and
+  its row follows. A tile copied, the original still there, has every X-Plane that showed it led
+  to the copy first (`_lead_to`: its link only, a link that cannot be made giving the old one
+  back), so that the switch finds what a move leaves: its line in `scenery_packs.ini` stays as the
+  user left it, enabled or not and where he put it (taken out and installed again as a build from
+  another folder, 4.4, it came back enabled at its default place, a review, 2026-10-05). It leaves
+  the folder it came from last (`_delete_pack_dir`), never when that folder is the copy itself; a
+  file another program holds there leaves that folder as it is, its path in the receipt's `left`,
+  which the page says.
+* Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
+  after. A stop after a move and before the switch leaves the row's folder gone: *Find again…*
+  (4.5) finishes.
+
+The engine files one tile at a time, and nothing else changes a tile meanwhile: the install,
+uninstall, overlays, forget, find and delete routes, and a build or its retry, answer 409
+`SYS_BUSY` while a tile is filed; a tile is filed only between builds.
+
+Acceptance (`tests/test_library_file.py`, fake X-Planes): a tile moved on one disk keeps its
+images' files and is followed by X-Plane, the Library and its roads; a tile copied to another disk
+is the same bytes there, read back, and leaves the folder it came from; how far the copy is is
+heard, and a stop leaves the tile where it was, the copy made again when asked; a copy that reads
+back wrong is taken away; a whole copy a stop left is taken without copying, another folder of its
+name is refused; a folder no tile goes into, X-Plane running and a disk without room refuse and
+change nothing; the plan says what each tile does and reads only; one filing at a time, nothing
+else changing a tile meanwhile. From the review of 2026-10-05: a link of the tile's name, a Custom
+Scenery reached through a link or in another case, and a copy cut short at its full size are
+refused, the tile where it was; the workshop's own folders are refused; a tile not whole is
+refused before anything moves; an old folder a file holds is named in `left`; a Stop asked as the
+filing starts is kept; a tile filed to another disk keeps its line as the user left it, and a new
+overlays line takes the state of the one the tile came from (4.5).
+
+### 4.7 A tile filed elsewhere, built again (`filing.put_back`, the atelier, step 4)
+
+A tile filed elsewhere and built again (from the Plan, or *Build again* in Works) is built in the
+workshop, beside the cache, then its new version is put back in its folder in place of the old
+one (2026-10-05): built as any tile, then moved, or copied when its folder is on another disk:
+
+* Its folder (`tile_home`): the one the X-Plane of Settings takes (its link leads there); else the
+  workshop when the Library lists the tile there; else the latest of its folders elsewhere. A
+  folder gone from a disk that is here does not count: the tile is built in the workshop as a new
+  one, and its rows there follow it; the roads that folder left in the overlays pack beside it go
+  (`let_go_of_roads`), and that pack, left without any tile's roads, goes out of X-Plane, its link
+  and its line. While X-Plane runs, nothing of that folder changes until the next build. A folder on a disk away does: the tile is not built
+  (`SYS_TILE_DISK_ABSENT`), and the others of the build are. A folder whose old version a put
+  back cut short left under `<name>.osxp-old` has it back under its name first.
+* It is never installed from the workshop: X-Plane's link leads to its folder all along, and its
+  line in `scenery_packs.ini` stays as the user left it. Its put back is declared with the build's
+  nodes, weighing its bytes copied then read back on another disk (`_put_back_rows`): the tile is
+  in the build until it is back in its folder, and Works' bar and time left count the copy.
+* Unchanged, its folder holds this very build already, its roads with it: nothing is copied,
+  nothing is left in the workshop, and the step says already there. So it is when its folder
+  holds the very files of the build and only their manifest differs (`lays_the_same`: the same
+  DSF, textures and roads, sizes and decal): a neighbour built since, or its cache freed, gives
+  the masks another key for the same bytes (their `nb_*` inputs), and the new manifest is written
+  in the folder, nothing copied, X-Plane running or not (the whole tile was copied again, and
+  refused while X-Plane ran, found on the owner's tiles, 2026-10-06). When only its roads are gone
+  (a tile found again without them), they come back from the store, parked in it.
+* Else, with X-Plane closed (`SYS_PUT_BACK_XP_RUNNING`, asked before the copy and again before
+  the swap): its new roads and forests, which the build wrote in the workshop's overlays pack,
+  are first parked in the new version (`park_roads`), where X-Plane does not read them; on the
+  workshop's disk the new version is moved into place in one step, its images staying the
+  cache's files; on another it is copied under `<name>.osxp-part`, its roads with it, sent to the
+  disk as a group, read back (`SYS_TILE_COPY_DIFFERS`), with room for it and `ROOM_MARGIN`
+  (`SYS_DISK_FULL`). Then the old version takes the name `<name>.osxp-old`, the new one its name,
+  and the old one goes; its roads are put where the old ones were drawn, or left to another pack's
+  when the old ones were, or the old ones go when the new version has none. Until that swap
+  nothing of the old version is touched: a stop or a failure leaves it as it was, the new version
+  back in the workshop, its roads parked in it (left beside it, they were drawn twice), and
+  *Build again* finishes. What follows the swap cannot fail the put back.
+* Then the workshop keeps nothing of the tile (the cache keeps its images), what a put back cut
+  short left beside its folder goes, the Library lists it once, in its folder, as this build, and
+  the X-Plane of Settings that shows it is given its install again, its line kept, or the install
+  asked for when it did not show it; while that X-Plane runs, the tile it shows has its parked
+  roads put beside it and its row, nothing of X-Plane changed. An old version a file held is said
+  in Works, with where it is. Every X-Plane that showed it sees the new version, its link leading
+  to the same folder.
+* A Stop of the build (the job's callback raises `CancelRequested`) stops the put back under way
+  before its next file, and the tiles after it are not put back; the build ends stopped, with its
+  report, the other tiles settled.
+
+Works shows the put back in the Installation cell, with how far the copy is in the cell's tooltip
+(« retour à sa place : copie, 1,2 Go sur 4,1 Go »), no bar of its own: one more takes too much
+room.
+
+Acceptance (`tests/test_put_back.py`, fake X-Planes; the build's own tests run `build_tiles` with
+a scheduler that answers every node as built, and the job's real Stop): where the new version
+goes, by the rules above; on another disk copied, read back and in place of the old one, its new
+roads where the old ones were drawn and none left in the workshop; on the workshop's disk moved
+in one step, its images the cache's files; its new roads parked when the old ones were not drawn,
+and the old ones gone with a new version that has none; X-Plane running, no room, a Stop and a
+copy that reads back wrong leave the old version, the new one in the workshop with its roads
+parked, no temporary folder; X-Plane started during the copy is seen before the swap; a move
+refused at the swap goes back to the workshop; a put back cut between its two renames is mended
+by the next build; what follows the swap cannot fail it; an old version a file kept is said, then
+taken away by the next build; at the end of a build the tile is in its folder, X-Plane's line as
+it was, one Library row, the workshop's copy and row gone, and built again unchanged nothing is
+copied, X-Plane running or not, nor when only its manifest differs, the masks under another key
+(`tests/test_put_back_same_files.py`, the store and packs as a build lays them out), another decal,
+another texture or a folder not whole being other files; lost roads come back; the job's Stop ends the build stopped, the
+tile after it settled and the stopped one not done; a tile on a disk away is not built and shows
+nothing of it done; a tile filed elsewhere has no install node; the put back weighs its copy; the
+rows of its folders gone follow it to the workshop.
+
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with
@@ -435,14 +642,28 @@ tiles(lat INTEGER, lon INTEGER, kind TEXT ('ortho'|'overlay'), path TEXT,
 ```
 
 - `register(tile, provider, zl, path, built_by, keys=None, *, kind="ortho")`: upsert on
-  the primary key (`registered_at` kept, `updated_at` refreshed). `path` is stored absolute:
-  `osxp build --out tiles --install` registered a relative one, which `osxp serve` then read from
-  its own working directory (`tests/test_library_register.py`). `keys` is the dict of
+  the primary key (`registered_at` kept, `updated_at` refreshed). `path` is stored as
+  `real_pack_path` spells it: absolute, as `osxp build --out tiles --install` registered a
+  relative one, which `osxp serve` then read from its own working directory; and with the folder
+  holding the pack followed to where its links lead, the pack's own name kept (X-Plane knows the
+  pack by it). The default data folder may be a link, `~/.orthostudio` leading to another disk: a
+  build that did not install registered its pack where the links lead, the install rule where they
+  are, and the Library listed the one pack twice (2026-10-05). `keys` is the dict of
   store keys of the artefacts that made the pack (`None` for Ortho4XP builds: "installable, not
-  incremental").
+  incremental"). The facts read of a pack's files (`pack_facts`) are kept under the same spelling.
 - `list(*, tile=None, kind=None)`: entries ordered by (lat, lon, kind, path).
 - `forget(tile, *, kind=None, path=None)`: deletes the matching rows, returns the count
-  (the delete of 4.2 forgets a pack's rows with it).
+  (the delete of 4.2 forgets a pack's rows with it); `path` is spelled as `register` spells it.
+- The first opening of the library in a process rewrites what an older version kept under another
+  spelling, and the rows that then name one pack become one: what the pack holds is the newest
+  row's, when it came the first one's, and a row of Ortho4XP keeps the pack Ortho4XP's, as
+  `keep_built_by` keeps it in one row (the install that wrote the other row found none under its
+  spelling and said `osxp` without knowing); its facts keep their latest reading. The paths are
+  read first, the folders above the packs followed once each, and the library is written only
+  when something is to rewrite (`tests/test_library_register.py`). The first opening only:
+  following those folders reads every disk that holds a pack, a network drive that stopped
+  answering holds whoever asks while it waits, and the status opens the library at each change;
+  a link changed while the app runs is taken at its next start.
 - Connection in WAL mode, `busy_timeout` 30 s, like the store index.
 
 `import_ortho4xp(folder)`, `<ortho4xp>` being that folder:

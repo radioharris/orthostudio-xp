@@ -16,6 +16,7 @@ Origin: ``O4_Vector_Map.build_poly_file`` (lines 19-179). Spec:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -56,6 +57,8 @@ __all__ = [
     "poly_file_name",
     "to_vector_layers",
 ]
+
+log = logging.getLogger(__name__)
 
 LAYERS_NPZ = "layers.npz"
 STATS_JSON = "stats.json"
@@ -327,10 +330,15 @@ def assemble_vectors(
             graph,
             final_seeds,
             seeds,
-            noding_s=noding_s,
-            elapsed_s=time.perf_counter() - started,
             violations=violations,
         ),
+    )
+    # how long it took goes to the log, not into the artefact (:func:`_stats`)
+    log.info(
+        "vectors %s: noded in %.1f s, assembled in %.1f s",
+        tile.name,
+        noding_s,
+        time.perf_counter() - started,
     )
     if out_dir is not None:
         assembled.write(out_dir)
@@ -366,14 +374,15 @@ def _stats(
     seeds: dict[int, NDArray[np.float64]],
     accumulated: SeedSet,
     *,
-    noding_s: float,
-    elapsed_s: float,
     violations: int | None,
 ) -> dict[str, Any]:
-    """The ``stats.json`` document: what went in, what came out, how long it took.
+    """The ``stats.json`` document: what went in and what came out.
 
-    ``assemble_s`` covers the assembly only, not the writing of the artefact: the stats are
-    part of what is written.
+    Not how long it took, which the log says: the stats are part of the artefact, and with their
+    ``noding_s`` and ``assemble_s`` the same tile built again was another artefact each time, so
+    its mesh, masks and DSF were made again and its whole folder copied again after its cache was
+    freed (found on the owner's Shadow, 2026-10-06). The DSF's stats leave theirs out for that
+    reason.
     """
     values, counts = np.unique(graph.markers, return_counts=True)
     return {
@@ -402,8 +411,6 @@ def _stats(
         "seeds_defaulted": not len(accumulated),
         "seeds_skipped": accumulated.skipped,
         "planarity_violations": violations,
-        "noding_s": round(noding_s, 3),
-        "assemble_s": round(elapsed_s, 3),
     }
 
 

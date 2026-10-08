@@ -342,7 +342,8 @@ def test_mock_events_follow_the_engine_journal() -> None:
                 assert (data["weight_s"] == 0) is data["skipped"]  # skipped before it started
     assert roles["osm"] == roles["osm_hit"] == {"osm"}
     assert doc["osm_hit"][0]["event"] == "done" and doc["osm_hit"][0]["hit"] is True
-    assert roles["tile"] == set(ROLE_STAGE) - {"osm"}
+    # the mock builds tiles of the workshop: none filed elsewhere is put back (the atelier, step 4)
+    assert roles["tile"] == set(ROLE_STAGE) - {"osm", "put_back"}
     tile = doc["tile"]
     assert any(e["event"] == "done" and e["hit"] for e in tile)  # a cache hit in every build
     failing = [e for e in tile if e.get("only") == "failing"]
@@ -606,6 +607,18 @@ def test_the_library_asks_again_for_sizes_and_measures_the_disk_only_when_shown(
     assert got == [True, False, False, 5000]
 
 
+def test_the_disk_space_lines_follow_the_language() -> None:
+    """The Library's Disk space lines are written by renderDisk alone: after a switch from English
+    to French they still said "Data used by your 5 tile(s)" and "7.4 GB" under a French title,
+    until the next measure (2026-10-05). The switch draws them again from the last measure and
+    measures nothing: that walk takes minutes on a hard disk."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    switch = _function_body(app_js, "rerenderAll")
+    assert "renderDisk();" in switch
+    assert "loadDisk(" not in switch
+    assert "api(" not in _function_body(app_js, "renderDisk")
+
+
 def test_saved_zones_with_problems_stay_listed() -> None:
     """A zone the engine flags stays in the list, marked; problems naming no zone of the list are
     kept for the notice; ids stay unique so that a row never acts on its twin."""
@@ -780,6 +793,7 @@ LIBRARY_ROW_KEYS = {
     "updated_at",
     "size_bytes",
     "present",
+    "disk_absent",  # gone with its disk rather than from a disk that is here (the atelier, step 2)
     "overlay",
 }
 MOCK_PRELUDE = """
@@ -2206,10 +2220,10 @@ def test_the_library_frees_disk_space_after_asking() -> None:
         f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true)]",
     )
     assert plans == [
-        {"unused": 5, "pictures": 0, "heights": 0, "total": 5},
-        {"unused": 5, "pictures": 8, "heights": 0, "total": 13},
-        {"unused": 5, "pictures": 0, "heights": 9, "total": 14},
-        {"unused": 0, "pictures": 0, "heights": 0, "total": 0},
+        {"unused": 5, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
+        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2227,6 +2241,76 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     refused = 'process.stdout.write(JSON.stringify(await call("POST", "/api/clean", {})));'
     busy = _node_mock(refused, fail="busy")
     assert busy == {"status": 409, "code": "SYS_BUSY"}
+
+
+def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
+    """The atelier, step 5: "Free space" offers the cache of the tiles filed outside the atelier as
+    a line and a choice of its own, shown only while some tile is filed outside. Each choice frees
+    its own line: the image pieces of those tiles are theirs, not the images'."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    choice = re.search(r'<div id="disk-filed-choice" hidden>.*?</div>', html, re.S)
+    assert choice is not None and 'id="disk-filed"' in choice.group(0)
+    assert html.index('id="disk-filed"') < html.index('id="disk-images"')
+    disk = (
+        "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9, "
+        "filed_tiles: 2, filed_bytes: 3, filed_images_bytes: 4}"
+    )
+    plans = _node_json(
+        "app.js",
+        f"[m.freeSpacePlan({disk}, false, false, true), m.freeSpacePlan({disk}, true, true, true),"
+        f" m.freeSpacePlan({disk}, true, false),"
+        f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
+    )
+    assert plans == [
+        {"unused": 5, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        {"unused": 5, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
+        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+    ]
+    offered = _node_json(
+        "app.js",
+        "[m.filedOffered({filed_tiles: 2, filed_bytes: 3, filed_images_bytes: 0}),"
+        " m.filedOffered({filed_tiles: 2, filed_bytes: 0, filed_images_bytes: 0}),"
+        " m.filedOffered({filed_tiles: 0, filed_bytes: 3}), m.filedOffered(null)]",
+    )
+    # a tile of a data folder chosen before has its cache there: no line of 0 bytes for ever
+    assert offered == [True, False, False, False]
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    render = re.search(r"\nfunction renderDisk\(\) \{.*?\n\}\n", app, re.S)
+    assert render is not None
+    body = render.group(0)
+    # the line and the choice only while some tile is filed outside, the choice read only then
+    assert '$("disk-filed-choice").hidden = !offered;' in body
+    # unticked as it hides: it came back ticked with the next tile filed (a review, 2026-10-06)
+    assert 'if (!offered) $("disk-filed").checked = false;' in body
+    assert 'offered && $("disk-filed").checked' in body
+    assert "(Number(d.filed_bytes) || 0)" in body  # the data in use leaves their cache out
+    # "Free space" waits for a filing, which the engine refuses meanwhile
+    assert "Boolean(state.filing)" in body and 't("disk.filing_note")' in body
+    free = re.search(r"\nasync function freeSpace\(\) \{.*?\n\}\n", app, re.S)
+    assert free is not None and "{ images, relief, filed }" in free.group(0)
+    assert "res?.filed_freed_bytes" in free.group(0)
+    script = """
+    const file = await call("POST", "/api/library/zOrthoStudio_%2B43%2B004/file", {
+      path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004",
+      folder: "/Volumes/Tiles/Alps",
+    });
+    const before = (await call("GET", "/api/disk")).ok;
+    const freed = (await call("POST", "/api/clean", {filed: true})).ok;
+    const after = (await call("GET", "/api/disk")).ok;
+    process.stdout.write(JSON.stringify({file: file.ok, before, freed, after}));
+    """
+    got = _node_mock(script)
+    assert got["file"]["to"] == "/Volumes/Tiles/Alps/zOrthoStudio_+43+004"
+    assert got["before"]["filed_tiles"] == 1 and got["before"]["filed_bytes"] > 0
+    cache = got["before"]["filed_bytes"] + got["before"]["filed_images_bytes"]
+    assert got["freed"]["filed_freed_bytes"] == cache
+    assert got["after"]["filed_tiles"] == 1  # the tile stays filed, its cache went
+    assert got["after"]["filed_bytes"] == got["after"]["filed_images_bytes"] == 0
+    untouched = _node_mock(
+        'process.stdout.write(JSON.stringify((await call("GET", "/api/disk")).ok));'
+    )
+    assert untouched["filed_tiles"] == 0 and untouched["filed_bytes"] == 0
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
@@ -2546,9 +2630,10 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app_js, "renderLibrary")
-    assert "sortLibrary(rows.filter((e) => tileMatches(e.tile, query)), sort);" in body
-    assert 't("library.search_found"' in body and 't("library.search_none")' in body
-    assert "for (const e of shown) body.append(...libraryRow(e));" in body
+    assert "const shown = sortLibrary(view.rows, sort);" in body
+    view = _function_body(app_js, "libraryView")
+    assert "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));" in view
+    assert 't("library.search_found"' in view and 't("library.search_none")' in view
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
     assert (
         "state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };" in app_js
@@ -2777,7 +2862,8 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
     row = _function_body(app_js, "libraryRow")
-    assert row.count("disabled: busy || inBuild") == 2 and "disabled: busy || building" in row
+    # Add, Remove and Find again (a moved tile in a build waits for the build's end as well)
+    assert row.count("disabled: busy || inBuild") == 3 and "disabled: busy || building" in row
     assert 't("library.in_build")' in row
     library = _function_body(app_js, "renderLibrary")
     assert '$("library-building").hidden = !activeJobs().length;' in library
@@ -3553,6 +3639,34 @@ def test_settings_keep_their_scroll_position_when_an_answer_changes() -> None:
         })()""",
     )
     assert got == {"calls": [[0, 640]], "none": None}
+
+
+def test_each_screen_keeps_its_own_scroll_place() -> None:
+    """The window scrolls, not the screens: a screen opened where the last one was left, which a
+    user saw once a screen had been scrolled two or three times (2026-10-07). Each screen keeps its
+    own place, as tabs do; Works opened on the build just started shows it from its top (the fourth
+    campaign, 2026-10-06: it opened halfway down, its head above the window)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "const screenScroll = new Map();" in app_js
+    body = _function_body(app_js, "showScreen")
+    leave = body.index("if (left !== name) screenScroll.set(left, window.scrollY);")
+    # written down while the screen left still shows: hidden, a shorter page scrolls it up
+    assert body.index("const left = state.screen;") < leave < body.index("state.screen = name;")
+    assert leave < body.index("for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;")
+    # given back last, once the screen shown is drawn; the same screen shown again stays put
+    back = "if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);"
+    assert body.rstrip().endswith(back + "\n}")
+    assert body.index("markWideTables();") < body.index(back)
+    # a screen is opened on something only by its address and by the build just started
+    assert 'showScreen("works", res.job_id);' in _function_body(app_js, "build")
+    calls = re.findall(r"(?<!function )showScreen\(([^)]*)\)", app_js)
+    assert [c for c in calls if "," in c] == [
+        'm ? m[1] : "plan", m ? m[2] : undefined',
+        '"works", res.job_id',
+    ]
+    # the Settings field a refusal points to is scrolled to after, so the field wins
+    focus = _function_body(app_js, "focusSettingsField")
+    assert focus.index('showScreen("settings");') < focus.index("field.scrollIntoView?.(")
 
 
 def test_the_plan_map_shows_what_the_running_build_does() -> None:
@@ -5003,12 +5117,93 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
-    assert 'class: "library-built"' in row and "colspan: 8" in row
+    assert 'class: "library-built"' in row and "colspan: 9" in row
     assert "byOsxp ?" in row  # none for an imported tile
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them
     assert 'classList.contains("library-built")' in _function_body(app_js, "libraryRows")
-    assert "body.append(...libraryRow(e));" in _function_body(app_js, "renderLibrary")
+    assert "body.append(...libraryRow(e, view.folders.length > 0));" in _function_body(
+        app_js, "renderLibrary"
+    )
+
+
+def test_the_library_names_his_relief_file_or_says_why_it_was_not_used() -> None:
+    """A user saw two reliefs come out of one folder of lidar files, X-Plane's taking his file and
+    Copernicus not, and nothing said which file a tile stood on (2026-10-05). The Relief line names
+    the file, or says why it was not used, the whole path in its tooltip; a relief made before,
+    which says nothing of it, keeps the words it had. Settings say the rule."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        const folder = ["/Users/me/lidar"];
+        const file = "/Users/me/lidar/Bavaria/N50E011.hgt";
+        const coarser = { file, used: false, why: "coarser", own_m: 93, base_m: 31 };
+        const say = (relief, laid, own) =>
+          m.reliefSentence({ relief, relief_laid: laid, relief_asked: folder, relief_own: own });
+        const bs = String.fromCharCode(92);
+        const got = {
+          used: say("XP12", folder, [{ file, used: true }]),
+          coarser: say("COP30", [], [coarser]),
+          unreadable: say("COP30", [], [{ file, used: false, why: "unreadable" }]),
+          empty: say("COP30", [], [{ file, used: false, why: "empty" }]),
+          nofile: say("COP30", [], []),
+          windows: say("XP12", ["D:" + bs + "lidar"],
+                       [{ file: ["D:", "lidar", "N50E011.hgt"].join(bs), used: true }]),
+          base: m.reliefSentence({ relief: "/Users/me/N50E011.hgt", relief_laid: [],
+                                   relief_asked: [], relief_own: [] }),
+          canada: m.reliefSentence({ relief: "COP30", relief_laid: ["HRDEM"],
+                                     relief_asked: ["HRDEM", ...folder], relief_own: [coarser] }),
+          before: say("COP30", [], undefined),
+          line: m.builtLines({ provider: "BI", zl: 16, photo: null, built: { at: 1790000000,
+            facts: { version: "0.1.22", relief: "COP30", relief_laid: [], relief_asked: folder,
+                     relief_own: [coarser] } } }).lines[2],
+          files: m.reliefFiles({ relief: "/Users/me/N50E011.hgt",
+                                 relief_own: [{ file, used: true }] }),
+        };
+        globalThis.document = { documentElement: {} };
+        i.setLanguage("fr");
+        got.french = say("COP30", [], [coarser]);
+        process.stdout.write(JSON.stringify(got));"""
+    )
+    left = "Copernicus. Your file N50E011.hgt was not used: "
+    assert got["used"] == "X-Plane 12, with your file N50E011.hgt over it" == got["windows"]
+    assert got["coarser"] == left + "93 m between points, where Copernicus has 31 m."
+    assert got["unreadable"] == left + "it could not be read."
+    assert got["empty"] == left + "it has no height on this square."
+    assert got["nofile"] == "Copernicus. Your folder has no file for this square."
+    assert got["base"] == "Your file N50E011.hgt"  # a file of his as the relief itself
+    assert got["canada"] == (
+        "Copernicus, with Canada's lidar over it. Your file N50E011.hgt was not used: "
+        "93 m between points, where Copernicus has 31 m."
+    )
+    # a relief made before says nothing of his files: not used, which is true whatever the reason,
+    # where "none on this square" was false of a file left aside for being coarser
+    assert got["before"] == "Copernicus: your own files asked, not used on this square"
+    assert got["line"] == ["Relief", got["coarser"], None, "/Users/me/lidar/Bavaria/N50E011.hgt"]
+    assert got["files"] == "/Users/me/N50E011.hgt\n/Users/me/lidar/Bavaria/N50E011.hgt"
+    assert got["french"] == (
+        "Copernicus. Votre fichier N50E011.hgt n'a pas servi : "
+        "93 m entre deux points, contre 31 m pour Copernicus."
+    )
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "title: title || null" in _function_body(app_js, "kv")  # the path, on hovering
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "relief.name.own_file",
+            "library.built_relief_coarser",
+            "library.built_relief_unreadable",
+            "library.built_relief_empty",
+            "library.built_relief_unused",
+            "library.built_relief_no_file",
+            "library.built_relief_own_unused",
+        ):
+            assert tables[lang][key], (lang, key)
+    # the rule is written where the folder is chosen, where it said "whatever its resolution"
+    assert "at least as fine as the relief chosen" in tables["en"]["settings.q.own_rest"]
+    assert "au moins aussi fin que le relief choisi" in tables["fr"]["settings.q.own_rest"]
 
 
 def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
@@ -5826,9 +6021,12 @@ def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
     loading = layer[layer.index('layer.on("loading", () => {') :]
     assert "came = 0;" in loading[: loading.index("});")], "a new view starts with nothing counted"
     assert 'layer.on("tileload", () => {' in layer and "came += 1;" in layer
-    assert "if (layer === base) setNotice(imageryNotice(code, came));" in layer, "decided on load"
-    assert 'layer.on("load", () => {' in layer
-    assert "tileerror" not in layer and ">= 6" not in layer, "no count of failures, no threshold"
+    load = layer[layer.index('layer.on("load", () => {') :]
+    decided = "if (layer !== base) return;\n      setNotice(imageryNotice(code, came));"
+    assert decided in load, "decided on load"
+    assert ">= 6" not in layer and "failed += " not in layer, "no count of failures, no threshold"
+    # an error keeps one tile of the view, asked again to learn why (the next test), not a count
+    assert 'layer.on("tileerror", (ev) => {\n      failed = ev.coords;\n    });' in layer
 
     rule = code[code.index("function imageryNotice(") : code.index("function setNotice(")]
     outside = rule.index("!sourceCovers(p, tileName(c.lat, wrapLon(c.lng)))")
@@ -5849,6 +6047,70 @@ def test_the_map_says_when_its_imagery_has_nothing_here() -> None:
     tables = _i18n_tables()
     for lang in ("fr", "en"):
         assert "map.base_outside" in tables[lang] and "map.base_failed" in tables[lang]
+
+
+def test_the_map_says_when_its_source_refuses_this_computer() -> None:
+    """Esri's network answered "Access Denied" to a user's address for two days, and the map said
+    only that no imagery came (his log, 2026-10-07). When not one image of a view came, the page
+    asks one of its tiles again through api(), which reads what an <img> cannot: the engine's 502
+    carrying NET_FORBIDDEN, its answer to a 403 from the source (`test_api_map.py`), is said as a
+    refusal of this computer. Any other answer leaves the notice as it was, and a new view or
+    another source since then keeps its own."""
+    from orthostudio.api.map_api import _failed
+    from orthostudio.errors import OsxpError
+
+    def answer(code: str) -> list[Any]:
+        """The engine's own answer for a tile of Esri World Imagery that failed with ``code``."""
+        context = {
+            "provider": "Arc",
+            "host": "services.arcgisonline.com",
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"
+            "/tile/8/154/213",
+            "tile": "8/213/154",
+            "chunk": "8/213/154",
+            "status": 403,
+            "timeout": 20,
+            "reason": "no answer after 3 attempt(s)",
+        }
+        res = _failed(OsxpError(code, context=context)).response()
+        return [res.status_code, json.loads(bytes(res.body))]
+
+    refused = answer("NET_FORBIDDEN")
+    others = [answer(c) for c in ("NET_TIMEOUT", "NET_UNEXPECTED_STATUS", "NET_RATE_LIMITED")]
+    cases = [refused, *others, [204, None], [502, None], [403, refused[1]]]
+    got = _node_json("map.js", f"{json.dumps(cases)}.map(([s, b]) => m.tileRefused(s, b))")
+    assert got == [True, False, False, False, False, False, False]
+
+    code = (UI / "map.js").read_text(encoding="utf-8")
+    layer = code[
+        code.index("function providerLayer(") : code.index("// -- the colours, live on the map")
+    ]
+    load = layer[layer.index('layer.on("load", () => {') :]
+    # asked only when not one image of the view came, with a tile of that very view
+    assert "if (came || !tile) return;" in load
+    assert "tileRefusal(layer.getTileUrl(tile)).then((refused) => {" in load
+    # said only while that view of that source is still the one on screen
+    assert (
+        "if (refused && layer === base && failed === tile) "
+        'setNotice(t("map.base_refused", { provider: providerLabel(code) }));'
+    ) in load
+    ask = code[code.index("async function tileRefusal(") :]
+    ask = ask[: ask.index("\n  }\n")]
+    # through api(), as every request to the engine (the one fetch left reads the borders)
+    assert 'await ctx.api("GET", url);' in ask
+    assert "return tileRefused(err?.status, err?.detail);" in ask
+    tables = _i18n_tables()
+    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion (accès")
+    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection (access")
+    # the line never runs under the legend: at the bottom right, as wide as its words up to what
+    # the legend, at most 45 % at the bottom left, leaves
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    notice, legend = rules[".map-notice"], rules[".map-legend"]
+    for needle in ("bottom: 34px;", "right: 10px;", "width: max-content;"):
+        assert needle in notice, needle
+    assert "max-width: calc(55% - 30px);" in notice
+    assert "left:" not in notice and "transform" not in notice
+    assert "left: 10px;" in legend and "max-width: 45%;" in legend
 
 
 def test_the_map_asks_a_users_source_under_its_address() -> None:
@@ -6662,3 +6924,689 @@ def test_the_route_can_be_left_unchosen() -> None:
     along = _function_body(app_js, "setFlightPlanAlong")
     assert 'withoutPlan(state.tiles, fp, state.byHand, "along")' in along
     assert "cap: MAX_BUILD_TILES" in along and "sayTilesInBuild(" in along
+
+
+# -- the atelier, step 1: where each tile is (2026-10-05) -----------------------------------------
+
+
+def _step1(script: str) -> Any:
+    """Run ``script``, an expression, with the page's modules as ``i`` (i18n) and ``m`` (app), the
+    home folder ``/Users/pilot``, and three helpers: ``bs`` (a backslash), ``mac`` (the atelier of
+    a Mac's data folder) and ``at(path, atelier, platform)``, ``tileFolder`` of a row at
+    ``path``."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    return _run_node(
+        f"""const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const bs = String.fromCharCode(92);
+        const mac = ["/Users/pilot/.orthostudio/tiles"];
+        const at = (path, atelier = mac, platform = "mac") =>
+          m.tileFolder({{ path }}, atelier, platform);
+        process.stdout.write(JSON.stringify({script}));"""
+    )
+
+
+def test_each_tile_s_folder_is_read_from_the_list_alone() -> None:
+    """A user files hundreds of tiles by area, on several disks, and the Library listed them all
+    with no way to tell where each was (TinkerNZ, 2026-10-04): each tile's folder comes from the
+    list alone, the atelier's own named as such, in the form Settings give it or with its links
+    followed, under which a tile built without being installed is listed (a review,
+    2026-10-05)."""
+    got = _step1(
+        """{
+          atelier: at("/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004"),
+          linked: at("/Volumes/X/.orthostudio/tiles/zOrthoStudio_+43+005",
+                     m.atelierFolders({ data_dir: {
+                       path: "/Users/pilot/.orthostudio/",
+                       tiles_real: "/Volumes/X/.orthostudio/tiles",
+                     } })),
+          folders: m.atelierFolders({ data_dir: { path: "/Users/pilot/.orthostudio/",
+                                                  tiles_real: null } }),
+          nostatus: m.atelierFolders(null),
+          elsewhere: at("/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006"),
+          home: at("/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005"),
+          windows: m.tileFolder({ path: ["D:", "OSXP", "tiles", "zOrthoStudio_+45+006"].join(bs) },
+                                ["d:/osxp/Tiles"], "win"),
+          root: m.tileFolder({ path: ["E:", "zOrthoStudio_+45+006"].join(bs) }, [], "win"),
+          linux: m.tileFolder({ path: "/data/OSXP/Tiles/zOrthoStudio_+45+006" },
+                              ["/data/OSXP/tiles"], "lin"),
+          none: at(""),
+        }"""
+    )
+    assert got["atelier"] == {"key": "atelier", "label": "Workshop"} == got["linked"]
+    assert got["folders"] == ["/Users/pilot/.orthostudio/tiles"]
+    assert got["nostatus"] is None  # not known yet: no folder is told (a review, 2026-10-05)
+    assert got["elsewhere"]["label"] == "/Volumes/Big/Tuiles/Alpes"
+    assert got["home"]["label"] == "~/Ortho4XP/Tiles"  # written as its owner knows it
+    assert got["windows"]["key"] == "atelier"  # either separator, case aside
+    assert got["root"]["label"] == "E:\\"  # a drive's root, not "E:" (its current folder)
+    assert got["linux"]["key"] != "atelier"  # Linux tells Tiles from tiles
+    assert got["none"] == {"key": "", "label": ""}
+
+
+def test_the_folder_filter_and_the_note_under_the_search() -> None:
+    """The folders of the filter, the atelier first, with how many tiles each holds, an overlay
+    row never counted; the folder chosen applied with the search, kept while it is there and
+    dropped once it is gone; and the note: how many of all, or that the tiles searched for are in
+    other folders, where it said that no tile matched (a review, 2026-10-05)."""
+    got = _step1(
+        """(() => {
+          const rows = [
+            { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004" },
+            { tile: "+43+004", kind: "overlay",
+              path: "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays" },
+            { tile: "+43+005", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+005" },
+            { tile: "+45+006", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+006" },
+            { tile: "+44+005", path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" },
+            { tile: "+45+007", path: "/Volumes/Big/Tuiles/Alpes/zOrthoStudio_+45+007" },
+          ];
+          const tiles = m.libraryTiles(rows);
+          const view = (asked) => {
+            const v = m.libraryView(tiles, asked, mac, "mac");
+            return { folder: v.folder, rows: v.rows.map((e) => e.tile), note: v.note,
+                     folders: v.folders.map((f) => [f.label, f.n]) };
+          };
+          const alps = "/volumes/big/tuiles/alpes";
+          return {
+            all: view({}),
+            withOverlays: m.libraryFolders(rows, mac, "mac").map((f) => [f.label, f.n]),
+            one: m.libraryFolders(rows.slice(0, 3), mac, "mac"),
+            alps: view({ folder: alps }),
+            both: view({ folder: alps, query: "+45+007" }),
+            elsewhere: view({ folder: "atelier", query: "+44" }),
+            nowhere: view({ folder: "atelier", query: "+60" }),
+            gone: view({ folder: "/volumes/gone" }),
+            search: view({ query: " +43 " }),
+            unknown: (() => {
+              const v = m.libraryView(tiles, { folder: "atelier", query: "+43" }, null, "mac");
+              return { folders: v.folders, folder: v.folder, rows: v.rows.map((e) => e.tile),
+                       note: v.note, none: m.libraryFolders(rows, null, "mac") };
+            })(),
+          };
+        })()"""
+    )
+    assert got["all"]["folders"] == [
+        ["Workshop", 2],
+        ["/Volumes/Big/Tuiles/Alpes", 2],
+        ["~/Ortho4XP/Tiles", 1],
+    ]
+    assert got["withOverlays"] == got["all"]["folders"]  # an overlay row is not a tile
+    assert got["one"] == []  # one folder: nothing to filter, the filter stays hidden
+    assert got["all"]["note"] is None and len(got["all"]["rows"]) == 5
+    assert got["alps"]["rows"] == ["+45+006", "+45+007"]
+    assert got["alps"]["folder"] == "/volumes/big/tuiles/alpes"
+    assert got["alps"]["note"] == {"text": "2 of 5 tiles.", "warn": False}  # a folder narrows too
+    assert got["both"]["rows"] == ["+45+007"]
+    assert got["elsewhere"]["rows"] == []
+    assert got["elsewhere"]["note"] == {
+        "text": "No tile of this folder matches; 1 in other folders.",
+        "warn": True,
+    }
+    assert got["nowhere"]["note"] == {"text": "No tile matches.", "warn": True}
+    assert got["gone"]["folder"] == "" and len(got["gone"]["rows"]) == 5  # back to all
+    assert got["gone"]["note"] is None
+    assert got["search"]["rows"] == ["+43+004", "+43+005"]
+    # until the status says where the atelier is, no folder is told: the atelier's own tiles read
+    # as their full path, the user's name in it, while a page opened on the Library waited for it
+    # (a review, 2026-10-05); the search alone applies
+    assert got["unknown"] == {
+        "folders": [],
+        "folder": "",
+        "rows": ["+43+004", "+43+005"],
+        "note": {"text": "2 of 5 tiles.", "warn": False},
+        "none": [],
+    }
+
+
+def test_the_folder_list_is_made_again_only_when_its_choices_change() -> None:
+    """The Library is drawn again every 5 s while sizes are measured, and its folder list was made
+    again each time: an open list lost its items under the hand (a review, 2026-10-05). Its
+    choices are made again only when they change (a count, a folder, the language), the choice
+    shown is written only when it differs, and the filter hides with no folder to choose."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """class El {
+          constructor(tag) {
+            Object.assign(this, { tag, kids: [], attrs: {}, dataset: {}, textContent: "" });
+            Object.assign(this, { hidden: false, removed: 0, writes: 0, held: "" });
+          }
+          get firstChild() { return this.kids[0] || null; }
+          removeChild(kid) {
+            this.kids.splice(this.kids.indexOf(kid), 1);
+            this.removed += 1;
+            return kid;
+          }
+          append(...kids) { this.kids.push(...kids); }
+          setAttribute(k, v) { this.attrs[k] = String(v); }
+          addEventListener() {}
+          get value() { return this.held; }
+          set value(v) { this.held = String(v); this.writes += 1; }
+        }
+        const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        const wrap = new El("label");
+        const select = new El("select");
+        const byId = { "library-folder-wrap": wrap, "library-folder": select };
+        globalThis.Node = El;
+        globalThis.document = {
+          documentElement: {},
+          getElementById: (id) => byId[id] || null,
+          createElement: (tag) => new El(tag),
+          createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+        };
+        const folders = (n) => [
+          { key: "atelier", label: "Workshop", n },
+          { key: "/volumes/big/alpes", label: "/Volumes/Big/Alpes", n: 1 },
+        ];
+        const shown = () =>
+          select.kids.map((o) => [o.attrs.value, o.kids.map((k) => k.textContent).join("")]);
+        m.renderLibraryFolders(folders(2), "");
+        const first = { shown: shown(), hidden: wrap.hidden, writes: select.writes };
+        const options = [...select.kids];
+        for (let k = 0; k < 5; k += 1) m.renderLibraryFolders(folders(2), "");
+        const same = select.kids.every((o, k) => o === options[k]);
+        const redrawn = { same, removed: select.removed, writes: select.writes };
+        m.renderLibraryFolders(folders(2), "atelier");
+        m.renderLibraryFolders(folders(2), "atelier");
+        const chosen = { value: select.value, writes: select.writes, removed: select.removed };
+        m.renderLibraryFolders(folders(3), "atelier");
+        const counted = { shown: shown(), removed: select.removed };
+        i.setLanguage("fr");
+        m.renderLibraryFolders(folders(3), "atelier");
+        const french = shown()[0];
+        m.renderLibraryFolders([], "");
+        process.stdout.write(JSON.stringify({
+          first, redrawn, chosen, counted, french, hidden: wrap.hidden,
+        }));"""
+    )
+    assert got["first"] == {
+        "shown": [
+            ["", "All folders"],
+            ["atelier", "Workshop (2)"],
+            ["/volumes/big/alpes", "/Volumes/Big/Alpes (1)"],
+        ],
+        "hidden": False,
+        "writes": 0,
+    }
+    assert got["redrawn"] == {"same": True, "removed": 0, "writes": 0}  # the open list stays
+    assert got["chosen"] == {"value": "atelier", "writes": 1, "removed": 0}
+    assert got["counted"]["shown"][1] == ["atelier", "Workshop (3)"]
+    assert got["counted"]["removed"] == 3  # a tile more: its count changes, the list too
+    assert got["french"] == ["", "Tous les dossiers"]
+    assert got["hidden"] is True
+
+
+def test_the_folder_filter_is_wired() -> None:
+    """The filter beside the search, hidden with one folder; the folder under each tile only when
+    there is more than one; the label and height of the page's other fields (a review,
+    2026-10-05)."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
+    assert 'id="library-search"' in filters and 'id="library-folder"' in filters
+    assert 'id="library-folder-wrap" hidden' in filters and 'data-i18n="library.folder"' in filters
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderLibrary")
+    for needle in (
+        "const atelier = atelierFolders(state.status);",
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier",
+        "state.libraryFolder = view.folder;",
+        "renderLibraryFolders(view.folders, view.folder);",
+        "note.hidden = !view.note;",
+        "for (const e of shown) body.append(...libraryRow(e, view.folders.length > 0));",
+    ):
+        assert needle in body, needle
+    row = _function_body(app_js, "libraryRow")
+    assert "const where = showFolder ? tileFolder(e, atelierFolders(state.status)" in row
+    assert 'where?.label ? h("span", { class: "tile-where" }, where.label) : null' in row
+    assert '$("library-folder").addEventListener("change"' in app_js
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    for rule in (
+        ".library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }",
+        ".library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }",
+    ):
+        assert rule in css, rule
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.folder",
+            "library.folder_all",
+            "library.folder_atelier",
+            "library.search_none_folder",
+        ):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.folder_atelier"] == "Atelier"
+
+
+# -- the atelier, step 2: a tile moved by hand, found again (2026-10-05) --------------------------
+
+
+def test_a_tile_moved_by_hand_is_found_again_from_the_library() -> None:
+    """A tile whose folder is gone from a disk that is here says *Not found*, with *Find again…*;
+    one whose disk is away says *Disk absent*, which plugging the disk in settles. The user shows
+    the tile's folder or the one holding it, and the Library and X-Plane follow it."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert "} else if (byOsxp) {" in row  # not found, or on a disk away: shown where it went
+    assert "onclick: () => findLibraryTile(e)" in row and 't("library.find")' in row
+    assert 'pill(away ? t("library.disk_absent") : t("library.not_found"), "warn")' in row
+    find = _function_body(app_js, "findLibraryTile")
+    assert 'chooseFolder(t("library.find_prompt", { tile: e.tile }), was || null)' in find
+    assert 'libraryRequest(e, "find")' in find and "{ ...req.body, folder }" in find
+    assert "toast(foundMessage(res, e.tile))" in find
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const words = (code, context) => m.libraryCardContent({ code, context }).words;
+        const to = "/Users/pilot/Tiles/Alps/zOrthoStudio_+43+005";
+        process.stdout.write(JSON.stringify({
+          here: words("SYS_TILE_NOT_IN_FOLDER", { name: "zOrthoStudio_+43+005" }),
+          other: words("SYS_TILE_OTHER_BUILD"),
+          cut: words("SYS_TILE_INCOMPLETE"),
+          back: words("SYS_TILE_NOT_MISSING"),
+          away: m.deleteQuestion({ tile: "+43+005", present: false, disk_absent: true,
+                                   installed: true }).body,
+          inXplane: words("SYS_TILE_IN_CUSTOM_SCENERY"),
+          found: m.foundMessage({ tile: "+43+005", to, overlay_lost: false }, "+43+005"),
+          lost: m.foundMessage({ tile: "+43+005", to, overlay_lost: true }, "+43+005"),
+        }));"""
+    )
+    assert got["here"] == [
+        "This folder is neither the tile's folder nor one holding it.",
+        "Choose the folder zOrthoStudio_+43+005, or the folder it is in. Nothing was changed.",
+    ]
+    assert got["other"][0].startswith("This folder holds another build")
+    assert got["cut"][0].startswith("Files of the tile are missing")
+    assert got["back"] == ["This tile is back in its place.", "The list is up to date now."]
+    assert got["found"] == "+43+005 found again in ~/Tiles/Alps."
+    # Delete on a disk away: its files stay on that disk, and it does not come back
+    assert got["away"] == [
+        "Its disk is not plugged in: it is removed from X-Plane and from this list, and its files "
+        "stay on that disk. Plugging it in again will not bring it back."
+    ]
+    assert got["inXplane"][0] == "This folder is inside X-Plane's Custom Scenery."
+    assert (
+        got["lost"]
+        == got["found"] + " Its roads and forests are missing: build it again to have them back."
+    )
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.not_found",
+            "library.not_found_help",
+            "library.not_found_help_o4xp",
+            "library.disk_absent",
+            "library.disk_absent_help",
+            "library.find",
+            "library.find_help",
+            "library.find_prompt",
+            "library.found",
+            "library.found_no_roads",
+            "library.delete_absent",
+            "library.delete_absent_xplane",
+            "library.err_in_custom_scenery",
+            "library.err_in_custom_scenery_remedy",
+        ):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.find"] == "Retrouver…"
+    assert tables["fr"]["library.disk_absent"] == "Disque absent"
+    assert "fermé" in tables["fr"]["library.find_help"]  # X-Plane closed, said before the click
+
+
+def test_the_mock_finds_a_moved_tile_again_like_the_engine() -> None:
+    script = """
+    const alps = { folder: "/Volumes/Big/Alps" };
+    const out = {
+      imported: await call("POST", "/api/library/zOrtho4XP_+44+005/find", alps),
+      here: await call("POST", "/api/library/+43+005/find", alps),
+      found: await call("POST", "/api/library/+43+004/find", alps),
+    };
+    const row = (await call("GET", "/api/library")).ok
+      .find((e) => e.tile === "+43+004" && e.kind === "ortho");
+    out.row = { path: row.path, present: row.present, disk_absent: row.disk_absent };
+    process.stdout.write(JSON.stringify(out), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["imported"] == {"status": 409, "code": "SYS_PACK_IMPORTED"}
+    assert got["here"] == {"status": 409, "code": "SYS_TILE_NOT_MISSING"}
+    assert got["found"]["ok"]["to"] == "/Volumes/Big/Alps/zOrthoStudio_+43+004"
+    assert got["row"] == {
+        "path": "/Volumes/Big/Alps/zOrthoStudio_+43+004",
+        "present": True,
+        "disk_absent": False,
+    }
+
+
+# -- the atelier, step 3: tiles filed elsewhere (2026-10-05) --------------------------------------
+
+
+def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_happens() -> None:
+    """The question says, before anything is done, which tiles move (one disk), which are copied
+    and read back (their size, the free space), which a copy left whole is taken for, and which
+    stay and why; with no room, it files nothing. While tiles are filed, a line says which one of
+    how many and how far, with Stop; at the end, how many went where."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const i = await import("./i18n.js");
+        const m = await import("./app.js");
+        i.setUserHome("/Users/pilot");
+        const plan = { folder: "/Users/pilot/Tiles/Alps", copy_bytes: 4.1e9, free_bytes: 480e9,
+                       room: true, tiles: [
+          { tile: "+46+006", path: "/a/zOrthoStudio_+46+006", how: "move" },
+          { tile: "+46+007", path: "/a/zOrthoStudio_+46+007", how: "copy", bytes: 4.1e9 },
+          { tile: "+47+006", path: "/a/zOrthoStudio_+47+006", how: "reuse" },
+          { tile: "+44+007", path: "/a/zOrthoStudio_+44+007", how: "not_whole" },
+          { tile: "+45+006", path: "/b/zOrtho4XP_+45+006", how: "imported" },
+          { tile: "+45+007", path: "/c/zOrthoStudio_+45+007", how: "taken" },
+        ] };
+        const q = m.filingQuestion(plan);
+        const full = m.filingQuestion({ ...plan, room: false });
+        const copying = { phase: "copy", done: 1.2e9, total: 4.1e9 };
+        const filing = { n: 3, i: 2, tile: "+46+007", progress: copying };
+        process.stdout.write(JSON.stringify({
+          title: q.title, body: q.body, go: q.go.map((r) => r.tile),
+          fullGo: full.go.length, fullLast: full.body[full.body.length - 1],
+          line: m.filingLine(filing),
+          check: m.filingLine({ ...filing,
+                                progress: { phase: "check", done: 4.1e9, total: 4.1e9 } }),
+          head: m.filingLine({ ...filing, progress: null }),
+          all: m.filedMessage(3, 3, "/Users/pilot/Tiles/Alps", false),
+          stopped: m.filedMessage(1, 3, "/Users/pilot/Tiles/Alps", true),
+          some: m.filedMessage(2, 3, "/Users/pilot/Tiles/Alps", false),
+          left: m.filedLeftText("+46+007", "/Users/pilot/OSXP/tiles/zOrthoStudio_+46+007"),
+        }));"""
+    )
+    assert got["title"] == "File 3 tile(s) in ~/Tiles/Alps?"
+    assert got["body"] == [
+        "1 moved: same disk, at once.",
+        "1 copied, then read back: 4.1 GB to copy, 480 GB free on that disk.",
+        "1 already copied there, whole: taken without copying again.",
+        "Not whole, to build again first: +44+007.",
+        "Another folder of the same name is there already: +45+007.",
+        "Built by Ortho4XP, to move by hand: +45+006.",
+        "The cache stays in the workshop. X-Plane must stay closed until the end.",
+    ]
+    assert got["go"] == ["+46+006", "+46+007", "+47+006"]
+    assert got["fullGo"] == 0 and got["fullLast"].startswith("Not enough room on that disk")
+    assert got["line"] == "Filing +46+007 (2 of 3): copying, 1.2 GB of 4.1 GB"
+    assert got["check"].endswith(": reading back, 4.1 GB of 4.1 GB")
+    assert got["head"] == "Filing +46+007 (2 of 3)"
+    assert got["all"] == "3 tile(s) filed in ~/Tiles/Alps."
+    assert got["stopped"].startswith("Stopped: 1 of 3 tile(s) filed in ~/Tiles/Alps")
+    assert got["some"].startswith("2 of 3 tile(s) filed")
+    # an old folder a file held there: where it is, since nothing lists it any more
+    assert got["left"] == (
+        "+46+007 is filed, but its old folder could not be removed, likely because of a file "
+        "open in another program: ~/OSXP/tiles/zOrthoStudio_+46+007. You can delete it."
+    )
+
+
+def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
+    """A tile filed elsewhere, built again, is put back in its folder (the atelier, step 4): the
+    Installation cell's tooltip and the tile's line say how far the copy is, from the engine's
+    line; no bar of its own (2026-10-05)."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        process.stdout.write(JSON.stringify({
+          copy: m.putBackWords("putting back: copy 1200000000 of 4100000000 bytes"),
+          check: m.putBackWords("putting back: check 4100000000 of 4100000000 bytes"),
+          plain: m.putBackWords(""),
+          step: m.ROLE_STEP.put_back,
+        }));"""
+    )
+    assert got["copy"] == "back to its folder: copying, 1.2 GB of 4.1 GB"
+    assert got["check"] == "back to its folder: reading back, 4.1 GB of 4.1 GB"
+    assert got["plain"] == "back to its folder" and got["step"] == "install"
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'case "put_back": {' in _function_body(app_js, "nodeWords")
+    tables = _i18n_tables()
+    assert (
+        tables["fr"]["works.act_put_back_copy"] == "retour à sa place : copie, {done} sur {total}"
+    )
+    # X-Plane running at the put back: wait and build again, never "install from the Library";
+    # a disk away at either end: the tile was not put there (a review, 2026-10-05)
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), [m.codeText("SYS_PUT_BACK_XP_RUNNING", {tile: "+46+006", '
+        'folder: "/Tiles"}), m.codeText("SYS_TILE_DISK_ABSENT", {tile: "+46+006", '
+        'folder: "/Tiles/zOrthoStudio_+46+006"})])))',
+    )
+    (fr_xp, fr_away), (en_xp, en_away) = words
+    assert fr_xp[0].startswith("X-Plane est ouvert : la nouvelle version de la tuile +46+006")
+    assert "reconstruisez" in fr_xp[1] and "Bibliothèque" not in fr_xp[1]
+    assert "build the tile again" in en_xp[1] and "Library" not in en_xp[1]
+    assert fr_away[0].endswith("La tuile n'y a pas été mise.")
+    assert en_away[0].endswith("The tile was not put there.")
+
+
+def test_a_tile_x_plane_shows_rebuilt_while_it_runs_says_build_again() -> None:
+    """A tile X-Plane shows, rebuilt while it runs, is not rewritten in its place: on the
+    owner's Shadow the card said to install from the Library, where only building again helps
+    (2026-10-06)."""
+    words = _node_json(
+        "i18n.js",
+        '(globalThis.document = {documentElement: {}}, ["fr", "en"].map((lang) => '
+        '(m.setLanguage(lang), m.codeText("SYS_REBUILD_XP_RUNNING", {tile: "+46+006"}))))',
+    )
+    fr, en = words
+    assert fr[0].startswith("X-Plane est ouvert et affiche la tuile +46+006")
+    assert "reconstruisez" in fr[1] and "Bibliothèque" not in fr[1]
+    assert en[0].startswith("X-Plane is running and shows tile +46+006")
+    assert "build the tile again" in en[1] and "Library" not in en[1]
+
+
+def test_the_pick_boxes_and_the_filing_are_wired() -> None:
+    """A box on each tile OrthoStudio XP built that is in its place and not in a build; "Pick all
+    shown" acts on the rows the search and the folder leave; nothing else changes a tile while
+    tiles are filed, one at a time."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    for needle in (
+        'id="library-pick" hidden',
+        'id="library-pick-all"',
+        'id="library-file"',
+        'id="library-filing" role="status"',
+        'id="library-filing-stop"',
+        '<dialog id="library-file-dialog"',
+        'value="file" id="library-file-go"',
+    ):
+        assert needle in html, needle
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert "const busy = libraryBusy.has(key) || Boolean(state.filing);" in row
+    assert 'if (e.built_by !== "osxp" || e.present === false || inBuild) return null;' in (
+        _function_body(app_js, "pickBox")
+    )
+    assert "renderLibraryPick(rows, view.rows);" in _function_body(app_js, "renderLibrary")
+    assert "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }" in (
+        _function_body(app_js, "shownLibraryRows")
+    )
+    assert "shownLibraryRows(libraryTiles(state.library))" in _function_body(app_js, "pickAllShown")
+    # a box ticked draws the bar again, not the table: the focus stays on it, and 800 rows are
+    # not drawn again at each tick
+    pick_one = _function_body(app_js, "pickLibraryTile")
+    assert "renderLibraryPick(rows, shownLibraryRows(rows));" in pick_one
+    assert "renderLibrary()" not in pick_one
+    assert '"button:not(:disabled), input:not(:disabled)"' in (
+        _function_body(app_js, "renderLibrary")
+    )
+    run = _function_body(app_js, "runFiling")
+    assert "const timer = setInterval(pollFiling, 1000);" in run
+    assert "if (state.filing.stop) break;" in run
+    assert (
+        'api("POST", `/api/library/${encodeURIComponent(name)}/file`, { path: r.path, folder })'
+        in run
+    )
+    for listener in (
+        '$("library-pick-all").addEventListener("change"',
+        '$("library-file").addEventListener("click", fileLibraryTiles);',
+        '$("library-filing-stop").addEventListener("click", stopFiling);',
+    ):
+        assert listener in app_js, listener
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert "file.disabled = !picked.length || Boolean(state.filing) || waits;" in pick
+    assert (
+        'setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));'
+        in (pick)
+    )
+    assert "if (res?.left) lefts.push(filedLeftText(r.tile, res.left));" in run
+    assert (
+        'SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")]'
+        in (app_js)
+    )
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.file_skip_not_whole",
+            "library.file_wait_build",
+            "library.filed_left",
+            "library.err_not_whole",
+            "library.err_not_whole_remedy",
+            "library.pick",
+            "library.pick_all",
+            "library.pick_count",
+            "library.file",
+            "library.file_help",
+            "library.file_title",
+            "library.file_kept",
+            "library.filing",
+            "library.filing_stop",
+            "library.filed",
+            "library.err_folder_gone",
+            "library.err_name_taken",
+            "library.err_copy_differs",
+        ):
+            assert tables[lang][key], (lang, key)
+    assert tables["fr"]["library.file"] == "Ranger ailleurs…"
+    # it ticks the tiles shown only, and says so (a review, 2026-10-05)
+    assert tables["fr"]["library.pick_all"] == "Cocher les tuiles affichées"
+    # a build asked during a filing, or a filing during a build: words that say what runs, never
+    # "delete the tile" (a review, 2026-10-05)
+    assert "rangée ailleurs" in tables["fr"]["plan.busy_deleting"]
+    assert "filed elsewhere" in tables["en"]["plan.busy_deleting"]
+    for lang in ("fr", "en"):
+        busy = tables[lang]["library.err_busy"] + tables[lang]["library.err_busy_remedy"]
+        assert "supprimez" not in busy and "delete the tile" not in busy, lang
+
+
+def test_the_pick_boxes_have_a_narrow_column_before_the_names() -> None:
+    """A user asked for the boxes in a narrow column of their own, left of the tile names
+    (2026-10-07): the names line up whether a row has a box or not. The box stays on the name's
+    line when the folder under the name makes the row two lines high."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    table = re.search(r'<table[^>]*id="library-table".*?</thead>', html, re.S)
+    assert table is not None
+    heads = re.findall(r"<th\b.*?</th>", table.group(0), re.S)
+    spans = [re.search(r'colspan="(\d+)"', th) for th in heads]
+    columns = sum(int(span.group(1)) if span else 1 for span in spans)
+    # its header is the first, named for a screen reader only; the sorted "Tile" comes next
+    assert 'class="library-pick-cell"' in heads[0] and "data-sort" not in heads[0]
+    assert '<span class="sr-only" data-i18n="library.pick_column">' in heads[0]
+    assert 'data-sort="tile"' in heads[1]
+    got = _run_node(
+        """
+class El {
+  constructor(tag) {
+    Object.assign(this, { tag, attrs: {}, kids: [], dataset: {}, className: "", textContent: "" });
+  }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  addEventListener() {}
+  append(...kids) { this.kids.push(...kids); }
+  cloneNode() { return new El("svg"); }
+}
+globalThis.Node = El;
+const icon = { content: { firstElementChild: new El("svg") } };
+globalThis.document = {
+  documentElement: {},
+  getElementById: (id) => (id === "tpl-folder-icon" ? icon : null),
+  createElement: (tag) => new El(tag),
+  createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
+};
+const m = await import("./app.js");
+const built = { tile: "+46+006", name: "zOrthoStudio_+46+006", path: "/T/zOrthoStudio_+46+006",
+  built_by: "osxp", installed: true, present: true, kind: "ortho", size_bytes: 1e9, zl: 16 };
+const imported = { tile: "+44+005", name: "zOrtho4XP_+44+005", path: "/O/zOrtho4XP_+44+005",
+  built_by: "ortho4xp", installed: false, present: true, kind: "ortho", size_bytes: 1e9, zl: 16 };
+const text = (el) => (el.tag === "#text" ? el.textContent : el.kids.map(text).join(""));
+const look = (rows) => {
+  const [row, detail] = rows;
+  const [pick, tile] = row.kids;
+  const box = pick.kids[0] || null;
+  const said = box && [box.tag, box.attrs.type, box.className, box.attrs["aria-label"]];
+  return {
+    cells: row.kids.length,
+    pick: [pick.className, said],
+    tile: [tile.className, tile.attrs.title, tile.kids[0].className, text(tile.kids[0])],
+    where: tile.kids.filter((k) => k.className === "tile-where").map(text),
+    span: detail ? Number(detail.kids[0].attrs.colspan) : null,
+  };
+};
+process.stdout.write(JSON.stringify({
+  built: look(m.libraryRow(built)),
+  folder: look(m.libraryRow(built, true)),
+  imported: look(m.libraryRow(imported, true)),
+}));
+"""
+    )
+    box = ["input", "checkbox", "tile-pick", "Pick +46+006"]
+    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name", "+46+006"]
+    assert got["built"] == {
+        "cells": columns,
+        "pick": ["library-pick-cell", box],
+        "tile": name,
+        "where": [],
+        "span": columns,  # what it was built with, unfolded, spans the whole table
+    }
+    # the folder under the name: the box on the name's line, not between the two lines
+    top = ["library-pick-cell is-top", box]
+    assert got["folder"] == {**got["built"], "pick": top, "where": ["/T"]}
+    # a tile Ortho4XP built has no box: its column stays, empty, and its name lines up
+    assert got["imported"] == {
+        "cells": columns,
+        "pick": ["library-pick-cell is-top", None],
+        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name", "+44+005"],
+        "where": ["/O"],
+        "span": None,
+    }
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    for rule in (
+        ".library-table .library-pick-cell { width: 1%; padding-right: 0; }",
+        ".library-table td.library-pick-cell.is-top { vertical-align: top; }",
+        ".table .tile-pick { margin: 0; vertical-align: middle; }",
+        # the name's pills wrap under it in a narrow window, as do the rows that span the table
+        ".library-table td.library-tile, .library-table td[colspan] { white-space: normal; }",
+    ):
+        assert rule in css, rule
+    tables = _i18n_tables()
+    assert tables["fr"]["library.pick_column"] == "Cocher"
+    assert tables["en"]["library.pick_column"] == "Pick"
+
+
+def test_the_mock_files_tiles_like_the_engine() -> None:
+    script = """
+    const atelier = "/Users/pilot/.orthostudio/tiles";
+    const tiles = [{ name: "zOrthoStudio_+43+005", path: `${atelier}/zOrthoStudio_+43+005` },
+                   { name: "zOrtho4XP_+44+005",
+                     path: "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_+44+005" }];
+    const folder = "/Volumes/Big/Alps";
+    const plan = (await call("POST", "/api/library/file-plan", { tiles, folder })).ok;
+    const filed = (await call("POST", "/api/library/zOrthoStudio_+43+005/file",
+                              { path: tiles[0].path, folder })).ok;
+    const row = (await call("GET", "/api/library")).ok
+      .find((e) => e.tile === "+43+005" && e.kind === "ortho");
+    process.stdout.write(JSON.stringify({ hows: plan.tiles.map((r) => r.how), room: plan.room,
+                                          to: filed.to, path: row.path }), () => process.exit(0));
+    """
+    got = _node_mock(script)
+    assert got["hows"] == ["copy", "imported"] and got["room"] is True
+    assert got["to"] == got["path"] == "/Volumes/Big/Alps/zOrthoStudio_+43+005"

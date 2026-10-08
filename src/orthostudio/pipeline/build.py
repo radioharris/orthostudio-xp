@@ -16,10 +16,12 @@ from __future__ import annotations
 import ast
 import asyncio
 import contextlib
+import dataclasses
 import datetime as dt
 import json
 import logging
 import os
+import shutil
 import signal
 import threading
 import time
@@ -48,7 +50,7 @@ from orthostudio.dem.sources import (
 from orthostudio.dem.xplane import XP12_INPUTS, XP12_SOURCE
 from orthostudio.dsf import DsfParams, Xp12Rasters, airport_covers, build_dsf
 from orthostudio.dsf.xp12 import global_scenery_dsf, rasters_from_dsf, read_global_scenery_dsf
-from orthostudio.errors import OsxpError
+from orthostudio.errors import OsxpError, wrap
 from orthostudio.graph import (
     ResolvedInput,
     Rule,
@@ -60,9 +62,11 @@ from orthostudio.graph import (
     key_for,
     rule,
 )
+from orthostudio.home import disk_absent
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import Library, detect_xplane, global_scenery_dir
+from orthostudio.install import packs as install_packs
 from orthostudio.machine import _windows_memory_mb, physical_memory_mb  # noqa: F401
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
@@ -77,6 +81,16 @@ from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
 from orthostudio.model import OVERLAY_PACK, ArtifactRef, TileRef
 from orthostudio.overlays import OverlayExclusions, build_overlay_detailed, find_dsftool
 from orthostudio.overlays.source import resolve_global_scenery_dir
+from orthostudio.pipeline.filing import (
+    OLD_SUFFIX,
+    PART_SUFFIX,
+    FilingStoppedError,
+    pack_bytes,
+    park_roads,
+    put_back,
+    same_disk,
+    tile_home,
+)
 from orthostudio.pipeline.home import (
     default_chunks_root,
     default_store_root,
@@ -99,18 +113,27 @@ from orthostudio.pipeline.native import (
     unusable_coastline,
 )
 from orthostudio.pipeline.pack import (
+    PARKED_OVERLAY,
     TILE_INSTALL,
     TILE_PACK,
     InstallParams,
     PackEnv,
     PackManifest,
     PackParams,
+    _delete_pack_dir,
+    _own_overlay,
+    _unpark_overlay,
     assemble_pack,
     install_is_intact,
     install_receipt,
+    lays_the_same,
+    let_go_of_roads,
+    links_to,
+    overlay_dsf_path,
     pack_dir_name,
     pack_env,
     pack_is_intact,
+    write_manifest,
 )
 from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
@@ -130,7 +153,9 @@ from orthostudio.sched import (
     Node,
     NodeContext,
     NodeKind,
+    Progress,
     Scheduler,
+    Started,
     run_p0_rule,
 )
 from orthostudio.sched.costs import cost_name, timed_fraction
@@ -450,6 +475,8 @@ class BuildEnv:
     hedge_after_s: float = 1.0
     prepared: Any = None
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
+    own_store: bool = False
+    """Whether :meth:`create` opened ``store``, which :meth:`close` then closes."""
 
     @classmethod
     def create(cls, specs: Sequence[BuildSpec], *, store: Store | None = None) -> BuildEnv:
@@ -490,7 +517,15 @@ class BuildEnv:
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
             prepared=_prepared_chain(first, workdir),
+            own_store=store is None,
         )
+
+    def close(self) -> None:
+        """Let go of the store's index when this environment opened it. Left open after each
+        build and each plan, it was only closed when Python collected the environment: the disk of
+        a data folder left for another could not be ejected while the app ran (2026-10-06)."""
+        if self.own_store:
+            self.store.close()
 
     @property
     def logs(self) -> Path:
@@ -1903,14 +1938,22 @@ def _by_its_contents(path: Path) -> str | None:
 
 
 RELIEF_SAID = frozenset(
-    {"DEM_FILE_UNREADABLE", "DEM_FILE_TOO_LARGE", "DEM_EPSG_UNSUPPORTED", "DEM_OVERLAY_NOT_REFINED"}
+    {
+        "DEM_FILE_UNREADABLE",
+        "DEM_FILE_TOO_LARGE",
+        "DEM_EPSG_UNSUPPORTED",
+        "DEM_OVERLAY_NOT_REFINED",
+        "DEM_OVERLAY_COARSER",
+    }
 )
-"""What the relief node says in Works, as its last line: a file it could not use, or laid on a
-coarser grid than its own. The relief recorded them and nobody was told, so a folder's file refused
-for its size left a user with a tile built on another relief and no word of it (a user on La
-Réunion, 2026-10-01). ``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with
-them and never alone: alone it is a folder or Canada's lidar with nothing for the square, which is
-how they are meant to be, and a build that said nothing before says nothing now."""
+"""What the relief node says in Works, as its last line: a file it could not use, laid on a
+coarser grid than its own, or left aside for being coarser than the relief chosen. The relief
+recorded them and nobody was told, so a folder's file refused for its size left a user with a tile
+built on another relief and no word of it (a user on La Réunion, 2026-10-01), and a file coarser
+than Copernicus gave another user two reliefs out of one folder (2026-10-05).
+``DEM_OVERLAY_UNAVAILABLE`` (the relief under it answers there) is said with them and never alone:
+alone it is a folder or Canada's lidar with nothing for the square, which is how they are meant to
+be, and a build that said nothing before says nothing now."""
 
 RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
 """Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
@@ -2749,20 +2792,52 @@ def osm_artefact_refs(outcomes: Mapping[TileRef, OsmOutcome]) -> dict[TileRef, A
 
 
 class _Collector:
-    """Records every node's outcome from the events (and forwards them)."""
+    """Records every node's outcome from the events (and forwards them), and lays again the folder
+    of a tile the build installs, found in the cache without it, before its install reads it
+    (:meth:`installs`)."""
 
     def __init__(self, on_event: Callable[[Event], None] | None) -> None:
         self.on_event = on_event
         self.done: dict[str, Done] = {}
         self.failed: dict[str, Failed] = {}
+        self.laid: set[str] = set()
+        """The pack nodes whose folder was laid again so."""
+        self._installs: dict[str, TileNodes] = {}
+        self._env: BuildEnv | None = None
+
+    def installs(self, graphs: Iterable[TileNodes], env: BuildEnv) -> None:
+        """Watch the packs of the tiles of ``graphs`` the build installs. A tile filed elsewhere,
+        put in the Trash, then built again comes back to the workshop: its pack, found in the
+        cache, wrote nothing there, and its install, which had never run for that build (a tile
+        filed elsewhere is put back, not installed), read the folder before the end of the build
+        laid it again, and failed with an internal error (found on the owner's Shadow,
+        2026-10-06). The scheduler hands a node's ``Done`` here before it starts what follows."""
+        self._installs.update({g.pack.id: g for g in graphs if g.install is not None})
+        self._env = env
 
     def __call__(self, event: Event) -> None:
         if isinstance(event, Done):
             self.done[event.node_id] = event
+            nodes = self._installs.get(event.node_id)
+            if nodes is not None and event.hit:
+                self._lay(nodes, event)
         elif isinstance(event, Failed):
             self.failed[event.node_id] = event
         if self.on_event is not None:
             self.on_event(event)
+
+    def _lay(self, nodes: TileNodes, done: Done) -> None:
+        assert self._env is not None
+        spec = nodes.spec
+        try:
+            manifest = PackManifest.from_toml(done.ref.path.read_text(encoding="utf-8"))
+            pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
+            if not pack_is_intact(pack_dir, manifest):
+                _assemble_again(nodes, self._env, self, manifest)
+                self.laid.add(done.node_id)
+        except Exception:  # the end of the build lays it again, and says what stops it
+            log.warning("%s could not be laid again before its install", spec.tile.name,
+                        exc_info=True)  # fmt: skip
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
@@ -2789,7 +2864,9 @@ def _resolved(name: str, ref: ArtifactRef | None) -> ResolvedInput:
 def _verify_effects(
     nodes: TileNodes, env: BuildEnv, collector: _Collector
 ) -> tuple[list[str], bool]:
-    """Redo the pack / install effects after a hit whose destination was tampered with."""
+    """Redo the pack / install effects after a hit whose destination was tampered with, and put
+    the tile's row in the library with the build its folder holds. A folder laid again before its
+    install (:meth:`_Collector.installs`) is said repaired too."""
     repaired: list[str] = []
     spec = nodes.spec
     pack_done = collector.done.get(nodes.pack.id)
@@ -2798,31 +2875,11 @@ def _verify_effects(
     out_root = Path(spec.out_dir).expanduser().resolve()
     pack_dir = out_root / pack_dir_name(spec.tile)
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
+    laid = nodes.pack.id in collector.laid
     if not pack_is_intact(pack_dir, manifest):
-        refs = {
-            r: collector.done[n.id].ref for r, n in nodes.by_role.items() if n.id in collector.done
-        }
-        assemble_pack(
-            env.store,
-            out_root,
-            spec.tile,
-            provider=spec.provider,
-            zl=spec.zl,
-            dsf=_resolved("dsf", refs["dsf"]),
-            textures=_resolved("textures", refs.get("textures")),
-            overlay=_resolved("overlay", refs.get("overlay")),
-            link=spec.link,
-            tile_cfg=cast(PackParams, nodes.pack.params).tile_cfg,
-            photo={
-                "brightness": cast(PackParams, nodes.pack.params).photo_brightness,
-                "contrast": cast(PackParams, nodes.pack.params).photo_contrast,
-                "saturation": cast(PackParams, nodes.pack.params).photo_saturation,
-            },
-            # the facts of the pack it replaces: a repair puts back what was, it decides nothing
-            built=manifest.built or None,
-            decal=cast(PackParams, nodes.pack.params).decal,
-            decal_on_sea=cast(PackParams, nodes.pack.params).decal_on_sea,
-        )
+        _assemble_again(nodes, env, collector, manifest)
+        laid = True
+    if laid:
         repaired.append("pack")
     installed = False
     if nodes.install is not None and nodes.install.id in collector.done:
@@ -2838,9 +2895,315 @@ def _verify_effects(
             )
             repaired.append("install")
         installed = True
-    if not installed:
-        _remember_the_tile(spec, pack_dir, manifest, env)
+    _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
+
+
+def _assemble_again(
+    nodes: TileNodes, env: BuildEnv, collector: _Collector, manifest: PackManifest
+) -> None:
+    """The pack written again in the workshop from the artefacts of the build, after a hit whose
+    folder was tampered with or taken away (filed elsewhere), with the build's own manifest, as its
+    pack step wrote it.
+
+    Assembling walks the store's provenance for the artefacts upstream of the DSF, which may lead
+    by now to another artefact of the same content: a neighbour built since changes the masks'
+    recipe (their ``nb_*`` inputs), not their bytes. The folder then named other keys than the
+    build's receipt and the Library's row: the tile could never be filed, being taken for another
+    build, and each build of it assembled it again (found on the owner's tiles, 2026-10-06)."""
+    spec = nodes.spec
+    refs = {r: collector.done[n.id].ref for r, n in nodes.by_role.items() if n.id in collector.done}
+    params = cast(PackParams, nodes.pack.params)
+    assemble_pack(
+        env.store,
+        Path(spec.out_dir).expanduser().resolve(),
+        spec.tile,
+        provider=spec.provider,
+        zl=spec.zl,
+        dsf=_resolved("dsf", refs["dsf"]),
+        textures=_resolved("textures", refs.get("textures")),
+        overlay=_resolved("overlay", refs.get("overlay")),
+        link=spec.link,
+        tile_cfg=params.tile_cfg,
+        photo={
+            "brightness": params.photo_brightness,
+            "contrast": params.photo_contrast,
+            "saturation": params.photo_saturation,
+        },
+        # the facts of the pack it replaces: a repair puts back what was, it decides nothing
+        built=manifest.built or None,
+        decal=params.decal,
+        decal_on_sea=params.decal_on_sea,
+    )
+    pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
+    write_manifest(pack_dir, spec.tile, manifest)
+
+
+# -- a tile filed elsewhere, built again (the atelier, step 4) -----------------------------------
+
+PUT_BACK_ROLE = "put_back"
+"""The role of the step that puts a tile filed elsewhere back in its folder; the page shows it in
+the Installation cell, where its words and how far it is go."""
+
+
+def _homes(
+    specs: Sequence[BuildSpec], env: BuildEnv
+) -> tuple[dict[str, Path], dict[str, list[Path]], dict[str, OsxpError]]:
+    """For each tile, where it is filed outside the workshop (:func:`filing.tile_home`); the
+    folders of it gone from a disk that is here, for its rows to follow it to the workshop; and
+    the tiles whose folder is on a disk away, which are not built (``SYS_TILE_DISK_ABSENT``). A
+    Library that cannot be read leaves the tile to the workshop, as before."""
+    homes: dict[str, Path] = {}
+    gone: dict[str, list[Path]] = {}
+    away: dict[str, OsxpError] = {}
+    for spec in specs:
+        name = spec.tile.name
+        try:
+            home, gone[name] = tile_home(
+                spec.tile,
+                atelier=Path(spec.out_dir).expanduser().resolve(),
+                custom_scenery=spec.custom_scenery,
+                library_path=env.library_path,
+            )
+        except Exception:  # the build is not lost over the Library
+            log.warning("cannot read where %s is filed: built in the workshop", name, exc_info=True)
+            continue
+        if home is None:
+            continue
+        if disk_absent(home):
+            away[name] = OsxpError(
+                "SYS_TILE_DISK_ABSENT", context={"tile": name, "folder": str(home)}
+            )
+        else:
+            homes[name] = home
+    return homes, gone, away
+
+
+PUT_BACK_BYTES_PER_S = 100e6
+"""How fast a tile is copied, then read back, on another disk, for the job's time left: a common
+disk's pace. The step's own bar moves by the bytes."""
+
+
+def _put_back_rows(
+    specs: Sequence[BuildSpec], homes: Mapping[str, Path]
+) -> tuple[tuple[tuple[str, NodeKind, str], ...], tuple[tuple[str, float], ...]]:
+    """The put back steps of the tiles filed elsewhere, declared to the page with the build's
+    nodes, and the seconds each should take: its folder's bytes copied then read back on another
+    disk, a moment on the workshop's. Declared, a tile is in the build until it is back in its
+    folder, and the job's bar and time left count its copy, which weighed a second (a review,
+    2026-10-05)."""
+    rows: list[tuple[str, NodeKind, str]] = []
+    seconds: list[tuple[str, float]] = []
+    for spec in specs:
+        home = homes.get(spec.tile.name)
+        if home is None:
+            continue
+        node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+        rows.append((node_id, "io", PUT_BACK_ROLE))
+        took = 1.0
+        if not same_disk(Path(spec.out_dir).expanduser().resolve(), home.parent):
+            with contextlib.suppress(OSError):
+                took = max(took, 2 * pack_bytes(home) / PUT_BACK_BYTES_PER_S)
+        seconds.append((node_id, round(took, 1)))
+    return tuple(rows), tuple(seconds)
+
+
+def _put_back_tile(
+    nodes: TileNodes,
+    env: BuildEnv,
+    collector: _Collector,
+    home: Path,
+    *,
+    install: bool,
+    on_event: Callable[[BuildEvent], None] | None,
+    stopped: list[bool],
+) -> tuple[list[str], bool, NodeOutcome | None]:
+    """The new version of a tile filed elsewhere put in its folder (the atelier, step 4): nothing
+    to copy when that folder holds this very build already, its roads with it (when only its roads
+    are gone, they come back from the store); else the pack, written again in the workshop if a hit
+    found it gone, put back (:func:`filing.put_back`), then settled (:func:`_settle_put_back`).
+    How far it is goes to the page as the progress of the step :data:`PUT_BACK_ROLE`; a Stop of the
+    job (its callback raises ``CancelRequested``) stops it before its next file, and the tiles
+    after it are not put back either. Whatever fails, the old version is where it was and the new
+    one waits in the workshop, its roads parked in it, not drawn twice. Returns what was repaired,
+    whether the tile is in X-Plane, and the step's failure."""
+    spec = nodes.spec
+    node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+    pack_done = collector.done[nodes.pack.id]
+    manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
+    here = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
+    t0 = time.perf_counter()
+    repaired: list[str] = []
+
+    def emit(event: BuildEvent) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(event)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:  # the job's Stop: CancelRequested, raised once the event is told
+            stopped[0] = True
+
+    def heard(phase: str, done: int, total: int) -> None:
+        share = done / total if total else 1.0
+        emit(
+            Progress(
+                node_id,
+                0.5 * share + (0.5 if phase == "check" else 0.0),
+                f"putting back: {phase} {done} of {total} bytes",
+            )
+        )
+
+    def failed(err: OsxpError) -> tuple[list[str], bool, NodeOutcome]:
+        with contextlib.suppress(OSError):
+            park_roads(here, spec.tile)  # not drawn from the workshop while the old ones are
+        emit(Failed(node_id, err))
+        rule = f"{PUT_BACK_ROLE}@1"
+        outcome = NodeOutcome(node_id, PUT_BACK_ROLE, rule, None, "failed", 0.0, err.to_dict())
+        return repaired, False, outcome
+
+    def cancelled() -> tuple[list[str], bool, NodeOutcome]:
+        return failed(OsxpError("SYS_CANCELLED", context={"tile": spec.tile.name}))
+
+    if stopped[0]:
+        return cancelled()
+    emit(Started(node_id, "io", pack_done.key))
+    if stopped[0]:
+        return cancelled()
+    same = False
+    left: str | None = None
+    try:
+        same = pack_is_intact(home, manifest, with_overlay=False)
+        if not same and lays_the_same(home, manifest):
+            # the very files, only their manifest apart (a neighbour built or freed since gives
+            # the masks another key for the same bytes): it is written there, nothing is copied.
+            # The whole tile was copied again, and refused while X-Plane ran (2026-10-06)
+            write_manifest(home, spec.tile, manifest)
+            same = True
+        if same and not _roads_with(home, spec.tile, manifest):
+            # its roads gone, found again without them: "build it again" brings them back
+            _roads_back(nodes, collector, home, spec.tile)
+            repaired.append("roads")
+        elif not same:
+            if not pack_is_intact(here, manifest, with_overlay=False):
+                _assemble_again(nodes, env, collector, manifest)
+                repaired.append("pack")
+            left = put_back(
+                here,
+                home,
+                tile=spec.tile,
+                overlay=bool(manifest.files.get("overlay")),
+                progress=heard,
+                stop=lambda: stopped[0],
+            )["left"]
+        installed = _settle_put_back(spec, env, home, here, manifest, install=install)
+    except FilingStoppedError:
+        return cancelled()
+    except Exception as exc:  # every failure reaches the page, the old version where it was
+        return failed(wrap(exc))
+    if left is not None and os.path.lexists(left):
+        # a file another program holds kept the old version, GBs that nothing lists: said where
+        message = f"putting back: the old version stays in {left}, a file there held by another"
+        emit(Progress(node_id, 1.0, message + " program: delete that folder"))
+    hit = same and not repaired
+    emit(Done(node_id, pack_done.key, hit, time.perf_counter() - t0, pack_done.ref))
+    return repaired, installed, None
+
+
+def _roads_with(home: Path, tile: TileRef, manifest: PackManifest) -> bool:
+    """Whether the roads and forests of the build in ``home`` are with it, when it has any."""
+    return not manifest.files.get("overlay") or _own_overlay(home, tile) is not None
+
+
+def _roads_back(nodes: TileNodes, collector: _Collector, home: Path, tile: TileRef) -> None:
+    """The overlay DSF of the build, from the store, parked in ``home``: its install puts it
+    where X-Plane draws it."""
+    done = None if nodes.overlay is None else collector.done.get(nodes.overlay.id)
+    if done is None:
+        return
+    part = home / (PARKED_OVERLAY + ".part")
+    shutil.copyfile(done.ref.path, part)
+    os.replace(part, home / PARKED_OVERLAY)
+
+
+def _settle_put_back(
+    spec: BuildSpec,
+    env: BuildEnv,
+    home: Path,
+    here: Path,
+    manifest: PackManifest,
+    *,
+    install: bool,
+) -> bool:
+    """A tile filed elsewhere, its folder holding the new build: the workshop keeps nothing of it
+    (a copy there, the one built or an older one it listed, goes, and roads of it left beside it;
+    the cache keeps its images), what a put back cut short left beside its folder goes, and the
+    Library lists it once, in its folder, as this build. The X-Plane of Settings that shows it is
+    given its install again, its line kept, which puts its roads beside it; while that X-Plane
+    runs, its link leads there already and nothing of it changes. One that does not show it gets
+    it only when the build was asked to install. Returns whether that X-Plane shows it."""
+    tile = spec.tile
+    if os.path.lexists(here) and os.path.realpath(here) != os.path.realpath(home):
+        with contextlib.suppress(OSError):
+            _delete_pack_dir(here)
+    overlay_dsf_path(here.parent, tile).unlink(missing_ok=True)  # X-Plane would draw it twice
+    for leftover in (
+        home.with_name(home.name + OLD_SUFFIX),
+        home.with_name(home.name + PART_SUFFIX),
+    ):
+        if leftover.is_dir():
+            with contextlib.suppress(OSError):
+                shutil.rmtree(leftover)  # its folder is whole: a copy cut short, an old version
+    with contextlib.suppress(Exception), Library(env.library_path) as lib:
+        lib.forget(tile, kind="ortho", path=here)
+        lib.forget(tile, kind="overlay", path=here.parent / OVERLAY_PACK)
+    cs = None if spec.custom_scenery is None else Path(spec.custom_scenery).expanduser()
+    shown = cs is not None and links_to(cs / pack_dir_name(tile), home)
+    if shown and install_packs.xplane_running():
+        # roads brought back go beside it, where its overlays pack is linked already: a file
+        # moved, no link or line of X-Plane changed while it runs
+        with contextlib.suppress(OSError):
+            _unpark_overlay(home, tile)
+        _remember_the_tile(spec, home, manifest, env)
+        return True
+    if cs is not None and (shown or install):
+        install_receipt(
+            home, cs, tile=tile, link=spec.link, library_path=env.library_path, reenable=not shown
+        )
+        return True
+    _remember_the_tile(spec, home, manifest, env)
+    return False
+
+
+def _let_go(
+    tile: TileRef, folders: Sequence[Path], env: BuildEnv, custom_scenery: Path | None
+) -> None:
+    """The rows of the tile's folders gone from a disk that is here: built again in the workshop,
+    the tile is there now, and its row with it (the atelier, step 4). The roads such a folder
+    left beside it go too (:func:`let_go_of_roads`). While X-Plane runs, it may be reading them,
+    and nothing of it changes, as a tile is not deleted then: its rows stay, for the next build
+    after X-Plane is closed to let go of all of it."""
+    if not folders:
+        return
+    if install_packs.xplane_running():
+        log.info("X-Plane is running: what %s left beside %s goes at its next build", tile.name,
+                 ", ".join(str(f) for f in folders))  # fmt: skip
+        return
+    cs = None if custom_scenery is None else Path(custom_scenery).expanduser()
+    out: list[Path] = []
+    for folder in folders:
+        try:
+            let_go_of_roads(folder, tile, cs)
+        except OSError:  # its rows stay too, for the next build to try again
+            log.warning("the roads %s left beside %s stay", tile.name, folder, exc_info=True)
+        else:
+            out.append(folder)
+    with contextlib.suppress(Exception), Library(env.library_path) as lib:
+        for folder in out:
+            lib.forget(tile, kind="ortho", path=folder)
+            if not overlay_dsf_path(folder.parent, tile).is_file():
+                lib.forget(tile, kind="overlay", path=folder.parent / OVERLAY_PACK)
 
 
 def _what_the_source_answered(missing: Sequence[Any]) -> list[str]:
@@ -2865,7 +3228,7 @@ def _what_the_source_answered(missing: Sequence[Any]) -> list[str]:
 def _remember_the_tile(
     spec: BuildSpec, pack_dir: Path, manifest: PackManifest, env: BuildEnv
 ) -> None:
-    """Put a tile that was built but not installed into the library.
+    """Put a tile into the library with the build its folder holds, installed or not.
 
     Only ``install_receipt`` ever wrote a row, so a user who built without installing saw "No
     tile. Build one, or import your Ortho4XP tiles" on the same screen as "Data used by your 3
@@ -2873,7 +3236,12 @@ def _remember_the_tile(
     were (found in review, 2026-09-23).
 
     Here rather than in the pack rule, because the rule is cached: a tile whose pack was already
-    in the store would never have been recorded. ``keep_built_by`` so that a tile imported from
+    in the store would never have been recorded. The install rule is cached too: a tile built
+    with its airports sharp, then without, then sharp again found its third build whole in the
+    cache, the install step did not run, and its row kept the second build's keys; the Library
+    then took the tile's own folder for another build, File elsewhere asked to build it again,
+    and building it again changed nothing (the owner's +44+009, 2026-10-06; the row was so since
+    0.1.0, read by nothing before the atelier). ``keep_built_by`` so that a tile imported from
     Ortho4XP and rebuilt here does not lose what it is.
     """
     # a build is not lost over its library row
@@ -2955,6 +3323,19 @@ def build_tiles(
             "%d artefacts of an interrupted build were not whole on disk and are built again",
             len(recovered.dropped),
         )
+    # A tile filed elsewhere is built in the workshop, beside the cache, then put back in its
+    # folder (the atelier, step 4): never installed from the workshop, whose copy would take
+    # X-Plane's link and line away from it. One whose folder is on a disk away is not built.
+    homes, gone, away = _homes(specs, env)
+    asked_install = {s.tile.name: s.install for s in specs}
+    every_spec = [
+        dataclasses.replace(s, install=False) if s.tile.name in homes else s for s in specs
+    ]
+    specs = [s for s in every_spec if s.tile.name not in away]
+    if on_event is not None:
+        for s in every_spec:
+            if s.tile.name in away:
+                on_event(Failed(f"{s.tile.name}/{s.level}/{PUT_BACK_ROLE}", away[s.tile.name]))
     # Validate the stage options *before* anything is downloaded or written (finding V1).
     choices = stage_choices(specs)
     # The OSM downloads are nodes of the graph, on a lane of their own (spec 8.3): each tile goes
@@ -2979,17 +3360,19 @@ def build_tiles(
     graphs = declare(
         runnable, scheduler, env, osm_artefacts=osm_refs, choices=choices, fetch_osm=True
     )
+    put_rows, put_seconds = _put_back_rows(specs, homes)
     _emit_phase(
         on_event,
         Phase(
             "build",
-            nodes=_declared(scheduler),
+            nodes=_declared(scheduler) + put_rows,
             reused=_reused_osm_rows(osm),
-            learned=_learned(scheduler),
+            learned=_learned(scheduler) + put_seconds,
         ),
     )
     targets = [g.target.id for g in graphs]
     collector = _Collector(on_event)
+    collector.installs(graphs, env)
 
     async def main() -> dict[str, ArtifactRef]:
         loop = asyncio.get_running_loop()
@@ -3072,9 +3455,14 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
+            collector.installs(redone, env)
             _emit_phase(
                 on_event,
-                Phase("build", nodes=_declared(scheduler2), learned=_learned(scheduler2)),
+                Phase(
+                    "build",
+                    nodes=_declared(scheduler2) + put_rows,
+                    learned=_learned(scheduler2) + put_seconds,
+                ),
             )
             try:
                 asyncio.run(scheduler2.run([g.target.id for g in redone], on_event=collector))
@@ -3088,7 +3476,14 @@ def build_tiles(
     by_spec_graph = {id(g.spec): g for g in graphs}
     tiles: list[TileOutcome] = []
     built = hits = failed = 0
-    for spec in specs:
+    stopped = [cancelled]  # a Stop asked while tiles are put back stops the ones after too
+    put_failed = 0
+    for spec in every_spec:
+        name = spec.tile.name
+        if name in away:
+            node = f"{name}/{spec.level}/{PUT_BACK_ROLE}"
+            tiles.append(_unbuilt_tile(spec, away[name], None, node=node, role=PUT_BACK_ROLE))
+            continue
         if id(spec) in no_osm:
             tiles.append(_unbuilt_tile(spec, no_osm[id(spec)], osm.get(spec.tile)))
             continue
@@ -3097,7 +3492,22 @@ def build_tiles(
         _prefer_own_root_cause(outcomes, g.spec.tile)
         repaired: list[str] = []
         installed = False
-        if g.pack.id in collector.done:
+        home = homes.get(name)
+        if g.pack.id in collector.done and home is not None:
+            repaired, installed, put = _put_back_tile(
+                g,
+                env,
+                collector,
+                home,
+                install=asked_install[name],
+                on_event=on_event,
+                stopped=stopped,
+            )
+            if put is not None:
+                outcomes.append(put)
+                if (put.error or {}).get("code") != "SYS_CANCELLED":
+                    put_failed += 1
+        elif g.pack.id in collector.done:
             try:
                 repaired, installed = _verify_effects(g, env, collector)
             except OsxpError as exc:
@@ -3106,9 +3516,11 @@ def build_tiles(
                         g.pack.id + "/repair", "repair", "-", None, "failed", 0.0, exc.to_dict()
                     )
                 )
+            else:
+                _let_go(spec.tile, gone.get(name, []), env, spec.custom_scenery)
         ok = g.target.id in collector.done and not any(o.status == "failed" for o in outcomes)
         out_root = Path(g.spec.out_dir).expanduser().resolve()
-        pack_dir = out_root / pack_dir_name(g.spec.tile)
+        pack_dir = out_root / pack_dir_name(g.spec.tile) if home is None or not ok else home
         overlay_path = out_root / OVERLAY_PACK / g.spec.tile.dsf_relpath
         tiles.append(
             TileOutcome(
@@ -3131,23 +3543,32 @@ def build_tiles(
             hits += 1
         else:
             built += 1
-    failed = len(collector.failed) + len(no_osm)
+    failed = len(collector.failed) + len(no_osm) + len(away) + put_failed
     return BuildReport(
         tiles=tiles,
         elapsed_s=time.perf_counter() - t0,
         built=built,
         hits=hits,
         failed=failed,
-        cancelled=cancelled,
+        cancelled=cancelled or stopped[0],
         store_root=str(env.store_root),
-        out_dir=str(Path(specs[0].out_dir).expanduser().resolve()),
+        out_dir=str(Path(every_spec[0].out_dir).expanduser().resolve()),
     )
 
 
-def _unbuilt_tile(spec: BuildSpec, error: OsxpError, osm: OsmOutcome | None) -> TileOutcome:
-    """The outcome of a tile left out of the graph because its OSM layers could not be had."""
-    node = NodeOutcome(
-        f"{spec.tile.name}/osm", "osm", OSM_RULE.name, None, "failed", 0.0, error.to_dict()
+def _unbuilt_tile(
+    spec: BuildSpec,
+    error: OsxpError,
+    osm: OsmOutcome | None,
+    *,
+    node: str | None = None,
+    role: str = "osm",
+) -> TileOutcome:
+    """The outcome of a tile left out of the graph: its OSM layers could not be had, or the folder
+    it is filed in is on a disk away (``node`` and ``role`` the put back's)."""
+    rule = OSM_RULE.name if role == "osm" else f"{role}@1"
+    outcome = NodeOutcome(
+        node or f"{spec.tile.name}/osm", role, rule, None, "failed", 0.0, error.to_dict()
     )
     return TileOutcome(
         tile=spec.tile.name,
@@ -3157,7 +3578,7 @@ def _unbuilt_tile(spec: BuildSpec, error: OsxpError, osm: OsmOutcome | None) -> 
         pack_dir=None,
         overlay_dsf=None,
         installed=False,
-        nodes=[node],
+        nodes=[outcome],
         repaired=[],
         stages=StageChoice(dem=cast(Any, spec.dem)).to_dict(),
         osm=_osm_report(osm),
