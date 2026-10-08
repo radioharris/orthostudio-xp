@@ -366,6 +366,10 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+; Every install keeps its log, each step with its time, in the user's temporary folder (Setup Log
+; <date> #<n>.txt): an install on a cloud PC spent a minute and a half before its first-start step,
+; and nothing said where (2026-10-08).
+SetupLogging=yes
 ; Inno Setup 6.7 puts its setup program under Windows' RedirectionGuard, and the app its last page
 ; opens inherits it: that app cannot follow the junctions it makes in Custom Scenery, and every
 ; install of a user's tiles failed (2026-09-15). It guards an elevated setup against junctions

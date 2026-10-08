@@ -81,6 +81,17 @@ def test_the_windows_installer_opens_the_app_s_code_before_its_first_start() -> 
     assert "StatusMsg:" in runs[warm] and "skipifsilent" not in runs[warm]
 
 
+def test_the_windows_installer_keeps_its_log() -> None:
+    """Every install writes its log, each step with its time, in the user's temporary folder: an
+    install on a cloud PC spent a minute and a half before its first-start step, and nothing said
+    where (2026-10-08)."""
+    script = build.inno_setup_script(
+        "0.1.22", Path("/b"), Path("/i.ico"), Path("/o"), "out", Path("/w") / build.WEBVIEW2_EXE
+    )
+    setup = script[script.index("[Setup]\n") : script.index("\n[Tasks]\n")]
+    assert "SetupLogging=yes" in setup.splitlines()
+
+
 def test_the_windows_installer_offers_the_update_when_webview2_is_too_old() -> None:
     """A Shadow PC carried WebView2 100.0.1185.36 of 2022, on which the window opened empty; the
     installer had offered nothing, since a runtime was there (2026-10-01). Microsoft's bootstrapper
