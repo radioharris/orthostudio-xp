@@ -1394,3 +1394,53 @@ def test_a_cold_live_takes_the_regions_lists_and_leaves_its_log(
     fly.clean_cold(out)
     assert not (home / "live").exists()  # the heavy folder gone
     assert (out / "LogLive.txt").read_text().endswith("starting\n")  # its log kept
+
+
+def test_xpme_is_flown_as_the_user_starts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XPME (XPlane Map Enhancement) is started by hand, its service in its window: the runner
+    refuses to fly without it, refuses a cold run whose cache holds pieces, says its imagery and
+    resolution, and gives the sampler its app's main process, under which its service runs."""
+    import sqlite3
+
+    cache = tmp_path / ".xpme-cache"
+    cache.mkdir()
+    with sqlite3.connect(cache / ".xpme-cache-index.sqlite3") as db:  # as XPME makes it
+        db.execute(
+            "CREATE TABLE cache_entries (path TEXT PRIMARY KEY, kind INTEGER NOT NULL, "
+            "size_bytes INTEGER NOT NULL, last_access_utc_ticks INTEGER NOT NULL)"
+        )
+    settings = {"CacheFolder": str(cache), "SelectedMapServer": "BingMaps", "ImageResolution": 0}
+    monkeypatch.setattr(fly, "xpme_settings", lambda: settings)
+    main = f"{fly.XPME_APP}/Contents/MacOS/XPlane Map Enhancement"
+    rows = [(10, 1, 300.0, 1.0, main), (11, 10, 900.0, 5.0, "XplaneMapEnhancement")]
+    monkeypatch.setattr(fly.sampler, "processes", lambda: rows)
+    monkeypatch.setattr(fly, "xpme_mounted", lambda: False)
+    with pytest.raises(fly.RefusedError, match="XPME's service is not started"):
+        fly.check_xpme(cold=True)
+    monkeypatch.setattr(fly, "xpme_mounted", lambda: True)
+    said: list[str] = []
+    monkeypatch.setattr(fly, "say", said.append)
+    xpme = fly.check_xpme(cold=True)
+    assert (xpme.pid, xpme.imagery, xpme.resolution) == (10, "BingMaps", "Normal (ZL16/18)")
+    assert said == [f"XPME runs: BingMaps, Normal (ZL16/18), cache {cache}"]
+    with sqlite3.connect(cache / ".xpme-cache-index.sqlite3") as db:  # a flight's pieces kept
+        db.execute("INSERT INTO cache_entries VALUES ('16/1/1.jpg', 0, 20000, 0)")
+    with pytest.raises(fly.RefusedError, match="XPME's cache holds 1 pieces"):
+        fly.check_xpme(cold=True)
+    assert fly.check_xpme(cold=False).pid == 10  # warm: its cache as it is
+
+
+def test_xpme_s_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its resolution is chosen in its window: no --zooms for it."""
+    import argparse
+
+    def ns(**kw: object) -> argparse.Namespace:
+        return argparse.Namespace(**{"streamer": "xpme", "cold": True, **kw})
+
+    assert fly.refused_options(ns()) is None
+    assert "--zooms is not for XPME" in fly.refused_options(ns(zooms=(16, 18)))
+    assert "--imagery is for Live" in fly.refused_options(ns(imagery="Arc"))
+    assert fly.label(ns(zooms=None, ao_settings="mine")) == "XPME, cold"
+    assert "xpme" in fly.parser().parse_args(["--streamer", "xpme", "x"]).streamer

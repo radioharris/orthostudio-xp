@@ -11,6 +11,7 @@ every time, and each leaves its files and a report in a folder of its own.
     uv run python tools/live/flights/fly.py --campaign ao-vs-live
     uv run python tools/live/flights/fly.py --streamer app --with-osxp --cold <scenario>
     uv run python tools/live/flights/fly.py --campaign fenetre-unique
+    uv run python tools/live/flights/fly.py --streamer xpme --cold <scenario>
 
 Nobody at the controls. X-Plane starts once for the series, straight in the air at the first
 scenario's start (hidden options: no main menu, the preferences never saved); each scenario after
@@ -28,6 +29,13 @@ built and nothing downloaded, the streamer's files in its home under the results
 less its folder and SimBrief name; without AutoOrtho's region in X-Plane, Live given the one it
 installed in the user's folder: ``cold_source``). ``--zooms 17/19``: the streamer's max_zoom and
 max_zoom near airports for the series. The user's own files are only ever read.
+
+``--streamer xpme`` (2026-10-08): XPME (XPlane Map Enhancement), as the user runs it, started by
+hand before the series: its app opened and its service started in its window, with its own
+settings (its imagery, its resolution: Normal is ZL16/18). The runner refuses to fly without its
+service, counts XPME's processes as the streamer's (its app, its service and its virtual disk's
+server under it), and leaves it running after the flight: it is stopped in its window. ``--cold``
+there: its cache empty, as its window's Clear leaves it, or the runner refuses. On a Mac only.
 
 ``--streamer app`` (2026-10-04): the app itself, OrthoStudio XP and Live in its one window, as the
 user opens it: Live's side shown and started as its Start does; ``--with-osxp``, OrthoStudio XP's
@@ -96,6 +104,13 @@ LOG_LATE_S = 90  # X-Plane writes its log late: the test pilot's "done" in the f
 AO_SOURCES = Path.home() / "Desktop" / "Dev" / "autoortho4xplane" / "autoortho"  # AutoOrtho Dev's
 AO_PYTHON = Path.home() / ".autoortho-dev-venv" / "bin" / "python"
 AO_READY_TIMEOUT_S = 5 * 60
+# XPME (XPlane Map Enhancement), as the user installed it: its app, its settings (read only) and
+# the folder its service mounts, which X-Plane's XPME_* scenery links point into
+XPME_APP = Path("/Applications/XPlane Map Enhancement.app")
+XPME_SETTINGS = (
+    Path.home() / "Library" / "Application Support" / "xplane-map-enhancement" / "AppSettings.json"
+)
+XPME_MOUNT = Path.home() / "XPME-fuse"
 STOP_TIMEOUT_S = 120  # a streamer given that long to stop after its Ctrl-C
 XPLANE_UDP = ("127.0.0.1", 49000)  # X-Plane's UDP port, as Live's stream --port's default
 QUIT_TRIES_S = 180  # X-Plane asked to quit over UDP this long, then left to the user
@@ -759,6 +774,81 @@ def start_autoortho(
     raise RefusedError("AutoOrtho's regions not mounted after 5 min")
 
 
+def xpme_settings() -> dict:
+    """XPME's own settings, as its window saves them (only read)."""
+    return json.loads(XPME_SETTINGS.read_text(encoding="utf-8"))
+
+
+def xpme_mounted() -> bool:
+    """XPME's service started: the folder it serves X-Plane's textures from mounted (a Mac's
+    ``mount``)."""
+    if WINDOWS:
+        return False
+    return f" on {XPME_MOUNT} " in subprocess.run(["mount"], capture_output=True, text=True).stdout
+
+
+def xpme_runs() -> bool:
+    """XPME's service started, or its app open."""
+    return xpme_mounted() or xpme_pid() is not None
+
+
+def xpme_pid() -> int | None:
+    """XPME's app, its main process: its service and its virtual disk's server run under it, and
+    the sampler counts them all as the streamer's."""
+    main = str(XPME_APP / "Contents" / "MacOS") + "/"
+    for pid, _parent, _mb, _cpu, command in sampler.processes():
+        if command.startswith(main):
+            return pid
+    return None
+
+
+def xpme_cache() -> tuple[Path, int]:
+    """XPME's cache folder (its settings' CacheFolder) and the pieces its index lists (read only):
+    none once its window's Clear has emptied it."""
+    import sqlite3
+
+    folder = Path(xpme_settings().get("CacheFolder") or Path.home() / ".xpme-cache")
+    index = folder / ".xpme-cache-index.sqlite3"
+    if not index.is_file():
+        return folder, 0
+    with contextlib.closing(sqlite3.connect(f"{index.as_uri()}?mode=ro", uri=True)) as db:
+        return folder, db.execute("SELECT count(*) FROM cache_entries").fetchone()[0]
+
+
+@dataclass
+class Xpme:
+    """XPME started by hand: its app's main process, for the sampler, and its settings for the
+    report. Never stopped by the runner (``quit_in_background`` is given none): it is stopped in
+    its window."""
+
+    pid: int
+    imagery: str
+    resolution: str
+
+
+def check_xpme(cold: bool) -> Xpme:
+    """XPME's service started, its imagery and resolution said; with ``cold``, its cache empty."""
+    pid = xpme_pid()
+    if pid is None or not xpme_mounted():
+        raise RefusedError(
+            "XPME's service is not started: open XPlane Map Enhancement, click its Start, then "
+            "run the series"
+        )
+    settings = xpme_settings()
+    resolution = {0: "Normal (ZL16/18)", 1: "High (ZL17/19)"}.get(
+        settings.get("ImageResolution"), f"resolution {settings.get('ImageResolution')}"
+    )
+    folder, pieces = xpme_cache()
+    if cold and pieces:
+        raise RefusedError(
+            f"XPME's cache holds {pieces} pieces ({folder}): clear it in XPME's window, or "
+            "--cold is not true"
+        )
+    imagery = str(settings.get("SelectedMapServer"))
+    say(f"XPME runs: {imagery}, {resolution}, cache {folder}")
+    return Xpme(pid, imagery, resolution)
+
+
 def process_tree(pid: int) -> list[tuple[int, str]]:
     """``pid`` and every process under it, with its command, whatever its process group:
     AutoOrtho's mount worker has a group of its own, which a Ctrl-C to AutoOrtho's group did not
@@ -1179,11 +1269,17 @@ def run(a: argparse.Namespace) -> int:
     up = xplane_up()
     if up and READY not in log_text(xp):
         raise RefusedError("X-Plane runs without the test pilot: quit it, the series starts it")
-    running = {"live": live_runs(), "autoortho": autoortho_runs()}
+    running = {"live": live_runs(), "autoortho": autoortho_runs(), "xpme": xpme_runs()}
     running["app"] = running["live"] or _port_open(LIVE_PORT) or _port_open(APP_PORT)
-    proc: subprocess.Popen | App | None = None
+    proc: subprocess.Popen | App | Xpme | None = None
     folder_of_streamer = None
-    if a.streamer != "none" and up:
+    if a.streamer == "xpme":  # started by hand, before: never by the runner
+        others = [name for name, on in running.items() if on and name != "xpme"]
+        if others:
+            raise RefusedError(f"{' and '.join(others)} runs beside XPME: stop it first")
+        proc = check_xpme(a.cold)
+        folder_of_streamer = xpme_cache()[0]
+    elif a.streamer != "none" and up:
         if not running[a.streamer]:
             raise RefusedError(
                 f"X-Plane runs without {a.streamer} (it reads the scenery packs at its start): "
@@ -1193,8 +1289,8 @@ def run(a: argparse.Namespace) -> int:
     elif a.streamer != "none":
         if any(running.values()):
             raise RefusedError(
-                "Live or AutoOrtho runs already (a window of theirs?): stop it, the series starts "
-                "its own"
+                "Live, AutoOrtho or XPME runs already (a window of theirs?): stop it, the series "
+                "starts its own"
             )
         if a.streamer == "live":
             source = cold_source(xp, series) if a.cold else None
@@ -1220,7 +1316,7 @@ def run(a: argparse.Namespace) -> int:
             proc = start_autoortho(xp, home, out, a.ao_settings, a.cold, a.zooms)
             folder_of_streamer = autoortho_folder(home)
     elif any(running.values()):
-        say("note: Live or AutoOrtho runs, and X-Plane will show what it gives")
+        say("note: Live, AutoOrtho or XPME runs, and X-Plane will show what it gives")
     disks = {"X-Plane": sampler.whole_disk(xp)}
     if folder_of_streamer is not None:
         disks["streamer"] = sampler.whole_disk(folder_of_streamer)
@@ -1288,7 +1384,10 @@ def run(a: argparse.Namespace) -> int:
                 "zooms": list(a.zooms) if a.zooms else None,
                 "imagery": (getattr(a, "imagery", None) or "BI")
                 if a.streamer in ("live", "app")
+                else proc.imagery
+                if isinstance(proc, Xpme)
                 else None,
+                "xpme_resolution": proc.resolution if isinstance(proc, Xpme) else None,
                 "cold": a.cold,
                 "frozen_in_flight": a.freeze_in_flight,
                 "camera": (
@@ -1316,14 +1415,19 @@ def run(a: argparse.Namespace) -> int:
             lines += [f"## {name}: {outcome}", *summary_lines(folder), ""]
         (out / "summary.md").write_text("\n".join(lines))
         still_up = not xplane_gone()
+        # XPME is stopped in its window, never by the runner, and its files are its own
+        ours = None if isinstance(proc, Xpme) else proc
+        clean = out if a.cold and not isinstance(proc, Xpme) else None
         if still_up and not a.keep_open:
             (box(xp) / "quit").write_text("")
             say("X-Plane quits by itself, in the background")
-            quit_in_background(proc, out if a.cold else None, xp, out)
+            quit_in_background(ours, clean, xp, out)
         elif still_up:
             say("X-Plane stays up (--keep-open)")
         else:
-            quit_in_background(proc, out if a.cold else None, xp, out)
+            quit_in_background(ours, clean, xp, out)
+        if isinstance(proc, Xpme):
+            say("XPME runs still: stop its service in its window once X-Plane has quit")
         print((out / "summary.md").read_text())
     return (
         0
@@ -1334,7 +1438,7 @@ def run(a: argparse.Namespace) -> int:
 
 def label(a: argparse.Namespace) -> str:
     """What a run flew with, in a few words."""
-    names = {"none": "X-Plane alone", "live": "Live", "autoortho": "AutoOrtho"}
+    names = {"none": "X-Plane alone", "live": "Live", "autoortho": "AutoOrtho", "xpme": "XPME"}
     parts = [names.get(a.streamer, "Live in the app")]
     if a.streamer == "autoortho":
         parts.append("its defaults" if a.ao_settings == "default" else "your settings")
@@ -1550,6 +1654,8 @@ def refused_options(a: argparse.Namespace) -> str | None:
         return "--imagery is for Live"
     if streamer == "app" and given("imagery") and not given("cold"):
         return "--imagery with the app needs --cold: it takes it from its settings, the run's own"
+    if streamer == "xpme" and given("zooms"):
+        return "--zooms is not for XPME: its resolution is chosen in its window (Normal: ZL16/18)"
     if given("record_camera") and given("camera") == "mine":
         return "--record-camera records a camera: it replays none"
     return None
@@ -1584,7 +1690,9 @@ def parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("scenarios", nargs="*", help="names in tools/live/flights/scenarios, or files")
-    p.add_argument("--streamer", choices=("none", "live", "autoortho", "app"), default="none")
+    p.add_argument(
+        "--streamer", choices=("none", "live", "autoortho", "app", "xpme"), default="none"
+    )
     p.add_argument(
         "--with-osxp",
         action="store_true",

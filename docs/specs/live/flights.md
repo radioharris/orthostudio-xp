@@ -9,6 +9,7 @@ flies a series of them, and nobody has to take off, climb or watch.
     uv run python tools/live/flights/fly.py --streamer live --cold <scenario>
     uv run python tools/live/flights/fly.py --streamer autoortho --ao-settings default --cold <scenario>
     uv run python tools/live/flights/fly.py --streamer autoortho --zooms 17/19 --cold <scenario>
+    uv run python tools/live/flights/fly.py --streamer xpme --cold <scenario>
 
 ## As in X-Plane
 
@@ -231,6 +232,19 @@ itself. On a Mac, macOS opens it from an app the runner makes (`build/flights/ap
 processes of its web view, which the system starts and which are not under it, are counted as its
 own (`sampler.responsible`); on Windows they are under it. `system.csv` keeps, of the app, its
 engine's and its web view's memory and processor apart (`engine_*`, `web_*`).
+
+## XPME
+
+`--streamer xpme` (2026-10-08) flies XPME (XPlane Map Enhancement) as the user runs it, for the
+comparison the published guide gives. It is started by hand before the series, as the user does:
+its app opened, its service started in its window, with its own settings (its imagery, Bing Maps;
+its resolution, Normal: ZL16/18; High is ZL17/19, so `--zooms` is refused). The runner refuses to
+fly without its service (`~/XPME-fuse` mounted, its app's process there) or beside Live or
+AutoOrtho, and, `--cold`, while its cache index (`.xpme-cache-index.sqlite3` in its settings'
+`CacheFolder`) lists pieces: its window's Clear empties it. The sampler counts as the streamer's
+its app's main process and everything under it (its service, `XplaneMapEnhancement`, and its
+virtual disk's server). The runner never stops it: it is stopped in its window once X-Plane has
+quit. On a Mac only.
 
 ## The photos' sharpness
 
