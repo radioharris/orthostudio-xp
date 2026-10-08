@@ -142,20 +142,7 @@ def options() -> dict[str, Any]:
 
 def parser_for_labels() -> Any:
     """fly.py's options, to name a campaign's runs as the runner names them."""
-    import argparse
-
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("scenarios", nargs="*")
-    p.add_argument("--streamer", choices=STREAMERS, default="none")
-    p.add_argument("--cold", action="store_true")
-    p.add_argument("--ao-settings", choices=("mine", "default"), default="mine")
-    p.add_argument("--zooms", type=fly.zooms_of)
-    p.add_argument("--keep-open", action="store_true")
-    p.add_argument("--record-camera", action="store_true")
-    p.add_argument("--camera", choices=("scenario", "mine"), default="scenario")
-    p.add_argument("--with-osxp", action="store_true")
-    p.add_argument("--freeze-in-flight", action="store_true")
-    return p
+    return fly.parser()
 
 
 def fly_args(choice: dict[str, Any]) -> list[str]:

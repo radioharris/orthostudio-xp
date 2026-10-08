@@ -1128,6 +1128,42 @@ def test_the_one_window_campaign_reads() -> None:
     assert [i for i, _, _ in camp.picked(None)[1]] == ["live-seul", "live-et-osxp", "xplane-seul"]
 
 
+def test_a_series_with_another_imagery_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live with Esri World Imagery or EOX instead of Bing Maps (2026-10-08): the source in the
+    cold app's settings, in Live's command, in the run's words, and refused where no Live runs or
+    where the app would take the user's own settings."""
+    import argparse
+    import tomllib
+
+    import orthostudio.live as live
+
+    mine = tmp_path / "live.toml"
+    mine.write_text('enabled = true\n\n[stream]\nprovider = "BI"\n')
+    monkeypatch.setattr(live, "settings_file", lambda: mine)
+    home = fly.cold_home(tmp_path / "home")
+    fly.app_settings(home, (16, 18), "EOX")
+    assert tomllib.loads((home / "live.toml").read_text())["stream"]["provider"] == "EOX"
+    assert 'provider = "BI"' in mine.read_text()  # the user's own, untouched
+
+    assert fly.imagery_of("Arc") == "Arc"
+    with pytest.raises(argparse.ArgumentTypeError, match="BI"):
+        fly.imagery_of("bing")
+
+    def ns(**kw: object) -> argparse.Namespace:
+        base = {"streamer": "app", "zooms": (16, 18), "cold": True, "imagery": "Arc"}
+        return argparse.Namespace(**{**base, **kw})
+
+    assert fly.label(ns()) == "Live in the app, alone in it, ZL16/18, Esri World Imagery, cold"
+    assert fly.refused_options(ns()) is None
+    assert fly.refused_options(ns(streamer="live")) is None
+    assert "--imagery is for Live" in fly.refused_options(ns(streamer="autoortho"))
+    assert "needs --cold" in fly.refused_options(ns(cold=False, zooms=None))
+    runs = dict(fly.read_campaign("sources").runs)
+    assert runs["esri"][-2:] == ["--imagery", "Arc"] and runs["eox"][-2:] == ["--imagery", "EOX"]
+
+
 def test_the_sampler_counts_the_app_s_web_view(monkeypatch: pytest.MonkeyPatch) -> None:
     """A Mac's web view is WebKit's processes working for the app, started by the system and not
     under it; Windows' is WebView2's, under the app."""

@@ -324,11 +324,13 @@ def start_live(
     zooms: tuple[int, int] | None = None,
     frozen: bool = False,
     source: Path | None = None,
+    imagery: str | None = None,
 ) -> subprocess.Popen:
     """Live's streamer, before X-Plane, as the user starts it; back once it is ready. ``frozen``:
     Live builds nothing once the aircraft flies, a test of 2026-10-01
     (orthostudio.live.streamer.FROZEN_IN_FLIGHT). ``source``: the region it streams onto
-    (``cold_source``), else those it finds itself."""
+    (``cold_source``), else those it finds itself. ``imagery``: its imagery source, a code of its
+    window's list (``--imagery``)."""
     env = dict(os.environ)
     if cold:
         env["OSXP_HOME"] = str(cold_home(out / LIVE_HOME))
@@ -339,6 +341,8 @@ def start_live(
         cmd += ["--max-zoom", str(zooms[0]), "--max-zoom-airports", str(zooms[1])]
     if source is not None:
         cmd += ["--source", str(source)]
+    if imagery:
+        cmd += ["--provider", imagery]
     log = out / "live.txt"
     with log.open("ab") as f:
         proc = subprocess.Popen(
@@ -402,9 +406,10 @@ def app_bundle() -> Path:
     return app
 
 
-def app_settings(home: Path, zooms: tuple[int, int] | None) -> None:
+def app_settings(home: Path, zooms: tuple[int, int] | None, imagery: str | None = None) -> None:
     """A cold app's Live settings (``cold_home``'s copy of the user's): Live switched on, and the
-    series' zooms, which the app takes from its settings (it has no ``--max-zoom``)."""
+    series' zooms and imagery source, which the app takes from its settings (it has no
+    ``--max-zoom`` nor ``--provider``)."""
     import tomllib
 
     from orthostudio.config.store import toml_dumps
@@ -414,6 +419,8 @@ def app_settings(home: Path, zooms: tuple[int, int] | None) -> None:
     data["enabled"] = True
     if zooms:
         data.setdefault("stream", {}).update(max_zoom=zooms[0], max_zoom_airports=zooms[1])
+    if imagery:
+        data.setdefault("stream", {})["provider"] = imagery
     path.write_text(toml_dumps(data), encoding="utf-8")
 
 
@@ -494,12 +501,14 @@ def start_app(
     frozen: bool = False,
     source: Path | None = None,
     with_osxp: bool = False,
+    imagery: str | None = None,
 ) -> App:
     """The app itself, before X-Plane, as the user opens it: its one window on Live's side, Live
     set up behind it, or with ``with_osxp`` OrthoStudio XP's side first (its engine started, its
     page loaded), then Live's; then Live started as its Start starts it; back once Live is ready
     for X-Plane. ``cold``: a home of its own under the results (``cold_home``, ``app_settings``).
-    ``source``: the region Live streams onto (``cold_source``), as ``stream --source``."""
+    ``source``: the region Live streams onto (``cold_source``), as ``stream --source``.
+    ``imagery``: Live's imagery source, in the cold home's settings."""
     from orthostudio import desktop
     from orthostudio.home import osxp_home
 
@@ -518,7 +527,7 @@ def start_app(
         "PYTHONUNBUFFERED": "1",  # its output in app.txt as it comes, read while it runs
     }
     if cold:
-        app_settings(home, zooms)
+        app_settings(home, zooms, imagery)
         passed["OSXP_HOME"] = str(home)
     if frozen:
         passed["OSXP_LIVE_FROZEN_IN_FLIGHT"] = "1"
@@ -1189,12 +1198,21 @@ def run(a: argparse.Namespace) -> int:
             )
         if a.streamer == "live":
             source = cold_source(xp, series) if a.cold else None
-            proc = start_live(xp, out, a.cold, a.zooms, a.freeze_in_flight, source)
+            proc = start_live(
+                xp, out, a.cold, a.zooms, a.freeze_in_flight, source, getattr(a, "imagery", None)
+            )
             folder_of_streamer = live_folder(out, a.cold)
         elif a.streamer == "app":
             source = cold_source(xp, series) if a.cold else None
             proc = start_app(
-                xp, out, a.cold, a.zooms, a.freeze_in_flight, source, getattr(a, "with_osxp", False)
+                xp,
+                out,
+                a.cold,
+                a.zooms,
+                a.freeze_in_flight,
+                source,
+                getattr(a, "with_osxp", False),
+                getattr(a, "imagery", None),
             )
             folder_of_streamer = live_folder(out, a.cold)
         else:
@@ -1268,6 +1286,9 @@ def run(a: argparse.Namespace) -> int:
                 "ao_settings": a.ao_settings if a.streamer == "autoortho" else None,
                 "with_osxp": getattr(a, "with_osxp", False) if a.streamer == "app" else None,
                 "zooms": list(a.zooms) if a.zooms else None,
+                "imagery": (getattr(a, "imagery", None) or "BI")
+                if a.streamer in ("live", "app")
+                else None,
                 "cold": a.cold,
                 "frozen_in_flight": a.freeze_in_flight,
                 "camera": (
@@ -1323,6 +1344,10 @@ def label(a: argparse.Namespace) -> str:
         )
     if a.zooms:
         parts.append(f"ZL{a.zooms[0]}/{a.zooms[1]}")
+    if getattr(a, "imagery", None):
+        from orthostudio.live.providers import provider
+
+        parts.append(provider(a.imagery).name)
     if a.cold:
         parts.append("cold")
     if getattr(a, "freeze_in_flight", False):
@@ -1521,9 +1546,24 @@ def refused_options(a: argparse.Namespace) -> str | None:
         return "--with-osxp is for the app (--streamer app)"
     if streamer == "app" and given("zooms") and not given("cold"):
         return "--zooms with the app needs --cold: it takes them from its settings, the run's own"
+    if given("imagery") and streamer not in ("live", "app"):
+        return "--imagery is for Live"
+    if streamer == "app" and given("imagery") and not given("cold"):
+        return "--imagery with the app needs --cold: it takes it from its settings, the run's own"
     if given("record_camera") and given("camera") == "mine":
         return "--record-camera records a camera: it replays none"
     return None
+
+
+def imagery_of(code: str) -> str:
+    """An imagery source's code, as Live's window lists the sources (``Arc``: Esri World Imagery,
+    ``EOX``...)."""
+    from orthostudio.live.providers import registry
+
+    known = registry()
+    if code not in known:
+        raise argparse.ArgumentTypeError(f"an imagery source of Live's: {', '.join(known)}")
+    return code
 
 
 def zooms_of(text: str) -> tuple[int, int]:
@@ -1537,7 +1577,9 @@ def zooms_of(text: str) -> tuple[int, int]:
     return far, near
 
 
-def main(argv: list[str] | None = None) -> int:
+def parser() -> argparse.ArgumentParser:
+    """The runner's options, which the window of the test flights reads too (``bench.py``) to
+    name a campaign's runs as the runner does: written once."""
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1559,6 +1601,12 @@ def main(argv: list[str] | None = None) -> int:
         "--zooms",
         type=zooms_of,
         help="the streamer's max_zoom and near airports for this series, e.g. 17/19",
+    )
+    p.add_argument(
+        "--imagery",
+        type=imagery_of,
+        help="Live's imagery source for this series, a code of its window's list (Arc: Esri World "
+        "Imagery, EOX...); Bing Maps (BI) otherwise",
     )
     p.add_argument("--keep-open", action="store_true", help="X-Plane stays up after the series")
     p.add_argument(
@@ -1587,6 +1635,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--app-log", type=Path, help=argparse.SUPPRESS)
     p.add_argument("--clean", type=Path, help=argparse.SUPPRESS)
     p.add_argument("--series", type=Path, help=argparse.SUPPRESS)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = parser()
     a = p.parse_args(argv)
     if a.after_series is not None:
         after_series(a.after_series, a.clean, a.xplane, a.series, a.app_log)

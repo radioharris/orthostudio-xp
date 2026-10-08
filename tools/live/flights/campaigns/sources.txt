@@ -1,0 +1,11 @@
+# Live with other imagery sources than Bing Maps (2026-10-08): Esri World Imagery, as fast a
+# server as Bing's, and EOX's Sentinel-2 cloudless, whose photos stop at ZL14 (about 10 m a pixel),
+# the sharper levels filled from them. Each from nothing (cold), over the flight Live flew with
+# Bing on the Mac on 2026-10-04 (02:19, the « fenêtre unique » campaign, Live alone in the app):
+# how long X-Plane waits at its start, whether the sharp textures come in time, X-Plane's frames,
+# the photos' sharpness, and for EOX what its full-size textures cost on the disk and the card.
+title Les sources : Esri et EOX au lieu de Bing
+scenarios toulouse-low
+run esri --streamer app --zooms 16/18 --cold --imagery Arc
+run eox --streamer app --zooms 16/18 --cold --imagery EOX
+compare esri eox

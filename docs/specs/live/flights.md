@@ -117,6 +117,9 @@ Ctrl-C cannot be sent to a group there); its encoders ignore it, as they ignore 
   X-Plane is. Its cache is the user's, or with `--cold` one of its own. Its log is always its home's.
 - `--zooms 17/19`: the streamer's max_zoom and max_zoom near airports for the series (AutoOrtho's
   settings file, Live's `--max-zoom` and `--max-zoom-airports`), whatever the settings say.
+- `--imagery Arc` (Live): its imagery source for the series, a code of its window's list (Live's
+  `--provider`; the app's cold settings, so with the app it needs `--cold`); Bing Maps otherwise.
+  The run's words name the source, and `run.json` keeps its code (`imagery`).
 - `--freeze-in-flight` (Live, a test of 2026-10-01): Live builds nothing once the aircraft flies,
   as if paused from the start's end to the path's (only the squares' files X-Plane needs made), to
   see whether X-Plane still waits minutes for a column's third tile without Live's work
@@ -204,6 +207,11 @@ window, Live alone in it, then with OrthoStudio XP open beside it (its engine st
 loaded, idle): what OrthoStudio XP open costs in memory, in processor and for X-Plane; its second
 comparison adds X-Plane alone. The app's own rows in the table: the streamer's start, and of it in
 flight OrthoStudio XP's engine and the window's web view, and the computer's memory meanwhile.
+
+`sources` (2026-10-08), over `toulouse-low`, cold at 16/18, the app alone: Esri World Imagery
+(`Arc`), as fast a server as Bing's, then EOX's Sentinel-2 cloudless, whose photos stop at ZL14
+(about 10 m a pixel; the sharper levels are filled from them). Bing's own run is the
+`fenetre-unique` one of 2026-10-04, Live alone in the app.
 
 ## The app itself
 
