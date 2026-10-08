@@ -103,6 +103,40 @@ def test_x_plane_on_windows_in_any_case(monkeypatch):
     assert scenery.xplane_pid() is None
 
 
+def test_the_other_programs_streaming_ortho_by_their_processes(monkeypatch, tmp_path):
+    """XPME and AutoOrtho, as each system names their processes (the user's Mac: XPME 4.7.22's
+    window « XPlane Map Enhancement » and its server « XplaneMapEnhancement », 2026-10-08):
+    Live refuses to start beside either."""
+    (tmp_path / "Custom Scenery").mkdir()
+    for names, found in (
+        (["XPlane Map Enhancement", "XplaneMapEnhancement"], ["XPME"]),  # a Mac
+        (["XPlane Map Enhancement.exe"], ["XPME"]),  # Windows
+        (["XplaneMapEnhanc"], ["XPME"]),  # Linux keeps 15 characters
+        (["autoortho"], ["AutoOrtho"]),
+        (["AutoOrtho.EXE", "XplaneMapEnhancement.exe"], ["XPME", "AutoOrtho"]),
+        (["X-Plane", "OrthoStudio XP", "python3.14"], []),
+    ):
+        listed = {pid: (name, 0.0) for pid, name in enumerate(names, 10)}
+        monkeypatch.setattr(scenery, "_processes", lambda listed=listed: listed)
+        assert scenery.ortho_streamers(tmp_path) == found, names
+
+
+def test_xpme_by_the_folder_it_mounts(monkeypatch, tmp_path):
+    """Its packs are links into the folder it mounts while it runs (``~/XPME-fuse`` on a Mac),
+    which says it where the list of processes cannot be read."""
+    scenery_dir = tmp_path / "X-Plane 12" / "Custom Scenery"
+    scenery_dir.mkdir(parents=True)
+    fuse = tmp_path / "XPME-fuse"
+    fuse.mkdir()
+    (scenery_dir / "XPME_Europe").symlink_to(fuse / "XPME_Europe")
+    monkeypatch.setattr(scenery, "_processes", lambda: None)
+    mounted = set()
+    monkeypatch.setattr(scenery.os.path, "ismount", lambda p: os.path.realpath(p) in mounted)
+    assert scenery.ortho_streamers(tmp_path / "X-Plane 12") == []  # XPME stopped: nothing there
+    mounted.add(os.path.realpath(fuse))
+    assert scenery.ortho_streamers(tmp_path / "X-Plane 12") == ["XPME"]
+
+
 @pytest.mark.parametrize(
     ("platform", "program"),
     [("darwin", "X-Plane.app"), ("win32", "X-Plane.exe"), ("linux", "X-Plane-x86_64")],

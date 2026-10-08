@@ -114,12 +114,19 @@ function headline(status) {
   return [t("state.idle"), t("state.idle_lead"), ""];
 }
 
+/** The other programs streaming ortho that run (XPME, AutoOrtho), and that they must go. */
+function streamersRunning(names) {
+  if (names.length === 1) return t("checks.streamer_running", { name: names[0] });
+  const last = names[names.length - 1];
+  return t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
+}
+
 /** What keeps a stream from starting, in words, or null. */
 function blocking(checks) {
   if (!checks.supported) return t("checks.unsupported");
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
-  if (checks.autoortho_mounted) return t("checks.ao_mounted");
+  if (checks.ortho_streamers?.length) return streamersRunning(checks.ortho_streamers);
   if (!checks.mesh_found && !checks.region_ready) return t("checks.mesh_missing", { path: checks.mesh });
   if (checks.xplane_running && !checks.installed) return t("checks.xplane_running_late");
   return null;
@@ -314,7 +321,8 @@ function drawChecks(status) {
       tiles: own.length <= 4 ? own.join(", ") : t("checks.own_squares", { n: number(own.length) }),
     }));
   }
-  add(c.autoortho_mounted ? "failed" : "done", t(c.autoortho_mounted ? "checks.ao_mounted" : "checks.ao"));
+  const others = c.ortho_streamers || [];
+  add(others.length ? "failed" : "done", others.length ? streamersRunning(others) : t("checks.streamers"));
   if (c.plugin === "ready") add("done", t("checks.plugin"));
   else if (c.plugin === "to_build") add("info", t("checks.plugin_build"));
   else add("warn", t("checks.plugin_missing"));

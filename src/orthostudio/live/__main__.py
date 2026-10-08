@@ -27,6 +27,7 @@ from orthostudio.live.scenery import (
     autoortho_mounted,
     default_sources,
     is_installed,
+    ortho_streamers,
     xplane_running,
 )
 
@@ -319,7 +320,8 @@ def status(xplane: XPlaneOpt = None, pack: PackOpt = None) -> None:
         f"installed: {'yes' if is_installed(xp_dir, LINK_NAME) else 'no'}"
         f" (X-Plane plugin: {'yes' if plugin.installed(xp_dir) else 'no'})"
     )
-    typer.echo(f"AutoOrtho: {'mounted' if autoortho_mounted(xp_dir) else 'not mounted'}")
+    others = ortho_streamers(xp_dir)
+    typer.echo(f"other programs streaming ortho: {', '.join(others) or 'none running'}")
 
 
 @app.command()

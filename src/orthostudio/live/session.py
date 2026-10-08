@@ -32,11 +32,11 @@ from orthostudio.live.pack import (
     live_root,
 )
 from orthostudio.live.scenery import (
-    autoortho_mounted,
     default_sources,
     find_xplane,
     install_link,
     is_installed,
+    ortho_streamers,
     uninstall_link,
     xplane_pref,
     xplane_running,
@@ -234,8 +234,13 @@ def prepare(options: Options, log: Log) -> Prepared:
             "X-Plane is running and would not see the pack: quit it, start the streamer, then "
             "X-Plane"
         )
-    if autoortho_mounted(xp_dir):
-        raise RefusedError("AutoOrtho is mounted: quit it first, it serves the same tiles")
+    others = ortho_streamers(xp_dir)
+    if others:
+        verb, pronoun = ("is", "it") if len(others) == 1 else ("are", "them")
+        raise RefusedError(
+            f"{' and '.join(others)} {verb} running: quit {pronoun} first, only one program may "
+            "stream ortho to X-Plane"
+        )
     try:
         check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)
     except FolderError as e:

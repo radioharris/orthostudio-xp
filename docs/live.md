@@ -54,8 +54,8 @@ tabs, as OrthoStudio XP's screens:
 - **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
   state, the imagery source (chosen first and saved as soon as chosen), the departure to prepare
   and Start Live, then the flight; under them the textures on a line; what Live needs (X-Plane, a
-  mesh, AutoOrtho not running, the plugin), with a button to the regions where a mesh is missing;
-  its log at the bottom. The source changes
+  mesh, no other program streaming ortho running, such as XPME or AutoOrtho, the plugin), with a
+  button to the regions where a mesh is missing; its log at the bottom. The source changes
   only while Live is stopped, and textures already built keep their photos: "From scratch" builds
   them all again with a new source.
 - **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start

@@ -149,6 +149,24 @@ def test_a_folder_that_cannot_hold_the_pack(tmp_path: Path) -> None:
     assert list((tmp_path / "live").iterdir()) == []  # the probe cleaned up
 
 
+def test_a_start_refused_beside_another_program_streaming_ortho(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XPME or AutoOrtho running: one program only may stream ortho to X-Plane."""
+    from live_helpers import make_xplane
+
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    xp = make_xplane(tmp_path)
+    for others, said in (
+        (["XPME"], "XPME is running: quit it first"),
+        (["XPME", "AutoOrtho"], "XPME and AutoOrtho are running: quit them first"),
+    ):
+        monkeypatch.setattr(session, "ortho_streamers", lambda _xp, others=others: others)
+        with pytest.raises(session.RefusedError, match=said):
+            session.prepare(session.Options(xplane=xp), log=lambda _: None)
+    assert not (xp / "Custom Scenery" / "z_osxp_live").exists()  # nothing installed
+
+
 def test_a_start_refused_while_the_folder_is_not_there(
     home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -175,6 +193,7 @@ def checks(**changed: Any):
         "mesh_found": True,
         "region_ready": True,
         "autoortho_mounted": False,
+        "ortho_streamers": [],
         "installed": False,
         "plugin": "ready",
         "folder": "/Live",

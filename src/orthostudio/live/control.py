@@ -49,6 +49,7 @@ from orthostudio.live.scenery import (
     default_sources,
     is_installed,
     launch_xplane,
+    ortho_streamers,
     xplane_running,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
@@ -173,6 +174,7 @@ def gather_checks() -> dict[str, Any]:
         "mesh_found": False,
         "region_ready": False,
         "autoortho_mounted": False,
+        "ortho_streamers": [],  # the other programs streaming ortho that run (XPME, AutoOrtho)
         "installed": False,
         "plugin": plugin.availability(),
         "folder": str(live_root()),
@@ -204,6 +206,7 @@ def gather_checks() -> dict[str, Any]:
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
+        ortho_streamers=ortho_streamers(xp),
         installed=is_installed(xp, LINK_NAME),
         # the squares X-Plane takes from the user's own tiles: Live downloads nothing there
         own_tiles=[[lat, lon, pack] for (lat, lon), pack in sorted(own_tiles(xp).items())],
