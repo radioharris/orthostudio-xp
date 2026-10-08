@@ -51,8 +51,8 @@
 <main id="main" class="main live">
 <section id="screen-live" class="screen" aria-labelledby="state-title">
   <!-- OrthoStudio XP's Plan layout (.plan-flow): the map on the left, large, and on the right the
-       state with what to choose and do; under them the flight and the textures, a line each, the
-       checks and the log -->
+       state with what to choose and do, then the flight; under them the textures, the checks and
+       the log -->
   <div class="plan-flow">
     <div class="map-col">
       <section class="question live-map-card">
@@ -153,22 +153,38 @@
         </div>
         <p class="question-help" id="action-help"></p>
       </section>
+      <!-- the flight: X-Plane's state beside the title, the aircraft's three figures in boxes,
+           then the rest -->
       <section class="plan-step">
-        <h2 class="question-title" data-i18n="flight.title">Flight</h2>
+        <div class="live-head">
+          <h2 class="question-title" data-i18n="flight.title">Flight</h2>
+          <span class="pill" id="flight-state"></span>
+        </div>
+        <div class="live-figures" id="flight-figures" hidden></div>
         <dl class="kv" id="flight"></dl>
         <p class="question-help is-warn" id="flight-notice" hidden></p>
       </section>
     </div>
   </div>
 
-  <!-- the textures on a line: the title, then its values one after the other -->
-  <section class="question live-line">
-    <div class="live-line-head">
+  <!-- the textures: their state beside the title and the rate on the right, four figures in
+       boxes, the textures built by size, the disk -->
+  <section class="question">
+    <div class="live-head">
       <h2 class="question-title" data-i18n="build.title">Textures</h2>
-      <dl class="kv live-kv" id="build"></dl>
+      <span class="pill" id="build-state" hidden></span>
       <p class="question-help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</p>
+      <span class="live-aside" id="build-rate" hidden></span>
     </div>
-    <div class="progress live-disk" id="disk" hidden><span id="disk-bar"></span></div>
+    <div id="build" hidden>
+      <div class="live-figures is-4" id="build-figures"></div>
+      <div class="live-sizes" id="build-sizes" hidden></div>
+      <div class="live-disk">
+        <span data-i18n="build.disk">Disk</span>
+        <div class="progress" id="disk"><span id="disk-bar"></span></div>
+        <span id="disk-text"></span>
+      </div>
+    </div>
   </section>
 
   <section class="question">

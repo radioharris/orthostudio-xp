@@ -828,9 +828,171 @@ def test_the_page_says_everything_in_both_languages() -> None:
     html = (UI_DIR / "index.html").read_text()
     used = set(re.findall(r'\bt\("([\w.]+)"', js))
     used |= set(re.findall(r'data-i18n(?:-title|-placeholder|-aria-label)?="([\w.]+)"', html))
-    used |= {f"flight.data_{d}" for d in ("none", "fresh", "stale")}  # t(`flight.data_${...}`)
     assert used, "no key found"
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
+
+
+def _views(statuses: list[dict]) -> dict:
+    """live.js flightView and buildView of each status, in English and in French, their spaces
+    plain (French numbers are grouped by a narrow no-break space)."""
+    script = (
+        f"import {{ flightView, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"const statuses = {json.dumps(statuses)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { setLanguage(lang);"
+        " out[lang] = statuses.map((s) => ({ flight: flightView(s), build: buildView(s) })); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(re.sub(r"\\u00a0|\\u202f|\u00a0|\u202f", " ", out.stdout))
+
+
+def _streaming(**streamer: object) -> dict:
+    """A status while Live runs: an aircraft flying, everything the two cards show."""
+    return {
+        "state": "streaming",
+        "checks": {"xplane_running": True, "imagery_bytes": 2_000_000_000},
+        "settings": {"disk_gb": 40},
+        "stream": {
+            "data": "fresh",
+            "aircraft": {"lat": 44.2181, "lon": 1.7052, "alt_ft": 8820.4, "gs_kt": 231.2},
+            "camera_km": 2.34,
+            "start": {"name": "LFBO", "ready": True, "held": False},
+            "mbs": 0.14,
+            "notice": None,
+            "streamer": {
+                "first_level": -1,  # 8192 px, then 4096 to 256 px
+                "queued": [0, 1, 0, 0, 0, 6],
+                "urgent": 0,
+                "building": 24,
+                "pieces_awaited": 12,
+                "built": [2, 260, 291, 524, 1182, 7332],
+                "downloaded": 104530,
+                "downloaded_bytes": 1_553_000_000,
+                "from_cache": 947,
+                "failed": 3,
+                "disk_bytes": 2_600_000_000,
+                "at_8192": 5,
+                "flight_plan": {"name": "LFBO-LFPG", "following": True},
+                "screen": {"width": 3024, "fov": 65, "km_4096": 13.2},
+                **streamer,
+            },
+        },
+    }
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_flight_and_the_textures_show_every_figure() -> None:
+    """The two cards show all the line of each showed before (2026-10-08): X-Plane's state, the
+    aircraft's three figures, how far X-Plane's image is sharp, the plan followed, the camera, the
+    start; the textures to build by size and the urgent ones, those being built and the pieces
+    they wait for, those built by size, what was downloaded with the cache and the failures, the
+    rate, the disk and its 8192 px textures."""
+    views = _views([_streaming()])
+    assert views["fr"][0] == {
+        "flight": {
+            "state": ["X-Plane envoie sa position", "ok"],
+            "figures": [
+                {"value": "8 820 ft", "label": "Altitude"},
+                {"value": "231 kt", "label": "Vitesse sol"},
+                {"value": "44,218 · 1,705", "label": "Position"},
+            ],
+            "rows": [
+                ["Net jusqu'à", "13 km (image de 3 024 px, champ de 65°)"],
+                ["Plan de vol", "LFBO-LFPG (SimBrief), suivi"],
+                ["Caméra", "à 2,3 km de l'avion"],
+                ["Départ", "LFBO"],
+            ],
+        },
+        "build": {
+            "state": ["En construction", "running"],
+            "rate": ["Débit", "0,1 Mo/s"],
+            "figures": [
+                {
+                    "value": "7",
+                    "label": "à construire, aucune urgente",
+                    "more": "1 \u00d7 4096 px · 6 \u00d7 256 px",  # the multiplication sign
+                },
+                {"value": "24", "label": "en construction", "more": "12 morceaux attendus"},
+                {"value": "9 591", "label": "construites depuis le démarrage", "more": None},
+                {
+                    "value": "1,55 Go",
+                    "label": "téléchargés",
+                    "more": "104 530 morceaux, 947 du cache",
+                    "problem": "3 en échec",
+                },
+            ],
+            "sizes": [
+                "8192 px · 2",
+                "4096 px · 260",
+                "2048 px · 291",
+                "1024 px · 524",
+                "512 px · 1 182",
+                "256 px · 7 332",
+            ],
+            "disk": {
+                "text": "4,6 Go sur 40 Go · 5 textures en 8192 px",
+                "share": 0.115,
+                "warn": False,
+            },
+        },
+    }
+    en = views["en"][0]
+    assert en["flight"]["state"] == ["X-Plane sends its position", "ok"]
+    assert [f["value"] for f in en["flight"]["figures"]] == ["8,820 ft", "231 kt", "44.218 · 1.705"]
+    assert en["flight"]["rows"][0] == ["Sharp up to", "13 km (3,024 px image, 65° field of view)"]
+    assert en["build"]["rate"] == ["Rate", "0.1 MB/s"]
+    assert en["build"]["figures"][0]["label"] == "to build, none urgent"
+    assert en["build"]["figures"][3]["value"] == "1.55 GB"
+    assert en["build"]["disk"]["text"] == "4.6 GB of 40 GB · 5 textures at 8192 px"
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_flight_and_the_textures_say_their_state() -> None:
+    """X-Plane's state when Live is stopped and before it sends its position; the textures' state:
+    downloads all failing, late (but not while the start is built: the state above says so), being
+    built, all built, nothing to build; the disk's bar warns past 90 %."""
+    stopped = {"state": "idle", "checks": {"xplane_running": False}}
+    running = {"state": "idle", "checks": {"xplane_running": True}}
+    waiting = _streaming(queued=[0] * 6, building=0, pieces_awaited=0, built=[0] * 6, failed=0)
+    waiting["stream"].update(data="none", aircraft=None, camera_km=None, start=None)
+    waiting["stream"]["streamer"].update(flight_plan=None, screen=None, at_8192=0)
+    refused = _streaming(downloaded=0, downloaded_bytes=0, from_cache=0, failed=40)
+    late = _streaming(urgent=3)
+    holding = _streaming(urgent=1200)
+    holding["stream"]["start"] = {"name": "LFBO", "ready": False, "held": True}
+    done = _streaming(queued=[0] * 6, building=0, pieces_awaited=0)
+    full = _streaming(disk_bytes=34_500_000_000)
+    views = _views([stopped, running, waiting, refused, late, holding, done, full])["fr"]
+    assert [v["flight"]["state"] for v in views[:3]] == [
+        ["X-Plane n'est pas lancé", ""],
+        ["X-Plane est lancé", ""],
+        ["Pas encore de position d'X-Plane", ""],
+    ]
+    assert views[0]["flight"]["figures"] == views[0]["flight"]["rows"] == []
+    assert views[2]["flight"]["figures"] == views[2]["flight"]["rows"] == []
+    assert views[0]["build"] is None and views[1]["build"] is None
+    assert [v["build"]["state"] for v in views[2:7]] == [
+        ["Rien à construire", ""],
+        ["Téléchargements en échec", "fail"],
+        ["En retard : 3 urgentes", "warn"],
+        ["En construction", "running"],
+        ["Tout est construit", "ok"],
+    ]
+    assert views[2]["build"]["sizes"] == []
+    assert views[2]["build"]["figures"][1]["more"] is None  # nothing built, nothing awaited
+    assert views[3]["build"]["figures"][3]["value"] == "0 Mo"
+    assert views[4]["build"]["figures"][0]["label"] == "à construire, dont 3 urgentes"
+    assert views[7]["build"]["disk"] == {
+        "text": "36,5 Go sur 40 Go · 5 textures en 8192 px",
+        "share": 0.9125,
+        "warn": True,
+    }
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

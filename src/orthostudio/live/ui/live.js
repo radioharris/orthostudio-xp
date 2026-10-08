@@ -46,34 +46,72 @@ function number(value, digits = 0) {
   }).format(value);
 }
 
+/** A texture's side at a level: 4096 px at level 0, 8192 px at -1, 256 px at 4. */
+const side = (level) => (level >= 0 ? 4096 >> level : 4096 << -level);
+
 /** "7 × 4096 px · 5 × 2048 px": counts by level, the first ``first`` (-1: 8192 px). */
 function byLevel(counts, first) {
-  const side = (level) => (level >= 0 ? 4096 >> level : 4096 << -level);
   const parts = counts.map((n, i) => (n ? `${number(n)} × ${side(first + i)} px` : null)).filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
 
+const sum = (counts) => counts.reduce((total, n) => total + n, 0);
+
 const gb = (bytes) => number(bytes / 1e9, 1);
+
+/** Bytes in megabytes under a gigabyte, in gigabytes from one: "553 MB", "1.55 GB". */
+function amount(bytes) {
+  if (bytes < 0.9995e9) return `${number(bytes / 1e6)} ${t("unit.mb")}`;
+  return `${number(bytes / 1e9, 2)} ${t("unit.gb")}`;
+}
 
 // --- drawing -----------------------------------------------------------------------------------
 
-/** Names and values along a line, each name kept with its value where the line breaks. */
+/** Names and values (OrthoStudio XP's .kv), each name kept with its value. */
 function kv(dl, rows) {
   dl.replaceChildren();
   for (const [label, value] of rows) {
     const dt = document.createElement("dt");
     dt.textContent = label;
     const dd = document.createElement("dd");
-    if (value == null) {
-      dd.textContent = t("build.none");
-      dd.className = "none";
-    } else {
-      dd.textContent = value;
-    }
+    dd.textContent = value;
     const pair = document.createElement("div");
     pair.append(dt, dd);
     dl.append(pair);
   }
+}
+
+/** One of OrthoStudio XP's pills: its words, and its colour by its kind ("" for none). */
+function drawPill(pill, [text, kind]) {
+  pill.textContent = text;
+  pill.className = kind ? `pill pill-${kind}` : "pill";
+}
+
+/** Figures in OrthoStudio XP's boxes (.cost, its estimate's): the value large, what it is under
+ * it, then a detail and what failed. */
+function drawFigures(box, figures) {
+  box.hidden = !figures.length;
+  box.replaceChildren(...figures.map(({ value, label, more, problem }) => {
+    const figure = document.createElement("div");
+    figure.className = "cost live-figure";
+    const big = document.createElement("b");
+    big.textContent = value;
+    const name = document.createElement("span");
+    name.textContent = label;
+    figure.append(big, name);
+    if (more || problem) {
+      const detail = document.createElement("small");
+      detail.textContent = more || "";
+      if (problem) {
+        const failed = document.createElement("span");
+        failed.className = "is-fail";
+        failed.textContent = more ? ` · ${problem}` : problem;
+        detail.append(failed);
+      }
+      figure.append(detail);
+    }
+    return figure;
+  }));
 }
 
 /** The headline, its lead, and the dot's colour, from the state and what X-Plane does. */
@@ -195,6 +233,50 @@ function goToRegions() {
   return button;
 }
 
+/** What the flight's card shows: X-Plane's state as a pill, the aircraft's three figures, the
+ * rest as names and values. */
+export function flightView(status) {
+  const stream = status.state === "streaming" ? status.stream : null;
+  if (!stream) {
+    const running = status.checks.xplane_running;
+    return {
+      state: [running ? t("flight.xplane_running") : t("flight.xplane_stopped"), ""],
+      figures: [],
+      rows: [],
+    };
+  }
+  let state = [t("flight.data_none"), ""];
+  if (stream.data === "fresh") state = [t("flight.data_fresh"), "ok"];
+  else if (stream.data === "stale") state = [t("flight.data_stale"), ""];
+  const a = stream.aircraft;
+  const figures = a
+    ? [
+      { value: `${number(a.alt_ft)}\u00a0ft`, label: t("flight.altitude") },
+      { value: `${number(a.gs_kt)}\u00a0kt`, label: t("flight.speed") },
+      // on two lines in a narrow box, the dot before the longitude
+      { value: `${number(a.lat, 3)} ·\u00a0${number(a.lon, 3)}`, label: t("flight.position") },
+    ]
+    : [];
+  const rows = [];
+  const screen = stream.streamer?.screen;
+  if (screen) {
+    rows.push([t("flight.sharp"), t("flight.sharp_value", {
+      km: number(screen.km_4096),
+      width: number(screen.width),
+      fov: number(screen.fov),
+    })]);
+  }
+  // the SimBrief plan, only while the aircraft flies it: nothing says a pilot means to fly the
+  // last one they made (a user, 2026-09-27)
+  const plan = stream.streamer?.flight_plan;
+  if (plan?.following) rows.push([t("flight.plan"), t("flight.plan_following", { name: plan.name })]);
+  if (stream.camera_km != null && stream.camera_km > 0.5) {
+    rows.push([t("flight.camera"), t("flight.camera_value", { km: number(stream.camera_km, 1) })]);
+  }
+  if (stream.start) rows.push([t("flight.start"), stream.start.name]);
+  return { state, figures, rows };
+}
+
 function drawFlight(status) {
   const stream = status.state === "streaming" ? status.stream : null;
   // where the aircraft (or the start) has no mesh under it: the region to install
@@ -210,70 +292,89 @@ function drawFlight(status) {
     $("flight-notice").replaceChildren(words);
     if (notice && !notice.installed) $("flight-notice").append(" ", goToRegions());
   }
-  if (!stream) {
-    const running = status.checks.xplane_running;
-    kv($("flight"), [[t("flight.xplane"), t(running ? "flight.xplane_running" : "flight.xplane_stopped")]]);
-    return;
-  }
-  const rows = [[t("flight.xplane"), t(`flight.data_${stream.data}`)]];
-  const a = stream.aircraft;
-  if (a) {
-    rows.push([t("flight.position"), `${number(a.lat, 3)}, ${number(a.lon, 3)}`]);
-    rows.push([t("flight.altitude"), `${number(a.alt_ft)} ft`]);
-    rows.push([t("flight.speed"), `${number(a.gs_kt)} kt`]);
-  }
-  // the SimBrief plan, only while the aircraft flies it: nothing says a pilot means to fly the
-  // last one they made (a user, 2026-09-27)
-  const plan = stream.streamer?.flight_plan;
-  if (plan?.following) rows.push([t("flight.plan"), t("flight.plan_following", { name: plan.name })]);
-  const screen = stream.streamer?.screen;
-  if (screen) {
-    rows.push([t("flight.screen"), t("flight.screen_value", {
-      width: number(screen.width),
-      fov: number(screen.fov),
-      km: number(screen.km_4096),
-    })]);
-  }
-  if (stream.camera_km != null && stream.camera_km > 0.5) {
-    rows.push([t("flight.camera"), t("flight.camera_value", { km: number(stream.camera_km, 1) })]);
-  }
-  if (stream.start) rows.push([t("flight.start"), stream.start.name]);
-  kv($("flight"), rows);
+  const view = flightView(status);
+  drawPill($("flight-state"), view.state);
+  drawFigures($("flight-figures"), view.figures);
+  kv($("flight"), view.rows);
 }
 
-function drawBuild(status) {
+/** What the textures' card shows while Live runs, null when it does not: their state as a pill,
+ * the rate, four figures, the textures built by size, and the disk. */
+export function buildView(status) {
   const stream = status.state === "streaming" ? status.stream : null;
-  $("disk").hidden = !stream;
-  $("build-idle").hidden = Boolean(stream);
-  if (!stream) {
-    kv($("build"), []);
-    return;
-  }
+  if (!stream) return null;
   const s = stream.streamer;
+  const queued = sum(s.queued);
+  const built = sum(s.built);
+  // while X-Plane waits for its start, all of the start's textures are urgent: the state above
+  // says so, with its bar
+  const starting = Boolean(stream.start && !stream.start.ready);
+  let state = [t("build.state_nothing"), ""];
+  if (s.failed && !s.downloaded) state = [t("build.state_failed"), "fail"];
+  else if (s.urgent && !starting) state = [t("build.state_late", { n: number(s.urgent) }), "warn"];
+  else if (queued || s.building) state = [t("build.state_building"), "running"];
+  else if (built) state = [t("build.state_done"), "ok"];
   // Live's one disk space, as set: its textures and its downloaded imagery together
   const space = diskUsed(status);
   const budget = (Number(status.settings?.disk_gb) || 0) * 1e9;
-  const queued = byLevel(s.queued, s.first_level);
-  const building = s.building || s.pieces_awaited
-    ? t("build.building_value", { n: number(s.building), pieces: number(s.pieces_awaited) })
-    : null;
-  const downloaded = t("build.downloaded_value", {
-    n: number(s.downloaded),
-    mb: number(s.downloaded_bytes / 1e6),
-    cache: number(s.from_cache),
-  }) + (s.failed ? ` · ${t("build.failed", { n: number(s.failed) })}` : "");
-  kv($("build"), [
-    [t("build.queued"), queued && `${queued} (${t("build.urgent", { n: number(s.urgent) })})`],
-    [t("build.building"), building],
-    [t("build.built"), byLevel(s.built, s.first_level)],
-    ...(s.at_8192 ? [[t("build.at_8192"), number(s.at_8192)]] : []),
-    [t("build.downloaded"), downloaded],
-    [t("build.rate"), `${number(stream.mbs, 1)} ${language() === "fr" ? "Mo/s" : "MB/s"}`],
-    [t("build.disk"), t("build.disk_value", { used: gb(space.total), budget: number(budget / 1e9) })],
-  ]);
   const share = budget ? Math.min(1, space.total / budget) : 0;
-  $("disk-bar").style.width = `${Math.round(share * 1000) / 10}%`;
-  $("disk").classList.toggle("warn", share > 0.9);
+  const disk = t("build.disk_value", { used: gb(space.total), budget: number(budget / 1e9) });
+  return {
+    state,
+    rate: [t("build.rate"), `${number(stream.mbs, 1)} ${t("unit.mb")}/s`],
+    figures: [
+      {
+        value: number(queued),
+        label: s.urgent ? t("build.queued_urgent", { n: number(s.urgent) }) : t("build.queued"),
+        more: byLevel(s.queued, s.first_level),
+      },
+      {
+        value: number(s.building),
+        label: t("build.building"),
+        more: s.building || s.pieces_awaited ? t("build.pieces_awaited", { n: number(s.pieces_awaited) }) : null,
+      },
+      { value: number(built), label: t("build.built"), more: null },
+      {
+        value: amount(s.downloaded_bytes),
+        label: t("build.downloaded"),
+        more: t("build.downloaded_pieces", { n: number(s.downloaded), cache: number(s.from_cache) }),
+        problem: s.failed ? t("build.failed", { n: number(s.failed) }) : null,
+      },
+    ],
+    sizes: s.built.map((n, i) => (n ? `${side(s.first_level + i)} px · ${number(n)}` : null)).filter(Boolean),
+    disk: {
+      text: s.at_8192 ? `${disk} · ${t("build.at_8192", { n: number(s.at_8192) })}` : disk,
+      share,
+      warn: share > 0.9,
+    },
+  };
+}
+
+function drawBuild(status) {
+  const view = buildView(status);
+  $("build").hidden = !view;
+  $("build-state").hidden = !view;
+  $("build-rate").hidden = !view;
+  $("build-idle").hidden = Boolean(view);
+  if (!view) return;
+  drawPill($("build-state"), view.state);
+  const rate = document.createElement("b");
+  rate.textContent = view.rate[1];
+  $("build-rate").replaceChildren(`${view.rate[0]} `, rate);
+  drawFigures($("build-figures"), view.figures);
+  const title = document.createElement("span");
+  title.className = "live-sizes-title";
+  title.textContent = t("build.sizes");
+  $("build-sizes").hidden = !view.sizes.length;
+  $("build-sizes").replaceChildren(title, ...view.sizes.map((text) => {
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    pill.textContent = text;
+    return pill;
+  }));
+  $("disk-text").textContent = view.disk.text;
+  $("disk-bar").style.width = `${Math.round(view.disk.share * 1000) / 10}%`;
+  $("disk").classList.toggle("warn", view.disk.warn);
 }
 
 let checksDrawn = ""; // the checks as drawn
