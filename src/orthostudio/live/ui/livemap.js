@@ -307,6 +307,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => map.invalidateSize()).observe(el);
   map.on("moveend", () => drawBuilt());
   map.on("dragstart", () => {
+    if (!plane) return; // no aircraft: the next one still followed (the user, 2026-10-09)
     follow = false; // the pilot looks elsewhere: the map stays there until asked back
     el.dispatchEvent(new CustomEvent("live-map-follow", { detail: false }));
   });
@@ -346,6 +347,12 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       } else if (plane) {
         map.removeLayer(plane);
         plane = null;
+        // the flight over, or X-Plane gone: the next one followed, whatever a drag did during this
+        // one (the user, 2026-10-09: always on by default)
+        if (!follow) {
+          follow = true;
+          el.dispatchEvent(new CustomEvent("live-map-follow", { detail: true }));
+        }
       }
       const cam = stream?.camera_km > 0.5 ? stream.camera : null;
       if (cam) {
