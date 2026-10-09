@@ -923,6 +923,7 @@ def test_the_flight_and_the_textures_show_every_figure() -> None:
                 {
                     "value": "1,55 Go",
                     "label": "téléchargés",
+                    "beside": True,  # on the value's line, in italics
                     "more": "104 530 morceaux, 947 du cache",
                     "problem": "3 en échec",
                 },

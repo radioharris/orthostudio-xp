@@ -91,15 +91,22 @@ function drawPill(pill, [text, kind]) {
  * it (its secondary text), then a detail (its box's .sub) and what failed. */
 function drawFigures(box, figures) {
   box.hidden = !figures.length;
-  box.replaceChildren(...figures.map(({ value, label, more, problem }) => {
+  box.replaceChildren(...figures.map(({ value, label, beside, more, problem }) => {
     const figure = document.createElement("div");
     figure.className = "cost live-figure";
     const big = document.createElement("b");
     big.textContent = value;
-    const name = document.createElement("span");
+    // its name under it, or beside it in italics (`beside`, the user, 2026-10-09)
+    const name = document.createElement(beside ? "i" : "span");
     name.className = "help";
     name.textContent = label;
-    figure.append(big, name);
+    if (beside) {
+      const line = document.createElement("span");
+      line.append(big, " ", name);
+      figure.append(line);
+    } else {
+      figure.append(big, name);
+    }
     if (more || problem) {
       const detail = document.createElement("span");
       detail.className = "sub num";
@@ -353,6 +360,7 @@ export function buildView(status) {
       {
         value: amount(s.downloaded_bytes),
         label: t("build.downloaded"),
+        beside: true, // "263 MB downloaded", the pieces under them
         more: t("build.downloaded_pieces", { n: number(s.downloaded), cache: number(s.from_cache) }),
         problem: s.failed ? t("build.failed", { n: number(s.failed) }) : null,
       },
