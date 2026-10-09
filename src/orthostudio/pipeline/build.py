@@ -1249,7 +1249,10 @@ TILE_DSF: Rule = rule(
     # read each cell at its centre: a tile built with zones kept its DSF from the store, and the
     # rule never reached it. A DSF of a tile without zones comes out the same, so what follows it
     # is taken again from the store.
-    version=2,
+    # 3: the triangles the rounding of the DSF leaves with no area or turned over are no longer
+    # written (``dsf.encode._flat_or_reversed``): a tile built before keeps its vertical faces in
+    # the store, and only a new key gets them out when it is built again (2026-10-09).
+    version=3,
     params=TileDsfParams,
     inputs=("mesh", "masks", "rasters", "vectors"),
     ram_mb=3000,
