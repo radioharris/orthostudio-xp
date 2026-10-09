@@ -638,9 +638,10 @@ per tile, downloaded on demand).
   and the `NED1` / `NED1/3` cells go through `_atomic_write_bytes` (`<name>.part-<pid>`, then
   `os.replace`), so a download killed half way does not leave a stump a later run accepts for
   ever. A `COP30` cell and a cell of Canada's lidar (`hrdem.write_hgt`) are written to
-  `<name>.part`, then renamed. An ANADEM square is written by `cog.write_geotiff` straight under
-  its final name, and a later build takes the file there once it starts with a TIFF byte-order
-  mark (`_is_tiff`), whether or not it was written to the end;
+  `<name>.part`, then renamed. An ANADEM square is written by `cog.write_geotiff` the same way
+  (`<name>.part-<pid>`, then `os.replace`); until 1.0 it was written straight under its final
+  name, and a later build took a stump that began with a TIFF byte-order mark (`_is_tiff`) for
+  the square;
 * the cells are looked for, and downloaded into, `elevation_dir` (`$OSXP_ELEVATION_DIR`, else
   `<data folder>/elevation`); no Ortho4XP folder is read (decision 0010).
 * a local `NED1` / `NED1/3` cell is also checked for the TIFF byte-order mark before it is
