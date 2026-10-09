@@ -118,7 +118,7 @@ The window has a map: the photos of your imagery source, the borders and airport
 OrthoStudio XP's Plan, and over them what Live has done. The aircraft moves on it while you fly,
 pointing along its heading as in X-Plane, with the camera's place in external views; the map follows it until
 you drag it away in flight ("Follow the aircraft" brings it back), and the next flight is followed
-again by itself. When a flight starts, the map comes closer on the aircraft, about 140 km across,
+again by itself. When a flight starts, the map comes closer on the aircraft, about 30 km across,
 unless you are already closer. Your SimBrief route is drawn while Live
 follows it, and before a flight the "Show my SimBrief route" button asks SimBrief for it. The
 regions installed are shaded while zoomed out, and the textures already built are coloured by how
