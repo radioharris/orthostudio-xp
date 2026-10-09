@@ -11,8 +11,7 @@ export const STRINGS = {
     "nav.settings": "Settings",
 
     "state.idle": "Ready",
-    "state.idle_lead":
-      "Start Live before X-Plane, then fly: at each start, X-Plane waits on its loading screen until the ortho around the airport is built.",
+    "state.idle_lead": "Start Live, then X-Plane.",
     "state.blocked": "Not ready",
     "state.starting": "Starting…",
     "state.starting_region": "Setting up the region, once: a few seconds.",
@@ -354,8 +353,7 @@ export const STRINGS = {
     "nav.settings": "Réglages",
 
     "state.idle": "Prêt",
-    "state.idle_lead":
-      "Démarrez Live avant X-Plane, puis volez : à chaque départ, X-Plane attend sur son écran de chargement que l'ortho autour de l'aéroport soit construite.",
+    "state.idle_lead": "Démarrez Live, puis X-Plane.",
     "state.blocked": "Pas prêt",
     "state.starting": "Démarrage…",
     "state.starting_region": "Préparation de la région, une seule fois : quelques secondes.",

@@ -712,12 +712,9 @@ async function chooseProvider() {
   }
 }
 
-/** Under the list: the source's credit and licence, and what it does not cover. */
+/** Under the list: what the source does not cover (its credit and licence: at the map's foot). */
 function drawSource() {
   const p = providers.find((q) => q.code === $("set-provider").value);
-  const credit = p ? p.attribution || "" : "";
-  const licence = p ? p.licence || "" : "";
-  $("provider-attribution").textContent = credit && licence ? `${credit} ${licence}.` : credit;
   const notes = [];
   if (p && p.extent) notes.push(t("source.fallback", { country: countryName(p.extent) }));
   if (p && p.max_zl < SHARP_ZOOM) notes.push(t("source.low_zoom", { zl: p.max_zl }));

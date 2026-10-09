@@ -52,9 +52,10 @@ of OrthoStudio XP's window (`uv run python -m orthostudio.live ui` from a checko
 tabs, as OrthoStudio XP's screens:
 
 - **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
-  state, the imagery source (chosen first and saved as soon as chosen), the departure to prepare
-  and Start Live, then the flight and the textures; under them what Live needs (X-Plane, a
-  mesh, no other program streaming ortho running, such as XPME or AutoOrtho, the plugin), with a
+  state, the imagery source (chosen first and saved as soon as chosen; its credit and licence at
+  the foot of the map), the departure to prepare and Start Live, then the flight and the
+  textures; under them what Live needs (X-Plane, a mesh, no other program streaming ortho running,
+  such as XPME or AutoOrtho, the plugin), with a
   button to the regions where a mesh is missing; its log at the bottom. The source changes
   only while Live is stopped, and textures already built keep their photos: "From scratch" builds
   them all again with a new source.

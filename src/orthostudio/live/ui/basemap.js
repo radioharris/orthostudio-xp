@@ -49,7 +49,8 @@ export function createBaseMap(el, { center = [46, 5], zoom = 5 } = {}) {
     if (!p) return;
     if (base) map.removeLayer(base);
     base = L.tileLayer(providerTileUrl(p), {
-      attribution: escapeHtml(p.attribution || p.name || p.code),
+      // its credit, and its licence where it names one: Live's window says them nowhere else
+      attribution: escapeHtml([p.attribution || p.name || p.code, p.licence].filter(Boolean).join(" · ")),
       maxZoom: 19,
       maxNativeZoom: Math.min(Number(p.max_zl) || 19, 19),
       noWrap: true,

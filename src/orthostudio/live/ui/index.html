@@ -104,11 +104,11 @@
         </div>
         <p class="error-inline" id="state-error" role="alert" hidden></p>
         <p class="question-help is-warn" id="tint-note" hidden></p>
-        <!-- the photos, chosen first, before Start: saved as soon as chosen -->
+        <!-- the photos, chosen first, before Start: saved as soon as chosen; their credit and licence
+             at the foot of the map (basemap.js) -->
         <div class="sub-question">
           <label class="sub-question-title" for="set-provider" data-i18n="source.title">Photo source</label>
           <select id="set-provider" name="provider" class="question-select"></select>
-          <p class="question-help" id="provider-attribution"></p>
           <p class="question-help is-warn" id="provider-note" hidden></p>
           <!-- while Live runs, the source's server refusing this computer (live.js refusedText) -->
           <p class="error-inline" id="source-refused" role="alert" hidden></p>
@@ -118,11 +118,14 @@
         <div class="sub-question">
           <label class="sub-question-title" for="departure" data-i18n="departure.title">Prepare my departure</label>
           <div class="path-row">
+            <!-- what it is for, in the hover of the box and of its button (the user, 2026-10-09:
+                 room in the block) -->
             <input type="text" id="departure" name="departure" class="question-path live-departure-input" spellcheck="false" autocomplete="off" maxlength="40"
-                   data-i18n-placeholder="departure.placeholder" placeholder="ICAO code, e.g. LFMN">
-            <button type="button" class="btn" id="departure-btn" data-i18n="departure.prepare">Prepare</button>
+                   data-i18n-placeholder="departure.placeholder" placeholder="ICAO code, e.g. LFMN"
+                   data-i18n-title="departure.help" title="Built before X-Plane loads the flight: no wait on its loading screen.">
+            <button type="button" class="btn" id="departure-btn" data-i18n="departure.prepare"
+                    data-i18n-title="departure.help" title="Built before X-Plane loads the flight: no wait on its loading screen.">Prepare</button>
           </div>
-          <p class="question-help" id="departure-help" data-i18n="departure.help"></p>
           <!-- the plan the box comes from, and a button asking SimBrief at once for a newer one -->
           <p class="question-help" id="departure-plan" hidden><span id="departure-plan-text"></span>
             <button type="button" class="btn btn-small btn-icon live-refresh" id="departure-check" data-i18n-title="departure.check"
