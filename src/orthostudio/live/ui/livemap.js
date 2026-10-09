@@ -26,6 +26,8 @@ export const PHOTO_COLOURS = {
 };
 const REGION_COLOUR = "#5a8dd6";
 const REGIONS_MAX_ZOOM = 6; // closer, the view is inside a region: its shade would only tint it
+// a flight's start: about 140 km round the aircraft, every texture one by one (mapdata.DETAIL_DEG)
+const START_ZOOM = 9;
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
@@ -338,8 +340,12 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       const a = stream?.data === "fresh" ? stream.aircraft : null;
       if (a) {
         const at = [a.lat, a.lon];
-        if (!plane) plane = L.marker(at, { icon: planeIcon(a.hdg ?? a.trk ?? 0), interactive: false, zIndexOffset: 1000 }).addTo(map);
-        else {
+        if (!plane) {
+          plane = L.marker(at, { icon: planeIcon(a.hdg ?? a.trk ?? 0), interactive: false, zIndexOffset: 1000 }).addTo(map);
+          // a flight starts: the map closer on the aircraft, unless already closer (the user,
+          // 2026-10-09)
+          if (follow && map.getZoom() < START_ZOOM) map.setView(at, START_ZOOM, { animate: false });
+        } else {
           plane.setLatLng(at);
           plane.setIcon(planeIcon(a.hdg ?? a.trk ?? 0));
         }
