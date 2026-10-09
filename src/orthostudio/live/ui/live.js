@@ -1351,6 +1351,33 @@ export function screenFromHash(hash) {
   return { name: m[1], question: m[1] === "settings" ? m[2] || null : null };
 }
 
+// --- the map as tall as the screen, as OrthoStudio XP's Plan's ------------------------------------
+
+/**
+ * How far down the page the map starts, as --map-top, so that its card reaches the foot bar
+ * (live.css), as OrthoStudio XP's app.js measureMapTop: .plan-flow measured, not the map, which
+ * sticks to the top as the page scrolls. Nothing measured while the settings are shown.
+ */
+function measureMapTop() {
+  const flow = document.querySelector("#screen-live .plan-flow");
+  if (!flow || flow.offsetParent === null) return;
+  let top = 0;
+  for (let el = flow; el; el = el.offsetParent) top += el.offsetTop;
+  const now = `${Math.round(top)}px`;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue("--map-top") !== now) root.style.setProperty("--map-top", now);
+}
+
+/** The foot bar's height, which grows when its items wrap, as --statusbar-h (OrthoStudio XP's
+ * trackStatusbarHeight): the map's card ends above it. */
+function trackStatusbarHeight() {
+  const bar = $("statusbar");
+  if (!bar) return;
+  const set = () => document.documentElement.style.setProperty("--statusbar-h", `${bar.offsetHeight}px`);
+  set();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(set).observe(bar);
+}
+
 /**
  * Live's screen (the source, Start, the map, the flight, the textures, the checks) or its
  * settings, one at a time, as OrthoStudio XP's screens: in flight only the first is looked at, and
@@ -1370,7 +1397,10 @@ function showScreen(name, question = null) {
   if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
   tellFrame?.(); // the app's frame shows these screens as its tabs (embed.js)
   findTools?.findForget(); // an open find bar looks in the screen now shown
-  if (name === "live") liveMap?.shown();
+  if (name === "live") {
+    measureMapTop(); // measured nothing while hidden
+    liveMap?.shown();
+  }
   if (question) showQuestion(question);
   else window.scrollTo(0, 0);
 }
@@ -1421,6 +1451,7 @@ function languageChanged() {
   tellLanguage();
   liveMap?.languageChanged();
   applyStatic(document);
+  measureMapTop(); // the bar above may wrap otherwise in the new language
   zoomRefresh?.();
   textSizeRefresh?.();
   renderZooms();
@@ -1459,6 +1490,9 @@ function boot() {
   applyStatic(document);
   renderZooms();
   drawStart();
+  trackStatusbarHeight();
+  measureMapTop();
+  window.addEventListener("resize", measureMapTop); // the frame sends one when it shows the page
   $("lang-select").addEventListener("change", (event) => {
     setLanguage(event.target.value, true);
     languageChanged();

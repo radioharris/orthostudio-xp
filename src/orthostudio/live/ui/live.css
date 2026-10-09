@@ -109,13 +109,20 @@
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .live-map-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .live-map-toggle { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2); cursor: pointer; }
-/* the map, large: most of the window's height, never small, and as tall as the flight and the
-   textures beside it where they are taller (the user, 2026-10-09, as on 2026-09-27): both columns
-   end on one line, the checks a block-gap under them */
-.live .plan-flow { align-items: stretch; margin-bottom: var(--block-gap); }
-.live .map-col { display: flex; }
-.live .live-map-card { flex: 1 1 auto; display: flex; flex-direction: column; margin-bottom: 0; }
-.live-map-wrap { position: relative; flex: 1 1 auto; min-height: max(460px, 68vh); margin-top: var(--gap); }
+/* the map as tall as the screen whatever the column beside it holds, as OrthoStudio XP's Plan's
+   (styles.css .plan-map, its 420 to 820 px with the card's title and legend): from where it starts
+   (--map-top, live.js measureMapTop) down to the foot bar (--statusbar-h), sticking while the
+   column beside it scrolls on (.map-col) (the user, 2026-10-09); the checks a block-gap under both */
+.live .plan-flow { margin-bottom: var(--block-gap); }
+.live .live-map-card {
+  display: flex; flex-direction: column; margin-bottom: 0;
+  height: clamp(520px, calc(100vh - var(--map-top, 121px) - var(--statusbar-h) - 12px), 920px);
+}
+.live-map-wrap { position: relative; flex: 1 1 auto; min-height: 0; margin-top: var(--gap); }
+@media (max-width: 960px) {
+  .live .live-map-card { height: auto; }
+  .live-map-wrap { flex: none; height: clamp(320px, 60vh, 560px); }
+}
 .live-map { position: absolute; inset: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
 /* over the map's top, right of the zoom buttons: one line, two at most, the map still usable under */
 .live-map-bar {
