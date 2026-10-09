@@ -33,14 +33,16 @@
 /* the figures one looks at, each in OrthoStudio XP's box (.cost, live.js drawFigures): the value
    large (as its .kv dd.big), what it is under it (.help), its detail (.cost .sub) */
 .live-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); margin-bottom: var(--block-gap); }
-.live-figures.is-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 760px) { .live-figures.is-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.live-figures.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .live-figure { min-width: 0; }
 .live-figure > * { display: block; }
 .live-figure b { font-size: var(--fs-title-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .live-figure .is-fail { color: var(--fail); }
-/* the disk: its name, OrthoStudio XP's bar, what it holds; a block of the card */
-.live-disk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); margin-top: var(--block-gap); }
+/* the disk: its name and what it holds on a line, OrthoStudio XP's bar the card's width under them
+   (the textures in the narrow column, under the flight); a block of the card */
+.live-disk { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: var(--label-gap) var(--gap); margin-top: var(--block-gap); }
+.live-disk #disk-text { text-align: right; }
+.live-disk .progress { grid-column: 1 / -1; }
 .live-disk .progress.warn > span { background: var(--warn); }
 
 .live-checks { list-style: none; margin: 0; padding: 0; }

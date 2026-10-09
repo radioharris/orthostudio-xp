@@ -51,8 +51,8 @@
 <main id="main" class="main live">
 <section id="screen-live" class="screen" aria-labelledby="state-title">
   <!-- OrthoStudio XP's Plan layout (.plan-flow): the map on the left, large, and on the right the
-       state with what to choose and do, then the flight; under them the textures, the checks and
-       the log -->
+       state with what to choose and do, then the flight and the textures; under them the checks
+       and the log -->
   <div class="plan-flow">
     <div class="map-col">
       <section class="question live-map-card">
@@ -90,7 +90,7 @@
     </div>
 
     <!-- the right column, OrthoStudio XP's steps: the state with what to choose and do, then
-         the flight -->
+         the flight and the textures -->
     <div class="plan-steps">
       <section class="plan-step live-state" aria-live="polite">
         <div class="live-state-head">
@@ -166,29 +166,29 @@
         <dl class="kv" id="flight"></dl>
         <p class="question-help is-warn" id="flight-notice" hidden></p>
       </section>
+      <!-- the textures, under the flight (the user, 2026-10-09): their state beside the title and
+           the rate on the right, as a job's head in OrthoStudio XP's Works, four figures in boxes
+           two a line, the textures built by size, the disk -->
+      <section class="plan-step">
+        <div class="job-head" id="build-head">
+          <h2 class="question-title" data-i18n="build.title">Textures</h2>
+          <span class="pill" id="build-state" hidden></span>
+          <span class="help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</span>
+          <span class="spacer"></span>
+          <span class="help num" id="build-rate" hidden></span>
+        </div>
+        <div id="build" hidden>
+          <div class="live-figures is-2" id="build-figures"></div>
+          <div class="chips" id="build-sizes" hidden></div>
+          <div class="live-disk">
+            <span class="help" data-i18n="build.disk">Disk</span>
+            <span class="help num" id="disk-text"></span>
+            <div class="progress" id="disk"><span id="disk-bar"></span></div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
-
-  <!-- the textures: their state beside the title and the rate on the right, as a job's head in
-       OrthoStudio XP's Works, four figures in boxes, the textures built by size, the disk -->
-  <section class="question">
-    <div class="job-head" id="build-head">
-      <h2 class="question-title" data-i18n="build.title">Textures</h2>
-      <span class="pill" id="build-state" hidden></span>
-      <span class="help" id="build-idle" data-i18n="build.idle" hidden>Shown while Live runs.</span>
-      <span class="spacer"></span>
-      <span class="help num" id="build-rate" hidden></span>
-    </div>
-    <div id="build" hidden>
-      <div class="live-figures is-4" id="build-figures"></div>
-      <div class="chips" id="build-sizes" hidden></div>
-      <div class="live-disk">
-        <span class="help" data-i18n="build.disk">Disk</span>
-        <div class="progress" id="disk"><span id="disk-bar"></span></div>
-        <span class="help num" id="disk-text"></span>
-      </div>
-    </div>
-  </section>
 
   <section class="question">
     <h2 class="question-title" data-i18n="checks.title">Checks</h2>

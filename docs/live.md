@@ -53,7 +53,7 @@ tabs, as OrthoStudio XP's screens:
 
 - **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
   state, the imagery source (chosen first and saved as soon as chosen), the departure to prepare
-  and Start Live, then the flight; under them the textures; what Live needs (X-Plane, a
+  and Start Live, then the flight and the textures; under them what Live needs (X-Plane, a
   mesh, no other program streaming ortho running, such as XPME or AutoOrtho, the plugin), with a
   button to the regions where a mesh is missing; its log at the bottom. The source changes
   only while Live is stopped, and textures already built keep their photos: "From scratch" builds
@@ -66,11 +66,11 @@ tabs, as OrthoStudio XP's screens:
   built, building, late (textures X-Plane may already show are not built yet; not said while a
   departure is built, which the state above counts down), downloads refused (the source's server
   refuses your connection, which the window says under the source) or downloads failing (every
-  request has failed); the download rate is on the right. Four boxes count the textures to build (and the
-  urgent ones, by size under them), those being built (and the pieces of imagery they wait for),
-  those built since the start, and what was downloaded (the pieces, those taken from the cache
-  and those that failed); the textures built are counted by size under them, and a bar shows
-  Live's disk space, with how many of its textures are at 8192 px.
+  request has failed); the download rate is on the right. Four boxes, two a line, count the
+  textures to build (and the urgent ones, by size under them), those being built (and the pieces
+  of imagery they wait for), those built since the start, and what was downloaded (the pieces,
+  those taken from the cache and those that failed); the textures built are counted by size under
+  them, and a bar shows Live's disk space, with how many of its textures are at 8192 px.
 - **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start
   waits for, the flight plan, Live's one disk space, shared by the textures and the downloaded imagery (with
   what each takes now, and a button to delete either), and Live's folder. They apply with Save, at
