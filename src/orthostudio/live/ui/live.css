@@ -10,6 +10,9 @@
 .live-hold .progress { margin-top: var(--gap); }
 
 .live-departure-input { text-transform: uppercase; }
+/* the departure's box as wide as what it takes, an ICAO code or "lat,lon", its button beside it
+   (the user, 2026-10-09: far too wide) */
+.path-row .live-departure-input { flex: 0 1 16ch; }
 /* a box and its words, as OrthoStudio XP's plain checkboxes (.disk-check), not its wide .switch */
 .live-check { display: inline-flex; align-items: center; gap: 6px; height: 28px; cursor: pointer; }
 .live-departure-update { margin-top: var(--help-gap); }

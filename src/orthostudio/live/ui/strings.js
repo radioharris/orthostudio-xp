@@ -62,7 +62,7 @@ export const STRINGS = {
     "action.fresh_help": "Forgets every texture built and all photos downloaded, as the very first time.",
 
     "departure.title": "Prepare my departure",
-    "departure.placeholder": "ICAO code, e.g. LFMN",
+    "departure.placeholder": "ICAO, e.g. LFMN",
     "departure.prepare": "Prepare",
     "departure.help": "Built before X-Plane loads the flight: no wait on its loading screen.",
     "departure.from_plan": "From your last SimBrief plan: {plan}",
@@ -406,7 +406,7 @@ export const STRINGS = {
       "Oublie toutes les textures construites et les photos téléchargées, comme la toute première fois.",
 
     "departure.title": "Préparer mon départ",
-    "departure.placeholder": "Code OACI, par ex. LFMN",
+    "departure.placeholder": "OACI, ex. LFMN",
     "departure.prepare": "Préparer",
     "departure.help": "Construit avant que X-Plane charge le vol : pas d'attente sur son écran de chargement.",
     "departure.from_plan": "Tiré de votre dernier plan SimBrief : {plan}",
