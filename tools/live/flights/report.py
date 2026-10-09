@@ -576,6 +576,52 @@ def _shots_of(folder: Path) -> list[float]:
     return shots
 
 
+_CLOCK = re.compile(r"^(\d+):(\d\d):(\d\d(?:\.\d+)?) ")
+
+
+def _clock_s(line: str) -> float | None:
+    m = _CLOCK.match(line)
+    return int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else None
+
+
+def flight_load_s(lines: list[str]) -> float | None:
+    """How long X-Plane took to load the flight, from its own log: from its loading of the flight
+    (« to state_NormalLoading », the moment a click on Start Flight gives) to its first line after
+    the load (« state_NormalLoading to state_Normal »: its loading screen gone), on X-Plane's own
+    clock, which stands still while it loads (the user's « depuis le début du vol jusqu'à
+    l'apparition de l'image », 2026-10-09). None where the log does not say."""
+    start = load_end = None
+    for i, line in enumerate(lines):
+        if start is None and "to state_NormalLoading" in line:
+            start = _clock_s(line)
+        elif start is not None and "state_NormalLoading to state_Normal" in line:
+            load_end = i
+            break
+    if start is None or load_end is None:
+        return None
+    for line in lines[load_end + 1 :]:
+        t = _clock_s(line)
+        if t is not None and t > start:
+            return t - start
+    return None
+
+
+def start_split(folder: Path, run: dict) -> dict:
+    """The start as a pilot lives it, for a series' first flight (X-Plane started for it): the
+    flight's load to its first image (``flight_load_s``), then that image to X-Plane running (its
+    tenth frame: ``running_wall`` - ``image_wall``, the runner's, a poll apart)."""
+    out: dict = {}
+    if not str(run.get("xplane_start", "")).startswith("started"):
+        return out
+    if (folder / "Log.txt").is_file():
+        load = flight_load_s((folder / "Log.txt").read_text(errors="replace").splitlines())
+        if load is not None:
+            out["load_s"] = load
+    if run.get("image_wall") is not None and run.get("running_wall") is not None:
+        out["frozen_s"] = max(0.0, run["running_wall"] - run["image_wall"])
+    return out
+
+
 def metrics(folder: Path) -> dict:
     """A flight's few numbers, for the table of a campaign."""
     run = json.loads((folder / "run.json").read_text()) if (folder / "run.json").is_file() else {}
@@ -594,6 +640,7 @@ def metrics(folder: Path) -> dict:
         "costs": costs(_system_rows(folder / "system.csv"), run),
         "loads": len(loads),
         "shots": shots,
+        "start": start_split(folder, run),
     }
 
 
@@ -661,6 +708,11 @@ def _cost(m: dict, phase: str, fmt: Callable[[dict], str]) -> str:
     return fmt(c) if c else "?"
 
 
+def _split(m: dict, key: str) -> str:
+    value = m.get("start", {}).get(key)
+    return "?" if value is None else f"{value:.0f}"
+
+
 def _frames(m: dict, fmt: Callable[[Frames], str]) -> str:
     return fmt(m["frames"]) if m["frames"] else "?"
 
@@ -700,6 +752,11 @@ def campaign_table(runs: list[tuple[str, Path]], only: set[str] | None = None) -
         ms = [m for _, m in cells]
         rows = [
             ("outcome", [m["run"].get("outcome", "?") for m in ms]),
+            (
+                "the flight's load to its first image (s)",
+                [_split(m, "load_s") for m in ms],
+            ),
+            ("then that image to X-Plane running (s)", [_split(m, "frozen_s") for m in ms]),
             ("start", [_cost(m, "start", lambda c: f"{c['minutes']:.1f} min") for m in ms]),
             (
                 "start: downloaded, written (GB)",
@@ -814,6 +871,13 @@ def report(folder: Path) -> str:
             + (f" ({', '.join(settings)})" if settings else ""),
             f"- X-Plane: {run.get('xplane_start', '?')}",
         ]
+        split = start_split(folder, run)
+        if "load_s" in split:
+            lines.append(
+                f"- the flight's load to its first image: {split['load_s']:.0f} s (X-Plane's clock)"
+            )
+        if "frozen_s" in split:
+            lines.append(f"- then that image to X-Plane running: {split['frozen_s']:.0f} s")
         for key, label in (
             ("to_flying_s", "from the scenario sent to the path's start"),
             ("flight_s", "the path, on the wall's clock"),

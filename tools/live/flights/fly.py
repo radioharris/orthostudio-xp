@@ -1125,6 +1125,15 @@ def wait_flight(xp: Path, sc: scenarios.Scenario, sent_at: float) -> tuple[str, 
             return "done", times
         if any("no start or no leg" in line for line in lines):
             return "the test pilot refused the scenario", times
+        # the flight's first image: X-Plane's first frames, where the test pilot reads its scenario
+        # (X-Plane's loading screen gone); X-Plane running: its tenth frame, where the pilot finds
+        # the aircraft at the start (2026-10-09: 10 frames took 77 s after XPME's first image)
+        if "image_wall" not in times and any("scenario read" in line for line in lines):
+            times["image_wall"] = now
+        if "running_wall" not in times and any(
+            "already at the start" in line or " placed at " in line for line in lines
+        ):
+            times["running_wall"] = now
         if flying_at is None and any("flying the path" in line for line in lines):
             flying_at = now
             times["to_flying_s"] = now - sent_at

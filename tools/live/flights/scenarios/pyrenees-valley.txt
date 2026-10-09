@@ -1,0 +1,27 @@
+# The published guide's comparison, as the user asked it (2026-10-09): high in the mountains, then
+# into a valley, then down low over the plain, 18 minutes. Above the Pyrenees by Luchon, north-east
+# along the Garonne's valley past Saint-Gaudens, down into the plain south-west of Toulouse, then
+# low with a turn. 230 kt over the ground throughout (one speed a scenario); the cameras as
+# toulouse-low's: the cockpit, just behind, and zoomed out where the distant ground shows.
+title Montagne, vallée, plaine : haut sur les Pyrénées, puis bas sur la plaine de la Garonne
+start 42.72 0.60 13000 30 230
+weather clear
+zulu 11 271                            # 13:00 in France on 29 September, as toulouse-low
+camera 0 240 cockpit
+camera 240 330 chase 150 30 180        # just behind, the mountains below
+camera 330 390 chase 8000 2000 180     # zoomed out over the mountains: the distant slopes
+camera 390 720 cockpit                 # down into the valley
+camera 720 780 chase 20000 3000 90     # far out, 20 km to the right: the valley and the plain
+camera 780 99999 cockpit               # low over the plain
+leg 360 0 0                            # 13,000 ft over the mountains, north-east
+leg 360 0 -1900                        # down the valley to 1,600 ft
+leg 120 0 0                            # low over the plain
+leg 60 1.5 0                           # right, 90 degrees
+leg 180 0 0                            # low, south-east
+screenshot 120                         # cockpit, high in the mountains
+screenshot 300                         # just behind, over the mountains
+screenshot 360                         # zoomed out over the mountains
+screenshot 600                         # cockpit, down the valley
+screenshot 750                         # far out: the valley and the plain
+screenshot 900                         # cockpit, low over the plain
+screenshot 1050                        # cockpit, low after the turn

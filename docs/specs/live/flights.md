@@ -203,6 +203,13 @@ a descent, a close and two far external views), all cold, the user's four compar
 17/19, then with the user's settings at 16/18 and at 17/19, each against Live at those zooms.
 Six flights (each Live flight serves two comparisons), about 2 h 50, nobody at the controls.
 
+`pyrenees-valley` (2026-10-09), the user's « haut en montagne, puis une vallée, puis on descend »,
+for the published guide's comparison with XPME: 18 min at 230 kt, 6 at 13,000 ft over the
+Pyrenees by Luchon, 6 down the Garonne's valley past Saint-Gaudens to 1,600 ft, 6 low over the
+plain south-west of Toulouse with a right turn; the cameras as `toulouse-low`'s, seven
+screenshots. Flown cold at 16/18 by XPME 4.7.23 (`--streamer xpme`) then by Live in the app:
+the flight's load to its first image 112 s against 45 s, then 42 s against 4 s to X-Plane running.
+
 `fenetre-unique` (2026-10-04), over `toulouse-low`, cold at 16/18: the app itself in its one
 window, Live alone in it, then with OrthoStudio XP open beside it (its engine started and its page
 loaded, idle): what OrthoStudio XP open costs in memory, in processor and for X-Plane; its second
@@ -294,6 +301,14 @@ streamer's memory and processor time (`ps`).
 
 The report gives:
 
+- the start as a pilot lives it, for a series' first flight (2026-10-09, the user's « depuis le
+  début du vol jusqu'à l'apparition de l'image »): the flight's load to its first image, on
+  X-Plane's own clock, from its log (« to state_NormalLoading », the moment a click on Start
+  Flight gives, to its first line after « state_NormalLoading to state_Normal », its loading
+  screen gone: X-Plane's clock stands still while it loads); then that image to X-Plane running,
+  the test pilot's tenth frame (« already at the start »), on the runner's clock, a poll (2 s)
+  apart. Over Toulouse, cold: XPME 125 s then 77 s (ten frames in 77 s: the image there, still),
+  Live 56 s then 4 s, AutoOrtho 297 s then 41 s;
 - the frames of the path: their count, the mean, median, 99th percentile and worst frame time, how
   many took over 50 and 100 ms, and the worst five, with whether X-Plane was loading scenery. The
   scenario's screenshots are left out (a second from each): each takes a frame of about 100 ms;

@@ -1444,3 +1444,28 @@ def test_xpme_s_options(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "--imagery is for Live" in fly.refused_options(ns(imagery="Arc"))
     assert fly.label(ns(zooms=None, ao_settings="mine")) == "XPME, cold"
     assert "xpme" in fly.parser().parse_args(["--streamer", "xpme", "x"]).streamer
+
+
+def test_the_flight_s_load_from_x_plane_s_own_log(tmp_path: Path) -> None:
+    """The start as a pilot lives it: from X-Plane's loading of the flight (a click on Start
+    Flight's moment) to its loading screen gone, on its own clock, which stands still while it
+    loads; then that first image to X-Plane running, the runner's. The lines of the Live flight
+    of 2026-10-09 over Toulouse: 55.6 s, then 4 s (the user's « les vrais temps »)."""
+    lines = [
+        "0:00:03.479 D/STM: Transitioning from state state_QuickFlightWizard to "
+        "state_NormalLoading",
+        "OrthoStudio XP Live: message 106 (0)",
+        "0:00:03.479 D/STM: Transitioning from state state_NormalLoading to state_Normal",
+        "0:00:03.479 D/DRM: Pro license status changed to 1",
+        "OrthoStudio XP Test Pilot: scenario read: start 43.6300 1.3700, 6 legs, 6 cameras, "
+        "5 screenshots",
+        "0:00:59.128 D/DRM: Got 1 valid products.",
+    ]
+    assert report.flight_load_s(lines) == pytest.approx(55.649)
+    assert report.flight_load_s(lines[:2]) is None  # still loading where the log ends
+    folder = tmp_path / "1-toulouse-low"
+    folder.mkdir()
+    (folder / "Log.txt").write_text("\n".join(lines) + "\n")
+    run = {"xplane_start": "started for the series", "image_wall": 100.0, "running_wall": 104.0}
+    assert report.start_split(folder, run) == {"load_s": pytest.approx(55.649), "frozen_s": 4.0}
+    assert report.start_split(folder, {**run, "xplane_start": "running already"}) == {}
