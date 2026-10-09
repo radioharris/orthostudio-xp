@@ -42,6 +42,9 @@
    large (as its .kv dd.big), what it is under it (.help), its detail (.cost .sub) */
 .live-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); margin-bottom: var(--block-gap); }
 .live-figures.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* the flight's: its position on one line, its box half as wide again as the altitude's and the
+   speed's (the user, 2026-10-09: never on two lines; -33.865 · -151.209 fits the narrowest column) */
+.live-figures.is-flight { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr); }
 .live-figure { min-width: 0; }
 .live-figure > * { display: block; }
 .live-figure b { font-size: var(--fs-title-2); font-weight: 600; font-variant-numeric: tabular-nums; }
