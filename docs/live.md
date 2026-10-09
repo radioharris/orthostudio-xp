@@ -299,7 +299,7 @@ goes to simbrief.com: when a flight starts, and while the Live window is open (w
 you come back to it, and every two minutes), for the "Prepare my departure" box. The box takes the
 departure of your last plan; when you make a new plan on simbrief.com, the window says "Flight
 plan updated" and changes the box only when you click "Load it" (you may have typed another
-departure). The small arrow after "From your last SimBrief plan" asks SimBrief at once, without
+departure). The small arrow after "Last SimBrief plan" asks SimBrief at once, without
 waiting for the next look. The route is drawn on the map only while you fly it (or when you ask for it with the
 map's button). The window offers the name OrthoStudio XP has, and asks SimBrief nothing until you
 take it. What is
