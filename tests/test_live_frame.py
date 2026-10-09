@@ -141,7 +141,7 @@ def test_the_frame_s_port_is_beside_its_engine_s() -> None:
 def test_the_frame_s_page_may_ask_this_and_no_more() -> None:
     tools = FrameTools(Frame(Path("serve.log"), first="build"))
     public = {n for n in dir(tools) if not n.startswith("_") and callable(getattr(tools, n))}
-    assert public == {"ensure", "quit", "keep", "set_zoom"}
+    assert public == {"ensure", "quit_words", "quit_now", "keep", "set_zoom"}
 
 
 # -- the parts -------------------------------------------------------------------------------------
@@ -239,6 +239,8 @@ def test_quitting_asks_once_in_the_frame_s_language_while_something_runs(
         return answers.pop(0)
 
     monkeypatch.setattr(window_module, "ask", ask)
+    # a page that cannot answer: the question in the system's box
+    monkeypatch.setattr(window_module, "ask_the_page", lambda script, name=None: False)
     monkeypatch.setattr(frame_module, "xplane_flies", lambda: True)
     frame = Frame(home / "serve.log", first="build")
     assert frame.may_quit() is True and stopped == [False] and asked == []  # nothing runs
@@ -296,8 +298,54 @@ def test_the_frame_s_quit_closes_it_at_once_when_nothing_runs(
     monkeypatch.setattr(desktop, "_listening", lambda port: False)
     monkeypatch.setattr(window_module, "close_now", lambda name=None: closed.append(name))
     frame = Frame(home / "serve.log", first="build")
-    assert frame.quit() is True and closed == []  # answered first: the page's call ends
+    assert frame.quit_words() == {"ask": False, "lines": []}  # nothing to ask
+    assert frame.quit_now() is True and closed == []  # answered first: the page's call ends
     assert wait_for(lambda: closed == [window_module.PLACE_NAME]) and frame.said_yes
+
+
+def test_the_app_s_quit_asks_in_osxp_s_own_dialog_in_the_frame_s_page(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cmd+Q, the app's menu and the Dock's while something runs: the frame's page asked to put
+    the question in OrthoStudio XP's dialog, never the system's box; its Quit stops what runs and
+    closes the window (the user, 2026-10-09: « Pourquoi on affiche pas nos propres dialogues comme
+    OSXP avant la version 1.1 ? »)."""
+    stopped: list[bool] = []
+    closed: list[str | None] = []
+    scripts: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(desktop, "_listening", lambda port: True)
+    monkeypatch.setattr(desktop, "a_build_runs", lambda port, timeout_s=1.5: True)
+    monkeypatch.setattr(desktop, "stop_the_engine", lambda port, force=False: stopped.append(force))
+    monkeypatch.setattr(window_module, "to_the_front", lambda name=None: None)
+    monkeypatch.setattr(window_module, "close_now", lambda name=None: closed.append(name))
+    monkeypatch.setattr(window_module, "ask", lambda *a, **k: pytest.fail("the system's box"))
+
+    def ask_the_page(script: str, *, name: str | None = None) -> bool:
+        scripts.append((script, name))
+        return True
+
+    monkeypatch.setattr(window_module, "ask_the_page", ask_the_page)
+    monkeypatch.setattr(frame_module, "xplane_flies", lambda: False)
+    save_prefs({"language": "fr"})
+    frame = Frame(home / "serve.log", first="build")
+    assert frame.may_quit() is False  # asked aside, the app kept meanwhile
+    assert wait_for(lambda: scripts) and scripts == [
+        (frame_module.ASK_QUIT_JS, window_module.PLACE_NAME)
+    ]
+    time.sleep(0.1)
+    assert stopped == [] and closed == []  # nothing stopped before the page's answer
+    # what the dialog says: what runs and what is left, in the frame's language, the question
+    # itself in the dialog's title
+    assert frame.quit_words() == {
+        "ask": True,
+        "lines": [
+            "Un build est en cours. Quitter l'arrête.",
+            "Ce qui est déjà construit est gardé : relancer le build reprend à partir de là.",
+        ],
+    }
+    assert frame.quit_now() is True  # its Quit
+    assert wait_for(lambda: closed == [window_module.PLACE_NAME]) and stopped == [True]
+    assert frame.said_yes and frame.may_quit() is True  # closing comes back, and goes through
 
 
 def test_the_installer_s_quit_closes_the_frame(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -536,7 +584,7 @@ def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     assert '<dialog id="build-running"' in page
 
 
-OSXP_ELEMENTS = (".brand", ".topbar-tools", ".status-text", "#status-zoom")
+OSXP_ELEMENTS = (".brand", ".topbar-tools", ".status-text", "#status-zoom", "#quit-confirm")
 
 
 def test_the_frame_takes_osxp_s_bars_from_its_page_and_copies_none(

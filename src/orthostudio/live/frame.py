@@ -72,7 +72,11 @@ TYPES = {
 """What the frame's page may load from this program: its scripts, its styles and their images."""
 
 QUIT_AFTER_THE_ANSWER_S = 0.3
-"""How long the frame's Quit waits for its call's answer to reach the page (:meth:`Frame.quit`)."""
+"""How long quitting waits for its call's answer to reach the page (:meth:`Frame.quit_now`)."""
+
+ASK_QUIT_JS = "Boolean(window.askQuit && window.askQuit())"
+"""The frame's page asked to put the question before quitting (``frame.js`` ``askQuit``): true once
+it shows OrthoStudio XP's dialog."""
 
 QUIT_WORDS = {
     "en": {
@@ -101,17 +105,26 @@ QUIT_WORDS = {
 """The words of the question before quitting (:func:`quit_question`), in the frame's language."""
 
 
-def quit_question(language: str, *, build: bool, live: bool, flying: bool) -> str:
-    """The one question asked before quitting while something runs: what runs, that quitting stops
-    it, what is left after. A build and a stream at once asked their two questions one after the
-    other in the box, and the user wanted one, simpler and saying more (2026-10-04)."""
+def quit_lines(language: str, *, build: bool, live: bool, flying: bool) -> list[str]:
+    """What is said before quitting while something runs, a paragraph a line: what runs, that
+    quitting stops it, what is left after. A build and a stream at once asked their two questions
+    one after the other in the box, and the user wanted one, simpler and saying more
+    (2026-10-04)."""
     words = QUIT_WORDS.get(language, QUIT_WORDS["en"])
     running = ([words["build"]] if build else []) + (
         [words["flying" if flying else "live"]] if live else []
     )
     said = words["and"].join(running) + ". " + words["stops_both" if build and live else "stops_it"]
     after = ([words["kept"]] if build else []) + ([words["flies_on"]] if live and flying else [])
-    return "\n\n".join([said, *([" ".join(after)] if after else []), words["anyway"]])
+    return [said, *([" ".join(after)] if after else [])]
+
+
+def quit_question(language: str, *, build: bool, live: bool, flying: bool) -> str:
+    """The question in the system's box, where the frame's page cannot ask it: its lines, then
+    whether to quit anyway (OrthoStudio XP's dialog asks that in its title)."""
+    words = QUIT_WORDS.get(language, QUIT_WORDS["en"])
+    lines = quit_lines(language, build=build, live=live, flying=flying)
+    return "\n\n".join([*lines, words["anyway"]])
 
 
 def xplane_flies() -> bool:
@@ -504,11 +517,14 @@ class Frame:
         return quit_question(self.language(), build=build, live=live, flying=flying)
 
     def may_quit(self) -> bool:
-        """The app's Quit (Cmd+Q, its menu's, the Dock's, the frame's own), and the close button
-        where closing quits (Windows, Linux): at once when nothing runs, OrthoStudio XP's engine
-        asked to stop; else one question first, in a box, the window in front, and on yes the
-        build or the stream stops and the window closes. The box cannot be drawn by the thread
-        waiting for this answer: it is asked aside, and this answers no meanwhile."""
+        """The app's Quit (Cmd+Q, its menu's, the Dock's), and the close button where closing
+        quits (Windows, Linux): at once when nothing runs, OrthoStudio XP's engine asked to stop;
+        else the window in front and its page asked to put the question in OrthoStudio XP's own
+        dialog (``frame.js`` ``askQuit``), whose Quit stops the build or the stream and closes the
+        window (:meth:`quit_now`), as OrthoStudio XP's window asked its page before 1.1 (the user,
+        2026-10-09: not a box of the system's). A page that cannot answer, the question goes in the
+        system's box. Either is asked aside, the page's answer not readable by the thread waiting
+        for this one, and this answers no meanwhile."""
         if self.said_yes:
             return True
         build, control = self._running()
@@ -520,6 +536,8 @@ class Frame:
         def aside() -> None:
             from orthostudio import desktop
 
+            if window.ask_the_page(ASK_QUIT_JS, name=window.PLACE_NAME):
+                return  # the page asks, and quits on its own Quit
             asked = self.question(build, control is not None)
             if not window.ask(desktop.APP_NAME, asked, name=window.PLACE_NAME):
                 return
@@ -530,8 +548,23 @@ class Frame:
         threading.Thread(target=aside, name="frame-ask-before-quitting", daemon=True).start()
         return False
 
-    def quit(self) -> bool:
-        """The frame's own Quit: as the app's (:meth:`may_quit`), the window closing on yes.
+    def quit_words(self) -> dict[str, Any]:
+        """What the frame's page asks before quitting (``frame.js`` ``askQuit``), for its Quit and
+        the app's: whether anything runs, and what, a paragraph a line in the frame's language
+        (:func:`quit_lines`); nothing runs, no question, the page quits at once."""
+        build, control = self._running()
+        if not build and control is None:
+            return {"ask": False, "lines": []}
+        live = control is not None
+        flying = live and xplane_flies()
+        return {
+            "ask": True,
+            "lines": quit_lines(self.language(), build=build, live=live, flying=flying),
+        }
+
+    def quit_now(self) -> bool:
+        """The page's Quit, asked or with nothing to ask: what runs then stops (the build forced,
+        the stream without waiting for X-Plane), and the window closes.
 
         Asked by the page, whose call must have its answer before the window goes: closed under
         its own call, the call's thread waited for ever to answer a page that was gone, and the
@@ -539,9 +572,9 @@ class Frame:
 
         def aside() -> None:
             time.sleep(QUIT_AFTER_THE_ANSWER_S)
-            if not self.may_quit():
-                return  # asked in a box, which closes the window itself on yes
-            self.said_yes = True  # nothing runs, and the engine was asked to stop: no second asking
+            build, control = self._running()
+            self.said_yes = True  # closing comes back through may_quit, and must go through
+            self._stop(build=build, control=control)
             window.close_now(window.PLACE_NAME)
 
         threading.Thread(target=aside, name="frame-quit", daemon=True).start()
@@ -651,8 +684,11 @@ class FrameTools(window.PageTools):
     def ensure(self, part: str, welcome: bool = False) -> str:
         return self._frame.ensure(str(part), welcome=bool(welcome))
 
-    def quit(self) -> bool:
-        return self._frame.quit()
+    def quit_words(self) -> dict[str, Any]:
+        return self._frame.quit_words()
+
+    def quit_now(self) -> bool:
+        return self._frame.quit_now()
 
     def keep(self, prefs: Any) -> dict[str, Any]:
         return self._frame.keep(prefs)

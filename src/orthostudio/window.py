@@ -627,6 +627,19 @@ def ask(title: str, message: str, *, name: str | None = None) -> bool:
         return True
 
 
+def ask_the_page(script: str, *, name: str | None = None) -> bool:
+    """Run ``script`` in the page of the window ``name``; whether it answered yes, which a page
+    not there or not able to never does. Never from the thread that draws, as :func:`ask`: reading
+    a page's answer waits for that thread."""
+    window = _named(name)
+    if window is None:
+        return False
+    try:
+        return bool(window.evaluate_js(script))
+    except Exception:
+        return False
+
+
 def close_now(name: str | None = None) -> None:
     """Close the window ``name``. It goes through the close button's own answer again, which must
     let it through this time (``orthostudio.desktop.on_close``) or the question would be asked for

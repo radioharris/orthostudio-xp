@@ -302,6 +302,39 @@ function languageChanged() {
   drawStates();
 }
 
+/**
+ * The question before quitting while something runs, in OrthoStudio XP's own dialog (#quit-confirm,
+ * put here from its page by frame.py): what runs said by the app (frame.py quit_words), Stay or
+ * Quit; nothing runs, gone at once. The frame's Quit and the app's (Cmd+Q, its menu's, the
+ * Dock's, the close button on Windows and Linux: frame.py may_quit) ask here alike, as OrthoStudio
+ * XP's page asked before 1.1 (the user, 2026-10-09: not a box of the system's).
+ */
+async function askQuit() {
+  const dialog = $("quit-confirm");
+  if (dialog.open) return;
+  const api = await tools();
+  const { ask, lines } = await api.quit_words();
+  if (!ask) {
+    await api.quit_now();
+    return;
+  }
+  $("quit-confirm-text").replaceChildren(...lines.map((line) => {
+    const p = document.createElement("p");
+    p.textContent = line;
+    return p;
+  }));
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close(); // as Stay
+  };
+  dialog.addEventListener("close", () => {
+    if (dialog.returnValue === "quit") api.quit_now();
+  }, { once: true });
+  dialog.showModal();
+}
+
 function toast(text) {
   const box = $("toast");
   box.textContent = text;
@@ -347,13 +380,16 @@ function boot() {
   });
   // OrthoStudio XP's own Quit (frame.py frame_page), which its page shows once its engine may stop
   $("quit-btn").hidden = false;
-  $("quit-btn").addEventListener("click", async () => {
-    try {
-      await (await tools()).quit();
-    } catch (_e) {
-      // the app's own Quit stays
-    }
+  $("quit-btn").addEventListener("click", () => {
+    askQuit().catch(() => {}); // the app's own Quit stays
   });
+  // the app's Quit asks here (frame.py may_quit): true once the dialog can be shown, else the app
+  // asks in the system's box
+  window.askQuit = () => {
+    if (!$("quit-confirm") || !window.pywebview?.api?.quit_words) return false;
+    askQuit().catch(() => {});
+    return true;
+  };
   for (const button of document.querySelectorAll(".frame-part")) {
     button.addEventListener("click", () => show(button.dataset.part));
   }
