@@ -8,8 +8,8 @@
    "properties": {
     "provider": {
      "default": "BI",
-     "description": "Code of the imagery provider (see `osxp doctor --providers` for the ones alive and their maximum zoom level).",
-     "hint": "Code of the imagery provider (see `osxp doctor --providers` for the ones alive and their maximum zoom level).",
+     "description": "Code of the imagery provider: BI (Bing Maps), Arc (Esri World Imagery), EOX, or one of the national sources of the Plan's list.",
+     "hint": "Code of the imagery provider: BI (Bing Maps), Arc (Esri World Imagery), EOX, or one of the national sources of the Plan's list.",
      "level": "essential",
      "minLength": 1,
      "ortho4xp": "default_website",
