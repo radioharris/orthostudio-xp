@@ -919,12 +919,13 @@ def test_the_flight_and_the_textures_show_every_figure() -> None:
                     "more": "1 \u00d7 4096 px · 6 \u00d7 256 px",  # the multiplication sign
                 },
                 {"value": "24", "label": "en construction", "more": "12 morceaux attendus"},
-                {"value": "9 591", "label": "construites depuis le démarrage", "more": None},
+                {"value": "9 591", "label": "construites depuis le début", "more": None},
                 {
                     "value": "1,55 Go",
                     "label": "téléchargés",
                     "beside": True,  # on the value's line, in italics
-                    "more": "104 530 morceaux, 947 du cache",
+                    "more": "104 530 morceaux",
+                    "hover": "104 530 morceaux, 947 du cache",  # too long for the box's line
                     "problem": "3 en échec",
                 },
             ],
@@ -988,7 +989,7 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
     assert views[2]["build"]["sizes"] == []
     assert views[2]["build"]["figures"][1]["more"] is None  # nothing built, nothing awaited
     assert views[3]["build"]["figures"][3]["value"] == "0 Mo"
-    assert views[4]["build"]["figures"][0]["label"] == "à construire, dont 3 urgentes"
+    assert views[4]["build"]["figures"][0]["label"] == "à construire, 3 urgentes"
     assert views[7]["build"]["disk"] == {
         "text": "36,5 Go sur 40 Go · 5 textures en 8192 px",
         "share": 0.9125,

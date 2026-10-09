@@ -88,18 +88,22 @@ function drawPill(pill, [text, kind]) {
 }
 
 /** Figures in OrthoStudio XP's boxes (.cost, its estimate's): the value large, what it is under
- * it (its secondary text), then a detail (its box's .sub) and what failed. */
-function drawFigures(box, figures) {
+ * it (its secondary text), or beside it in italics (`beside`, the user, 2026-10-09), then a detail
+ * (its box's .sub), what failed first. `lines`: every box its three lines, its detail kept even
+ * empty, no line wrapped, one too long cut short with its whole text in its hover (`hover`, the
+ * detail's): boxes whose height never changes with what they say (the user, 2026-10-09). */
+function drawFigures(box, figures, { lines = false } = {}) {
   box.hidden = !figures.length;
-  box.replaceChildren(...figures.map(({ value, label, beside, more, problem }) => {
+  box.classList.toggle("is-lines", lines);
+  box.replaceChildren(...figures.map(({ value, label, beside, more, hover, problem }) => {
     const figure = document.createElement("div");
     figure.className = "cost live-figure";
     const big = document.createElement("b");
     big.textContent = value;
-    // its name under it, or beside it in italics (`beside`, the user, 2026-10-09)
     const name = document.createElement(beside ? "i" : "span");
     name.className = "help";
     name.textContent = label;
+    name.title = lines ? label : "";
     if (beside) {
       const line = document.createElement("span");
       line.append(big, " ", name);
@@ -107,16 +111,18 @@ function drawFigures(box, figures) {
     } else {
       figure.append(big, name);
     }
-    if (more || problem) {
+    if (lines || more || problem) {
       const detail = document.createElement("span");
       detail.className = "sub num";
-      detail.textContent = more || "";
       if (problem) {
         const failed = document.createElement("span");
         failed.className = "is-fail";
-        failed.textContent = more ? ` · ${problem}` : problem;
-        detail.append(failed);
+        failed.textContent = problem;
+        detail.append(failed, more ? ` · ${more}` : "");
+      } else {
+        detail.textContent = more || "\u00a0"; // empty, a line still
       }
+      if (lines) detail.title = [problem, hover || more].filter(Boolean).join(" · ");
       figure.append(detail);
     }
     return figure;
@@ -361,7 +367,8 @@ export function buildView(status) {
         value: amount(s.downloaded_bytes),
         label: t("build.downloaded"),
         beside: true, // "263 MB downloaded", the pieces under them
-        more: t("build.downloaded_pieces", { n: number(s.downloaded), cache: number(s.from_cache) }),
+        more: t("build.pieces", { n: number(s.downloaded) }), // what came from the cache in its hover
+        hover: t("build.downloaded_pieces", { n: number(s.downloaded), cache: number(s.from_cache) }),
         problem: s.failed ? t("build.failed", { n: number(s.failed) }) : null,
       },
     ],
@@ -384,7 +391,7 @@ function drawBuild(status) {
   if (!view) return;
   drawPill($("build-state"), view.state);
   $("build-rate").textContent = `${view.rate[0]} ${view.rate[1]}`;
-  drawFigures($("build-figures"), view.figures);
+  drawFigures($("build-figures"), view.figures, { lines: true });
   const title = document.createElement("span");
   title.className = "help";
   title.textContent = t("build.sizes");

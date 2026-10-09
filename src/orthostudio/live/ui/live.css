@@ -45,6 +45,9 @@
 /* the flight's: three boxes as wide, but never narrower than what they say on one line: the
    position's grows when it needs to, -33.865 · -151.209 too (the user, 2026-10-09) */
 .live-figures.is-flight { grid-template-columns: repeat(3, minmax(max-content, 1fr)); }
+/* the textures': every box its three lines whatever they say, each cut short where too long, its
+   whole text in its hover (live.js drawFigures, the user, 2026-10-09) */
+.live-figures.is-lines .live-figure > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-figure { min-width: 0; }
 .live-figure > * { display: block; }
 .live-figure b { font-size: var(--fs-title-2); font-weight: 600; font-variant-numeric: tabular-nums; }

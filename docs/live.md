@@ -70,9 +70,11 @@ tabs, as OrthoStudio XP's screens:
   refuses your connection, which the window says under the source) or downloads failing (every
   request has failed); the download rate is on the right. Four boxes, two a line, count the
   textures to build (and the urgent ones, by size under them), those being built (and the pieces
-  of imagery they wait for), those built since the start, and what was downloaded (the pieces,
-  those taken from the cache and those that failed); the textures built are counted by size under
-  them, and a bar shows Live's disk space, with how many of its textures are at 8192 px.
+  of imagery they wait for), those built since the start, and what was downloaded (the pieces and
+  those that failed; those taken from the cache in its hover). Each box keeps its height whatever
+  it says: a line too long ends in "…", its whole text in its hover. The textures built are counted
+  by size under them, and a bar shows Live's disk space, with how many of its textures are at
+  8192 px.
 - **Settings**: the regions of the mesh, the roads, forests and buildings, the zoom and what a start
   waits for, the flight plan, Live's one disk space, shared by the textures and the downloaded imagery (with
   what each takes now, and a button to delete either), and Live's folder. They apply with Save, at
