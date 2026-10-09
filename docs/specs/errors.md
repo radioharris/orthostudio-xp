@@ -48,11 +48,8 @@ Column "Origin in Ortho4XP": `file.py:first-last` inside Ortho4XP's `src/` (or i
 
 Column "Remedy shown to the user": the registry's remedy (`REGISTRY[code].remedy`), as `errors.py`
 has it. A raise site may give a remedy of its own, and the page shows its own words where it has
-them (section Rendering). Three of these name options the command line does not have:
-`--neighbour-water` (`MASK_NEIGHBOUR_MESH_MISSING`), `--jobs` (`SYS_OUT_OF_MEMORY`; `osxp build`
-and `osxp plan` take `--workers`) and `--offline` as a way to keep using cached data
-(`NET_OFFLINE`; in `osxp doctor`, `osxp plan` and `osxp build --dry-run`, `--online/--offline` only
-switches a network probe on or off).
+them (section Rendering). A remedy names only options the command line has, and settings a
+user can reach (`test_advice_names_only_options_the_command_line_has`).
 
 ## Inventory
 
@@ -79,8 +76,8 @@ switches a network probe on or off).
 | OSM_WAY_NOT_CLOSED | O4_OSM_Utils.py:652-659 | A water or airport way used as a polygon is not closed | Written to Log.txt only; the lake or apron is missing | info | continue | Nothing to do; the feature is listed in the decision report. |
 | OSM_WAY_INVALID | O4_OSM_Utils.py:675-686 | Polygon is self-intersecting or has zero area | Log.txt only; the feature is missing | info | continue | Nothing to do; correct the geometry in OSM if the feature matters. |
 | OSM_RELATION_INVALID | O4_OSM_Utils.py:692-756 | A multipolygon relation yields an invalid ring after union/difference | Log.txt only; the whole relation (lake, riverbank) is missing | info | continue | Nothing to do; the relation is listed in the decision report. |
-| OSM_WATER_MERGE_FAILED | O4_Vector_Map.py:548-553; O4_Vector_Map.py:570-575 | `MultiPolygon_to_Indexed_Polygons` raises while merging overlapping water polygons | Bare `except: return 0`: **all inland water of the tile is dropped**, Step 1 still says "normal exit" | blocking | stop | Retry with clean_bad_geometries disabled, or provide a custom water file for the tile. |
-| OSM_LAKE_TREATED_AS_SEA | O4_Vector_Map.py:454-517 | An inland water body is larger than `max_area` km² | Message at verbosity 1: masked and rendered like the sea | info | continue | Raise max_area or add the lake to good_imagery_list to keep the orthophoto. |
+| OSM_WATER_MERGE_FAILED | O4_Vector_Map.py:548-553; O4_Vector_Map.py:570-575 | `MultiPolygon_to_Indexed_Polygons` raises while merging overlapping water polygons | Bare `except: return 0`: **all inland water of the tile is dropped**, Step 1 still says "normal exit" | blocking | stop | Build the tile again; if the water still cannot be merged, send serve.log with a report. |
+| OSM_LAKE_TREATED_AS_SEA | O4_Vector_Map.py:454-517 | An inland water body is larger than `max_area` km² | Message at verbosity 1: masked and rendered like the sea | info | continue | Raise max_area (Settings, Advanced) to keep the orthophoto on this lake. |
 | OSM_AIRPORT_TAG_INVALID | O4_Airport_Utils.py:165-175 | An `aeroway=aerodrome` element has an unusable geometry | Warning at verbosity 2 (hidden by default), airport popped: not flattened, not covered at `cover_zl` | degraded | continue | Check the aerodrome element in OSM near the given point. |
 | OSM_AIRPORT_BOUNDARY_INVALID | O4_Airport_Utils.py:152-164 | Aerodrome boundary is an invalid polygon | Verbosity 2: boundary set to None, the airport keeps its runways only | degraded | continue | Fix the aerodrome outline in OSM; runways are still flattened. |
 | OSM_AIRPORT_TOO_SMALL | O4_Airport_Utils.py:682-698 | Boundary under 5000 m² or runway area under 2500 m² (model aircraft, helipads) | Dropped silently | info | continue | Nothing to do; listed in the decision report. |
@@ -126,7 +123,7 @@ switches a network probe on or off).
 
 | Code | Origin in Ortho4XP | Condition | Effect in Ortho4XP today | Severity | OrthoStudio XP | Remedy shown to the user |
 |---|---|---|---|---|---|---|
-| MASK_NEIGHBOUR_MESH_MISSING | O4_Mask_Utils.py:223-240 | A neighbouring tile has no `.mesh` yet | Silently ignored: masks along that border see no sea on the other side, hard edge in the water at the tile boundary | degraded | continue | Build the neighbour first or use the neighbour's OSM water polygon (--neighbour-water osm). |
+| MASK_NEIGHBOUR_MESH_MISSING | O4_Mask_Utils.py:223-240 | A neighbouring tile has no `.mesh` yet | Silently ignored: masks along that border see no sea on the other side, hard edge in the water at the tile boundary | degraded | continue | Build the neighbouring tile with this one, or this one again once the neighbour is built: its masks then follow the shore across that border. |
 | MASK_NEIGHBOUR_MESH_UNREADABLE | O4_Mask_Utils.py:432-439 | A neighbour `.mesh` exists but cannot be opened | "could not be read. Skipped." at verbosity 1 | degraded | continue | Rebuild the neighbour mesh. |
 | MASK_STALE | O4_DSF_Utils.py:715-745; O4_Imagery_Utils.py:2340-2360; O4_Mask_Utils.py:242-255 | Masks were built for an older mesh or older parameters; masks are only deleted when Step 2.5 is run again | Step 3 reuses whatever `.png` exists, decides DXT1/DXT5 from a 20 MB size heuristic and mtime comparison | degraded | continue | Rebuild the masks of the tile. |
 | MASK_DISTANCE_MISSING | O4_Bathymetry.py:207-211; O4_Bathymetry.py:8-14 | `water_tech = XP12` but `distance_masks_too` is off, or the `_dist.png` is missing | `continue` in the loop: depth ratio floored at 0.1 everywhere, flat bathymetry without a message | degraded | continue | Distance masks are enabled automatically with XP12 water; rebuild the masks. |
@@ -211,7 +208,7 @@ switches a network probe on or off).
 
 | Code | Origin in Ortho4XP | Condition | Effect in Ortho4XP today | Severity | OrthoStudio XP | Remedy shown to the user |
 |---|---|---|---|---|---|---|
-| NET_OFFLINE | new | No route to any host (all hosts fail their first requests) | Each texture part waits `2 s x max_connect_retries`; Overpass waits up to 5 min 40 s; nothing tells the user the machine is offline | blocking | stop | Check the network connection; cached data is still usable with --offline. |
+| NET_OFFLINE | new | No route to any host (all hosts fail their first requests) | Each texture part waits `2 s x max_connect_retries`; Overpass waits up to 5 min 40 s; nothing tells the user the machine is offline | blocking | stop | Check the network connection, then build again: what was already downloaded is kept. |
 | NET_CONNECTION_FAILED | O4_Imagery_Utils.py:1073-1088 | DNS, TCP or TLS failure on one request | A new `Session` is opened, 2 s sleep, retried up to `max_connect_retries`, then white | info | continue | Retried with backoff. |
 | NET_SIMBRIEF_FAILED | new | The flight plan's button asked SimBrief, which did not answer, or answered what cannot be read (asked once, not retried) | Ortho4XP has no flight plan of any kind | blocking | stop | Try again in a moment; if it keeps failing, SimBrief itself may be down. |
 | NET_TIMEOUT | O4_Imagery_Utils.py:1013-1017; O4_OSM_Utils.py:534 | No answer within `http_timeout` (10 s) or 60 s for Overpass | Counted as a connection failure | info | continue | Retried; a slow host is hedged with a second request. |
@@ -232,7 +229,7 @@ switches a network probe on or off).
 | SYS_INTERNAL_ERROR | Ortho4XP.py:66-73; O4_GUI_Utils.py:455-538; O4_UI_Utils.py:5-8 | Any unexpected exception in a stage | CLI prints `Crash!` and exits 0; GUI threads have no handler, `UI.is_working` stays True until restart | blocking | stop | Send serve.log with a report of what you were building; the README says where it is on each system. |
 | SYS_CANCELLED | O4_UI_Utils.py:58-70; O4_Mesh_Utils.py:689-702; O4_Tile_Utils.py:21-40 | The user pressed Stop | `red_flag` is polled between steps only; Triangle4XP and in-flight downloads run to completion | info | stop | Nothing to do; the build resumes from the last completed node. |
 | SYS_UPSTREAM_FAILED | new | A graph node is skipped because a node it depends on failed (`root` and the upstream code are in the context) | Ortho4XP has no graph: a failed step leaves the next steps to crash on the missing file, or the GUI thread simply stops | info | stop | Fix the upstream failure and relaunch; finished nodes are reused. |
-| SYS_OUT_OF_MEMORY | O4_Mesh_Utils.py:726-737 | A stage exceeds available memory (Triangle4XP on dense tiles, 4096² RGBA compositing) | Triangle4XP is killed by the OS and the hint is "limited amount of RAM"; Python `MemoryError` is uncaught elsewhere | blocking | stop | Close other applications or lower the parallelism (--jobs). |
+| SYS_OUT_OF_MEMORY | O4_Mesh_Utils.py:726-737 | A stage exceeds available memory (Triangle4XP on dense tiles, 4096² RGBA compositing) | Triangle4XP is killed by the OS and the hint is "limited amount of RAM"; Python `MemoryError` is uncaught elsewhere | blocking | stop | Close other applications, then build again; on the command line, --workers lowers the parallelism. |
 | SYS_WORKING_DIR_INVALID | Ortho4XP.py:4; O4_UI_Utils.py:5; O4_File_Names.py:8 | Ortho4XP launched from another directory than its root | Relative paths: "Missing Utils directory" or empty directories created next to the caller | blocking | stop | Point import-ortho4xp to the root of the Ortho4XP directory. |
 | SYS_PACK_NOT_OSXP | new | The page's Delete or `osxp uninstall --delete` names a tile folder OrthoStudio XP did not build: a tile imported from Ortho4XP, a folder without `orthostudio.toml` (it may hold the user's own files), a link, or the pack of another tile | Ortho4XP keeps no record of who made a folder: the trash of its GUI (O4_GUI_Utils.py:1662-1670) deletes a tile's whole build folder with `shutil.rmtree`, whatever it holds, leaves its link in Custom Scenery pointing at nothing and hides a failure below verbosity 3 | blocking | stop | Nothing was deleted. Uninstall takes the tile out of X-Plane without deleting anything; to delete the folder itself, delete it by hand. |
 | SYS_FOLDER_GONE | new | *File elsewhere…* in the Library: the folder chosen is not there, gone since it was chosen | No such action | blocking | stop | Nothing was changed. Choose the folder again. |

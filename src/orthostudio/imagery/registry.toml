@@ -2,7 +2,7 @@
 #
 # Thirteen providers alive in September 2026 without a key or token, converted from the
 # Ortho4XP definitions named in each comment (docs/providers-audit.md). Values marked
-# "assumed" are not in those files and wait for `osxp doctor --providers` to confirm them.
+# "assumed" are not in those files and are not confirmed yet.
 # max_in_flight: the most requests in flight each server took on 2026-09-15, rising until it
 # refused, slowed down or gave no more (docs/benchmarks/network.md, section 7); 128 at most for the
 # services of a state, which many people share. server_req_per_s: the requests per second a server

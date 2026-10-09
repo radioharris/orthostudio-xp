@@ -63,7 +63,7 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 
 | OrthoStudio XP | type / validation | unit | default | Ortho4XP | hint |
 |---|---|---|---|---|---|
-| `provider` | str, non-empty | - | `BI` | `default_website` | (OrthoStudio XP) Code of the imagery provider (see `osxp doctor --providers` for the ones alive and their maximum zoom level). |
+| `provider` | str, non-empty | - | `BI` | `default_website` | (OrthoStudio XP) Code of the imagery provider: BI (Bing Maps), Arc (Esri World Imagery), EOX, or one of the national sources of the Plan's list. |
 | `zoom_level` | int `[10, 20]` | ZL | 16 | `default_zl` | (OrthoStudio XP) Zoom level of the imagery over the whole tile: ZL16 is about 2.4 m/px at mid latitudes, each level doubles the resolution and quadruples the download; `mesh_zl` caps it. |
 | `airports.mode` | E `off` / `on` / `icao` / `existing` | - | `off` | `cover_airports_with_highres` (`False` / `True` / `ICAO` / `Existing`) | When set, textures above airports will be upgraded to a higher zoomlevel, the imagery being the same as the one they would otherwise receive. Can be limited to airports with an ICAO code for tiles with so many airports. Exceptional: use "Existing" to (try to) derive custom zl zones from the textures directory of an existing tile. |
 | `airports.zoom_level` | int `[14, 20]` | ZL | 18 | `cover_zl` | The zoomlevel with which to cover the airports zone when high_zl_airports is set. Note that if the cover_zl is lower than the zoomlevel which would otherwise be applied on a specific zone, the latter is used. |
@@ -85,10 +85,8 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 tile list replaces `lat`/`lon`, and the zones drawn on the map (P5, `zones.json`, `map-zones.md`)
 replace `zone_list` (sections 1 and 3).
 
-The hint of `provider` is the code's own text (`config/models.py`): `osxp doctor` has no
-`--providers` option (its options are `--json`, `--online/--offline`, `--xplane`, `--store`,
-`--chunks`; `--online` adds its network probes, one Bing tile among them), and
-`GET /api/providers` lists the sources with their maximum zoom level.
+The hint of `provider` is the code's own text (`config/models.py`); `GET /api/providers` lists
+the sources with their maximum zoom level.
 
 ### 2.2 Advanced (`[advanced]`)
 

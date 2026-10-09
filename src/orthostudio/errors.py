@@ -257,14 +257,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Inland water polygons of tile {tile} could not be merged ({reason}).",
-        "Retry with clean_bad_geometries disabled, or provide a custom water file for the tile.",
+        "Build the tile again; if the water still cannot be merged, send serve.log with a report.",
     ),
     _spec(
         "OSM_LAKE_TREATED_AS_SEA",
         _I,
         _C,
         "Water body {name} ({area_km2} km2) exceeds max_area and is rendered like the sea.",
-        "Raise max_area or add the lake to good_imagery_list to keep the orthophoto.",
+        "Raise max_area (Settings, Advanced) to keep the orthophoto on this lake.",
     ),
     _spec(
         "OSM_AIRPORT_TAG_INVALID",
@@ -502,8 +502,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _C,
         "Neighbour tile {neighbour} has no mesh; masks of tile {tile} may show a hard edge at "
         "that border.",
-        "Build the neighbour first or use the neighbour's OSM water polygon "
-        "(--neighbour-water osm).",
+        "Build the neighbouring tile with this one, or this one again once the neighbour is "
+        "built: its masks then follow the shore across that border.",
     ),
     _spec(
         "MASK_NEIGHBOUR_MESH_UNREADABLE",
@@ -902,7 +902,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "No network: none of the required hosts can be reached.",
-        "Check the network connection; cached data is still usable with --offline.",
+        "Check the network connection, then build again: what was already downloaded is kept.",
     ),
     _spec(
         "NET_CONNECTION_FAILED",
@@ -1018,7 +1018,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Stage {stage} of tile {tile} ran out of memory.",
-        "Close other applications or lower the parallelism (--jobs).",
+        "Close other applications, then build again; on the command line, --workers lowers the "
+        "parallelism.",
     ),
     _spec(
         "SYS_WORKING_DIR_INVALID",

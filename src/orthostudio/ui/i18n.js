@@ -2250,7 +2250,7 @@ const CODES = {
     MESH_TILE_ASSUMED_SEA: ["La tuile {tile} n'a pas de trait de côte et un relief plat ; toute la tuile est traitée comme de la mer.", "Vérifiez le relief et le trait de côte de cette tuile ; forcez la terre avec sea_seed = none."],
     MESH_QUALITY_RELAXED: ["Triangle4XP n'a pas pu tenir min_angle={min_angle} sur la tuile {tile} ; nouvel essai avec 0.", "Vérifiez les couches OSM signalées comme invalides pour cette tuile."],
     MESH_WEIGHT_MAP_INCOMPLETE: ["La carte d'affinage du trait de côte de la tuile {tile} est incomplète ({reason}).", "La couche de trait de côte de l'étape vecteurs est réutilisée ; rien à faire."],
-    MASK_NEIGHBOUR_MESH_MISSING: ["La tuile voisine {neighbour} n'a pas de maillage ; les masques de la tuile {tile} peuvent montrer un bord net à cette frontière.", "Construisez d'abord la voisine, ou utilisez son polygone d'eau OSM (--neighbour-water osm)."],
+    MASK_NEIGHBOUR_MESH_MISSING: ["La tuile voisine {neighbour} n'a pas de maillage ; les masques de la tuile {tile} peuvent montrer un bord net à cette frontière.", "Construisez la voisine avec celle-ci, ou celle-ci à nouveau une fois la voisine construite : ses masques suivent alors la rive à travers cette frontière."],
     MASK_NEIGHBOUR_MESH_UNREADABLE: ["Le maillage voisin {path} est illisible ; il est ignoré pour les masques de la tuile {tile}.", "Reconstruisez le maillage de la voisine."],
     MASK_DISTANCE_MISSING: ["Le masque de distance {mask} est absent ; la bathymétrie de la tuile {tile} y est plate.", "Les masques de distance s'activent d'eux-mêmes avec l'eau XP12 ; reconstruisez les masques."],
     MASK_FILE_UNREADABLE: ["Le fichier de masque {path} est illisible ({reason}).", "Supprimez le fichier et reconstruisez les masques de cette tuile."],
@@ -2279,7 +2279,7 @@ const CODES = {
     NET_SERVER_ERROR: ["Le serveur {host} a répondu HTTP {status}.", "Nouvel essai, avec des pauses de plus en plus longues."],
     NET_UNEXPECTED_STATUS: ["Le fournisseur {provider} a répondu HTTP {status} pour {url}.", "Regardez dans Vérifications si cette source répond, ou choisissez-en une autre dans le Plan."],
     SYS_ROSETTA_MISSING: ["{tool} est un programme x86_64 et Rosetta 2 n'est pas installé.", "N'installez Rosetta 2 que si vous choisissez cet outil de secours ; OrthoStudio XP n'en a pas besoin."],
-    SYS_OUT_OF_MEMORY: ["L'étape {stage} de la tuile {tile} a manqué de mémoire.", "Fermez d'autres applications ou réduisez le parallélisme (--jobs)."],
+    SYS_OUT_OF_MEMORY: ["L'étape {stage} de la tuile {tile} a manqué de mémoire.", "Fermez d'autres applications, puis relancez ; en ligne de commande, --workers réduit le parallélisme."],
   },
   en: {
     TEX_MISSING: ["Some textures could not be downloaded.", "Retry: only the missing ones are requested again."],
