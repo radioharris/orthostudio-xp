@@ -43,8 +43,6 @@ export const STRINGS = {
     "action.stop": "Stop",
     "action.xplane": "Start X-Plane",
     "action.osxp": "Build tiles",
-    "action.xplane_wait":
-      "Start X-Plane once Live is ready: X-Plane sees Live's pack only if it is there when X-Plane starts.",
     "action.leave": "Leave it installed",
     "action.uninstall": "Take the pack out of X-Plane",
     "quit.button": "Quit",
@@ -389,8 +387,6 @@ export const STRINGS = {
     "action.stop": "Arrêter",
     "action.xplane": "Lancer X-Plane",
     "action.osxp": "Construire des tuiles",
-    "action.xplane_wait":
-      "Lancez X-Plane quand Live est prêt : X-Plane ne voit le pack de Live que s'il est là quand X-Plane démarre.",
     "action.leave": "Le laisser installé",
     "action.uninstall": "Retirer le pack de X-Plane",
     "quit.button": "Quitter",

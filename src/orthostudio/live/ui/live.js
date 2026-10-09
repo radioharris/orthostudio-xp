@@ -220,9 +220,9 @@ function drawState(status) {
   $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
   // a departure prepared: Live started for it when idle, told of it while it streams
   $("departure-btn").disabled = !(state === "streaming" || (idle && !blocking(checks)));
-  let help = "";
-  if (idle && $("fresh").checked) help = t("action.fresh_help");
-  else if ((idle || state === "starting") && !checks.xplane_running) help = t("action.xplane_wait");
+  // From scratch's cost, when ticked; when to start X-Plane is said by its button, grey until
+  // Live is ready, and by the line under the state (the user: no sentence saying it again)
+  const help = idle && $("fresh").checked ? t("action.fresh_help") : "";
   $("action-help").textContent = help;
   $("action-help").hidden = !help;
 }
