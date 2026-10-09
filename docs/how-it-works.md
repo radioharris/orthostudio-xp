@@ -527,9 +527,9 @@ after a restart of the app too. Settings names the tiles the folder has patches 
 says which of the tiles you chose will be built with them and which files, and the report of a build
 lists the tiles it built with patches.
 
-**With AutoOrtho, XPME or Ortho4XP tiles.** For each square X-Plane shows the ground of one pack
-only: the OrthoStudio XP tile, listed above AutoOrtho, XPME and the other base meshes. But it draws
-the roads, forests and buildings of every active pack that has the square, and AutoOrtho's, XPME's
+**With XPME, AutoOrtho or Ortho4XP tiles.** For each square X-Plane shows the ground of one pack
+only: the OrthoStudio XP tile, listed above XPME, AutoOrtho and the other base meshes. But it draws
+the roads, forests and buildings of every active pack that has the square, and XPME's, AutoOrtho's
 and Ortho4XP's overlay packs have theirs: on such a square they come twice. The Library says so,
 and one click leaves those roads to the other pack for these squares: OrthoStudio XP puts its own
 aside in the tile's folder, where X-Plane does not read them, and touches nothing of the other
