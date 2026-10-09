@@ -48,8 +48,8 @@ experimental.
 - **The squares of a flight plan.** Your last SimBrief plan chooses the squares along its route,
   within the radius you set.
 - **Hand-made mesh patches**, those published for Ortho4XP included, read as they come.
-- **A cache.** An unchanged tile builds again in seconds, a new zone builds again only what it
-  touches, and imagery is never downloaded twice.
+- **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
+  only what it touches, and imagery is never downloaded twice.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then
   filed wherever you want; an unplugged disk is said as such, and nothing is written in its place.
 - **Text as large as you need.** `− 100 % +` zooms the whole page and `Aa` makes the text alone
@@ -68,41 +68,43 @@ How it works, what it keeps on disk and how to clean it:
 
 ## Build times, measured
 
-Same machine (Apple M4 Pro), same tiles, same imagery. Every figure comes from a measurement in
-[docs/benchmarks/](docs/benchmarks/). Ortho4XP here is its current code, the master branch of its
-GitHub repository at commit `26ec00a` (March 2026), which its author describes as in transition
-to 1.40; its last release is 1.31. The measurements were made on a Mac, where Ortho4XP's texture
-compression tool runs under Rosetta; on Windows and Linux that tool runs natively, and the gap in
-compression would be smaller.
+Measured on 10 October 2026 with OrthoStudio XP 1.0, on a MacBook Pro (Apple M4 Pro, 14 cores,
+48 GB of memory) and a home connection measured at 418 to 485 Mbit/s down before and after each
+build, with the tile of Geneva, `+46+006`, and a new user's settings: Bing imagery, X-Plane's own
+relief, its roads, forests and buildings. Every step, the data folder and the command:
+[docs/benchmarks/build-times-1.0.md](docs/benchmarks/build-times-1.0.md).
 
-| | Ortho4XP | OrthoStudio XP |
+| A first build, nothing in the cache | ZL16 | ZL18 |
 |---|---:|---:|
-| Build a tile again with nothing changed (Marseille, ZL14) | 63.2 s | **0.3 s** |
-| Build a tile built once at ZL14 again at ZL16 | 250.7 s | **33.1 s** |
-| Imagery of a ZL16 tile, nothing cached (179 textures) | 206.9 s | **34.6 s** |
-| Roads, water, coast and airports of a tile | 31.8 s | **6.6 s** |
-| Relief mesh / water masks of a tile | 8.5 s / 4.7 s | **2.8 s / 0.8 s** |
-| Download rate from Bing | 219 requests/s | **1,436 requests/s** |
-| Compressing one texture | 1.15 s (x86 tool under Rosetta) | **0.33 s** (native, all cores) |
+| The whole tile | **53 s** | **6 min 27 s** |
+| Textures | 213 | 2,902 |
+| Images downloaded | 733 MB | 8.5 GB |
+| On the disk, cache included | 3.8 GB | 41 GB |
 
-### A real build
+At ZL16 the map data takes 2.7 s, the relief 4.5 s, tracing the roads, water and airports 7.0 s,
+the mesh 3.5 s, the water masks 0.9 s and the DSF 2.4 s, partly side by side; the imagery starts
+after 19 s and takes 34 s, downloaded and compressed at 21.7 MB/s. At ZL18 the same steps take the
+same 20 s, and the imagery 6 minutes, at 23.2 MB/s.
 
-Six ZL16 tiles around Lake Geneva and the Alps, built and installed from the page on an M4 Pro:
-1,347 textures, 321,792 image pieces, 4.64 GB, every image downloaded. **5 min 22 s**, no error,
-no retry. The home connection was used at 16.5 MB/s (132 Mbit/s) on average, 99 to 162 Mbit/s
-depending on the tile. No elevation file to download (the relief comes from X-Plane 12), and a
-stalled image piece is asked for again instead of costing the tile. For scale, Ortho4XP took
-250.7 s for a single ZL16 tile with its caches warm, which would make about 25 minutes for six
-tiles built one after the other. Details:
-[docs/benchmarks/batch-6-tiles-zl16.md](docs/benchmarks/batch-6-tiles-zl16.md).
+| The same tile afterwards | Time | Downloaded |
+|---|---:|---:|
+| Built again, nothing changed | **under 0.1 s** | nothing |
+| Other colours for the photos | 14 s | nothing |
+| Decals turned on, or another decal | 0.2 s | nothing |
+| A ZL18 zone drawn around the airport | 6.6 s | 20 MB |
+| Another relief (Copernicus) | 40 s | the relief, no image |
+| Stopped halfway through, then started again | 17.6 s to finish | the 373 MB left |
 
-Where the time goes: in these measurements Ortho4XP runs its steps one after the other, on 1.8
-of the 14 cores on average for a tile built again. It keeps its downloads (map data, elevation,
-images) and the files of the last build, and you choose which steps to run again; a step run again
-is computed in full. OrthoStudio XP runs the steps of all the tiles as a graph over every core,
-downloads over HTTP/2 with up to 128 requests in flight, compresses textures in-process, and files
-every result under what produced it: it finds by itself the steps whose inputs did not change, and
-does not run them again.
+Stopped after 38 s and started again, the tile downloaded 360 MB, then 373 MB: the 733 MB of a
+build that was not stopped. OrthoStudio XP runs the steps of all the tiles as a graph over every
+core, downloads over HTTP/2 with up to 128 requests in flight, compresses textures in-process,
+and files every result under what produced it: it finds by itself the steps whose inputs did not
+change, and does not run them again.
+
+## Compared with Ortho4XP
+
+A measured comparison, made in September 2026 on the same Mac against Ortho4XP's code of March
+2026: [docs/benchmarks/ortho4xp-comparison.md](docs/benchmarks/ortho4xp-comparison.md).
 
 Other differences in use:
 

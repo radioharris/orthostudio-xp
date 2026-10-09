@@ -21,7 +21,7 @@ the measurements, `docs/benchmarks/`.
   that tells X-Plane how to lay it.
 - **Image piece** (a *chunk* in the code): what the imagery provider actually sends, a
   256 × 256 image. A texture is 16 × 16 = 256 pieces, so a ZL16 tile is about 50,000 pieces,
-  0.8 to 0.9 GB to download.
+  0.7 to 0.9 GB to download.
 - **Zoom level (ZL)**: the sharpness of the imagery. Each level up halves the size of a pixel on the
   ground and multiplies the number of textures by four: ZL16 is about 2 m per pixel, ZL18 about
   40 cm. OrthoStudio XP builds a tile at one level and sharper *zones* where you draw them
@@ -90,7 +90,7 @@ tile fails for want of map data.
 | **Relief** | Reads the elevation: X-Plane 12's own scenery from the disk, or the files Settings asks for (Copernicus, USGS, Canada's lidar), downloaded the first time, however long a big one takes, and kept. | 5-30 s when Copernicus files are downloaded (measured 2026-09-26) |
 | **Terrain** | Traces the lines the relief must follow (shores, flat runways, rivers, roads), then cuts the relief into triangles, finer where it matters: mountains, shores, airports. | 10-30 s: the tracing 5-20 s, up to a minute at road level 5, the mesh 4-10 s |
 | **Coast** | Builds the water masks: soft transitions between the photo and X-Plane's water. | 1-4 s |
-| **Imagery** | Downloads the image pieces, assembles them into textures, compresses them to DDS. | 40 s to 2 min if nothing is cached (the provider's speed decides), 10-15 s if the pieces are |
+| **Imagery** | Downloads the image pieces, assembles them into textures, compresses them to DDS. | 30 s to 2 min if nothing is cached (the provider's speed and your connection decide), 10-15 s if the pieces are |
 | **Assembly** | Writes the DSF, extracts the overlay, gathers everything in the tile's folder. | 5-15 s |
 | **Install** | Links the tile into X-Plane's Custom Scenery (on Windows, a junction when the account may not make links) and writes its line in `scenery_packs.ini`. | under 1 s |
 
@@ -303,8 +303,8 @@ one when the app starts.
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
 
 the data folder (~/.orthostudio unless Settings name another one)/
-  chunks/          image pieces downloaded (raw material)          ≈ 0.9 GB per ZL16 tile
-  store/           the cache: the result of every step            ≈ 1.5 GB per ZL16 tile
+  chunks/          image pieces downloaded (raw material)          ≈ 0.75 GB per ZL16 tile
+  store/           the cache: the result of every step            ≈ 3 GB per ZL16 tile
     orthostudio.osm/  orthostudio.dem/  orthostudio.vectors/       (small)
     orthostudio.mesh/  orthostudio.masks/  ...
     texture.dds/                 the finished textures (nearly all the space)
@@ -381,7 +381,7 @@ the one a build would change is found at a glance among the chosen squares.
 source delivers it, tones it down a little, a lot, or by your own numbers (brightness, contrast and
 colour, under *For experts*). It is applied when the textures are encoded, which is the last step
 that reads the downloaded images: changing your mind builds the tile again **without downloading
-anything**, in a minute or so. A user of the X-Plane.Org page asked for it after editing their
+anything**, in about 15 s for a ZL16 tile. A user of the X-Plane.Org page asked for it after editing their
 screenshots by hand (2026-09-18).
 
 **Colours square by square, and zone by zone.** Settings answers for everything you build; step 1
@@ -406,7 +406,7 @@ grass instead of shrubs, or any other of the list the setdecal tool offers, less
 12 no longer has. Every terrain file of a tile names its decal, or none, and that line is all
 setdecal changes; OrthoStudio XP writes it the same way. Turning the grain on or off, on the sea
 too, or choosing another decal reaches the tiles already built at their next build, which writes
-their terrain files again and nothing else: no download, no texture encoded again, about a second
+their terrain files again and nothing else: no download, no texture encoded again, under a second
 a tile. The decal goes on land only unless *Fine ground detail on the sea too* is on; lakes and
 rivers never have one.
 
