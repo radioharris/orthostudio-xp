@@ -51,15 +51,15 @@ The OrthoStudio XP Live window opens with the app, once you chose to fly, or wit
 of OrthoStudio XP's window (`uv run python -m orthostudio.live ui` from a checkout). It has two
 tabs, as OrthoStudio XP's screens:
 
-- **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
-  state, the imagery source and its two zooms on one line (chosen first and saved as soon as
-  chosen; the source's credit and licence at the foot of the map, what each zoom does in its
-  hover), the departure to prepare and Start Live, then the flight and the
-  textures; under them what Live needs (X-Plane, a mesh, no other program streaming ortho running,
-  such as XPME or AutoOrtho, the plugin), with a
-  button to the regions where a mesh is missing; its log at the bottom. The source and the zooms
-  change only while Live is stopped, and textures already built keep their photos: "From scratch"
-  builds them all again with a new source.
+- **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large (as tall as the column
+  beside it where that one is taller), and on the right the state, the imagery source and its two
+  zooms on one line (chosen first and saved as soon as chosen; the source's credit and licence at
+  the foot of the map, what each zoom does in its hover), the departure to prepare and Start Live,
+  then the flight and the textures; under them what Live needs (X-Plane, a mesh, no other program
+  streaming ortho running, such as XPME or AutoOrtho, the plugin), with a button to the regions
+  where a mesh is missing; its log at the bottom. The source and the zooms change only while Live is
+  stopped, and textures already built keep their photos: "From scratch" builds them all again with a
+  new source.
 
   The flight says beside its title whether X-Plane sends its position, then shows the altitude,
   the ground speed and the position in three boxes; under them, how far X-Plane's image is sharp
