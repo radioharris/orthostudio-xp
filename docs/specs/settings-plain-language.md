@@ -6,9 +6,18 @@ differences: presets set only the answers they list and leave the imagery source
 overlays and the expert settings alone; a question on roads, forests and buildings was added
 (`essential.overlays`, for simHeaven X-World users); the X-Plane folder is shown as detected with a
 field for another one; "Removed / automatic" settings stay in the model and appear only when set by
-hand (`mesh_zl` is not derived by the engine: it stays 19). Scope: the 45 leaves of
-`src/orthostudio/config/models.py` at the time (12 essential, 14 advanced, 19 expert). The map
-(`region`, P5) is out of scope.
+hand (`mesh_zl` is not derived by the engine: it stays 19), and `masks_use_dem_too` joined them: a
+build refuses it since decision 0009 (2026-09-14, 4.12); `ovl_exclude_pol` is a text field, not a
+checklist (4.18). Scope: the 45 leaves of `src/orthostudio/config/models.py` at the time (12
+essential, 14 advanced, 19 expert). The map (`region`, P5) is out of scope. Of the settings added
+later (the model now holds 60 leaves: 17 essential, 14 advanced, 29 expert), only the decals are
+studied here (4.17b, 4.17c). The others are defined in `docs/specs/settings.md`: the data folder
+(`essential.data_dir`), the SimBrief name (`essential.simbrief_user`), a folder of one's own
+elevation files (`essential.relief.folder`), the photo colours (`essential.photo_look`,
+`expert.photo_brightness`, `expert.photo_contrast`, `expert.photo_saturation`), the five
+downloaded reliefs (values of `essential.relief.source`, 2.9), the folder of hand-made mesh patches
+(`expert.patches_dir`), the prepared map data (`expert.osm_folder`, `expert.osm_library`,
+`expert.osm_library_token`) and the daily check for a newer version (`expert.check_updates`).
 
 Why: the user flies X-Plane, has used Ortho4XP and finds its settings incomprehensible ("sand,
 land, lakes, radius... nobody understands them"). The page still shows Ortho4XP's names and
@@ -50,6 +59,11 @@ The questions of the essential page, in order (the region comes first, from the 
 7. How much of the photo on lakes and rivers?
 8. Where should the terrain heights come from? (then: which file? are there holes in it?)
 
+The page asks these eight in this order (`ui/settings.js` `renderQuestions`), after four on this
+computer, its pilot and its X-Plane (the X-Plane folder, the data folder, the SimBrief name, the
+roads, forests and buildings) and before two more (a folder of one's own elevation files, the photo
+colours).
+
 Findings that change what the page may say (details in section 6):
 
 - `ratio_bathy` does nothing between 0.1 and 1 unless distance masks are built, which they are
@@ -65,8 +79,8 @@ Findings that change what the page may say (details in section 6):
   loses the photo over its sea without any message.
 - `apt_curv_tol` applies whether smaller or larger than `curvature_tol`; the hint says "if
   smaller".
-- Nothing refuses an airport zoom level above `mesh_zl` (map zones are refused above it by the
-  P5 work in progress, `zones.py:550-567`).
+- Nothing refuses an airport zoom level above `mesh_zl` (map zones are refused above it since P5,
+  2026-09-13: `zones.py` `_check_level`).
 
 ### 0.1 Index of the 45 settings
 
@@ -109,7 +123,7 @@ Findings that change what the page may say (details in section 6):
 | 35 | `expert.lane_width` | `lane_width` | 4 m | Folded | Half-width of the flattened strip |
 | 36 | `expert.max_levelled_segs` | `max_levelled_segs` | 200 000 | Folded | Road points flattened per layer |
 | 37 | `expert.water_simplification` | `water_simplification` | 0 m | Folded | Simplify lake and river outlines |
-| 38 | `expert.masks_use_dem_too` | `masks_use_DEM_too` | false | Folded (with a relief file) | Use the relief for the coast fade |
+| 38 | `expert.masks_use_dem_too` | `masks_use_DEM_too` | false | Folded (with a relief file); not offered on the page, and refused by a build since 2026-09-14 (4.12) | Use the relief for the coast fade |
 | 39 | `expert.masks_custom_extent` | `masks_custom_extent` | `""` | Removed (broken) | — |
 | 40 | `expert.distance_masks_too` | `distance_masks_too` | false | Folded | Shallow water near the shore |
 | 41 | `expert.sea_texture_blur` | `sea_texture_blur` | 0 | Folded | Blur the photo over the sea |
@@ -117,7 +131,7 @@ Findings that change what the page may say (details in section 6):
 | 43 | `expert.use_decal_on_terrain` | `use_decal_on_terrain` | false | Folded | Fine ground detail at very low height (decals) |
 | 43b | `expert.decal_on_sea` | – | false | Folded | Fine ground detail on the sea too |
 | 43c | `expert.decal` | none | `maquify_2_green_key.dcl` | Folded (list) | Ground decal |
-| 44 | `expert.ovl_exclude_pol` | `ovl_exclude_pol` | `[0]` | Folded (checklist) | X-Plane objects to remove |
+| 44 | `expert.ovl_exclude_pol` | `ovl_exclude_pol` | `[0]` | Folded (checklist; a text field on the page, 4.18) | X-Plane objects to remove |
 | 45 | `expert.ovl_exclude_net` | `ovl_exclude_net` | `[]` | Folded | X-Plane networks to remove |
 
 ## 1. What a tile is made of
@@ -205,8 +219,9 @@ when one explains better than words.
 
 ### 2.1 `essential.provider`
 
-`default_website` · `BI` · a code of `imagery/registry.toml`: 12 providers, `BI` Bing, `Arc`
-and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan, the USA.
+`default_website` · `BI` · a code of `imagery/registry.toml`: 13 providers (12 when this was
+written), `BI` Bing, `Arc` and `Arc@` Esri, `EOX` (the Sentinel-2 mosaic of the whole world, ZL14 at
+most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spain, Japan, the USA.
 
 - **Does.** The provider of the base zone, the one that covers the whole tile; a zone drawn on the
   map can override it locally (Ortho4XP `O4_DSF_Utils.py:183-206`; OrthoStudio XP
@@ -214,8 +229,11 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
   when the zoom level is above the provider's `max_zl` (19 for Bing, "assumed" in the registry).
 - **In X-Plane.** The photos themselves: colour balance, date and season, haze or clouds in the
   pictures, sharpness at a given zoom level. National providers only cover their country
-  (`extent_bounds`). OrthoStudio XP has no colour filters and no soft blending between two providers
-  yet (`.flt` and `.comb` are P4b), so a change of provider inside a region leaves a seam.
+  (`extent_bounds`). OrthoStudio XP has no soft blending between two providers yet (`.comb` is
+  P4b), so a change of provider inside a region leaves a seam. It had no colour filters either when
+  this was written; since 2026-09-18 it sets the brightness, contrast and saturation of the photo,
+  three of the adjustments of Ortho4XP's `.flt` filters (`essential.photo_look` and three expert
+  values, `textures/colour.py`).
 - **Cost.** Download speed depends on the host: `max_in_flight` as measured on 2026-09-15 (Bing
   and Esri World Imagery about 1 100 requests/s, the line's limit; Esri Clarity 520; Spain 580;
   USGS 280; the Netherlands 180; Luxembourg 130; Japan 100; `docs/benchmarks/network.md` 7). A change keeps the vectors, mesh and masks and rebuilds the
@@ -454,8 +472,9 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 
 ### 2.9 `essential.relief.source` and 2.10 `essential.relief.file`
 
-`custom_dem` (empty = `auto`) · `auto` and `""` · `auto` or `file`; the path is required with
-`file` (`config/models.py:107-120`).
+`custom_dem` (empty = `auto`) · `auto` and `""` · `auto` or `file`, and since 2026-09-20 also
+`copernicus`, `usgs`, `usgs1`, `canada` and `south_america` (*Added since*, below); the path is
+required with `file` (`config/models.py:107-120`).
 
 - **Does.** `auto` leaves `custom_dem` empty, so the native elevation stage takes X-Plane 12's
   own relief: the `elevation` raster of the tile's Global Scenery DSF (1201 × 1201 posts, 3
@@ -470,18 +489,30 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
   the whole tile. Where the file does not reach, positions are clamped to its edge, so the edge
   heights are stretched to the tile border, Q17 (Ortho4XP `O4_DEM_Utils.py:237-261`,
   `T4XP.c:15198-15204`; OrthoStudio XP `dem/dem.py:237-243`, `T4XP:14963-14967`). Ortho4XP's syntax
-  `base;overlay` and `{latlon}` still works in the string (`dem/dem.py:80-98`), but X-Plane's
-  relief cannot be the base of such a composite: its inputs are only declared when `custom_dem`
-  is empty (`pipeline/build.py:1548`). Choosing a file does not start the `-r` refinement that
-  `settings.md` 3 announces (section 6.3).
+  `base;overlay` and `{latlon}` still works in the string (`dem/dem.py:80-98`). X-Plane's relief
+  could not be the base of such a composite when this was written (its inputs were only declared
+  when `custom_dem` was empty, `pipeline/build.py:1548`); since 2026-09-19 an empty base followed by
+  overlays is X-Plane's relief, which the build writes `XP12;<overlays>` (`pipeline/build.py`).
+  Choosing a file does not start the `-r` refinement that `settings.md` 3 announces (section 6.3).
+- **Added since.** Five downloaded reliefs, each a name where Ortho4XP puts a source name in
+  `custom_dem` (`config/overrides.py` `_custom_dem`): `copernicus` (`COP30`, Copernicus at 1
+  arc-second, 2026-09-17), `usgs` (`NED1/3`, the USGS 3DEP at 1/3 arc-second, the United States
+  only, 2026-09-18), `canada` (`COP30;HRDEM`, Canada's lidar laid over Copernicus, 2026-09-19),
+  `usgs1` (`NED1`, the USGS at 1 arc-second over North America) and `south_america`
+  (`COP30;ANADEM`, the bare ground of South America laid over Copernicus, both 2026-09-20). Each
+  one-degree square is downloaded once and kept: about 26 to 50 MB, and about 400 MB for the USGS
+  3DEP (the notes of the question, `ui/i18n.js` `settings.q.relief_*_note`); the two USGS reliefs
+  refuse a tile they do not cover rather than build it flat. A folder of one's own files
+  (`essential.relief.folder`, 2026-09-19, `dem.md` 3.0a) is laid over whichever relief is chosen,
+  X-Plane's included (`config/overrides.py` `_with_folder`).
 - **In X-Plane.** The shape of mountains, valleys, cliffs and embankments under the photos.
   X-Plane's relief is 90 m data: the tile matches the default scenery around it (within a few
   metres of AutoOrtho's and XPME's base packages, ADR 0007), but small landforms are missing. A
   detailed file (a 25 m national model, 1-5 m LIDAR) adds them, with more triangles; at its
   border the tile may no longer meet the neighbouring scenery.
-- **Cost.** Nothing to download in either case. A detailed file makes the mesh denser, up to
-  `limit_tris`. Replacing the content of the same file does not rebuild anything
-  (`dem.md` 9.3).
+- **Cost.** Nothing to download with `auto` or `file` (the downloaded reliefs: *Added since*,
+  above). A detailed file makes the mesh denser, up to `limit_tris`. Replacing the content of the
+  same file does not rebuild anything (`dem.md` 9.3).
 - **Recommendation. Shown**; the file picker only when "my own file" is chosen.
 - **Question.**
   - EN: *Where should the terrain heights come from?* — **X-Plane 12's own relief (recommended:
@@ -494,6 +525,8 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
     (GeoTIFF ou HGT), par exemple un modèle numérique de terrain national détaillé. Puis *Quel
     fichier ?* avec la note *Il doit couvrir toute la tuile : au-delà de son bord, les altitudes
     sont étirées.* *Change la forme des collines, des vallées et des falaises sous les photos.*
+  - The page has offered seven answers since 2026-09-20: these two and the five downloaded reliefs
+    (`ui/settings.js` `questionChoices`, `ui.md` 2.4).
 - **Picture.** Two hillshades of the raster the mesh reads (`Data<tile>.alt`, published by the
   vector stage), X-Plane's relief next to the file, shaded with a numpy gradient; optionally a
   wireframe of `mesh.npz` over the same valley.
@@ -841,15 +874,15 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
   `vectors/grid.py:60-100`, `vectors/assemble.py:298`), and is the grid on which the DSF decides the
   texture of each triangle (Ortho4XP `O4_DSF_Utils.py:175-224`; OrthoStudio XP
   `dsf/zones.py:207-245`). An airport zoom level above `mesh_zl` is accepted without any check (map
-  zones are refused above it by the P5 work in progress, `zones.py:550-567`); by the arithmetic of
+  zones are refused above it since P5, 2026-09-13: `zones.py` `_check_level`); by the arithmetic of
   `dsf/zones.py:242-245` its texture would cover only part of each mesh cell, the rest getting
   clamped texture coordinates (not tested: Q18).
 - **In X-Plane.** Nothing by itself. A lower value saves triangles ("a few tens of thousands"
   per the hint, not measured).
 - **Cost.** A change rebuilds everything from the vectors.
 - **Recommendation. Automatic:** `max(19, the highest zoom level of the request)`, and refuse
-  any zoom level above it. Every provider of the registry stops at 19, except Luxembourg (20,
-  assumed).
+  any zoom level above it. Every provider of the registry stops at 19 or below (Japan at 18, and
+  EOX, added on 2026-09-22, at 14), except Luxembourg (20, assumed).
 
 ### 4.2 `expert.mask_zl`
 
@@ -1006,14 +1039,19 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 
 - **Does.** Adds to the sea mask every place where the relief is under 0.5 m, slightly blurred
   (Ortho4XP `O4_Mask_Utils.py:19, 123-137, 150-155, 332-370`). OrthoStudio XP's native masks stage
-  cannot read the relief yet, so this switch sends the masks stage back to Ortho4XP
-  (`pipeline/native.py:143-144`), which reads Ortho4XP's own relief source (`custom_dem`, else
-  viewfinderpanoramas), not X-Plane's relief used for the mesh (`legacy/params.py:80-98`).
+  does not read the relief. When this was written the switch sent the masks stage back to Ortho4XP
+  (`pipeline/native.py:143-144`), which read Ortho4XP's own relief source (`custom_dem`, else
+  viewfinderpanoramas), not X-Plane's relief used for the mesh (`legacy/params.py:80-98`). Since
+  decision 0009 (2026-09-14) no Ortho4XP runs inside a build and the `orthostudio.legacy` package is
+  gone: a build with this switch on stops before it downloads anything (`CFG_VALUE_INVALID`,
+  `pipeline/native.py` `native_reasons`).
 - **In X-Plane.** With a very detailed relief file (5 m or finer per the hint) a sea fade that
   follows the real waterline; with coarse data, blocky coasts.
-- **Cost.** Masks built by Ortho4XP: 4.3 s instead of 0.8 s on `+43+005` (measured,
-  `p3-native.md` 1).
-- **Recommendation. Folded**, offered only with a relief file.
+- **Cost.** Masks built by Ortho4XP, until decision 0009: 4.3 s instead of 0.8 s on `+43+005`
+  (measured, `p3-native.md` 1).
+- **Recommendation. Folded**, offered only with a relief file. The page does not offer it: it shows
+  under *No longer offered* only when a saved value differs from the default (`ui/settings.js`
+  `RETIRED`).
 - **Expert label.** EN *Use the relief to draw the coast fade (detailed files only)* · FR
   *Utiliser le relief pour dessiner le fondu côtier (fichiers détaillés seulement)*.
 
@@ -1023,10 +1061,13 @@ and `Arc@` Esri, national ones for Luxembourg, the Netherlands (4), Spain, Japan
 
 - **Does.** In Ortho4XP it adds a hand-drawn "good imagery" area to the masks, but the code then
   reads an undefined name (`custom_mask`) and fails on every mask cell that reaches it
-  (`O4_Mask_Utils.py:157-175`; `masks-build.md` 2). In OrthoStudio XP the extent rasteriser is P4b;
-  setting it sends the masks stage back to Ortho4XP (`pipeline/native.py:145-146`), which meets
-  that failure.
-- **Recommendation. Removed** until P4b.
+  (`O4_Mask_Utils.py:157-175`; `masks-build.md` 2). In OrthoStudio XP the extent rasteriser is P4b.
+  When this was written, setting it sent the masks stage back to Ortho4XP
+  (`pipeline/native.py:145-146`), which met that failure; since decision 0009 (2026-09-14) a build
+  with it set stops before it downloads anything (`CFG_VALUE_INVALID`, `pipeline/native.py`
+  `native_reasons`).
+- **Recommendation. Removed** until P4b. The page shows it under *No longer offered* only when a
+  saved value differs from the default (`ui/settings.js` `RETIRED`).
 
 ### 4.14 `expert.distance_masks_too`
 
@@ -1145,7 +1186,9 @@ No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/d
   they are listed.
 - **Cost.** Only the overlay is rebuilt (3-4 s measured).
 - **Recommendation. Folded**, as a checklist in plain words: Beaches (removed, recommended) ·
-  Forests · Autogen · Facades.
+  Forests · Autogen · Facades. The page has a text field instead, numbers and parts of names
+  separated by commas, whose help names `0` (the beaches, by default), `.for`, `.fac`, `.ags` and
+  `.agb` (`ui/settings.js` `expertField`, `ui/i18n.js` `settings.x.exclude_pol_hint`).
 - **Picture.** None needed; the checklist can list the definitions really present in the tile
   with their counts, from the overlay stage's statistics (`FilterStats.polygon_defs`,
   `overlays/textfilter.py:36-61`).
@@ -1313,8 +1356,8 @@ uncached tile adds its OSM download (24.6 s measured on `+43+004`). On top of th
     lowers the DSF pool capacity (35 000 instead of 50 000 points). Ortho4XP
     `O4_DSF_Utils.py:477-479, 495-498`.
 27. **`mesh_zl`**, "put a limitation on the maximum allowed imagery zoomlevel": Ortho4XP enforces
-    nothing; OrthoStudio XP now refuses map zones above it (`zones.py:550-567`, P5 in progress) but
-    not the airport cover (Q18). Ortho4XP `O4_DSF_Utils.py:219-224`; OrthoStudio
+    nothing; OrthoStudio XP refuses map zones above it since P5, 2026-09-13 (`zones.py`
+    `_check_level`), but not the airport cover (Q18). Ortho4XP `O4_DSF_Utils.py:219-224`; OrthoStudio
     XP `dsf/zones.py:242-245`.
 28. **`masks_custom_extent`**: fails in Ortho4XP on every cell that reaches the custom extent
     (`custom_mask` undefined). Ortho4XP `O4_Mask_Utils.py:170-175`.
@@ -1418,9 +1461,11 @@ Not settings wording, but the page will meet them:
 - **The plan ignores the airport cover** until a DSF exists: `estimate._tile_textures` counts the
   tile and its zones only (`estimate.py:274-298`). With `icao` preselected, the page would
   underestimate disk and download by up to 60 % on a tile like `+50+008`.
-- **`masks_use_dem_too` and `masks_custom_extent`** silently switch the masks stage to Ortho4XP
+- **`masks_use_dem_too` and `masks_custom_extent`** silently switched the masks stage to Ortho4XP
   (`pipeline/native.py:143-146`), with another relief source in the first case and a known crash
-  in the second.
+  in the second. Addressed by decision 0009 (2026-09-14): a build with either set stops before it
+  downloads anything (`CFG_VALUE_INVALID`), and the page offers neither (`ui/settings.js`
+  `RETIRED`).
 - **`XP12` water with `imprint_masks_to_dds` off** is silently `XP11 + bathy`
   (`textures/ter.py:94`).
 - **A relief file** that misses part of the tile is stretched, and one that misses the tile

@@ -61,7 +61,8 @@ footprint.
 * encoding the surfaces as PSLG layers with their altitudes, traverses and seeds
   (`encode_runways_taxiways_and_aprons` 1038-1339, `encode_hangars` 1341-1373,
   `flatten_helipads` 1375-1462) — chantier `aptlayers`;
-* writing `Data<tile>.apt` and the clean artefact beside it (arbitration B3) — the rule;
+* writing the published airport record, `airports.npz` and `airports.wkb.json` (arbitration
+  B3; no `Data<tile>.apt` is written since decision 0009): the rule;
 * the high-resolution imagery cover of airports (arbitration B4) — the DSF node;
 * `apt.dat` (arbitration B5): nothing here reads it. The geometry starts at the OSM
   `aeroway` layer and only there.
@@ -99,8 +100,8 @@ Three properties of that record are contractual, not incidental:
 `orthostudio.vectors.osmdata.OsmData` is already id-for-id identical to Ortho4XP's `OSM_layer`
 (`vectors-osm-layers.md`), which is what makes this reachable: `store.nodes`, `store.ways`,
 `store.relations[id]["outer"]` and `store.tags["w" | "r"]` are Ortho4XP's `dicosmn`, `dicosmw`,
-`dicosmr`, `dicosmtags`. `AirportSet` does not carry the store, so the two builders take it as
-their second argument.
+`dicosmr`, `dicosmtags`. The two builders take the store as their second argument; the
+`AirportSet` that `discover` returns carries it too (`AirportSet.store`), but they do not read it.
 
 **Every area is `None` until its builder has run, and empty (not `None`) after.** That is how
 `discover.discard_unwanted` tells "this airport has no runway" from "the runway module has not
@@ -248,7 +249,7 @@ All four builders turn ways into tile-local polygons the same way: coordinates m
 
 | surface | origin | construction | invalid way |
 |---|---|---|---|
-| hangar | `:700-734` | `ensure_MultiPolygon(improved_buffer(union, 2, 1, 0.5))` | skipped silently |
+| hangar | `:700-734` | `ensure_MultiPolygon(improved_buffer(union, 2, 1, 0.5))` | skipped, `OSM_AIRPORT_SURFACE_INVALID` |
 | apron | `:734-775` | `ensure_MultiPolygon(union)`, **no buffer** | skipped, `OSM_AIRPORT_SURFACE_INVALID` |
 | taxiway | `:775-805` | lines, then `ensure_MultiPolygon(improved_buffer(lines, 15, 3, 0.5))` | — a taxiway is a line, it is never invalid |
 
@@ -364,8 +365,8 @@ smooth_dem_over_airports(dem: Dem, airports: Sequence[Footprint],
 
 returns a **new** `Dem` sharing every field but `alt_dem` (Ortho4XP mutates `tile.dem.alt_dem` in
 place; a cached artefact must not be mutated under its digest). `Footprint` is structural:
-anything with `boundary`, `surfaces` and `smoothing_pix`, which is what `areas.AirportAreas`
-is. The caller writes the result with `Dem.write_alt`, which is what produces
+anything with `boundary`, `areas` (the four built surfaces) and `smoothing_pix`, which is what
+`model.Airport` is. The caller writes the result with `Dem.write_alt`, which is what produces
 `Data<tile>.alt`.
 
 ## 6. Wanted differences
@@ -393,7 +394,8 @@ is. The caller writes the result with `Dem.write_alt`, which is what produces
    from each side and raises `IndexError` on a raster narrower than that; OrthoStudio XP returns a
    narrower blend instead. Unreachable on a real raster with the tile setting (3 673 samples,
    `apt_smoothing_pix <= 1000`); it was reachable through an OSM tag, hence difference 9.
-   Declared by review 6, pinned by `tests/test_review6_fidelite_chaine.py`.
+   Declared by review 6, pinned by `tests/test_review6_fidelite_chaine.py` until decision 0010
+   (2026-09-14) removed that file; no remaining test reaches the clamp.
 9. **An OSM `smoothing_pix` tag outside `0..MAX_SMOOTHING_PIX` (1000) is refused, not
    clamped**: `discover._smoothing_pix` ignores it -- the airport takes the tile's
    `apt_smoothing_pix`, as for an unparsable tag -- and reports
@@ -406,6 +408,9 @@ is. The caller writes the result with `Dem.write_alt`, which is what produces
    on `+43+005` (no tag) or on any value in range (`tests/test_review6_robustesse_cas_limites.py`).
 
 ## 7. Acceptance
+
+A1 to A8 compared the chain with Ortho4XP's own build of `+43+005`, measured 2026-09-12; they
+were removed with decision 0010 (2026-09-14). A9 and A10 still run.
 
 | # | test | proves |
 |---|---|---|

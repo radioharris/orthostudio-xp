@@ -8,6 +8,11 @@ Ortho4XP's output formats.
 - the **44 tile variables** (`TILE_PARAMETERS`) and the text of their settings file: the tile
   configuration of a build uses Ortho4XP's names, `--set` and the API parse values with them, and
   every pack carries the values it was built with in `tile_settings.cfg` (decision 0011);
+- nine settings of OrthoStudio XP's own, read and typed like a tile variable but absent from
+  Ortho4XP (`OSXP_PARAMETERS`: `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`,
+  `photo_saturation`, `photo_zones`, `osm_folder`, `osm_library`, `osm_library_token`): `--set`
+  and the API accept them beside the 44, and `tile_cfg_text` does not write them, so they never
+  reach a pack's `tile_settings.cfg`;
 - the **index of a tile's mask PNGs**, named as Ortho4XP names them, over the masks artefact;
 - the **tile folder names** (`short_latlon`, `round_latlon`, `long_latlon`);
 - the reader of the **`terrain/*.ter` and the `Ortho4XP_<tile>.cfg` of a tile Ortho4XP built**,
@@ -96,7 +101,8 @@ Decision: **fix**.
 - The line is split on the **first** `=`; Ortho4XP splits on every `=` and drops any line with two
   (none of the 44 tile parameters can legitimately contain one, so this is only more robust).
 - Unknown keys are kept as raw strings under their own name, so that nothing written by a
-  newer or older Ortho4XP is lost; `strict=True` turns them into `CFG_LINE_INVALID`.
+  newer or older Ortho4XP is lost; `strict=True` turns them into `CFG_LINE_INVALID`. The nine keys
+  of `OSXP_PARAMETERS` (section 1) are not unknown: they are typed as that table declares.
 - The declared types come from `cfg_vars` (`O4_Config_Utils.py:16-352`), ported as the table
   `TILE_PARAMETERS` (name, type, default) for the 44 tile parameters written by
   `write_to_config` (`list_tile_vars`, `O4_Config_Utils.py:423-430`). Quirks kept as is:
@@ -141,6 +147,7 @@ parse_ter_name(name, *, zl=None) -> tuple[TextureId, TerKind]
 tile_config(build_dir, *, lat=None, lon=None, strict=False, with_defaults=False) -> dict[str, Any]
 parse_tile_cfg(text, *, path=None, strict=False) -> dict[str, Any]
 TILE_PARAMETERS: dict[str, TileParameter]                                  # name -> (type, default)
+OSXP_PARAMETERS: dict[str, TileParameter]                                  # OrthoStudio XP's own nine
 tile_cfg_text(values) -> str, tile_defaults() -> dict[str, Any], tile_cfg_values(provider=, zl=, overrides=)
 masks_index(masks_dir, mask_zl) -> MaskIndex                               # callable (til_x, til_y) -> Path | None
 mask_tile_for(til_x, til_y, zl, mask_zl) -> MaskWindow | None

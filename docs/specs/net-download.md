@@ -102,7 +102,9 @@ State per `host_group` (all requests with the same key share it):
 `window` (allowed in flight), `in_flight`, `paused_until`, a ring of the last 1 000 latencies,
 and counters. Default `host_group=""` is a group like any other.
 
-- **Start** at `start_in_flight` (64 for Bing: 867 req/s, p99 156 ms, zero push-back, s. 2).
+- **Start** at `start_in_flight` (the constructor's 64 was chosen for Bing: 867 req/s, p99
+  156 ms, zero push-back, s. 2). The textures of a build start at the provider's own
+  `max_in_flight` instead, 128 for Bing (`TexturesSpec.start_in_flight`, `pipeline-textures.md` 2).
 - **Additive increase**: +1 when `window` successful completions have been observed since the
   last change (one "round"), until `max_in_flight` (128 for Bing: 1 436 req/s, last level with
   p99.9 < 0.6 s and no transfer above 1 s, s. 2). A success for AIMD is any HTTP answer that
@@ -156,8 +158,10 @@ compound: what a group achieves is `min(window / latency, rate)`, so whichever b
 a push-back that halves both halves the result once.
 
 **Why a ceiling and not a speed.** Every rate in the registry was measured once, from one machine, on one day. EOX's 224 was real here and eleven times what a user's address could get before the server stopped answering (2026-09-24). A figure like that is worth keeping as a limit nobody should pass, and worthless as an instruction. Climbing to it converges on what this line and this route allow, and costs 1.1 % of a full tile: measured, not guessed, which is why there is no exception for a rate a user declared themselves. It comes from the provider's
-`server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`) and for the
-probe (`estimate.probe`, which asked for every chunk of a texture at once).
+`server_req_per_s` (`imagery-providers.md` 4) for the build (`pipeline/textures.py`). The probe
+of the estimate (`estimate.probe_network`) is not paced at all, since pacing it measured the
+pacing and an online estimate came out three to four times too long (2026-09-24); the estimate
+caps the probe's throughput at `server_req_per_s` instead (`ProbeResult.throughput`).
 
 **Why a second limit.** R2 counts connections; a server may count requests. Apache with
 mod_evasive, which many small services run, serves a few images and then blocks the caller for
@@ -182,8 +186,9 @@ set the estimate alone.
   0.5 s at 128, s. 2) but are capped at `max(1, window // 2)` in flight per group, so a dead
   network cannot double the load. No hedge starts while its group is paused (R2): it is a second
   request, and the server has asked to wait.
-- Default `hedge_after_s` is 3 s in the constructor (safe for slow lines); the imagery layer
-  passes a provider-tuned value (0.5 s for Bing, ~5 x p50, s. 2).
+- Default `hedge_after_s` is 3 s in the constructor (safe for slow lines); the textures of a
+  build pass 1.0 s for every provider (`TexturesSpec.hedge_after_s`: the registry has no hedge
+  field), where P0 planned a value per provider (0.5 s for Bing, ~5 x p50, s. 2).
 - **(review 2026-09-13)** Over HTTP/2 a hedge (same URL, hence same hostname) is multiplexed on
   the connection of the primary, and so is the retry of R4: neither changes the route. That is
   why neither helped against the per-URL stalls of R4. The retry rounds of the textures ask
@@ -298,23 +303,26 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
   on a session of its own by `dem.sources.http_download`, under this module's rules for the
   answers (`dem.md` 3.5, since 0.1.19), and the map data library's files by `sources.library`.
 - Not here: placeholder detection (header, hash, size), parent-404 memo, Overpass mirror
-  policy, AutoOrtho co-existence (Bing ceiling shared at 64), 403 ban probing. They are
-  specified in section 5 for the layers that own them.
+  policy, specified in section 5 for the layers that own them; and two requirements of that
+  section no layer implements, AutoOrtho co-existence (Bing ceiling shared at 64) and 403 ban
+  probing (5.1, 5.4).
 
 ## 5. Requirements kept for later layers (from the P0 measurements)
 
 ### 5.1 Bing hosts (imagery registry)
 
 - Template `https://ecn.t{n}.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=15312`, `n`
-  rotating 0-3 per request. `t.ssl.ak.tiles.virtualearth.net` is the declared fallback host;
-  the clear HTTP/1.1 `r{n}.ortho` host of Ortho4XP is dropped (same bytes, no TLS, no HTTP/2; s. 1).
+  rotating 0-3 per request. `t.ssl.ak.tiles.virtualearth.net` was to be the declared fallback
+  host (the registry declares none); the clear HTTP/1.1 `r{n}.ortho` host of Ortho4XP is dropped
+  (same bytes, no TLS, no HTTP/2; s. 1).
 - `g=` is mandatory and free; it is part of the CDN cache key, so it is a constant in the
   provider registry and never varies between runs (s. 1).
 - Per-provider ceilings live in the registry (TOML): Bing 128, HTTP/1.1-only providers 16,
   Overpass 2. The global ceiling is the sum, never more than 256 streams. 192 buys 33 % more on
   a fast line but brought the 4-5 s stragglers (s. 2): expert setting only.
-- If AutoOrtho is running (its process is detected), the Bing ceiling is shared: OrthoStudio XP uses
-  at most 64 so that the pair stays under the 128 measured as safe.
+- If AutoOrtho is running (its process detected), the Bing ceiling was to be shared,
+  OrthoStudio XP using at most 64 so that the pair stays under the 128 measured as safe. Not
+  implemented: no process is looked for, and a build asks Bing for up to 128.
 
 ### 5.2 Placeholder detection (imagery)
 
@@ -340,9 +348,11 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
 
 ### 5.4 Push-back beyond 429 (imagery / provider health)
 
-- A 403 on a provider that answered 200 seconds ago is a ban signal: window to 8, 30 s pause,
-  then 3 probe requests; three consecutive 403 on probes = provider marked blocked for the
-  build (`NET_FORBIDDEN`), textures already downloaded are kept.
+- Not implemented: a 403 on a provider that answered 200 seconds ago was to be a ban signal:
+  window to 8, 30 s pause, then 3 probe requests; three consecutive 403 on probes = provider
+  marked blocked for the build (`NET_FORBIDDEN`), textures already downloaded kept. A build
+  handles a 403 as 5.6 says, and only the page's base map uses `NET_FORBIDDEN`
+  (`api/map_api.py`).
 - The UI shows the push-back state per provider and the process logs each transition with
   counts, so that a user report contains the numbers.
 
@@ -351,18 +361,31 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
 - Mirrors are declared **by machine, not by name** (s. 4): `overpass-api.de` round-robins over
   the machines behind `lz4.overpass-api.de` and `z.overpass-api.de` with one per-IP quota of 2
   for the three names; `overpass.kumi.systems` is a CNAME of `overpass.private.coffee` (six
-  weeks stale, 30 s gateway timeouts); `overpass.osm.jp` is dead. Decided order:
-  `lz4.overpass-api.de`, `overpass.openstreetmap.fr`, `maps.mail.ru` (last resort).
+  weeks stale, 30 s gateway timeouts); `overpass.osm.jp` is dead. Decided order in P0:
+  `lz4.overpass-api.de`, `overpass.openstreetmap.fr`, `maps.mail.ru` (last resort). Since
+  2026-09-22 (`MIRRORS`, `sources/osm.py`): `overpass-api.de`, `z.overpass-api.de` and
+  `lz4.overpass-api.de`, one cluster with one quota, then `overpass.openstreetmap.fr` (a 403 to
+  every query since that day) and `maps.mail.ru` as last resorts. The public name leads because
+  it was the only German name to answer that day; the quota and the minimum interval are held
+  per cluster, so a name hiding which machine answers costs nothing.
 - At most 2 requests in flight per machine and on the whole DE cluster; queries are
   `[out:json][timeout:120]` with `(._;>>;); out body qt;` (45.7 MB for +43+005 against 78 MB
   of XML in Ortho4XP), sent with a real `User-Agent`, cached compressed on receipt.
-- Health check `GET /api/status`, 5 s timeout; no answer or 5xx: skip the machine 10 minutes.
+- Health check `GET /api/status`, 5 s timeout; no answer or a 5xx opens the machine's breaker.
   A 403 on `/api/status` alone does not disqualify (`.fr`); a 429 puts the machine **and** the
-  other machine of its cluster aside for 10 minutes (s. 4).
-- Connect timeout 5 s; a 200 with a `remark` (timeout, memory) is retried once on the next
-  healthy machine. 3 attempts across machines, then `OSM_UNAVAILABLE`: another cluster's machine
-  is asked at once, another machine of the cluster that just failed after 5 s. Never the 2^n
-  back-off of Ortho4XP (up to 5 min 40 per query).
+  other machines of its cluster aside (s. 4). How long a breaker stays open
+  (`MirrorBoard.open`): for a machine that gave no answer, refused a query or failed its health
+  check, 20 s, doubling at each failure up to an hour (`COOLDOWN_S`, `MAX_COOLDOWN_S`); for a 5xx
+  to a query, 20 s, not doubled (`BUSY_COOLDOWN_S`); for a 429, the wait the server names
+  (`Retry-After`, or the slot its status page gives), else 60 s (`QUOTA_COOLDOWN_S`). These were
+  ten minutes, doubling, until 0.1.14 for a 429 that names no wait and 0.1.15 for the others.
+- Connect timeout 5 s; a 200 with a `remark` (timeout, memory) goes to the next machine, its
+  breaker left closed. A round asks at most five machines (`MAX_ATTEMPTS`, one per entry of the
+  list; three until 2026-09-22): another cluster's machine, or a sibling of a machine that gave no
+  answer or refused, is asked at once, a sibling of a machine whose cluster pushed back (a 429, a
+  5xx, a 200 too heavy for it) after 5 s (`ATTEMPT_DELAY_S`). When the rounds end without an
+  answer, the layer fails with `OSM_LAYER_UNAVAILABLE`. Never the 2^n back-off of Ortho4XP (up to
+  5 min 40 per query).
 - **One clock for when to ask again** (0.1.15): the breakers, and nothing else. Each carries what
   its server said (a 429's `Retry-After`, the slot its `/api/status` page names, the cooldown of a
   machine that is down), `MirrorBoard.soonest` gives the first moment any of them is ready, and a
@@ -374,7 +397,7 @@ that night). The fetcher costs +3-14 % CPU over the bare client for AIMD, hedgin
 - **Patience for a spent quota** (0.1.15): these servers count queries per internet address and
   free a slot on their own clock, in minutes. Three rounds twenty seconds apart gave one minute,
   and a user watched all five mirrors answer 429/403/504 and the build give up while the quota
-  needed longer (2026-09-24). The rounds are now five and wait for the breakers as above, inside a tile deadline that went from 5 to 15 minutes; raising the rounds under a five-minute deadline would have changed nothing, which is how the minute came about. The rounds still stop early when nothing that refused could pass. And the `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and a 429 **during a layer** asks that machine's page, one GET at the moment we are about to wait anyway, and holds the cluster until the slot it names. It was read only by Checks when first written, which is nowhere a build goes.
+  needed longer (2026-09-24). The rounds are now up to 40 (`ROUNDS`, a stop rather than a schedule) and wait for the breakers as above, inside the tile's deadline, which is what bounds them: `OsmJob.timeout_s` went from 5 to 15 minutes (900 s), since raising the rounds under a five-minute deadline would have changed nothing, which is how the minute came about. A build's OSM node passes its own 300 s, though (`_osm_run`, `pipeline/build.py`), so in a build a tile has five minutes for its Overpass download. The rounds still stop early when nothing that refused could pass. And the `/api/status` page says exactly when the next slot frees (`4 slots available now.` or `Slot available after: ..., in 140 seconds.`); `slot_wait_s` reads it, and a 429 **during a layer** asks that machine's page, one GET at the moment we are about to wait anyway, and holds the cluster until the slot it names. It was read only by Checks when first written, which is nowhere a build goes.
 - Each layer goes to the least busy cluster: two healthy clusters take four layers of a tile at
   once, two each. The breakers are the process's (`MirrorBoard`): a machine one tile found dead
   is not asked by the next tile, nor by the next build, until its cooldown ends
@@ -387,14 +410,17 @@ by `tests/test_pipeline_second_pass.py`:
 
 - A chunk whose request ended with a failure that says "try later" is asked again before its
   texture is declared incomplete: `NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED`
-  (429 beyond the pushback budget), and status 502, 503, 504, 408, 425 or **403**, whatever the
-  code carrying it. 403 was final until 0.1.14, and it is how a server that blocks a caller it
-  finds too eager usually says so: a user's own EOX source served two textures, then answered
-  4 000 chunks in eight seconds with no bytes, and not one was asked again (2026-09-24). A 403
-  that is a plain refusal now costs the bounded rounds of one pass and says the same thing, with
-  how many rounds it took. Not a 500 (the server's own answer for that URL, already asked
-  `max_attempts` times), not a 401 or a 451 (no waiting changes them), not a body that is not an
-  image. A 404 and a placeholder are answers, never errors: they go to
+  (429 beyond the pushback budget), and status 502, 503 or 504 (`NET_SERVER_ERROR`). Since
+  0.1.14 the textures' classification (`RETRYABLE_STATUSES`) also calls a 403, a 408 or a 425
+  "try later", whatever the code carrying it: a 403 is how a server that blocks a caller it finds
+  too eager usually says so, and a user's own EOX source served two textures, then answered
+  4 000 chunks in eight seconds with no bytes, and not one was asked again (2026-09-24). Such an
+  answer is kept as `NET_UNEXPECTED_STATUS`, though, and a texture waits for the rounds only when
+  each of its failed chunks carries `NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED` or
+  `NET_SERVER_ERROR` (`_defer`): a texture that met a 403, a 408 or a 425 is still reported
+  incomplete in that run (`pipeline-textures.md` 4.1). Not a 500 (the server's own answer for
+  that URL, already asked `max_attempts` times), not a 401 or a 451 (no waiting changes them),
+  not a body that is not an image. A 404 and a placeholder are answers, never errors: they go to
   the parent fallback (5.3), which is not applied to a transient failure.
 - Rounds after pauses of 5, 15 and 45 s, once every chunk of the tile has its first-pass
   answer and the parent rounds are over. Each round starts with a probe of two tiles the
@@ -410,7 +436,8 @@ by `tests/test_pipeline_second_pass.py`:
   and zoom level), pauses, probes and rounds included, whatever the number of chunks waiting: a
   pause that would end past it is not taken, a probe or round still running is cancelled, the
   chunks left stay `ERROR` and the log says so (`second_pass_capped`). The textures node holds
-  the build's single network slot meanwhile, and this limit is what bounds the wait of the other
+  the build's single network slot while a probe or a round asks, and lends it during the pauses
+  (`NodeContext.idle`, since 2026-09-18), and this limit is what bounds the wait of the other
   tiles; the earlier "about 2 min 10 s" (three rounds of 21 s) only held for up to 8 stuck
   chunks. When the provider is down: the first pause and a probe of two requests (under a
   second when connections are refused, 21 s when packets are dropped).

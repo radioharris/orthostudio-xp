@@ -24,7 +24,7 @@ every other family sees**, **what the artefact publishes** and **what enters the
  6  update_airport_boundaries         :203    │  airports-discovery.md  R14
  7  list_airports_and_runways         :204   ─┘
  8  DEM(...)                          :206          the raster is read HERE, not before
- 9  smooth_raster_over_airports       :213          airports-geometry.md §6
+ 9  smooth_raster_over_airports       :213          airports-geometry.md §5
 10  include_patches                   :214          orthostudio.vectors.patches
 11  encode_runways_taxiways_aprons    :215          airports-encoding.md §5-7
 12  treated_area = patches | surfaces :219
@@ -60,7 +60,8 @@ alone and buffers a road across a runway. Decision **keep**; the raster comes fr
 
 ## 2. One call: `orthostudio.airports_vec.stage`
 
-`build_airports(store, tile, params, on_event)` runs steps 1-7 and returns the `AirportSet`;
+`build_airports(store, tile, params, on_event)` runs steps 1-6 and returns the `AirportSet` with
+its counters (step 7, the listing, is `discover.listing`, which nothing calls);
 `smooth_elevation(dem, airports, params)` runs step 9; `encode(airports, tile, dem, ...)`
 runs steps 11-15 through `encode_airports`. The seam between the record
 (`model.Airport`) and the encoder (`encode.AirportLike`) is `views_of`, a nine-field
@@ -85,8 +86,9 @@ one beside its PSLG, together with a `dem.json` carrying the window
 input then points at the **vectors** node. This is option (c) of the `aptgeom` chantier's
 blocker 4, and it makes `--dem vectors` literally true again.
 
-Acceptance: `Data+43+005.alt` of the artefact is byte-identical to
-`fixtures/large/oracle/+43+005_zl14_BI/build/Data+43+005.alt`.
+Acceptance, measured 2026-09-12 (section 7): `Data+43+005.alt` of the artefact was byte-identical
+to `fixtures/large/oracle/+43+005_zl14_BI/build/Data+43+005.alt`, Ortho4XP's build of the tile,
+which nothing compares with since decision 0010 (2026-09-14).
 
 ## 4. The published airport records (arbitration B3, revised by decision 0009)
 
@@ -141,14 +143,15 @@ both the key **and** the bytes of `Data<tile>.alt`.
 | `build_runways(airports, store, tile, params)` | accepted as delivered (option (a)) | `aptgeom` blocker 1 |
 | who writes the smoothed `Data<tile>.alt` | `orthostudio.vectors@1` (option (c)) | `aptgeom` blocker 4 |
 | who writes `Data<tile>.apt` | `airports_vec/artefact.py`, called by the rule; nobody since decision 0009 | `aptgeom` blocker 5, `aptencode` blocker 7 |
-| the recorded `INTERP_ALT` run is helipads **then** roads | the integration splits it; `tests/test_vectors_assemble_oracle.py` updated | `aptencode` blocker 1 |
+| the recorded `INTERP_ALT` run is helipads **then** roads | the comparison with the recorded layers splits it (`tests/test_vectors_assemble_oracle.py`, removed with decision 0010 on 2026-09-14) | `aptencode` blocker 1 |
 | who passes the 1001×1001 raster | the layer builder, from `discover.airport_array` | `aptencode` blocker 2 |
 | `_Runs` promoted? | yes: `orthostudio.vectors.patches.Runs` is public and `encode.py` imports it (corrected by review 6) | `aptencode` blocker 5 |
 
 ## 7. Acceptance
 
-All in `tests/test_p4v2_oracle.py` unless said otherwise; measured 2026-09-12 on +43+005,
-numbers and method in `docs/benchmarks/p4-airports.md`.
+Measured 2026-09-12 on +43+005, numbers and method in `docs/benchmarks/p4-airports.md`. A1 to A7
+compared with Ortho4XP's build of the tile, in `tests/test_p4v2_oracle.py` unless said otherwise;
+those tests were removed with decision 0010 (2026-09-14). A8 still runs.
 
 | # | Target | Reached |
 |---|---|---|

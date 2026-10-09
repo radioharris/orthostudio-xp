@@ -1,12 +1,13 @@
 # OSM layers: the typed replacement of `OSM_layer` and `update_dicosm`
 
-Status: P4 wave 1, written before `src/orthostudio/vectors/osmdata.py` and
+Status: shipped; written for P4 wave 1, before `src/orthostudio/vectors/osmdata.py` and
 `src/orthostudio/vectors/tags.py` (tests `tests/test_vectors_osmdata.py`). Origin: Ortho4XP `src/O4_OSM_Utils.py:22-283` (`OSM_layer`,
 `update_dicosm`), `:392-464` (`OSM_queries_to_OSM_layer`, where `input_tags` / `target_tags` are
 built), `:587-641` (`OSM_to_MultiLineString`), `:643-772` (`OSM_to_MultiPolygon`), and the call
 sites of `src/O4_Vector_Map.py` (`:184-193` airports, `:256-306` roads, `:365-399` coastline,
-`:504-539` water, `:658-667` patches). Upstream: `docs/specs/osm-source.md` (the client, the
-snapshot, the Ortho4XP `.osm.bz2` writer). Downstream: `docs/specs/vectors-pslg.md` (what the noder
+`:504-539` water, `:658-667` patches). Upstream: `docs/specs/osm-source.md` (the client and the
+snapshot; the Ortho4XP `.osm.bz2` writer it also specified left the product with decision 0009,
+2026-09-14). Downstream: `docs/specs/vectors-pslg.md` (what the noder
 expects), the layer builders of wave 1 (coastline, water, roads, patches) and, in wave 2, the
 airports (arbitration A1).
 
@@ -251,7 +252,8 @@ The coastline closure (`coastline_to_MultiPolygon`), `cut_to_tile`, `refine_way`
 `improved_buffer`, the water simplification, the patches (`include_patches` reads its
 `.patch.osm` through this module but computes altitudes itself) and the whole airport chain
 (wave 2, arbitration A1) are other specs. Nothing here touches the network: the source is a
-snapshot or a warm cache file, both already on disk.
+snapshot or a patch's `.osm` file, both already on disk (Ortho4XP's warm cache file was read too,
+until decision 0010, 2026-09-14).
 
 ## 7. Wanted differences, in full
 
@@ -280,15 +282,16 @@ is the guard rail: it pins the observed order against `way_set_order`.
 
 ## 8. Acceptance and measurements
 
-**Oracle test** (`tests/test_vectors_osmdata_oracle.py`, marker `oracle`). For each of the four warm
-caches of `+43+005` (`airports`, `big_roads`, `coastline`, `water`), the Ortho4XP
-`OSM_layer.update_dicosm` runs in a sub-process on the same file with the same `input_tags` and
-`target_tags`, and prints a fingerprint: the counts, then the **raw** structures with their internal
-ids (`dicosmn` in id order, `dicosmw`, `dicosmtags`, `dicosmr`, `dicosmrorig`, and
-`list(dicosmfirst["w"])` in *iteration* order), each hashed with sha256 after a canonical
-`json.dumps`. The same sub-process then runs `OSM_to_MultiLineString` and, on the layers that have
-closed ways, `OSM_to_MultiPolygon` on that store and hashes their output. OrthoStudio XP reads the
-same file and must produce the same counts, the same structure hashes and the same geometry hashes.
+**Oracle test** (`tests/test_vectors_osmdata_oracle.py`, marker `oracle`; the test and the marker
+were removed with decision 0010, 2026-09-14). For each of the four warm caches of `+43+005`
+(`airports`, `big_roads`, `coastline`, `water`), the Ortho4XP `OSM_layer.update_dicosm` ran in a
+sub-process on the same file with the same `input_tags` and `target_tags`, and printed a
+fingerprint: the counts, then the **raw** structures with their internal ids (`dicosmn` in id
+order, `dicosmw`, `dicosmtags`, `dicosmr`, `dicosmrorig`, and `list(dicosmfirst["w"])` in
+*iteration* order), each hashed with sha256 after a canonical `json.dumps`. The same sub-process
+then ran `OSM_to_MultiLineString` and, on the layers that have closed ways, `OSM_to_MultiPolygon`
+on that store and hashed their output. OrthoStudio XP read the same file and had to produce the
+same counts, the same structure hashes and the same geometry hashes.
 
 Result, 2026-09-12, tile `+43+005`, the four warm caches
 (`tests/test_vectors_osmdata_oracle.py`, 14 tests, 15.0 s):
@@ -307,8 +310,8 @@ three `dicosmfirst` sets **in iteration order**, each over the internal negative
 the equality is not "the same data up to a canonical form": it is the same objects, in the
 same order, under the same ids.
 
-The same test rebuilds a snapshot out of each cache file (elements renumbered 1..N in file
-order) and checks that reading it gives the same store as reading the file, structure by
+The same test rebuilt a snapshot out of each cache file (elements renumbered 1..N in file
+order) and checked that reading it gave the same store as reading the file, structure by
 structure and `first["w"]` order included: the promise of section 2.1, on real data.
 
 **Timing and memory** (M4 Pro, `nice -n 10`, load average 1.8-2.5, best of three runs, whole

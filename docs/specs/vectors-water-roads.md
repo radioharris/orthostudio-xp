@@ -1,6 +1,7 @@
 # Inland water, roads and patches: the layers of `include_water`, `include_roads`, `include_patches`
 
-Status: P4 wave 1 (`src/orthostudio/vectors/water.py`, `roads.py`, `patches.py`).
+Status: shipped (`src/orthostudio/vectors/water.py`, `roads.py`, `patches.py`); written for P4
+wave 1.
 Origin: Ortho4XP `src/O4_Vector_Map.py:228-355` (`include_roads`), `:453-589`
 (`include_water`), `:639-968` (`include_patches`, `keep_obj8`), and the helpers of
 `src/O4_Vector_Utils.py` they call: `MultiPolygon_to_Indexed_Polygons:659-736`,
@@ -50,9 +51,10 @@ folder now, so it has no source.
 `large_lake_threshold = max_area * 1e6 / (lat_to_m * lon_to_m(lat + 0.5))` — square degrees of
 the tile-local frame. An element whose area reaches it becomes `SEA_EQUIV` (masked like the
 sea) unless its `name` is in `good_imagery_list`, a tuple that is **empty** in Ortho4XP
-(`O4_Vector_Map.py:16`). **Keep**, with the list exposed as
-`WaterParams.good_imagery_list` so the user can keep a named lake, and every decision
-reported (`LakeDecision`, error code `OSM_LAKE_TREATED_AS_SEA`).
+(`O4_Vector_Map.py:16`). **Keep**, with the list exposed as `WaterParams.good_imagery_list`,
+empty by default, and every decision reported (`LakeDecision`, error code
+`OSM_LAKE_TREATED_AS_SEA`). No setting reaches that list: the rule's parameters do not carry it
+and `layers.build_layers` builds `WaterParams` without it, so a build keeps it empty.
 
 The threshold is applied to the **element**, not to its parts: a relation whose polygons sum
 past the threshold goes to the sea in one piece (`multipol.area` at `:733`, before the
@@ -82,7 +84,7 @@ reproduced too: a component takes the rank of its **last** member in the sorted 
 every new member deletes the group's ids and appends the merged parts at the end of the
 dictionary; a polygon that never merges keeps its own rank. Within a component the order is
 the one `union_all` gives, which is not necessarily the one the incremental `unary_union`
-gave — a wanted difference with no effect on the set of ways (section 7.2).
+gave: a wanted difference with no effect on the set of ways (section 7.1).
 
 `merge_overlappings=False` (`clean_bad_geometries=False`) keeps every polygon as it comes,
 invalid ones included (`add_pol`, `:693-696`). **Keep**.
@@ -297,8 +299,9 @@ store or the pair ``(big_roads, small_roads)``.
 1001×1001 boolean raster of rule 3.2.1 and `area` the polygon subtracted in rule 3.3.
 `airports=None` means "no airport in this build" — an all-false raster and an empty area,
 which is exactly what Ortho4XP computes for a tile without aerodromes. Wave 2 fills it from
-`O4_Airport_Utils`' successor; the oracle test of section 8 fills it from the reference
-tile's own `Data+43+005.apt` to prove the road builder matches Ortho4XP with airports too.
+`O4_Airport_Utils`' successor (`stage.layers.airport_areas()` of `orthostudio.airports_vec`); the
+oracle test of section 8 filled it from the reference tile's own `Data+43+005.apt` to prove the
+road builder matched Ortho4XP with airports too, until decision 0010 (2026-09-14) removed it.
 
 ## 6. Costs
 
@@ -382,14 +385,15 @@ comparisons with Ortho4XP below were made by `test_vectors_water_oracle.py` and
    machine and no network is allowed, so this test uses a synthetic layer and is *not* a
    fidelity test.
 7. **Patches**: a `.patch.osm` file exercising each altitude tag, a ramp with its cross bars,
-   and an OBJ8 object, all checked against values computed by hand in the test, plus the one
-   real patch of the reference machine (`Patches/+39-078`, 24 polygons).
+   and an OBJ8 object, all checked against values computed by hand in the test. Until decision
+   0010 (2026-09-14) the test also read the one real patch of the reference machine
+   (`Patches/+39-078` of its Ortho4XP folder, 24 polygons).
 
 ## 9. Not covered here
 
 The coastline (`include_sea`, `coastline_to_MultiPolygon`) and the assembly of all the layers
-have their own specs; the airports, the elevation smoothing over them and the
-`good_imagery_list` UI are wave 2.
+have their own specs; the airports and the elevation smoothing over them came with wave 2
+(`airports-integration.md`). No setting or page reaches `good_imagery_list` (2.2).
 
 ## 9. Review-5 corrections
 

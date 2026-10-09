@@ -72,10 +72,12 @@ counted (`duplicate_idents`), so the result does not depend on hash order. The *
 on the other hand, is shared by 32 pairs of records on the reference file: typically a closed
 airport (`1 51 0 0 PAMB [X] Manokotak`, no `1302 icao_code`) next to its successor
 (`1 50 0 0 XPA000C Manokotak` + `1302 icao_code PAMB`), or a glider field and an offshore
-heliport both tagged `EHDS`. Both records are kept (`shared_icao` counts the codes); `get(code)`
-returns the one X-Plane would: explicit `1302 icao_code` first, then the record whose header
-identifier *is* the code, then file order (`icao_explicit DESC, (ident = icao) DESC, rowid`).
-`search` lists both, so the closed airport stays reachable by its own identifier.
+heliport both tagged `EHDS`. Both records are kept (`shared_icao` counts the codes). `get(code)`
+returns the first of them in file order: its query on `icao` has no ordering, and sqlite answers
+with the lowest `rowid`. `search` ranks them the way X-Plane would, explicit `1302 icao_code`
+first, then the record whose header identifier *is* the code, then file order
+(`icao_explicit DESC, (ident = icao) DESC, rowid`), and lists both, so the closed airport stays
+reachable by its own identifier.
 
 **Encoding.** The file is read as bytes and decoded as UTF-8 with `errors="replace"` only for
 the header and `1302` lines that are kept (names carry accents: `Rørvik Ryum`, `Provence-Alpes-
@@ -87,7 +89,8 @@ Côte-d'Azur`); a leading UTF-8 BOM and `\r\n` line ends are tolerated. The firs
 regex anchored on line starts for the row codes above, the incomplete tail after the last
 `\n` is carried to the next block. Memory stays at one block plus the rows of one airport;
 nothing proportional to the file size is ever held. Progress is reported to a callback
-`progress(bytes_done, bytes_total)` once per block (the UI shows "Indexing airports… 37 %").
+`progress(bytes_done, bytes_total)` once per block; the app gives none (`api/app.py` builds the
+index at the first airport request), so nothing on the page follows the indexing.
 
 ## 3. Output: `airports.sqlite`
 
@@ -204,14 +207,15 @@ prose; the API chantier calls `default_index(...)` and never `build` directly).
 
 ## 7. Acceptance
 
-Unit (synthetic `apt.dat`, 9 records): BOM + CRLF tolerated; `1302 icao_code` overrides the header
+Unit (synthetic `apt.dat`, 8 records): BOM + CRLF tolerated; `1302 icao_code` overrides the header
 identifier; a record without datum takes the first runway midpoint, a heliport without datum its
 first `102`; a record with no geometry is dropped and counted; a duplicate identifier keeps the
-first; a shared ICAO code resolves to the record with the explicit `1302 icao_code` while `search`
-lists both; UTF-8 names with accents round-trip; `search` prefix / substring / limit / empty query /
-`kinds`; `tiles_around` at r = 0, at a tile corner (4 tiles), across the antimeridian, and radius >
-1° in latitude; `is_stale` after touching the file, `ensure` no-op when fresh; `default_index` with
-`OSXP_HOME` in a temporary directory; `.tmp` cleaned on a broken file.
+first; a shared ICAO code resolves to the record with the explicit `1302 icao_code`, the first of
+the two in that file, while `search` lists both; UTF-8 names with accents round-trip; `search`
+prefix / substring / limit / empty query / `kinds`; `tiles_around` at r = 0, at a tile corner
+(4 tiles), across the antimeridian, and radius > 1° in latitude; `is_stale` after touching the
+file, `ensure` no-op when fresh; `default_index` with `OSXP_HOME` in a temporary directory; `.tmp`
+cleaned on a broken file.
 
 Oracle (this machine): `LFML` → `lat ≈ 43.44`, `lon ≈ 5.22` (`43.436666667`, `5.215` in the
 file), `tiles_around("LFML", 30)` contains `+43+005`; `search("marseille")` contains `LFML`;

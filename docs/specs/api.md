@@ -19,7 +19,8 @@ in the store are hits: "Retry the missing ones"), and manages the library of bui
 Settings and the airport index come from the `config` and `airports` packages.
 
 Every failure is an `OsxpError` rendered as JSON (`docs/specs/errors.md`) plus an `action`
-field for the page (`retry` / `settings` / `none`, section 6).
+field for the page (`retry` / `settings` / `none`, section 5.4); the error's own `action`,
+`stop` or `continue`, moves to `node_action` (`jobs.error_json`).
 
 ## 2. Contract
 
@@ -54,7 +55,7 @@ once nothing uses it. `build(specs, *, on_event, env) -> BuildReport` is
 | Method, path | Body / query | Answer |
 |---|---|---|
 | `GET /api/update` | – | `{current, latest, url, available}`: whether a newer OrthoStudio XP has been published (`orthostudio.update`). GitHub's `releases/latest` is asked at most once a day and the answer is kept in `$OSXP_HOME/update.json`; `url` is the release page, built by the engine rather than taken from GitHub's answer. No answer (offline, refused, rate-limited) is `available: false`, never an error. With `expert.check_updates` off, GitHub is not asked at all. A pre-release is never offered, but a build of one (`0.1.17rc1`) is offered its final and anything later. Nothing is downloaded or installed (a user who did not read the forum stayed on the version he had, with bugs fixed since, 2026-09-21) |
-| `GET /api/status` | – | `{version, api_level, xplane: {path, detected, running, others}, doctor: [Check...], home, user_home, data_dir: {path, chosen, present, tiles_real}, library_count, language, active_job, platform: "mac"\|"win"\|"lin", can_quit, engine: {root, pid, code}}`; it measures no folder (the sizes are `GET /api/sizes`), and what takes time (the checks, the list of processes, the other X-Plane folders, the packs, the library count) runs side by side in worker threads, never on the loop: `tasklist` there held every other request of the page (2026-09-22); a job's `relief` says where its tiles take their heights (`xplane`, `copernicus`, `usgs`, `usgs1`, `canada`, `south_america`, `file`, or `view` in the test suite; a folder of one's own laid over a relief keeps the relief's name), so that Works can show it while it builds (a user missed it, 2026-09-17; `usgs1` was missing until 0.1.19, and its builds read *own relief file*); `xplane.others` names the other X-Plane 12 folders of the machine, in the order tried (a user's tile went into an X-Plane 12 he had forgotten, 2026-09-17); `user_home` is the home folder of whoever runs the engine, which the page uses to write the paths under it with `~` (shorter to read, and no user's name in the pictures posted with a report); `data_dir` is where the tiles and the downloads go (`orthostudio.home.data_root`: `home` unless `chosen` in Settings), `present` false while its disk is unplugged, `tiles_real` its `tiles` folder with its links followed (null when the system cannot say; followed in a worker thread, where a network drive that stopped answering holds only it), which the Library takes for the atelier too: a tile built without being installed is listed under it, and a data folder reached through a link showed that tile in another folder (2026-10-05); `can_quit` is true when `osxp serve` started the engine; `engine.root` is the folder of the `orthostudio` package it runs, which tells an installation from another, and `engine.code` the mark of the code it started with, which tells it from the same installation after its files changed (section 6) |
+| `GET /api/status` | – | `{version, api_level, xplane: {path, detected, running, others, packs_of_their_own}, doctor: [Check...], settings_problems, home, user_home, data_dir: {path, chosen, present, tiles_real}, library_count, language, active_job, platform: "mac"\|"win"\|"lin", can_quit, engine: {root, pid, code}}`; it measures no folder (the sizes are `GET /api/sizes`), and what takes time (the checks, the list of processes, the other X-Plane folders, the packs, the library count) runs side by side in worker threads, never on the loop: `tasklist` there held every other request of the page (2026-09-22); a job's `relief` says where its tiles take their heights (`xplane`, `copernicus`, `usgs`, `usgs1`, `canada`, `south_america`, `file`, or `view` in the test suite; a folder of one's own laid over a relief keeps the relief's name), so that Works can show it while it builds (a user missed it, 2026-09-17; `usgs1` was missing until 0.1.19, and its builds read *own relief file*); `xplane.others` names the other X-Plane 12 folders of the machine, in the order tried (a user's tile went into an X-Plane 12 he had forgotten, 2026-09-17); `xplane.packs_of_their_own` names the packs of its Custom Scenery, enabled, that bring their own roads, forests and buildings (simHeaven X-World and its family, `install.xplane.packs_of_their_own`), which answer the overlays question of Settings (2026-09-20); `settings_problems` lists the values of `config.toml` this version could not read and left at their default (`settings.md` 5); `user_home` is the home folder of whoever runs the engine, which the page uses to write the paths under it with `~` (shorter to read, and no user's name in the pictures posted with a report); `data_dir` is where the tiles and the downloads go (`orthostudio.home.data_root`: `home` unless `chosen` in Settings), `present` false while its disk is unplugged, `tiles_real` its `tiles` folder with its links followed (null when the system cannot say; followed in a worker thread, where a network drive that stopped answering holds only it), which the Library takes for the atelier too: a tile built without being installed is listed under it, and a data folder reached through a link showed that tile in another folder (2026-10-05); `can_quit` is true when `osxp serve` started the engine; `engine.root` is the folder of the `orthostudio` package it runs, which tells an installation from another, and `engine.code` the mark of the code it started with, which tells it from the same installation after its files changed (section 6) |
 | `GET /api/engine` | – | `{version, api_level, can_quit, active_job, engine: {root, pid, code}}`, answered at once, without the measures of `/api/status`: a second launch recognises the running OrthoStudio XP with it (section 6) |
 | `GET /api/sizes` | - | `{store_bytes, chunks_bytes}`: the bytes on the disk of the store (a hard-linked file once: since 0.1.19 read from its index, `Store.disk_bytes`, every artefact's size but the tiles' textures folders, which hard-link the textures counted already, a figure the index keeps as its rows come and go, `graph-keys.md` 7; the walk of the store read every file of it, a minute or two on a user's hard disk at each start, and the sum of the index's rows 9.9 s on a cold hard disk for 10 000 artefacts, 2026-09-28) and of the downloaded images (read from the folder listings: they are never linked, and on Windows asking a file its links opens it), for the status bar, which asks after each status and waits for nothing; pages that ask while a measure runs share it. Apart from the status since API level 20: on Windows, behind an antivirus, the walk of a big store kept the page on the menu alone (2026-09-22) |
 | `POST /api/presence` | `{}` | a page is open (the page says so every 30 s, and when it shows again): `{ok: true}`; `osxp serve --quit-when-closed` stops five minutes after the last one (section 6) |
@@ -67,7 +68,7 @@ once nothing uses it. `build(specs, *, on_event, env) -> BuildReport` is
 | `POST /api/sources/test` | `{url_template, max_zl?, lat?, lon?}` | one tile asked for through the address, at zoom 15 (or `max_zl`) at `lat`/`lon`: `{ok, status, image, bytes, url, error}`, `ok` when a JPEG, PNG or WebP image came back |
 | `DELETE /api/sources/{code}` | – | `{removed, settings_provider}`: `settings_provider` is `"BI"` when step 1's saved source was this one and went back to Bing Maps, else `null`; 404 `CFG_PROVIDER_UNKNOWN` for a source the user did not add; 409 `SYS_BUSY` while a build under way or waiting uses it; 409 `SYS_SOURCE_IN_USE` while a zone does (`context.zones`: their names) |
 | `GET /api/settings` | – | `Settings` JSON (`orthostudio.config`) |
-| `PUT /api/settings` | `Settings` JSON | the saved settings (422 on a bad value, `XP_DIR_NOT_FOUND` for a changed `xplane_dir` that is not an X-Plane 12 folder, `context.why` `missing` or `not_xplane` with the subfolders it `lacks`; an unchanged one is not checked again); a changed `xplane_dir` lets the airport index that could not be built be tried again. A changed `data_dir` is refused with 409 `SYS_BUSY` while a build runs or waits, and with 422 `CFG_DATA_DIR_MISSING` (not found) or `CFG_DATA_DIR_INVALID` (`context.why`: `relative`, `file`, `xplane` inside Custom Scenery, `unwritable`, `links` for a disk that cannot hard-link files, exFAT or FAT32) by `orthostudio.home.check_data_dir`; it is saved resolved, and `null` for an empty field or OrthoStudio XP's own folder. Nothing is moved. An unchanged `data_dir` is not checked: the other settings save while its disk is unplugged |
+| `PUT /api/settings` | `Settings` JSON | the saved settings (422 on a bad value, `XP_DIR_NOT_FOUND` for a changed `xplane_dir` that is not an X-Plane 12 folder, `context.why` `missing` or `not_xplane` with the subfolders it `lacks`; an unchanged one is not checked again); a changed `xplane_dir` lets the airport index that could not be built be tried again. A changed `data_dir` is refused with 409 `SYS_BUSY` while a build runs or waits, and with 422 `CFG_DATA_DIR_MISSING` (not even the folder above it is there: its disk is away) or `CFG_DATA_DIR_INVALID` (`context.why`: `drive` for a drive letter alone, `E:`, `relative`, `absent` for a folder not made yet on a disk that is there, `file`, `xplane` inside Custom Scenery, `unwritable`, `links` for a disk that cannot hard-link files, exFAT or FAT32, or a folder shared over a network or with a virtual machine) by `orthostudio.home.check_data_dir`; it is saved resolved, and `null` for an empty field or OrthoStudio XP's own folder. Nothing is moved. An unchanged `data_dir` is not checked: the other settings save while its disk is unplugged |
 | `GET /api/settings/schema` | – | `settings_schema()` (unit, hint, level, ortho4xp, enum per field) |
 | `GET /api/airports?q=&limit=` | `q` 1-64 chars | `[{icao, name, lat, lon}]` |
 | `GET /api/basemap/style` | – | the street map's style (OpenFreeMap `liberty`), with every address inside rewritten to this router, **absolute**: the vector tiles are fetched from a web worker, which refuses a relative address. `Cache-Control: no-cache`, since the addresses name the port this engine answers on |
@@ -88,10 +89,10 @@ once nothing uses it. `build(specs, *, on_event, env) -> BuildReport` is
 | `GET /api/patches` | `?dir=` | `{dir, exists, tiles}`: the tiles the folder of hand-made mesh patches has something for, each with what a build of it reads (`pipeline.build.patched_tiles`: `{"-20-044": ["SBCF.patch.osm"]}`, south-west first). The folder is `dir`, what Settings shows before it is saved (empty: the default), else the saved `expert.patches_dir`, else `$OSXP_HOME/patches`; `dir` is `null` when there is none. For the Plan and Settings to name the patches before anything is built (a user took "Patches: none" in a report for his patch not being found, when it was for another square, 2026-09-21) |
 | `GET /api/library` | `?xplane_dir=` | `[{tile, kind, provider, zl, path, name, built_by, installed, keys, registered_at, updated_at, size_bytes, size_pending, present, disk_absent, photo, built, overlay}]` (section 2.3) |
 | `POST /api/library/overlays` | `{use: "others" \| "own", tiles, xplane_dir?}` | leaves the roads, forests and buildings of the squares to the other active overlay packs, or draws the tiles' own again (`install.md` 4.3): `{changed: [tile...], states: {tile: {state, others}}}`; 409 `XP_RUNNING`, 409 `SYS_TILE_IN_BUILD` for a tile in a build under way or waiting, 422 for a name that is not a tile |
-| `POST /api/library/import-ortho4xp` | `{folder}` | `{entries, searched}`: the imported rows, and the folders it looked in (`Tiles/` of the Ortho4XP folder, and the build folder its GUI remembers), so that a page can say where it found nothing (a user pressed Import and could not tell what had happened, 2026-09-21). Before 0.1.10 it answered the list of rows alone, which the page still reads |
+| `POST /api/library/import-ortho4xp` | `{folder}` | `{entries, searched}`: the imported rows, and the folders it looked in (`Tiles/` of the folder, the folder itself when it is not Ortho4XP's own, and the build folder Ortho4XP's GUI remembers: `library.ortho4xp_searched`), so that a page can say where it found nothing (a user pressed Import and could not tell what had happened, 2026-09-21). Before 0.1.10 it answered the list of rows alone, which the page still reads |
 | `POST /api/library/{name}/install` | `{xplane_dir?, link?, path?}` | the install receipt (section 2.3); 409 `SYS_TILE_IN_BUILD` for a pack OrthoStudio XP built whose tile is in the running or a queued job: the end of that build decides what X-Plane shows of the tile (an Ortho4XP pack of the tile stays free) |
-| `POST /api/library/{name}/uninstall` | `{xplane_dir?, path?}` | the uninstall receipt `{removed, pack, overlay_parked, overlay_pack_removed, pack_deleted, ...}` (`install.md` 4.1); 409 `XP_PACK_CONFLICT` when what Custom Scenery holds under that name is not the pack of the row at `path`; 409 `SYS_TILE_IN_BUILD` as for install |
-| `POST /api/library/{name}/delete` | `{xplane_dir?, path?}` | the delete receipt `{format: "osxp-delete-1", name, tile, removed_from_xplane, pack_deleted, freed_bytes, custom_scenery, warning}` (section 2.3, `install.md` 4.2); 409 `SYS_BUSY` while a job is active, 409 `SYS_PACK_NOT_OSXP` for a tile OrthoStudio XP did not build, 409 `XP_RUNNING` while X-Plane runs |
+| `POST /api/library/{name}/uninstall` | `{xplane_dir?, path?}` | the uninstall receipt `{removed, pack, overlay_parked, overlay_pack_removed, pack_deleted, ...}` (`install.md` 4.1); 409 `XP_PACK_CONFLICT` when what Custom Scenery holds under that name is not the pack of the row at `path`; 400 `XP_PACK_ONLY_COPY`, nothing changed, when it is a real folder that is the tile's only one (a pack built straight into Custom Scenery: `install.md` 4.1); 409 `SYS_TILE_IN_BUILD` as for install |
+| `POST /api/library/{name}/delete` | `{xplane_dir?, path?}` | the delete receipt `{format: "osxp-delete-1", name, tile, removed_from_xplane, pack_deleted, freed_bytes, custom_scenery, warning}` (section 2.3, `install.md` 4.2); 409 `SYS_BUSY` while a job is active, 409 `SYS_PACK_NOT_OSXP` for a tile OrthoStudio XP did not build, 409 `XP_RUNNING` while X-Plane runs; 400 `XP_PACK_ONLY_COPY`, nothing deleted, for a tile whose only folder was built straight into the Custom Scenery of the X-Plane known (`install.md` 4.2) |
 | `POST /api/library/file-plan` | `{tiles: [{name, path}], folder, xplane_dir?}` | what filing these tiles into `folder` does, reading only (`install.md` 4.6): `{folder, tiles: [{tile, path, how, bytes?}], copy_bytes, free_bytes, room}`, `how` one of `move` (one disk), `copy` (another, `bytes` to write), `reuse` (a whole copy there, read back before it is taken), `there`, `taken` (a folder or a link of its name), `not_whole` (the tile's own folder lacks files or holds another build), `imported`, `missing`, `in_build`; 422 `SYS_FOLDER_GONE`, `SYS_FOLDER_IN_CUSTOM_SCENERY` (a known X-Plane's Custom Scenery however reached too), `SYS_FOLDER_IS_ATELIER` (the workshop's own folders) or `SYS_FOLDER_IN_TILE` for a folder no tile goes into |
 | `POST /api/library/{name}/file` | `{path, folder, xplane_dir?}` | files one tile OrthoStudio XP built into `folder` (`filing.file_tile`): the receipt of the tile found again (`from`, `to`, `xplanes`, `overlay_lost`) with `format: "osxp-file-1"`, `moved` and `left` (the path of the folder it came from when a file there could not be removed, else null; the page says it); the request lasts as long as the copy; 422 as for the plan, `SYS_TILE_NAME_TAKEN` and `SYS_TILE_NOT_WHOLE` (before anything moves); `SYS_DISK_FULL`, `SYS_TILE_COPY_DIFFERS`; 409 `XP_RUNNING`, `SYS_PACK_IMPORTED`, `SYS_TILE_MISSING`, `SYS_FILING_STOPPED` (stopped, the tile where it was), `SYS_BUSY` while another tile is filed, a build runs or a tile is deleted |
 | `GET /api/library/filing` | - | `{progress: {tile, phase, done, total}}` while a tile is filed (`copy`, then `check`, in bytes), `{progress: null}` otherwise |
@@ -157,22 +158,25 @@ DeleteRequest { xplane_dir: str | null ; path: str | null }
 
 A bad tile name is a 422 whose body is the `CFG_LATLON_INVALID` error (not the pydantic list): the
 page shows code + remedy like any other error. Other schema violations are 422 `CFG_VALUE_INVALID`
-with the offending field in `context`. Unknown provider: `CFG_PROVIDER_UNKNOWN` (422). Zoom above
-the provider's `max_zl`: `CFG_VALUE_INVALID`. Unknown override name: `CFG_VALUE_INVALID` (raised by
-`BuildSpec.tile_config`). Bad `xplane_dir`: `XP_DIR_NOT_FOUND` (422). The import's `folder` must
-hold `Ortho4XP.py` or `zOrtho4XP_` tiles (in it, in its `Tiles`, or be one of them: a user's
-tiles on another disk were refused, 2026-09-22), else `SYS_WORKING_DIR_INVALID` (422).
+with the offending field named in the `message` ("Field tiles_zl: ..."); their `context` is empty.
+Unknown provider: `CFG_PROVIDER_UNKNOWN` (422). Zoom above the provider's `max_zl`:
+`CFG_VALUE_INVALID`. Unknown override name: `CFG_VALUE_INVALID` (raised by `BuildSpec.tile_config`).
+Bad `xplane_dir`: `XP_DIR_NOT_FOUND` (422). The import's `folder` must hold `Ortho4XP.py` or a pack
+of photo tiles, whatever it is called (in it, in its `Tiles`, or be one of them: a user's tiles on
+another disk were refused, 2026-09-22, and a pack not named `zOrtho4XP_` too, 2026-09-23;
+`install.md` 5), else `SYS_WORKING_DIR_INVALID` (422).
 
 The build specs come from `Settings` (`to_build_overrides`) then the request's `overrides`
-(request wins); the packs go to `<OSXP_HOME>/tiles`. The X-Plane folder is the request's, else
-the settings', else detection's (`install.md` 2). `install`, and the overlays or the X-Plane 12
-rasters (both on by default, as the page sends them), need it: without any, a plan or a job is
-422 `XP_DIR_NOT_FOUND` in plain words (`specs.xplane_not_found`: "X-Plane 12 was not found on
-this computer.", or "The X-Plane 12 folder saved in Settings, <path>, was not found." for a folder
-saved and gone, then what OrthoStudio XP takes from it; remedy "Choose the X-Plane 12 folder in
-Settings."); with a folder whose Global Scenery is missing, 422 `XP_GLOBAL_SCENERY_NOT_FOUND`,
-`context.path` that folder. A user of the Windows app in a virtual machine, X-Plane on the Mac
-around it, had read "Global Scenery is not installed in <not detected>" (2026-09-14).
+(request wins); the packs go to `<data folder>/tiles` (`essential.data_dir`, OrthoStudio XP's own
+folder by default). The X-Plane folder is the request's, else the settings', else detection's
+(`install.md` 2). `install`, and the overlays or the X-Plane 12 rasters (both on by default, as
+the page sends them), need it: without any, a plan or a job is 422 `XP_DIR_NOT_FOUND` in plain
+words (`specs.xplane_not_found`: "X-Plane 12 was not found on this computer.", or "The X-Plane 12
+folder saved in Settings, <path>, was not found." for a folder saved and gone, then what
+OrthoStudio XP takes from it; remedy "Choose the X-Plane 12 folder in Settings."); with a folder
+whose Global Scenery is missing, 422 `XP_GLOBAL_SCENERY_NOT_FOUND`, `context.path` that folder.
+A user of the Windows app in a virtual machine, X-Plane on the Mac around it, had read "Global
+Scenery is not installed in <not detected>" (2026-09-14).
 
 ### 2.3 The library: sizes, presence, the row clicked, delete
 
@@ -245,7 +249,9 @@ changes nothing, when Custom Scenery holds under that name something else than t
 Custom Scenery or a copy of another build. The button of that row takes it out; a folder no row
 owns is the user's to remove by hand. Without the check, the Uninstall of one row took out the
 other row's link, or deleted its pack when that was built straight into Custom Scenery (an
-uninstall deletes a real folder holding `orthostudio.toml`).
+uninstall deletes a real folder holding `orthostudio.toml` when the library knows another folder of
+the tile, as it does here; the tile's only folder it refuses with `XP_PACK_ONLY_COPY`, `install.md`
+4.1).
 
 `POST /api/library/{name}/forget` is the way back from an import (a user asked, 2026-09-21): the
 Library forgets the row at `path` (without `path`, the newest row of the name), and every file
@@ -266,9 +272,15 @@ tile still in X-Plane whose files are gone keeps its *Remove from X-Plane*.
   OrthoStudio XP pack of that tile (no `orthostudio.toml`: it may hold the user's own files; a link;
   the pack of another tile). The remedy says that Uninstall takes it out of X-Plane without deleting
   anything, and to delete the folder by hand.
-* 409 `XP_RUNNING`, nothing deleted, whenever X-Plane is known (`xplane_dir`, the settings,
-  detection) and runs, the tile installed or not: its overlay DSF may sit in an overlay pack
-  X-Plane reads. Without a known X-Plane there is no such check, and nothing is taken out of it.
+* 409 `XP_RUNNING`, nothing deleted, whenever X-Plane runs, the tile installed or not: its overlay
+  DSF may sit in an overlay pack X-Plane reads. Since 2026-09-23 the check does not depend on
+  X-Plane being known (`xplane_dir`, the settings, detection): the users whose X-Plane was not
+  found were the ones whose tiles could be deleted from under it. Without a known X-Plane, nothing
+  is taken out of it.
+* 400 `XP_PACK_ONLY_COPY`, nothing deleted, for a tile whose only folder was built straight into
+  the Custom Scenery of the X-Plane known: the delete takes the tile out of X-Plane first, through
+  the uninstall of `install.md` 4.1, which refuses that folder (`install.md` 4.2). Without a known
+  X-Plane, that step is skipped and the folder is deleted like any other.
 * Steps: out of X-Plane when the pack is installed there; the tile's overlay DSF and the pack
   directory; the library rows; the store clean of the tile's own cache (ten minutes of grace).
 * Answer: `removed_from_xplane`, `pack_deleted` (`false` when the directory was already gone:
@@ -304,8 +316,15 @@ tile still in X-Plane whose files are gone keeps its *Remove from X-Plane*.
   `overrides` at 64 entries.
 * Every path received (`xplane_dir`, the import's `folder`) is expanded, resolved and checked for
   what it must contain before use; the API never lists arbitrary directories.
-* Nothing leaves the machine except the imagery / Overpass requests of a build and the
-  optional 20-request probe of `/api/plan` (`online: true`, off by default).
+* What leaves the machine: a build's downloads (the imagery, the map data from the prepared
+  library or the Overpass servers, the relief when it comes from an online source such as
+  Copernicus or the USGS), the optional 20-request probe of `/api/plan` (`online: true`, off by
+  default), and what the page asks the engine to fetch: the base map's tiles (`/api/map`), the
+  street map from OpenFreeMap (`/api/basemap`), one tile for the colours preview or for a source
+  being tried (`/api/photo-sample`, `/api/sources/test`), the last SimBrief plan when its button
+  is pressed (the SimBrief name is sent, nothing else), and GitHub's latest release at most once a
+  day unless `expert.check_updates` is off (`/api/update`). The page itself talks to the engine
+  only.
 * Static files: only regular files below `ui_dir` (no `..`), served by Starlette.
 
 ## 4. `/api/plan`: the two lines
@@ -354,9 +373,12 @@ uninstall of a pack OrthoStudio XP built refuse such a tile too. A cancelled que
 starts: `cancel` takes it out of the queue, and it ends `cancelled` with no `started_at`.
 
 `SYS_BUSY` (also the answer to a library delete while a job is active, and to a build while a
-tile is being deleted), `SYS_TILE_IN_BUILD`, `SYS_SOURCE_IN_USE`, `SYS_NO_FOLDER_DIALOG`, `SYS_FORBIDDEN_HOST`,
-`SYS_FORBIDDEN_ORIGIN` and `SYS_BAD_CONTENT_TYPE` are API-only codes rendered in the same JSON shape; they are not in the `errors.py` registry
-(candidates for `errors.md`). A job runs `build(specs, on_event=..., env=...)` in **one dedicated
+tile is being deleted), `SYS_TILE_IN_BUILD`, `SYS_SOURCE_IN_USE`, `SYS_NO_FOLDER_DIALOG`,
+`SYS_FORBIDDEN_HOST`, `SYS_FORBIDDEN_ORIGIN`, `SYS_BAD_CONTENT_TYPE`, `SYS_NOT_STOPPABLE`,
+`SYS_FORBIDDEN_PATH`, `SYS_PACK_IMPORTED`, `SYS_PACK_IN_XPLANE`, `SYS_PACK_NOT_IMPORTED`,
+`SYS_TILE_MISSING`, `SYS_TILE_NOT_MISSING` and `SYS_FILING_STOPPED` are API-only codes rendered in
+the same JSON shape (`app._plain_error`); they are not in the `errors.py` registry (candidates for
+`errors.md`). A job runs `build(specs, on_event=..., env=...)` in **one dedicated
 thread** (`osxp-job-<id>`); `build_tiles` opens its own asyncio loop in that thread
 (`asyncio.run`), so the server's loop never blocks. `handle_sigint=False` (not the main
 thread).
@@ -366,7 +388,10 @@ Cancel is cooperative: `cancel()` sets the job's flag; the next scheduler event 
 `Scheduler.run` treats like a keyboard interrupt: `cancel()` then a grace period for running
 nodes, then `SYS_CANCELLED` on what is left; the exception then leaves `build_tiles` and the
 job thread marks the job `cancelled` with the state it has (there is no `BuildReport` in that
-case; the aggregated state is complete because every node event was seen). A retry after a
+case; the aggregated state is complete because every node event was seen). A Stop while a tile
+filed elsewhere is put back in its folder after its build (`install.md` 4.7) does not leave
+`build_tiles`: the put back stops before its next file, the build returns its report with
+`cancelled: true`, and the job ends `cancelled` with that report. A retry after a
 cancel resumes at the node (and, inside the textures node, at the chunk) that was not
 committed.
 
@@ -396,7 +421,7 @@ Every scheduler event is normalised to one JSON object, given a sequence number 
 
 `ts` is seconds since the job was created, on the job's own clock. `weight_s` on a node event
 is the row's weight in its stage's fraction after the event (section 5.6: its expected
-seconds, 0 for a hit and for a row skipped or cancelled before it started), the same number as
+seconds, 0 for a hit only; a row skipped or cancelled keeps its weight), the same number as
 the row's `weight_s` in the state: a page that draws a step from its rows weighs them with it
 (averaging them instead, it drew a bar the next refresh pulled back).
 
@@ -464,10 +489,10 @@ the stream. Past jobs (a `.jsonl` on disk, no thread) replay the file the same w
  id, status, created_at, started_at, finished_at, install, request,
  tiles: [{
    tile, provider, zl, status: pending|running|done|failed|cancelled,
-   stages: {data: {status, fraction, wall_s,
-                   nodes: [{node, role, status, key, hit, wall_s, fraction, weight_s,
-                            running_s}]},
-            terrain: ..., coast: ..., imagery: ..., assembly: ..., install: ...},
+   stages: {osm: {status, fraction, wall_s,
+                  nodes: [{node, role, status, key, hit, wall_s, fraction, weight_s,
+                           running_s}]},
+            relief: ..., terrain: ..., coast: ..., imagery: ..., assembly: ..., install: ...},
    errors: [{code, message, remedy, severity, action, node, stage, context}]
  }],
  errors: [...same, every tile...],
@@ -490,6 +515,9 @@ Stage status from its nodes (`jobs.stage_status`), first match:
 | `running` | a node runs |
 | `waiting` | no node runs, some did real work (`done`), others have not started |
 
+The seven stages are those of the table of section 5.2 (`api/stages.py` `STAGES`); a single
+`data` stage held the OSM, relief and tracing rows until API level 26 (2026-09-26).
+
 A hit alone does not start a stage: the data stage of a tile whose OSM data was there read
 `running` from the first second, with nothing of it under way. `running` means a node runs:
 the assembly of a tile read `running` for 220 s while its rasters and overlay were built and
@@ -501,8 +529,9 @@ in a tile that went past phase 0 is a hit (journals written before phase 0 repor
 rows).
 
 `fraction` is the stage's weighted fraction: Σ `weight_s` x part / Σ `weight_s` over its rows,
-the part being 1 for an ended row, the live `fraction` of a running one and 0 for a pending
-one; by count when every weight is 0 (every row a hit). `wall_s` is the sum. A tile is `done`
+the part being 1 for a row done or a hit, the fraction it reached for a row that failed, was
+skipped or was cancelled, the live `fraction` of a running one and 0 for a pending one; by count
+when every weight is 0 (every row a hit). `wall_s` is the sum. A tile is `done`
 when its target node ended without failure.
 
 A running row that has reported no fraction above 0 is timed, not measured: its part is
@@ -517,10 +546,11 @@ made: the page moves such a row between two reads by the same rule (`ui.md` 2.2)
 `stats` is the last `stats` line (section 5.6); `eta` is `{low_s, high_s}` from it while the
 job runs and a range is known, else `null`.
 
-Error `action` (for the page's button): `retry` for `TEX_MISSING`, `IMG_*`, `NET_*`;
-`settings` for `CFG_*`, `XP_DIR_*`, `XP_GLOBAL_SCENERY_*`, `DSF_GLOBAL_SCENERY_*` (the X-Plane
-folder is chosen in Settings); `none` otherwise. `skipped` nodes (`SYS_CANCELLED`
-with a cause) are not listed as errors; the root cause is.
+Error `action` (for the page's button): `retry` for `TEX_MISSING`, `IMG_*`, `NET_*` and, since
+2026-09-23, `OSM_*` (what fails there is a server having a bad day, and a new build asks every
+source and every server afresh); `settings` for `CFG_*`, `XP_DIR_*`, `XP_GLOBAL_SCENERY_*`,
+`DSF_GLOBAL_SCENERY_*` (the X-Plane folder is chosen in Settings); `none` otherwise. `skipped`
+nodes (`SYS_CANCELLED` with a cause) are not listed as errors; the root cause is.
 
 ### 5.5 Final report and decisions
 
@@ -594,14 +624,17 @@ never counts a rate above the provider's `server_req_per_s`, where the server it
 (`progress.texture_download_s`): Esri Clarity's 192 requests at once would give 0.22 s a texture,
 a user's builds took 0.59 s, and 256 chunks at its 522 req/s weigh 0.54 s (2026-09-15). Whether the chunks are on disk is read from the chunk store before the build
 starts, a stat for at most 256 sampled textures per tile. The textures node belongs to the speed
-group `textures` when downloading is most of its weight, else `textures_cached`. A node that does
-not run -- a hit, a node skipped or cancelled before it started -- counts as ended and **weighs
+group `textures` when downloading is most of its weight, else `textures_cached`. A hit **weighs
 nothing**: with its full weight, a retry whose first second is sixty hits read 70 % at once, and a
-tile whose OSM data was a hit read 48 % after one second of thirty.
+tile whose OSM data was a hit read 48 % after one second of thirty. A row that ends without
+finishing (failed, skipped or cancelled, before it started or not) keeps its weight and counts the
+fraction it reached (`progress.weight_of`, `FINISHED`): when such a row weighed nothing or counted
+as done, a build stopped twenty seconds in read 99 % (2026-09-23).
 
-**Progress** = Σ weight x fraction / Σ weight over every row (1 for an ended row, the live
-fraction of a running one, 0 pending), held at its highest value (rows added by the
-declaration, or a second pass, could lower it), 1 when the job is done.
+**Progress** = Σ weight x fraction / Σ weight over every row (1 for a row done or a hit, the
+fraction it reached for one that failed, was skipped or was cancelled, the live fraction of a
+running one, 0 pending), held at its highest value (rows added by the declaration, or a second
+pass, could lower it), 1 when the job is done.
 
 **Time remaining.** The same weights, corrected by what the job has shown:
 
@@ -683,10 +716,14 @@ comes down at the smoothing's pace.
 
 ## 6. `osxp serve`
 
-`osxp serve [--port 8641] [--open/--no-open] [--ui-dir PATH] [--home PATH] [--quit-when-closed]`:
-`serve.main()` builds the app (`ui_dir` default `src/orthostudio/ui`), starts uvicorn on
-`127.0.0.1:<port>` and opens `http://127.0.0.1:<port>/` in the browser (`webbrowser`) unless
-`--no-open`. The command is wired in `cli.py` (`orthostudio.api.serve:main` is the entry point).
+`osxp serve [--port 8641] [--open/--no-open] [--ui-dir PATH] [--quit-when-closed]` (and `--check`,
+`--mock`, below): `serve.main()` builds the app (`ui_dir` default `src/orthostudio/ui`), starts
+uvicorn on `127.0.0.1:<port>` and opens `http://127.0.0.1:<port>/` in the browser (`webbrowser`)
+unless `--no-open`. The command is wired in `cli.py` (`orthostudio.api.serve:main` is the entry
+point). No option names the home: it is `$OSXP_HOME`, else `~/.orthostudio`. `--check` starts the
+server, reads `/api/status` and the page, and stops (`serve.check`, what the installers' checks
+run, `packaging.md` 6); `--mock` opens the page with made-up data (`?mock=1`: no build, no
+network).
 
 Once its port is open, the engine writes in `serve.log` how long it took to get there, and in
 what parts (`serve.listening_line`, `docs/specs/packaging.md` 4). The page's first
@@ -754,7 +791,7 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   `test_delete.py` covers `delete_receipt` itself on a real store and `osxp uninstall --delete`;
   `test_uninstall.py` the overlays of Ortho4XP left alone.
 * `test_api_jobs.py`: a fake `build` that plays `Started` / `Progress` / `Done` / `Failed` /
-  `Stats` for one or two tiles: job runs to `done` with 6 stages aggregated; a
+  `Stats` for one or two tiles: job runs to `done` with its seven stages aggregated; a
   `TEX_MISSING` failure gives `status: failed`, one error with `action: retry`, `retry`
   creates a new job whose nodes are hits; cancel while running gives `cancelled`; 409 when a
   second job is posted while one runs; SSE stream read to `finished`, replay with
@@ -795,12 +832,14 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
 * `/api/airports` with the real index: `default_index` builds `~/.orthostudio/airports.sqlite` from
   `apt.dat` on first use (a few seconds, in a worker thread; its progress callback is not
   relayed to the page in P2b). Without an X-Plane folder it answers 422 `XP_DIR_NOT_FOUND`.
-* A cancelled job has no `BuildReport` (`report: null`): the `CancelRequested` exception
-  leaves `build_tiles` before it assembles one; the per-node state is complete.
+* A job cancelled while its graph runs has no `BuildReport` (`report: null`): the
+  `CancelRequested` exception leaves `build_tiles` before it assembles one; the per-node state is
+  complete. A job stopped while a tile filed elsewhere is put back has the report `build_tiles`
+  returns, with `cancelled: true` (section 5.1).
 * `retry` records `retry_of` in the new job's `request`; the X-Plane folder of that request, when it
   named one, is the one `where_now` resolves, as for a new job.
 * Measured on the reference Mac (empty home): `/api/status` 60 ms (doctor
-  offline), `/api/plan` for +43+005 at ZL14 10 ms; the 18 tests run in 1.4 s.
+  offline), `/api/plan` for +43+005 at ZL14 10 ms; the 18 tests P2b had then ran in 1.4 s.
 * `/api/sizes`'s `store_bytes` reads the figure the store's index keeps (`Store.disk_bytes`,
   `graph-keys.md` 7), the index opened only when the directory exists (opening creates it) and
   without sweeping; `chunks_bytes` walks the images' folder from its listings. The doctor's `chunks` check counts the containers from the folder

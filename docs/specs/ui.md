@@ -1,12 +1,12 @@
 # UI: the web page (P2b four screens, P5 map and zones)
 
-Status: P2b, written before the code of `src/orthostudio/ui/`; the map, the zones and the guided
-Plan (P5, 2026-09-13) follow `docs/specs/map-zones.md` section 7, whose section 7.0 (the user's
-requirement) wins over any detail here. Tests: `tests/test_ui_*.py` (static checks served through
-FastAPI `StaticFiles` with `httpx.AsyncClient`, geometry run under `node`; no browser). Origin: the
-four-screen journey of the rewrite's plan. The Tk GUI of Ortho4XP (`O4_GUI_Utils.py`) is **not**
-ported; its parameter hints survive through `/api/settings/schema`, and its zone gestures survive as
-shortcuts.
+Status: implemented; first written for P2b, before the code of `src/orthostudio/ui/`. The map, the
+zones and the guided Plan (P5, 2026-09-13) follow `docs/specs/map-zones.md` section 7, whose
+section 7.0 (the user's requirement) wins over any detail here. Tests: `tests/test_ui_*.py` (static
+checks served through FastAPI `StaticFiles` with `httpx.AsyncClient`, geometry run under `node`; no
+browser). Origin: the four-screen journey of the rewrite's plan. The Tk GUI of Ortho4XP
+(`O4_GUI_Utils.py`) is **not** ported; its parameter hints survive through `/api/settings/schema`,
+and its zone gestures survive as shortcuts.
 
 ## 1. Scope and constraints
 
@@ -26,10 +26,18 @@ Overpass).
 | `app.js` | state, API client (real or mock), rendering functions, SSE handling |
 | `map.js` | the Plan's map: base layer (aerial or street), tile grid, airports, zone drawing, zone list, sizes, zones persistence |
 | `geo.js` | geometry without DOM (tiles, textures, polygons, the `osxp-zones-1` checks); run by the tests |
+| `settings.js` | the Settings screen (2.4): its questions, presets and expert fields, as pure functions the tests run under `node`, and the drawing of the screen |
+| `sources.js` | the imagery sources in the page's lists: what each covers, their groups, the check of an address a user types (`sourceCovers`, `sourceGroups`, `sourceAddressProblem`) |
+| `flightplan.js` | the flight plan of step 1 as the page keeps it (`docs/specs/flight-plan.md`) |
+| `colour.js` | the photo's colours, with the arithmetic of the engine's `textures/colour.py` (`tests/test_ui_colour.py` holds the two equal) |
+| `preview.js` | the colour preview under Settings' colour question (`colourPreview`), and the ground image the mock paints (`mockPhoto`) |
+| `zoom.js` | the window's zoom: its keys and its control in the status bar (2.5) |
+| `find.js` | Find on the page (Cmd+F, Ctrl+F) and its bar, for the app's window, which has none; in a browser the keys are left to the browser's own |
 | `vendor/leaflet/` | Leaflet 1.9.4 (`leaflet.js`, `leaflet.css`, `LICENSE`, `README.md`), not edited |
 | `vendor/maplibre/` | MapLibre GL 5.24.0 and its Leaflet bridge, for the street map's vector tiles; loaded only when that map is asked for |
+| `vendor/borders/` | the country borders of Natural Earth (`borders.json`, public domain, `README.md`), read the first time the map shows them |
 | `mock/*.json` | one file per API response, used by `?mock=1` and by the tests |
-| `__init__.py` | `ui_dir()` and `STATIC_FILES` for `create_app` and the tests; nothing else |
+| `__init__.py` | `ui_dir()`, `INDEX_FILE` and `STATIC_FILES` for `create_app` and the tests; nothing else |
 
 Language: **English by default, whatever the browser's language** (the user's decision,
 `map-zones.md` 7.0.7); the switch in the top bar offers French and remembers a choice under
@@ -100,9 +108,12 @@ started shows that build from its top.
 ### 2.1 Plan
 
 The Plan is **four numbered steps beside a map**, each with one sentence saying what it does
-(`map-zones.md` 7.0.1). Wide screens: the map on the left (sticky, `100vh - 120px` high,
-420 to 820 px), the steps on the right (340 to 440 px); below 960 px the map comes first and
-the steps follow. Main labels use plain words: never ZL, texture, DSF, mesh or mask (7.0.3);
+(`map-zones.md` 7.0.1). Wide screens: the map on the left (sticky, 420 to 820 px high: the window's
+height less what is above the map, `--map-top`, measured by `app.js` `measureMapTop`, less the
+status bar, `--statusbar-h`, and 12 px; until 2026-09-20 it was `100vh - 120px`, which ended the map
+under the status bar and cut the foot of the legend), the steps on the right (340 to 440 px); below
+960 px the map comes first (`60vh`, 320 to 560 px) and the steps follow. Main labels use plain
+words: never ZL, texture, DSF, mesh or mask (7.0.3);
 "ZL18" only appears after a detail level's name.
 
 **Detail levels** (`map.js` `detailLabel`): a name and the ground size of a pixel at a latitude,
@@ -114,12 +125,13 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
 #### The map (`map.js`)
 
 - **Base layer**: `L.tileLayer("api/map/<provider>/{z}/{x}/{y}")` for the imagery source of
-  step 1 (changing it swaps the layer), `maxNativeZoom = min(19, max_zl)`, map zoom 3 to 20,
+  step 1 (changing it swaps the layer), `maxNativeZoom = min(19, max_zl)`, map zoom 3 to 19,
   `noWrap`, bounds ±85.06°. Attribution: the provider's `attribution` text, HTML-escaped
   (Leaflet writes it with `innerHTML`), Leaflet's prefix disabled, so no link is rendered.
-  When six tiles fail and none loads (a `502`, or `204` everywhere), a notice over the map says
-  that no imagery came from that source for this view. Mock mode: a canvas `L.GridLayer`
-  painting a neutral grid with the theme's tokens, no request.
+  Once every tile of a view is back, arrived or failed, a notice over the map says when the source
+  does not cover the view or sent no image for it (*One yellow line when the source has nothing
+  here*, below; until 2026-09-25 it spoke after six failed tiles). Mock mode: a canvas
+  `L.GridLayer` painting a neutral grid with the theme's tokens, no request.
 - **Initial view**: the selected tiles, else the installed ones (`GET /api/library`, loaded at
   boot), else Europe; `fitBounds` with at most zoom 9. The map is created the first time the Plan
   is shown (Leaflet needs a visible container) and `invalidateSize()` runs on
@@ -133,14 +145,16 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   light on the light one), which leaves a line between and around them against the photo (`map.js`
   `insetBox`). Drawn on the same line, the green hid the blue; a thin blue beside the green hardly
   showed (a user, 2026-09-22, chose this among four drawings on the photo). The green alone when the
-  tile is too small on the screen to hold both, under 16px (zoom 4 and out; zoom 5, where tiles are
-  chosen, gives 22px): zoomed out on the world, the map shows which tiles are installed (the same
-  user). Tile outlines are drawn on whole pixels (`shape-rendering: crispEdges`): Leaflet leaves the
-  vector layer between two pixels after some moves, and blended over two pixels the parting line
-  faded at some zooms and not at others (the same user); on whole pixels WebKit widens each line to
-  the pixel, which the 2.5px gives back, so a Retina screen shows 3px of green, 1px of casing and
-  3px of blue at every zoom. Labels (`+46+006`) from zoom 7, in the north-west corner of the visible
-  part of each tile when it can hold them, at most 400 cells.
+  tile is too small on the screen to hold both, under 26px (`insetBox` needs four times the blue's
+  6.5px inset), which is zoom 5 and out, a tile being about 23px wide at zoom 5: zoomed out on the
+  world, the map shows which tiles are installed (the same user). The threshold was 16px, and zoom 5
+  showed both, until the frames moved inside the squares on 2026-09-25 (below). Tile outlines are
+  drawn on whole pixels (`shape-rendering: crispEdges`): Leaflet leaves the vector layer between two
+  pixels after some moves, and blended over two pixels the parting line faded at some zooms and not
+  at others (the same user); on whole pixels WebKit widens each line to the pixel, which the 2.5px
+  gives back, so a Retina screen shows 3px of green, 1px of casing and 3px of blue at every zoom.
+  Labels (`+46+006`) from zoom 7, in the north-west corner of the visible part of each tile when it
+  can hold them, at most 400 cells.
 - **The running build on the map** (user request, 2026-09-14: the selection empties when a build
   starts, and nothing then showed which tiles were being built): over the rest, a tile of the
   build one of whose steps runs pulses in the accent colour, one that waits for its turn (or
@@ -218,9 +232,10 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
   `sources.js` `sourceGroups`): *Whole world* (Bing Maps, Esri World Imagery, Esri World Imagery
-  Clarity, in the engine's order), *For your tiles* (a country's source whose rectangle meets
-  every tile chosen), *My sources* (those the user added), then *Other countries* (*By country*
-  when no tile is chosen), by country name, each labelled with its country ("Netherlands · PDOK
+  Clarity and, since 2026-09-22, EOX Sentinel-2 cloudless 2024, in the engine's order), *For your
+  tiles* (a country's source whose rectangle meets every tile chosen), *My sources* (those the
+  user added), then *Other countries* (*By country* when no tile is chosen), by country name, each
+  labelled with its country ("Netherlands · PDOK
   2020"). `NL`, the same imagery as `PDOK`, is listed only while it is the one selected; a source
   greyed when `alive === false`. The groups follow the tiles as they change; the source selected
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
@@ -241,8 +256,10 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
 - **Detail level**: 12-19 clipped to the source's `max_zl`, labelled as above at the latitude
   of the first tile (centre of the cell, `lat + 0.5`), else the map centre's, else 45°; the
   help under it names that latitude.
-- *Other ways: airport, tile names, coordinates* (`<details>`), the P2b inputs, unchanged and
-  cumulative into the same selection:
+- *Around an airport* (an ICAO code and a radius) and, under it, *Along my flight plan* are in plain
+  sight since 2026-09-19 (2.4, *Choosing squares, in plain sight*); *Other ways: tile names,
+  coordinates* (`<details>`) folds the rest, and held the airport until then. These are the P2b
+  inputs, cumulative into the same selection:
   - ICAO code with completion from `GET /api/airports?q=` (debounced 200 ms, 10 results,
     custom listbox for keyboard use) and a radius in km (default 15) → every 1° cell
     intersecting the bounding box of the circle (`dlat = r / 111.2`,
@@ -326,7 +343,8 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   marked with a problem (`geo.js` `listedZones`); with none selected, every zone. A line under the
   list says "N other zone(s) outside the selected tiles." with *Show them*, which lists them all
   and becomes *Hide the zones outside the selected tiles* (for the session). The zones left out
-  stay on the map, in the file and in the requests. A zone picked on the map joins the list while
+  stay on the map and in the file; a request carries the zones whose bounding box reaches a chosen
+  tile, listed or not (**Requests**, after Step 4). A zone picked on the map joins the list while
   it is selected. The order is the list's own: ↑ / ↓ move a zone past the row shown above or below
   it, over the zones left out (`movedInList`: only the moved zone changes place; side by side, the
   swap it always was).
@@ -338,7 +356,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   and the selection if it was one of them, moves the focus to the zones step and says "Zones
   deleted: N." The zones left out stay: the trash never deletes what cannot be seen (2026-09-22).
   The usual debounced `PUT /api/zones` saves the list; a drawing in progress stays.
-- **Loading** (M3): `GET /api/zones` at boot answers `{"format", "revision", "zones",
+- **Loading** (M3): `GET /api/zones` at boot answers `{"format", "revision", "zones", "tiles",
   "problems"}` with `200` whenever the file is absent or readable (the engine's contract after
   the review of 2026-09-13).
   Every zone of `zones` is listed, valid or not: a zone named by a problem is marked with the
@@ -351,14 +369,15 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   editing ("Zones unavailable: ..." with *Retry*), since a save would overwrite zones the page
   could not read; any other refusal of the GET is shown like a broken file (empty list, one
   notice).
-- **Saving**: every change (create, delete, rename, level, source, order) schedules
+- **Saving**: every change (create, delete, rename, level, source, order, colours) schedules
   `PUT /api/zones` 500 ms after the last one, one request at a time, with the whole document
-  `{"format": "osxp-zones-1", "zones": [{id, name, zl, provider, polygon}]}` (polygons as open
-  rings of `[lon, lat]` rounded to 9 decimals) and the headers `Content-Type:
-  application/json`, `Accept: application/json` and **`If-Match: "<revision>"`**, the revision
-  of the last GET or successful PUT (`""` when no file exists; no header only when the engine
-  sent no revision). The `200` answer gives the new `revision` and clears the notice and the
-  marks of the document; its zones are not applied back (the page already sends normalised
+  `{"format": "osxp-zones-1", "zones": [{id, name, zl, provider, photo, polygon}], "tiles": {...}}`
+  (`map.js` `documentBody`; `photo` and `tiles` are the colours of the zones and of the squares,
+  `map-zones.md` 3; polygons as open rings of `[lon, lat]` rounded to 9 decimals) and the headers
+  `Content-Type: application/json`, `Accept: application/json` and **`If-Match: "<revision>"`**,
+  the revision of the last GET or successful PUT (`""` when no file exists; no header only when
+  the engine sent no revision). The `200` answer gives the new `revision` and clears the notice
+  and the marks of the document; its zones are not applied back (the page already sends normalised
   coordinates). `keepalive` is asked for every save and granted only below 60 KB of UTF-8
   (browsers refuse a keepalive body above 64 KiB), so a save under way when the page closes
   still arrives. When the page becomes hidden (`visibilitychange`, and `pagehide`), a save
@@ -396,13 +415,16 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   Scenery is not installed in <not detected>." and nothing on what to do.
 - *Build settings*: one sentence of plain words on what the build will use besides the tiles,
   the source and the level (`settings.js` `settingsSummary`: airports, coast, water, relief,
-  overlays), and a *Change in Settings* button (section 2.4). The settings are the single source
-  of truth: step 1's source and level are saved with `PUT /api/settings` when the user presses
-  *Build*; the request carries `provider` and `zoom_level` only, `overrides` is not used by the
-  page.
+  overlays), and a *Change in Settings* button (section 2.4). The Plan takes the source and level
+  of the settings when the page opens; after that step 1's are this build's and the settings are
+  the next plan's: *Build* writes nothing into the settings (until 2026-09-21 it saved step 1's
+  source and level with `PUT /api/settings`). The request carries `provider` and `zoom_level`
+  only; `overrides` is not used by the page.
 - **The estimate, live** (user request, 2026-09-14: pressing *Estimate* before *Build* was
-  tedious): `POST /api/plan` with `{tiles, provider, zoom_level, zones}`, sent by itself 400 ms
-  after the last change of the tiles, the source, the level, the zones or the saved settings, and
+  tedious): `POST /api/plan` with `{tiles, provider, zoom_level, zones, tiles_settings}` and, for
+  the squares whose level is not step 1's, `tiles_zl` (`app.js` `planRequest`; `tiles_settings`
+  holds the squares' own colours, `api.md` 2.2), sent by itself 400 ms after the last change of
+  the tiles, the source, the level, the zones or the saved settings, and
   when the Plan is shown again (the free disk space may have changed). One estimate takes 0.1 to
   0.5 s for one to six tiles on an M4 Pro. Until the answer, the figures of before stay, dimmed,
   with "Working out the cost…"; an answer older than the last change is dropped (`planChanged`,
@@ -458,14 +480,20 @@ tiles again with its own): the map shows the tiles of the build in their own sty
   tiles.
 - `409 SYS_TILE_IN_BUILD` (a tile queued from another window meanwhile): step 3's message line
   names the tiles, "Take them out of the selection, or wait for that build to end.", and the job
-  list is read again; `409 SYS_BUSY` means that a tile is being deleted: "Try again in a moment."
-  (an engine older than the page, without the queue, still means *a build is already running*).
+  list is read again; `409 SYS_BUSY` means that a tile is being deleted or filed elsewhere: "A tile
+  is being deleted or filed elsewhere: the build starts only after that. Try again in a moment."
+  (`plan.busy_deleting`; an engine older than the page, without the queue, still means *a build is
+  already running*).
 
-**Requests** of the Plan: `zones` is always the list shown (possibly empty), invalid zones
-included, so that the engine names them. When the zones could not be loaded (network or `5xx`),
-the estimate and *Build* load them again first; if that fails too nothing is sent and step 3 says
-so ("Nothing was sent: the zones of step 2 could not be loaded..."), since an empty list would
-build without the saved zones and leaving `zones` out would build zones the page never showed.
+**Requests** of the Plan: `zones` holds, in the list's order, every zone whose bounding box reaches
+one of the chosen tiles (possibly none), invalid zones included, so that the engine names them
+(`map.js` `zonesForRequest`). A zone elsewhere changes nothing in that build and is not sent, so a
+zone marked with a problem elsewhere does not refuse it (the engine, when a request carries no
+`zones`, likewise ignores a problem of a saved zone that touches none of the tiles). When the zones
+could not be loaded (network or `5xx`), the estimate and *Build* load them again first; if that
+fails too nothing is sent and step 3 says so ("Nothing was sent: the zones of step 2 could not be
+loaded..."), since an empty list would build without the saved zones and leaving `zones` out would
+build zones the page never showed.
 
 ### 2.2 Works
 
@@ -641,8 +669,9 @@ what OSM and Terrain hold are cut.
 the node's `role`, or the last `/`-separated segment of its id without `#n`, with the engine's
 table (`app.js` `ROLE_STEP` = `orthostudio.api.stages.ROLE_STAGE`, a test keeps them equal): `osm`,
 `coastline` → osm; `dem` → relief; `vectors`, `mesh` → terrain; `masks` → coast; `textures` → imagery;
-`xp12`, `dsf`, `overlay`, `pack` → assembly; `install` → install. The rule names of the P2b
-contract (`tile.dsf`, `tile.textures`, ...; `NODE_STEP`) still map, for older journals.
+`xp12`, `dsf`, `overlay`, `pack` → assembly; `install`, and `put_back` (a tile filed elsewhere
+copied back to its folder, 2.3) → install. The rule names of the P2b contract (`tile.dsf`,
+`tile.textures`, ...; `NODE_STEP`) still map, for older journals.
 
 **Events** (`GET /api/jobs/{id}/events`, `EventSource`; the SSE event name is the entry's `event`,
 its `data` the flat journal entry of `docs/specs/api.md` 5.2):
@@ -828,7 +857,7 @@ an osxp build of the same tile are two rows.
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
 | Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
-| (actions) | two columns, so that the buttons line up from row to row |
+| (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
 sends `{"path": <the row's path>}` as JSON, `app.js` `libraryRequest`, since the name alone is
@@ -916,7 +945,7 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 | Code | When | The card says |
 |---|---|---|
 | `XP_RUNNING` (409) | any change while X-Plane runs, a delete of a tile X-Plane does not show included | X-Plane is running: OrthoStudio XP does not change its scenery while it runs. Quit X-Plane, then try again. |
-| `SYS_BUSY` (409) | a delete while a build runs | A build is running: tiles can be deleted only between builds. Wait for the build to finish (see Works), or stop it, then delete the tile again. |
+| `SYS_BUSY` (409) | a delete or a filing asked for while a build runs, or any change while a tile is being filed elsewhere | A build, a delete or a filing is under way: tiles change only in between. Wait for it to end (see Works for a build), then try again. |
 | `SYS_PACK_NOT_OSXP` (409) | a delete of a pack OrthoStudio XP did not build (nothing is touched) | This tile was not built by OrthoStudio XP, so OrthoStudio XP does not delete it. Nothing was deleted. You can remove it from X-Plane, or delete its folder yourself. |
 | `SYS_PACK_IN_XPLANE` (409) | *Remove from the list* of a tile X-Plane shows (the button is disabled then; another window) | This tile is in X-Plane. Remove it from X-Plane first, then from the list. |
 | `SYS_PACK_NOT_IMPORTED` (409) | *Remove from the list* of a tile OrthoStudio XP built | OrthoStudio XP built this tile. Delete takes it away, and the list with it. |
@@ -944,7 +973,8 @@ bar's count is `library_count`, which counts tiles, not rows.
 ### 2.4 Settings
 
 In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody understands them";
-what each setting really does, and the wording of every question: `settings-plain-language.md`).
+what each setting really does, and the wording of every question: `settings-plain-language.md`,
+for the settings it studied on 2026-09-13; its status names those added since).
 
 **A number says its range first.** Every number of the generated fields starts its explanation,
 in bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*,
@@ -1025,15 +1055,19 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    multiplier of disk and time, levels above the source's `max_zl` disabled); airports (main ones
    with an ICAO code / every airfield / no, naming the airport level); coast fade (sand / rocks);
    how far out to sea (50 / 100 / 200 m, hidden for a fade in three steps); water near the coast;
-   lakes and rivers (10 / 25 / 50 %); relief (X-Plane 12 / my file, then the file's path, warned
-   while empty, and its holes). A value set by hand that no choice offers (a width of 80 m, lakes at
-   40 %, the airport mode `existing`, the `3steps` profile) is shown as one more choice,
-   never hidden.
+   lakes and rivers (10 / 25 / 50 %); relief, seven answers since 2026-09-20 (`settings.js`
+   `questionChoices`): X-Plane 12's own, Copernicus at 1", the USGS 3DEP at 1/3" (United States),
+   the USGS at 1" (North America), Canada's lidar (HRDEM) or South America's ANADEM with Copernicus
+   elsewhere, or my own file, then the file's path, warned while empty, and its holes; under it, a
+   folder of one's own elevation files (2.5, *Your own elevation files*). A value set by hand that
+   no choice offers (a width of 80 m, lakes at 40 %, the airport mode `existing`, the `3steps`
+   profile) is shown as one more choice, never hidden.
 3. **For experts** (`<details>`, closed): a band with a chevron, its title, how many settings are
    behind it and its one-line lead, all readable while it is closed, and whether it was open is
    remembered in `localStorage` (a user found the old one-word summary too well hidden,
-   2026-09-18). It holds every other setting in groups (airports, coast and sea,
-   lakes and rivers, terrain, roads, light and ground, X-Plane objects), each with a plain label, a
+   2026-09-18). It holds every other setting in groups (airports, coast and sea, lakes and rivers,
+   terrain, roads, light and ground, X-Plane objects, where map data comes from, this app:
+   `settings.js` `EXPERT_GROUPS`), each with a plain label, a
    one-sentence note, its unit in the control's frame and its name in Ortho4XP as a small badge, on the
    aligned grid of the old form (enum as a select with named options for the road levels, the sea
    level at the shore and the coast fade precision; boolean as a switch; number with its
@@ -1043,8 +1077,9 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    longer offers (`ratio_bathy`, `imprint_masks_to_dds`, `mesh_zl`, `masks_custom_extent`, and
    `masks_use_dem_too`, which needs Ortho4XP's own coast step now that OrthoStudio XP ships no
    Ortho4XP) appear under *No longer offered* only when their value is not the default.
-   *Folder of hand-made mesh patches* (`expert.patches_dir`) is the one expert field holding a
-   folder: it takes two columns, its placeholder is the folder used when it is left empty
+   *Folder of hand-made mesh patches* (`expert.patches_dir`) is the one expert folder field with the
+   platform's dialog (the folder of prepared map data, `expert.osm_folder`, is a plain text field):
+   it takes two columns, its placeholder is the folder used when it is left empty
    (`<status.home>/patches`) and *Choose…* beside it opens the platform's dialog (a user of the
    X-Plane.Org page asked what to type in it, 2026-09-17). Under its note, what the folder shown
    holds, saved or not (`GET /api/patches?dir=`, asked again when the field changes): "Patches
@@ -1077,16 +1112,18 @@ says which square it is and where (`+46+006 (46.2°, 6.1°)`) and that it is the
 in Plan, which is how a pilot knows what they are judging (a user asked, 2026-09-18).
 The two share the card's width, side by side, up to the photo's own 256 px (`wide`, drawn at
 256): at 148 px, with room left beside them, a user found the change hard to see (2026-09-25).
-Measured at a window of 1024 px, 222 px each. The Plan's own, below, keep their 110 px.
+Measured at a window of 1024 px, 222 px each.
 
-The same two images appear in **step 1 of the Plan**, under *Photo colours*, which sits beside
-the imagery source and the detail level and sets the colours of the **squares chosen**: one square
-selected changes that one, six change the six, which is also "one colour for this build" (a user,
-2026-09-18). Its choices are *Same as Settings* and the four of the Settings question; *My own
-values* shows the same three sliders. When the squares chosen disagree, the control says so and
-sets nothing until one is picked. The colours travel with the zones, in the map's document
-(`map-zones.md` 3), so they are remembered; `ui/preview.js` draws the two images and `app.js`
-gives it the sample and the words (`plan.colours_where`, `plan.colours_note`).
+**Step 1 of the Plan** has *Photo colours*, which sits beside the imagery source and the detail
+level and sets the colours of the **squares chosen**: one square selected changes that one, six
+change the six, which is also "one colour for this build" (a user, 2026-09-18). Its choices are
+*Same as Settings* and the four of the Settings question; *My own values* shows the same three
+sliders. When the squares chosen disagree, the control says so and sets nothing until one is
+picked. The colours travel with the zones, in the map's document (`map-zones.md` 3), so they are
+remembered. The two images showed under the control for part of 2026-09-18; since then the map
+itself is repainted with these colours (below), a line under the control says so
+(`plan.colours_on_map`), and step 1 shows no image (`app.js` `renderTileColours`). The words the
+images had, `plan.colours_where` and `plan.colours_note`, are still in `i18n.js`, read by nothing.
 
 Each **zone** keeps its own control in its row, with the sliders under it on *My own values*: it
 inherits its square while it says *Colours: same as the tile*, and wins inside its polygon
@@ -1337,27 +1374,31 @@ even when a label wraps; every control fills its column. A number and its unit s
 the unit after the field and so after its arrows (inside the field, the Mac's arrows covered it,
 2026-09-21); the Plan's radius is drawn the same way. A field holding a folder
 takes two columns (`.field-span2`, one column again under 700 px): a path and its *Choose…* button
-do not fit in one. Nothing changes size on hover. *Save* → `PUT /api/settings` with the whole document; *Reset* reloads
-`GET /api/settings` (or the schema defaults on the *Defaults* button). Validation errors
-from the engine (`422`) are shown next to the form, in the page's words for the code with its remedy:
+do not fit in one. Nothing changes size on hover. *Save* → `PUT /api/settings` with the whole
+document; *Undo my changes* puts back the settings last read or saved, with no request (`app.js`
+`resetSettings`), and *Default values* the schema's defaults, keeping what belongs to this computer
+and its pilot (above; `settings.js` `defaultsKeepingFolders`). Validation errors from the engine
+(`422`) are shown next to the form, in the page's words for the code with its remedy:
 `XP_DIR_NOT_FOUND` names the folder and, for one that exists, the subfolders it lacks (`Resources`,
 `Custom Scenery`), since a user without X-Plane read only that the folder was not found.
 
 ### 2.5 Status bar
 
-From `GET /api/status`: version, X-Plane path and whether it runs (a warning when it does,
-since installation is refused then), doctor summary (`n ok · n warn · n fail`, the details in
-a popover), library count, and OrthoStudio XP's folder, or the data folder chosen in Settings with
-a *disk not plugged in* pill while it is missing, and beside it a button that shows it in the file
-manager (`renderStatus`, `revealPath`; *Show in Finder* on a Mac): `.orthostudio` starts with a
-dot, which hides it in the Finder, and a user looked for his tiles in vain (2026-09-22). The store and chunk sizes come from
-`GET /api/sizes`, asked after each status and not awaited (`loadSizes`): "…" until they come, then
-that line alone is drawn again (`renderDiskSizes`), so the doctor's popover stays open. On Windows
-their walk opens every file of the store, and the page used to wait for them. Language and theme
-switches. A refusal for want of the data folder (`CFG_DATA_DIR_MISSING`, `CFG_DATA_DIR_INVALID`)
-has a *Settings* button that focuses its field. The library count follows every read of the library
-(a build that ends, a tile installed or deleted), and a build that ends reads the status again for
-the sizes (a user saw "0 tile(s) in the library" stay after builds, 2026-09-15).
+From `GET /api/status` (its version is written in the top bar, beside the name): X-Plane path and
+whether it runs (a warning when it does, since installation is refused then), doctor summary
+(`n ok · n warn · n fail`, the details in a popover), library count, and OrthoStudio XP's folder,
+or the data folder chosen in Settings with a *disk not plugged in* pill while it is missing, and
+beside it a button that shows it in the file manager (`renderStatus`, `revealPath`; *Show in
+Finder* on a Mac): `.orthostudio` starts with a dot, which hides it in the Finder, and a user looked
+for his tiles in vain (2026-09-22). The store and chunk sizes come from `GET /api/sizes`, asked
+after each status and not awaited (`loadSizes`): "…" until they come, then that line alone is drawn
+again (`renderDiskSizes`), so the doctor's popover stays open. On Windows their walk opens every
+file of the store, and the page used to wait for them. The language and theme switches are in the
+top bar, not here. A refusal for want of the data folder (`CFG_DATA_DIR_MISSING`,
+`CFG_DATA_DIR_INVALID`) has a *Settings* button that focuses its field. The library count follows
+every read of the library (a build that ends, a tile installed or deleted), and a build that ends
+reads the status again for the sizes (a user saw "0 tile(s) in the library" stay after builds,
+2026-09-15).
 
 **The text size and the zoom** (2026-10-03): at the bar's right end, `Aa` and its sizes make the
 page's text larger (2 above), and in the window alone `− 100 % +` zooms the whole page, the bar
@@ -1458,9 +1499,11 @@ ask the engine to open the platform's own dialog
 the folder typed or detected. The folder chosen fills the field, as if typed (Settings still saves
 with *Save*); a cancel changes nothing; a system without a dialog says to type the path (toast).
 
-**Saved settings reach the Plan** (user report 2026-09-13: a preset saved in Settings left the
-Plan at its old level): after *Save*, the Plan takes the saved source and detail level and drops
-an estimate made with the previous settings. It also reads `GET /api/status` again before saying
+**Saved settings and the Plan** (user report 2026-09-13: a preset saved in Settings left the
+Plan at its old level): after *Save*, the Plan keeps the source and detail level of step 1, which
+are this build's, and works out its estimate again with the saved settings. From 2026-09-13 to
+2026-09-21 a save put its source and level into step 1, which changed a plan already set up on
+screen without saying so (`saveSettings`). It also reads `GET /api/status` again before saying
 *Saved* (the X-Plane folder may have changed: the *Detected* line of Settings, step 3's notice and
 the status bar follow) and drops a refusal step 3 still showed. The folder field's hint "empty =
 the detected folder" shows only when a folder was detected. Leaving Settings with answers not
@@ -1625,5 +1668,5 @@ Served through `FastAPI` + `StaticFiles` with `httpx.AsyncClient(transport=ASGIT
 GeoJSON import/export from the page (the CLI reads GeoJSON zones, `map-zones.md` 5), editing
 the vertices of an existing zone (delete and redraw), undo, quick-preview mode (P5);
 pause/resume and the "continue offline" Overpass button (engine support first); quota and
-purge by region (P3); a redesign of the Settings screen and of the essential settings form
-(a later package).
+purge by region (P3). The redesign of the Settings screen and of the essential settings form,
+listed here as a later package, was done on 2026-09-13 (2.4, `settings-plain-language.md`).

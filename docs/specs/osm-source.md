@@ -23,10 +23,11 @@ server eight times with waits doubling to 128 s, and writes what it kept to
 stale and the fourth is a round-robin name whose second machine stopped answering this IP
 (`docs/benchmarks/network.md` section 4), so a cold tile times out today.
 
-OrthoStudio XP asks a *machine* (never a round-robin name) for `[out:json]`, at most two requests in
-flight per machine and per cluster, sends each layer to the least busy cluster (two clusters take
-the four layers of a tile at once), gives up on a machine quickly and moves to another one at
-once, remembers a dead machine for every tile of the process, and keeps one snapshot per layer.
+OrthoStudio XP asks the servers of its registry (section 2, led by the public name of the German
+cluster) for `[out:json]`, at most two requests in flight per machine and per cluster, sends each
+layer to the least busy cluster (two clusters take the four layers of a tile at once), gives up on
+a machine quickly and moves to another one at once, remembers a dead machine for the rest of the
+build, and keeps one snapshot per layer.
 
 Nothing in this module imports or reads Ortho4XP (decision 0010).
 
@@ -80,9 +81,11 @@ breaker all quietly stop working. A caller may pass its own tuple of mirrors to
 
 **Politeness** (`net-download.md` 5.5): `max_in_flight = 2` per cluster (not per code, so the
 DE cluster stays at two with both `z` and `lz4` in the registry), a `min_interval_s = 1.0` between two
-requests of the same cluster, a real `User-Agent` (`orthostudio/<version> (+OSM vector data for
-X-Plane scenery)`), `Accept-Encoding: gzip`, POST `data=<QL>` (no query string), and the
-`[out:json][timeout:<n>]` setting that lets the server cut a runaway query itself.
+requests of the same cluster, a real `User-Agent` (`orthostudio/0.0.1 (+OSM vector data for
+X-Plane scenery)`, a fixed string: it does not carry the version of the app, whose other
+downloads send `OrthoStudio-XP/<version> (+...)`), `Accept-Encoding: gzip`, POST `data=<QL>` (no
+query string), and the `[out:json][timeout:<n>]` setting that lets the server cut a runaway query
+itself.
 
 ## 3. The queries, layer by layer
 
@@ -99,11 +102,12 @@ Selectors copied verbatim from `O4_Vector_Map.py`; only the output format change
 `small_roads` exists only at `road_level >= 2`; `layers_for(road_level)` returns the layers a
 tile needs (four at the Ortho4XP default `road_level = 1`).
 
-**A layer held for more roads answers a build that wants fewer** (`narrowed`, written in 0.1.15;
-**the helper only, nothing calls it yet** -- wiring it into `sources/library.py`, whose own check
-is an equality made once for the whole build before any tile is read, belongs with that chain). The road
-levels differ in one place only, `small_roads`, and only by `way["highway"=…]` selectors added one
-at a time, so a snapshot baked at level 5 holds every road level 3 asks for and two kinds more.
+**A layer held for more roads answers a build that wants fewer** (`narrowed`, written in 0.1.15).
+Every file the library (`sources/library.py`) and a folder in our own format (`sources/chain.py`)
+read goes through it; the library first checks in its manifest that the bake holds at least the
+selectors the build asks for (`LibrarySource._answers`). The road levels differ in one place only,
+`small_roads`, and only by `way["highway"=…]` selectors added one at a time, so a snapshot baked at
+level 5 holds every road level 3 asks for and two kinds more.
 Handing it over whole would flatten the mesh under tracks and service roads the user's settings say
 nothing about, so the extra is dropped on reading: a way is kept when its tags match one of the
 wanted selectors, a node when a kept way names it or when no way names it at all, and the digest is
@@ -155,7 +159,7 @@ A reply is **usable** when the status is 200, the body parses as JSON, and the d
 | Situation | Code emitted | Mirror effect | Next |
 |---|---|---|---|
 | connect error, read timeout, no body | `OSM_MIRROR_UNREACHABLE` | breaker open `cooldown_s` (20 s), doubling at each failure to `MAX_COOLDOWN_S` | next mirror |
-| HTTP 429 | `OSM_MIRROR_REJECTED` | breaker open on the **whole cluster** for the delay the server named (`Retry-After`, else the slot its `/api/status` page says, else `QUOTA_COOLDOWN_S` = 60 s), clamped to [1 s, 1 h] and never doubled | next mirror |
+| HTTP 429 | `OSM_MIRROR_RATE_LIMITED` | breaker open on the **whole cluster** for the delay the server named (`Retry-After`, else the slot its `/api/status` page says, else `QUOTA_COOLDOWN_S` = 60 s), clamped to [1 s, 1 h] and never doubled | next mirror |
 | any HTTP 5xx | `OSM_MIRROR_REJECTED` | breaker open `BUSY_COOLDOWN_S` (20 s), not doubled: busy is not broken | next mirror |
 | other non-200 | `OSM_MIRROR_REJECTED` | breaker open `cooldown_s`, doubling | next mirror |
 | 200, body not JSON / cut | `OSM_RESPONSE_TRUNCATED` | one failure recorded, no breaker | next mirror |
@@ -171,7 +175,7 @@ request that waited for its cluster's slot while another layer found the machine
 it picks again, and no attempt is spent (2026-09-14: the layers queued behind a dead `lz4` each
 waited for its 5 s connect timeout).
 
-**Breaker.** Three states per mirror: *closed*, *open* until `open_until` (600 s, doubled at
+**Breaker.** Three states per mirror: *closed*, *open* until `open_until` (20 s, doubled at
 each consecutive opening up to 3 600 s), *half-open* once the cooldown has passed — the next
 request is a probe, a success closes the breaker and resets the cooldown, a failure re-opens
 it. A last-resort mirror is only chosen when every non-last-resort mirror is open or already
@@ -191,7 +195,9 @@ what its server named, and `MirrorBoard.soonest` gives the first moment any of t
 A round waits exactly that, floored at `attempt_delay_s`; a wait that does not fit the deadline
 ends the layer, saying so, and a caller with no deadline gets one round. `rounds` (40) is a stop
 against a loop without end, not a schedule: at twenty seconds a round it is more than a tile's
-fifteen-minute deadline allows.
+deadline allows. That deadline is the job's `timeout_s`: `OsmJob` defaults to fifteen minutes,
+but the OSM node of a build gives its job 300 s (`pipeline.build._osm_run`), so in a build a tile
+has five minutes for its map data.
 
 A round that finds nobody free is **not** an answer: it waits for the soonest and asks again.
 Ending the layer there gave the second tile of a batch no query at all, zero in zero seconds, as
@@ -246,21 +252,23 @@ One file per (tile, layer), zstd level 10 over an orjson document:
 `elements` keeps the Overpass JSON element shape (`node`/`way`/`relation`, `nodes`,
 `members`) so that P4 reads the file with no conversion. Elements are stored **in the order
 the mirror sent them** (`qt`, which keeps neighbours close and helps P4's spatial passes);
-the digest and the Ortho4XP file sort by id, so neither depends on that order.
+the digest and the vector stage's walk (section 6) sort by id, so neither depends on that order.
 
 **Content key.** `digest = blake3(canonical)` where `canonical` is orjson with sorted keys over
 the elements sorted by `(type rank n<w<r, id)`, tags sorted, `lat`/`lon` rendered with
 `"{:.7f}"`. It therefore ignores the mirror, the date, the generator and the `qt` order: two
-downloads of unchanged data give the same digest. `digest` is the cache key P4 will put in its
-`RuleParams`, and it is what `snapshot_label` hashes.
+downloads of unchanged data give the same digest. `digest` is what the `snapshot.json` of an
+`orthostudio.osm` artefact lists for each layer, and what `snapshot_label` hashes; no rule takes
+it as a parameter: the graph keys the vector stage on the digest of its `osm` input (below).
 
 **Path.** `SnapshotStore(root).path_for(tile, layer)` =
-`<root>/osm/<folder>/<tile>/<tile>_<layer>.osm.json.zst` (default root: `osxp_home()`, i.e.
-`~/.orthostudio`). One canonical path per (tile, layer), the digest inside; a sidecar
-`<tile>_<layer>.meta.json` (`meta_path_for`) holds the same document without `elements`, so
-`digest_for` costs one small read instead of a decompression. An unreadable or truncated file raises
-`OSM_CACHE_UNREADABLE`, a failed write `OSM_CACHE_WRITE_FAILED`; both are written atomically (temp
-file + `os.replace`).
+`<root>/osm/<folder>/<tile>/<tile>_<layer>.osm.json.zst` (default root: `data_root()`, the data
+folder, which is `$OSXP_HOME`, i.e. `~/.orthostudio`, unless the settings name another; a build
+passes the folder of its `orthostudio.osm` artefact). One canonical path per (tile, layer), the
+digest inside; a sidecar `<tile>_<layer>.osm.meta.json` (`meta_path_for`) holds the same document
+without `elements`, so `digest_for` costs one small read instead of a decompression. An unreadable
+or truncated file raises `OSM_CACHE_UNREADABLE`, a failed write `OSM_CACHE_WRITE_FAILED`; both are
+written atomically (temp file + `os.replace`).
 
 **Snapshot label (arbitration A4).** `snapshot_label(snapshots)` returns
 `osm-<12 hex>` = blake3 of the sorted `"<layer>:<digest>"` lines: an opaque string that changes

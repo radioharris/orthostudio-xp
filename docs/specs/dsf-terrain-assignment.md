@@ -58,11 +58,11 @@ n1 n2 n3 attr             x M   (1-based vertex numbers, attr integer)
 `100000` **after** parsing (`node_coords[2::5] *= 100000`, `:865`), and stores the triangle
 attribute as read (`int(x) - 1` then `+ 1`, `:888-891`). `MeshData` (contract,
 `orthostudio.mesh.mesh_file`) holds `vertices (N, 3) float64 = (lon, lat, z * 100000)`, `normals
-(N, 2)` float32, `tris (M, 3) int32` 0-based, `tri_attr (M,) uint8`. The private fallback
-reader parses with `numpy.fromstring(sep=" ")`, verified bit-identical to `float()` on the
-reference file (603 649 vertices), multiplies by `100000` in float64 exactly as Ortho4XP and
-keeps float64 normals; the encoder recovers Ortho4XP's float64 normals from float32 ones
-(`dsf-encoding.md` section 2).
+(N, 2)` float32, `tris (M, 3) int32` 0-based, `tri_attr (M,) uint8`. A private fallback reader
+parsed with `numpy.fromstring(sep=" ")`, verified bit-identical to `float()` on the reference
+file (603 649 vertices), multiplied by `100000` in float64 exactly as Ortho4XP and kept float64
+normals; it is gone, the whole pipeline sharing `MeshData` (`dsf/_mesh_reader.py`). The encoder
+recovers Ortho4XP's float64 normals from the float32 ones (`dsf-encoding.md` section 2).
 
 ## 3. Rules ported
 
@@ -171,9 +171,7 @@ for every triangle with numpy: `wgs84_to_orthogrid` of the barycentre
 `((lon1 + lon2 + lon3) / 3, (lat1 + lat2 + lat3) / 3)` at `mesh_zl` (`:653-665`, float64, same order
 of operations), then an index into the cell grid. A barycentre outside the enumerated grid is
 impossible for a mesh clamped to the tile (`Triangle4XP` clamps `x, y` to `[0, 1]`); it raises
-`SYS_INTERNAL_ERROR` (message "mesh outside tile") rather than a `KeyError`; a dedicated
-`DSF_MESH_OUTSIDE_TILE` code is proposed to the integrator (`errors.py` is outside this
-work package).
+`DSF_MESH_OUTSIDE_TILE` (blocking, "mesh outside tile", `dsf/zones.py`) rather than a `KeyError`.
 
 ### 3.5 Terrains, `.ter` files and overlays (`O4_DSF_Utils.py:640-1042`)
 
@@ -217,9 +215,13 @@ order of the texture. Acceptance: the reference ZL14 build gives 17 textures and
 | `needs_mask` on the raw crop, threshold 30 | keep (reuse `orthostudio.textures.imprint`) |
 | DXT1/DXT5 rebuild heuristics, `os.remove` of stale mask PNGs (`:684-693, 715-758`) | drop: keys and the store replace them (`textures-imprint.md`) |
 | `download_queue` | replaced by the returned `TextureJob` list |
-| `KeyError` on a barycentre outside the grid | fix: coded error (`SYS_INTERNAL_ERROR` until `DSF_MESH_OUTSIDE_TILE` exists) |
+| `KeyError` on a barycentre outside the grid | fix: coded error, `DSF_MESH_OUTSIDE_TILE` |
 
 ## 5. Wanted differences from Ortho4XP
 
-None in the produced bytes. The mask decision, the `.ter` text and the recut are shared
-with P1/P3 modules instead of being re-implemented.
+One in the produced bytes, since 2026-09-30: a zone takes every mesh cell it covers a part of,
+not only the cells whose centre it holds (3.4, step 2, `zones.cells_touched`); a tile without
+zones gets the textures it got before. The mask decision, the `.ter` text and the recut are shared
+with P1/P3 modules instead of being re-implemented. The encoder has a difference of its own in the
+bytes since 2026-10-09: it leaves out the triangles its rounding leaves flat or turned over
+(`dsf-encoding.md` 6).

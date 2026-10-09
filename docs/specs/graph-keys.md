@@ -34,8 +34,8 @@ early cutoff (section 8) without any extra machinery.
   must be given at node construction, possibly as `None` ("absent", e.g. a neighbour tile
   that is not built), which is a distinct, keyed state.
 * `ram_mb` is the declared peak resident memory of one run. The synchronous executor only
-  refuses a rule whose declaration exceeds its optional `ram_budget_mb`; the P2 scheduler
-  will use it for admission control.
+  refuses a rule whose declaration exceeds its optional `ram_budget_mb`; the scheduler of P2
+  (`orthostudio.sched`) uses it for admission control (`scheduler.md` 2.3).
 * `kind` is `"file"` or `"dir"`: what `fn` must leave at `ctx.out`.
 
 ## 3. Key format
@@ -156,7 +156,7 @@ committed without forcing, and made durable as a group:
   the groups of two tiles took 8 and 15 minutes on a hard disk busy with the next tile's images,
   and slowed them (2026-09-28).
   Windows flushes a file opened for writing only, and another program may hold one without
-  letting others write (a scanner, a sync tool): it is asked again for 2.75 s
+  letting others write (a scanner, a sync tool): it is asked again for 2.25 s
   (`FLUSH_OPEN_ATTEMPTS`), then left as the system wrote it. The log names it, and the point
   stops just before its artefact: the next point asks it again, and the next `recover()` checks
   it (what came after it and was forced is listed with the point). Its tile goes on: failing
@@ -355,8 +355,10 @@ Against a 60-100 s tile build, the graph costs well under 0.1 s per tile.
 
 ## 12. Not there yet
 
-* **Scheduler**: asyncio, CPU/network/disk pools, RAM admission, cancellation, critical
-  path, EWMA-weighted progress (P2). The executor here is single-threaded and synchronous.
+* **Scheduler** (asyncio, CPU/network/disk pools, RAM admission, cancellation, critical
+  path, EWMA-weighted progress): there since P2, `orthostudio.sched` (`scheduler.md`). The
+  executor here stays single-threaded and synchronous; the textures' workers run their one node
+  each through it.
 * **Variadic inputs**: every input name is fixed at rule declaration; the 8 neighbours of a
   mask are eight named inputs, some `None`.
 * **Locking of concurrent builds**: two processes may build the same key twice (one adopts);
@@ -365,8 +367,12 @@ Against a 60-100 s tile build, the graph costs well under 0.1 s per tile.
   artefacts (zstd is a dependency, unused here).
 * **Index migrations**: a schema change is a hard error, not a migration.
 * **Quota policy tied to free disk space** (plan: <= 20 % of the free space), size by
-  category, purge by region: these are `osxp cache` features on top of `gc()`.
+  category, purge by region: none exists. The `osxp cache` command that was to hold them on top
+  of `gc()` was never written; `osxp clean` (9.1) collects by reachability from the packs, not
+  by quota.
 * **Configuration coverage test**: every Ortho4XP `cfg_vars` parameter consumed by some rule or
-  marked obsolete (PLAN section 2) needs the rules of P1-P4 to exist first.
-* **Remote or shared stores**, read-through of legacy `Orthophotos/` and AutoOrtho caches
-  belong to `orthostudio.imagery`, not to the store.
+  marked obsolete. The rules of P1-P4 it waited for exist; no test checks it, though
+  `tests/test_config_schema.py` checks that every tile parameter not dropped has a setting.
+* **Remote or shared stores** do not exist. A read-through of AutoOrtho's caches would belong
+  to `orthostudio.imagery`, not to the store; Ortho4XP's `Orthophotos/` is not read at all
+  (decision 0010, `imagery-chunks.md` 6).

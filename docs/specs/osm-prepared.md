@@ -111,15 +111,16 @@ Two defences, in order of cost:
 
 1. **An empty layer is not an answer from whoever cannot prove it.** A layer file under 200 bytes
    holds no element at all, not even the wrapper of an empty layer, and the tile is refused
-   before anything is downloaded when the manifest carries sizes, as ours does. Above
-   that, an empty layer is refused from an XML source, which can prove nothing about itself, and
-   taken from a library whose manifest announces the file's digest and whose file matches it: a
-   square of Atlantic off the Sahara really has no road, no airport and no lake, only a
-   coastline, and refusing those sent every empty square of a continent to the public servers to
-   be told the same thing. What emptiness must never mean is a bake cut short, and that is the
-   coverage polygon's business. A folder is read the same way when a `manifest.json` sits beside
-   the files, which is what a copied library is; an Ortho4XP folder has none and keeps the strict
-   rule.
+   before anything is downloaded when the manifest carries sizes, as ours does. Above that, an
+   empty layer in our own format, the coastline apart, is taken only from a library whose
+   manifest announces the file's digest and whose file matches it: a square of Atlantic off the
+   Sahara really has no road, no airport and no lake, only a coastline, and refusing those sent
+   every empty square of a continent to the public servers to be told the same thing. What
+   emptiness must never mean is a bake cut short, and that is the coverage polygon's business. A
+   folder is read the same way when a `manifest.json` sits beside the files, which is what a
+   copied library is. An Ortho4XP folder has none, and its XML files are judged on size alone:
+   under 200 bytes a layer other than the coastline is refused, above that it is taken whatever
+   it holds.
 2. **Every file is checked at the door**: its digest against the manifest, then the document is
    read. Either failing makes the tile move to the next source, with the reason recorded.
 
@@ -218,10 +219,14 @@ describes them.
 
 ## 5. What the user sees, and what the tile remembers
 
-The Data step names where the layers came from: *from your folder*, *prepared, 13 September*,
-*downloaded*. The snapshot already carries a `mirror` field, and it holds that name
-(`folder`, `library`, `overpass:<mirror>`), so a tile built months ago still says
-what it was made from, and the Works page and the job's journal say it while it happens.
+The OSM step (part of the Data step until 2026-09-26) says where the layers came from. A tile a
+prepared source answers ends on one line,
+`+47+011: 4 OSM layers received from library (2026-09-13 #27a5d866778b)` or `... from folder`;
+one the live servers answer ends on their last progress line (`osm-source.md` 4). The Works page
+and the job's journal show it while it happens. The snapshot keeps a `mirror` field: the code of
+the Overpass mirror that answered (`de`, `z`, `lz4`...), `folder` for a file read from an
+Ortho4XP folder, and for a file in our own format, from the library or a folder, the value
+written into it when it was made.
 
 When every source fails, the error is the one `osm-source.md` describes, and it names what each
 tried source answered.
@@ -300,10 +305,11 @@ is kept with a mark of the library that gave it, since a user's own library and 
 version carries keep their manifest under the same name; a 304 whose copy has gone since is
 asked again without the condition.
 
-Every request of a build also names the program and its version (`OrthoStudio-XP/0.1.17 (+...)`,
-the user agent the app sends everywhere), which is what the server's log shows: which version asks
-what. It is no lock, since anyone may send the same words, but a program that does not bother
-stands out (2026-09-25). A tile's requests also say the road level they are asked at
+Every request a build sends the library also names the program and its version
+(`OrthoStudio-XP/0.1.17 (+...)`, the user agent of the app's own downloads; the Overpass client
+sends a fixed string instead, `osm-source.md` 2), which is what the server's log shows: which
+version asks what. It is no lock, since anyone may send the same words, but a program that does
+not bother stands out (2026-09-25). A tile's requests also say the road level they are asked at
 (`X-OSXP-Road-Level: 3`): from 2 to 5 the files are the same, cut down on the user's side, so
 without it the log could only tell 0, 1 or "2 to 5". The manifest, the same for every level, goes
 without it. The server's log never holds the key: the web server writes

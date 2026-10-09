@@ -123,7 +123,7 @@ The text output alone costs about 1.3 s of the sidecar (`printf("%.17g")` on 4.2
 with `-b` the sidecar spends its time in the mesh (Delaunay + quality, ~1.1 s) and the whole
 "Triangle4XP + parse" step goes from ~4.4 s to ~1.25 s. The 7.4 s "build_mesh" stage of Ortho4XP
 also includes the weight map, the Python post-processing and the `.mesh` text writer, which
-belong to later work in `orthostudio.mesh`.
+`orthostudio.mesh` ports as well (`mesh-build.md`).
 
 ## Candidate differences (documented, behaviour not changed here)
 
@@ -133,13 +133,15 @@ belong to later work in `orthostudio.mesh`.
 * **Retry with `mesh_cmd[-5]`**, `O4_Mesh_Utils.py:711`: when Triangle4XP fails, Ortho4XP intends to
   retry with `min_angle = 0` but overwrites `mesh_cmd[-5]`, which is the `nodata` value, not the
   switch string (`mesh_cmd[1]`). The retry therefore runs with the same `-q10` and `nodata = 0`,
-  which also changes the `no_data` test in `altitude()`. OrthoStudio XP will retry with the switch
-  string changed (wanted difference, to be specified with the mesh runner).
+  which also changes the `no_data` test in `altitude()`. OrthoStudio XP retries with the switch
+  string rebuilt with `min_angle = 0`, every positional parameter kept, and records
+  `MESH_QUALITY_RELAXED` (wanted difference, `mesh-build.md` 4.1).
 * **Attribute parsing `line[-2] == "0"`**, `O4_Mesh_Utils.py:245`: Ortho4XP skips triangles whose
-  attribute ends with the digit 0, i.e. `0` (dummy) but also `10` (WATER|INTERP_ALT) and
+  attribute ends with the digit 0, i.e. `0` (dummy) but also `10` (SEA|INTERP_ALT) and
   `160`; the Marseille `.1.ele` holds attributes {0, 1, 2, 3, 8, 9, 10, 16, 32, 128}.
-  Binary attributes are floats, so OrthoStudio XP's post-processing will decide by value (wanted
-  difference, already listed in the plan).
+  OrthoStudio XP's post-processing reproduces the skip by default, since the byte identity of the
+  `.mesh` needs it (`skip_multiples_of_ten = True`, `mesh-build.md` 5.1); turned off, it skips
+  only `0`.
 * **Compiler floating-point contraction**: the mesh depends on fused multiply-add being
   enabled (clang default on arm64). The official Ortho4XP macOS binary behaves that way on Apple
   Silicon; OrthoStudio XP builds with the same default so both agree bit for bit. Builds with
@@ -149,5 +151,6 @@ belong to later work in `orthostudio.mesh`.
   So Ortho4XP itself produces different meshes on Intel and Apple Silicon Macs. Parity tests must
   run the official binary and the osxp build on the same architecture.
 * **Short `.alt` / `.weight` files**: Ortho4XP silently meshes with uninitialised memory;
-  OrthoStudio XP's build exits with an error (wanted difference, coded error to come from
-  the runner).
+  OrthoStudio XP's build of the sidecar exits with an error, and the mesh stage refuses a `.alt`
+  shorter than its window before starting it, with `MESH_INPUT_MISSING` (wanted difference,
+  `mesh-build.md` 12).

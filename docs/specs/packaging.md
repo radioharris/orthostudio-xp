@@ -126,16 +126,17 @@ on an Intel Mac and under Rosetta on Apple Silicon, where its check opens it; th
 `architecture` check does not apply to it. It needs macOS 15: uv chooses the wheels for the macOS
 the build runs on, and pyproj's Intel wheels ask for macOS 15, so the Intel app is built on macOS
 15 (built on macOS 26, it asked for 15 too). `check_oldest_macos` holds each app to the oldest macOS
-the README gives (`MAC_OLDEST`: 14.0 for Apple Silicon, 15.0 for Intel). Nobody has run it on an
-Intel Mac yet.
+the README gives (`MAC_OLDEST`: 14.0 for Apple Silicon, 15.0 for Intel). A user installed the
+Intel app of 0.1.19 on an Intel Mac under macOS 15.8 (GitHub issue 4, closed 2026-10-02).
 
 In every one:
 
 - a standalone CPython of the version `.python-version` names: the build uv installs
   (python-build-standalone), which runs from any folder;
 - the runtime dependencies at the versions of `uv.lock`, the wheels the tests ran with, and
-  OrthoStudio XP itself, not editable (`uv sync --frozen --no-dev --extra server --no-editable`
-  into that CPython);
+  OrthoStudio XP itself, not editable (`uv sync --frozen --no-dev --extra server
+  --no-install-project` into that CPython, then OrthoStudio XP's own wheel, built from the
+  checkout and installed with `uv pip install --no-deps --reinstall`: section 5);
 - Triangle4XP, compiled for the system, and DSFTool, in `orthostudio/bin` (section 3);
 - `licences/`: OrthoStudio XP's GPL, Triangle4XP's sources, notice of modifications and build
   file, as its licence requires with the binary, and DSFTool's notice. The wheels keep theirs in
@@ -174,7 +175,8 @@ before its first-start step, and nothing said where (2026-10-08).
 Sizes, built by the release workflow: the `.dmg` about 67 MB (LZMA; 140 MB when it was written
 with zlib, and the app takes 266 MB once installed), the Windows setup program 68 MB (LZMA), the
 Linux `.tar.gz` 146 MB. A `.tar.xz` would save about a third of the last one, at some minutes of
-processor per release; it is not worth it while no one has built a tile on Linux.
+processor per release; it is not worth it while the Linux archive is downloaded about a dozen
+times a release.
 
 The oldest macOS the app runs on is the highest `macosx_X_Y` of the wheels installed
 (`LSMinimumSystemVersion`, computed and printed at build time): 14.0 on the macOS 14 build
@@ -264,8 +266,8 @@ browser's start), it counts from its own code. The page's first `POST /api/prese
 
 Run on the system the installer is for, after Triangle4XP is built; Inno Setup 6 for Windows.
 
-1. `uv python install --no-bin <version>` into `dist/package/python-cache` (nothing is added to
-   the user's PATH), the CPython copied into the installer's folder;
+1. `uv python install --no-bin <version>` into `dist/package/python-cache-<machine>` (nothing is
+   added to the user's PATH), the CPython copied into the installer's folder;
 2. the dependencies with `uv sync --no-install-project`, then OrthoStudio XP's wheel, built by
    `uv build` from the checkout and installed with `uv pip install --reinstall`: given the project
    too, `uv sync` took a wheel from uv's cache, which still counted as current after a change of
@@ -312,8 +314,9 @@ with the app) and `serve --check`:
 - Linux: the archive extracted, `orthostudio-xp`, then `install.sh`, whose menu entry must name
   that launcher, and `install.sh --remove`, which must take it out.
 
-No tile has been built from an installed app yet, and the installers have not been opened by hand
-on a machine that never had OrthoStudio XP.
+The checks build no tile, and they run on the build machines: an installer opened by hand on a
+machine that never had OrthoStudio XP, and tiles built from the installed app and flown over, are
+checks a person makes before a release (section 7).
 
 ## 7. Release workflow (`.github/workflows/release.yml`)
 
@@ -342,5 +345,6 @@ varied kinds flown over in X-Plane).
 - Signing: Developer ID and notarisation for macOS, a code-signing certificate for Windows. Both
   need accounts of the publisher (decision 0012).
 - Windows and Linux on ARM.
-- The Intel app run on an Intel Mac: it is checked under Rosetta only.
+- The Intel app checked on an Intel Mac: the release workflow checks it under Rosetta only. A user
+  installed the Intel app of 0.1.19 on an Intel Mac under macOS 15.8 (GitHub issue 4).
 - Automatic updates: a new version is installed over the old one.

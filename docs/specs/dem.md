@@ -64,7 +64,7 @@ all at sea has no file: its 404 goes to the negative memo and the cell degrades 
 missing `View` cell does. Its geometry is `ALOS`'s (posts at the centre of each arc-second cell),
 and it is assembled from the 3 x 3 block like the other global sources, so that tile borders meet.
 The files declare no nodata value and have none (their voids are filled at the source):
-`Dem.load` drops `DEM_NODATA_UNDECLARED` for this source.
+`Dem.build` drops `DEM_NODATA_UNDECLARED` for this source.
 
 **Cells are not square above 50°** (fixed 2026-09-19). The product keeps about 30 m on the ground
 rather than one arc-second, so from 50° of latitude a cell carries 2400 columns instead of 3600,
@@ -140,9 +140,12 @@ since the mesher then holds the raster twice). Past that it is refused with the 
 
 **What enters the key.** The folder's path alone would not do: replacing a file with a better
 version of itself leaves the path as it was, and the tile would come back from the store unchanged.
-`pipeline.build` looks the file up for each square and puts its name, its size and the time it was
-last written into `DemParams.own_stamp`. A file restored with an old timestamp is therefore not
-noticed, which is the accepted limit.
+`pipeline.build` looks the file up for each square and puts its name and the start of a blake3
+digest of its content into `DemParams.own_stamp` (`_stamp_own_file`, `_by_its_contents`); its size
+and the time it was last written only key a cache of that digest, so a file that covers many squares
+is read once. A file named as the relief itself (*My own elevation file*) is marked the same way.
+Until 2026-09-23 the mark was the name, the size and that time: a file restored with an old
+timestamp went unnoticed, and a copy that kept every byte but changed its date built the tile again.
 
 ### 3.0b `HRDEM` (Canada's lidar, NRCan) — OrthoStudio XP's own
 
@@ -250,8 +253,12 @@ each one measures, and the lidar answers it. Against `HRDEM` on the posts it cov
 
 NED is much the closer where the sample is small and sits in the trees, and the poorer where the
 sample is ten times larger; neither wins by more than a metre or two, and both are far behind the
-lidar itself. `NED1` therefore stays a source the code knows (`SOURCES`) and Settings does not
-offer: 49 MB a cell against 28 MB buys nothing measurable.
+lidar itself. `NED1` was therefore kept out of Settings at first: 49 MB a cell against 28 MB buys
+nothing measurable. The same day (2026-09-20) Settings offered it all the same, as *The USGS relief
+of North America (1 arc-second)* (`relief.source = "usgs1"`), the layer that also covers Canada and
+Mexico; its note says that over Canada the heights were interpolated from the contour lines of old
+maps and can step in terraces where Copernicus is smooth, and that inside the United States the
+1/3" layer is the finer one.
 
 What would help there is **MRDEM**, NRCan's national 30 m model of the same CanElevation series
 as HRDEM: not a finer grid but a **bare earth** one. Where the lidar has flown it is the HRDEM
@@ -280,11 +287,11 @@ escape hatches. A 404 is recorded; a timeout or a 5xx is **not** (the server was
 merely unavailable).
 
 **The memo does not change any output.** Whether the request is skipped or answered with a
-404, the cell degrades to the same zeros (section 4.3). This is proven, not assumed:
-`test_dem_oracle.py::test_combined_raster_is_byte_identical_to_ortho4xp` compares the full
-53 963 716 bytes against Ortho4XP, and
-`test_dem_oracle.py::test_the_memo_does_not_change_the_raster` rebuilds them with the three
-URLs already in the memo and a download hook that fails the test if it is ever called.
+404, the cell degrades to the same zeros (section 4.3). This was proven, not assumed, by
+`test_dem_oracle.py` (removed with decision 0010, 2026-09-14):
+`test_combined_raster_is_byte_identical_to_ortho4xp` compared the full 53 963 716 bytes against
+Ortho4XP, and `test_the_memo_does_not_change_the_raster` rebuilt them with the three URLs already
+in the memo and a download hook that failed the test if it was ever called.
 
 ### 3.5 What is *not* ported, and how a relief file is downloaded
 
@@ -353,7 +360,7 @@ A cell contributes `numpy.zeros((base, base), float32)` when
 **Keep.** The world bitmap is copied verbatim into `src/orthostudio/dem/data/world_tiles.png`
 (3703 bytes, 360x180, GPL v3 by derivation like the rest); no Ortho4XP folder is read at run time
 (decision 0010). OrthoStudio XP raises `DEM_CELL_ASSUMED_OCEAN` (info) and
-`DEM_NEIGHBOUR_UNAVAILABLE` (debug) as events instead of printing, and never turns a missing
+`DEM_NEIGHBOUR_UNAVAILABLE` (degraded) as events instead of printing, and never turns a missing
 *neighbour* into a failure — only a missing centre cell is worth a warning.
 
 ## 5. Reading a file (`read_elevation_from_file`, lines 441-593)
@@ -463,7 +470,8 @@ round trip per point per corner. OrthoStudio XP indexes the array (`alt[rows, co
 arithmetic is unchanged: the corner values are float32, every coefficient is float64, both versions
 promote to float64 before the multiply, so the results are **bit-identical**, proven on 100 000
 pseudo-random points of the reference tile against an Ortho4XP
-subprocess (`test_dem_oracle.py::test_alt_vec_matches_ortho4xp_bitwise`).
+subprocess (`test_dem_oracle.py::test_alt_vec_matches_ortho4xp_bitwise`, removed with decision
+0010, 2026-09-14).
 
 **Kept quirks**, because they are observable:
 
@@ -526,8 +534,9 @@ with the input. OrthoStudio XP ports it verbatim and **keeps the per-row `numpy.
 purpose**: a vectorised accumulation over the kernel taps sums the taps in a different order
 and stops being bit-identical past a width of about four (measured 1.5e-05 m at
 `pix_width = 8` on a float32 raster). Smoothing runs on airport windows, not on the whole
-raster, so the loop is not on any hot path. Bit-identity is proven against the real Ortho4XP
-module (`test_dem_oracle.py::test_smoothen_matches_ortho4xp_bitwise`) and against a transcription
+raster, so the loop is not on any hot path. Bit-identity was proven against the real Ortho4XP
+module (`test_dem_oracle.py::test_smoothen_matches_ortho4xp_bitwise`, removed with decision 0010,
+2026-09-14) and is checked against a transcription
 (`test_dem_raster.py::test_smoothen_matches_the_reference_bitwise`).
 
 `smooth_over_regions(alt, regions, max_pix, preserve_boundary)` is the pure-function half of
@@ -539,8 +548,9 @@ masks (unary union of boundary, runways, hangars, taxiways, aprons; 10 m upscale
 
 ## 9. Artefact and rule `orthostudio.dem@1`
 
-`kind = "dir"`, `ram_mb = 400` (two 3673x3673 float32 arrays plus a 3601 float64 working copy;
-measured peak 331 MB, section 11). Params (and only these — the key must not move when an
+`kind = "dir"`, `ram_mb = 600` (two 3673x3673 float32 arrays plus a 3601 float64 working copy;
+measured peak 331 MB, section 11); the pipeline declares more for a raster of one's own larger than
+0.1.19 read (`pipeline.build.relief_ram`). Params (and only these: the key must not move when an
 unrelated setting changes):
 
 | param | type | meaning |
@@ -549,17 +559,21 @@ unrelated setting changes):
 | `custom_dem` | `str` | Ortho4XP's `custom_dem`: empty (View, or `<base>.tif` if present), a source name, a file path, or `"a;b;c"` for a composite |
 | `fill_nodata` | `bool` | Ortho4XP's tri-state, as its boolean (section 7) |
 | `dem1_local_fallback` | `bool` | osxp-only, default `False` (section 9.1) |
+| `own_stamp` | `str` | osxp-only, filled by the pipeline: the content mark of each file of one's own the relief reads for this square and the name of each overlay source, after the composition version `2:` (section 3.0a); empty otherwise |
 
-No input: the DEM is a root of the graph (its real input, the elevation files, is external
-state; the rule is keyed by its params and re-run when they change). Files written to `ctx.out`:
+Inputs: the nine Global Scenery DSFs of section 12 (`xp12`, `xp12_n` ... `xp12_sw`), source files
+whose digests enter the key, set only when the relief is X-Plane's and each absent where X-Plane
+has no DSF. No other rule feeds it: the DEM is a root of the graph, and its other real input, the
+elevation files, is external state (the rule is keyed by its params and re-run when they change).
+Files written to `ctx.out`:
 
 ```
 Data<tile>.alt   the raster, float32 row-major, no header (4 * nxdem * nydem bytes)
 dem.npy          the same array as a .npy (mmap-able by the mesh and the masks rules)
 meta.json        {"format": "osxp-dem-1", "tile", "source", "epsg", "x0", "y0", "x1", "y1",
                   "nodata", "nxdem", "nydem", "min", "max", "mean", "nodata_pixels",
-                  "laid_over", "own": [{"file", "used", "why"}],
-                  "cells": [{"cell", "state", "path"} x 9]}
+                  "alt_layout", "laid_over", "own": [{"file", "used", "why"}],
+                  "cells": [{"cell", "state", "path", "detail"} x 9]}
 ```
 
 `Dem.load(dir)` reads it back through `numpy.load(mmap_mode="r")`, so a consumer that only
@@ -591,38 +605,42 @@ forbids this module from reaching into it. So:
 airport footprints and `orthostudio.vectors@1` publishes the result as its own `Data<tile>.alt`
 (with a `dem.json` beside it, so the mesh node can take the vector artefact as its `dem` input).
 Measured on +43+005: **byte-identical** to the reference build, 0 of 13 490 929 float32 samples
-differing (`tests/test_p4v2_oracle.py::test_the_alt_of_the_artefact_is_byte_identical`,
-`docs/specs/airports-integration.md` 3, `docs/benchmarks/p4-airports.md` 2.1). `orthostudio.dem@1`
-itself is unchanged and still publishes the raw raster: it is a root of the graph and cannot depend
-on OSM (ADR 0006).
+differing (`tests/test_p4v2_oracle.py::test_the_alt_of_the_artefact_is_byte_identical`, removed
+with decision 0010 on 2026-09-14, `docs/specs/airports-integration.md` 3,
+`docs/benchmarks/p4-airports.md` 2.1). `orthostudio.dem@1` itself is unchanged and still publishes
+the raw raster: it is a root of the graph and cannot depend on OSM (ADR 0006).
 
 See blocker B1.
 
 ### 9.3 What the key does **not** follow (known limit)
 
-`orthostudio.dem@1` is a graph root: its key is a pure function of its params, and its real input --
-the files under `Elevation_data/` -- is external state (section 9). The consequence, which this
-spec used to leave implicit:
+`orthostudio.dem@1` is keyed by its params, and by the DSFs it reads when the relief is X-Plane's
+(section 12); its real input otherwise, the elevation files downloaded into the elevation folder
+(section 9.4), is external state (section 9). The consequence, which this spec used to leave
+implicit:
 
-> **Changing the content of an elevation file, or of the file `custom_dem` points at, does
-> not change the key.** The stored artefact stays valid and is returned as a hit, with the
-> values of the *first* build. To rebuild: delete the artefact (the store path `osxp why`
-> prints), or change a parameter.
+> **Changing the content of a downloaded elevation file does not change the key.** The stored
+> artefact stays valid and is returned as a hit, with the values of the *first* build. To
+> rebuild: delete the artefact (the store path `osxp why` prints), or change a parameter.
 
-Closing this properly means turning a `custom_dem` that is a **path** into a source edge
-(content digest) at declaration time, exactly as `_coastline_node` does for the Ortho4XP
-`.osm.bz2`; that adds an input to the rule and therefore changes every stored key, so it is
-reported as a blocker rather than done in a fix pass. The cells of the elevation directory cannot
-be keyed that way at all (there are nine of them per tile, downloaded on demand).
+A file of one's own does change it, since 2026-09-23: the pipeline puts a digest of its content
+into `own_stamp`, for the file `custom_dem` names as for the file a folder holds for the square
+(section 3.0a). That is a parameter rather than a source edge, so a relief that reads no such file
+kept its key. The cells of the elevation directory are not keyed that way (there are nine of them
+per tile, downloaded on demand).
 
 ### 9.4 Cancellation and atomic writes
 
 * `DemJob.cancel` reaches `EnsureOptions.cancel`, which is polled before every download and
   between the nine cells of the 3x3 block (`build_combined_raster`); it raises
   `SYS_CANCELLED`, so a cancelled node commits nothing.
-* every elevation file OrthoStudio XP writes goes through `_atomic_write_bytes`
-  (`<name>.part-<pid>` then `os.replace`), so a download killed half way does not leave a stump a
-  later run accepts for ever;
+* how an elevation file reaches its name depends on the source. The members of a `View` archive
+  and the `NED1` / `NED1/3` cells go through `_atomic_write_bytes` (`<name>.part-<pid>`, then
+  `os.replace`), so a download killed half way does not leave a stump a later run accepts for
+  ever. A `COP30` cell and a cell of Canada's lidar (`hrdem.write_hgt`) are written to
+  `<name>.part`, then renamed. An ANADEM square is written by `cog.write_geotiff` straight under
+  its final name, and a later build takes the file there once it starts with a TIFF byte-order
+  mark (`_is_tiff`), whether or not it was written to the end;
 * the cells are looked for, and downloaded into, `elevation_dir` (`$OSXP_ELEVATION_DIR`, else
   `<data folder>/elevation`); no Ortho4XP folder is read (decision 0010).
 * a local `NED1` / `NED1/3` cell is also checked for the TIFF byte-order mark before it is
@@ -639,13 +657,15 @@ be keyed that way at all (there are nine of them per tile, downloaded on demand)
 | A4 | `test_fill_nodata_matches_the_reference_bitwise` (30 random rasters with voids, incl. the 10 000 and 20-step limits) | A |
 | A5 | `test_smoothen_matches_the_reference_bitwise` (20 random raster/mask/pix combinations, both `preserve_boundary`) | A |
 | A6 | `test_alt_strict_and_composite_match_ortho4xp` | A |
-| A7 | `test_rule_artifact_roundtrip` (`Dem.load` of the artefact equals the built object; `meta.json` schema) | - |
+| A7 | `test_dem_rule.py::test_the_rule_writes_the_three_files` (the three files, the fields of `meta.json`, `Dem.load` of the artefact) | - |
 | A8 | `test_negative_memo_*`, `test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again`, `test_the_memo_does_not_change_the_raster` | A (bytes) |
-| A9 | `test_sources_names_and_urls` (the 34 dem1 cells, the 22 1"-blocks, zip extraction rules) | - |
+| A9 | `test_dem_sources.py`: `test_view_url_dem1_cells` (the 34 dem1 cells), `test_view_url_dem3_blocks_and_resolution` (the 22 1"-blocks), `test_extract_view_zip_*` (zip extraction rules) | - |
 
-The tests marked A ran against Ortho4XP in a subprocess until decision 0010 removed them; A3 to A5
-compare with transcriptions of Ortho4XP written into `tests/test_dem_raster.py` and remain. Nothing
-in `src/` imports the Ortho4XP sources.
+The tests marked A ran against Ortho4XP in a subprocess until decision 0010 removed them
+(2026-09-14, with `tests/test_dem_oracle.py`): A1, A2, A6 and
+`test_the_memo_does_not_change_the_raster` of A8 are gone; A3 to A5 compare with transcriptions of
+Ortho4XP written into `tests/test_dem_raster.py` and remain, as do the memo tests of A8 in
+`tests/test_dem_sources.py`. Nothing in `src/` imports the Ortho4XP sources.
 
 ## 11. Measurements
 
@@ -664,7 +684,7 @@ void-filled and upsampled to 3601.
 | Peak process RSS for the whole stage | 429 MB | **387 MB** | -10 % |
 | Python peak allocation (`tracemalloc`) | - | 227 MB | - |
 
-The raster itself is 54 MB; the declared `ram_mb = 400` covers the raster, the four 3601
+The raster itself is 54 MB; the declared `ram_mb = 600` covers the raster, the four 3601
 intermediates of the upsample and the fill working arrays with margin.
 
 Where the x15 on `alt_vec` comes from: Ortho4XP builds four Python lists of 100 000 `numpy.float32`
@@ -676,7 +696,9 @@ Where the x1.7 on the assembly comes from: the work is dominated by four `upsamp
 calls, which Ortho4XP runs as a 1201-iteration Python loop over nine slice assignments each (10 809
 slice operations) and OrthoStudio XP as nine whole-array slice assignments.
 
-Reproduce with `OSXP_BENCH=1 uv run pytest tests/test_dem_bench.py -q -s -o addopts=''`.
+These were measured with `OSXP_BENCH=1 uv run pytest tests/test_dem_bench.py -q -s -o addopts=''`;
+that benchmark read the elevation files of an Ortho4XP folder and was removed with decision 0010
+(2026-09-14).
 
 ## 12. X-Plane 12's relief (`XP12`, OrthoStudio XP only)
 

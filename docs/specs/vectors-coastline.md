@@ -1,11 +1,11 @@
 # Coastline and sea: from `natural=coastline` ways to SEA lines and sea seeds
 
-Status: P4 wave 1 (`src/orthostudio/vectors/coast.py`).
+Status: shipped (`src/orthostudio/vectors/coast.py`); written for P4 wave 1.
 Origin: Ortho4XP `src/O4_Vector_Map.py:363-451` (`include_sea`) and
 `src/O4_Vector_Utils.py:848-999` (`coastline_to_MultiPolygon`, `bd_coord`, `bd_point`),
 with `src/O4_OSM_Utils.py:587-640` (`OSM_to_MultiLineString`) and
 `src/O4_Vector_Utils.py:739-776` (`cut_to_tile`) as the input conversion.
-Acceptance: the SEA layer and the SEA seeds of tile +43+005 (Marseille), measured below in 7.
+Acceptance: the SEA layer and the SEA seeds of tile +43+005 (Marseille), measured below in 8.
 
 The noding of the resulting lines is `docs/specs/vectors-pslg.md`; what the mesh does with the
 markers is `docs/specs/mesh-build.md`. Inland water (`WATER` / `SEA_EQUIV`) is
@@ -45,7 +45,8 @@ which removed every reading of an Ortho4XP folder: a curated coastline has no so
 With a warm Ortho4XP cache the layer is re-read with
 `input_tags = target_tags = {"w": [("natural", "coastline")]}` (`O4_OSM_Utils.py:402-425`), so
 `dicosmfirst["w"]` holds exactly the ways that carry the tag. OrthoStudio XP takes the same set from
-the OrthoStudio XP snapshot (`osm-source.md`) or from the re-read cache. **Keep.**
+the OrthoStudio XP snapshot (`osm-source.md`); it also read Ortho4XP's cache until decision 0010
+(2026-09-14). **Keep.**
 
 ### 2.2 Way order (`O4_OSM_Utils.py:596`)
 
@@ -55,7 +56,7 @@ not the file order. It is deterministic (int hashes are the ints, except `hash(-
 it decides the insertion order of the `SEA` lines, hence which node wins z where two coastline
 ways cross. **Keep** for parity, reproduced by `way_set_order(n)` (which literally builds
 that set); `CoastParams.ways_in_set_order = False` keeps file order. Measured identical on the
-reference tile: the 427 inserted ways come out in the same order as Ortho4XP (7).
+reference tile: the 427 inserted ways come out in the same order as Ortho4XP (8).
 
 ### 2.3 Rounding and LineString construction (`O4_OSM_Utils.py:608-631`)
 
@@ -184,7 +185,7 @@ Details that matter, all **kept**:
 * **no open chain at all** (`if not bdpolys`, lines 957-958): the whole tile `[(0,0), (0,1),
   (1,1), (1,0)]` becomes the outer polygon. This is what makes an island in the open sea work.
   It also means a tile whose only coastline is an *interior sea* ring is turned inside out
-  (the land becomes sea). **Keep** (parity); listed as a candidate fix in 8.
+  (the land becomes sea). **Keep** (parity); listed as a candidate fix in 9.
 
 ### 4.4 Islands and interior seas (`O4_Vector_Utils.py:966-980`)
 
@@ -200,7 +201,7 @@ interior sea outside `outpol` is added. **Keep.**
 
 Consequence, **kept for parity and flagged**: islands and interior seas are unioned
 *together* before the symmetric difference, so an **island inside a lake** is swallowed by the
-lake (`union(lake, island) == lake`) and comes out as water. See 8.
+lake (`union(lake, island) == lake`) and comes out as water. See 9.
 
 `buffer(0)` on each ring is what repairs a self-intersecting OSM ring. A ring with fewer than
 4 coordinates would raise in `Polygon()`, which Ortho4XP does not catch; it cannot happen, because
@@ -239,7 +240,7 @@ the two agree on the markers:
   `way["waterway"="dock"]`; `tags_of_interest = ["name"]` (lines 528-541).
 * `large_lake_threshold = tile.max_area * 1e6 / (lat_to_m * lon_to_m(tile.lat + 0.5))`
   (lines 455-457), i.e. `max_area` km² expressed in local square degrees; `max_area` defaults
-  to 200 km² (`config/models.py:163`).
+  to 200 km² (`max_area` in `config/models.py`).
 * a polygon with `pol.area >= large_lake_threshold` becomes **`SEA_EQUIV`** (bit 4), the
   others **`WATER`** (bit 1) -- `filter_large_lakes`, lines 459-500. A named polygon whose
   name is in `good_imagery_list` stays `WATER`; that list is the empty tuple in Ortho4XP
@@ -252,8 +253,9 @@ the two agree on the markers:
   "will be masked like the sea".
 * `SEA` and `SEA_EQUIV` never come from the same layer: the coastline builder emits only
   `SEA`, the water builder only `WATER` and `SEA_EQUIV`. `CoastResult.sea_equiv` is an
-  **injected pass-through** (empty in wave 1) so the assembler has one object carrying every
-  sea-class polygon, exactly as airport layers are injected (plan arbitration A2).
+  **injected pass-through**, which the build fills with the water builder's large lakes, meant to
+  give the assembler one object carrying every sea-class polygon, as airport layers are injected
+  (plan arbitration A2); nothing reads it back (`vectors-assembly.md` 7.2).
 
 ## 7. OrthoStudio XP contract
 
@@ -262,11 +264,12 @@ build_sea_layers(osm_data, tile, params=CoastParams(), *, sea_equiv=None) -> Coa
 ```
 
 * `osm_data`: the `natural=coastline` layer, in any of four shapes.
-  * **the integration path**: `osmdata.load(cache_or_snapshot, layer="coastline",
+  * **the integration path**: `osmdata.load(snapshot, layer="coastline",
     tile=tile).ways_with()` -- `WayGeometry` objects whose `coords` are already tile-local,
     already rounded to 7 decimals and already in Ortho4XP's way order, so neither the origin
     shift nor `way_set_order` is applied again. Proved identical to the direct read in
-    `tests/test_vectors_coast_oracle.py` (427/427 ways, seeds to 0.0).
+    `tests/test_vectors_coast_oracle.py` (427/427 ways, seeds to 0.0), a test removed with
+    decision 0010 (2026-09-14).
   * an `OsmWaysSource` (`orthostudio.sources.osm.OsmSnapshot` satisfies the protocol: `nodes` with
     `.id/.lat/.lon`, `ways` with `.id/.nodes/.tags`) -- WGS84, converted here.
   * a sequence of WGS84 `(lon, lat)` arrays -- same.
@@ -276,7 +279,7 @@ build_sea_layers(osm_data, tile, params=CoastParams(), *, sea_equiv=None) -> Coa
   and `ways` are the dictionaries of `OSM_layer`, not sequences, and reading them as a
   snapshot would silently give nonsense.
 * `sea_equiv`: the large-lake MultiPolygon of the water builder, carried through untouched
-  (6). Empty in wave 1, exactly as the airport layers are injected empty (arbitration A2).
+  (6). The build passes `WaterResult.sea_equiv`, which holds the lakes that reach `max_area`.
 * `CoastResult` carries `sea_lines` (the SEA linework), `sea_polygons`, `sea_equiv`,
   `islands`, `interior_seas`, `open_chains_closed`, `seeds` (S, 2), `stats` and `errors`.
   `result.to_layers(alt_vec)` is the `node_layers` layer list -- `[(sea_lines, SEA, z)]` with

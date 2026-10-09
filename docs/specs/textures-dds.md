@@ -98,7 +98,9 @@ returns the complete file image. The chain is:
 3. `EncoderUnavailableError` naming the remedy (`pip install ispc-texcomp`, or an nvcompress
    binary).
 
-Post-passes applied to every level whatever the encoder (`encode_level`):
+Post-passes applied to every level ispc_texcomp encodes (`encode_level`), and by `encode_blocks`
+to its one level whatever the encoder; a whole DDS written by nvcompress gets the four-colour
+pass alone (`encode_dds`):
 
 - `encode_flat_blocks`: every block whose 16 pixels share one RGB is rewritten with the
   optimal single-colour endpoint pair (stb_dxt/nvtt technique: two endpoints whose 2/3-1/3

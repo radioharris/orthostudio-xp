@@ -135,11 +135,12 @@ is built again.
 ## 5. Inputs and outputs (`src/orthostudio/overlays/`)
 
 ```
-def overlay_source_path(global_scenery_dir, tile) -> Path
+def overlay_source_path(global_scenery_dir, lat, lon) -> Path
     # <dir>/Earth nav data/<10x10>/<tile>.dsf ; <dir> is the folder above "Earth nav data"
     # (Ortho4XP's custom_overlay_src); an X-Plane root is accepted and resolved to
     # Global Scenery/X-Plane 12 Global Scenery; a tile only in the Demo Areas beside it is taken there
-def materialize_source(src, workdir, *, tile) -> Path     # plain DSF in place, 7z extracted
+def materialize_source(src, workdir, *, tile) -> SourceInfo  # plain DSF in place, 7z extracted
+    # SourceInfo: source, path (the DSF DSFTool reads), compressed, size, extracted; tile: its name
 def run_dsftool(dsftool, mode, src, dst, *, timeout_s=600.0) -> DsfToolRun(returncode, seconds, stdout)
 def find_dsftool(*, own_dir=None) -> Path | None          # native/dsftool/{mac,win,lin}/DSFTool[.exe]
 def filter_dsf_text(src, dst, exclusions) -> FilterStats
@@ -150,9 +151,9 @@ def build_overlay(global_scenery_dir, tile, exclusions, *, dsftool, out_root, wo
 def overlay_dsf_path(out_root, tile) -> Path
 ```
 
-`tile` is `orthostudio.model.TileRef` when that module exists (P2 `sched` work), else the identical
-`NamedTuple(lat, lon)` defined in `orthostudio.overlays._tileref` (`.name` -> `+43+005`, `.folder`
--> `+40+000`); the code only reads `lat` and `lon`.
+`tile` is `orthostudio.model.TileRef` (`.name` -> `+43+005`, `.folder` -> `+40+000`); the code only
+reads `lat` and `lon`. `orthostudio.overlays._tileref` held an identical `NamedTuple(lat, lon)`
+until `model.py` existed (P2 `sched` work), and now only re-exports `TileRef` for older imports.
 
 `FilterStats`: `polygon_defs`, `network_defs`, `object_defs` (names, in order),
 `excluded_polygon_indices`, `polygons_kept/dropped`, `segments_kept/dropped`,

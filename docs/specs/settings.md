@@ -10,8 +10,8 @@ choice, recorded here.
 Ortho4XP keeps 58 flat variables in `Ortho4XP.cfg` (application + tile) and `Ortho4XP_<tile>.cfg`
 (44 tile variables), read by `exec()` on each line. OrthoStudio XP replaces this with **one typed
 TOML file**, `~/.orthostudio/config.toml` (root from `pipeline.home.osxp_home()`, so `$OSXP_HOME`
-applies), validated by frozen pydantic models organised in three levels: the user sees the essential
-parameters first, then 14 advanced ones, and the 19 expert ones only on request.
+applies), validated by frozen pydantic models organised in three levels: the user sees the 17
+essential parameters first, then 14 advanced ones, and the 29 expert ones only on request (1.1).
 
 Decisions:
 
@@ -34,8 +34,9 @@ Decisions:
 - **No `exec`, no `eval`** anywhere: `tomllib` reads, a 40-line emitter writes (no dependency;
   `tomli_w` is not installed).
 - **`region` is not a setting**: the map's zones live in `zones.json` (`map-zones.md`). The
-  essential level has 8 groups; `airports`, `coast_transition` and `relief` are sub-models, so it
-  holds 14 leaf fields.
+  essential level has the plan's 8 groups but `region`, and four of OrthoStudio XP's own
+  (`overlays`, `photo_look`, `data_dir`, `simbrief_user`); `airports`, `coast_transition` and
+  `relief` are sub-models, so it holds 17 leaf fields.
 
 ### 1.1 The count
 
@@ -43,14 +44,14 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 
 | Level | Planned | Leaves here | Note |
 |---|---|---|---|
-| essential | 8 | 17 | 8 groups, `region` excepted, `overlays`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 4 |
+| essential | 8 | 17 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 4 |
 | advanced | 14 | 14 | |
-| expert | 20 | 19 | the plan's expert list named 19 parameters under the heading "20" |
-| total | 42 | 47 | |
+| expert | 20 | 29 | the plan's expert list named 19 parameters under the heading "20"; ten of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates` |
+| total | 42 | 60 | |
 
-The 19 expert parameters plus the 14 advanced plus the 11 Ortho4XP variables behind the
-essential level (section 2) make 44 = the 58 `cfg_vars` minus the 14 that disappear
-(section 3). Nothing of Ortho4XP is lost or counted twice.
+The 19 expert parameters that carry an Ortho4XP variable plus the 14 advanced plus the 11 Ortho4XP
+variables behind the essential level (section 2) make 44 = the 58 `cfg_vars` minus the 14 that
+disappear (section 3). Nothing of Ortho4XP is lost or counted twice.
 
 ## 2. The parameters
 
@@ -71,16 +72,23 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `coast_transition.width_m` | float `>= 0`, or a list of three floats `>= 0` when the profile is `3steps` (a scalar is required by `sand` / `rocks`) | m | 100 | `masks_width` | Maximum extent of the masks perpendicularly to the coastline (rough definition). NOTE: The value is now in meters, it used to be in ZL14 pixel size in earlier verions, the scale is roughly one to ten between both. |
 | `water_rendering` | E `XP11 + bathy` / `XP12` | - | `XP11 + bathy` | `water_tech` | Water tech type. XP12 uses a new (partly in construction) rendering tech, XP11 + bathy uses a more traditionnal blend. Both allows for 3D water. |
 | `photo_look` | E `as_delivered` / `softer` / `much_softer` / `custom` | - | `as_delivered` | – | (OrthoStudio XP) Colours of the aerial photos: as the provider delivers them, or toned down. `softer` = (-0.03, 0, -0.15), `much_softer` = (-0.06, -0.03, -0.30) as (brightness, contrast, saturation); `custom` uses the three expert values. Applied when the textures are encoded, so changing it re-encodes the tile without downloading anything. |
-| `relief.source` | E `auto` / `file` / `copernicus` / `usgs` / `canada` / `south_america` | - | `auto` | `custom_dem` (empty = auto, `COP30`, `NED1/3`, `COP30;HRDEM`, `COP30;ANADEM`) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
+| `relief.source` | E `auto` / `file` / `copernicus` / `usgs` / `usgs1` / `canada` / `south_america` | - | `auto` | `custom_dem` (empty = auto, `COP30`, `NED1/3`, `NED1`, `COP30;HRDEM`, `COP30;ANADEM`) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
 | `relief.file` | str (path; required non-empty when `source` is `file`) | - | `""` | `custom_dem` | same hint |
 | `relief.fill_nodata` | E `nearest` / `zero` | - | `nearest` | `fill_nodata` (`True` = nearest) | When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data). |
-| `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 3). Such a pack in Custom Scenery makes `none` the recommended answer, and the answer itself on a first run (`install/xplane.py` `packs_of_their_own`, `ui.md` 2.4). |
+| `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 4 and 4.3). Such a pack in Custom Scenery makes `none` the recommended answer, and the answer itself on a first run (`install/xplane.py` `packs_of_their_own`, `ui.md` 2.4). |
 | `xplane_dir` | str or absent (`None` = detected by `install.detect_xplane`) | - | `None` | `custom_scenery_dir` (its parent) | Your X-Plane Custom Scenery. Used only for "1-click" creation (or deletion) of symbolic links from Ortho4XP tiles to there. |
 | `data_dir` | str or absent (`None` = `$OSXP_HOME`); `PUT /api/settings` accepts a new folder only when `orthostudio.home.check_data_dir` does (absolute, found, writable, outside X-Plane's `Custom Scenery`, on a disk that hard-links files) and no build runs or waits | - | `None` | - (OrthoStudio XP) | The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its caches, several GB per tile: on an external disk, for instance (user request, 2026-09-15; `pipeline-textures.md` 2). Empty: OrthoStudio XP's own folder. Its disk must hard-link files (APFS, Mac OS Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where it is. |
-| `relief.folder` | str (empty = none) | - | `""` | `custom_dem` (as an overlay) | A folder of elevation files of the user's own, one per one-degree square, named after it (`N47E011.hgt`, `.tif`), subfolders included (user request, 2026-09-19; `dem.md` 3.0a). It is laid over the relief chosen, whichever that is: a square the folder holds takes its file, every other square keeps that relief. |
+| `relief.folder` | str (empty = none) | - | `""` | `custom_dem` (as an overlay) | A folder of elevation files of the user's own, one per one-degree square, named after it (`N47E011.hgt`, `.tif`), subfolders included (user request, 2026-09-19; `dem.md` 3.0a). It is laid over the relief chosen, whichever that is: a square the folder holds takes its file when that file is at least as fine as that relief, and every other square keeps that relief (a coarser file is left out since 2026-09-20, which `DEM_OVERLAY_COARSER` says). |
 | `simbrief_user` | str or absent (`None` = the button is refused before anything is asked) | - | `None` | - (OrthoStudio XP) | The SimBrief name, or pilot ID, whose last flight plan step 1 of the Plan reads to choose the squares of a flight (user request, 2026-09-19; `flight-plan.md`, `api.md` `GET /api/flightplan/simbrief`). It is the one thing of the user that leaves the machine, and only when that button is pressed; *Default values* keeps it, as it keeps the folders of this computer. |
 
-`region` (map, replaces `lat`/`lon`/`zone_list`) is P5.
+`region`, planned to replace `lat`/`lon`/`zone_list`, did not become a setting: the request's
+tile list replaces `lat`/`lon`, and the zones drawn on the map (P5, `zones.json`, `map-zones.md`)
+replace `zone_list` (sections 1 and 3).
+
+The hint of `provider` is the code's own text (`config/models.py`): `osxp doctor` has no
+`--providers` option (its options are `--json`, `--online/--offline`, `--xplane`, `--store`,
+`--chunks`; `--online` adds its network probes, one Bing tile among them), and
+`GET /api/providers` lists the sources with their maximum zoom level.
 
 ### 2.2 Advanced (`[advanced]`)
 
@@ -137,6 +145,10 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 
 Where a hint is abbreviated with "[...]" above, the code carries the full text.
 
+`masks_use_dem_too` on, or a `masks_custom_extent` that is not empty, makes a build refuse before it
+starts: `CFG_VALUE_INVALID`, "The masks stage cannot build this tile: ... is not supported"
+(`pipeline/native.py`).
+
 ## 3. What disappears (18 variables, 14 of them `cfg_vars`)
 
 | Ortho4XP | Replaced by |
@@ -154,8 +166,8 @@ Where a hint is abbreviated with "[...]" above, the code carries the full text.
 | `custom_overlay_src` | `install.detect_xplane()` + Global Scenery detection (`pipeline.build.resolve_global_scenery`), or an explicit choice in the API request |
 | `custom_build_dir` (and its trailing-`/` grouped mode) | `BuildSpec.out_dir`; the library records where each pack is |
 | `clean_bad_geometries` | always on (the GEOS noder of P4 validates geometries) |
-| `iterate` | automatic: a local DEM (`relief.source = "file"`) triggers the `-r` refinement (P3) |
-| `lat` / `lon` | the tile list of the request (`tiles: ["+43+005"]`), later the region (P5) |
+| `iterate` | nothing: refining an existing mesh (`-r`) is not supported, and a build given an `iterate` other than 0 (`--set`, an override of the API) refuses before it starts (`pipeline/native.py`); the refinement planned for P3 with a local DEM was not made |
+| `lat` / `lon` | the tile list of the request (`tiles: ["+43+005"]`), chosen on the map (P5) |
 | `zone_list` | the ZL zones of the map (P5) |
 
 `custom_scenery_dir` is not dropped: it becomes `essential.xplane_dir` (its parent folder).
@@ -177,18 +189,21 @@ Cross-field rules (model validators): `coast_transition.width_m` must be a scala
 
 ### 4.2 File (`store.py`)
 
-`load_settings(path=None) -> Settings`: `path` defaults to `<osxp_home>/config.toml`. An absent file
-returns the defaults (no error, nothing written). A file that is not valid TOML raises
-`CFG_LINE_INVALID` (path, line from `tomllib`'s message). Unknown keys are ignored with a `logging`
-warning (a file written by a newer OrthoStudio XP still loads). A value that fails validation raises
+`load_settings(path=None, problems=None) -> Settings`: `path` defaults to
+`<osxp_home>/config.toml`. An absent file returns the defaults (no error, nothing written). A file
+that is not valid TOML raises `CFG_LINE_INVALID` (path, line from `tomllib`'s message). Unknown keys
+are ignored with a `logging` warning (a file written by a newer OrthoStudio XP still loads). A
+value that fails validation is left out and its default used: it is logged and added to `problems`
+(`settings_and_problems`, up to `MAX_DROPPED_SETTINGS` of them, section 5). What the page sends is
+read strictly (`settings_from_dict`): there a value that fails validation raises
 `CFG_VALUE_INVALID` with `name` = the dotted path (`advanced.road_level`), `value`, `type` and
 `range` from the schema.
 
 `save_settings(settings, path=None) -> None`: emits TOML with the three tables in order and
 the fields in model order, writes atomically (`fsutil.atomic_write_text`: temp file + rename)
-and keeps the previous file as `config.toml.bak` before replacing it. `None` values (`xplane_dir`
-and `data_dir` today) are omitted. Round trip: `load_settings(p) == s` after `save_settings(s, p)`
-for any valid `s`.
+and keeps the previous file as `config.toml.bak` before replacing it. `None` values (`xplane_dir`,
+`data_dir` and `simbrief_user`) are omitted. Round trip: `load_settings(p) == s` after
+`save_settings(s, p)` for any valid `s`.
 
 The emitter (`toml_dumps`) supports what the models need: str, bool, int, float (including
 `inf`/`nan` as TOML spells them), lists of scalars, nested dicts as tables. Strings are
@@ -204,25 +219,33 @@ clients and the tests.
 `settings_schema() -> dict`: the pydantic JSON schema of `Settings` with every `$ref`
 inlined (the UI walks a tree, not a `$defs` table), and on every leaf property the keys
 `unit`, `hint`, `level`, `ortho4xp`, `default`, and `enum` when the type is a `Literal`.
-Properties that are sub-models (`airports`, ...) carry `level` too. Acceptance: 47 leaves,
-each with the four keys, `enum` present on the 9 enumerated fields.
+Properties that are sub-models (`airports`, ...) carry `level` too. Acceptance: 60 leaves (17
+essential, 14 advanced, 29 expert), each with the four keys, `enum` present on the 12 enumerated
+fields (`tests/test_config_schema.py`).
 
 ### 4.4 Build overrides (`overrides.py`)
 
 `to_build_overrides(settings) -> dict[str, object]`: the Ortho4XP tile variables (names of
-`tilefiles.TILE_PARAMETERS`) and the two overlay settings, typed as `BuildSpec.config`
-expects them (`pipeline/build.py`, `BuildSpec.tile_config`):
+`tilefiles.TILE_PARAMETERS`), the two overlay settings, and OrthoStudio XP's own keys of
+`tilefiles.OSXP_PARAMETERS` but `photo_zones`, which comes from the zones (`osm_folder`,
+`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, and `photo_brightness`,
+`photo_contrast`, `photo_saturation` from `photo_look`), typed as `BuildSpec.config` expects them
+(`pipeline/build.py`, `BuildSpec.tile_config`):
 
 - `cover_airports_with_highres` in `{"False", "True", "ICAO", "Existing"}` from `airports.mode`;
   `cover_zl`, `cover_extent`;
 - `masking_mode`, `masks_width` (an int/float, or the list of three for `3steps`);
 - `water_tech`; `custom_dem` (`""` when `relief.source == "auto"`, `"COP30"` when `copernicus`,
-  `"NED1/3"` when `usgs` -- the USGS 3DEP at 1/3 arc-second, about 10 m, United States only, asked
+  `"NED1/3"` when `usgs` (the USGS 3DEP at 1/3 arc-second, about 10 m, United States only, asked
   for by a user of the X-Plane.Org page, 2026-09-18; outside its coverage the cell is missing and
-  the build is refused with `DEM_TILE_UNAVAILABLE` rather than made flat, decision 0007 -- and
-  `"COP30;HRDEM"` when `canada`: the same user flies there, and Canada's lidar covers the part of
-  the country that has been flown, so it is laid *over* Copernicus, which answers for the rest
-  (`dem.md` 3.0b, `DEM_OVERLAY_UNAVAILABLE`); `fill_nodata` (bool);
+  the build is refused with `DEM_TILE_UNAVAILABLE` rather than made flat, decision 0007), `"NED1"`
+  when `usgs1` (the seamless 1" layer, over the United States, Canada, Mexico and Alaska,
+  2026-09-20), `"COP30;HRDEM"` when `canada` (the same user flies there, and Canada's lidar covers
+  the part of the country that has been flown, so it is laid *over* Copernicus, which answers for
+  the rest: `dem.md` 3.0b, `DEM_OVERLAY_UNAVAILABLE`), `"COP30;ANADEM"` when `south_america`
+  (ANADEM takes the vegetation out of Copernicus over South America, 2026-09-20), the file's path
+  when `file`; with `relief.folder` set, `;<folder>` is added as one more overlay);
+  `fill_nodata` (bool);
 - `ratio_water = ratio_water_pct / 100`; `overlay_lod = overlay_lod_km * 1000`;
 - every other advanced/expert field under its Ortho4XP name (`masks_use_DEM_too`);
 - `ovl_exclude_pol` / `ovl_exclude_net` as lists.
@@ -233,7 +256,8 @@ per request; emitting them here would silently override the request), `zone_list
 `BuildSpec.custom_scenery`, resolved by the caller). Acceptance: `BuildSpec(..., config=
 to_build_overrides(Settings())).tile_config()` equals `tile_defaults()` for the emitted keys;
 every emitted value has the type `TILE_PARAMETERS` declares (or, for `masks_width`, the
-int/float/list quirk); ints are never emitted where Ortho4XP declares float and vice versa.
+int/float/list quirk), a key of `OSXP_PARAMETERS` the type that table declares; ints are never
+emitted where Ortho4XP declares float and vice versa (`tests/test_config_overrides.py`).
 
 ### 4.5 Import of an Ortho4XP configuration (removed)
 

@@ -59,17 +59,24 @@ id gets a `#2` suffix.
 
 | Node | Rule (version) | Kind, RAM | Params (consumed subset) | Inputs | Artefact |
 |---|---|---|---|---|---|
-| dem | `orthostudio.dem@1` | net, 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
-| vectors | `orthostudio.vectors@1` | subprocess, 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (absent), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
+| dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
+| vectors | `orthostudio.vectors@1` | subprocess, 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
 | masks | `orthostudio.masks@1` | subprocess, `300 + 800 x workers` MB | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
 | xp12 | `xp12.rasters@1` | io, 0.2 GB | `tile` | `source` = the Global Scenery DSF (7z) of the tile, by content digest | dir `demn.bin`, `dems.bin` (bathy already clamped) |
-| dsf | `tile.dsf@1` | cpu, 3 GB | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
-| textures | `tile.textures@1` | net (+ its own encoding pool), `workers x 0.25 GB` | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
-| overlay | `tile.overlay@1` | subprocess, 0.3 GB | `OverlayParams` = `OverlayExclusions` + `tile`; values from `config` / the spec fields, else the OrthoStudio XP defaults (`overlay_settings`) | `source` = the Global Scenery DSF, by digest | file: the overlay DSF |
-| pack | `tile.pack@1` | io | `PackParams`: `tile`, `provider`, `zl`, `out_dir`, `link`, `tile_cfg` (the text of `Ortho4XP_<tile>.cfg`: the 44 tile variables the build consumed), `decal` and `decal_on_sea` (the decal the pack writes in the terrain files, and on the sea too; left out of the key when off) | `dsf`, `textures`, `overlay` (None with `--no-overlay`) | file `orthostudio.toml` (the manifest, also written in the pack) |
-| install | `tile.install@1` | io | `InstallParams`: `tile`, `custom_scenery`, `link` | `pack` | file `install.json` (receipt) |
+| dsf | `tile.dsf@3` | cpu, 3 GB | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
+| textures | `tile.textures@1` | net (+ its own encoding pool), `max(0.5, 0.4 x workers)` GB (`TEXTURE_RAM_MB` = 400 MB a texture) | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
+| overlay | `tile.overlay@2` | subprocess, 0.3 GB | `OverlayParams` = `OverlayExclusions` + `tile`; values from `config` / the spec fields, else the OrthoStudio XP defaults (`overlay_settings`) | `source` = the Global Scenery DSF, by digest | file: the overlay DSF |
+| pack | `tile.pack@2` | io | `PackParams`: `tile`, `provider`, `zl`, `out_dir`, `link`, `tile_cfg` (the text of `tile_settings.cfg`, in the format of Ortho4XP's `Ortho4XP_<tile>.cfg`: the 44 tile variables the build consumed), `decal` and `decal_on_sea` (the decal the pack writes in the terrain files, and on the sea too; left out of the key when off) | `dsf`, `textures`, `overlay` (None with `--no-overlay`) | file `orthostudio.toml` (the manifest, also written in the pack) |
+| install | `tile.install@2` | io | `InstallParams`: `tile`, `custom_scenery`, `link` | `pack` | file `install.json` (receipt) |
+
+`tile.dsf` went to version 2 in 0.1.19 (2026-09-30: a zone takes every mesh cell it covers a
+part of, `dsf/zones.cells_touched`) and to 3 on 2026-10-09 (the triangles the DSF's rounding
+leaves with no area or turned over are not written, `dsf.encode._flat_or_reversed`);
+`tile.overlay` went to 2 in 0.1.7 (2026-09-20: X-Plane 12's airport border line is dropped,
+`overlays.md` 4). A new version is a new key (`graph-keys.md` 3), so the next build of a tile
+built before runs that node again.
 
 ### 2.1 Keys and what changes what
 
@@ -108,9 +115,9 @@ directory being built, the masks artefact as `mask_lookup`, `quiet=True`, `progr
 `ctx.progress` (fraction = half the tiles fetched + half the textures finished) and `cancel` =
 the node's cancel token. `build_textures` commits one `texture.dds` artefact per texture into
 the same store (its own connection) and hard-links it into `textures/`; the node's own artefact
-is that directory. Its full report (timings, network counters) is written next to the logs
-(`<workdir>/logs/textures-<tile>-<key12>.json`), never inside the artefact (timestamps would
-defeat early cutoff for the pack).
+is that directory. Its full report (timings, network counters) is written next to the logs, one
+per group (`<workdir>/logs/textures-<tile>-<provider><zl>-<key12>.json`), never inside the
+artefact (timestamps would defeat early cutoff for the pack).
 
 The node **fails** (nothing committed) when the report is not `ok`: a texture is `incomplete`
 (`IMG_TILE_MISSING`), `failed` (`MASK_STALE`, encoder) or cancelled. A committed textures
@@ -120,8 +127,10 @@ retries only the missing tiles (containers keep their `ERROR` entries, spec
 
 The chunk containers are fetched by the node, so they are **not** inputs of its key (a
 texture's DDS is keyed on its container digest; the node artefact is keyed on the DSF and
-masks digests and the params). A provider whose imagery changed is not detected: `osxp cache`
-(P6) will offer the refresh; until then delete the containers.
+masks digests and the params). A provider whose imagery changed is not detected, and no command
+refreshes it: the `osxp cache` planned for P6 was never written, and `osxp clean --images` frees
+the downloaded pieces but leaves a built tile's textures in the store, so building that tile
+again with the same settings downloads nothing.
 
 ### 2.3 Pack and install: effects, not only artefacts
 
@@ -385,7 +394,7 @@ For each spec, without building anything:
 | `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture); else every texture covering the tile (`textures_covering`), `exact = false` |
 | `textures.masked` | from the same list: textures with a sea kind (DXT5, 22.4 MB) versus DXT1 (11.2 MB); unknown without the DSF: all DXT1 plus a note |
 | `requests`, `download_mb` | per texture, the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
-| `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s: the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
+| `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s, and no more than the provider's `server_req_per_s` when it has one (`ProbeResult.throughput`): the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
 | `network_s` | `requests / throughput` (probe) or `requests / 400` (no probe: a conservative sustained rate, `net-download.md` measured 1 000+) |
 | `compute_s` | the sum of the `build` and `unknown` node estimates plus `textures.total x` the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
 | `dds_gb`, `disk_free_gb`, `disk_ok` | DDS bytes of the plan; `shutil.disk_usage` of the store root; `disk_ok = free > 2 x needed` |
@@ -436,13 +445,17 @@ XP store and chunks **empty**), removed with decision 0010:
 * `orthostudio.dsf.xp12.read_global_scenery_dsf(path, tile)` is made public (the rasters node reads
   the source file it was given, not a directory).
 * Ortho4XP wrote `Ortho4XP_<tile>.cfg` in the pack at every step 3 (`O4_Tile_Utils.py:67`);
-  OrthoStudio XP writes it too (`PackParams.tile_cfg`, `tile_cfg_text` of the 44 values the build
-  consumed, listed in the manifest as `files.cfg`) next to `orthostudio.toml`, so the Ortho4XP GUI
-  can reread a tile built by OrthoStudio XP and `import-ortho4xp` reads `default_website` /
-  `default_zl` from it instead of voting on the `.ter` names. (P2a review, minor.)
-* Overlay: the OrthoStudio XP default excludes the beaches by name (`overlays.md` 4), byte-identical
-  to Ortho4XP's `[0]` on XP12 Global Scenery. The Ortho4XP application variables `ovl_exclude_pol` /
-  `ovl_exclude_net` are passed verbatim (an index stays an index), set per build (`--set`, `BuildSpec.config`, spec fields); `keep_objects` (D3,
+  OrthoStudio XP writes the same text (`PackParams.tile_cfg`, `tile_cfg_text` of the 44 values the
+  build consumed) as `tile_settings.cfg` next to `orthostudio.toml`, listed in the manifest as
+  `files.cfg`. (P2a review, minor.) Under that name neither the Ortho4XP GUI nor
+  `import-ortho4xp` reads it: the import looks for `Ortho4XP_<tile>.cfg` (`tile_config`) and,
+  without one, votes on the `.ter` names.
+* Overlay: the OrthoStudio XP default excludes the beaches by name (`overlays.md` 4), which is
+  Ortho4XP's `[0]` on XP12 Global Scenery; since 0.1.7 (2026-09-20, `tile.overlay@2`) X-Plane 12's
+  airport border line (`lib/g10/terrain10/apt_border`) is dropped too, whatever the settings, so
+  the overlay is no longer byte-identical to Ortho4XP's. The Ortho4XP application variables
+  `ovl_exclude_pol` / `ovl_exclude_net` are passed verbatim (an index stays an index), set per
+  build (`--set`, `BuildSpec.config`, spec fields); `keep_objects` (D3,
   default True) is exposed the same way: `--set keep_objects=False` gives Ortho4XP's exact overlay
   on sources with objects. (P2a review, major: the settings were unreachable, the overlay node
   always ran with the OrthoStudio XP defaults.)
@@ -479,8 +492,9 @@ Every stage is OrthoStudio XP's: `orthostudio.dem@1` (spec `dem.md`), `orthostud
 **before** the graph is declared and before an OSM download starts (`build_tiles` calls
 `stage_choices` first), never through a failure at run time:
 
-* the Triangle4XP program must exist (`$OSXP_TRIANGLE4XP`, `PATH`, then the repository build
-  `native/triangle4xp/build`), else `SYS_TOOL_MISSING` with the two `cmake` commands that build it;
+* the Triangle4XP program must exist (`$OSXP_TRIANGLE4XP`, the copy an installer ships, `PATH`,
+  then the repository build `native/triangle4xp/build`: `mesh.rule.triangle_binary`), else
+  `SYS_TOOL_MISSING` with the two `cmake` commands that build it;
 * `iterate` must be 0 (the `-r` refinement has no fixture, `mesh-build.md` 4.2), and
   `masks_use_DEM_too` and `masks_custom_extent` must be off (`masks-build.md` 8: the inputs they
   need do not exist), else `CFG_VALUE_INVALID` naming the setting.
@@ -514,7 +528,11 @@ and Triangle4XP returns the same mesh from either (`p4-vectors.md` 5).
 
 `build_tiles` declares the OSM node of each tile whose snapshot the store does not hold
 (`declare(..., fetch_osm=True)`), as the `osm` input of its vector stage and coastline node: the
-graph waits for the tile's own download only. The nodes queue on the `overpass` lane, one tile at a
+graph waits for the tile's own download only. Since 0.1.17 the node asks the prepared sources
+before Overpass (`OsmJob`, `osm-prepared.md`): the folder Settings name (`osm_folder`, in the
+library's format or in Ortho4XP's `OSM_data` one), then the map library when Settings name one or
+the build carries one, each giving all the tile's layers or none; Overpass answers the rest, and
+`--osm-refresh` goes to it directly. The nodes queue on the `overpass` lane, one tile at a
 time, apart from the imagery's network slot; the Overpass client already spreads a tile's layers
 over the mirrors (`osm-source.md` 4) and reports each layer and its download rate
 (`+43+005: 2/4 OSM layers (1.4 MB/s)`). The relief node says what it does. A file it downloads is
@@ -567,10 +585,12 @@ The main run's SIGINT handler covers the downloads; `run_osm_phase` installs one
 (`_run_phase0`), the same shape: the first Ctrl-C cancels its scheduler and it returns, instead of
 letting a `KeyboardInterrupt` escape while the download kept going. The OSM node itself takes the
 token (`OsmJob.cancel` -> `OverpassClient.fetch_tile`, polled every 0.1 s) and its `timeout_s`
-(whole tile, `NET_TIMEOUT`).
+(whole tile, `NET_TIMEOUT`): a build's node passes 300 s (`_osm_run`, `pipeline/build.py`), while
+`OsmJob`'s own default is 900 s.
 
-No Ortho4XP folder takes part (decision 0010): its OSM cache is not a source, and the download
-writes nothing outside the store.
+No Ortho4XP folder is read unasked (decision 0010): its OSM cache is a source only when Settings
+name that folder (`osm_folder`, since 0.1.17), and the layers a tile gets are written into the
+store alone (the map library's manifest is kept in the work folder, `<work>/prepared`).
 
 ### 8.4 The coastline input of the mesh
 
@@ -613,9 +633,10 @@ coastline now has no source.
   `min_area`, `max_area`, `clean_bad_geometries`, `mesh_zl`, `apt_smoothing_pix`,
   `exact_grid_order` -> `orthostudio.vectors` and everything below it (`road_level` also changes
   the layers `orthostudio.osm` downloads);
-* `--relief xplane|copernicus|view` names the same three reliefs as the page: `copernicus` is
-  a DEM source, so it goes to `custom_dem` (`COP30`) as the page's override does, and an
-  explicit `--set custom_dem=` wins over it (2026-09-17: the command line offered two);
+* `--relief` takes `xplane` (the default), `copernicus`, `usgs`, `canada` or `view`: the three
+  DEM sources go to `custom_dem` (`COP30`, `NED1/3`, `COP30;HRDEM`) as the page's override does,
+  and an explicit `--set custom_dem=` wins over them (2026-09-17: the command line offered two
+  reliefs while the page built with more; `usgs` came on 2026-09-18);
 * `custom_dem`, `fill_nodata` -> `orthostudio.dem`, then through its digest the vector stage and
   the mesh. They are nobody else's params (`mesh-build.md` 9);
 * `curvature_tol`, `apt_curv_*`, `coast_curv_*`, `limit_tris`, `min_angle`, `sea_smoothing_mode`,
@@ -630,7 +651,8 @@ recently used `orthostudio.mesh` artefact of the store that holds the neighbour.
 
 ### 8.6 RAM, pools and the masks workers
 
-`orthostudio.dem` is declared `net` (it may download elevation cells; 0.6 GB), `orthostudio.osm`
+`orthostudio.dem` is declared `net` on the `relief` lane when it downloads its relief and
+`subprocess` when it reads X-Plane 12's own, the default (0.6 GB either way), `orthostudio.osm`
 `net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (1.2 GB),
 `orthostudio.mesh` `subprocess` (0.9 GB: the Python side plus the Triangle4XP child) and
 `orthostudio.masks` `subprocess` (its own process pool inside). `cpu` is deliberately not used for

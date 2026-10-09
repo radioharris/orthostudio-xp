@@ -36,7 +36,7 @@ class DsfParams(RuleParams):          # frozen pydantic, subset_of(cfg) works
     imprint_masks_to_dds: bool = True ; use_masks_for_inland: bool = False
     mesh_zl: int = 19 ; mask_zl: int = 14 ; default_zl: int = 16 ; default_website: str = "BI"
     zone_list: list[Zone] = [] ; cover_airports_with_highres: str = "False"
-    cover_zl: int = 18 ; cover_extent: float = 1.0 ; sea_texture_blur: float = 0.0
+    cover_zl: int = 18 ; cover_extent: float = 1.0
     overlay_lod: float = 25000.0 ; use_test_texture: bool = False
 
 @dataclass TextureJob: texture: TextureId ; kinds: frozenset[TerKind]
@@ -53,10 +53,11 @@ def decode_dsf(data: bytes) -> DecodedDsf      # pools, scales, terrain names, p
 ```
 
 `MeshLike` is a protocol over the fields of the contract's `MeshData`
-(`orthostudio.mesh.mesh_file`), so the encoder accepts that class and the private fallback reader
-alike. `DsfBuild.terrains` (the `DEFN/TERT` entries after `terrain_Water`, with texture and kind) is
-an addition to the contract. `_quad_capacity` is a test hook (small meshes must split pools to
-exercise 3.1).
+(`orthostudio.mesh.mesh_file`), so the encoder accepts that class and any object with the same
+fields; the private fallback reader it was also written for is gone, the whole pipeline sharing
+`MeshData` (`dsf/_mesh_reader.py`). `DsfBuild.terrains` (the `DEFN/TERT` entries after
+`terrain_Water`, with texture and kind) is an addition to the contract. `_quad_capacity` is a test
+hook (small meshes must split pools to exercise 3.1).
 
 **Normals as Ortho4XP holds them.** `MeshData.normals` is float32 by the mesh-file spec; Ortho4XP
 computes the normal planes from the float64 value parsed from the `%.2f` text
@@ -67,12 +68,12 @@ the reference tile differ by one unit. The encoder therefore rounds float32 norm
 in [-1, 1], verified) and takes float64 normals as they are.
 
 `sea_texture_blur` is listed by the P2a contract; the DSF does not consume it (it is an
-imagery parameter) and it is documented as such in `params.py`. `use_test_texture` mirrors the
-Ortho4XP module global consumed by `create_terrain_file`.
+imagery parameter), so `DsfParams` leaves it out, as `params.py` says. `use_test_texture` mirrors
+the Ortho4XP module global consumed by `create_terrain_file`.
 
 Limits and errors: `DSF_POOL_OVERFLOW` (a pool or the terrain table beyond 65 535 entries,
-where Ortho4XP fails in `struct.pack`), `SYS_INTERNAL_ERROR` for a barycentre outside the tile
-(`dsf-terrain-assignment.md` 3.4). Commands are written `terrain_Water` first (dict order of
+where Ortho4XP fails in `struct.pack`), `DSF_MESH_OUTSIDE_TILE` for a barycentre outside the
+tile (`dsf-terrain-assignment.md` 3.4). Commands are written `terrain_Water` first (dict order of
 `textured_tris`, `:629`), then the terrains in index order.
 
 ## 3. Rules ported
@@ -274,7 +275,12 @@ entry (3.5); OrthoStudio XP drops these the same way, from the textured lists an
 counted in units of the finest pool among the three corners so that corners on one row compare
 exactly; the mesh's triangles all turn counter-clockwise (977 679 of 977 679 on +51+001) and
 are written `(0, 2, 1)`, so a written triangle that does not turn clockwise is flat or turned
-over. They have no area to show; their entries stay in the pools, as for the snapped ones.
+over. They have no area to show. Their entries in the pools of their own terrain stay, as for the
+snapped ones: those entries are made for every triangle before any is dropped. The `terrain_Water`
+entries are made only from the triangles written with `terrain_Water` (`_water_entries`), so the
+copy of a flat overlay or inland water triangle adds none there, and neither does a flat sea
+triangle without a mask, which `terrain_Water` alone draws and Ortho4XP never checks (3.5): a
+corner of it is in the water pools only when a written triangle shares it.
 
 Measured on +51+001 (Copernicus relief, the same mesh, 2026-10-09): the rule leaves out 543
 triangles, 106 of them vertical faces taller than 5 cm (the tallest 7.88 m, at Folkestone); every

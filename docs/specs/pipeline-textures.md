@@ -43,14 +43,14 @@ plan ──► fetch missing tiles (Fetcher, AIMD, hedging) ──► container 
 | `lat`, `lon` | tile (integers, south-west corner) |
 | `provider` | an `orthostudio.imagery.Provider` (URL grammar, placeholder rule, `max_in_flight`) |
 | `zl` | zoom level of the textures |
-| `jobs` | `TextureJob(texture: TextureId, kinds: tuple[TerKind, ...])`, from `tilefiles.list_textures` in P1, from the OrthoStudio XP mesh stage later. **(review)** A texture listed several times is one job, its kinds merged in first-seen order (`merge_jobs`): one download, one encode, one outcome |
+| `jobs` | `TextureJob(texture: TextureId, kinds: tuple[TerKind, ...])`, from `tilefiles.list_textures` in P1; in a build, from the `textures.json` the DSF node writes (`pipeline-build.md` 2.2). **(review)** A texture listed several times is one job, its kinds merged in first-seen order (`merge_jobs`): one download, one encode, one outcome |
 | `chunks_root` | root of the `ChunkStore` (`<root>/<folder>/<zl>/<y>_<x>.chunks`, the folder being the source's `cache_name`) and of the parent cache (section 5); default `<data folder>/chunks` |
 | `store_root` | root of the artefact `Store` (`docs/specs/graph-keys.md`); default `<data folder>/store` |
 | `out_dir` | tile directory: `textures/` and `terrain/` are created inside |
 | `mask_lookup`, `mask_zl` | `(m_til_x, m_til_y) -> Path | None` over the masks at `mask_zl` (`tilefiles.masks_index` in P1). **(review)** `mask_zl` is the single source: the pipeline copies it into `ter_params.mask_zl`, so the crop window and the `LOAD_CENTER_BORDER` of the `.ter` cannot disagree |
 | `ter_params`, `sea_texture_blur`, `clean_halo` | `.ter` and imprint parameters (`textures-ter.md`, `textures-imprint.md`); `ter_params.mask_zl` is overridden by `mask_zl` (above) |
 | `workers` | encoding processes, default `cpu_count() - 2`; `0` runs the encoding inline (tests) |
-| `ENCODE_TIMEOUT_S` | 300 s a texture, after which its worker is given up on: one failed texture (`TEX_ENCODE_FAILED`, "no answer in 300 s"), a line in the log, and the build goes on. A texture encodes in about a second; a worker that never answered used to hold the whole step with nothing in flight and nothing said, until the app was quit (a user, 2026-09-23) |
+| `ENCODE_TIMEOUT_S` | 600 s, the floor of how long a texture's worker is waited for: twenty times the run's mean encode time, at least this and at most `MAX_ENCODE_ROPE_S` (1 800 s), counted once the pool has the texture (it is handed at most its workers plus two at a time). Past it the worker is given up on: one failed texture (`TEX_ENCODE_FAILED`, "no answer in N s"), a line in the log, and the build goes on. A texture encodes in about a second; a worker that never answered used to hold the whole step with nothing in flight and nothing said, until the app was quit (a user, 2026-09-23). It was a fixed 300 s, counting the wait for a worker, until 0.1.14: a user's tile of 719 textures, 60.6 s at the worst with the pool busy, would have lost its last third to it (2026-09-23) |
 | `encoder`, `mip_mode`, `refine_passes` | `encode_dds` arguments (`textures-dds.md`); `auto` resolves to the first available encoder **before** the run, so that the key names the real encoder |
 | `max_in_flight`, `start_in_flight`, `hedge_after_s`, `timeout_s`, `max_attempts` | `Fetcher` tuning; `max_in_flight` defaults to the provider's (128 for BI), `start_in_flight` to that same ceiling (from 64, one more per round, Esri Clarity took 90 s and half of a tile's pieces to reach its 192, 2026-09-15; every ceiling of the registry was measured starting at it), hedge 1.0 s (about 5 x p90 on the measured line; `net-download.md` R3) |
 | `second_pass_pauses_s` | **(review 2026-09-13)** pause before each round of the second pass, one round per value, default `(5, 15, 45)` s; `()` turns the second pass off (section 4.1) |
@@ -82,9 +82,11 @@ retried tile counts, fallback, unfilled and corrupted chunk counts, seconds, the
 `error` that ended it when it is not `built` or `hit`), counters (the same per run, plus
 `tiles_retried`, `chunks_corrupted`), network totals (requests, bytes, hedges, retries,
 req/s), stage timings (plan, fetch, encode wall, total), the list of coded errors and free
-`notes` (the CLI adds what else the Ortho4XP build references). The CLI writes it as
-`osxp_textures.json` in the output directory. **(review 2026-09-13)** Also: per outcome
-`second_pass`, `recovered` and `failures`; counters `chunks_second_pass`, `chunks_recovered`,
+`notes`. A build writes it next to its logs, one file per provider and level,
+`<workdir>/logs/textures-<tile>-<provider><zl>-<key12>.json` (`pipeline-build.md` 2.2); the P1
+command wrote it as `osxp_textures.json` in the output directory, with notes on what else the
+Ortho4XP build referenced, until decision 0010 removed it. **(review 2026-09-13)** Also: per
+outcome `second_pass`, `recovered` and `failures`; counters `chunks_second_pass`, `chunks_recovered`,
 `second_pass_rounds`, `second_pass_capped`; timing `second_pass_s` (section 4.1). `tiles_error`
 counts the chunks left `ERROR` at the end of the run, and `req_per_s_mean` is computed over the
 fetch time without `second_pass_s`.
@@ -194,7 +196,13 @@ and the chunk is pasted white into the saved texture.
    URL, already asked `max_attempts` times, and in the 270 000 requests of P0's sustained runs
    Bing never sent one (100 % HTTP 200, `docs/benchmarks/network.md` s. 2). Nor do a 403 or any
    other `NET_UNEXPECTED_STATUS`, `IMG_BAD_CONTENT_TYPE`, and `IMG_TILE_CORRUPTED` (it has
-   `CORRUPT_RETRIES`, section 4). A 404 or a placeholder is an answer, not an error: it goes to
+   `CORRUPT_RETRIES`, section 4). Since 0.1.14 the classification of a failure
+   (`RETRYABLE_STATUSES`, `_retryable`) also calls a 403, a 408 or a 425 "try later", so such a
+   chunk is not counted as a final error; but a texture waits for the second pass only when each
+   of its `ERROR` entries carries `NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED` or
+   `NET_SERVER_ERROR` (`_defer`), and a 403, a 408 or a 425 is kept as `NET_UNEXPECTED_STATUS`
+   (`chunk_entry_for`): a texture that met one is still reported `incomplete` at once, and the
+   next run asks for the chunk again. A 404 or a placeholder is an answer, not an error: it goes to
    the parent fallback of section 5, and **the parent fallback is not applied to a transient
    failure**. A chunk that timed out may well have imagery, and filling it from its parent would
    publish a blurred square that a retry can avoid. A texture whose `ERROR` entries are not all
@@ -298,9 +306,11 @@ never costs the tile.
 For every `MISSING` or `PLACEHOLDER` tile `(x, y)` the chain `(x >> d, y >> d, zl - d)`,
 `d = 1..parent_levels`, is walked until a tile with a body is found (`textures-assemble.md`
 section 3). Parent tiles are looked up, in order, in the run's memo, in a complete container
-of the `ChunkStore` at that zoom level, then in the **parent cache**
-`<chunks_root>/<provider>/_parents/<zl>/<y>_<x>.tile` (body as received; a zero-length file
-is a tombstone: placeholder or 404). Unknown parents are fetched in a further `fetch_many`
+of the `ChunkStore` at that zoom level, then in the **parent cache**, partial containers in a
+store of their own, `<chunks_root>/<folder>/_parents/<zl>/<til_y>_<til_x>.chunks` (`OK` with the
+body as received, `MISSING` for a tombstone, placeholder or 404, `NOT_FETCHED` for a tile never
+asked: `imagery-chunks.md` 2.1; a flat `<y>_<x>.tile` file an older cache left in that folder is
+still read). Unknown parents are fetched in a further `fetch_many`
 round once the first round is over; a parent that comes back as a placeholder or 404 is a
 tombstone and the chain continues one level up in the next round. A parent that fails
 (`ERROR`) is not cached; its chain ends and the chunk is left to the neighbourhood mean
@@ -312,9 +322,10 @@ first texture does not delay the parent request of the second by more than 1 s.
 
 Why a separate cache and not the `ChunkStore` at `zl - d`: a container's `MISSING` status
 means "404" once the container is complete, so a partially filled parent container would be
-misread as "these tiles do not exist" by a later build at that level. The flat parent cache
-has no such ambiguity. It is a P1 device; P2 may add a `NOT_FETCHED` status to the container
-and retire it.
+misread as "these tiles do not exist" by a later build at that level. The parent cache keeps
+its own containers, apart from the texture store, and says `NOT_FETCHED` for what was never
+asked: that status came with dette D3 and retired the flat one-file-per-tile cache of P1
+(`pipeline/parents.py`).
 
 The chain walk is `parents.resolve_parents(t, container, lookup, levels)`.
 
@@ -326,10 +337,11 @@ parents change is re-encoded, one whose parents did not is a hit.
 ## 6. The graph rule `texture.dds` (`src/orthostudio/pipeline/rule.py`)
 
 ```
-Rule(name="texture.dds", version=1, kind="file", ram_mb=250)
+Rule(name="texture.dds", version=1, kind="file", ram_mb=400)
 params  TextureDdsParams: provider, zl, encoder, encoder_version, mip_mode, refine_passes,
                           mask_zl, mask_crop (x0, y0, side) | None, sea_texture_blur, clean_halo,
-                          photo_brightness, photo_contrast, photo_saturation
+                          parent_levels, photo_brightness, photo_contrast, photo_saturation,
+                          photo_shapes, photo_feather_px
 inputs  chunks   digest = ChunkContainer.digest() (statuses + bodies, independent of fetch times)
         mask     blake3 of the mask PNG, or None when the texture is not masked
         parents  blake3 of the parents blob, or None when every chunk came from the container
@@ -348,7 +360,9 @@ applied to the assembled image before the mask is imprinted, so X-Plane's own wa
 colours) are the one setting that re-encodes without downloading anything: the chunks are
 untouched. `TextureDdsParams.canonical` leaves the three out of the key while they are zero, so
 every texture built before the setting existed stays a hit; as soon as one is not zero, the three
-enter the key together.
+enter the key together. `photo_shapes` and `photo_feather_px` carry the colours of the zones that
+reach into the texture, as rings in its own pixels with a soft edge (24 px by default); they too
+stay out of the key while there is no such zone.
 
 The output file
 `textures/<name>.dds` is a hard link to the artefact (`os.link`, falling back to a copy across
@@ -366,7 +380,10 @@ the same key before submitting, so hits never reach the pool. `Rule.version` is 
 `assemble_texture_detailed(container, fallback)` (parents from the blob) → mask crop
 resampled (`imprint.mask_crop`) → `imprint(rgb, mask, sea_texture_blur, zl, clean_halo)`
 when masked → `encode_dds(rgba, "bc3" | "bc1", mips=True, mip_mode, encoder, refine_passes)`
-→ `ctx.out`. Peak memory about 250 MB per worker (RGBA 64 MB, float32 mip chain, DDS).
+→ `ctx.out`. Peak memory: 288 MB of arrays measured on the heaviest path (the square's colours,
+a zone over the whole texture, the sea blur, a mask and BC3), which the rule declares as 400 MB
+(`TEXTURE_RAM_MB`; 250 until 0.1.14, when that promise let a machine with little memory start
+too many textures and swap, 2026-09-23).
 Default `workers = cpu_count() - 2` (12 on the reference machine); the pool is a `spawn`
 context. The worker also publishes the DDS (link/copy); the `.ter` files are written by the
 parent process (`ter_text`, `ter_filename`, one file per kind, temporary name + `os.replace`).
@@ -496,15 +513,19 @@ Changes made by the **review of 2026-09-13** (section 4.1):
   `fetch_many(..., limit_in_flight=, max_attempts=)`, per-run overrides for the rounds of the
   second pass (`net-download.md` section 1, R4, 5.6).
 
-## 13. Wanted differences from Ortho4XP and what remains for P2
+## 13. Wanted differences from Ortho4XP and what P1 left for P2
 
 - No JPEG cache, no white fill, no mtime/size rebuild heuristics: the key decides.
 - Download of the whole tile through one session at 64-128 in flight instead of 16 threads
   per texture; encoding overlaps the download.
 - Incomplete textures are reported and retried at the tile level instead of being saved white.
-- **P2**: the list of textures and kinds comes from the OrthoStudio XP mesh (no `terrain/*.ter`
-  reading); the DSF is written by OrthoStudio XP; masks are artefacts of the mask rule (the `mask`
-  input becomes an artefact digest instead of a file digest); the parent cache becomes a container
-  status; the pool and the fetcher move under the scheduler with RAM admission; `import-ortho4xp`
-  replaces the `--from-legacy` reading of `.cfg`; per-provider hedge and concurrency settings move
-  into the registry; the batch of several tiles shares one fetcher and one pool.
+- **P2**, as P1 left it, and where it stands. Done: the list of textures and kinds comes from the
+  DSF node's `textures.json` (no `terrain/*.ter` reading); the DSF is written by OrthoStudio XP;
+  the masks are artefacts of the mask rule; the parent cache keeps `NOT_FETCHED` in containers of
+  its own (section 5); the textures run as one scheduler node whose declared RAM covers its pool
+  (`pipeline-build.md` 2.2), the pool and the fetcher staying inside it; `--from-legacy` went with
+  decision 0010, and `import-ortho4xp` lists the tiles Ortho4XP built in the Library; the registry
+  holds each provider's concurrency (`max_in_flight`, `server_req_per_s`). Not done: the `mask`
+  input is still the digest of the mask file (read from the masks artefact), the hedge is 1.0 s
+  for every provider, and each run of `build_textures` (one provider and level of one tile) opens
+  its own fetcher and encoding pool.

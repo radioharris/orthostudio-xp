@@ -70,14 +70,17 @@ The producer is `orthostudio.vectors@1`, whose directory holds `Data<tile>.{node
 | `dem.json` | no (inferred) | `{"format": "osxp-dem-1", "nxdem": …, "nydem": …, "x0": …, "y0": …, "x1": …, "y1": …, "nodata": …, "epsg": 4326}` |
 
 `dem.json` is the contract this stage needs from the DEM stage: the five numbers
-Triangle4XP takes on its command line cannot be recovered from the raster alone. **Until
-that file exists** (blocage B1) the reader infers them from the size of `Data<tile>.alt`
-under the View/SRTM layout of `O4_DEM_Utils.py:354-362` — `nxdem = nydem = sqrt(size/4)`,
-`margin = (nxdem - 3601) / 2 / 3600`, `x0 = y0 = -margin`, `x1 = y1 = 1 + margin`,
-`nodata = -32768` — which reproduces the reference tile exactly (3673 × 3673, ±0.01°) and
-raises `MESH_INPUT_MISSING` when the size is not a square of an odd 1″ grid.
+Triangle4XP takes on its command line cannot be recovered from the raster alone. Both producers
+publish them: `orthostudio.vectors@1` writes `dem.json` beside its `Data<tile>.alt`, and
+`orthostudio.dem@1` the same fields in its `meta.json`, which `DemSpec.from_dir` reads when there
+is no `dem.json`. Only a directory holding neither (blocage B1, closed) falls back on inferring
+them from the size of `Data<tile>.alt` under the View/SRTM layout of `O4_DEM_Utils.py:354-362`
+(`nxdem = nydem = sqrt(size/4)`, `margin = (nxdem - 3601) / 2 / 3600`, `x0 = y0 = -margin`,
+`x1 = y1 = 1 + margin`, `nodata = -32768`), which reproduces the reference tile exactly
+(3673 × 3673, ±0.01°) and raises `MESH_INPUT_MISSING` when the size is not a square of an odd 1″
+grid.
 
-### 2.3 `coastline` (artefact, `kind=dir`, optional)
+### 2.3 `coastline` (artefact, `kind=file`, optional)
 
 `coastline.npz`: `format = "osxp-coastline-nodes-1"`, `nodes` float64 `(C, 2)` = absolute
 `lon, lat` of every node of the OSM `natural=coastline` ways covering the tile (the whole
@@ -179,7 +182,8 @@ P0.
 ## 4. The Triangle4XP command (`build.py`)
 
 Reconstituted from `O4_Mesh_Utils.py:632-670` and proved equal to Ortho4XP's on +43+005 by
-`tests/test_mesh_triangle_io.py::test_oracle_marseille_official_vs_osxp_text_vs_binary`.
+`tests/test_mesh_triangle_io.py::test_oracle_marseille_official_vs_osxp_text_vs_binary`, an oracle
+test removed with decision 0010 (2026-09-14).
 
 ```
 argv[0]  <triangle_bin>                       native/triangle4xp/build/Triangle4XP
@@ -453,11 +457,14 @@ the `dem` input. `mesh_zl` is not consumed either: the PSLG enters through the d
 | 2 | `…::test_mesh_is_byte_identical` | `build_mesh_native` on `fixtures/.../Data+43+005.{node,poly,alt}` produces a `Data+43+005.mesh` equal to the fixture byte for byte (69 171 409 bytes) |
 | 3 | `…::test_binary_and_text_exchange_give_the_same_mesh` | the same build with `-b` and without produces the same `.mesh` bytes (both byte-identical to the fixture) |
 | 4 | `…::test_water_tris_match_the_mesh` | every row of `water_tris.npz` matches `read_mesh(.mesh)`: `attr & 7 != 0`, corners equal, barycentre equal to `vertices[corners].mean` at 1 ulp, and `K` equals the count computed from the `.mesh` alone |
-| 5 | `test_meshbuild_weights.py` | synthetic: the difference-array painting equals a literal transcription of Ortho4XP's loop on 3 000 random nodes and 25 random boxes (3 seeds), clamping at the four borders, empty inputs, `apt_curv_tol == curvature_tol` and `apt_curv_tol <= 0` disable the airport term, a ratio below 1 survives the coastline maximum, the `airports.json` / `.apt` / `coastline.npz` readers and the restricted unpickler |
+| 5 | `test_meshbuild_weights.py` | synthetic: the difference-array painting equals a literal transcription of Ortho4XP's loop on 3 000 random nodes and 25 random boxes (3 seeds), clamping at the four borders, empty inputs, `apt_curv_tol == curvature_tol` and `apt_curv_tol <= 0` disable the airport term, a ratio below 1 survives the coastline maximum, the `airports.json` and `coastline.npz` readers, and a `Data<tile>.apt` beside `airports.json` never read (`test_an_ortho4xp_airport_pickle_is_never_read`) |
 | 6 | `test_meshbuild_postprocess.py` | synthetic: classification table (all 256 attributes, both `skip_multiples_of_ten` values), `sea_smoothing_mode` in the three modes, water smoothing against a literal transcription, `water_tris.npz` round trip |
-| 7 | `test_meshbuild_rule.py` | the rule declares exactly the 13 params above, `kind=dir`, inputs `(coastline, dem, vectors)`, and its key changes when any consumed param changes and not otherwise; `DemSpec` inference and `dem.json`; the restricted unpickler refuses a payload that is not a shapely/builtin graph |
+| 7 | `test_meshbuild_rule.py` | the rule declares exactly the 13 params above, `kind=dir`, inputs `(coastline, dem, vectors)`, and its key changes when any consumed param changes and not otherwise; `DemSpec` inference and `dem.json` (`test_dem_spec_inference`, `test_dem_spec_from_json_wins`) |
 | 8 | `test_meshbuild_rule.py::test_retry_relaxes_min_angle_and_not_nodata` | with a sidecar wrapper that fails once, the retry command carries `-pq0` and the *same* `nodata` as the first attempt, `MESH_QUALITY_RELAXED` is recorded, and the mesh is produced; a sidecar that always fails raises `MESH_TRIANGULATION_FAILED` with its exit code |
 | 9 | `test_meshbuild_oracle.py::test_the_two_legacy_quirks_change_the_mesh` | turning a quirk off really moves the mesh: `skip_multiples_of_ten=False` -> 52 differing lines, `water_in_set_order=False` -> 97 622 |
+
+Tests 1 to 4 and 9 compared with Ortho4XP's build of +43+005 and left with
+`tests/test_meshbuild_oracle.py`, removed with decision 0010 (2026-09-14); 5 to 8 remain.
 
 ## 11. Measurements (M4 Pro, `nice -n 10`, load average 4.4-5.0, other chantiers running)
 
@@ -465,7 +472,8 @@ Reference: Ortho4XP's `build_mesh` on +43+005 ZL14, warm caches, **7.431 s wall*
 (`fixtures/large/oracle/+43+005_zl14_BI/runs/run1.json`, `self_cpu 4.709 s`,
 `children_cpu 2.403 s`, `maxrss 644 MB` for the whole Ortho4XP process).
 
-Measured by `tests/test_meshbuild_oracle.py` (`-s` prints them):
+Measured by `tests/test_meshbuild_oracle.py` (`-s` printed them; removed with decision 0010,
+2026-09-14):
 
 | Step | OrthoStudio XP, binary exchange | OrthoStudio XP, text exchange | Ortho4XP |
 |---|---|---|---|
@@ -483,11 +491,12 @@ Measured by `tests/test_meshbuild_oracle.py` (`-s` prints them):
 * the 0.30 s of "read the PSLG" is the *transition* cost of taking Ortho4XP's text `.node` /
   `.poly`; the native vector stage (P4) hands over binary tables and that line goes to
   ~0.005 s. Without it: 2.49 s, **3.0x**.
-* the 0.94 s of `.mesh` text (34 % of the stage) is written for consumers that are not
+* the 0.94 s of `.mesh` text (34 % of the stage) was then written for consumers that were not
   OrthoStudio XP: the Ortho4XP stage 2.5 fallback, the community mesh format, and the oracle
-  comparisons. Every OrthoStudio XP stage reads `mesh.npz` instead. Dropping the text file when no
-  legacy consumer is wired would put the stage at 1.85 s, **4.0x**; that is an integrator's
-  decision, and the artefact contract keeps the file for now.
+  comparisons; without it the stage would take 1.85 s, **4.0x**. The text file stays: the DSF
+  stage reads `Data<tile>.mesh` whenever the artefact has one, because a DSF built from the npz's
+  full-precision elevations differed from Ortho4XP's on 23 bytes of +43+005 (`pipeline-build.md`
+  8.8), and only the masks read `mesh.npz` first.
 
 Memory: `maxrss` 417 MB for the Python process (the `(N, 6)` node table is 29 MB, the text
 writer's chunks dominate) and 304 MB for the Triangle4XP child (54 MB `.alt` + 4 MB
@@ -520,9 +529,10 @@ needs when two tiles overlap.
 
 * **B1 — `dem.json`.** The DEM stage must publish `nxdem, nydem, x0, y0, x1, y1, nodata`
   next to `Data<tile>.alt`; they are not derivable from the raster in general (ALOS uses
-  3672 samples and a half-pixel offset, a user GeoTIFF anything). Until then the reader
-  infers the View/SRTM layout from the file size. Exact and tested on the reference tile,
-  wrong for ALOS or a custom DEM.
+  3672 samples and a half-pixel offset, a user GeoTIFF anything). Closed: `orthostudio.dem@1`
+  publishes them in its `meta.json` and `orthostudio.vectors@1` in `dem.json`, and
+  `DemSpec.from_dir` reads either (section 2.2). The inference from the file size, exact on the
+  reference tile and wrong for ALOS or a custom DEM, is left for a directory holding neither.
 * **B2 — `skip_multiples_of_ten` / `water_in_set_order` defaults** (section 5.1): project-wide
   decision, byte-identity versus correctness.
 * **B3 — `water_tris.npz` stops at the mesh-side half** (section 7): the masks stage does
@@ -530,14 +540,15 @@ needs when two tiles overlap.
   reads `format` / `corners` / `water_bits` / `bary` from this file and does the
   `wgs84_to_orthogrid` half itself.
 * **B5 — the Triangle4XP binary is not part of the key.** The sidecar produces the vertices,
-  and its path comes from `$OSXP_TRIANGLE4XP` / `PATH` / `native/triangle4xp/build`: rebuilding
+  and its path comes from `$OSXP_TRIANGLE4XP`, the installer's copy, `PATH`, then
+  `native/triangle4xp/build` (`mesh/rule.triangle_binary`): rebuilding
   it (another patch, another compiler, other options) leaves every stored mesh valid.
   Closing it means either a fourth input on the rule (`triangle`, a source edge on the binary,
-  content digest — my preference, it is what `_coastline_node` already does for the Ortho4XP
-  `.osm.bz2`) or a `triangle_build` digest parameter; both change the rule's signature and
-  invalidate every stored mesh, which is a decision for this chantier plus the integrator, so
-  the fix pass only wrote it down. **Known limit of the cache today**: after rebuilding the
-  sidecar, drop the `orthostudio.mesh` artefacts (`osxp gc`) or change a parameter.
+  content digest, the preferred way) or a `triangle_build` digest parameter; both change the
+  rule's signature and invalidate every stored mesh, which is a decision for this chantier plus
+  the integrator, so the fix pass only wrote it down. **Known limit of the cache today**: after
+  rebuilding the sidecar, change a parameter of the mesh; no command drops the `orthostudio.mesh`
+  artefacts alone (`osxp clean` frees only what no tile on disk needs).
 * **B4 — normals stay quantised to 1/100** (section 6.1). The DSF encoder rounds them to two
   decimals because Ortho4XP's `.mesh` only carried two, and that is what keeps the DSF
   byte-identical. OrthoStudio XP now has the full-precision normals in `mesh.npz`: feeding them to

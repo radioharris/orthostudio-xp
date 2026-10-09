@@ -5,7 +5,8 @@ Status: P1, written before `src/orthostudio/imagery/chunks.py` (tests
 of a texture are pasted into one `Image` and saved as a 4096² JPEG q75
 (`O4_Imagery_Utils.py:1329-1368`, `:1733-1743`), which loses the per-tile status (a white fill for a
 missing tile is saved and never questioned again, `IMG_CACHE_INCOMPLETE` in `docs/specs/errors.md`).
-Decision: **new mechanism**; the Ortho4XP JPEG cache is kept as a read-only fallback.
+Decision: **new mechanism**; the Ortho4XP JPEG cache was kept as a read-only fallback until
+decision 0010 (2026-09-14) removed it (section 6).
 
 ## 1. The rule in plain language
 
@@ -19,7 +20,7 @@ file is written atomically, and its content digest is what the artefact graph ha
 |---|---|---|---|
 | `OK` | 0 | an image body was received | the bytes |
 | `MISSING` | 1 | not fetched yet, or the provider has no such tile (HTTP 404) | empty |
-| `PLACEHOLDER` | 2 | HTTP 200 "no imagery" tile recognised by `is_placeholder` (tombstone, `net-download.md` R5) | empty (the placeholder body is not kept) |
+| `PLACEHOLDER` | 2 | HTTP 200 "no imagery" tile recognised by `is_placeholder` (tombstone, `net-download.md` 5.2) | empty (the placeholder body is not kept) |
 | `ERROR` | 3 | transport or server failure after the fetcher's retries, or a 200 that is not a complete image; **retryable** | empty, `content_type` holds the reason code (`NET_TIMEOUT`, `NET_CONNECTION_FAILED`, `NET_RATE_LIMITED`, `NET_SERVER_ERROR`, `NET_UNEXPECTED_STATUS`, `SYS_CANCELLED`, `IMG_BAD_CONTENT_TYPE`, `IMG_TILE_CORRUPTED`), persisted by the format (section 3) |
 | `NOT_FETCHED` | 4 | never asked for: the tile is **unknown**, not a hole (dette D3) | empty |
 
@@ -54,7 +55,8 @@ texture container of that zoom level, which the texture pipeline owns and assume
 
 The meaning of `MISSING` in a texture container is unchanged in P1 (`textures.py` keeps
 creating containers full of `MISSING` for "to download"). Narrowing it to "404 only"
-everywhere is a pipeline change, not a format change; see the `dette` report.
+everywhere is a pipeline change, not a format change, and it was not made: a new texture
+container is still 256 `MISSING` entries (`ChunkContainer()`).
 
 ## 3. File format (`to_bytes` / `from_bytes`), little-endian
 
