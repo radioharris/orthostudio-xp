@@ -307,3 +307,23 @@ def test_the_coastline_rule_writes_a_readable_npz(tmp_path: Path) -> None:
     nodes = read_coastline_nodes(out)
     assert nodes.shape == (4, 2)
     assert nodes[0].tolist() == [snap.nodes[0].lon, snap.nodes[0].lat]
+
+
+def test_a_build_gives_the_osm_node_the_jobs_own_fifteen_minutes(monkeypatch: Any) -> None:
+    """A build's OSM node gave its job 300 s where the job's own deadline is 900 s: the rounds a
+    spent Overpass quota needs were cut at five minutes (found 2026-10-09)."""
+    from types import SimpleNamespace
+
+    from orthostudio.pipeline import build
+
+    seen: dict[str, float] = {}
+
+    def fake_rule(ctx: Any) -> None:
+        job = native.current_osm_job()
+        assert job is not None
+        seen["timeout_s"] = job.timeout_s
+
+    monkeypatch.setattr(build, "run_p0_rule", fake_rule)
+    run = build._osm_run(SimpleNamespace(prepared=None))
+    run(SimpleNamespace(params=SimpleNamespace(refresh=""), cancel_event=None, progress=None))
+    assert seen["timeout_s"] == native.OSM_TIMEOUT_S == 900.0

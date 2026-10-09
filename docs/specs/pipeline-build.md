@@ -585,8 +585,8 @@ The main run's SIGINT handler covers the downloads; `run_osm_phase` installs one
 (`_run_phase0`), the same shape: the first Ctrl-C cancels its scheduler and it returns, instead of
 letting a `KeyboardInterrupt` escape while the download kept going. The OSM node itself takes the
 token (`OsmJob.cancel` -> `OverpassClient.fetch_tile`, polled every 0.1 s) and its `timeout_s`
-(whole tile, `NET_TIMEOUT`): a build's node passes 300 s (`_osm_run`, `pipeline/build.py`), while
-`OsmJob`'s own default is 900 s.
+(whole tile, `NET_TIMEOUT`): 900 s, `OSM_TIMEOUT_S`, which a build's node passes too (`_osm_run`,
+`pipeline/build.py`; it passed 300 s until 1.0).
 
 No Ortho4XP folder is read unasked (decision 0010): its OSM cache is a source only when Settings
 name that folder (`osm_folder`, since 0.1.17), and the layers a tile gets are written into the

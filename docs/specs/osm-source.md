@@ -195,9 +195,8 @@ what its server named, and `MirrorBoard.soonest` gives the first moment any of t
 A round waits exactly that, floored at `attempt_delay_s`; a wait that does not fit the deadline
 ends the layer, saying so, and a caller with no deadline gets one round. `rounds` (40) is a stop
 against a loop without end, not a schedule: at twenty seconds a round it is more than a tile's
-deadline allows. That deadline is the job's `timeout_s`: `OsmJob` defaults to fifteen minutes,
-but the OSM node of a build gives its job 300 s (`pipeline.build._osm_run`), so in a build a tile
-has five minutes for its map data.
+deadline allows. That deadline is the job's `timeout_s`, fifteen minutes (`OSM_TIMEOUT_S`), which
+the OSM node of a build gives its job too (`pipeline.build._osm_run`; it gave 300 s until 1.0).
 
 A round that finds nobody free is **not** an answer: it waits for the soonest and asks again.
 Ending the layer there gave the second tile of a batch no query at all, zero in zero seconds, as
