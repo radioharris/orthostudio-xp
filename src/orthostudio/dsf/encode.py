@@ -170,6 +170,37 @@ def _check_pool_sizes(
         )
 
 
+def _flat_or_reversed(rm: RecutMesh, part: PoolPartition) -> np.ndarray:
+    """``(n_tris,)`` bool: the triangles the DSF's rounding leaves with no area or turned over.
+
+    A DSF stores a point as 16 bits of its pool, about 21 cm at Ortho4XP's quad level 3, so a
+    mesh triangle thinner than that can come out with its three corners on one line and their
+    heights kept: a vertical face. X-Plane's ridge lift takes the slope of the terrain, and a
+    vertical one stops the simulator on "vx_wrl value is nan or inf" (fm_wind_acf.cpp, a user near
+    EGSQ on +51+001 where such a face stands 1.44 m tall, 2026-10-09). X-Plane drops at load
+    some of these triangles, the ones it finds turned over in its own arithmetic, not all of them
+    and not the same ones from one session to the next (677 then 610 on one file); dropping them
+    all here halved what it skips (610 to 301). They have no area to show, like the triangles
+    whose corners land on one entry, which Ortho4XP already drops.
+
+    The positions are the ones X-Plane decodes, ``offset + raw * scale / 65535`` with the pool's
+    ``scale = 2 ** -level``, counted in units of the finest pool among the three corners so that
+    corners on one row of the rounding compare exactly. The mesh's triangles all turn
+    counter-clockwise and are written ``(0, 2, 1)``, so a written triangle that does not turn
+    clockwise is flat or turned over.
+    """
+    corners = rm.tris[:, [0, 2, 1]]
+    bucket = part.node_bucket[corners]
+    level = part.level[bucket]
+    finest = level.max(axis=1, keepdims=True)
+    shift = (finest - level).astype(np.float64)
+    x = (part.key_x[bucket] * 65535 + part.ix[corners]).astype(np.float64) * 2.0**shift
+    y = (part.key_y[bucket] * 65535 + part.iy[corners]).astype(np.float64) * 2.0**shift
+    dx1, dy1 = x[:, 1] - x[:, 0], y[:, 1] - y[:, 0]
+    dx2, dy2 = x[:, 2] - x[:, 0], y[:, 2] - y[:, 0]
+    return dx1 * dy2 - dx2 * dy1 >= 0
+
+
 def _pool_scales(part: PoolPartition, z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """``(altmin, scale_z, inv_stp)`` per pool (``O4_DSF_Utils.py:532-548``)."""
     order = np.argsort(part.node_bucket, kind="stable")
@@ -620,7 +651,9 @@ def build_dsf(
     seq = np.concatenate([masked_sea, nonsea])
     te = _terrain_entries(tile, rm, part, terrains, seq, icoords, ratio, params)
     pp = te.corner_pool * (MAX_U16 + 1) + te.corner_pos
-    dropped = (pp[:, 0] == pp[:, 1]) | (pp[:, 1] == pp[:, 2]) | (pp[:, 2] == pp[:, 0])
+    snapped = (pp[:, 0] == pp[:, 1]) | (pp[:, 1] == pp[:, 2]) | (pp[:, 2] == pp[:, 0])
+    flat = _flat_or_reversed(rm, part)
+    dropped = snapped | flat[seq]
     kept = ~dropped
     kept_tri = np.zeros(rm.n_tris, dtype=np.bool_)
     kept_tri[seq] = kept
@@ -628,7 +661,7 @@ def build_dsf(
     groups = _groups(ter_of_seq[kept], te.corner_pool[kept], te.corner_pos[kept])
 
     w1 = sea_idx[
-        (terrains.of_tri[sea_idx] == 0)
+        ((terrains.of_tri[sea_idx] == 0) & ~flat[sea_idx])
         | (terrains.overlay[terrains.of_tri[sea_idx]] & kept_tri[sea_idx])
     ]
     inland = nonsea[rm.tri_types[nonsea] == INLAND]
@@ -639,6 +672,8 @@ def build_dsf(
     stats["entries_s"] = time.perf_counter() - t3
     stats["entries"] = int(len(te.pool) + len(we.pool))
     stats["dropped_tris"] = int(dropped.sum())
+    unmasked_sea = sea_idx[terrains.of_tri[sea_idx] == 0]
+    stats["flat_tris"] = int((flat[seq] & ~snapped).sum() + flat[unmasked_sea].sum())
     stats["cross_pool_tris"] = int(
         sum(len(g.corner_pos) for g in groups + water_groups if g.pool == _CROSS)
     )

@@ -12,7 +12,9 @@ the measurements, `docs/benchmarks/`.
 - **DSF** (Distributable Scenery Format): X-Plane's scenery file for one tile, a single binary file
   of about 40 MB for an OrthoStudio XP tile at ZL16 (`Earth nav data/+40+000/+46+006.dsf`). It holds
   the relief as a mesh of triangles and, for each triangle, the texture to lay on it. X-Plane ships
-  one per tile in its default scenery; the DSF OrthoStudio XP builds replaces it.
+  one per tile in its default scenery; the DSF OrthoStudio XP builds replaces it. Like Ortho4XP, it
+  stores each corner to about 20 cm; a triangle thinner than that which the rounding stands on its
+  edge is left out, because X-Plane's flight model stops on such a vertical face.
 - **Texture**: one aerial image of 4096 × 4096 pixels, stored as DDS (compressed for the graphics
   card, with its smaller versions for distance). At ZL16 a texture covers about 7 km on a side,
   so a tile uses about 180 to 230 of them, about 1.4 GB. Each comes with a small `.ter` file

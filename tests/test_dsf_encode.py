@@ -205,6 +205,45 @@ def test_degenerate_triangles_are_dropped_but_their_entries_kept() -> None:
     assert dec.pools[0][0, 2] == 0  # z of the first-met node (10 m above altmin 10)
 
 
+def _turns(dec: Any) -> np.ndarray:
+    """Twice the signed area of every decoded triangle, as X-Plane reads the corners."""
+    out = []
+    for patch in dec.patches:
+        for tri in np.asarray(patch.corners).reshape(-1, 3, 2):
+            p = np.array([dec.vertex(int(pool), int(i))[:2] for pool, i in tri])
+            out.append(
+                (p[1, 0] - p[0, 0]) * (p[2, 1] - p[0, 1])
+                - (p[2, 0] - p[0, 0]) * (p[1, 1] - p[0, 1])
+            )
+    return np.array(out)
+
+
+def test_a_triangle_the_rounding_stands_on_its_edge_is_not_written() -> None:
+    """A triangle a tenth of a millimetre thick comes out of the 16-bit rounding with its three
+    corners on one row and its heights kept: a wall X-Plane's ridge lift divides by zero on
+    (+51+001 near EGSQ, 2026-10-09). It is left out like a triangle whose corners merge; a thin
+    one the rounding keeps open stays, and every triangle written turns the way X-Plane wants."""
+    lon, lat = 5.3, 43.3
+    coords = np.array(
+        [
+            [lon, lat, 10.0, 0.0, 0.0],
+            [lon + 0.01, lat, 20.0, 0.0, 0.0],
+            [lon + 0.005, lat + 1e-9, 30.0, 0.0, 0.0],  # 0.1 mm above the first two: one row
+            [lon + 0.005, lat - 0.01, 40.0, 0.0, 0.0],
+            [lon + 0.005, lat + 1e-5, 50.0, 0.0, 0.0],  # 1.1 m above: thin, but open
+        ]
+    )
+    tris = np.array([[0, 1, 2], [0, 3, 1], [2, 1, 4]])
+    mesh = _MeshData(
+        coords[:, :3].copy(), coords[:, 3:5].copy(), tris.astype(np.int32), np.zeros(3, np.uint8)
+    )
+    out = build_dsf(TILE, mesh, None, _params(), None)
+    dec = decode_dsf(out.data)
+    assert out.stats["flat_tris"] == 1 and out.stats["dropped_tris"] == 1
+    assert dec.triangle_count() == 2
+    assert (_turns(dec) < 0).all(), "every triangle written turns clockwise in (lon, lat)"
+
+
 def test_blocks_split_at_255_and_510() -> None:
     idx = np.arange(600, dtype=np.uint16)
     b = _blocks(idx, 23, 255, 1)

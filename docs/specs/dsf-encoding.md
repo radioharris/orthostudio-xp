@@ -166,6 +166,9 @@ rest of the loop body). If the three pools are equal the triple goes to
 `textured_tris[terrain][pool]`, else the six values to `textured_tris[terrain]["cross-pool"]`.
 `terrain_Water` triangles are never checked for degeneracy (`:865-872`, `:1034-1040`).
 
+OrthoStudio XP also drops, from the textured lists and from `terrain_Water`, every triangle the
+rounding of the positions leaves with no area or turned over (`_flat_or_reversed`, section 6).
+
 Per terrain, the groups (`pool` or `"cross-pool"`) are ordered by first use (defaultdict
 order); triangles inside a group keep their visiting order.
 
@@ -252,10 +255,37 @@ would fail in `struct.pack`); terrain indices must fit in `u16` (65 535 terrains
   `decode.py` returns the expected terrains, plane values and triangle counts, for both water
   techs and with `imprint_masks_to_dds` off; the pool of a degenerate triangle still holds its
   entries.
+- A triangle 0.1 mm thick, which the rounding puts on one row with its heights kept, is not
+  written, while one 1.1 m thick stays; every triangle written turns clockwise in `(lon, lat)`
+  (`test_a_triangle_the_rounding_stands_on_its_edge_is_not_written`).
 - `write_dsf`: temporary name then rename, `.bak` of the previous file.
 
 ## 6. Wanted differences from Ortho4XP
 
-None in the bytes. `DSF_POOL_OVERFLOW` and a coded error for a barycentre outside the tile
+One in the bytes, since 2026-10-09: **a triangle the rounding leaves flat or turned over is not
+written.** A pool stores a position as 16 bits of its square, about 21 cm at quad level 3, so a
+mesh triangle thinner than that can come out with its three corners on one row and their heights
+kept: a vertical face. X-Plane's ridge lift takes the slope of the terrain, and a vertical one
+stops the simulator on `vx_wrl value is nan or inf` (`fm_wind_acf.cpp`, line 729): a user's report
+near EGSQ on +51+001, where such a face stands 1.44 m tall on 13 cm, and the Ortho4XP thread
+348168 for Ortho4XP's tiles. Ortho4XP drops only the triangles two of whose corners land on one
+entry (3.5); OrthoStudio XP drops these the same way, from the textured lists and from
+`terrain_Water`. The positions are the ones X-Plane decodes (`offset + raw * scale / 65535`),
+counted in units of the finest pool among the three corners so that corners on one row compare
+exactly; the mesh's triangles all turn counter-clockwise (977 679 of 977 679 on +51+001) and
+are written `(0, 2, 1)`, so a written triangle that does not turn clockwise is flat or turned
+over. They have no area to show; their entries stay in the pools, as for the snapped ones.
+
+Measured on +51+001 (Copernicus relief, the same mesh, 2026-10-09): the rule leaves out 543
+triangles, 106 of them vertical faces taller than 5 cm (the tallest 7.88 m, at Folkestone); every
+other triangle comes out identical, all its planes decoded, and the textures and `.ter` files are
+the same; the DSF is 4 kB smaller and its writing took 2.2 s instead of 2.0. X-Plane drops at load
+some of these triangles, the ones it finds turned over in its own arithmetic, not all of them:
+it skipped 610 triangles of the tile before and 301 after, or 677 and 368 on the loads that also
+skip one group of 67 large triangles (1.32 km^2, with or without the rule; not understood). A finer
+quad level is not the answer: level 6 left the 1.44 m face in place, level 7 made X-Plane skip
+1 517 triangles, level 8 overflows a pool.
+
+`DSF_POOL_OVERFLOW` and a coded error for a barycentre outside the tile
 (`dsf-terrain-assignment.md` 3.4) replace Python exceptions. The `download_queue` becomes the
 returned `TextureJob` list (no side effect on `textures/`).
