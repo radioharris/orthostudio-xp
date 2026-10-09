@@ -249,12 +249,14 @@ export const STRINGS = {
     "zoom.title": "Zoom",
     "zoom.help":
       "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only, around you; a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
-    "zoom.max": "Maximum zoom",
+    "zoom.max": "Zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
-    "zoom.airports": "Zoom near airports",
+    "zoom.airports": "Airports",
     "zoom.airports_help": "Around airports, where the package's zoom is 18.",
     "zoom.lower": "ZL{zl}: less sharp up close, {times} times less to download",
     "zoom.same": "ZL{zl}: the package's",
+    "zoom.where": "It is chosen on Live's screen, right of the photo source: away from airports (Zoom) and around them (Airports).",
+    "zoom.running": "It changes once Live is stopped.",
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed: Live puts the textures already built at their new size, with nothing to download.",
@@ -594,12 +596,14 @@ export const STRINGS = {
     "zoom.title": "Zoom",
     "zoom.help":
       "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol, autour de vous ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
-    "zoom.max": "Zoom maximum",
+    "zoom.max": "Zoom",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
-    "zoom.airports": "Zoom près des aéroports",
+    "zoom.airports": "Aéroports",
     "zoom.airports_help": "Autour des aéroports, où le zoom du package est 18.",
     "zoom.lower": "ZL{zl} : moins net de près, {times} fois moins à télécharger",
     "zoom.same": "ZL{zl} : celui du package",
+    "zoom.where": "Il se choisit sur l'écran de Live, à droite de la source des photos : loin des aéroports (Zoom) et autour d'eux (Aéroports).",
+    "zoom.running": "Il se change quand Live est arrêté.",
     "zoom.higher":
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":

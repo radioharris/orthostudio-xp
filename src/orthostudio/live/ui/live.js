@@ -206,9 +206,10 @@ function drawState(status) {
   const tint = running ? Boolean(running.tint_8192) : Boolean(status.settings?.tint_8192);
   $("tint-note").hidden = !tint;
   $("tint-note").textContent = tint ? t(running ? "state.tint_on" : "state.tint_next") : "";
-  // the photos: chosen before Start, and kept until Live stops
+  // the photos and their zooms: chosen before Start, and kept until Live stops
   $("set-provider").disabled = !idle;
   $("set-provider").title = idle ? "" : t("source.running");
+  drawZooms();
   $("start-btn").hidden = !idle;
   $("start-btn").disabled = Boolean(blocking(checks));
   $("fresh-row").hidden = !idle;
@@ -727,19 +728,67 @@ function drawSource() {
 /** The zooms offered, as AutoOrtho's: below the package's, the same, one above (8192 px). */
 const ZOOMS = { max_zoom: [16, [14, 15, 16, 17]], max_zoom_airports: [18, [16, 17, 18, 19]] };
 
+const zoomSelect = (name) => $(name === "max_zoom" ? "set-max-zoom" : "set-max-zoom-airports");
+
+/** The zooms beside the photos, on Live's screen: their choices short (ZL16), on one line with the
+ * photos (the user, 2026-10-09), what each does in their hover (drawZooms). */
 function renderZooms() {
-  for (const [name, [mesh, zooms]] of Object.entries(ZOOMS)) {
-    const select = $(name === "max_zoom" ? "set-max-zoom" : "set-max-zoom-airports");
+  for (const [name, [, zooms]] of Object.entries(ZOOMS)) {
+    const select = zoomSelect(name);
     const current = select.value;
     select.replaceChildren(...zooms.map((zl) => {
       const option = document.createElement("option");
       option.value = String(zl);
-      if (zl < mesh) option.textContent = t("zoom.lower", { zl, times: 4 ** (mesh - zl) });
-      else if (zl === mesh) option.textContent = t("zoom.same", { zl });
-      else option.textContent = t("zoom.higher", { zl });
+      option.textContent = `ZL${zl}`;
       return option;
     }));
     if (current) select.value = current;
+  }
+  drawZooms();
+}
+
+/** The zooms locked while Live runs, as the photos; in their hover, where each applies, what the
+ * chosen one does, and when a new one takes effect. */
+function drawZooms() {
+  const idle = !last || last.state === "idle";
+  for (const [name, [mesh]] of Object.entries(ZOOMS)) {
+    const select = zoomSelect(name);
+    const zl = Number(select.value);
+    let choice = t("zoom.same", { zl });
+    if (zl < mesh) choice = t("zoom.lower", { zl, times: 4 ** (mesh - zl) });
+    else if (zl > mesh) choice = t("zoom.higher", { zl });
+    select.disabled = !idle;
+    select.title = [
+      name === "max_zoom" ? t("zoom.max_help") : t("zoom.airports_help"),
+      choice,
+      idle ? t("zoom.change") : t("zoom.running"),
+    ].join("\n");
+  }
+}
+
+/** A zoom chosen on Live's screen, before Start, as the photos: saved at once, the next start lays
+ * the textures out for it. */
+async function chooseZoom() {
+  drawStart();
+  drawZooms();
+  $("source-error").hidden = true;
+  try {
+    saved = await api("settings", {
+      method: "PUT",
+      body: {
+        max_zoom: Number($("set-max-zoom").value),
+        max_zoom_airports: Number($("set-max-zoom-airports").value),
+      },
+    });
+  } catch (error) {
+    $("source-error").textContent = error.message;
+    $("source-error").hidden = false;
+    if (saved) {
+      $("set-max-zoom").value = String(saved.max_zoom);
+      $("set-max-zoom-airports").value = String(saved.max_zoom_airports);
+    }
+    drawStart();
+    drawZooms();
   }
 }
 
@@ -785,15 +834,14 @@ function fillSettings(settings) {
   }
   drawSimbrief();
   drawStart();
+  drawZooms();
   if (providers.length) renderProviders(settings.provider);
 }
 
-/** The answers the form holds, as Save sends them. The source is not among them: Live's screen
- * saves it as soon as it is chosen. */
+/** The answers the form holds, as Save sends them. The source and its zooms are not among them:
+ * Live's screen saves them as soon as they are chosen. */
 function formSettings() {
   return {
-    max_zoom: Number($("set-max-zoom").value),
-    max_zoom_airports: Number($("set-max-zoom-airports").value),
     disk_gb: Number($("set-disk").value),
     tint_8192: $("set-tint").checked,
     folder: $("set-folder").value.trim(),
@@ -1423,8 +1471,8 @@ function boot() {
   $("stop-btn").addEventListener("click", () => act("stop"));
   $("xplane-btn").addEventListener("click", () => act("launch-xplane"));
   $("osxp-btn").addEventListener("click", () => act("osxp"));
-  $("set-max-zoom").addEventListener("change", drawStart);
-  $("set-max-zoom-airports").addEventListener("change", drawStart);
+  $("set-max-zoom").addEventListener("change", chooseZoom);
+  $("set-max-zoom-airports").addEventListener("change", chooseZoom);
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
   $("fresh").addEventListener("change", () => last && drawState(last));

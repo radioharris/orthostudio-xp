@@ -52,13 +52,14 @@ of OrthoStudio XP's window (`uv run python -m orthostudio.live ui` from a checko
 tabs, as OrthoStudio XP's screens:
 
 - **Live**: laid out as OrthoStudio XP's Plan: the map on the left, large, and on the right the
-  state, the imagery source (chosen first and saved as soon as chosen; its credit and licence at
-  the foot of the map), the departure to prepare and Start Live, then the flight and the
+  state, the imagery source and its two zooms on one line (chosen first and saved as soon as
+  chosen; the source's credit and licence at the foot of the map, what each zoom does in its
+  hover), the departure to prepare and Start Live, then the flight and the
   textures; under them what Live needs (X-Plane, a mesh, no other program streaming ortho running,
   such as XPME or AutoOrtho, the plugin), with a
-  button to the regions where a mesh is missing; its log at the bottom. The source changes
-  only while Live is stopped, and textures already built keep their photos: "From scratch" builds
-  them all again with a new source.
+  button to the regions where a mesh is missing; its log at the bottom. The source and the zooms
+  change only while Live is stopped, and textures already built keep their photos: "From scratch"
+  builds them all again with a new source.
 
   The flight says beside its title whether X-Plane sends its position, then shows the altitude,
   the ground speed and the position in three boxes; under them, how far X-Plane's image is sharp
@@ -157,6 +158,8 @@ could show the neutral colour, green-grey, around a distant camera.
 
 The zoom is set as in AutoOrtho: a maximum zoom (14 to 17, 16 by default) and a zoom near airports
 (16 to 19, 18 by default, for the package's ZL18 textures, which are its airports' surroundings).
+Both are chosen on Live's screen, right of the photo source ("Zoom" and "Airports"), what each
+choice does in its hover; the Settings tab explains them.
 X-Plane picks by itself, by distance, which version of a texture it shows; the zoom sets the
 sharpest version there is, the one seen up close. Below the package's zoom a texture is smaller
 (1024 px at ZL14): less sharp near the ground, far less to download, shorter waits at a start. One
@@ -328,7 +331,7 @@ ZL18 within about 3 km. OrthoStudio XP Live downloads each texture at exactly th
 read, and only there: the 4096 px level is fetched only for textures you pass close to, and never
 if X-Plane's texture quality is below Maximum, because X-Plane then never reads it.
 
-## Why there are no zoom, prefetch or waiting settings
+## Why there are no zoom by flight level, prefetch or waiting settings
 
 AutoOrtho's settings are there to manage X-Plane's wait. Since X-Plane is blocked while AutoOrtho
 downloads, you choose how much to download (maximum zoom, zoom near airports, zoom by flight
@@ -341,7 +344,7 @@ OrthoStudio XP Live has no wait to manage, and X-Plane itself says how sharp it 
 | AutoOrtho setting | In OrthoStudio XP Live |
 |---|---|
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
-| Maximum zoom, zoom near airports | Optional caps (`--max-zoom`, `--max-zoom-airports`) to save bandwidth. By default, as sharp as X-Plane will display, where it will display it. |
+| Maximum zoom, zoom near airports | The same two, on Live's screen beside the photo source ("Zoom" and "Airports"; `--max-zoom`, `--max-zoom-airports` in a terminal): the package's 16 and 18 by default, one above for 8192 px textures. |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and OrthoStudio XP Live follows it. |
 | Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 5 minutes ahead, the rings with a 25 % margin, and 10 km more for external views. |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. A texture that comes late is shown at the sharpness X-Plane already has and gets sharper at the next ring. |

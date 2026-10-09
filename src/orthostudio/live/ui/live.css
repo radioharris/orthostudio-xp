@@ -9,6 +9,13 @@
 .live-state-head h1 { margin: 0; }
 .live-hold .progress { margin-top: var(--gap); }
 
+/* the photos and their two zooms on one line, each with its name above (OrthoStudio XP's .field):
+   the photos' list takes what the zooms leave, on a line of its own only where it would be too
+   narrow (the user, 2026-10-09) */
+.live-source-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--gap); }
+.live-source-row > .field { flex: none; }
+.live-source-row > .live-source-field { flex: 1 1 12em; }
+
 .live-departure-input { text-transform: uppercase; }
 /* the departure's box as wide as what it takes, an ICAO code or "lat,lon", its button beside it
    (the user, 2026-10-09: far too wide) */

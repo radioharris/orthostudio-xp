@@ -104,12 +104,27 @@
         </div>
         <p class="error-inline" id="state-error" role="alert" hidden></p>
         <p class="question-help is-warn" id="tint-note" hidden></p>
-        <!-- the photos, chosen first, before Start: saved as soon as chosen; their credit and licence
-             at the foot of the map (basemap.js) -->
+        <!-- the photos and their two zooms on one line (the user, 2026-10-09), chosen first, before
+             Start: saved as soon as chosen; the photos' credit and licence at the foot of the map
+             (basemap.js), what each zoom does in its hover (live.js drawZooms) -->
         <div class="sub-question">
-          <label class="sub-question-title" for="set-provider" data-i18n="source.title">Photo source</label>
-          <select id="set-provider" name="provider" class="question-select"></select>
+          <div class="live-source-row">
+            <div class="field live-source-field">
+              <label for="set-provider" data-i18n="source.title">Photo source</label>
+              <select id="set-provider" name="provider" class="question-select"></select>
+            </div>
+            <div class="field">
+              <label for="set-max-zoom" data-i18n="zoom.max">Zoom</label>
+              <select id="set-max-zoom" name="max_zoom" class="question-select"></select>
+            </div>
+            <div class="field">
+              <label for="set-max-zoom-airports" data-i18n="zoom.airports">Airports</label>
+              <select id="set-max-zoom-airports" name="max_zoom_airports" class="question-select"></select>
+            </div>
+          </div>
           <p class="question-help is-warn" id="provider-note" hidden></p>
+          <!-- ZL17 or ZL19 on a computer with less memory than they need -->
+          <p class="question-help is-warn" id="zoom-memory" hidden></p>
           <!-- while Live runs, the source's server refusing this computer (live.js refusedText) -->
           <p class="error-inline" id="source-refused" role="alert" hidden></p>
           <p class="error-inline" id="source-error" role="alert" hidden></p>
@@ -241,18 +256,8 @@
       <fieldset class="question" id="q-zoom">
         <legend class="question-title" data-i18n="zoom.title">Zoom</legend>
         <p class="question-help" data-i18n="zoom.help"></p>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-max-zoom" data-i18n="zoom.max">Maximum zoom</label>
-          <select id="set-max-zoom" name="max_zoom" class="question-select"></select>
-          <p class="question-help" data-i18n="zoom.max_help"></p>
-        </div>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-max-zoom-airports" data-i18n="zoom.airports">Zoom near airports</label>
-          <select id="set-max-zoom-airports" name="max_zoom_airports" class="question-select"></select>
-          <p class="question-help" data-i18n="zoom.airports_help"></p>
-        </div>
-        <!-- ZL17 or ZL19 on a computer with less memory than they need -->
-        <p class="question-help is-warn" id="zoom-memory" hidden></p>
+        <!-- the two zooms themselves on Live's screen, beside the photos -->
+        <p class="question-help" data-i18n="zoom.where"></p>
         <p class="question-help" data-i18n="zoom.change"></p>
         <fieldset class="sub-question" id="q-start">
           <legend class="sub-question-title" data-i18n="start.title">When a flight starts</legend>
