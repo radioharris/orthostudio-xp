@@ -119,7 +119,7 @@ slow disk).
    where you have flown before, a minute or two the first time in a new area. Live's window and a
    small panel over X-Plane count down the textures left, with the download rate. X-Plane's own
    window looks frozen meanwhile: it is waiting, it has not crashed.
-   ![Live preparing a departure from Milan: its state says it builds the ortho around LIMC, with a bar, the textures left, the seconds gone by and the download rate](images/live/departure.png)
+   ![Live preparing a departure from Munich: its state says it builds the ortho around EDDM, with a bar, the textures left, the seconds gone by and the download rate](images/live/departure.png)
 
 4. **Fly**, anywhere. Another flight started from X-Plane's menu waits the same way.
 5. **Quit X-Plane, then Stop.** Live takes its scenery and its small plugin out of X-Plane. Stopped
