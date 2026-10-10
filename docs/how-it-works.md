@@ -605,17 +605,22 @@ downloads its image pieces again.
 ## 6. Flying without tiles: OrthoStudio XP Live
 
 From 1.1, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
-downloads the imagery while you fly, as AutoOrtho does, with no tile to build first. At its first
-start the app asks what you want to do, fly now with Live or build your tiles, and remembers the
-answer; each window has a button to the other. Its full guide, with why it has no zoom by flight
-level, prefetch or waiting settings, is [live.md](live.md).
+downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
+with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
+files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its
+first start the app asks what you want to do, build your tiles or fly now with Live, and remembers
+the answer; both are in its one window, Build | Live at the top. Its full guide, with a measured
+comparison with XPME and AutoOrtho and why it has no zoom by flight level, prefetch or waiting
+settings, is [live.md](live.md).
 
 For a flight:
 
-1. In Live's window, choose the imagery source, then click Start Live.
+1. In Live's tab, choose the imagery source and the zoom; optionally, type the departure and click
+   Prepare, which builds the ground there before X-Plane loads the flight. Then click Start Live.
 2. Start X-Plane (Live's Start X-Plane button), choose the flight and click Start Flight. X-Plane
-   waits on its loading screen until the ortho around the aircraft is built: a few seconds where
-   you have flown before, a minute or two the first time in a new area.
+   waits on its loading screen until the ortho around the aircraft is built: at once after a
+   Prepare, a few seconds where you have flown before, a minute or two the first time in a new
+   area.
 3. Fly. Live builds the textures ahead of the aircraft, and X-Plane never waits for it in flight.
 4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
 
@@ -629,7 +634,7 @@ from the data folder:
 ```
 ~/.orthostudio/live/
   pack/            the scenery X-Plane reads while Live runs (z_osxp_live in Custom Scenery)
-  chunks.sqlite    the imagery downloaded, never downloaded twice
+  chunks.sqlite    the imagery downloaded, kept so as not to download it twice
   regions/         AutoOrtho's regions Live installed (the mesh), 6 to 33 GB each
   overlays/        the roads, forests and buildings of Live's squares
 ```

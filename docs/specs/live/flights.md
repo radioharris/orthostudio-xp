@@ -168,7 +168,7 @@ of its own (8661), apart from Live's window, which is for its users and never sp
   aircraft is then (`camera-track`): outside through the plugin's camera, inside in the 3D cockpit
   with the pilot's head set; played again from its start when shorter than the flight (the user
   recorded 2 min 37 of a 20 min flight and asked for a loop, 2026-09-29);
-- Live's own map (`livemap.js`, as Live's window draws it, its tooltips in French) while Live
+- Live's own map (`livemap.js`, as Live's window draws it, its bar over the map in French) while Live
   flies: the aircraft at the test pilot's last frame, its heading from the frames a second before,
   the scenario's path, and the textures Live built, by the zoom of their photos; and in a Live
   flight's result, what it built and the path flown. `benchmap.py` feeds it from the test's Live

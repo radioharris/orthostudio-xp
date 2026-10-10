@@ -16,10 +16,12 @@ experimental.
 ## What you get
 
 - **OrthoStudio XP Live (from 1.1, in beta).** Aerial imagery under your aircraft wherever you
-  fly, downloaded while you fly, as AutoOrtho does, with no tiles to build first. At its first
-  start the app asks what you want to do: fly now, with Live, or build your tiles. X-Plane waits
-  for the ortho on its loading screen at a flight's start, and never in flight. Its guide says how
-  it works and why it asks for so few settings: [docs/live.md](docs/live.md).
+  fly, downloaded while you fly, with no tiles to build first. No virtual disk between X-Plane and
+  its textures: Live builds them beside X-Plane as ordinary files, X-Plane waits only on its loading
+  screen at a flight's start, never in flight, and flies on if Live stops. On the same flight, the
+  ground was ready about twice as fast as with XPME and five times as fast as with AutoOrtho, for a
+  third of a processor core. Its guide, with the measurements:
+  [docs/live.md](docs/live.md).
 - **A map to choose from.** Click the squares you want or draw a rectangle over them, and draw
   sharper zones around airports or where you fly low. It shows the aerial imagery or the street
   map, the airports with their ICAO codes, the tiles you already have, and what the view is worth
@@ -184,6 +186,11 @@ to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.orthostudio/log` (Linux, beside the rest of what it keeps). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
+
+At its first start the app asks what you want to do: build your tiles, or fly now with
+OrthoStudio XP Live (from 1.1, in beta). Both are in its one window, Build | Live at the top. To
+fly with Live: install the mesh of where you fly (Live's Settings, first question), then Start Live
+and Start X-Plane; the steps are in [docs/live.md](docs/live.md#a-flight-step-by-step).
 
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at
 127.0.0.1, shown in a window of its own. Nothing goes through a server of ours, and its downloads
