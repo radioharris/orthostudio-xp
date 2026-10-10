@@ -261,7 +261,7 @@ export const STRINGS = {
     "zoom.running": "It changes once Live is stopped.",
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
-      "A new zoom applies at the next start of Live, X-Plane closed: Live puts the textures already built at their new size, with nothing to download.",
+      "A new zoom applies at the next start of Live, X-Plane closed, at once: each texture takes its new size only when X-Plane comes near it, with nothing to download.",
     "zoom.memory":
       "This computer has {ram} GB of memory, and ZL17 and ZL19 need {need} GB: X-Plane may stutter or run out of memory. ZL16 and ZL18, the package's, suit it better.",
     "home.title": "When the app starts",
@@ -611,7 +611,7 @@ export const STRINGS = {
     "zoom.higher":
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":
-      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé : Live remet à leur nouvelle taille les textures déjà construites, sans rien télécharger.",
+      "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé, tout de suite : chaque texture prend sa nouvelle taille seulement quand X-Plane s'en approche, sans rien télécharger.",
     "zoom.memory":
       "Cet ordinateur a {ram} Go de mémoire, et ZL17 et ZL19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. ZL16 et ZL18, ceux du package, lui conviennent mieux.",
     "home.title": "Au lancement de l'application",

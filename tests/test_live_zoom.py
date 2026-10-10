@@ -22,6 +22,7 @@ from live_helpers import (
     make_source,
     make_squares,
     make_xplane,
+    square_of,
     unbuilt,
 )
 from orthostudio.live import dds, session
@@ -41,6 +42,7 @@ from orthostudio.live.region import (
     region_layout,
     region_zooms,
     relayout,
+    set_zooms,
     setup_region,
 )
 from orthostudio.live.streamer import Fix, Streamer
@@ -60,6 +62,12 @@ ROW = tuple(f"23296_{33152 + 16 * k}_BI16" for k in range(12))
 
 def quiet(_: str) -> None:
     pass
+
+
+def live_names_for(pack: Path):
+    from live_helpers import live_names
+
+    return live_names(pack)
 
 
 def side_of(path: Path) -> int:
@@ -256,6 +264,111 @@ def test_a_new_zoom_shared_by_several_processes_lays_out_the_same(
         assert any("by 3 processes" in line for line in lines) == (workers == 3)
     assert files[1] == files[3]
     assert side_of(tmp_path / "3" / "pack" / "textures" / f"{NAMES[0]}.dds") == 8192
+
+
+def _all_squares(names) -> list[tuple[int, int]]:
+    from orthostudio.live.evict import tiles_of
+
+    return sorted(
+        {
+            square
+            for entries in names.by_tile.values()
+            for entry in entries
+            for square in tiles_of(parse_texture_name(entry[0]))
+        }
+    )
+
+
+def test_a_new_zoom_touches_no_texture_at_the_start(tmp_path: Path) -> None:
+    """A new zoom in an instant, whatever the pilot has flown (the user: « si j'ai 100000 textures
+    ... il va appliquer aux 100000 », 2026-10-10): no texture written, the squares made before no
+    longer readable by X-Plane (made again as it comes), the levels recorded those the new files
+    will keep."""
+    from orthostudio.live.region import remove_aside
+
+    pack = region(tmp_path)
+    built = pack / "textures" / f"{NAMES[0]}.dds"
+    write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
+    record(pack, {built.name: 0})
+    make_squares(pack)
+    before = {p.name: p.read_bytes() for p in (pack / "textures").iterdir()}
+    assert any((pack / "terrain").iterdir())
+    lines: list[str] = []
+    set_zooms(pack, Zooms(17, 19), lines.append)
+    assert {p.name: p.read_bytes() for p in (pack / "textures").iterdir()} == before
+    assert not any((pack / "terrain").iterdir())  # X-Plane reads none of them at its old size
+    assert recorded(pack)["textures"] == {built.name: 0}
+    assert region_layout(pack) == (Zooms(17, 19), LAYOUT_FIXED)
+    assert not needs_relayout(pack, Zooms(17, 19))
+    assert any("as its square's files are made" in line for line in lines)
+    remove_aside(pack)  # the thread's work, done here
+    assert not list(pack.glob(".terrain-old-*"))
+    # down again: an 8192 px level recorded is one the 4096 px file will not keep
+    record(pack, {built.name: -1})
+    set_zooms(pack, Zooms(16, 18), quiet)
+    assert recorded(pack)["textures"] == {built.name: 0}
+
+
+def test_a_square_made_after_a_new_zoom_has_its_textures_at_its_size_first(
+    tmp_path: Path,
+) -> None:
+    """Each texture set to the new zoom's size as its square is made, its levels kept, nothing
+    downloaded; its terrain files only then, so that X-Plane never reads one at its old size; a
+    texture being built at its old size makes the square wait, a moment."""
+    from orthostudio.live.names import SquareWaitError
+    from orthostudio.live.texture import resize
+
+    pack = region(tmp_path)
+    built = pack / "textures" / f"{NAMES[0]}.dds"
+    write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
+    record(pack, {built.name: 0})
+    make_squares(pack)
+    set_zooms(pack, Zooms(17, 19), quiet)
+    names = live_names_for(pack)
+    levels = {built.name: 0}
+    refitted: dict[str, int] = {}
+    names.level_of = levels.get
+    names.refit = refitted.__setitem__
+    square = square_of(NAMES[0])
+    # being built: the square waits, nothing of it readable yet
+    names.building = lambda name: name == built.name
+    with pytest.raises(SquareWaitError):
+        names.make(square)
+    assert not any((pack / "terrain").iterdir())
+    assert side_of(built) == 4096  # the builder's, not touched
+    # built: the square is made
+    resize(built, 0, 0, -1, ensure_neutral(pack, -1))
+    names.building = lambda name: False
+    for each in _all_squares(names):
+        names.make(each)
+    assert side_of(built) == 8192
+    assert level_bytes(built, 0, -1) == levels_from(0, 0)[0]
+    neutral = pack / neutral_file(-1)
+    for name in NAMES[1:]:
+        assert (pack / "textures" / f"{name}.dds").read_bytes() == neutral.read_bytes()
+    assert side_of(pack / "textures" / f"{AIRPORT}.dds") == 8192  # ZL19 round airports
+    assert any((pack / "terrain").iterdir())
+    # one not being built is set by the square's making, its level said to the builder
+    write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))  # back to 4096 px
+    names.make(square)
+    assert side_of(built) == 8192 and refitted == {built.name: 0}
+
+
+def test_a_texture_not_yet_at_the_zoom_s_size_is_made_coarser_or_copied_up_as_it_is(
+    tmp_path: Path,
+) -> None:
+    """Made coarser for the disk, or its 8192 px level copied up, a texture a new zoom has not
+    reached yet is read at the size its header gives, and written at the zoom's."""
+    pack = region(tmp_path)
+    path = pack / "textures" / f"{NAMES[0]}.dds"
+    write_sparse(path, 0, levels_from(0, 0), base=pack / neutral_file(0))  # 4096 px
+    downgrade(path, 2, ensure_neutral(pack, -1), file_top=-1)  # the zoom's 8192 px file
+    assert side_of(path) == 8192
+    assert level_bytes(path, 2, -1) == levels_from(2, 0)[0]
+    write_sparse(path, 0, levels_from(0, 0), base=pack / neutral_file(0))
+    copy_up(path, ensure_neutral(pack, -1), -1)
+    assert side_of(path) == 8192
+    assert level_bytes(path, 0, -1) == levels_from(0, 0)[0]
 
 
 def test_an_8192_texture_keeps_its_size_while_its_zoom_goes_that_far(tmp_path: Path) -> None:

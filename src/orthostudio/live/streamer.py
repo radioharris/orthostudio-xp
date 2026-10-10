@@ -466,6 +466,9 @@ class Streamer:
                 forget=self._forget_missing,
                 log=log,
                 others=others,
+                building=lambda name: name in self.queue or name in self.in_flight,
+                level_of=self.built.get,
+                refit=self._refit,
             )
             self.names.yielding = self.yielding
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
@@ -476,6 +479,16 @@ class Streamer:
         """Under ``self.lock``: whether a texture is built, queued or building, its file never
         taken away with its square's (orthostudio.live.names)."""
         return name in self.built or name in self.queue or name in self.in_flight
+
+    def _refit(self, name: str, level: int) -> None:
+        """Under ``self.lock``: a texture set to a new zoom's size as its square was made
+        (orthostudio.live.names), the level its new file keeps."""
+        if name in self.built:
+            self.built[name] = level
+
+    def _fitting(self, name: str) -> bool:
+        """Whether a texture is being set to a new zoom's size: not written meanwhile."""
+        return self.names is not None and name in self.names.fitting
 
     def _forget_missing(self, name: str) -> None:
         """Under ``self.lock``: a texture recorded as built whose file was gone (taken away by
@@ -1150,7 +1163,9 @@ class Streamer:
                 free = [
                     j
                     for j in ready
-                    if j.name not in copying and self.may_encode(j.urgency, j.level)
+                    if j.name not in copying
+                    and not self._fitting(j.name)
+                    and self.may_encode(j.urgency, j.level)
                 ]
                 if not free:
                     break
@@ -1181,6 +1196,8 @@ class Streamer:
                 late = [n for n in self.to_copy if n not in copying]
             busy = {job.name for job in encoding.values()}
             for name in late:
+                if self._fitting(name):
+                    continue  # set to the zoom's size first, copied up after
                 if name in busy or self.built.get(name) != 0:
                     with self.lock:
                         self.to_copy.discard(name)

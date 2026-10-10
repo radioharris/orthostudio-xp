@@ -50,10 +50,14 @@ def top_of_side(side: int) -> int:
 
 
 def read_top(path) -> int:
-    """The sharpest level of a DDS file, from the width its header gives."""
+    """The sharpest level of a DDS file, from the width its header gives. Raises ValueError for a
+    file that is no texture of Live's."""
     with open(path, "rb") as f:
         head = f.read(20)
-    return top_of_side(int.from_bytes(head[16:20], "little"))
+    side = int.from_bytes(head[16:20], "little")
+    if head[:4] != b"DDS " or side <= 0 or side & (side - 1):
+        raise ValueError(f"not a texture: {path}")
+    return top_of_side(side)
 
 
 def level_layout(top: int) -> list[tuple[int, int]]:

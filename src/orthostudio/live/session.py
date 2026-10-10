@@ -230,6 +230,8 @@ def prepare(options: Options, log: Log) -> Prepared:
         needs_relayout,
         region_layout,
         relayout,
+        remove_aside,
+        set_zooms,
         setup_region,
     )
     from orthostudio.live.route import AirportIndex, Route, apt_dat
@@ -293,13 +295,21 @@ def prepare(options: Options, log: Log) -> Prepared:
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
         setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
-        if region_layout(pack_dir) != (zooms, LAYOUT_FIXED):  # each texture at its new size
+        laid_out, layout = region_layout(pack_dir)
+        if (laid_out, layout) != (zooms, LAYOUT_FIXED):  # each texture at its new size
             if xplane_running() and needs_relayout(pack_dir, zooms):
                 raise RefusedError(
                     "the zoom changed and X-Plane is running: it keeps a texture at the size it "
                     "first read. Quit X-Plane, then start again"
                 )
-            relayout(pack_dir, zooms, log, workers=machine.share().encoders)
+            if layout < LAYOUT_FIXED:  # a pack of before: laid out once, every texture
+                relayout(pack_dir, zooms, log, workers=machine.share().encoders)
+            else:  # each texture as its square is made (region.set_zooms)
+                set_zooms(pack_dir, zooms, log)
+        elif any(pack_dir.glob(".terrain-old-*")):  # a start that stopped before they were gone
+            import threading
+
+            threading.Thread(target=remove_aside, args=(pack_dir,), daemon=True).start()
         if options.fresh:
             reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)

@@ -212,6 +212,15 @@ def _built_file(path: Path, file_top: int) -> bool:
         return False
 
 
+def _file_top(path: Path, expected: int) -> int:
+    """The sharpest level ``path`` has, read from its header: a texture not yet set to a new zoom
+    has another than the pack's layout (region.set_zooms); ``expected`` where it cannot be read."""
+    try:
+        return dds.read_top(path)
+    except (OSError, ValueError):
+        return expected
+
+
 def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
     """Levels ``level`` down to 1 x 1 of a file whose sharpest level is ``file_top``."""
     layout = dds.level_layout(file_top)
@@ -249,7 +258,9 @@ def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
     if level > 4:
         to_neutral(path, neutral)
         return
-    levels = _levels_from(path, level, file_top)
+    actual = _file_top(path, file_top)  # set to the zoom here if it was not yet
+    level = max(level, file_top, actual)  # never sharper than the new file, nor than the old one
+    levels = _levels_from(path, level, actual)
     write_sparse(
         path,
         level,
@@ -263,7 +274,7 @@ def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
 def copy_up(path: Path, neutral: Path, file_top: int = -1) -> None:
     """The 8192 px level of a texture built from its 4096 px one made the copy of that one, the
     levels kept, nothing downloaded: until its photos come (the module's docstring)."""
-    levels = _levels_from(path, 0, file_top)
+    levels = _levels_from(path, 0, _file_top(path, file_top))  # a file not yet set to the zoom too
     write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True, keep_from=0)
 
 

@@ -184,9 +184,9 @@ one seen up close.
   window says X-Plane may stutter and recommends the default. Above about 18,500 ft over the ground,
   Live stops fetching those 8192 px photos, which the screen cannot show from so high, and takes
   them up again on the way down.
-- **A new zoom** applies at the next start of Live, X-Plane closed: Live puts the textures round
-  where you last flew at their new size, keeping what it built and downloading nothing (16 s for
-  21,638 textures), and its window says so meanwhile.
+- **A new zoom** applies at the next start of Live, X-Plane closed, at once: each texture takes its
+  new size only when X-Plane comes near it, round your departure or ahead of the aircraft, keeping
+  what it built and downloading nothing. Textures where you never fly again are never touched.
 
 Downloads, estimated around Lyon at 250 kt: with ZL16 and 18, about 1 GB at the start and 7 GB an
 hour; with ZL17 and 19, about 1.4 GB and 13 GB.

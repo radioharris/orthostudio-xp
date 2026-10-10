@@ -275,6 +275,62 @@ def relayout(
     return len(items)
 
 
+ASIDE_PREFIX = ".terrain-old-"  # the squares' terrain files set aside by a new zoom, removed behind
+
+
+def set_zooms(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) -> None:
+    """A new zoom, in an instant: no texture touched. Each one is set to its new size when its
+    square's files are made (``orthostudio.live.names``), round a start or ahead of the aircraft,
+    before X-Plane can read it; one never flown near again is never touched. Laying every texture
+    out at the start took 41 to 67 s for the 44,305 of a pilot's flights, longer with each flight
+    (the user: « si j'ai 100000 textures ... il va appliquer aux 100000 », 2026-10-10).
+
+    So that X-Plane reads none at its old size, the squares made before lose their terrain files
+    at once (their folder set aside, a rename, removed behind by a thread): they are made again
+    as X-Plane comes. The levels recorded as built are those their new file keeps (``resize``).
+    Only while X-Plane does not run, as :func:`relayout`."""
+    import threading
+
+    from .pack import MARKER, load_built
+
+    marker = pack_dir / REGION_MARKER
+    meta = json.loads(marker.read_text())
+    built_meta = load_built(pack_dir)
+    built = built_meta.get("textures", {})
+    for name, level in built.items():
+        tex = parse_texture_name(name)
+        if tex is not None:
+            built[name] = max(level, zooms.top(tex.zoom))
+    if built_meta:
+        tmp = pack_dir / MARKER.with_suffix(".tmp")
+        tmp.write_text(json.dumps(built_meta))
+        os.replace(tmp, pack_dir / MARKER)
+    terrain = pack_dir / "terrain"
+    if terrain.is_dir() and not is_folder_link(terrain):
+        os.replace(terrain, pack_dir / f"{ASIDE_PREFIX}{time.time_ns()}")
+    terrain.mkdir(exist_ok=True)
+    meta["zooms"] = asdict(zooms)
+    meta["layout"] = LAYOUT_FIXED
+    marker.write_text(json.dumps(meta))
+    log(
+        f"zoom {zooms.max_zoom}/{zooms.max_zoom_airports}: each texture set to it as its square's "
+        f"files are made, nothing to download"
+    )
+    threading.Thread(
+        target=remove_aside, args=(pack_dir,), name="live-terrain-aside", daemon=True
+    ).start()
+
+
+def remove_aside(pack_dir: Path) -> int:
+    """The terrain files a new zoom set aside (:func:`set_zooms`), removed: those of a start that
+    stopped before they were gone too."""
+    removed = 0
+    for folder in pack_dir.glob(f"{ASIDE_PREFIX}*"):
+        with contextlib.suppress(OSError):
+            removed += _remove_tree(folder, lambda _: None, "terrain files")
+    return removed
+
+
 def _upgrade(pack_dir: Path, log: Callable[[str], None]) -> None:
     """From version 1: the complete neutral texture, every built texture's larger levels made
     neutral instead of a hole."""
