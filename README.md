@@ -11,7 +11,7 @@ macOS and Windows, with their installers. The installers for Intel Macs and for 
 checked automatically at every release, and downloaded far less often than the others; Linux is
 experimental.
 
-![The Plan page: the map of Europe, four tiles already built showing in green over the western Alps and the Tuscan coast, and beside it the first two of the four steps](docs/images/plan.png)
+![The Plan page: the map of Europe, the tiles already in X-Plane outlined in green over the Alps, three tiles chosen in blue near Paris with a sharper zone drawn over them in orange, and beside it the first of the four steps](docs/images/plan.png)
 
 ## What you get
 
@@ -60,11 +60,11 @@ How it works, what it keeps on disk and how to clean it:
 
 | What it will cost | Works |
 |---|---|
-| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
+| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of six tiles: every step of every tile, then the final report](docs/images/works.png) |
 
 | Library | Settings |
 |---|---|
-| ![The Library: five tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
+| ![The Library: tiles built by OrthoStudio XP and others imported from Ortho4XP, whether X-Plane shows them, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
 
 ## Build times, measured
 
