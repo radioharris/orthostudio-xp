@@ -247,6 +247,7 @@ class LiveControl:
         self._checks = checks
         self._settings = settings
         self._echo = echo
+        self._starting_with: session.Options | None = None  # the start under way's
         self.log_file = log_file  # where the log is kept as a file too (orthostudio.live.logfile)
         self._lock = threading.Lock()
         self._state = IDLE
@@ -337,6 +338,7 @@ class LiveControl:
         return {
             "api": API,
             "state": state,
+            "relayout": state == STARTING and self._relayout_due(),
             "error": error,
             "stream": report,
             "log_seq": seq,
@@ -346,6 +348,17 @@ class LiveControl:
             "settings": self._settings().model_dump(),
             "regions": self.regions(),
         }
+
+    def _relayout_due(self) -> bool:
+        """Whether the start under way is laying the pack out for a new zoom, read from the pack
+        each time asked: done, it says so at once."""
+        options = self._starting_with
+        if options is None:
+            return False
+        try:
+            return session.relayout_due(options)
+        except Exception:  # the pack unreadable this second: the start says the rest
+            return False
 
     def log_after(self, after: int) -> dict[str, Any]:
         with self._lock:
@@ -368,6 +381,7 @@ class LiveControl:
         options = options_for(self._settings(), fresh=fresh)
         if departure:
             options.start = departure
+        self._starting_with = options
         self._thread = threading.Thread(
             target=self._run, args=(options,), name="live-stream", daemon=True
         )

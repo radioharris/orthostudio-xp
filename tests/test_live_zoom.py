@@ -888,3 +888,16 @@ def test_speed_and_track_from_positions_when_xplane_says_none() -> None:
     assert jumped.gs_ms == 0.0
     motion_from_positions(None, 0.0, jumped, 102.0)  # the first position: nothing to go by
     assert jumped.gs_ms == 0.0
+
+
+def test_a_start_knows_when_it_sets_the_textures_to_a_new_zoom(tmp_path: Path) -> None:
+    """What the window says while Live starts (status relayout): due once the zoom differs from
+    the pack's layout, no longer once laid out; never for a pack not set up yet."""
+    pack = region(tmp_path, Zooms(16, 18))
+    same = session.Options(pack=pack, max_zoom=16, max_zoom_airports=18)
+    lower = session.Options(pack=pack, max_zoom=14, max_zoom_airports=16)
+    assert not session.relayout_due(same)
+    assert session.relayout_due(lower)
+    relayout(pack, Zooms(14, 16), quiet)
+    assert not session.relayout_due(lower) and session.relayout_due(same)
+    assert not session.relayout_due(session.Options(pack=tmp_path / "none", max_zoom=14))

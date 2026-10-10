@@ -168,8 +168,9 @@ sharpest version there is, the one seen up close. Below the package's zoom a tex
 (1024 px at ZL14): less sharp near the ground, far less to download, shorter waits at a start. One
 zoom above, a texture is 8192 px: sharper near the ground only, around you. A lower zoom is blurrier
 within 38 km, the ground under the aircraft at cruise too. A new zoom applies at the next start of
-Live, X-Plane closed: Live puts every texture at its new size, about two minutes for a whole
-region, keeping what it built and downloading nothing.
+Live, X-Plane closed: Live puts the textures round where you last flew at their new size, keeping
+what it built and downloading nothing (16 s for 21,638 textures on 2026-10-09), and its window says
+so meanwhile.
 
 How the 8192 px work, with ZL17 or ZL19. Each texture is a file holding the same photo at several
 sizes, stacked like floors: 8192, 4096, 2048, 1024 px and so on. Its label, at the top, says the

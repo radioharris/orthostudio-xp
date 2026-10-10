@@ -122,6 +122,22 @@ def region_ready(pack: Path, source: Path | Sequence[Path]) -> bool:
     return bool(wanted) and set(_recorded_sources(pack)) == wanted
 
 
+def relayout_due(options: Options) -> bool:
+    """Whether a start with ``options`` lays the pack out again for their zoom before anything
+    else (:func:`orthostudio.live.region.relayout`): the window says so while it does, some
+    seconds after a zoom changed (the user, 2026-10-10: it said it put the pack in X-Plane). A
+    pack not set up yet: no."""
+    from orthostudio.live.region import LAYOUT_FIXED, REGION_MARKER, Zooms, region_layout
+
+    pack_dir = options.pack or default_pack_dir()
+    if not (pack_dir / REGION_MARKER).is_file():
+        return False
+    return region_layout(pack_dir) != (
+        Zooms(options.max_zoom, options.max_zoom_airports),
+        LAYOUT_FIXED,
+    )
+
+
 def finest_quality(xplane: Path, quality: str) -> int:
     from orthostudio.live.rings import finest_for_quality
 

@@ -998,6 +998,37 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
+def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> None:
+    """While Live starts: the region set up the first time, the textures set to the size of a
+    new zoom (the status's relayout), else the pack put in X-Plane. It said the last while it set
+    the textures to a new zoom, 16 s on 2026-10-09 (the user: fix it)."""
+    starting = {"state": "starting", "checks": {"region_ready": True}, "relayout": False}
+    statuses = [
+        {**starting, "checks": {"region_ready": False}},
+        {**starting, "relayout": True},
+        starting,
+    ]
+    script = (
+        f"import {{ headline }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"const all = {json.dumps(statuses)}; setLanguage('fr');"
+        "console.log(JSON.stringify(all.map((s) => headline(s)[1])));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(out.stdout) == [
+        "Préparation de la région, une seule fois : quelques secondes.",
+        "Mise des textures au nouveau zoom, une seule fois : quelques secondes, "
+        "rien à télécharger.",
+        "Installation du pack et du plugin dans X-Plane.",
+    ]
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_window_says_a_source_refuses_this_computer() -> None:
     """While Live runs, a source whose server refuses this computer (403, access denied) is said
     under the source, in OrthoStudio XP's words for its map, with what to do; the textures' label

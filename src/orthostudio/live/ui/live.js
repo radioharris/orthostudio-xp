@@ -130,14 +130,15 @@ function drawFigures(box, figures, { lines = false } = {}) {
 }
 
 /** The headline, its lead, and the dot's colour, from the state and what X-Plane does. */
-function headline(status) {
+export function headline(status) {
   const { state, stream, checks } = status;
   if (state === "starting") {
-    return [
-      t("state.starting"),
-      t(checks.region_ready ? "state.starting_install" : "state.starting_region"),
-      "running",
-    ];
+    // the region set up the first time; the textures at the size of a new zoom (status.relayout,
+    // some seconds); else the pack and the plugin put in X-Plane
+    let lead = "state.starting_install";
+    if (!checks.region_ready) lead = "state.starting_region";
+    else if (status.relayout) lead = "state.starting_zoom";
+    return [t("state.starting"), t(lead), "running"];
   }
   if (state === "stopping") return [t("state.stopping"), "", "waiting"];
   if (state === "deleting") return [t("state.deleting"), "", "running"];
