@@ -266,9 +266,9 @@ export const STRINGS = {
       "This computer has {ram} GB of memory, and ZL17 and ZL19 need {need} GB: X-Plane may stutter or run out of memory. ZL16 and ZL18, the package's, suit it better.",
     "home.title": "When the app starts",
     "home.help":
-      "What OrthoStudio XP opens: Live's window, or OrthoStudio XP's, to build tiles. Each window has a button to the other.",
+      "What the app shows first: Live, or OrthoStudio XP, to build tiles. Build | Live, at the top of the window, goes from one to the other.",
     "home.ask": "Ask me",
-    "home.live": "Live's window",
+    "home.live": "Live",
     "home.build": "OrthoStudio XP, to build tiles",
     "welcome.title": "What would you like to do?",
     "welcome.lead": "Two ways to have ortho in X-Plane. You can go from one to the other at any time.",
@@ -616,9 +616,9 @@ export const STRINGS = {
       "Cet ordinateur a {ram} Go de mémoire, et ZL17 et ZL19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. ZL16 et ZL18, ceux du package, lui conviennent mieux.",
     "home.title": "Au lancement de l'application",
     "home.help":
-      "Ce qu'OrthoStudio XP ouvre : la fenêtre Live, ou celle d'OrthoStudio XP pour construire des tuiles. Chaque fenêtre a un bouton vers l'autre.",
+      "Ce que l'application montre d'abord : Live, ou OrthoStudio XP pour construire des tuiles. Construire | Live, en haut de la fenêtre, passe de l'un à l'autre.",
     "home.ask": "Me demander",
-    "home.live": "La fenêtre Live",
+    "home.live": "Live",
     "home.build": "OrthoStudio XP, pour construire des tuiles",
     "welcome.title": "Que voulez-vous faire ?",
     "welcome.lead":

@@ -985,8 +985,9 @@ function confirmQuit(lines) {
 }
 
 /** "Quit", as OrthoStudio XP's: asks, saying what a stream is worth, then Live goes, at once when
- * nothing streams, else once the stream is out and X-Plane has let go of the pack. Cmd+Q, the
- * app's menu and the Dock's press this button (orthostudio/live/web.py may_quit). */
+ * nothing streams, else once the stream is out and X-Plane has let go of the pack. Cmd+Q asks
+ * elsewhere: in the app's frame (frame.py may_quit), or, with two windows (OSXP_FRAME=0), in a box
+ * of the system's (web.py app_may_quit). */
 async function quitLive() {
   let status = last;
   try {
