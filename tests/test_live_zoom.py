@@ -439,6 +439,28 @@ def test_a_start_s_squares_are_set_to_a_new_zoom_by_several_processes_alike(
     assert files[1] == files[3]
 
 
+def test_the_processes_of_a_start_s_squares_are_closed_once_they_are_made(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The processes a batch of squares was shared between are closed once it is made: those of
+    a start, kept for the whole flight, counted 1.7 GB more in Live's memory (2026-10-11)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from orthostudio.live import names as names_module
+
+    monkeypatch.setattr(names_module, "FIT_CHUNK", 1)
+    pack = region(tmp_path)
+    set_zooms(pack, Zooms(17, 19), quiet)
+    names = live_names_for(pack)
+    names.spread = lambda: 3
+    pool = names._workers = names._fit_workers = ThreadPoolExecutor(max_workers=3)
+    squares = sorted(_all_squares(names))
+    names.target = set(squares)
+    names._make_batch(squares)
+    assert names.done == set(squares)
+    assert names._fit_workers is None and pool._shutdown
+
+
 def test_a_texture_is_set_to_a_new_zoom_even_before_its_neutral_texture_is_made(
     tmp_path: Path,
 ) -> None:
