@@ -81,10 +81,19 @@ relief, its roads, forests and buildings. Every step, the data folder and the co
 | Images downloaded | 733 MB | 8.5 GB |
 | On the disk, cache included | 3.8 GB | 41 GB |
 
-At ZL16 the map data takes 2.7 s, the relief 4.5 s, tracing the roads, water and airports 7.0 s,
-the mesh 3.5 s, the water masks 0.9 s and the DSF 2.4 s, partly side by side; the imagery starts
-after 19 s and takes 34 s, downloaded and compressed at 21.7 MB/s. At ZL18 the same steps take the
-same 20 s, and the imagery 6 minutes, at 23.2 MB/s.
+| The steps of that first build | ZL16 | ZL18 |
+|---|---:|---:|
+| Map data (from the library) | 2.7 s | 2.9 s |
+| Relief (X-Plane's own) | 4.5 s | 4.8 s |
+| Roads, water and airports traced | 7.0 s | 7.4 s |
+| Mesh | 3.5 s | 3.7 s |
+| Water masks | 0.9 s | 0.9 s |
+| DSF | 2.4 s | 3.0 s |
+| Roads, forests and buildings for X-Plane, alongside | 3.2 s | 3.4 s |
+| Imagery, downloaded and compressed | 34 s, at 21.7 MB/s | 6 min 4 s, at 23.2 MB/s |
+
+The steps before the imagery run partly side by side, so the imagery starts after 19 s at ZL16
+and 20 s at ZL18.
 
 | The same tile afterwards | Time | Downloaded |
 |---|---:|---:|
