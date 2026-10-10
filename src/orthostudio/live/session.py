@@ -299,7 +299,7 @@ def prepare(options: Options, log: Log) -> Prepared:
                     "the zoom changed and X-Plane is running: it keeps a texture at the size it "
                     "first read. Quit X-Plane, then start again"
                 )
-            relayout(pack_dir, zooms, log)
+            relayout(pack_dir, zooms, log, workers=machine.share().encoders)
         if options.fresh:
             reset(pack_dir, log)
     install_link(xp_dir, pack_dir, LINK_NAME, log=log)

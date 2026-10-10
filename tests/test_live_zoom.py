@@ -231,6 +231,33 @@ def test_a_new_zoom_keeps_what_is_built(tmp_path: Path) -> None:
     assert not needs_relayout(pack, Zooms(17, 18))
 
 
+def test_a_new_zoom_shared_by_several_processes_lays_out_the_same(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The textures shared between processes (the start's encoders, the user's « c'est long » of
+    2026-10-10): every file and every level as one process alone lays them out, small chunks so
+    that several processes have some."""
+    from orthostudio.live import region as region_module
+
+    monkeypatch.setattr(region_module, "RELAYOUT_CHUNK", 1)
+    files = {}
+    for workers in (1, 3):
+        pack = region(tmp_path / str(workers))
+        built = pack / "textures" / f"{NAMES[0]}.dds"
+        write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
+        record(pack, {built.name: 0})
+        lines: list[str] = []
+        assert relayout(pack, Zooms(17, 19), log=lines.append, workers=workers) == 3
+        assert recorded(pack)["textures"] == {built.name: 0}
+        assert region_zooms(pack) == Zooms(17, 19)
+        files[workers] = {
+            p.name: p.read_bytes() for p in (pack / "textures").iterdir() if p.suffix == ".dds"
+        }
+        assert any("by 3 processes" in line for line in lines) == (workers == 3)
+    assert files[1] == files[3]
+    assert side_of(tmp_path / "3" / "pack" / "textures" / f"{NAMES[0]}.dds") == 8192
+
+
 def test_an_8192_texture_keeps_its_size_while_its_zoom_goes_that_far(tmp_path: Path) -> None:
     pack = region(tmp_path, Zooms(17, 18))
     path = sharp_file(pack, f"{NAMES[0]}.dds")

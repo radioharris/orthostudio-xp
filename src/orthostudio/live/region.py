@@ -190,39 +190,77 @@ def needs_relayout(pack_dir: Path, zooms: Zooms) -> bool:
     return bool(_layout_plan(pack_dir, zooms))
 
 
-def relayout(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) -> int:
+RELAYOUT_CHUNK = 500  # textures a process lays out at a time: the processes kept busy to the end
+
+
+def _relayout_chunk(pack_dir: str, items: list[tuple[str, int, int | None]]) -> dict[str, int]:
+    """Worker: ``items``, (name, new top, level built or None), each texture in a file of its new
+    size (:func:`relayout`). Returns the level each built one holds now."""
+    from .names import NeutralPool
+    from .texture import resize
+
+    pack = Path(pack_dir)
+    pool = NeutralPool(pack)
+    out: dict[str, int] = {}
+    for name, new_top, level in items:
+        path = pack / "textures" / name
+        if level is None:
+            pool.replace(new_top, path)
+        else:  # the file's size from its header: what it is, whatever was recorded
+            out[name] = resize(
+                path, level, dds.read_top(path), new_top, pack / neutral_file(new_top)
+            )
+    return out
+
+
+def relayout(
+    pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print, workers: int = 1
+) -> int:
     """Lay the pack out for ``zooms``: every texture whose file changes size, in a file of the new
     size. A neutral one becomes a name of the neutral texture of that size; a built one keeps its
     levels from the one built down (those sharper than the new file are dropped), nothing
     downloaded. Only while X-Plane does not run: it keeps a texture at the size it first read.
-    Records the zoom and the layout even when no file changes. Returns how many textures changed."""
-    from .names import NeutralPool
+    Records the zoom and the layout even when no file changes. Returns how many textures changed.
+
+    ``workers``: the processes sharing the textures, this computer's encoders at a start (X-Plane
+    not running): one alone took 41 to 67 s for 44,305 textures on a Mac (the user: « c'est
+    long », 2026-10-10). A pool that cannot start, the textures are laid out here, one by one."""
     from .pack import MARKER, load_built
-    from .texture import resize
 
     marker = pack_dir / REGION_MARKER
     meta = json.loads(marker.read_text())
     changes = _layout_plan(pack_dir, zooms)
     built_meta = load_built(pack_dir)
     built = built_meta.get("textures", {})
-    pool = NeutralPool(pack_dir)
     t0 = time.monotonic()
-    done = 0
+    items: list[tuple[str, int, int | None]] = []
     for zoom in sorted(changes):
         tops = Counter(top for _, top in changes[zoom])
         after = ", ".join(f"{dds.size_of(top)} px" for top in sorted(tops))
         log(f"ZL{zoom} textures: {len(changes[zoom])} to {after} (nothing to download)")
-        for name, new_top in changes[zoom]:
-            path = pack_dir / "textures" / name
-            neutral = ensure_neutral(pack_dir, new_top)
-            level = built.get(name)
-            if level is None:
-                pool.replace(new_top, path)
-            else:  # the file's size from its header: what it is, whatever was recorded
-                built[name] = resize(path, level, dds.read_top(path), new_top, neutral)
-            done += 1
-            if done % 50_000 == 0:
-                log(f"  {done} textures...")
+        items += [(name, top, built.get(name)) for name, top in changes[zoom]]
+    for top in {top for _, top, _ in items}:
+        ensure_neutral(pack_dir, top)  # made once, before the processes share them
+    chunks = [items[i : i + RELAYOUT_CHUNK] for i in range(0, len(items), RELAYOUT_CHUNK)]
+    n = max(1, min(workers, len(chunks)))
+    levels: dict[str, int] = {}
+    if n > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        from concurrent.futures.process import BrokenProcessPool
+
+        from . import pools
+
+        try:
+            with ProcessPoolExecutor(max_workers=n, mp_context=pools.context()) as ex:
+                for got in ex.map(_relayout_chunk, [str(pack_dir)] * len(chunks), chunks):
+                    levels.update(got)
+            chunks = []
+        except (OSError, BrokenProcessPool) as e:  # the rest here, one by one
+            log(f"  the textures laid out in Live's own process: {e}")
+            chunks = [[item for item in items if item[0] not in levels]]
+    for chunk in chunks:
+        levels.update(_relayout_chunk(str(pack_dir), chunk))
+    built.update(levels)
     if built_meta:
         built_meta.pop("grown", None)  # every file at its size now: nothing grows any more
         tmp = pack_dir / MARKER.with_suffix(".tmp")
@@ -231,9 +269,10 @@ def relayout(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) -
     meta["zooms"] = asdict(zooms)
     meta["layout"] = LAYOUT_FIXED
     marker.write_text(json.dumps(meta))
-    if done:
-        log(f"textures laid out for the zoom in {time.monotonic() - t0:.0f} s")
-    return done
+    if items:
+        how = f" by {n} processes" if n > 1 else ""
+        log(f"textures laid out for the zoom in {time.monotonic() - t0:.0f} s{how}")
+    return len(items)
 
 
 def _upgrade(pack_dir: Path, log: Callable[[str], None]) -> None:
