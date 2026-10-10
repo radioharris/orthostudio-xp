@@ -466,7 +466,7 @@ class Streamer:
                 forget=self._forget_missing,
                 log=log,
                 others=others,
-                building=lambda name: name in self.queue or name in self.in_flight,
+                building=lambda name: name in self.in_flight,  # taken: being written soon
                 level_of=self.built.get,
                 refit=self._refit,
                 spread=lambda: 1 if self.flying else self.workers,

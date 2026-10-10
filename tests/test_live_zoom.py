@@ -389,6 +389,21 @@ def test_a_square_made_after_a_new_zoom_has_its_textures_at_its_size_first(
     assert side_of(built) == 8192 and refitted == {built.name: 0}
 
 
+def test_a_square_waits_for_a_texture_the_builder_took_not_for_one_queued(
+    tmp_path: Path,
+) -> None:
+    """A texture only queued is set to the new zoom's size with its square at once; one the
+    builder took makes its square wait until it is written. Waiting for the queued ones too held
+    a start's square past GIVE_UP_S and X-Plane went on without it (three starts, 2026-10-10)."""
+    s = row_streamer(tmp_path)
+    assert s.names is not None
+    name = f"{ROW[0]}.dds"
+    s.queue[name] = (1.0, -1)
+    assert not s.names.building(name)
+    s.in_flight[name] = s.queue.pop(name)
+    assert s.names.building(name)
+
+
 def test_a_start_s_squares_are_set_to_a_new_zoom_by_several_processes_alike(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
