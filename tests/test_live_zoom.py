@@ -282,8 +282,8 @@ def _all_squares(names) -> list[tuple[int, int]]:
 def test_a_new_zoom_touches_no_texture_at_the_start(tmp_path: Path) -> None:
     """A new zoom in an instant, whatever the pilot has flown (the user: « si j'ai 100000 textures
     ... il va appliquer aux 100000 », 2026-10-10): no texture written, the squares made before no
-    longer readable by X-Plane (made again as it comes), the levels recorded those the new files
-    will keep."""
+    longer readable by X-Plane (made again as it comes), the levels recorded those the files
+    hold."""
     from orthostudio.live.region import remove_aside
 
     pack = region(tmp_path)
@@ -303,10 +303,45 @@ def test_a_new_zoom_touches_no_texture_at_the_start(tmp_path: Path) -> None:
     assert any("as its square's files are made" in line for line in lines)
     remove_aside(pack)  # the thread's work, done here
     assert not list(pack.glob(".terrain-old-*"))
-    # down again: an 8192 px level recorded is one the 4096 px file will not keep
+    # down again: an 8192 px level recorded stays while the file holds it, until its square
     record(pack, {built.name: -1})
     set_zooms(pack, Zooms(16, 18), quiet)
-    assert recorded(pack)["textures"] == {built.name: 0}
+    assert recorded(pack)["textures"] == {built.name: -1}
+
+
+def test_a_zoom_set_back_before_a_square_is_made_again_builds_nothing_again(
+    tmp_path: Path,
+) -> None:
+    """17/19, 16/18, then 17/19 again before the aircraft came near a texture: its 8192 px level,
+    still in its file, is neither forgotten nor built again (29 textures downloaded and built a
+    second time at a start round Toulouse, 2026-10-10); set to 4096 px only once its square is
+    made at 16/18, its level recorded then. The map shows what X-Plane will show meanwhile."""
+    from orthostudio.live.mapdata import rows_of
+    from orthostudio.live.region import file_tops
+
+    pack = region(tmp_path, Zooms(17, 19))
+    path = sharp_file(pack, f"{NAMES[0]}.dds")
+    record(pack, {path.name: -1})
+
+    def made(zooms: Zooms) -> dict[str, int]:
+        set_zooms(pack, zooms, quiet)
+        names = live_names_for(pack)
+        refitted: dict[str, int] = {}
+        names.level_of = {path.name: recorded(pack)["textures"][path.name]}.get
+        names.refit = refitted.__setitem__
+        names.building = lambda _: False
+        for each in _all_squares(names):
+            names.make(each)
+        return refitted
+
+    set_zooms(pack, Zooms(16, 18), quiet)  # a start at 16/18, gone before the aircraft came
+    assert recorded(pack)["textures"] == {path.name: -1} and side_of(path) == 8192
+    [(*_, photos, _)] = rows_of(recorded(pack)["textures"], file_tops(pack))
+    assert photos == 16  # X-Plane will show its 4096 px level, no sharper
+    assert made(Zooms(17, 19)) == {}  # back at 17/19: nothing to set, nothing to build
+    assert side_of(path) == 8192 and level_bytes(path, -1, -1) == levels_from(-1, -1)[0]
+    assert made(Zooms(16, 18)) == {path.name: 0}  # its square made at 16/18: 4096 px now
+    assert side_of(path) == 4096
 
 
 def test_a_square_made_after_a_new_zoom_has_its_textures_at_its_size_first(

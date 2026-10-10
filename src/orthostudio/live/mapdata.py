@@ -12,13 +12,14 @@ thousands of rectangles would be too many for the page.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import threading
 from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import Any
 
-from . import aoregions
+from . import aoregions, dds
 from .geo import parse_texture_name
 from .pack import load_built
 
@@ -47,33 +48,54 @@ def _rectangle(name: str) -> tuple[float, float, float, float, int] | None:
     return got
 
 
-def rows_of(textures: dict[str, int]) -> list[Row]:
+def rows_of(textures: dict[str, int], top_of: Callable[[str], int] | None = None) -> list[Row]:
     """Every texture built: its rectangle and the zoom of its photos, which says how sharp it is
     on the ground whatever its size (an airport's ZL18 texture at 4096 px has photos of ZL18, a
-    ZL16 one at 8192 px photos of ZL17: the first is the sharper, with fewer pixels)."""
+    ZL16 one at 8192 px photos of ZL17: the first is the sharper, with fewer pixels). ``top_of``:
+    each one's size for the zoom set, the most X-Plane shows of it (:func:`shown`)."""
     rows = []
     for name, level in textures.items():
         box = _rectangle(name)
         if box is None or not isinstance(level, int) or level > 4:
             continue
         south, west, north, east, zoom = box
-        rows.append((south, west, north, east, zoom - level, name))
+        shown_level = level if top_of is None else shown(level, top_of(name))
+        rows.append((south, west, north, east, zoom - shown_level, name))
     return rows
+
+
+def zoom_tops(pack: Path) -> Callable[[str], int] | None:
+    """Each texture's size for the pack's zoom (:func:`shown`); None for a record without its
+    pack's zoom, a past flight's."""
+    from .region import REGION_MARKER, file_tops
+
+    return file_tops(pack) if (pack / REGION_MARKER).exists() else None
+
+
+def shown(level: int, top: int) -> int:
+    """The level X-Plane shows of a texture built from ``level`` for a zoom whose file's sharpest
+    level is ``top``: a new zoom keeps a sharper level recorded until the texture's square is made
+    again, its file set to the new size then (orthostudio.live.region.set_zooms)."""
+    return max(level, top)
 
 
 def _built(pack: Path) -> list[Row]:
     """The pack's record, read again only once the streamer has saved it since."""
+    from .region import REGION_MARKER
+
     marker = pack / "_live" / "ortho.json"
     try:
         mtime = marker.stat().st_mtime
     except OSError:
         return []
+    with contextlib.suppress(OSError):  # a new zoom changes what X-Plane shows of each
+        mtime += (pack / REGION_MARKER).stat().st_mtime
     with _lock:
         hit = _cache.get(pack)
         if hit is not None and hit[0] == mtime:
             return hit[1]
     meta = load_built(pack)
-    rows = rows_of(meta.get("textures", {}))
+    rows = rows_of(meta.get("textures", {}), zoom_tops(pack))
     with _lock:
         _cache[pack] = (mtime, rows)
     return rows
@@ -160,12 +182,13 @@ def textures_at(
     seen: dict[str, float],
     now: float,
     top_of: Callable[[str], int] = lambda _: 0,
+    shown_top: Callable[[str], int] | None = None,
 ) -> list[dict[str, Any]]:
     """The textures built under (lat, lon), the smallest first (an airport's ZL18 over the
     ZL16 around it), each as the map's tooltip tells it: its zoom and source, the size built and
     the zoom of the photos that makes, the disk it takes (``top_of``: its file's size), its
     ground, when it was last in reach, and whether it waits to be built again for pieces that did
-    not come."""
+    not come. ``shown_top``: each one's size for the zoom set, the most X-Plane shows of it."""
     from .evict import texture_bytes
     from .geo import haversine_m
 
@@ -178,6 +201,7 @@ def textures_at(
         if not (south <= lat < north and west <= lon < east):
             continue
         tex = parse_texture_name(name)
+        seen_level = level if shown_top is None else shown(level, shown_top(name))
         width = haversine_m((south + north) / 2, west, (south + north) / 2, east) / 1000
         height = haversine_m(south, west, north, west) / 1000
         found.append(
@@ -185,8 +209,8 @@ def textures_at(
                 "name": name.removesuffix(".dds"),
                 "zoom": tex.zoom,
                 "provider": tex.provider,
-                "px": 8192 if level < 0 else 4096 >> level,
-                "photos_zoom": tex.zoom - level,
+                "px": dds.size_of(seen_level),
+                "photos_zoom": tex.zoom - seen_level,
                 "patchy": name in patchy,
                 "bytes": texture_bytes(level, top_of(name)),
                 "km": [round(width, 2), round(height, 2)],

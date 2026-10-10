@@ -62,7 +62,7 @@ from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
-from .mapdata import route_points
+from .mapdata import route_points, shown
 from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
 from .region import (
@@ -1535,7 +1535,10 @@ class Streamer:
             "disk_bytes": usage(built, self.top_of),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
-            "at_8192": sum(1 for level in built.values() if level < 0),  # their 8192 px photos
+            # their 8192 px photos, those X-Plane shows (mapdata.shown)
+            "at_8192": sum(
+                1 for name, level in built.items() if shown(level, self.top_of(name)) < 0
+            ),
             "tint_8192": self.tint_8192,
             "flight_plan": None
             if self.flight_plan is None

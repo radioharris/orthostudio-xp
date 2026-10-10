@@ -553,7 +553,7 @@ class LiveControl:
         if textures is None:
             return {"version": version, "same": True}
         if self._map_rows[0] != version:  # the rectangles of this version, once
-            self._map_rows = (version, rows_of(textures))
+            self._map_rows = (version, rows_of(textures, streamer.top_of))
         out = built_in(
             default_pack_dir(), west, south, east, north, rows=self._map_rows[1], covered=theirs
         )
@@ -572,18 +572,19 @@ class LiveControl:
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:
         """The textures built under a point of the map, with their facts (its tooltip)."""
-        from orthostudio.live.mapdata import record, textures_at
+        from orthostudio.live.mapdata import record, textures_at, zoom_tops
 
         streamer = self.streamer
         if streamer is not None:
             built, patchy, seen = streamer.facts_now()
-            top_of = streamer.top_of
+            top_of = shown_top = streamer.top_of
         else:
             meta = record(default_pack_dir())
             built, patchy = meta.get("textures", {}), set(meta.get("patchy", []))
             seen = meta.get("seen", {})
             top_of = file_tops(default_pack_dir())
-        return textures_at(lat, lon, built, patchy, seen, time.time(), top_of)
+            shown_top = zoom_tops(default_pack_dir())
+        return textures_at(lat, lon, built, patchy, seen, time.time(), top_of, shown_top)
 
     def set_language(self, language: str, *, save: Any = None) -> None:
         """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take

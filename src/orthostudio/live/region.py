@@ -287,24 +287,15 @@ def set_zooms(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) 
 
     So that X-Plane reads none at its old size, the squares made before lose their terrain files
     at once (their folder set aside, a rename, removed behind by a thread): they are made again
-    as X-Plane comes. The levels recorded as built are those their new file keeps (``resize``).
-    Only while X-Plane does not run, as :func:`relayout`."""
+    as X-Plane comes. The levels recorded as built stay those the files hold: a texture's are
+    lowered only when its file is set to the new size (``resize``, as its square is made).
+    Lowering them all here forgot 8192 px levels the files still held, and a zoom set back had
+    them downloaded and built again (29 textures at a start round Toulouse, 2026-10-10). Only
+    while X-Plane does not run, as :func:`relayout`."""
     import threading
-
-    from .pack import MARKER, load_built
 
     marker = pack_dir / REGION_MARKER
     meta = json.loads(marker.read_text())
-    built_meta = load_built(pack_dir)
-    built = built_meta.get("textures", {})
-    for name, level in built.items():
-        tex = parse_texture_name(name)
-        if tex is not None:
-            built[name] = max(level, zooms.top(tex.zoom))
-    if built_meta:
-        tmp = pack_dir / MARKER.with_suffix(".tmp")
-        tmp.write_text(json.dumps(built_meta))
-        os.replace(tmp, pack_dir / MARKER)
     terrain = pack_dir / "terrain"
     if terrain.is_dir() and not is_folder_link(terrain):
         os.replace(terrain, pack_dir / f"{ASIDE_PREFIX}{time.time_ns()}")

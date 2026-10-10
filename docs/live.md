@@ -186,7 +186,8 @@ one seen up close.
   them up again on the way down.
 - **A new zoom** applies at the next start of Live, X-Plane closed, at once: each texture takes its
   new size only when X-Plane comes near it, round your departure or ahead of the aircraft, keeping
-  what it built and downloading nothing. Textures where you never fly again are never touched.
+  what it built and downloading nothing. Textures where you never fly again are never touched, and
+  going back to your earlier zoom before flying near them loses none of their sharp photos.
 
 Downloads, estimated around Lyon at 250 kt: with ZL16 and 18, about 1 GB at the start and 7 GB an
 hour; with ZL17 and 19, about 1.4 GB and 13 GB.
