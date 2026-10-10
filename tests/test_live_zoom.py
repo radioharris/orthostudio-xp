@@ -354,6 +354,63 @@ def test_a_square_made_after_a_new_zoom_has_its_textures_at_its_size_first(
     assert side_of(built) == 8192 and refitted == {built.name: 0}
 
 
+def test_a_start_s_squares_are_set_to_a_new_zoom_by_several_processes_alike(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While X-Plane waits on a start, the textures of a square are shared between the
+    builder's processes (``spread``): the same files and levels as one alone gives."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from orthostudio.live import names as names_module
+
+    monkeypatch.setattr(names_module, "FIT_CHUNK", 1)
+    files = {}
+    for spread in (1, 3):
+        pack = region(tmp_path / str(spread))
+        built = pack / "textures" / f"{NAMES[0]}.dds"
+        write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
+        record(pack, {built.name: 0})
+        make_squares(pack)
+        set_zooms(pack, Zooms(17, 19), quiet)
+        names = live_names_for(pack)
+        refitted: dict[str, int] = {}
+        names.level_of = {built.name: 0}.get
+        names.refit = refitted.__setitem__
+        names.spread = lambda n=spread: n
+        if spread > 1:  # processes stood in for by threads: the sharing and the merge
+            names._workers = names._fit_workers = ThreadPoolExecutor(max_workers=spread)
+        for square in _all_squares(names):
+            names.make(square)
+        assert refitted == {built.name: 0}
+        files[spread] = {
+            p.name: p.read_bytes() for p in (pack / "textures").iterdir() if p.suffix == ".dds"
+        }
+        names.close() if spread == 1 else names._fit_workers.shutdown()
+    assert files[1] == files[3]
+
+
+def test_a_texture_is_set_to_a_new_zoom_even_before_its_neutral_texture_is_made(
+    tmp_path: Path,
+) -> None:
+    """A built texture set to a size no texture had yet: its neutral texture made first. Its
+    absence made the setting fail without a word, and the square readable with the texture at
+    its old size (found by the test of several processes, 2026-10-10)."""
+    pack = region(tmp_path)
+    built = pack / "textures" / f"{NAMES[0]}.dds"
+    write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
+    record(pack, {built.name: 0})
+    make_squares(pack)
+    set_zooms(pack, Zooms(17, 19), quiet)
+    from orthostudio.live.names import run_ops
+
+    (pack / neutral_file(-1)).unlink(missing_ok=True)
+    # the texture alone, as a process given a share of a square's textures may have it
+    result = run_ops(str(pack), [("fit", -1, str(built), 0)])
+    assert result["fitted"] == {built.name: 0} and not result["errors"]
+    assert side_of(built) == 8192
+    assert level_bytes(built, 0, -1) == levels_from(0, 0)[0]
+
+
 def test_a_texture_not_yet_at_the_zoom_s_size_is_made_coarser_or_copied_up_as_it_is(
     tmp_path: Path,
 ) -> None:

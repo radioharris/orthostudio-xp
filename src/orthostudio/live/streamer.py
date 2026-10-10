@@ -469,6 +469,7 @@ class Streamer:
                 building=lambda name: name in self.queue or name in self.in_flight,
                 level_of=self.built.get,
                 refit=self._refit,
+                spread=lambda: 1 if self.flying else self.workers,
             )
             self.names.yielding = self.yielding
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
