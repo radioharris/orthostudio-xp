@@ -47,8 +47,8 @@ anisotropic frame of `vectors-pslg.md` 2.7 with `scalx = cos((lat + 0.5) * pi / 
 The stage also publishes the two *footprints* only it can build: `treated_area` (what the
 roads are subtracted from and what a helipad must not touch) and one bounding box per airport
 (`airports.json`, the curvature weight map of the mesh stage, `docs/specs/mesh-build.md` 3.2).
-It carries a third, the 1001 x 1001 road raster of `build_airport_array`, which the surface
-builder owns and hands over.
+It carries a third, the 1001 x 1001 road raster of `build_airport_array`, which
+`discover.airport_array` builds and `airports_vec.stage.encode` hands over.
 
 ## 2. Inputs and outputs
 
@@ -62,16 +62,18 @@ encode_airports(
     osm: OsmData,                         # the "airports" layer, as OSM_layer holds it
     patch_names: Collection[Hashable] = (),  # patches_list: airports a patch overrides
     patches_area: BaseGeometry | None = None,
-    array: NDArray[np.bool_] | None = None,   # build_airport_array, built by the area module
+    array: NDArray[np.bool_] | None = None,   # build_airport_array, from discover.airport_array
     on_event: EventHandler | None = None,
 ) -> AirportLayers
 ```
 
 `AirportLike` is a **protocol**, not a class: this module states what it reads and the
 airport-record chantiers decide what they build (section 3). `AirportView` is its concrete
-form and `AirportView.of(key, runways, surfaces)` assembles one from the records those
-chantiers return (`airports_vec.runways.AirportRunways`, `airports_vec.areas.AirportSurfaces`),
-which is the single line the pipeline needs. `AirportLayers` carries
+form, and the pipeline makes one per airport with `airports_vec.stage.views_of`, a projection
+of the record (`model.Airport`) with no computation (`airports-integration.md` 2).
+`AirportView.of(key, runways, surfaces)` was written for per-chantier records
+(`AirportRunways`, `AirportSurfaces`) that the runway and area modules never came to return;
+only a unit test calls it. `AirportLayers` carries
 
 * `layers`: `(geometry, marker, z)` triples in insertion order, consecutive ways of the same
   marker grouped into one pass — exactly what `orthostudio.vectors.assemble.to_vector_layers` takes,
@@ -210,15 +212,16 @@ field, whose fit is a degree-7 polynomial along the centre line weighted towards
 What makes the runway usable is that the *raster* was smoothed over the airport first
 (`smooth_raster_over_airports`), so the fit is already nearly constant, and that the mesh
 takes its z from the vector attribute (`attr >= INTERP_ALT`). The acceptance test therefore
-measures the **span** of the z of each runway outline and compares it with Ortho4XP's, rather than
-asserting a constant.
+measured the **span** of the z of each runway outline and compared it with Ortho4XP's, rather than
+asserting a constant (removed with decision 0010, 2026-09-14).
 
 **Measured on `+43+005`** (42 runway outlines): median span **2.37 m**, maximum **18.60 m**,
 37 of the 42 above 0.5 m -- and every one of them equal to Ortho4XP's to 2e-13 m. So a runway is
 *not* flat after step 1, in Ortho4XP or here; what X-Plane flattens is what the apt.dat scenery
 does with it. Making the vector z constant per runway would be a **wanted difference** with a
-visible effect on the mesh; it is not taken here, and the assertion above exists so that
-taking it later is a deliberate, measured decision (`blocage`).
+visible effect on the mesh; it is not taken here. The comparison above was there so that taking it
+later would be a deliberate, measured decision (`blocage`); since decision 0010 that decision would
+need a measurement of its own.
 
 ## 6. Seeds
 
@@ -297,13 +300,15 @@ On `+43+005`, 55 helipads survive the two exclusions and their union, cut to the
 **52 flattened polygons**. They matter for a second reason: Ortho4XP inserts them with the same
 marker as the roads that follow, so the recorded `INTERP_ALT` run of the reference tile
 (1 304 ways) is *52 helipads then 1 252 roads*, not 1 304 roads. Wave 1 read that run as one
-road pass; the integrator must split it (`tests/test_aptencode_oracle.py` does).
+road pass; the comparison tests split it (`tests/test_aptencode_oracle.py`, removed with decision
+0010 on 2026-09-14).
 
 ## 10. Acceptance and measurements
 
 Reference tile `+43+005`, the inputs being the `.apt` of the reference build (loaded in the
 test only), the warm `+43+005_airports.osm.bz2` of the Ortho4XP checkout and the **smoothed**
-`Data+43+005.alt` of the reference build.
+`Data+43+005.alt` of the reference build. The tests named below compared with Ortho4XP and were
+removed with decision 0010 (2026-09-14); the figures are the ones they measured.
 
 ### 10.1 Way by way (`test_the_ways_are_the_ones_ortho4xp_inserted`)
 

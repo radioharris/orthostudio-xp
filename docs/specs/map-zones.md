@@ -21,7 +21,7 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 
 | # | Decision | Why |
 |---|---|---|
-| M1 | Leaflet 1.9.4, vendored in `src/orthostudio/ui/vendor/leaflet/` (integrity-checked, BSD-2), loaded as a classic script before `app.js`; no plugin | the user chose it; no CDN, no build step (`ui.md` 1) |
+| M1 | Leaflet 1.9.4, vendored in `src/orthostudio/ui/vendor/leaflet/` (integrity-checked, BSD-2), loaded as a classic script before `app.js`; one plugin since 2026-09-19: MapLibre GL 5.24.0 and its Leaflet bridge (`vendor/maplibre/`), loaded the first time the street map is shown | the user chose it; no CDN, no build step (`ui.md` 1) |
 | M2 | The base map is served by the engine: `GET /api/map/{provider}/{z}/{x}/{y}`, with a disk cache | the page never contacts another origin; the user sees the imagery they will get |
 | M3 | One zones document, `$OSXP_HOME/zones.json`, format `osxp-zones-1`; `GET`/`PUT /api/zones` | zones outlive a build and a page reload; one file is inspectable |
 | M4 | **Priority = order**: index 0 wins where zones overlap | it is Ortho4XP's `zone_list` order (`_zone_image` paints the list reversed, the first entry last) |
@@ -35,7 +35,8 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
 {
  "format": "osxp-zones-1",
  "zones": [
-  {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": null, "photo_look": null,
+  {"id": "lsgg-18", "name": "LSGG", "zl": 18, "provider": null,
+   "photo": {"look": null, "brightness": 0, "contrast": 0, "saturation": 0},
    "polygon": [[6.090, 46.225], [6.130, 46.225], [6.130, 46.250], [6.090, 46.250]]}
  ]
 }
@@ -93,6 +94,7 @@ header `ETag: "<revision>"` (and `Cache-Control: no-store`):
 ```json
 {"format": "osxp-zones-1", "revision": "<sha256 hex of the file, or \"\">",
  "zones": [ ... ],
+ "tiles": {"+46+006": {"photo": {...}}},
  "problems": [{"zone": "<id or null>", "index": 0, "code": "ZONE_INVALID",
                "reason": "...", "message": "..."}]}
 ```
@@ -301,7 +303,7 @@ white at 28 % opacity: installed and selected tiles carry the colour).
   (it read "Country borders (zoom out to see them)" until a user asked for the brackets to go,
   2026-09-26).
 - **Switch**: a checkbox in the legend, on by default, remembered in `localStorage`
-  (`orthostudio.mapBorders`); the legend keeps the keyboard focus on it when it is rebuilt. A file
+  (`osxp.mapBorders`); the legend keeps the keyboard focus on it when it is rebuilt. A file
   that cannot be read (OrthoStudio XP being restarted, for instance) leaves the rest of the map
   working and the legend reading "Country borders unavailable for now (trying again by itself)": it
   is read again after 5 s, 15 s, 1 min, then every 5 min (`bordersRetryDelay`) while the borders are

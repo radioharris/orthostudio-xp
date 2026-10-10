@@ -196,6 +196,41 @@ def test_the_window_written_back_is_read_by_the_engines_own_reader(tmp_path: Pat
     assert (back[values == -9999.0] == read.nodata).all()  # the holes, said in our own words
 
 
+def test_a_write_cut_short_leaves_no_file_a_build_would_take(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The square was written straight under its own name: a write cut short left a stump that
+    began with the TIFF mark, which ``_ensure_anadem`` accepts as the square (2026-10-09)."""
+    import pathlib
+
+    real_open = pathlib.Path.open
+
+    class Cut:
+        def __init__(self, f: object) -> None:
+            self.f, self.writes = f, 0
+
+        def write(self, data: bytes) -> int:
+            self.writes += 1
+            if self.writes > 1:
+                raise OSError("cut short")
+            return int(self.f.write(data))  # type: ignore[attr-defined]
+
+        def __enter__(self) -> Cut:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            self.f.close()  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(pathlib.Path, "open", lambda self, *a, **k: Cut(real_open(self, *a, **k)))
+    out = tmp_path / "S10W060_ANADEM.tif"
+    with pytest.raises(OSError, match="cut short"):
+        write_geotiff(
+            out, ground(40, 40), north=-9.0, west=-60.0, step_x=STEP, step_y=STEP, nodata=-9999.0
+        )
+    assert not out.exists()
+    assert not list(tmp_path.iterdir())  # nor the temporary file
+
+
 def test_the_header_of_a_published_relief_fits_in_one_read() -> None:
     """A zone of 2 GB has 2 596 tiles: two tables of 10 KB after the directory. The first read
     must hold them, or the reader would ask twice for every square."""

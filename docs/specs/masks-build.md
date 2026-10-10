@@ -45,11 +45,13 @@ recorded in the neighbouring cell so its margin is not empty.
 
 ```python
 # rule.py
-from orthostudio.masks import MASKS, MasksJob, MasksParams, masks_job, read_mesh_artifact
+from orthostudio.masks import MASKS, MasksParams, read_mesh_artifact
+from orthostudio.masks.rule import MasksJob, masks_job, read_water_tris_artifact
 
 # water.py
-from orthostudio.masks import NEIGHBOUR_OFFSETS, MaskRange, MeshWaterTris, WaterTriangles
-from orthostudio.masks import cell_pixel_origin, mask_cells, read_water_tris, water_triangles
+from orthostudio.masks import NEIGHBOUR_OFFSETS, MaskRange, WaterTriangles
+from orthostudio.masks import cell_pixel_origin, mask_cells, water_triangles
+from orthostudio.masks.water import MeshWaterTris, read_water_tris
 
 # raster.py
 from orthostudio.masks import CELL_PX, custom_pre_mask, extent_polygons, pre_mask
@@ -59,7 +61,8 @@ from orthostudio.masks import WATER_TRANSITION, blur_mask, blur_widths, halo_px,
 from orthostudio.masks import sand_blur, sea_level_for, three_steps_blur
 
 # distance.py
-from orthostudio.masks import distance_mask, edt_px, pil_blur_reach, pil_blur_support
+from orthostudio.masks import distance_mask, edt_px, pil_blur_reach
+from orthostudio.masks.distance import pil_blur_support
 
 # dem.py
 from orthostudio.masks import dem_pre_mask, mesh_warp
@@ -121,12 +124,12 @@ The output directory is the one `textures-imprint.masks_dir_lookup` and
 | 8 neighbours by mesh presence; absent = no sea beyond the border | keep, as 9 explicit rule inputs instead of a directory scan |
 | white extent polygon per available mesh | keep |
 | `ImageDraw.polygon` with float pixel coordinates | keep, same Pillow call (this is what makes byte identity reachable at all) |
-| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`): `sand` needs `blur_width - 1` px, every other mode keeps the full 1024. Proven identical on the reference: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`) |
+| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`, plus 2 px, at most 1024): `sand` needs `blur_width - 1` px; `rocks` the supports of its two Gaussian blurs (`pil_blur_support`), or that of its last `GaussianBlur(2**(mask_zl-14))` when larger; `3steps` the reach of its ladder plus the support of its last `GaussianBlur(2)`; with `distance_masks_too`, at least the distance at which `_dist` saturates. On the reference tile that is 15 px for `sand` and 35 for `rocks` at 100 m, 57 for `3steps` at 100/200/100 (`test_halo_is_the_reach_of_the_profile`). Proven identical on the reference for `sand`: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`); `test_rocks_crop_matches_full_margin` checks `rocks` against the full margin the same way |
 | `sand` = hat convolution with a **uint8 truncation between the two passes** | keep exactly. The only reproduction that is bit-exact is `numpy.convolve` itself: the float64 result is rounded by cblas `ddot`, and an exact-integer double box (which is what the kernel mathematically is) differs on the pixels whose exact sum is a multiple of `bw**2` (measured: 22 pixels per 300² of synthetic three-level data, `max diff 2`). Speed comes from the halo crop and from memoising identical rows, never from changing the arithmetic |
-| `rocks` = `GaussianBlur` chain | keep, same Pillow calls, full 1024 margin |
+| `rocks` = `GaussianBlur` chain | keep, same Pillow calls, on the margin `halo_px` gives it (the supports of its blurs) |
 | `3steps` = dozens of `GaussianBlur(1) > 0` dilations | **replaced** by an EDT: the profile is a function of the distance to the water boundary alone, so it is computed once with `scipy.ndimage.distance_transform_edt` and mapped through the same value ladder, with the thresholds at multiples of the measured reach of one `GaussianBlur(1) > 0` step (3 px) and the middle zone at `reach(R_buf) - reach(R_buf - R_sea)`. Tolerance in section 6 |
 | `_dist` = `skfmm.distance` with a narrow band | **replaced** by `scipy.ndimage.distance_transform_edt` in float32. `skfmm` is a fast-marching approximation of the distance to the zero level set of `2*(pre>0)-1`, which sits half a pixel inside the land; the EDT measures to the nearest land *pixel centre*, so `d_edt - 0.5` is the comparable quantity. Tolerance in section 6. Removes the `scikit-fmm` dependency |
-| `masks_use_DEM_too` | kept as a **pure function** `dem_pre_mask(above, ...)` over a boolean super-level-set array plus its bbox; the reprojection is the Ortho4XP 8x8 mesh transform. The rule takes the elevation as an optional input because `orthostudio.sources.dem` does not exist yet (section 8) |
+| `masks_use_DEM_too` | kept as a **pure function** `dem_pre_mask(above, ...)` over a boolean super-level-set array plus its bbox; the reprojection is the Ortho4XP 8x8 mesh transform. The rule takes the elevation as an optional input, a directory of per-cell arrays that no rule publishes (the DEM stage, `orthostudio.dem@1`, publishes one raster per tile), so the pipeline wires it absent and refuses the setting before a build (section 8) |
 | `masks_custom_extent` `NameError` | **fixed**: the custom array is used, not an undefined name. The rasterisation of the extent itself belongs to `orthostudio.imagery` (P4b); the rule takes it as an optional input (section 8) |
 | land forced back to 255 after the blur, inland grey included | keep (surprising, but it is what the reference masks contain) |
 | uniform masks not written | keep |
@@ -140,10 +143,10 @@ The output directory is the one `textures-imprint.masks_dir_lookup` and
 `tests/test_masks_*.py`. The oracle ones, against Ortho4XP's masks of +43+005, left with decision
 0010; their results stand in section 6.3.
 
-1. `test_masks_oracle.py::test_sand_masks_are_byte_identical` (mark `oracle`): from
-   `build/Data+43+005.mesh` alone, with the 8 neighbours absent, the 7 files of
-   `masks/` are reproduced **byte for byte** (same PNG bytes, not only the same pixels), and
-   no eighth file is produced.
+1. `test_masks_oracle.py::test_sand_masks_are_byte_identical` (mark `oracle`, removed with
+   decision 0010, 2026-09-14): from `build/Data+43+005.mesh` alone, with the 8 neighbours
+   absent, the 7 files of `masks/` were reproduced **byte for byte** (same PNG bytes, not only
+   the same pixels), and no eighth file was produced.
 2. `test_masks_water.py`: a synthetic mesh with one triangle per quarter of a cell lands in
    exactly the 1, 2 or 4 cells Ortho4XP would fill; the attribute filter is checked on the eight
    interesting values of `attr & has_water` and on both mesh versions; a precomputed
@@ -158,10 +161,11 @@ The output directory is the one `textures-imprint.masks_dir_lookup` and
 5. `test_sea_level_table`: `sea_level_for(r)` matches `Utils/water_transition.png` for
    `r` in 0, 0.1, 0.25, 0.5, 1 (values 221, 169, 99, 23, 0).
 6. `test_rocks_masks_are_byte_identical` and `test_3steps_masks_match_within_the_declared_
-   tolerance` (mark `oracle`, skipped unless `OSXP_MASKS_ROCKS_DIR` / `OSXP_MASKS_3STEPS_DIR`
-   point at an Ortho4XP run): byte identity for `rocks`, section 6.3 for `3steps`.
+   tolerance` (mark `oracle`, fed by `OSXP_MASKS_ROCKS_DIR` / `OSXP_MASKS_3STEPS_DIR`, which
+   pointed at an Ortho4XP run; removed with decision 0010, 2026-09-14): byte identity for
+   `rocks`, section 6.3 for `3steps`.
 7. `test_distance_masks_match_within_the_declared_tolerance` (same gate,
-   `OSXP_MASKS_DIST_DIR`): section 6.3 against the `skfmm` masks.
+   `OSXP_MASKS_DIST_DIR`; removed with them): section 6.3 against the `skfmm` masks.
 8. `test_masks_rule.py`: the rule's consumed set is exactly the nine parameters of section 3;
    an absent neighbour keys differently from a present one; the artefact of a rebuilt tile is
    read back by `orthostudio.textures.imprint.masks_dir_lookup` and by
@@ -243,8 +247,8 @@ running, and the scheduler's RAM budget could not do its job.
 
 | Artefact | Target | Reached | Evidence |
 |---|---|---|---|
-| `sand`, 7 masks | byte identical | **byte identical** (PNG bytes, not only pixels), and exactly those 7 cells | `test_masks_oracle.py::test_sand_masks_are_byte_identical`, also through a 4-process pool |
-| `rocks`, 7 masks | byte identical | **byte identical** | Ortho4XP run with `masking_mode=rocks`, `test_rocks_masks_are_byte_identical` |
+| `sand`, 7 masks | byte identical | **byte identical** (PNG bytes, not only pixels), and exactly those 7 cells | `test_masks_oracle.py::test_sand_masks_are_byte_identical` (removed with decision 0010), also through a 4-process pool |
+| `rocks`, 7 masks | byte identical | **byte identical** | Ortho4XP run with `masking_mode=rocks`, `test_rocks_masks_are_byte_identical` (removed with decision 0010) |
 | `3steps`, 7 masks | semantic, declared tolerance | 97.87 - 99.94 % of pixels **equal**, 99.75 - 99.99 % within 16, worst `max` 98, worst mean 0.139 | Ortho4XP run with `masking_mode=3steps`, `masks_width=[100,200,100]` |
 | `_dist`, 7 masks | semantic, declared tolerance | 97.78 - 99.86 % equal, >= 99.996 % **within 1**, `max` 2 (out of 255), mean <= 0.023 | Ortho4XP run with `distance_masks_too=True` |
 
@@ -281,22 +285,29 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   from the dependency list.
 * `3steps` by EDT instead of dozens of blur-and-threshold passes.
 * The custom-extent `NameError` is fixed.
-* The working margin is cropped to what the profile can reach, for `sand` only.
+* The working margin is cropped to what the profile can reach (`halo_px`, at most 1024), for
+  every profile.
 * A process pool instead of 4 GIL-bound threads.
 
 ## 8. Not there yet (blocking questions, least engaging option implemented)
 
-* **`water_tris.npz`**: the native mesh rule is expected to publish the water triangles per
-  cell. Its format is not written yet, so this module reads the mesh itself
-  (`mesh_file.read_mesh` / `read_mesh_npz`) and exposes `water_triangles(meshes, ...)` so the
-  precomputed arrays can be substituted without touching the rasteriser.
-* **Elevation source**: `masks_use_DEM_too` needs `orthostudio.sources.dem`, which does not exist.
-  `dem_pre_mask` is written and tested as a pure function; the rule raises
-  `MASK_FILE_UNREADABLE`-style `OsxpError("DEM_FILE_UNREADABLE")` when the flag is set and the
-  `dem` input is absent. **TODO** marked in the code.
+* **`water_tris.npz`** (settled): the native mesh rule publishes the water triangles of its mesh,
+  not sorted per cell (`mesh-build.md` 7: the cell depends on `mask_zl`, which the mesh does not
+  consume). The rule reads the file from each mesh artefact that has one
+  (`read_water_tris_artifact`) and hands it to `water_triangles(..., water_tris=...)`, which then
+  only computes the cells; the mesh itself is still read for the coordinates of the corners, and a
+  mesh artefact without the file is searched as before (`mesh_file.read_mesh` / `read_mesh_npz`).
+* **Elevation source**: `masks_use_DEM_too` needs the elevation as a directory of per-cell
+  `<til_y>_<til_x>.npy` arrays, which no rule publishes (the DEM stage, `orthostudio.dem@1`,
+  publishes one raster per tile). `dem_pre_mask` is written and tested as a pure function; the
+  rule raises `MASK_FILE_UNREADABLE`-style `OsxpError("DEM_FILE_UNREADABLE")` when the flag is set
+  and the `dem` input is absent. The pipeline declares the masks node with `dem` absent and
+  refuses the setting before a build (`pipeline/native.py`, `CFG_VALUE_INVALID`:
+  "masks_use_DEM_too is not supported"). **TODO** marked in the code.
 * **Custom extents**: `masks_custom_extent` needs the extent rasteriser of `orthostudio.imagery`
   (P4b). The pure function is written; the rule raises `MASK_CUSTOM_EXTENT_INVALID` when the
-  flag is set and the `custom_extent` input is absent. **TODO** marked in the code.
+  flag is set and the `custom_extent` input is absent, and the pipeline refuses the setting before
+  a build in the same way ("masks_custom_extent is not supported"). **TODO** marked in the code.
 * **Number of workers inside one rule** (*resolved for the RAM, still open for the slots*):
   the pool size is now decided by the pipeline and declared with the node's `ram_mb`
   (section 6.5), so what the scheduler budgets is what the node uses. What remains open is

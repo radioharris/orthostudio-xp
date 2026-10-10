@@ -52,7 +52,10 @@ Parameters that are **not** consumed by the `.ter` although they sit next to it 
 class TerKind(StrEnum): LAND, WATER, WATER_OVERLAY, SEA, SEA_OVERLAY
     .tri_type -> 0 | 1 | 2 ; .overlay -> bool ; TerKind.of(tri_type, overlay)
 class TerParams(frozen dataclass): water_tech="XP11 + bathy", imprint_masks_to_dds=True,
-    mask_zl=14, use_decal_on_terrain=False, terrain_casts_shadows=True, use_test_texture=False
+    mask_zl=14, use_decal_on_terrain=False, decal_on_sea=False, terrain_casts_shadows=True,
+    use_test_texture=False
+def takes_decal(kind, *, on_sea) -> bool            # land; the sea with on_sea; never inland water
+def with_decal(text, decal) -> str                  # the pack's DECAL_LIB line ("": none)
 def ter_filename(t, kind) -> str                    # "<y>_<x>_<prov><zl>[_water|_sea][_overlay].ter"
 def ter_text(t, kind, *, lat_med, lon_med, params) -> str
 def ter_center(t) -> (lat_med, lon_med)             # grid.tile_to_wgs84(til_x + 8, til_y + 8, zl)
@@ -73,7 +76,7 @@ use it later; it is documented as unreachable in Ortho4XP.
 | `is_overlay == "ratio_water"` branch | drop (dead) |
 | copy of `water_transition.png` into `textures/` | out of `ter_text` (pure function); the integrator copies it once per tile when any `WATER_OVERLAY` terrain exists (`WATER_TRANSITION_PNG` names it) |
 | `use_test_texture` global | ported as a `TerParams` field |
-| `DECAL_LIB` written on sea and land alike (`tri_type != 1`), against the comment above it | keep (byte fidelity); flagged in the code |
+| `DECAL_LIB` written on sea and land alike (`tri_type != 1`), against the comment above it | **changed** (a user asked for the land alone, 2026-09-17): land always, the sea only with `decal_on_sea` (`takes_decal`), which gives back Ortho4XP's text; inland water never |
 
 ## 5. Acceptance tests (`tests/test_textures_ter.py`)
 
@@ -81,11 +84,15 @@ use it later; it is documented as unreachable in Ortho4XP.
   were reproduced from their names, `ter_center`, and `TerParams` read from
   `Ortho4XP_+43+005.cfg`, byte for byte (`\n` endings, one blank line after `TERRAIN`).
 - Unit: every directive path (`WATER_COLOR_MASK` for XP12 sea, `LOAD_CENTER_BORDER` +
-  `BORDER_TEX` mask when not imprinting, `DECAL_LIB` on land and sea but not inland water,
+  `BORDER_TEX` mask when not imprinting, `DECAL_LIB` on land, on the sea only with
+  `decal_on_sea`, never on inland water, the pack's `with_decal` giving the text `ter_text` gives,
   `NO_SHADOW` on land when shadows are off, `test_texture.dds`), `TerKind.of` round trip,
   `sea_kind`, and the 5-decimal formatting.
 
 ## 6. Wanted differences from Ortho4XP
 
-None in the text. The file is produced by a pure function; writing, the `water_transition.png`
-copy and the DSF `TERT` entry are the integrator's.
+In the text, the decal: with decals on, the sea takes it only with `decal_on_sea` (Ortho4XP
+writes it on land and sea alike), and the pack may name another of X-Plane 12's decals than
+Ortho4XP's `maquify_2_green_key.dcl` (`expert.decal`, `with_decal`). The file is produced by a
+pure function; writing, the `water_transition.png` copy and the DSF `TERT` entry are the
+integrator's.

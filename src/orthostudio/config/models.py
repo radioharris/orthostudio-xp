@@ -35,8 +35,8 @@ _FROZEN = ConfigDict(frozen=True, extra="forbid")
 # Hints written by OrthoStudio XP for the three Ortho4XP variables whose cfg_vars hint is empty.
 _OSXP_HINTS = {
     "default_website": (
-        "Code of the imagery provider (see `osxp doctor --providers` for the ones alive and "
-        "their maximum zoom level)."
+        "Code of the imagery provider: BI (Bing Maps), Arc (Esri World Imagery), EOX, or one "
+        "of the national sources of the Plan's list."
     ),
     "default_zl": (
         "Zoom level of the imagery over the whole tile: ZL16 is about 2.4 m/px at mid "

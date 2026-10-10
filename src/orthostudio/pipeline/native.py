@@ -182,6 +182,10 @@ def unusable_coastline(tile: TileRef, snapshots: Mapping[str, OsmSnapshot]) -> s
     return f"its coastline would stop the build ({fault.code}{where})"
 
 
+OSM_TIMEOUT_S = 900.0
+"""Seconds a tile may spend on its map data before ``NET_TIMEOUT``: :attr:`OsmJob.timeout_s`."""
+
+
 @dataclass(slots=True)
 class OsmJob:
     """How the OSM rule reaches its data (injected, so tests never do).
@@ -192,7 +196,7 @@ class OsmJob:
     """
 
     fetch: Callable[[TileRef, Sequence[LayerSpec]], dict[str, OsmSnapshot]] | None = None
-    timeout_s: float = 900.0
+    timeout_s: float = OSM_TIMEOUT_S
     """Seconds a tile may spend on its map data before ``NET_TIMEOUT``.
 
     Five minutes until 0.1.15, which cut the rounds short: the public servers count queries per

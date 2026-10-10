@@ -8,7 +8,8 @@ Measurements: section 6.
 Sea water is rendered by X-Plane under the orthophoto; the orthophoto's alpha channel says
 where the sea shows through (0 = water, 255 = land, in between = shoreline blend). The alpha
 comes from a mask image built at `mask_zl` (14 by default) for the 4096² texture grid of that
-zoom level, stored as `Masks/<+40+000>/<+43+005>/<til_y>_<til_x>.png` (8-bit grey).
+zoom level, a `<til_y>_<til_x>.png` (8-bit grey) of the masks artefact in the store
+(`masks-build.md`; Ortho4XP keeps them as `Masks/<+40+000>/<+43+005>/<til_y>_<til_x>.png`).
 
 For a texture at `zl >= mask_zl` the mask of the texture at `mask_zl` that contains it is
 cropped to the sub-square covering the texture (side `4096 / 2**(zl - mask_zl)`). If that
@@ -56,7 +57,10 @@ the extent mask → priority weighting → composite over the accumulated image.
   `clean_halo` the alpha is set to 0 where `1 <= alpha <= 253` and the imagery is nearly white
   or nearly black (Ortho4XP's rule, applied to the water alpha).
 - `clean_halo_mask(mask, rgb)` and `sea_blur_radius(sea_texture_blur, zl)` expose the two
-  Ortho4XP rules for the combined-provider compositor of P4.
+  Ortho4XP rules of `combine_textures`. OrthoStudio XP has no combined providers: `imprint`
+  applies them to a masked texture, the anti-halo to its water alpha (`clean_halo`, off in every
+  build: no setting turns it on) and the blur to the water part of its imagery
+  (`sea_texture_blur`).
 
 ## 4. Decision
 
@@ -66,7 +70,7 @@ the extent mask → priority weighting → composite over the accumulated image.
 | bicubic resampling of the crop when `zl > mask_zl` | keep, Pillow `BICUBIC` |
 | threshold evaluated on the crop before resampling | **keep** (review: the earlier "tolerated difference", evaluating the threshold on the resampled mask, was withdrawn because bicubic overshoot pushed a crop whose maximum is 30 next to zeros above 30 and the module API then contradicted the pipeline). `mask_for_texture` and `needs_mask_for_texture` decide on `mask_crop_raw`, exactly as `O4_Mask_Utils.py:56-60`; test: a 2048² window of 30s and 0s at `zl = mask_zl + 1` gives `None` / False although the resampled crop peaks above 30 |
 | `putalpha` | keep |
-| sea blur (`sea_texture_blur`) | **extended**: Ortho4XP only blurs the sea layer of combined providers; OrthoStudio XP applies the same radius to the water part of any imprinted texture (the hint of the parameter, "smoothen some sea imageries where the wave pattern was too present", applies just as well to Bing over the Mediterranean). Off by default, off in the reference cfg, so the oracle is unaffected. To be confirmed by the user; **until then the CLI does not wire the cfg's `sea_texture_blur` into it** (an Ortho4XP single-provider tile has no blur whatever the cfg says); the extension is reached through the explicit `--sea-blur` option only (`pipeline-textures.md` section 9) |
+| sea blur (`sea_texture_blur`) | **extended**: Ortho4XP only blurs the sea layer of combined providers; OrthoStudio XP applies the same radius to the water part of any imprinted texture (the hint of the parameter, "smoothen some sea imageries where the wave pattern was too present", applies just as well to Bing over the Mediterranean). Off by default, off in the reference cfg, so the oracle was unaffected. A build takes it from the tile variable of that name, the Expert setting or `--set sea_texture_blur=` (`TileTexturesParams`, `pipeline-build.md` 2.2). The P1 command reached it through its `--sea-blur` option alone, so that an Ortho4XP tile's cfg added no blur, and went with decision 0010 |
 | anti-halo | ported as `clean_halo_mask`; not applied by default in `imprint` (Ortho4XP does not apply it to the water alpha either) |
 | DXT1/DXT5 rebuild rules by file size and mtime (`O4_DSF_Utils.py:715-758`) | drop: the store key of the texture covers the mask digest and `imprint_masks_to_dds` |
 | per-texture `<y>_<x>_ZL<zl>.png` written then deleted | drop when imprinting (in-memory); when `imprint_masks_to_dds` is false the file is the `BORDER_TEX` of the `.ter` and is written as in Ortho4XP: the raw crop, `4096 // factor` px (`pipeline-textures.md` section 3) |
@@ -105,7 +109,7 @@ residual is the encoder's.
 
 ## 7. Wanted differences from Ortho4XP
 
-- Sea blur available for single providers (section 4), off by default and not driven by the
-  Ortho4XP cfg.
+- Sea blur available for single providers (section 4), off by default, set by the tile variable
+  `sea_texture_blur` (Ortho4XP's name, which Ortho4XP applies to combined providers only).
 - No PNG round trip, no file-size heuristics, no mtime. The threshold is the Ortho4XP one, on the
   raw crop (the resampled-crop variant of the first draft was withdrawn by the review).

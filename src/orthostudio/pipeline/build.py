@@ -100,6 +100,7 @@ from orthostudio.pipeline.home import (
 from orthostudio.pipeline.native import (
     COASTLINE_RULE,
     OSM_RULE,
+    OSM_TIMEOUT_S,
     CoastlineParams,
     OsmJob,
     OsmOutcome,
@@ -1557,7 +1558,9 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
             env.prepared.say = lambda message: ctx.progress(1.0, message)
         job = OsmJob(
             fetch=outer.fetch if outer is not None else None,
-            timeout_s=outer.timeout_s if outer is not None else 300.0,
+            # the job's own fifteen minutes: a build still gave 300 s until 1.0, which cut the
+            # rounds a spent Overpass quota needs (``osm-source.md``)
+            timeout_s=outer.timeout_s if outer is not None else OSM_TIMEOUT_S,
             cancel=cast(Any, ctx.cancel_event),
             progress=ctx.progress,
             chain=env.prepared,

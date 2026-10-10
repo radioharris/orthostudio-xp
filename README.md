@@ -6,14 +6,12 @@ on the rules of [Ortho4XP](https://github.com/oscarpilote/Ortho4XP), which Oscar
 contributors have refined for ten years: it makes the same kind of tiles, with a different
 architecture that builds them faster. It would not exist without Ortho4XP.
 
-**Status: beta.** OrthoStudio XP builds and installs tiles end to end on macOS (Apple Silicon),
-and on Windows with its installer (tried on Windows 11 on ARM, where the x64 app runs under
-emulation, more slowly). Its Linux installer is
-built and checked automatically, but nobody has built a tile with it yet; a first try on Linux will
-probably come later. The installer for Intel Macs is built and checked automatically too, on an
-Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an Intel Mac yet.
+**Status: 1.0, the first stable version.** OrthoStudio XP builds and installs tiles end to end on
+macOS and Windows, with their installers. The installers for Intel Macs and for Linux are built and
+checked automatically at every release, and downloaded far less often than the others; Linux is
+experimental.
 
-![The Plan page: the map of Europe, four tiles already built showing in green over the western Alps and the Tuscan coast, and beside it the first two of the four steps](docs/images/plan.png)
+![The Plan page: the map of Europe, the tiles already in X-Plane outlined in green over the Alps, three tiles chosen in blue near Paris with a sharper zone drawn over them in orange, and beside it the first of the four steps](docs/images/plan.png)
 
 ## What you get
 
@@ -22,141 +20,105 @@ Apple Silicon Mac under Rosetta, where it also runs; nobody has tried it on an I
   start the app asks what you want to do: fly now, with Live, or build your tiles. X-Plane waits
   for the ortho on its loading screen at a flight's start, and never in flight. Its guide says how
   it works and why it asks for so few settings: [docs/live.md](docs/live.md).
-- **A page with a map.** Click the squares you want, or draw a rectangle over them with Shift
-  held, see the tiles already in X-Plane and the ones built but not in it, draw
-  sharper zones around airports or anywhere you fly low (one zone may cover several tiles, and
-  the list shows those of the squares you chose; everything a zone covers is sharpened, by squares
-  of about 1 km), check the size and the time before building,
-  then build and install in one click. The map shows the aerial imagery or, in one click, the
-  OpenStreetMap street map, with the airports and their ICAO codes as you zoom in, to find what
-  you fly over before you choose a square. The legend says what the view you are on is worth on
-  the ground, in the levels a build works in, so you can zoom until the photo looks the way you
-  want your scenery to look and ask for the level it names.
-- **Works, as it happens.** A progress bar for every step of every tile, which moves with the
-  work even where a step counts nothing (by the time that step usually takes on your computer),
-  what a step is doing when you hold the mouse over it, the time elapsed and a range for the time
-  left over the whole build (starting from your connection's speed on your last builds), errors that say what happened and what to do, and a button to fetch again only
-  what is missing. A build takes up to 500 tiles. Start more builds while one runs: they wait in a
-  queue, and a tile being built cannot be chosen twice. A finished build leaves the list with the
-  small cross on its corner, or all of them at once with the trash above it; the tiles they built
-  stay. A search above the list finds the builds of a tile, "+49+011" or "+49", and its row in
-  the build shown.
-- **Settings in plain words.** Questions about what you want to see in X-Plane (detail, airports,
-  coast, water, relief, roads and forests), the recommended answer marked, three presets, and every
-  Ortho4XP setting still there under "For experts" with a plain label; every number says first
-  what it may take and what it is by default.
-- **A Library.** Every tile on the computer, its size, whether X-Plane shows it, and what it was
-  built with, found with a search, filtered by the folder it is in and sorted by any column: the imagery, the detail, the relief really read (a lidar asked for where it never
-  flew says so, and a file of your own is named, or why it was not used), its zones and its patches; the Plan says it too, over a tile and under the
-  squares chosen. File the tiles you pick into any folder, on any disk, copied and checked, X-Plane
-  following them; built again, a filed tile goes back to its folder; the cache the workshop keeps
-  for the tiles filed elsewhere can be freed on its own, the tiles staying whole; a tile you moved
-  by hand is found again where you put it ([docs/workshop.md](docs/workshop.md)).
-  Remove a tile from X-Plane and add it back at once, or delete it; see what the cache and the downloaded images take
-  and free that space in one click, the downloaded relief and the map background included. Tiles
-  imported from Ortho4XP, from its folder or from any folder holding them, are listed too, and
-  OrthoStudio XP never deletes them: *Remove from the
-  list* takes one off the list, its files left where they are. A button shows a tile's folder in the Finder, the Windows File Explorer or the
-  Linux file manager, and another, at the foot of the page, the folder the tiles go to.
-- **Installation handled.** Links in Custom Scenery under OrthoStudio XP's own names
-  (`zOrthoStudio_<tile>`, `yOrthoStudio_Overlays`), `scenery_packs.ini` in the right order, a
-  backup of the original, overlays kept in step with their tiles, or left out when simHeaven
-  X-World brings its own.
+- **A map to choose from.** Click the squares you want or draw a rectangle over them, and draw
+  sharper zones around airports or where you fly low. It shows the aerial imagery or the street
+  map, the airports with their ICAO codes, the tiles you already have, and what the view is worth
+  on the ground in the zoom levels a build works in.
+- **The cost before you build**: disk space, download and time, then build and install in one
+  click.
+- **Works, as it happens.** A bar for every step of every tile, the time left, errors that say what
+  happened and what to do, and a button to fetch again only what is missing. Builds queue up, up to
+  500 tiles each.
+- **Settings in plain words.** Questions about what you want to see in X-Plane, three presets, and
+  every Ortho4XP setting under "For experts" with a plain label.
+- **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
+  built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
+  delete it, file it on any disk ([docs/workshop.md](docs/workshop.md)), and free the space the
+  cache takes. Tiles built with Ortho4XP are listed too, and never deleted.
+- **Installation handled.** Each tile goes into Custom Scenery in the order X-Plane needs, with its
+  roads, forests and buildings (left out when simHeaven X-World brings its own) and a backup of
+  `scenery_packs.ini`.
 - **Map data in seconds.** The airports, roads, coastline and water of every tile of the planet
-  come from OrthoStudio XP's own library (OpenStreetMap as of 13 September 2026, updated
-  regularly), at every road level, where a public server can take minutes or fail; when the library
-  cannot answer, or holds a coastline that would not close, the public Overpass servers are asked
-  as before. A folder of map data you already
-  have, ours or Ortho4XP's (road levels 0 and 1 for Ortho4XP's), can be read first: Settings,
-  under "For experts".
-- **Relief from X-Plane 12 itself.** No elevation download that can fail and leave a flat tile.
-  For a finer mesh, Settings can take the Copernicus relief (1 arc-second, downloaded and kept),
-  the USGS 3DEP over the United States (1/3 arc-second, about 10 m, ~400 MB a square), the USGS
-  at 1 arc-second over North America (Canada and Mexico included, though its Canadian heights
-  come from old map contours rather than measurement), Canada's lidar where it has been flown
-  (bare earth, laid over Copernicus, which answers elsewhere) or your own elevation files, read at
-  their own resolution whatever their size (a 4 m lidar square included) as far as the memory
-  goes. Works
-  says which one a build actually read, since a relief laid over another falls back where it has
-  nothing. Outside a source's coverage the tile is refused, never built flat.
-- **The colours of the photos, seen on the map.** Aerial imagery as the source delivers it, or
-  toned down a little or a lot, or by your own brightness, contrast and colour — for everything you
-  build, for one square, or for a zone drawn inside a square, each level inheriting the one above.
-  The map is repainted with the very colours the build will encode, so you judge them on the ground
-  you fly over rather than on a thumbnail. It is applied when the textures are encoded, so changing
-  your mind rebuilds the tile in about 20 seconds **without downloading anything again**.
-- **The grain of the ground, and which one.** Under "For experts", decals lay a fine grain of
-  grass, shrubs or stones over the photos, which hides their blur on the ground and on short final.
-  The decal is yours to choose among X-Plane 12's (the list the setdecal tool offers), Ortho4XP's
-  by default. Turning the grain on or off, or choosing another decal, writes a tile's terrain files
-  again **and nothing else**, in about a second.
-- **The squares of a flight plan.** Read your last SimBrief plan: the map draws the route, and
-  brings you back to it with *Recenter*, and the squares within a radius of it are chosen at once, the departure and arrival at step 1's level and
-  the route at ZL14, each with its own list, the route's squares optional, and the squares X-Plane
-  has no scenery for left out. One button takes the plan and its squares away.
-- **Hand-made mesh patches.** Point Settings at a folder of `*.patch.osm` files written with JOSM
-  and the tiles that have one are built with it: the patches their authors publish for Ortho4XP fit
-  as they are, in the tree they come in. Settings says which tiles the folder has patches for, and
-  the Plan which of the tiles you chose will be built with them.
-- **A cache.** Every step's result is kept under a fingerprint of what produced it: an unchanged
-  tile builds again in a second, a new zone rebuilds only what it touches, and imagery is never
-  downloaded twice. `osxp clean --all` gives the space back when you want it.
-- **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings,
-  with the cache and the downloaded imagery, on an external disk if you like; then you file them
-  wherever you want ([docs/workshop.md](docs/workshop.md)). An unplugged disk is said as such, and
-  nothing is written in its place on the computer's own disk.
-- **Text as large as you need.** `− 100 % +` at the foot of the window zooms the whole page (Ctrl
-  or ⌘ with plus, minus and 0 too), and `Aa` beside it makes the text alone larger, at once, on
-  a big or far screen. The window opens where you left it, the size it had.
+  come from OrthoStudio XP's own library (OpenStreetMap as of 7 October 2026, updated regularly),
+  and from the public Overpass servers when the library cannot answer.
+- **Relief from X-Plane 12 itself**, nothing to download, or a finer one: Copernicus, the USGS
+  over North America, Canada's lidar, ANADEM over South America, or your own elevation files at
+  their own resolution. Works says which relief a build actually read, and a tile outside a
+  source's coverage is refused, never built flat.
+- **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
+  for everything, one square or one zone. Changing them builds a tile again without downloading
+  anything.
+- **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
+  turning it on, off or to another writes a tile's terrain files again, and nothing else.
+- **The squares of a flight plan.** Your last SimBrief plan chooses the squares along its route,
+  within the radius you set.
+- **Hand-made mesh patches**, those published for Ortho4XP included, read as they come.
+- **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
+  only what it touches, and imagery is never downloaded twice.
+- **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then
+  filed wherever you want; an unplugged disk is said as such, and nothing is written in its place.
+- **Text as large as you need.** `− 100 % +` zooms the whole page and `Aa` makes the text alone
+  larger; the window opens where you left it.
 
 How it works, what it keeps on disk and how to clean it:
 [docs/how-it-works.md](docs/how-it-works.md).
 
 | What it will cost | Works |
 |---|---|
-| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of four tiles: every step of every tile, then the final report](docs/images/works.png) |
+| ![Step 3 of the Plan: what the build will download, compute and take on the disk, tile by tile](docs/images/cost.png) | ![A finished build of six tiles: every step of every tile, then the final report](docs/images/works.png) |
 
 | Library | Settings |
 |---|---|
-| ![The Library: five tiles in X-Plane, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
+| ![The Library: tiles built by OrthoStudio XP and others imported from Ortho4XP, whether X-Plane shows them, their size, and the disk space used](docs/images/library.png) | ![Settings: three presets and questions in plain words](docs/images/settings.png) |
 
 ## Build times, measured
 
-Same machine (Apple M4 Pro), same tiles, same imagery. Every figure comes from a measurement in
-[docs/benchmarks/](docs/benchmarks/). Ortho4XP here is its current code, the master branch of its
-GitHub repository at commit `26ec00a` (March 2026), which its author describes as in transition
-to 1.40; its last release is 1.31. The measurements were made on a Mac, where Ortho4XP's texture
-compression tool runs under Rosetta; on Windows and Linux that tool runs natively, and the gap in
-compression would be smaller.
+Measured on 10 October 2026 with OrthoStudio XP 1.0, on a MacBook Pro (Apple M4 Pro, 14 cores,
+48 GB of memory) and a home connection measured at 418 to 485 Mbit/s down before and after each
+build, with the tile of Geneva, `+46+006`, and a new user's settings: Bing imagery, X-Plane's own
+relief, its roads, forests and buildings. Every step, the data folder and the command:
+[docs/benchmarks/build-times-1.0.md](docs/benchmarks/build-times-1.0.md).
 
-| | Ortho4XP | OrthoStudio XP |
+| A first build, nothing in the cache | ZL16 | ZL18 |
 |---|---:|---:|
-| Build a tile again with nothing changed (Marseille, ZL14) | 63.2 s | **0.3 s** |
-| Build a tile built once at ZL14 again at ZL16 | 250.7 s | **33.1 s** |
-| Imagery of a ZL16 tile, nothing cached (179 textures) | 206.9 s | **34.6 s** |
-| Roads, water, coast and airports of a tile | 31.8 s | **6.6 s** |
-| Relief mesh / water masks of a tile | 8.5 s / 4.7 s | **2.8 s / 0.8 s** |
-| Download rate from Bing | 219 requests/s | **1,436 requests/s** |
-| Compressing one texture | 1.15 s (x86 tool under Rosetta) | **0.33 s** (native, all cores) |
+| The whole tile | **53 s** | **6 min 27 s** |
+| Textures | 213 | 2,902 |
+| Images downloaded | 733 MB | 8.5 GB |
+| On the disk, cache included | 3.8 GB | 41 GB |
 
-### A real build
+| The steps of that first build | ZL16 | ZL18 |
+|---|---:|---:|
+| Map data (from the library) | 2.7 s | 2.9 s |
+| Relief (X-Plane's own) | 4.5 s | 4.8 s |
+| Roads, water and airports traced | 7.0 s | 7.4 s |
+| Mesh | 3.5 s | 3.7 s |
+| Water masks | 0.9 s | 0.9 s |
+| DSF | 2.4 s | 3.0 s |
+| Roads, forests and buildings for X-Plane, alongside | 3.2 s | 3.4 s |
+| Imagery, downloaded and compressed | 34 s, at 21.7 MB/s | 6 min 4 s, at 23.2 MB/s |
 
-Six ZL16 tiles around Lake Geneva and the Alps, built and installed from the page on an M4 Pro:
-1,347 textures, 321,792 image pieces, 4.64 GB, every image downloaded. **5 min 22 s**, no error,
-no retry. The home connection was used at 16.5 MB/s (132 Mbit/s) on average, 99 to 162 Mbit/s
-depending on the tile. No elevation file to download (the relief comes from X-Plane 12), and a
-stalled image piece is asked for again instead of costing the tile. For scale, Ortho4XP took
-250.7 s for a single ZL16 tile with its caches warm, which would make about 25 minutes for six
-tiles built one after the other. Details:
-[docs/benchmarks/batch-6-tiles-zl16.md](docs/benchmarks/batch-6-tiles-zl16.md).
+The steps before the imagery run partly side by side, so the imagery starts after 19 s at ZL16
+and 20 s at ZL18.
 
-Where the time goes: in these measurements Ortho4XP runs its steps one after the other, on 1.8
-of the 14 cores on average for a tile built again. It keeps its downloads (map data, elevation,
-images) and the files of the last build, and you choose which steps to run again; a step run again
-is computed in full. OrthoStudio XP runs the steps of all the tiles as a graph over every core,
-downloads over HTTP/2 with up to 128 requests in flight, compresses textures in-process, and files
-every result under what produced it: it finds by itself the steps whose inputs did not change, and
-does not run them again.
+| The same tile afterwards | Time | Downloaded |
+|---|---:|---:|
+| Built again, nothing changed | **under 0.1 s** | nothing |
+| Other colours for the photos | 14 s | nothing |
+| Decals turned on, or another decal | 0.2 s | nothing |
+| A ZL18 zone drawn around the airport | 6.6 s | 20 MB |
+| Another relief (Copernicus) | 40 s | the relief, no image |
+| Stopped halfway through, then started again | 17.6 s to finish | the 373 MB left |
+
+Stopped after 38 s and started again, the tile downloaded 360 MB, then 373 MB: the 733 MB of a
+build that was not stopped. OrthoStudio XP runs the steps of all the tiles as a graph over every
+core, downloads over HTTP/2 with up to 128 requests in flight, compresses textures in-process,
+and files every result under what produced it: it finds by itself the steps whose inputs did not
+change, and does not run them again.
+
+## Compared with Ortho4XP
+
+A measured comparison, made in September 2026 on the same Mac against Ortho4XP's code of March
+2026: [docs/benchmarks/ortho4xp-comparison.md](docs/benchmarks/ortho4xp-comparison.md).
 
 Other differences in use:
 
@@ -182,8 +144,7 @@ Ortho4XP remains the reference, and does things OrthoStudio XP does not do:
 Its colour filters (`.flt`) and its hand-made mesh patches (`Patches`) are here since 0.1.3 and
 0.1.4: patches written for Ortho4XP are read as they are, and the colours are set for everything
 you build, for one square, or for a zone. Ortho4XP has also been used for years by a large
-community on Windows, Linux and macOS, where OrthoStudio XP is a beta whose tiles have been built
-on macOS and Windows so far.
+community on Windows, Linux and macOS; OrthoStudio XP's first version came out in September 2026.
 
 ## Getting started
 

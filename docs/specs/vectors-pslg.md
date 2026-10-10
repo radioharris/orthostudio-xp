@@ -118,9 +118,10 @@ lines 89-104; also in the split pieces, lines 213-226, and in `snap_to_grid`, li
 5. orthophoto grid as DUMMY (lines 96-130): vertical lines first, then horizontal ones;
 6. gluing border as DUMMY (lines 136-152).
 
-**Keep** the order; OrthoStudio XP expresses it as the order of the `layers` list. The bench replays
-the 100 consecutive runs of equal marker recorded from Ortho4XP as 100 layers (the last DUMMY run
-split into verticals, horizontals, border).
+**Keep** the order; OrthoStudio XP expresses it as the order of the `layers` list. The bench
+(`tools/bench/noding`, removed with decision 0010, 2026-09-14) replayed the 100 consecutive runs of
+equal marker recorded from Ortho4XP as 100 layers (the last DUMMY run split into verticals,
+horizontals, border).
 
 ### 2.7 Coordinates and scale
 
@@ -191,7 +192,7 @@ which is what review 5 measured); removing it **and** matching LAPACK's arithmet
 10 of 10 on both.
 
 **What it costs and what it buys** (replay of the 6 197 recorded `insert_way` calls of
-+43+005, airports included, `tests/test_nodes10_oracle.py`):
++43+005, airports included, `tests/test_nodes10_oracle.py`, removed with decision 0010):
 
 | | wave 1 | wave 2 | Ortho4XP |
 |---|---|---|---|
@@ -275,7 +276,7 @@ Two node sets being equal is not two files being equal. Measured on the same rep
   but these are *size* deltas: the three nodes shift every later record, so 60 406 287 bytes
   of the mesh and 16 500 661 bytes of the DSF differ in place (review 6). The residue is small
   in geometry, not in bytes. With `exact_grid_order` (below) the canonical `.node`, `.poly`,
-  mesh **and DSF** are byte-identical (`tests/test_p4v2_oracle.py`).
+  mesh **and DSF** were byte-identical (`tests/test_p4v2_oracle.py`, removed with decision 0010).
 
 **Precision of the claims above (review 6).**
 
@@ -285,13 +286,14 @@ Two node sets being equal is not two files being equal. Measured on the same rep
   are identical.
 * The number of such nodes **depends on the input**, it is not a structural 3: on the
   synthetic aeroway layer of `tests/test_review6_fidelite_synthetique.py` (placed on the same
-  tile) it is **17** (the same 3 plus 14), on three vertical grid lines. `exact_grid_order`
-  closes it in both cases (0 / 0 nodes, identical edges and seeds).
+  tile; the test was removed with decision 0010) it was **17** (the same 3 plus 14), on three
+  vertical grid lines. `exact_grid_order` closed it in both cases (0 / 0 nodes, identical edges
+  and seeds).
 * What `nodes10` did to the airport-free **mesh**: -4 vertices / +2 triangles against Ortho4XP
   before, **+46 / +92** after, with a PSLG that became set-equal to Ortho4XP's. Triangle4XP's
   refinement is order-sensitive and the ten recovered nodes renumber everything after them;
-  the numbers are frozen in `tests/test_p4_integration.py` and published in
-  `docs/benchmarks/p4-vectors.md`.
+  the numbers were frozen in `tests/test_p4_integration.py`, removed with decision 0010, and are
+  published in `docs/benchmarks/p4-vectors.md`.
 
 ### 2.9 Orthophoto grid and gluing border
 
@@ -302,7 +304,7 @@ Two node sets being equal is not two files being equal. Measured on the same rep
 * Gluing: the four tile sides as polylines of **2048 segments** (`segs = 2048`, line 137),
   marker DUMMY, so that neighbouring tiles share identical border vertices.
 
-**Keep** both as ordinary layers (the bench reproduces them).
+**Keep** both as ordinary layers (the bench of 2.6 reproduced them until decision 0010).
 
 ### 2.10 Seeds
 
@@ -327,7 +329,8 @@ maximum is >= 1 m, else at (0.5, 0.5): a tile entirely at sea level is all sea
   vertices of `attr >= 8` triangles only (`O4_Mesh_Utils.py:297-300`).
 
 **Keep** the text layout (`triangle_files.py`, round-trip tested); the binary variant of
-ADR 0004 will carry the same content.
+ADR 0004 carries the same content: the mesh stage converts these two files to it before it runs
+Triangle4XP (`mesh/build.py`, `mesh-triangle-io.md`).
 
 ### 2.12 Dropped
 
@@ -368,12 +371,13 @@ incremental one. The candidate test runs x first, y on the survivors (`_edge_pre
 the very comparisons of `_bbox_prefilter`.
 
 **Acceptance.** `tests/test_p4v2fix_noding.py`: byte equality of `NodedGraph` against the full
-insertion on Ortho4XP's recorded layers of `+43+005` (100 passes) and on 800 random layer sets
-(3 000 checked once while writing it) with near-coincident vertices, collinear overlaps and sub-key
-segments; the fallback path forced gives the same bytes; the existing oracles
-(`test_vectors_noding_oracle.py`, `test_p4v2_oracle.py`, 247 282 / 271 320) unchanged. Measured
-(nice -n 10, load 1.2): `+43+005` 1.02 s -> 1.01 s; 324 synthetic aerodromes **53.2 s -> 3.8 s**
-of noding.
+insertion on 800 random layer sets (3 000 checked once while writing it) with near-coincident
+vertices, collinear overlaps and sub-key segments; the fallback path forced gives the same bytes;
+a pass touches only the edges its box meets; the token is read before every pass. Until decision
+0010 (2026-09-14) it also compared the two on Ortho4XP's recorded layers of `+43+005` (100
+passes), and the oracles of that time (`test_vectors_noding_oracle.py`, `test_p4v2_oracle.py`,
+247 282 / 271 320) were unchanged. Measured (nice -n 10, load 1.2): `+43+005` 1.02 s -> 1.01 s;
+324 synthetic aerodromes **53.2 s -> 3.8 s** of noding.
 
 **Cancellation.** `node_layers(..., cancel=)` reads the token before every pass and raises
 `SYS_CANCELLED`; `orthostudio.vectors.assemble` passes `AssemblyParams.cancel`.

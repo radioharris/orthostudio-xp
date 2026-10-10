@@ -145,8 +145,10 @@ of JP and USGS from the countries' extreme points.
 `max_zl` is **not** in any of these Ortho4XP files (Ortho4XP then has no limit and lets the server
 answer whatever it answers). The values above are the finest levels these services are
 documented to serve (Bing 19 outside cities, Esri 19, PDOK 19 from the capabilities, GSI
-`ort` 18); they cap what the UI offers and where the parent fallback starts, and each is
-marked `# assumed` in the TOML until a network probe (`osxp doctor --providers`) confirms it.
+`ort` 18); they cap what the UI offers and where the parent fallback starts. The ones no
+document gives are marked `# assumed` in the TOML (Bing, Esri `Arc`, Luxembourg, Spain, USGS),
+and no command confirms them: `osxp doctor` has no `--providers` option (its `--online` probes
+fetch one Bing tile and ask the map data servers).
 `max_in_flight` is what each server took on 2026-09-15, raised step by step until it refused,
 slowed down or gave no more (`docs/benchmarks/network.md` section 7; a user asked to go to the
 most each provider allows): Bing 128 (the line's limit), Esri `Arc` 128 (it was 16, an HTTP/1.1
@@ -170,7 +172,7 @@ The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
 user's builds downloaded, and Japan five times faster than its measured rate (2026-09-15). `headers` is empty for
-all twelve: none declares `fake_headers`; the fetcher sends its own User-Agent.
+all thirteen: none declares `fake_headers`; the fetcher sends its own User-Agent.
 `attribution` / `terms_url` are indicative strings for the UI, taken from the audit's
 `POLICY_NOTES` and the services' public pages; they are not legal review.
 
@@ -178,7 +180,7 @@ all twelve: none declares `fake_headers`; the fetcher sends its own User-Agent.
 
 Ortho4XP (`:1019-1032`): a response whose `Content-Length` is `1033` on a `virtualearth` URL, or
 `2521` on an `arcgisonline` URL, is treated as a 404 (parent fallback). OrthoStudio XP keeps both
-numbers and adds, per `net-download.md` R5, the authoritative header for Bing and the blake3
+numbers and adds, per `net-download.md` 5.2, the authoritative header for Bing and the blake3
 of the known body. `is_placeholder` returns the signal that fired (`"header"`, `"blake3"`,
 `"size"`) or `None`; the fetcher logs `"size"` matches so that a change on the provider side
 is visible. Content-Length is not trusted: the size rule uses `len(body)`.
@@ -195,10 +197,10 @@ is visible. Content-Length is not trusted: the size rule uses `len(body)`.
 
 | Ortho4XP | OrthoStudio XP | Why |
 |---|---|---|
-| `.lay` text, `eval()` on `fake_headers` and `in_GUI` | TOML, pydantic, `ast.literal_eval` only in the import tool | code execution from a data file |
+| `.lay` text, `eval()` on `fake_headers` and `in_GUI` | TOML, pydantic, no `eval` (the import tool that read the `.lay` files once with `ast.literal_eval` went with decision 0010, section 3) | code execution from a data file |
 | 71 definitions, 27 alive | 12 alive without key, chosen by the user | dead entries produce white textures silently (`IMG_TILE_MISSING`) |
 | `random.choice` on `{switch:}` | deterministic index | reproducible URLs; the retry rounds of the textures rotate the index (`pipeline-textures.md` 4.1) |
 | HTTP/1.1 clear Bing host | HTTPS HTTP/2 `ecn.t{0-3}` | 4.7x throughput, same bytes (`network.md`) |
 | placeholder by `Content-Length` only | header, body hash, then size | provider change visible |
 | no concurrency ceiling per provider (16 threads per texture) | `max_in_flight` per provider | politeness and measured ceilings |
-| `in_GUI`, `imagery_dir`, `color_filters` | dropped | the UI lists the registry; the store layout is OrthoStudio XP's; filters are a later stage |
+| `in_GUI`, `imagery_dir`, `color_filters` | dropped | the UI lists the registry; the store layout is OrthoStudio XP's; the photo's colours are a setting of OrthoStudio XP's own, applied to the assembled image (`textures/colour.py`), not a filter of the provider |

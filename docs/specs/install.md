@@ -114,19 +114,22 @@ like OrthoStudio XP's own (decision 0011).
    the floor (`install_receipt` passes the imported `zOrtho4XP_<tile>` of the same square: X-Plane
    draws the first base mesh of a square, and the tile OrthoStudio XP built is the one wanted).
    Otherwise right after the **last** existing tile pack line; else right before the first
-   `z_autoortho`/`z_ao_*` line; else right before the first **base-mesh pack** at or below the floor
-   (`SceneryPackEntry.is_mesh`: a name starting with `zzz_`, `XPME_` or `zz_`, or any name other
-   than a tile pack sorting after `zOrtho4XP_~`, i.e. the `z*` names X-Plane loads last:
+   `z_autoortho`/`z_ao_*` line or the first **base-mesh pack** at or below the floor, whichever
+   comes first (`SceneryPackEntry.is_mesh`: a name starting with `zzz_`, `XPME_` or `zz_`, or any
+   name other than a tile pack sorting after `zOrtho4XP_~`, i.e. the `z*` names X-Plane loads last:
    `zzz_hd_global_scenery4`, `z_...`); else at the end of the body. Without this rule (P2a review)
    an ortho tile of a user with no AutoOrtho line landed *below* their HD mesh, which X-Plane then
-   drew instead of the tile. Library packs (`simHeaven_*`, `openSAM_*`) are not mesh packs and stay
-   above.
+   drew instead of the tile; until 2026-09-23 the AutoOrtho line was looked for first, and one
+   below a base mesh put the tile below that mesh as well. Library packs (`simHeaven_*`,
+   `openSAM_*`) are not mesh packs and stay above.
 4. `kind="overlay"` (an overlay pack): inserted right before the **first** tile pack line; else
    as in rule 3.
 5. The line written is `SCENERY_PACK Custom Scenery/<name>/` (relative form, as X-Plane
    writes for packs inside `Custom Scenery`).
 
-`remove(name)` deletes the line (used by `uninstall_pack`); `disable(name)` turns it into
+`remove(name)` deletes the line that names the pack in X-Plane's own Custom Scenery, written
+`Custom Scenery/<name>/` (used by `uninstall_pack`); a line of that name pointing elsewhere, such as
+a copy of a tile kept on another disk, stays (2026-09-23). `disable(name)` turns a line into
 `SCENERY_PACK_DISABLED` without moving it.
 
 ### 3.3 Writing
@@ -216,7 +219,11 @@ call. `uninstall_pack` alone removed the tile's link and line and left its DSF i
 `yOrthoStudio_Overlays` pack, so X-Plane kept drawing the tile's roads and objects over the
 default scenery, which already has them. Now, in one locked step:
 
-1. the link goes (a real folder only when it holds `orthostudio.toml`); `XP_RUNNING` refuses first;
+1. the link goes; `XP_RUNNING` refuses before anything is removed. A real folder of that name goes
+   only when it holds `orthostudio.toml` and the library knows another folder of the tile holding
+   one, so that it is a copy (`osxp install --copy`); when it is the tile's only folder (a pack
+   built straight into Custom Scenery), or when the library cannot be read, the uninstall is
+   refused with `XP_PACK_ONLY_COPY` and nothing changes (`_pack_lives_elsewhere`, 2026-09-23);
 2. the tile's DSF of the overlay pack is **parked** inside the tile pack
    (`osxp-overlay.dsf.uninstalled`), which X-Plane no longer reads, and `install_receipt` moves it
    back before linking, so an uninstall followed by an install is a round trip. The overlay is
@@ -255,7 +262,8 @@ Acceptance (unit, `tests/test_uninstall.py`): uninstall then install is a round 
 overlay pack stays for the other tiles; a tile not installed changes nothing; nothing moves while
 X-Plane runs; a pack gone does not crash; an Ortho4XP tile leaves X-Plane without its overlays,
 whose folder and link stay; an OrthoStudio XP tile whose overlay link leads to another folder parks
-nothing.
+nothing; a tile's only folder inside Custom Scenery is refused with `XP_PACK_ONLY_COPY`, its files
+untouched, and a copy there goes.
 
 ### 4.2 Deleting a tile (`pipeline/pack.py`, the page's Delete, `osxp uninstall --delete`)
 
@@ -264,7 +272,8 @@ deleted a pack only while it was installed, left its library rows (the Library k
 whose files were gone) and left its space in the store until `osxp clean`.
 `delete_receipt(pack_dir, *, tile, custom_scenery=None, library_path=None, store_root=None,
 tiles_root=None, grace_s=None)` is what both call; the roots default to the OrthoStudio XP home's,
-those of `osxp clean`. In this order, and nothing at all when one of the first two steps refuses:
+those of `osxp clean`. In this order, and nothing at all when one of the first two steps refuses,
+or step 3 (a tile whose only folder is in Custom Scenery):
 
 1. **Refusal**, `SYS_PACK_NOT_OSXP` (409 in the API): OrthoStudio XP deletes only what it built.
    Refused are a tile the library records as built by Ortho4XP, and a `pack_dir` that is a link, a
@@ -272,18 +281,22 @@ those of `osxp clean`. In this order, and nothing at all when one of the first t
    another tile (its `orthostudio.toml` names another tile). The remedy: Uninstall takes the tile
    out of X-Plane without deleting anything; the folder itself is the user's to delete by hand. The
    folder of an OrthoStudio XP row already gone is no refusal: its rows still have to go.
-2. **X-Plane running**, `XP_RUNNING` (409), whenever `custom_scenery` is given, the tile
-   installed or not: a tile that is not installed may still have its overlay DSF in the overlay
-   pack X-Plane reads for another tile. Checked after the refusal, which no quitting would
-   change, and before anything is touched. It used to be checked by the uninstall of step 3
+2. **X-Plane running**, `XP_RUNNING` (409), whenever X-Plane runs, the tile installed or not and
+   `custom_scenery` given or not: a tile that is not installed may still have its overlay DSF in
+   the overlay pack X-Plane reads for another tile. Checked after the refusal, which no quitting
+   would change, and before anything is touched. It used to be checked by the uninstall of step 3
    only: the overlay DSF of a pack already gone was deleted before it, and a tile not installed
-   had no check at all (review of the delete, v2). Without `custom_scenery` (X-Plane not found)
-   there is no check.
+   had no check at all (review of the delete, v2). Until 2026-09-23 it was checked only when
+   `custom_scenery` was given: the users whose X-Plane was not found were the ones whose tiles
+   could be deleted from under it.
 3. **Out of X-Plane**, when `custom_scenery` is given and the pack is installed there:
    * a link of the pack's name that leads to `pack_dir`, or to where it was once it is gone (the
      real paths are compared). A link of that name leading anywhere else, broken or not, is
      another pack's and stays: with the pack gone, any broken link used to count (v4);
-   * the pack itself, built straight into Custom Scenery;
+   * the pack itself, built straight into Custom Scenery. When it is the tile's only folder,
+     `uninstall_receipt` refuses it with `XP_PACK_ONLY_COPY` (4.1), so the delete of such a tile
+     stops there and changes nothing (400 in the API), though that code's remedy says to use
+     Delete; when the library knows another folder of the tile, it goes as a copy does;
    * a copy of it (the same `orthostudio.toml`, byte for byte) that is not the folder of another
      library row: the same build made twice, once into the output folder and once straight into
      Custom Scenery, has the same manifest, and deleting the first one used to delete the
@@ -291,7 +304,8 @@ those of `osxp clean`. In this order, and nothing at all when one of the first t
 
    `uninstall_receipt` (4.1) takes it out: link or copy, the overlay when it is OrthoStudio XP's,
    the `scenery_packs.ini` lines. Anything else of that name in Custom Scenery is the user's and
-   stays. Without `custom_scenery` the step is skipped.
+   stays. Without `custom_scenery` the step is skipped, and a pack built straight into Custom
+   Scenery is deleted in step 4 like any other, its line left in `scenery_packs.ini`.
 4. **The files.** The tile's DSF in the overlay pack beside the pack (`<out>/yOrthoStudio_Overlays`)
    goes when OrthoStudio XP put it there: the pack's manifest lists an overlay or, the pack being
    gone, the library records that overlay pack as OrthoStudio XP's for the tile. Left there, X-Plane
@@ -633,12 +647,17 @@ rows of its folders gone follow it to the workshop.
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with
-one table:
+three tables: `tiles`, the rows of the Library; `pack_facts`, what was last read of a pack's files
+with the pack's stamp, its size, colours and what it was built with (since 0.1.19, `api.md` 2.3);
+`meta`, the schema version:
 
 ```
 tiles(lat INTEGER, lon INTEGER, kind TEXT ('ortho'|'overlay'), path TEXT,
       provider TEXT, zl INTEGER, built_by TEXT ('osxp'|'ortho4xp'), keys TEXT (JSON or NULL),
       registered_at REAL, updated_at REAL, PRIMARY KEY (lat, lon, kind, path))
+pack_facts(path TEXT PRIMARY KEY, stamp TEXT, bytes INTEGER, photo TEXT (JSON or NULL),
+           built TEXT (JSON or NULL), measured_at REAL)
+meta(k TEXT PRIMARY KEY, v TEXT)
 ```
 
 - `register(tile, provider, zl, path, built_by, keys=None, *, kind="ortho")`: upsert on
@@ -672,23 +691,33 @@ tiles(lat INTEGER, lon INTEGER, kind TEXT ('ortho'|'overlay'), path TEXT,
    when set. Ortho4XP keeps it in `<ortho4xp>/.last_gui_params.txt` line 2
    (`O4_GUI_Utils.py:359-368, 592-600`); a `custom_build_dir=` line in `Ortho4XP.cfg` is
    honoured too. Its Ortho4XP semantics (`O4_File_Names.py:62-68`): a trailing `/` means "the
-   parent of `zOrtho4XP_*` directories", otherwise the value **is** one build directory.
-2. In each root, every directory named `zOrtho4XP_*` is a pack; the tiles it holds are the
-   `Earth nav data/<folder>/<tile>.dsf` files (a grouped pack lists several). For each
-   tile, `provider`/`zl` come from `Ortho4XP_<tile>.cfg` (`tilefiles.tile_config`,
-   `default_website`/`default_zl`); without a cfg they are read from the `.ter` file names
-   (majority provider and ZL of `tilefiles.list_textures`); without either they are
-   `""`/`0`. Registered with `built_by="ortho4xp"`, `keys=None`, `kind="ortho"`.
+   parent of `zOrtho4XP_*` directories", otherwise the value **is** one build directory. A folder
+   that is not Ortho4XP's own (no `Ortho4XP.py`) is taken as one the tiles were built into or moved
+   to: a pack itself when it is one (step 2), else one more root (a user's tiles on another disk,
+   2026-09-22). `ortho4xp_searched` names every folder looked in, for the API's answer (`searched`).
+2. In each root, every directory named `zOrtho4XP_*` is a pack, and so is any other that holds
+   photo tiles, whatever it is called (`looks_like_an_ortho_pack`, 2026-09-23: DSFs under
+   `Earth nav data`, and a `textures` folder with at least one DDS named the way an orthophoto is,
+   `<til_y>_<til_x>_<provider><zl>.dds`; never a folder holding `orthostudio.toml`, one of ours).
+   The tiles it holds are the `Earth nav data/<folder>/<tile>.dsf` files (a grouped pack lists
+   several). For each tile, `provider`/`zl` come from `Ortho4XP_<tile>.cfg`
+   (`tilefiles.tile_config`, `default_website`/`default_zl`); without a cfg they are read from the
+   `.ter` file names (majority provider and ZL of `tilefiles.list_textures`); without either they
+   are `""`/`0`. Registered with `built_by="ortho4xp"`, `keys=None`, `kind="ortho"`.
 3. `<ortho4xp>/yOrtho4XP_Overlays/Earth nav data/*/*.dsf` (`O4_File_Names.py:22`): one
    `kind="overlay"` entry per tile, `provider=""`, `zl=0`.
 4. Returns the entries imported, in scan order; re-running is idempotent (upsert).
-   `SYS_WORKING_DIR_INVALID` when `folder` is not a directory.
+   `SYS_WORKING_DIR_INVALID` when `folder` is not a directory; the API refuses before, with the same
+   code, a folder that holds neither `Ortho4XP.py` nor any pack of photo tiles (`api.md` 2.2).
 
 Acceptance: register/list/forget round-trip including `keys`; a synthetic Ortho4XP tree
 (`Tiles/zOrtho4XP_+43+005` with a tile cfg, a grouped `Tiles/zOrtho4XP_Group` with two DSFs and
 no cfg, a custom build dir declared in `.last_gui_params.txt`, `yOrtho4XP_Overlays` with one DSF)
 imports the entries with the expected provider/ZL, `built_by="ortho4xp"`, and writes nothing under
-that tree. The import is the one place OrthoStudio XP reads an Ortho4XP folder (decision 0010).
+that tree; a folder of tiles kept away from Ortho4XP's is imported, or one tile of it alone, and a
+pack is known by the names of its textures, not its own (a forest library with DSFs and textures
+is not one) (`tests/test_install_library.py`). The import is the one place OrthoStudio XP reads an
+Ortho4XP folder (decision 0010).
 
 ## 6. Wanted differences from Ortho4XP
 

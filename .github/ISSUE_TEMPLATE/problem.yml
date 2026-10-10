@@ -11,7 +11,7 @@ body:
     attributes:
       label: Version of OrthoStudio XP
       description: At the top left of its page, next to its name.
-      placeholder: "0.1.5"
+      placeholder: "1.0.0"
     validations:
       required: true
   - type: dropdown

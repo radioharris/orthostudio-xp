@@ -89,12 +89,12 @@ Events: Started(node_id, kind, key) · Progress(node_id, fraction, message) ·
 
 | kind | executes in | limit | typical rule |
 |---|---|---|---|
-| `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | masks, DDS encoding, noding, DSF encoding |
-| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP, Ortho4XP stages, DSFTool |
-| `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads, OSM, DEM (each slot is one network pipeline of 64-128 requests) |
+| `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | DSF encoding (`tile.dsf`, the one `cpu` node of a build: the stages' run callables do not pickle, `pipeline-build.md` 8.6) |
+| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay); also the vector and masks stages (the masks with a process pool of their own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
+| `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads (the textures node, with an encoding pool of its own; each slot is one network pipeline of 64-128 requests); the OSM and relief downloads are `net` too, on lanes of their own (below) |
+| `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
 A running node may **lend its slot while it waits** (`NodeContext.idle()`, a context manager): the count of its pool drops, another node of that kind may start, and the waiting one takes its slot back without queueing when it resumes -- so that pool can hold one extra node until it finishes. It exists for the spaced retry rounds of the textures (`pipeline-textures.md` 4.1): a build has one network slot, and a tile waiting for a handful of stuck image pieces left the whole batch's line idle (a user, 2026-09-18). A node that ends while idle is counted once, not twice.
-| `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
 **Lanes.** A node may name a lane (`Node(lane="overpass")`, a thread kind only): it then counts
 against that lane's limit (`Scheduler(lanes={"overpass": 1})`) instead of its kind's slots. The
@@ -104,11 +104,12 @@ on one `net` slot with the images, a tile's download waited for another tile's i
 0.1.19. A lane keeps the RAM budget of every node. A lane the scheduler has no limit for is
 refused when the node is added.
 
-`cpu_workers=0` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
-tracebacks). A node is **admitted** when a slot of its kind (or its lane) is free and
-`Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`. A node alone larger than the
-budget is admitted when nothing is running (refusing would deadlock the build; the plan
-already warned). `ram_budget_mb=None` disables the memory check. The thread pool is sized to
+`cpu_in_threads=True` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
+tracebacks); `cpu_workers` is at least 1. A node is **admitted** when a slot of its kind (or
+its lane) is free and `Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`. A node
+alone larger than the budget is admitted when nothing is running (refusing would deadlock the
+build; the plan already warned). `ram_budget_mb=None` disables the memory check. The thread
+pool is sized to
 `subprocess_slots + net_slots + io_slots + the lanes' limits (+ cpu_workers in thread mode)` so a thread is
 always available for an admitted node.
 
@@ -138,8 +139,9 @@ blocks on it.
 the estimated costs of pending nodes plus the unfinished fraction of running nodes (from
 their last `Progress`, else full cost), and `parallelism` is the observed mean concurrency
 `Σ busy seconds / elapsed` (at least 1). Hits cost nothing and are not counted. `eta_s` is
-always a number, optimistic before the first observations; the UI turns it into a bracket
-with the pessimistic side of `plan()` (2.8).
+always a number, optimistic before the first observations; `osxp build` prints it on a
+terminal. The page's time left is the API's own estimate from the nodes' rows
+(`api/progress.py`, `api.md` 5.6), which uses neither `eta_s` nor `plan()`.
 
 ### 2.6 Failure, propagation, cancellation
 

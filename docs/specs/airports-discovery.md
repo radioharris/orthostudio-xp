@@ -103,15 +103,16 @@ specification — and because Ortho4XP keys by an ICAO string **or** by a `(lon,
 
 ### 2.1 The seam with the geometry modules of the same wave
 
-The runway and surface modules of this wave name the record structurally, with Ortho4XP's own flat
-field names (`areas.SurfaceRecord`, `areas.SurfaceSet`, and the same shape in `runways`).
-`Airport` therefore exposes `runway`, `taxiway`, `apron`, `hangar` and `runway_as_rel` as
-read-only views of `ways` and `runway_rels`, and `AirportSet` exposes `store` (the `OsmData`
-the record was read from) and `airports` (the record as a read-only `Mapping`). Nothing is
-copied and neither side imports the other. The fit is pinned as a *contract* in
-`tests/test_aptdata_discover.py::test_the_record_exposes_ortho4xps_flat_field_names`, not as an
-annotation against the sibling module's `Protocol` classes, which are still moving as that
-chantier lands.
+The runway and surface modules of this wave were to name the record structurally, with
+Ortho4XP's own flat field names (`areas.SurfaceRecord`, `areas.SurfaceSet`, and the same shape in
+`runways`). `Airport` therefore exposes `runway`, `taxiway`, `apron`, `hangar` and
+`runway_as_rel` as read-only views of `ways` and `runway_rels`, and `AirportSet` exposes `store`
+(the `OsmData` the record was read from) and `airports` (the record as a read-only `Mapping`).
+Nothing is copied. No such protocol exists in the code: `runways.py` and `areas.py` import
+`Airport` and `AirportSet` from `model.py`, read `ways` and `runway_rels`, and take the store as
+an argument, so nothing in the engine reads the flat views or `AirportSet.store`. They stay,
+pinned as a *contract* in
+`tests/test_aptdata_discover.py::test_the_record_exposes_ortho4xps_flat_field_names`.
 
 An `AirportSet` built by hand carries no store, and asking it for one is
 `OSM_AIRPORT_INFO_UNAVAILABLE` rather than an `AttributeError` three frames down.
@@ -150,8 +151,9 @@ skipped in turn if that tuple is already a key. **Keep**, the `name in dico_airp
 before the `"****"` test included.
 
 **R6 — `smoothing_pix`** (`:105-113`). An integer tag, kept when `int()` accepts it, dropped
-silently otherwise. It overrides the tile's `apt_smoothing_pix` for this airport in the
-smoothing module. **Keep.**
+silently otherwise; a value outside `0..MAX_SMOOTHING_PIX` (1000) is dropped as well, and
+reported `OSM_AIRPORT_SMOOTHING_INVALID` (difference 8). It overrides the tile's
+`apt_smoothing_pix` for this airport in the smoothing module. **Keep**, apart from that range.
 
 **R7 — the boundary** (`:114-177`). A way gives `Polygon(absolute coords)`, a relation the
 `unary_union` of one `Polygon` per outer ring, a node `None`. **Absolute degrees**, not
@@ -213,7 +215,7 @@ none (section 4).
 
 This is an exact substitution, not an approximation: `STRtree.query(..., predicate=...)`
 evaluates the very GEOS predicate `BaseGeometry.intersects` evaluates, on the same pair of
-geometries; the tree only decides *which pairs* are worth evaluating. The proof is the oracle
+geometries; the tree only decides *which pairs* are worth evaluating. The proof was the oracle
 test: same ids, same order, same categories (section 9).
 
 The nearest-airport search of R11 stays a scalar loop over `great_circle_m`. It runs only for
@@ -269,12 +271,11 @@ as Ortho4XP does.
 `build_taxiway_areas`, `smooth_raster_over_airports`, `encode_runways_taxiways_and_aprons`,
 `encode_hangars`, `flatten_helipads` and `cover_airports_with_highres` are other modules.
 
-**Overlap to resolve at integration.** The geometry chantier of the same wave landed
-`runways.wanted_airports`, `areas.update_boundary` and `areas.airport_array` in this very
-package: R13, R14 and R15 exist twice, each proven against the oracle by its own test. They
-are the same rules, not different ones; the integrator keeps one pair of call sites and the
-other becomes a thin alias. This module keeps its three because the chantier brief lists them
-and because they are what makes `discover` usable end to end on its own.
+**Overlap, resolved at integration.** The geometry chantier of the same wave had written its own
+`runways.wanted_airports`, `areas.update_boundary` and `areas.airport_array`, so R13, R14 and
+R15 existed twice. The integration kept this module's three (`airports-integration.md` 2 and 6):
+`discard_unwanted`, `update_boundaries` and `airport_array` are the ones the stage calls, and
+`runways.py` and `areas.py` hold no copy.
 Nothing here reads `apt.dat` (arbitration B5): the geometry starts from the OSM `aeroway`
 layer and from nothing else. Nothing here writes a file: the rule module of this wave serialises
 the `AirportSet` this module returns (`airports-integration.md` 4).
@@ -287,9 +288,10 @@ the `AirportSet` this module returns (`airports-integration.md` 4).
 | 2 | a one-node `aeroway=runway` way raises inside `LineString` and kills the step | the way is skipped and reported `OSM_AIRPORT_SURFACE_INVALID` | a crash is not a behaviour worth porting; no such way exists in `+43+005`, so the difference is unobservable there |
 | 3 | `discard_unwanted_airports` raises `AttributeError` when the runways were not reconstructed | `OSM_AIRPORT_INFO_UNAVAILABLE` | section 6 |
 | 4 | `list_airports_and_runways` prints | `listing()` returns rows | the UI decides |
-| 5 | nothing carries the aerodrome elevation | `Airport.elevation`, the OSM `ele` tag parsed as a float when it parses | additive and **consumed by nothing in this port**: the page of `docs/specs/ui.md` wants it. It cannot change any geometry |
+| 5 | nothing carries the aerodrome elevation | `Airport.elevation`, the OSM `ele` tag parsed as a float when it parses | additive and **consumed by nothing in this port**, not even written to the published record (`airports.wkb.json`). It cannot change any geometry |
 | 6 | the record is a `dict` of `dict`s with positional tuples | `AirportSet` of `Airport` with `SurfaceAreas` | section 2; the insertion order, the keys and the contents are identical |
-| 7 | a way's or relation's `repr_node` is a tuple of `numpy.float64` | a tuple of Python `float` | `float(numpy.float64)` is exact, and the two hash and compare equal, so a key written by one is found by the other; the pickle bridge of B3 therefore stays compatible |
+| 7 | a way's or relation's `repr_node` is a tuple of `numpy.float64` | a tuple of Python `float` | `float(numpy.float64)` is exact, and the two hash and compare equal, so a key written by one is found by the other, which kept the pickle bridge of B3 compatible until decision 0009 removed it |
+| 8 | an integer `smoothing_pix` tag is taken whatever its value (`:105-113`): a negative width kills the convolution, a huge one builds a kernel of that size | a value outside `0..MAX_SMOOTHING_PIX` (1000) is ignored, so the airport takes the tile's `apt_smoothing_pix`, and is reported `OSM_AIRPORT_SMOOTHING_INVALID` | R6; `airports-geometry.md` difference 9 |
 
 Nothing else. In particular R2's "skip the whole element", R5's `name in dico_airports` test,
 R12's overwrite of a same-named airport, the double counting of a closed way's closing node in
@@ -297,7 +299,8 @@ R4, the 3500 m threshold and the inclusive slice of R15 are reproduced as they a
 
 ## 9. Acceptance and measurements
 
-**Oracle test** (`tests/test_aptdata_oracle.py`, marker `oracle`). A sub-process runs the Ortho4XP
+**Oracle test** (`tests/test_aptdata_oracle.py`, marker `oracle`, both removed with decision 0010
+on 2026-09-14). A sub-process runs the Ortho4XP
 chain itself on the warm `+43+005_airports.osm.bz2` — `discover_airport_names`,
 `attach_surfaces_to_airports`, `sort_and_reconstruct_runways`, `discard_unwanted_airports`,
 the three area builders, `update_airport_boundaries`, `build_airport_array` — and dumps, at
@@ -314,7 +317,7 @@ the raster. OrthoStudio XP must match, stage by stage:
    so this chantier is measured without the runway and surface modules it does not own.
 
 The frozen `fixtures/large/oracle/+43+005_zl14_BI/build/Data+43+005.apt` is the same data
-recorded: the test loads it (in the test only, never in `src`) and checks the keys, the key
+recorded: the test loaded it (in the test only, never in `src`) and checked the keys, the key
 types, the names, the representative nodes, the final boundary WKTs and the `apron` /
 `taxiway` id lists it still carries.
 

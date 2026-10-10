@@ -1,6 +1,7 @@
 # Vector assembly: ordering the layers, the orthophoto grid, the seeds, the Triangle files
 
-Status: P4 wave 1 (`src/orthostudio/vectors/assemble.py`, `grid.py`, `seeds.py`, `rule.py`).
+Status: shipped (`src/orthostudio/vectors/assemble.py`, `grid.py`, `seeds.py`, `rule.py`); written
+for P4 wave 1 and completed by wave 2, the airports.
 Origin: Ortho4XP `src/O4_Vector_Map.py` (`build_poly_file`, lines 19-179) and
 `src/O4_Vector_Utils.py` (`Vector_Map.encode_MultiPolygon` 380-434, `snap_to_grid` 469-535,
 `write_node_file` 537-559, `write_poly_file` 561-615).
@@ -51,8 +52,10 @@ wave 2 (arbitration A1).
 | 8 | orthophoto grid | `:96-130` | DUMMY | verticals, then horizontals |
 | 9 | gluing border | `:136-152` | DUMMY | four polylines |
 
-**Keep.** Rule A-ORDER: `VectorLayers.ordered()` returns exactly
+**Keep.** Rule A-ORDER: the passes are noded in exactly the order
 `patches + airports + roads + coastline + water + grid_vertical + grid_horizontal + border`.
+`VectorLayers.ordered()` returns the first five families; `assemble_vectors` appends the three
+DUMMY passes it builds itself (`grid.grid_and_border`).
 
 Wanted correction of the brief: the brief of this chantier states the order as "airports > roads >
 coast > water > **patches** > grid > gluing". The source says patches are inserted *first*, at
@@ -203,7 +206,8 @@ Data<tile>.node   Triangle nodes, "N 2 1 0" then "i x y z" (9 decimals, 1-based)
 Data<tile>.poly   "0 2 1 0", "M 1", "i n0 n1 marker", 0 holes, S seeds (15 decimals)
 layers.npz        the layers as they were inserted, one entry per *part* (a LineString, or
                   one ring of a polygon): coords (K, 3) f64 x/y/z, offsets (P+1,) i64,
-                  markers (P,) u8, layer (P,) i32 = index of the pass, names (L,) <U32.
+                  markers (P,) u8, layer (P,) i32 = index of the pass, names (L,) unicode,
+                  as wide as the longest name (a fixed <U32 cut long names until review 5).
                   A tile can be re-noded and profiled from it with no network and no OSM
                   parsing; re-noding it gives back the same graph, bit for bit
                   (test_vectors_assemble.py::test_the_replay_file_holds_the_segments...)
@@ -228,13 +232,15 @@ Cost on the reference tile (M4 Pro, `nice -n 10`, 1-minute load 3.8): assembly *
 0.13), total **1.70 s**. Ortho4XP spent 23.13 s in `insert_way` and 0.90 s in `snap_to_grid` on
 the same layers (measured before decision 0010), so the ported part is **x21**.
 
-The two text files are what `orthostudio.mesh` reads (`mesh/build.py:338-359`), which is why the
-format is Ortho4XP's and not a binary of our own; ADR 0004's binary variant replaces both at once,
-on both sides.
+The two text files are what `orthostudio.mesh` reads (`mesh/build.py`, `_prepare_inputs`), which is
+why the format is Ortho4XP's and not a binary of our own. ADR 0004's binary variant lies between
+the mesh stage and Triangle4XP only: the mesh stage converts the two files to the `OSXPNOD1` /
+`OSXPPOL1` layouts before it runs the sidecar whenever it is not refining, so in every build (a
+build refuses `iterate` other than 0), and this stage keeps writing text (`mesh-triangle-io.md`).
 
 `snap_to_grid(9)` (`O4_Vector_Map.py:167`) is not a step here: the noder *is* snapped to 9
-decimals by construction (vectors-pslg.md 2.8), which is where its 10 merged node pairs come
-from.
+decimals by construction (vectors-pslg.md 2.8). In wave 1 that is where its 10 merged node pairs
+came from; since the `nodes10` correction of wave 2 it merges none of them (section 8).
 
 ## 6. Parameters of the rule `orthostudio.vectors@1` (`rule.py`)
 
@@ -255,17 +261,23 @@ Not parameters: `custom_dem` and `fill_nodata` (the elevation arrives as the `de
 its digest — same decision as `orthostudio.mesh` and `orthostudio.masks`) and `iterate` (forced to
 0 at `O4_Vector_Map.py:23`).
 
-Inputs: `osm` (the snapshot of `orthostudio.osm@1`), `dem`, `patches` (optional: a folder of
-`.patch.osm` files; a build gives none, decision 0010), `airports` (optional and **always
+Inputs: `osm` (the snapshot of `orthostudio.osm@1`), `dem`, `patches` (optional: the tile's own
+folder of `.patch.osm` files and OBJ8 directories, found by `pipeline.build.patches_folder` in the
+folder of patches named in Settings, `expert.patches_dir`, or with `--patches`, else in
+`$OSXP_HOME/patches`; none when that folder holds nothing for the tile. Decision 0010 ended the
+reading of Ortho4XP's own folder: its `Patches/` tree is read only when it is the folder named),
+`airports` (optional and **always
 absent**: wave 2 builds the aerodromes inside the stage, from the `aeroway` layer of the `osm`
 input, exactly as `include_airports` does, so the declared input has no reader and is refused if one
 is passed — it is kept declared so that every key minted so far keeps its meaning).
 
-Arbitration A7, superseded by decision 0008 on 2026-09-13: the rule is **not wired by default**.
-Wave 2 completed it, and the reason it is still opt-in is measured rather than structural: the PSLG
-is Ortho4XP's, but Ortho4XP's *node numbering* is not reproducible, so the mesh and the DSF are
-equivalent and not byte-identical (`docs/benchmarks/p4-airports.md` 5 makes the case and names the
-condition for flipping it).
+Arbitration A7 kept the rule **not wired by default**, and once wave 2 had completed it the reason
+was measured rather than structural: the PSLG is Ortho4XP's, but Ortho4XP's *node numbering* is not
+reproducible, so the mesh and the DSF are equivalent and not byte-identical
+(`docs/benchmarks/p4-airports.md` 5 made the case and named the condition for flipping it).
+Decision 0008 (2026-09-13) superseded A7 after two more tiles and made the rule the default;
+decision 0009 (2026-09-14) removed `--vectors` with the other path, so every build declares its
+`<tile>/vectors` node with this rule (`pipeline/build.py`).
 
 Where the layers come from: `assemble_vectors` takes them, it does not build them. The rule
 gets them from an injected builder (`VectorsJob.build_layers`, bound with `vectors_job()`, the
@@ -316,10 +328,10 @@ is unchanged — `VectorLayers.ordered()` still puts the coastline before the wa
 `SEA_EQUIV` layer still travels with the water family, where `include_water` encodes it
 (`O4_Vector_Map.py:454-590`).
 
-The `sea_equiv` pass-through itself is **reserved, not read in wave 1**: `build_sea_layers`
-stores it in `CoastResult.sea_equiv` and nothing downstream reads it back (review 5). The
-build order above is kept because wave 2 needs the slot filled before the coastline is closed,
-not because wave 1 gains anything from it.
+The `sea_equiv` pass-through itself is **reserved, not read in wave 1**, nor since:
+`build_sea_layers` stores the water builder's large lakes in `CoastResult.sea_equiv` and nothing
+downstream reads it back (review 5), wave 2 included. The build order above was kept because wave 2 was expected
+to need the slot filled before the coastline is closed; wave 2 shipped without reading it.
 
 Cancellation is polled **between families**, between two airports of the encoder, before every
 noding pass and before the artefact is written (`AssemblyParams.cancel`, review 6); nothing below
@@ -330,38 +342,46 @@ a build; a coded `on_event` is logged at the level of its registry severity (DEG
 INFO -> INFO) and counted by code in `stats.json` under `events`, beside the family counters under
 `families` (review 6: a rejected runway used to be invisible).
 
-### 7.3 Wave 1 leaves two slots empty
+### 7.3 The two slots wave 1 left empty
 
-`VectorLayers.airports` is `()` and the road builder is given `roads.NO_AIRPORTS`;
-`airport_bounds` is `None`, so the artefact has no `airports.json`. `_airport_areas` and
-`_airport_bounds` are the two three-line functions wave 2 fills in, and nothing else in this
-module changes shape (arbitration A2).
+In wave 1 `VectorLayers.airports` was `()`, the road builder was given `roads.NO_AIRPORTS` and
+`airport_bounds` was `None`, so the artefact had no `airports.json`; two three-line functions,
+`_airport_areas` and `_airport_bounds`, held the place (arbitration A2). Wave 2 filled both slots
+and removed the two functions: `build_layers` takes the airport layers, their bounds and the two
+values the road builder reads (`stage.layers.airport_areas()`: the airport neighbourhood raster
+and the treated area) from `orthostudio.airports_vec.stage`, so a tile with aerodromes gets its
+`airports.json`.
 
 An `airports` **input that is actually present** is refused (`SYS_INTERNAL_ERROR`, detail
-`airport layers are wave 2`) instead of being read and dropped: it is a declared input of the
-rule, so it enters the cache key, and keying an artefact on data it does not contain is worse
-than failing (review 5).
+`the airports input has no reader`) instead of being read and dropped: it is a declared input of
+the rule, so it enters the cache key, and keying an artefact on data it does not contain is worse
+than failing (review 5). Wave 2 builds the aerodromes inside the stage, from the `aeroway` layer
+(section 6), so that input stays absent.
 
 ## 8. Acceptance
 
+A1, A5, A6 and A7 compared OrthoStudio XP with Ortho4XP; they were removed with decision 0010
+(2026-09-14), as was `tools/oracle`, and what they measured is kept below as a record. A2, A3 and
+A4 remain.
+
 | # | Test | What it proves |
 |---|---|---|
-| A1 | `test_vectors_grid.py::test_grid_matches_legacy_ways` (oracle) | the 220 grid lines and the 4 border polylines are **bit-identical** to the ways Ortho4XP inserted |
+| A1 | `test_vectors_grid.py::test_grid_matches_the_ways_ortho4xp_inserted` (oracle, removed with decision 0010) | the 220 grid lines and the 4 border polylines are **bit-identical** to the ways Ortho4XP inserted |
 | A2 | `test_vectors_grid.py` unit | abscissae come from the same formula, 16-tile step, the tile edges are in the set exactly once, eps overshoot, 2048 segments |
 | A3 | `test_vectors_seeds.py` | one seed per polygon at `point_on_surface`, insertion order, invalid polygons skipped and counted, the two defaults, the sort by marker value |
 | A4 | `test_vectors_assemble.py` | `ordered()` is the order of section 2.1; an empty `VectorLayers` still produces grid + border + the default seed; the airports input is injected, never built; the files are re-readable and the graph is planar |
-| A5 | `test_vectors_assemble_oracle.py::test_assembly_matches_legacy_pslg` | the whole assembly, fed the recorded layers of +43+005 **and its own grid and border**, matches Ortho4XP's `.node`/`.poly` at the level of vectors-pslg.md: same nodes at 1.5e-9, same unordered edges, same markers, same z |
-| A6 | `test_vectors_assemble_oracle.py::test_seed_section_is_byte_identical` | the seed section written from the reference seeds is byte-identical to Ortho4XP's |
+| A5 | `test_vectors_assemble_oracle.py::test_assembly_matches_the_legacy_pslg` (removed with decision 0010) | the whole assembly, fed the recorded layers of +43+005 **and its own grid and border**, matches Ortho4XP's `.node`/`.poly` at the level of vectors-pslg.md: same nodes at 1.5e-9, same unordered edges, same markers, same z |
+| A6 | `test_vectors_assemble_oracle.py::test_the_seed_section_is_byte_identical` (removed with decision 0010) | the seed section written from the reference seeds is byte-identical to Ortho4XP's |
 | A7 | `test_p4_integration.py` (oracle) | the **whole wave-1 chain** — OSM cache -> `layers.build_layers` -> `assemble_vectors` -> `.node`/`.poly` — against an Ortho4XP stage 1 run with an **empty airport cache** (arbitration A3), fabricated offline by the test itself |
 
-A5 is the wave-1 proof required by arbitration A3/A4. Because the fixture holds the layers
-*with* airports, the run includes them as an injected `airports` input, which is exactly what
-wave 2 will do; the wave-1 pipeline simply passes an empty one. It also carries Ortho4XP's own
-seeds, attached to the first pass of each attribute, which is enough to reproduce the written
-order exactly (section 4.3).
+A5 was the wave-1 proof required by arbitration A3/A4. Because the fixture holds the layers
+*with* airports, the run included them as already-built airport layers (`VectorLayers.airports`,
+section 2.3), which is what wave 2 does with the layers it builds from the `aeroway` layer; the
+wave-1 pipeline passed an empty sequence. It also carried Ortho4XP's own seeds, attached to the
+first pass of each attribute, which is enough to reproduce the written order exactly (section 4.3).
 
 Measured, 2026-09-12 (`tests/test_vectors_assemble_oracle.py`, numbers from
-`bench_noding.compare`):
+`bench_noding.compare`, both removed with decision 0010):
 
 | | OrthoStudio XP | Ortho4XP |
 |---|---|---|
@@ -384,12 +404,13 @@ not of the geometry (`docs/benchmarks/p4-airports.md` 3).
 
 ### 8.1 Wave 1 without airports (A7, arbitration A3)
 
-The reference of A5 is the fixture, which has airports; A7 adds the reference wave 1 is
-actually accountable for. `tests/test_p4_integration.py` copies the three warm `.osm.bz2`
-caches into a throw-away Ortho4XP root, writes an **empty and valid** airport cache next to
-them, runs stage 1 there through `tools/oracle`'s `LegacyRunner` (no network: the log says
-`* Recycling OSM data from` for the four layers) and compares. Measured, 2026-09-12, numbers
-and their analysis in `docs/benchmarks/p4-vectors.md`:
+The reference of A5 was the fixture, which has airports; A7 added the reference wave 1 was
+actually accountable for. `tests/test_p4_integration.py` copied the three warm `.osm.bz2`
+caches into a throw-away Ortho4XP root, wrote an **empty and valid** airport cache next to
+them, ran stage 1 there through `tools/oracle`'s `LegacyRunner` (no network: the log said
+`* Recycling OSM data from` for the four layers) and compared; the test and `tools/oracle` were
+removed with decision 0010 (2026-09-14). Measured, 2026-09-12, numbers and their analysis in
+`docs/benchmarks/p4-vectors.md`:
 
 | | OrthoStudio XP wave 1 | Ortho4XP without airports |
 |---|---|---|
@@ -403,11 +424,12 @@ and their analysis in `docs/benchmarks/p4-vectors.md`:
 
 ### 8.2 Wave 2, with airports
 
-`tests/test_p4v2_oracle.py` compares the same stage, airports included, with the complete
+`tests/test_p4v2_oracle.py` compared the same stage, airports included, with the complete
 frozen build: 247 282 / 271 320 on both sides, 0 marker mismatch, seed block byte-identical,
 `Data<tile>.alt` byte-identical, 39/39 `.ter` byte-identical, and — in canonical node order,
 with `exact_grid_order` on — a byte-identical `.node`, `.poly`, mesh and DSF. Numbers:
-`docs/benchmarks/p4-airports.md`. The stage is 6.55 s against 31.8 s.
+`docs/benchmarks/p4-airports.md`. The stage took 6.55 s against 31.8 s. The test was removed with
+decision 0010 (2026-09-14).
 
 Downstream, fed to the same Triangle4XP and the same DSF encoder, the two PSLGs give meshes
 of 567 286 and 567 290 vertices that are **equivalent but not byte-identical**: the ten merged
@@ -417,8 +439,11 @@ The elevation is not involved (the same mesh comes out of both rasters, byte for
 
 ### 8.3 What the proof does **not** cover (review 5)
 
-The equivalence above is proven at *one* point of the parameter space, +43+005 at
-`road_level` 1 and `mesh_zl` 19. Known holes, to be closed by a second oracle tile:
+The equivalence above was proven at *one* point of the parameter space, +43+005 at
+`road_level` 1 and `mesh_zl` 19. Review 5 meant to close the holes below with a second oracle
+tile. Decision 0008 compared two more tiles at the same settings (`+50+008`, `+39+003`,
+`docs/benchmarks/p4-airports.md` 7), neither of which has a `SEA_EQUIV` edge or an apron with the
+`include` tag, and decision 0010 (2026-09-14) removed the oracle tests, so these holes stay open:
 
 | hole | why it is open | what would close it |
 |---|---|---|

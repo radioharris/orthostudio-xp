@@ -94,6 +94,52 @@ def test_blocking_codes_stop_except_cancellation() -> None:
 # ------------------------------------------------------- spec <-> registry
 
 
+def _advice_texts() -> list[tuple[str, str]]:
+    """Every piece of advice a user can read: the registry's remedies, the page's own words for
+    a code (French and English), and the hints of the settings."""
+    import re
+    from pathlib import Path
+
+    from orthostudio.config import leaf_properties
+
+    out = [(f"remedy of {c}", s.remedy) for c, s in REGISTRY.items()]
+    i18n = Path(__file__).resolve().parents[1] / "src" / "orthostudio" / "ui" / "i18n.js"
+    for line in i18n.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"\s+([A-Z][A-Z0-9_]+): \[(.*)\],?$", line)
+        if m:
+            out.append((f"page words of {m.group(1)}", m.group(2)))
+    out += [(f"hint of {k}", str(v.get("hint", ""))) for k, v in leaf_properties().items()]
+    return out
+
+
+def test_advice_names_only_options_the_command_line_has() -> None:
+    """A remedy sent users to `--jobs`, `--neighbour-water osm` and `osxp doctor --providers`,
+    none of which existed, and to a lake list no setting reaches (2026-10-09)."""
+    import re
+
+    import typer.main
+
+    from orthostudio.cli import app
+
+    cli = typer.main.get_command(app)
+    options = {
+        o
+        for command in cli.commands.values()  # type: ignore[attr-defined]
+        for param in command.params
+        for o in (*param.opts, *getattr(param, "secondary_opts", ()))
+        if o.startswith("--")
+    }
+    wrong = [
+        (where, option)
+        for where, text in _advice_texts()
+        for option in re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", text)
+        if option not in options
+    ]
+    assert not wrong, wrong
+    gone = ("good_imagery_list", "custom water file", "doctor --providers")
+    assert not [(where, g) for where, text in _advice_texts() for g in gone if g in text]
+
+
 def test_spec_document_lists_exactly_the_registered_codes() -> None:
     rows = parse_spec_rows()
     assert len(rows) >= 40

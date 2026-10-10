@@ -17,6 +17,7 @@ read byte ranges, and it answers the window as a float32 array with its geometry
 
 from __future__ import annotations
 
+import os
 import struct
 import zlib
 from collections.abc import Callable, Sequence
@@ -430,9 +431,16 @@ def write_geotiff(
     body += struct.pack("<I", 0)  # no second directory
     out = pathlib.Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("wb") as f:
-        f.write(b"II" + struct.pack("<HI", 42, ifd_at))  # where the directory begins
-        for blob in strips:
-            f.write(blob)
-        f.write(bytes(body))
-        f.write(bytes(tail))
+    # under a temporary name, then renamed: a write cut short (the app quit, the power gone) left a
+    # stump starting with the TIFF mark, which the next build took for the square (2026-10-09)
+    tmp = out.with_name(f"{out.name}.part-{os.getpid()}")
+    try:
+        with tmp.open("wb") as f:
+            f.write(b"II" + struct.pack("<HI", 42, ifd_at))  # where the directory begins
+            for blob in strips:
+                f.write(blob)
+            f.write(bytes(body))
+            f.write(bytes(tail))
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)

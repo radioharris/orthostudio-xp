@@ -24,7 +24,7 @@ eastwards (x) and southwards (y), origin at the top-left of the web-mercator wor
 | `texture_at(lat, lon, zl, provider) -> TextureId` | `wgs84_to_orthogrid`, `:127-134` | `mult = 2 ** (zl - 5)`; `til_x = int((lon / 180 + 1) * mult) * 16`; `til_y = int((1 - log(tan((90 + lat) * pi / 360)) / pi) * mult) * 16`. **Truncation**, not rounding: the texture containing the point. `int()` truncates towards zero; for lat > 85.05° or `lon = -180` exactly the result can be `-0 * 16 = 0`, same as Ortho4XP. |
 | `quadkey(x, y, zl)` | `gtile_to_quadkey`, `:109-124` | digit `a + 2 b` per level from the coarsest; `quadkey(0, 0, 0) == ""` |
 | `webmercator_pixel_size(lat, zl)` | `:32-34` | `2 * pi * 6378137 * cos(pi * lat / 180) / 2 ** (zl + 8)` metres |
-| `st_coord(lat, lon, til_x, til_y, zl)` | `:137-150` | `s = (lon / 180 + 1) * mult - til_x // 16`, `t = 1 - ((1 - ratio_y) * mult - til_y // 16)`, both clamped to [0, 1]. Documented and ported (one line each); P1 does not consume it (the DSF stage will). |
+| `st_coord(lat, lon, til_x, til_y, zl)` | `:137-150` | `s = (lon / 180 + 1) * mult - til_x // 16`, `t = 1 - ((1 - ratio_y) * mult - til_y // 16)`, both clamped to [0, 1]. Documented and ported (one line each); only the tests call it: the DSF stage applies the same formula to arrays (`st_coord_arrays`, `dsf/bathy.py`). |
 
 Derived helpers (no Ortho4XP counterpart, defined here):
 
@@ -46,7 +46,8 @@ Derived helpers (no Ortho4XP counterpart, defined here):
 
 * `texture_name(t) = f"{til_y}_{til_x}_{provider}{zl}"`: **y first**, then x, then the
   provider code immediately followed by the zoom level with no separator (`6016_8448_BI14`).
-  Used for the JPEG cache (`.jpg`), the DDS (`.dds`), the `.ter` files and the mask crop.
+  Used for the DDS (`.dds`), the `.ter` files and the mask crop, and by Ortho4XP for its JPEG
+  cache (`.jpg`).
   The `g2xpl_16` special case (`:355-364`) is dropped (that provider is not in the registry).
 * `parse_texture_name(name)`: the inverse. Because the provider code may end with digits (`PDOK18`)
   and the ZL is glued to it, the split is ambiguous in theory; the rule applied is: take the last
@@ -61,14 +62,15 @@ Derived helpers (no Ortho4XP counterpart, defined here):
   with `{:+.0f}` zero-padded to 3 (lat) and 4 (lon) characters and `floor(x / 10) * 10` for
   the group: `Orthophotos/+40+000/+43+005/BI_14/6016_8448_BI14.jpg`. Layout `code`
   (Lux) uses `Orthophotos/<code>/<code>_<zl>/`, layout `normal` `Orthophotos/<lat><lon>/...`.
-  Implemented by `orthostudio.imagery.chunks.legacy_jpeg_path` (read-only fallback).
+  OrthoStudio XP read it through `orthostudio.imagery.chunks.legacy_jpeg_path` (a read-only
+  fallback) until decision 0010 (2026-09-14) removed it (`imagery-chunks.md` 6).
 
 ## 4. Acceptance tests
 
 | # | Test | Where |
 |---|---|---|
-| G1 | `texture_at` equals `GEO.wgs84_to_orthogrid` **bit for bit** on 10^6 pseudo-random points (seed 20260912: 800 000 uniform in lat (-85, 85) x lon (-180, 180), 200 000 on and next to degree and texture edges), ZL 10-19, the legacy function executed by the Ortho4XP virtualenv in a subprocess (`src` never imports legacy code). Same test for `wgs84_to_gtile`, `tile_to_wgs84` (float equality), `quadkey`, `webmercator_pixel_size`, `st_coord` on 100 000 points. | `test_imagery_oracle.py::test_grid_matches_legacy_geo_utils` (marker `oracle`) |
-| G2 | `textures_covering(44, 5, 43, 6, 14, "BI")` is 20 textures (x 8416..8464, y 5952..6016) and the 17 DDS of the reference build are exactly that set minus `{6016_8416, 6016_8432, 6016_8464}`, the three textures of the south row (open sea south of Marseille, no land triangle, hence no `.ter` and no texture in the DSF). | `test_imagery_oracle.py::test_reference_tile_textures` |
+| G1 | `texture_at` equals `GEO.wgs84_to_orthogrid` **bit for bit** on 10^6 pseudo-random points (seed 20260912: 800 000 uniform in lat (-85, 85) x lon (-180, 180), 200 000 on and next to degree and texture edges), ZL 10-19, the legacy function executed by the Ortho4XP virtualenv in a subprocess (`src` never imports legacy code). Same test for `wgs84_to_gtile`, `tile_to_wgs84` (float equality), `quadkey`, `webmercator_pixel_size`, `st_coord` on 100 000 points. | `test_imagery_oracle.py::test_grid_matches_legacy_geo_utils` (marker `oracle`), removed with decision 0010 (2026-09-14) |
+| G2 | `textures_covering(44, 5, 43, 6, 14, "BI")` is 20 textures (x 8416..8464, y 5952..6016) and the 17 DDS of the reference build are exactly that set minus `{6016_8416, 6016_8432, 6016_8464}`, the three textures of the south row (open sea south of Marseille, no land triangle, hence no `.ter` and no texture in the DSF). | the 20 textures: `test_imagery_grid.py::test_textures_covering_reference_cell`; the comparison with the 17 DDS was `test_imagery_oracle.py::test_reference_tile_textures`, removed with decision 0010 (2026-09-14) |
 | G3 | round trips: `tile_to_wgs84(wgs84_to_tile(p)) == p` to 1e-9; `texture_at` of any point of `texture_bbox(t)` interior is `t`; southern and western hemispheres; known quadkeys (`quadkey(3, 5, 3) == "213"`, Bing documentation) and the Marseille tile `033020133002333`-style values recorded in the audit. | `test_imagery_grid.py` |
 
 ## 5. Wanted differences from Ortho4XP
