@@ -290,6 +290,8 @@ class AirportEncodeParams:
     apron_refine_m: float = APRON_REFINE_M
     hangar_flatness_m: float = HANGAR_FLATNESS_M
     helipad_radius_m: float = HELIPAD_RADIUS_M
+    flatten_helipads: bool = True
+    """Off, no helipad is flattened: the ground keeps its slope there (idea #8, 2026-10-11)."""
 
 
 DEFAULT_ENCODE_PARAMS = AirportEncodeParams()
@@ -851,13 +853,16 @@ def encode_airports(
         [patches_area if patches_area is not None else geometry.Polygon(), surface_area]
     )
 
-    helipads: HelipadResult = encode_helipads(
-        osm, tile, dem, treated, radius_m=params.helipad_radius_m
-    )
-    for way, z in helipads.ways:
-        runs.add(geometry.LineString(way), MARKERS["INTERP_ALT"], z)
-    seeds["INTERP_ALT"].extend(np.asarray(helipads.seeds, dtype=np.float64).reshape(-1, 2))
-    counts["helipads"] = helipads.found
+    if params.flatten_helipads:
+        helipads: HelipadResult = encode_helipads(
+            osm, tile, dem, treated, radius_m=params.helipad_radius_m
+        )
+        for way, z in helipads.ways:
+            runs.add(geometry.LineString(way), MARKERS["INTERP_ALT"], z)
+        seeds["INTERP_ALT"].extend(np.asarray(helipads.seeds, dtype=np.float64).reshape(-1, 2))
+        counts["helipads"] = helipads.found
+    else:
+        counts["helipads"] = 0
 
     runs.close()
     layers = tuple(runs.layers)

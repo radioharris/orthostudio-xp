@@ -429,7 +429,7 @@ function patchesDefault(view) {
 const THREE_STEPS = "coast.three_steps";
 
 export const EXPERT_GROUPS = [
-  { id: "airports", title: () => t("settings.x.group_airports"), fields: ["essential.airports.zoom_level", "essential.airports.extent_km"] },
+  { id: "airports", title: () => t("settings.x.group_airports"), fields: ["essential.airports.zoom_level", "essential.airports.extent_km", "expert.flatten_helipads"] },
   { id: "coast", title: () => t("settings.x.group_coast"), fields: [THREE_STEPS, "expert.mask_zl", "expert.distance_masks_too", "expert.sea_texture_blur", "advanced.overlay_lod_km"] },
   { id: "water", title: () => t("settings.x.group_water"), fields: ["advanced.max_area", "advanced.min_area", "advanced.use_masks_for_inland", "advanced.water_smoothing", "expert.water_simplification", "advanced.sea_smoothing_mode"] },
   {
@@ -485,6 +485,7 @@ const FIELD_TEXT = {
   "expert.normal_map_strength": [() => t("settings.x.normals"), () => t("settings.x.normals_hint")],
   "expert.use_decal_on_terrain": [() => t("settings.x.decal"), () => t("settings.x.decal_hint")],
   "expert.decal_on_sea": [() => t("settings.x.decal_sea"), () => t("settings.x.decal_sea_hint")],
+  "expert.flatten_helipads": [() => t("settings.x.flatten_helipads"), () => t("settings.x.flatten_helipads_hint")],
   "expert.decal": [() => t("settings.x.decal_name"), () => t("settings.x.decal_name_hint")],
   "expert.photo_brightness": [() => t("settings.x.photo_brightness"), () => t("settings.x.photo_brightness_hint")],
   "expert.photo_contrast": [() => t("settings.x.photo_contrast"), () => t("settings.x.photo_contrast_hint")],

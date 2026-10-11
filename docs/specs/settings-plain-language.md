@@ -131,6 +131,7 @@ Findings that change what the page may say (details in section 6):
 | 43 | `expert.use_decal_on_terrain` | `use_decal_on_terrain` | false | Folded | Fine ground detail at very low height (decals) |
 | 43b | `expert.decal_on_sea` | – | false | Folded | Fine ground detail on the sea too |
 | 43c | `expert.decal` | none | `maquify_2_green_key.dcl` | Folded (list) | Ground decal |
+| 43d | `expert.flatten_helipads` | – | true | Folded (Airports group) | Flatten OpenStreetMap's helipads |
 | 44 | `expert.ovl_exclude_pol` | `ovl_exclude_pol` | `[0]` | Folded (checklist; a text field on the page, 4.18) | X-Plane objects to remove |
 | 45 | `expert.ovl_exclude_net` | `ovl_exclude_net` | `[]` | Folded | X-Plane networks to remove |
 
@@ -1146,6 +1147,23 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
   Inland water never has it, in either case. The pack writes it, like the switch above.
 - **Recommendation. Folded**, next to the decal setting it completes.
 - **Expert label.** EN *Fine ground detail on the sea too* · FR *Grain du sol aussi sur la mer*.
+
+### 4.17d `expert.flatten_helipads` (OrthoStudio XP only)
+
+`–` · true · bool.
+
+- **Does.** Makes the ground flat on every OpenStreetMap helipad, as Ortho4XP always does: a
+  helipad drawn as an outline is flattened over it, one marked by a point over a hexagon of 9 m
+  (`airports-encoding.md` 9). Off, the ground keeps its slope there; runways, taxiways and aprons
+  are flattened either way. Asked on X-Plane.Org by a scenery author who places his own helipad on
+  a slope (idea #8, 2026-10-11).
+- **In X-Plane.** Measured at the Refuge du Requin (`+45+006`, an OSM point at 2 516 m above the
+  Mer de Glace): X-Plane's own scenery left the R22 on 17.6° of slope; the tile's flat hexagon, all
+  six corners at 2 503.5 m, left it level (0.2°).
+- **Recommendation. Folded**, in the Airports group, on: the real pads are flat platforms, and a
+  scenery's helipad set on a slope floats or sinks.
+- **Expert label.** EN *Flatten OpenStreetMap's helipads* · FR *Aplatir les hélipads
+  d'OpenStreetMap*.
 
 ### 4.17c `expert.decal` (OrthoStudio XP only)
 

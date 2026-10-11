@@ -108,6 +108,10 @@ Ortho4XP, with one exception: the rainwater basins OpenStreetMap marks as dry mo
 where Ortho4XP draws water over the grass. A treatment basin, or a lake that dries in summer, stays
 water. Water smaller than `min_area` (Settings, for experts) is left to the photo.
 
+**Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
+Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
+on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

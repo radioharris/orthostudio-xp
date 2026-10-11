@@ -104,6 +104,10 @@ class VectorsParams(RuleParams):
     mesh_zl: int = 19
     """Zoom level of the orthophoto grid inserted as DUMMY edges (``:96-117``)."""
 
+    flatten_helipads: bool = True
+    """Ortho4XP flattens every OSM helipad (``flatten_helipads``, ``O4_Airport_Utils.py:1370``);
+    off, the ground keeps its slope there (OrthoStudio XP's, idea #8, 2026-10-11)."""
+
     apt_smoothing_pix: int = 8
     """Airport elevation smoothing width, in DEM pixels (``O4_Config_Utils.py:117``).
 

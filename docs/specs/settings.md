@@ -46,7 +46,7 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 |---|---|---|---|
 | essential | 8 | 17 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 4 |
 | advanced | 14 | 14 | |
-| expert | 20 | 29 | the plan's expert list named 19 parameters under the heading "20"; ten of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates` |
+| expert | 20 | 30 | the plan's expert list named 19 parameters under the heading "20"; eleven of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads` |
 | total | 42 | 60 | |
 
 The 19 expert parameters that carry an Ortho4XP variable plus the 14 advanced plus the 11 Ortho4XP
@@ -135,6 +135,7 @@ the sources with their maximum zoom level.
 | `photo_brightness` | float `[-0.5, 0.5]` | - | 0 | – | Brightness of the photo, used when `essential.photo_look` is `custom`. |
 | `photo_contrast` | float `[-0.5, 0.5]` | - | 0 | – | Contrast of the photo, used when `essential.photo_look` is `custom`. |
 | `photo_saturation` | float `[-1, 0.5]` | - | 0 | – | Colour of the photo, used when `essential.photo_look` is `custom`; -1 is grey. |
+| `flatten_helipads` | bool | - | true | – | OrthoStudio XP's own (idea #8, 2026-10-11): the helipads of OpenStreetMap are made flat, as Ortho4XP always makes them (`airports-encoding.md` 9). Off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way. It reaches the rule `orthostudio.vectors` as `VectorsParams.flatten_helipads`, in its key. |
 | `decal_on_sea` | bool | - | false | – | The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them. |
 | `decal` | one of 67 names | - | `maquify_2_green_key.dcl` | none | OrthoStudio XP's own: which of X-Plane 12's decals the terrain files name when decals are on (`orthostudio/decals.py`: the list of the setdecal tool, less the five names X-Plane 12.4.4 no longer exports). The pack writes it, so another choice, or turning decals on or off, assembles the pack again and builds nothing else (`pipeline-build.md` 2.3). |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
@@ -226,7 +227,7 @@ fields (`tests/test_config_schema.py`).
 `to_build_overrides(settings) -> dict[str, object]`: the Ortho4XP tile variables (names of
 `tilefiles.TILE_PARAMETERS`), the two overlay settings, and OrthoStudio XP's own keys of
 `tilefiles.OSXP_PARAMETERS` but `photo_zones`, which comes from the zones (`osm_folder`,
-`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, and `photo_brightness`,
+`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `flatten_helipads`, and `photo_brightness`,
 `photo_contrast`, `photo_saturation` from `photo_look`), typed as `BuildSpec.config` expects them
 (`pipeline/build.py`, `BuildSpec.tile_config`):
 

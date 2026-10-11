@@ -258,6 +258,8 @@ def test_the_rule_declares_what_it_consumes_and_nothing_else() -> None:
         # changes the PSLG (``airports-integration.md`` 5)
         "apt_smoothing_pix",
         "exact_grid_order",
+        # idea #8: off, the helipads are not flattened
+        "flatten_helipads",
     }
 
 

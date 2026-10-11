@@ -291,6 +291,14 @@ class Expert(BaseModel):
     sea_texture_blur: float = _field(0.0, "expert", "sea_texture_blur", "m", ge=0)
     normal_map_strength: float = _field(1.0, "expert", "normal_map_strength", "", ge=0, le=1)
     use_decal_on_terrain: bool = _field(False, "expert", "use_decal_on_terrain", "")
+    flatten_helipads: bool = _field(
+        True,
+        "expert",
+        None,
+        "",
+        hint="The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, "
+        "the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+    )
     decal_on_sea: bool = _field(
         False,
         "expert",

@@ -226,7 +226,10 @@ def build_layers(request: object) -> LayerBuild:
 
     _no_airport_artefact(request)
     road_level = int(params.road_level)
-    airport_params = _airport_params(int(params.apt_smoothing_pix))
+    airport_params = _airport_params(
+        int(params.apt_smoothing_pix),
+        flatten_helipads=bool(getattr(params, "flatten_helipads", True)),
+    )
 
     # -- airports, steps 1 to 9 of include_airports (:196-213) -----------------------------
     say(0.05, "airports")
@@ -402,15 +405,17 @@ def build_layers(request: object) -> LayerBuild:
     )
 
 
-def _airport_params(smoothing_pix: int) -> AirportParams:
-    """The airport constants of this run; only the smoothing width comes from the tile.
+def _airport_params(smoothing_pix: int, *, flatten_helipads: bool = True) -> AirportParams:
+    """The airport constants of this run: the smoothing width and whether helipads are flat.
 
     A sweep of ``O4_Airport_Utils.py`` for ``tile.<attribute>`` finds ``dem``, ``lat``,
     ``lon`` and ``apt_smoothing_pix``, and only the last is configuration
     (``docs/specs/airports-integration.md`` 5). Every other number of the chain is hard-coded
-    in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`.
+    in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`;
+    ``flatten_helipads`` is OrthoStudio XP's own (idea #8).
     """
-    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix)
+    encode = replace(DEFAULT_AIRPORT_PARAMS.encode, flatten_helipads=flatten_helipads)
+    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix, encode=encode)
 
 
 def _required(store: OsmData | None, source: OsmSource, layer: str) -> OsmData:

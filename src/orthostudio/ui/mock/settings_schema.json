@@ -686,6 +686,16 @@
      "type": "boolean",
      "unit": ""
     },
+    "flatten_helipads": {
+     "default": true,
+     "description": "The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+     "hint": "The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+     "level": "expert",
+     "ortho4xp": null,
+     "title": "Flatten Helipads",
+     "type": "boolean",
+     "unit": ""
+    },
     "decal_on_sea": {
      "default": false,
      "description": "The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them.",

@@ -95,6 +95,7 @@ TILE_PARAMETERS: dict[str, TileParameter] = {
 OSXP_PARAMETERS: dict[str, TileParameter] = {
     "decal_on_sea": TileParameter(bool, False),
     "decal": TileParameter(str, DEFAULT_DECAL),
+    "flatten_helipads": TileParameter(bool, True),
     "photo_brightness": TileParameter(float, 0.0),
     "photo_contrast": TileParameter(float, 0.0),
     "photo_saturation": TileParameter(float, 0.0),
