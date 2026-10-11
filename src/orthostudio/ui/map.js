@@ -14,7 +14,7 @@
 // shape being drawn live here.
 
 import { adjustImageData, photoValues } from "./colour.js";
-import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
+import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
 import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -62,6 +62,8 @@ export const LABEL_MIN_ZOOM = 7;
 export const ZONE_MIN_ZOOM = 9;
 export const DEFAULT_ZONE_ZL = 18;
 const SAVE_DELAY_MS = 500;
+/** How long the zones must stay as they are before the squares they take are asked again. */
+const AREAS_DELAY_MS = 400;
 const MAX_LABELS = 400;
 const EUROPE = [[36, -10], [60, 25]];
 const WORLD = [[-85.06, -180], [85.06, 180]];
@@ -324,6 +326,12 @@ export function createPlanMap(ctx) {
     // zone id → {reason, source}: "document" for the file's problems and the refusals of a save
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
+    // zone id → {count, area}: the squares of about 1 km each zone will take, as the engine's build
+    // takes them (POST /api/zones/cells), asked again once the zones change (idea 7, 2026-10-11)
+    areas: new Map(),
+    areasKey: "", // the zones and source the areas were asked for
+    areasTimer: 0,
+    areasSeq: 0, // only the answer to the last question is drawn
     hintDone: storageGet(HINT_KEY) === "1",
     installedWanted: storageGet(INSTALLED_KEY) !== "0",
     installedOrtho4xpWanted: storageGet(INSTALLED_ORTHO4XP_KEY) !== "0",
@@ -1309,6 +1317,9 @@ export function createPlanMap(ctx) {
     const labels = m.createPane("osxpLabels");
     labels.style.zIndex = "360";
     labels.style.pointerEvents = "none";
+    const areasPane = m.createPane("osxpZoneAreas");
+    areasPane.style.zIndex = "390"; // under the zones' outlines (overlayPane, 400)
+    areasPane.style.pointerEvents = "none";
     m.createPane("osxpTextureGrid").style.zIndex = "440"; // under the shape being drawn
     m.createPane("osxpDraft").style.zIndex = "450";
     const airportsPane = m.createPane("osxpAirports");
@@ -1323,6 +1334,7 @@ export function createPlanMap(ctx) {
     layers.grid = L.layerGroup().addTo(m);
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
+    layers.zoneAreas = L.layerGroup().addTo(m);
     layers.zones = L.layerGroup().addTo(m);
     layers.textureGrid = L.layerGroup().addTo(m);
     layers.draft = L.layerGroup().addTo(m);
@@ -2137,8 +2149,66 @@ export function createPlanMap(ctx) {
     }
   }
 
+  /** What the areas depend on: the zones in their order, their levels, sources and shapes, and
+   * the tiles' source (a zone without its own takes it). */
+  function areasKeyOf() {
+    return JSON.stringify([ctx.planProvider(), zs.zones.map((z) => [z.id, z.zl, z.provider || "", z.polygon])]);
+  }
+
+  /** Ask the engine again for the squares the zones take, once they have stopped changing. */
+  function scheduleAreas() {
+    if (!zs.loaded) return;
+    const key = areasKeyOf();
+    if (key === zs.areasKey) return;
+    clearTimeout(zs.areasTimer);
+    zs.areasTimer = setTimeout(() => fetchAreas(key), AREAS_DELAY_MS);
+  }
+
+  async function fetchAreas(key) {
+    zs.areasSeq += 1;
+    const mine = zs.areasSeq;
+    const zones = zs.zones.filter((z) => z.polygon.length >= 3).map(zoneForApi);
+    if (!zones.length) {
+      zs.areas = new Map();
+      zs.areasKey = key;
+      renderZoneAreas();
+      return;
+    }
+    try {
+      const answer = await ctx.api("POST", "/api/zones/cells", { zones, provider: ctx.planProvider() });
+      if (mine !== zs.areasSeq) return;
+      zs.areas = new Map((answer?.zones || []).map((z) => [z.id, z]));
+    } catch {
+      // a zone the engine refuses (its level, its shape) is already marked in the list: the
+      // areas are left out rather than shown for a document the build would not take
+      if (mine !== zs.areasSeq) return;
+      zs.areas = new Map();
+    }
+    zs.areasKey = key;
+    renderZoneAreas();
+    renderList();
+  }
+
+  /** The squares each zone takes, under its outline: the sharp area as it will be built, which
+   * runs in straight lines up to a square beyond what was drawn. Painted from the end of the
+   * list like the zones, so the first zone's area is on top. */
+  function renderZoneAreas() {
+    if (!map) return;
+    layers.zoneAreas.clearLayers();
+    for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
+      const z = zs.zones[i];
+      const a = zs.areas.get(z.id);
+      if (!a) continue;
+      for (const rings of a.area || []) {
+        const shape = rings.map((ring) => ring.map(([lon, lat]) => [lat, lon]));
+        layers.zoneAreas.addLayer(L.polygon(shape, { pane: "osxpZoneAreas", className: `osxp-zone-area zl-${z.zl}`, interactive: false, weight: 1.5 }));
+      }
+    }
+  }
+
   function renderZones() {
     if (!map) return;
+    scheduleAreas();
     layers.zones.clearLayers();
     // Painted from the end of the list, so the first zone (the one that wins) is on top.
     for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
@@ -2746,6 +2816,13 @@ export function createPlanMap(ctx) {
     }
     if (!z.provider && source && Number.isInteger(source.max_zl) && z.zl > source.max_zl) {
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.above_source", { provider: source.name || source.code, level: detailName(source.max_zl) })));
+    }
+    const area = zs.areas.get(z.id);
+    if (area && area.count === 0) {
+      // under the zones above it in the list, which take every square it covers (idea 7)
+      notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.takes_none")));
+    } else if (area) {
+      notes.append(h("span", { class: "zone-hint num", title: t("zones.cells_title") }, t("zones.cells", { n: fmtInt(area.count) })));
     }
     const mark = zs.marks.get(z.id);
     if (mark) notes.append(h("span", { class: "zone-hint zone-hint-fail" }, t("zones.invalid", { reason: mark.reason })));

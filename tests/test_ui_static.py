@@ -7655,3 +7655,35 @@ def test_only_the_pressed_flight_plan_button_says_it_reads() -> None:
     assert 'flightPlanLoading === "simbrief" ? t("flightplan.loading")' in render
     assert 'flightPlanLoading === "file" ? t("flightplan.opening")' in render
     assert 'flightPlanLoading = "file";' in code and 'flightPlanLoading = "simbrief";' in code
+
+
+def test_the_map_shows_the_squares_each_zone_takes() -> None:
+    """Every square a zone touches takes its level, so the sharp area runs past the outline, and a
+    zone under the zones above it may take none: seen only in X-Plane until the map drew them
+    (idea 7, 2026-10-11). The page asks the engine (POST /api/zones/cells) once the zones stop
+    changing, draws each area under its zone's outline, and the list says how many it takes."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", code, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    fetch = body("fetchAreas")
+    assert 'ctx.api("POST", "/api/zones/cells", { zones, provider: ctx.planProvider() })' in fetch
+    assert "if (mine !== zs.areasSeq) return;" in fetch, "only the last answer is drawn"
+    assert "scheduleAreas();" in body("renderZones")
+    areas = body("renderZoneAreas")
+    assert 'pane: "osxpZoneAreas"' in areas and "osxp-zone-area zl-${z.zl}" in areas
+    item = body("zoneItem")
+    assert 't("zones.takes_none")' in item and 't("zones.cells", { n: fmtInt(area.count) })' in item
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".plan-map .osxp-zone-area {" in css
+    # the demo answers, and a zone inside the one above it takes none there too
+    doc = _mock_json("zones")
+    got = _node_mock(
+        "const r = await m.mockApi('POST', '/api/zones/cells', {zones: "
+        + json.dumps(doc["zones"])
+        + ", provider: 'BI'});\nprocess.stdout.write(JSON.stringify(r));"
+    )
+    assert [z["id"] for z in got["zones"]] == [z["id"] for z in doc["zones"]]

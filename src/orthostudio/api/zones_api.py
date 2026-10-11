@@ -20,6 +20,11 @@ revision (quoted or not), else ``409 ZONE_CONFLICT`` and nothing is written: two
 overwrite each other's zones. Without ``If-Match`` (the command line, a script) nothing is
 compared.
 
+``POST /api/zones/cells`` takes the zones the page holds, saved or not (``{zones, provider}``), and
+answers the squares of about 1 km each will take, as the build takes them
+(:func:`orthostudio.zone_cells.zone_cells`): ``{mesh_zl, zones: [{id, count, cells}]}`` (idea 7,
+2026-10-11).
+
 Errors are ``OsxpError`` in the API's one JSON shape (``{"error": error_json(...)}``):
 ``ZONE_CONFLICT`` answers ``409``, the other ``ZONE_*`` codes ``422`` whatever the application
 maps them to; any other code (a failed write) goes to the application's ``OsxpError`` handler.
@@ -39,6 +44,7 @@ from fastapi.responses import JSONResponse
 from orthostudio.api.jobs import error_json
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.providers import Provider
+from orthostudio.zone_cells import zone_cells
 from orthostudio.zones import (
     default_zones_path,
     parse_zones_document,
@@ -87,12 +93,14 @@ def zones_router(
     zones_path: Callable[[], Path] = default_zones_path,
     *,
     registry: Callable[[], Mapping[str, Provider]] | None = None,
+    mesh_zl_of: Callable[[], int] = lambda: 19,
 ) -> APIRouter:
     """The router of ``/api/zones``.
 
     ``zones_path`` is called at every request (default ``$OSXP_HOME/zones.json``, so a test
     changing ``OSXP_HOME`` is followed); ``registry`` gives the providers the zones are checked
-    against (default: the embedded registry).
+    against (default: the embedded registry); ``mesh_zl_of`` the mesh level of Settings, which
+    sets the size of the cells ``/api/zones/cells`` answers.
     """
     router = APIRouter()
     # a save compares the revision, keeps the .bak and renames without another save in between
@@ -143,5 +151,28 @@ def zones_router(
                 return _zone_error(exc)
             raise
         return _document(answer, revision)
+
+    @router.post("/api/zones/cells")
+    async def zone_cells_route(body: Annotated[Any, Body()]) -> Any:
+        """The squares the zones the page holds will take: drawn on the map once a zone is closed
+        or changed, so that what is seen there is what the build makes (idea 7)."""
+
+        def run() -> dict[str, Any]:
+            raw = body if isinstance(body, dict) else {}
+            doc = parse_zones_document(
+                {"format": "osxp-zones-1", "zones": raw.get("zones") or []},
+                registry=providers(),
+            )
+            mesh_zl = int(mesh_zl_of())
+            provider = str(raw.get("provider") or "BI")
+            cells = zone_cells(doc.zones, provider, mesh_zl=mesh_zl, registry=providers())
+            return {"mesh_zl": mesh_zl, "zones": cells}
+
+        try:
+            return await asyncio.to_thread(run)
+        except OsxpError as exc:
+            if exc.code.startswith("ZONE_"):
+                return _zone_error(exc)
+            raise
 
     return router

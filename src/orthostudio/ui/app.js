@@ -1091,6 +1091,25 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
     return mockFile("flightplan");
   }
+  if (p === "/api/zones/cells" && method === "POST") {
+    // The squares the zones take, as the engine answers: here each zone's own outline stands in
+    // for its squares, and a zone wholly inside one above it takes none.
+    const zones = Array.isArray(body?.zones) ? body.zones : [];
+    const box = (poly) => {
+      const lons = poly.map((p) => p[0]);
+      const lats = poly.map((p) => p[1]);
+      return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+    };
+    const within = (a, b) => a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[3] <= b[3];
+    return {
+      mesh_zl: 19,
+      zones: zones.map((z, i) => {
+        const b = box(z.polygon);
+        const hidden = zones.slice(0, i).some((above) => within(b, box(above.polygon)));
+        return { id: z.id, count: hidden ? 0 : Math.max(1, Math.round((b[2] - b[0]) * (b[3] - b[1]) * 12000)), area: hidden ? [] : [[z.polygon]] };
+      }),
+    };
+  }
   if (p === "/api/flightplan/file" && method === "POST") {
     // A plan file as the engine answers it once the dialog is answered: the demo's one plan.
     return { ...(await mockFile("flightplan")), chosen: true, file: "LFMN-LSGG.lnmpln", folder: "/demo" };
@@ -2291,7 +2310,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 30;
+const PAGE_API_LEVEL = 31;
 
 async function loadStatus() {
   try {

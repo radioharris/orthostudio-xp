@@ -28,7 +28,9 @@ the measurements, `docs/benchmarks/`.
   (airports, places you fly low). A zone sharpens whole squares of about 1 km, every one it
   covers a part of: everything you draw is at least at its level, and the sharp area ends on
   those squares' edges, up to a square beyond your outline (a small helipad where four squares
-  meet sharpens the four).
+  meet sharpens the four). The Plan's map shows those squares, pale and dashed under each zone,
+  and the list of zones says how many each takes, or that one takes none because the zones above
+  it in the list already take every square it covers.
 - **Overlay**: roads, buildings, forests, power lines and night lighting. They live in the same
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,

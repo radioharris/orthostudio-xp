@@ -150,6 +150,19 @@ helipad where four cells meet takes the four. The build still names a zone that 
 which now happens only under the zones above it in the list, or below a pixel. The colours,
 which are ours and not Ortho4XP's, follow the ring itself.
 
+**The cells are shown before the build** (idea 7, 2026-10-11: they were seen only in X-Plane).
+Once the zones have stopped changing for 400 ms, the page sends them, saved or not, with the
+tiles' source to `POST /api/zones/cells` (`{zones, provider}`). The engine finds the cells with
+the build's own code (`zone_cells.zone_cells`: `zones_for_tile` zone by zone, `_zone_image`,
+`cell_edges`, `cells_touched`, at the `mesh_zl` of Settings) and answers each zone's `count` and
+its `area`, the cells merged into polygons (`[[lon, lat], ...]` rings, outer first, then holes): a
+zone over a whole tile is about twelve thousand cells and one outline. Checked against
+`dsf.zones.texture_map`, what the DSF is written from (`tests/test_zone_cells.py`). The map draws
+each area pale and dashed in the zone's colour, under its outline (pane `osxpZoneAreas`, z 390),
+and the list says *N squares of about 1 km*, or *This zone takes no square* when the zones above
+it take every one it covers. A document the engine refuses (a level too high) draws no area: the
+zone is marked in the list already. Nothing is written.
+
 ## 4. From zones to a tile's `zone_list` (`src/orthostudio/zones.py`)
 
 ```python

@@ -150,7 +150,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 30
+API_LEVEL = 31
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -184,7 +184,8 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 /api/disk`` (``filed_tiles``, ``filed_bytes``, ``filed_images_bytes``) and ``POST /api/clean``
 (``filed``, ``filed_freed_bytes``), 30 = the setting ``expert.flatten_helipads`` and the answer
 ``roads`` of ``essential.overlays`` (an older engine refuses a settings document that holds them),
-and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file). A page
+and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = ``POST
+/api/zones/cells`` (the squares each zone takes, drawn on the map). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -888,7 +889,7 @@ def create_app(
     app.add_middleware(_SlowAnswers)
     # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
     # its own lifespan, which closes its upstream fetchers when the server stops.
-    app.include_router(zones_router())
+    app.include_router(zones_router(mesh_zl_of=lambda: int(settings().expert.mesh_zl)))
     app.include_router(map_router(fetch=map_fetch))
     app.include_router(basemap_router())
     manager = jobs if jobs is not None else JobManager(env_factory=env_factory)
