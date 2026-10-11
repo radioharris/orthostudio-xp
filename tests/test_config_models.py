@@ -113,7 +113,7 @@ def test_relief_file_required_with_source_file() -> None:
         ("advanced", "road_level", 6),
         ("advanced", "ratio_water_pct", 101),
         ("advanced", "curvature_tol", 0),
-        ("advanced", "limit_tris", 5.5),
+        ("advanced", "limit_tris", 50),
         ("expert", "mesh_zl", 15),
         ("expert", "mask_zl", 17),
         ("expert", "min_angle", 31),
@@ -126,6 +126,14 @@ def test_bounds_and_enums(level: str, field: str, bad: object) -> None:
         settings_from_dict({level: {field: bad}})
     assert info.value.code == "CFG_VALUE_INVALID"
     assert info.value.context["name"] == f"{level}.{field}"
+
+
+def test_limit_tris_goes_as_far_as_ortho4xp() -> None:
+    """Ortho4XP takes limit_tris up to just under 50 million triangles (50 or more reads as 5): a
+    fine relief with a low curvature_tol reached the 5 that OrthoStudio XP stopped at, and the
+    advice to raise it could not be followed (idea #12, 2026-10-11)."""
+    assert settings_from_dict({"advanced": {"limit_tris": 20}}).advanced.limit_tris == 20
+    assert settings_from_dict({"advanced": {"limit_tris": 49.5}}).advanced.limit_tris == 49.5
 
 
 def test_settings_from_dict_ignores_unknown_keys(caplog: pytest.LogCaptureFixture) -> None:

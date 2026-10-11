@@ -531,6 +531,7 @@ export function rangeText(prop, unit = "") {
   const u = !unit || unit === "ZL" ? "" : unit === "°" ? unit : ` ${unit}`;
   let range = "";
   if (known(prop.minimum) && known(prop.maximum)) range = t("settings.x.range_between", { min: num(prop.minimum), max: num(prop.maximum) + u });
+  else if (known(prop.minimum) && known(prop.exclusiveMaximum)) range = t("settings.x.range_between_under", { min: num(prop.minimum), max: num(prop.exclusiveMaximum) + u });
   else if (known(prop.minimum)) range = t("settings.x.range_at_least", { min: num(prop.minimum) + u });
   else if (known(prop.exclusiveMinimum)) range = t("settings.x.range_above", { min: num(prop.exclusiveMinimum) + u });
   const byDefault = known(prop.default) ? t("settings.x.range_default", { value: num(prop.default) + u }) : "";

@@ -610,7 +610,8 @@ required with `file` (`config/models.py:107-120`).
 
 ### 3.2 `advanced.limit_tris`
 
-`limit_tris` · 3 (millions) · 0 to 5 in OrthoStudio XP (Ortho4XP took any value; 0 or ≥ 50 meant 5).
+`limit_tris` · 3 (millions) · 0 to just under 50, as in Ortho4XP, where 0 means 5 (Ortho4XP took any value
+and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped at 5).
 
 - **Does.** Limits the points Triangle4XP may add to `max(limit × 10⁶ / 1.9 − input nodes, 500 000)`
   (Ortho4XP `O4_Mesh_Utils.py:640-650`; OrthoStudio XP `mesh/build.py:213-224`). The final count is

@@ -301,9 +301,9 @@
     "limit_tris": {
      "default": 3.0,
      "description": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
+     "exclusiveMaximum": 50,
      "hint": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
      "level": "advanced",
-     "maximum": 5,
      "minimum": 0,
      "ortho4xp": "limit_tris",
      "title": "Limit Tris",

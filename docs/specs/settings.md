@@ -93,7 +93,7 @@ the sources with their maximum zoom level.
 | OrthoStudio XP | type / validation | unit | default | Ortho4XP | hint |
 |---|---|---|---|---|---|
 | `curvature_tol` | float `> 0` | - | 2 | `curvature_tol` | This parameter is intrinsically linked the mesh final density. [...] A higher curvature tolerance yields fewer triangles. |
-| `limit_tris` | float `[0, 5]` | M triangles | 3 | `limit_tris` | If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it. |
+| `limit_tris` | float `[0, 50)` | M triangles | 3 | `limit_tris` | If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it. |
 | `road_level` | int E `0..5` | - | 1 | `road_level` | Allows to level the mesh along roads and railways. Zero means nothing such is included; "1" looks for banking ways among motorways, primary and secondary roads and railway tracks; "2" adds tertiary roads; "3" brings residential and unclassified roads; "4" takes service roads, and 5 finishes with tracks. [...] |
 | `min_area` | float `>= 0` | km² | 0.001 | `min_area` | Minimum area (in km^2) a water patch needs to be in order to be included in the mesh as such. Contiguous water patches are merged before area computation. |
 | `max_area` | float `>= 0` | km² | 200 | `max_area` | Any water patch larger than this quantity (in km^2) will be masked like the sea. |

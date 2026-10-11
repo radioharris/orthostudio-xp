@@ -6284,6 +6284,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
             [{ exclusiveMinimum: 0, default: 2 }, ""],
             [{ default: 19 }, "ZL"],
             [{ minimum: 14, maximum: 20, default: 18 }, "ZL"],
+            [{ minimum: 0, exclusiveMaximum: 50, default: 3 }, "million"],
             [{}, ""],
           ];
           return cases.map(([prop, unit]) => m.rangeText(prop, unit));
@@ -6295,6 +6296,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
         "More than 0, 2 by default.",
         "ZL19 by default.",
         "From ZL14 to ZL20, ZL18 by default.",
+        "From 0 to less than 50 million, 3 million by default.",
         "",
     ]
     code = (UI / "settings.js").read_text(encoding="utf-8")

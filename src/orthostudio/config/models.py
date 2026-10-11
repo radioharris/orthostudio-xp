@@ -224,7 +224,7 @@ class Advanced(BaseModel):
     model_config = _FROZEN
 
     curvature_tol: float = _field(2.0, "advanced", "curvature_tol", "", gt=0)
-    limit_tris: float = _field(3.0, "advanced", "limit_tris", "M", ge=0, le=5)
+    limit_tris: float = _field(3.0, "advanced", "limit_tris", "M", ge=0, lt=50)
     road_level: Literal[0, 1, 2, 3, 4, 5] = _field(1, "advanced", "road_level", "")
     min_area: float = _field(0.001, "advanced", "min_area", "km²", ge=0)
     max_area: float = _field(200.0, "advanced", "max_area", "km²", ge=0)
