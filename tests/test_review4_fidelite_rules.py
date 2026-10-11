@@ -120,6 +120,7 @@ def test_the_native_rules_declare_exactly_the_values_their_computation_reads() -
         "fill_nodata",
         "dem1_local_fallback",
         "own_stamp",
+        "own_relief_first",  # idea 9: one's own files first even where coarser
     }
 
 

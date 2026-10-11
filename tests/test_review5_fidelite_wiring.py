@@ -55,13 +55,14 @@ def test_the_parameters_are_ortho4xps_stage_1_minus_two_documented_absences() ->
     The two absences are the ones the rule's docstring justifies: ``custom_dem`` / ``fill_nodata``
     enter through the ``orthostudio.dem@1`` input, which is stronger. The one field the native
     side has and Ortho4XP has not is ``exact_grid_order``, a fidelity switch of the noder
-    (``airports-integration.md`` 5), besides the ``tile`` every stage keys on. Any *other*
+    (``airports-integration.md`` 5), and ``flatten_helipads``, OrthoStudio XP's own setting
+    (idea 8, 2026-10-11), besides the ``tile`` every stage keys on. Any *other*
     divergence is a silently wrong cache, so this test is the alarm for a parameter added on one
     side only.
     """
     native = set(VectorsParams.model_fields)
     assert STAGE_1_VARIABLES - native == {"custom_dem", "fill_nodata"}
-    assert native - STAGE_1_VARIABLES == {"exact_grid_order", "tile"}
+    assert native - STAGE_1_VARIABLES == {"exact_grid_order", "flatten_helipads", "tile"}
 
 
 def test_every_declared_parameter_changes_the_artefact_key() -> None:
@@ -82,6 +83,7 @@ def test_every_declared_parameter_changes_the_artefact_key() -> None:
         "mesh_zl": 17,
         "apt_smoothing_pix": 4,
         "exact_grid_order": True,
+        "flatten_helipads": False,
     }
     assert set(changed) == set(VectorsParams.model_fields)
     for name, value in changed.items():

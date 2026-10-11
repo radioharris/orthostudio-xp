@@ -228,7 +228,7 @@ def build_layers(request: object) -> LayerBuild:
     road_level = int(params.road_level)
     airport_params = _airport_params(
         int(params.apt_smoothing_pix),
-        flatten_helipads=bool(getattr(params, "flatten_helipads", True)),
+        flatten_helipads=bool(params.flatten_helipads),
     )
 
     # -- airports, steps 1 to 9 of include_airports (:196-213) -----------------------------
