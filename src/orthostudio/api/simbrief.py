@@ -2,7 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The last flight plan of a pilot, from SimBrief, as squares to build.
 
-``GET /api/flightplan/simbrief``, and ``POST /api/flightplan`` for a route the page kept.
+``GET /api/flightplan/simbrief``, ``POST /api/flightplan`` for a route the page kept, and
+``POST /api/flightplan/file`` for a plan file the user chooses (Little Navmap's ``.lnmpln`` or
+X-Plane's ``.fms``, :mod:`orthostudio.planfile`, idea 11).
 
 The Plan chooses the squares a flight goes over, and typing the airports is not what a pilot who
 already filed a plan wants to do. SimBrief, which most of them use, serves the last plan of a user
@@ -27,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -39,6 +42,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from orthostudio.api.jobs import error_json
 from orthostudio.errors import OsxpError
 from orthostudio.flightplan import has_scenery, plan_of
+from orthostudio.fsutil import choose_file
+from orthostudio.planfile import PLAN_SUFFIXES, read_plan_file
 
 log = logging.getLogger("orthostudio.api.simbrief")
 
@@ -68,6 +73,26 @@ class RoutePoint(BaseModel):
     name: str = Field(default="", max_length=60)
     lat: float = Field(ge=-90.0, le=90.0)
     lon: float = Field(ge=-180.0, le=180.0)
+
+
+class PlanFileRequest(BaseModel):
+    """Open a flight plan file: the dialog's words, where it opens, the radius of the squares."""
+
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(default="Open a flight plan", max_length=120)
+    start: str | None = Field(default=None, max_length=1024)
+    radius_km: float = Field(default=RADIUS_KM, ge=0.0, le=300.0)
+
+
+def plan_folders(global_scenery: Path | None) -> list[Path]:
+    """Where a pilot's plans are, in the order the dialog prefers them: Little Navmap's own folder,
+    then X-Plane's, then the home folder."""
+    home = Path.home()
+    out = [home / "Documents" / "Little Navmap Files" / "Flight Plans"]
+    if global_scenery is not None:
+        out.append(Path(global_scenery).parent / "Output" / "FMS plans")
+    out.append(home)
+    return out
 
 
 class KeptRoute(BaseModel):
@@ -186,19 +211,40 @@ def _failed(code: str, status: int, context: dict[str, Any] | None = None) -> JS
     return JSONResponse({"error": error_json(err)}, status_code=status)
 
 
+def _plain(code: str, message: str, remedy: str, status: int) -> JSONResponse:
+    """An answer for a code the registry does not hold (``SYS_BUSY``, ``SYS_NO_FOLDER_DIALOG``),
+    in the engine's one error shape, as ``api.app`` answers them for the folder dialog."""
+    body = {
+        "schema": 1,
+        "code": code,
+        "domain": code.split("_", 1)[0],
+        "severity": "blocking",
+        "action": "stop",
+        "message": message,
+        "remedy": remedy,
+        "context": {},
+        "cause": None,
+    }
+    return JSONResponse({"error": body}, status_code=status)
+
+
 def simbrief_router(
     user_of: Callable[[], str | None],
     *,
     global_scenery_of: Callable[[], Path | None] = lambda: None,
     fetch: Callable[[str], tuple[bytes | None, str]] | None = None,
+    file_dialog: Callable[[str, Path | None, tuple[str, ...]], Path | None] | None = None,
 ) -> APIRouter:
     """The router: ``app.include_router(simbrief_router(lambda: settings...simbrief_user, ...))``.
 
     ``user_of`` and ``global_scenery_of`` are called on each request, so a name or an X-Plane
     folder changed in Settings is honoured without a restart. ``fetch`` replaces the upstream
-    request, which is how the tests run without a network.
+    request, which is how the tests run without a network; ``file_dialog`` replaces the platform's
+    file dialog, which is how they run without one opening.
     """
     ask = fetch if fetch is not None else _fetch
+    choose = file_dialog if file_dialog is not None else choose_file
+    dialog_open = asyncio.Lock()
     router = APIRouter()
 
     async def answer(line: dict[str, Any], radius_km: float, how: str) -> dict[str, Any]:
@@ -250,5 +296,40 @@ def simbrief_router(
             "points": [p.model_dump() for p in route.points],
         }
         return await answer(line, route.radius_km, "kept")
+
+    @router.post("/api/flightplan/file")
+    async def plan_file(req: PlanFileRequest) -> Any:
+        """A flight plan file the user chooses in the platform's dialog: its line and its squares.
+        ``{chosen: false}`` when the dialog was cancelled; the file is read once, not kept, and
+        its folder comes back so that the page opens the next dialog there."""
+        if dialog_open.locked():
+            return _plain(
+                "SYS_BUSY",
+                "A file dialog is already open.",
+                "Answer it (it may be behind another window), then try again.",
+                409,
+            )
+        wanted = Path(req.start).expanduser() if req.start else None
+        candidates = [wanted] if wanted is not None else []
+        candidates += plan_folders(global_scenery_of())
+        start = next((p for p in candidates if p.is_dir()), None)
+        async with dialog_open:
+            try:
+                chosen = await asyncio.to_thread(choose, req.prompt, start, PLAN_SUFFIXES)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return _plain(
+                    "SYS_NO_FOLDER_DIALOG",
+                    f"No file dialog could be opened on this computer ({exc}).",
+                    "On Linux, installing zenity gives the button its dialog.",
+                    501,
+                )
+        if chosen is None:
+            return {"chosen": False}
+        try:
+            line = await asyncio.to_thread(read_plan_file, chosen)
+        except OsxpError as err:
+            return JSONResponse({"error": error_json(err)}, status_code=422)
+        answered = await answer(line, req.radius_km, "file")
+        return {**answered, "chosen": True, "file": chosen.name, "folder": str(chosen.parent)}
 
     return router

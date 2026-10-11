@@ -1291,6 +1291,7 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
    Beside the words, the button stood against their last line (a user, 2026-09-25). */
 .flightplan { margin-top: var(--gap); }
 .flightplan > .btn { margin-bottom: var(--gap); }
+.flightplan-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--gap); }
 /* The flight plan once read: its route, then its two groups of squares, each with its level on the
    right, in two columns so the lists line up (a user, 2026-09-22), then what did not fit. */
 .flightplan-found {

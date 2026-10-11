@@ -45,8 +45,9 @@ experimental.
   anything.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
-- **The squares of a flight plan.** Your last SimBrief plan chooses the squares along its route,
-  within the radius you set.
+- **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap
+  (`.lnmpln`) or exported for X-Plane (`.fms`), chooses the squares along its route, within the
+  radius you set.
 - **Hand-made mesh patches**, those published for Ortho4XP included, read as they come.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
   only what it touches, and imagery is never downloaded twice.

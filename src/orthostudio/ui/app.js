@@ -1091,6 +1091,10 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
     return mockFile("flightplan");
   }
+  if (p === "/api/flightplan/file" && method === "POST") {
+    // A plan file as the engine answers it once the dialog is answered: the demo's one plan.
+    return { ...(await mockFile("flightplan")), chosen: true, file: "LFMN-LSGG.lnmpln", folder: "/demo" };
+  }
   if (p === "/api/flightplan" && method === "POST") {
     // A kept route computed again: the demo has one plan, the one it kept.
     return mockFile("flightplan");
@@ -2287,7 +2291,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 29;
+const PAGE_API_LEVEL = 30;
 
 async function loadStatus() {
   try {
@@ -3257,6 +3261,44 @@ async function loadFlightPlan() {
   }
 }
 
+/** The folder the plan file dialog opened last, so the next one opens there. */
+const PLAN_FOLDER_KEY = "osxp.planFolder";
+
+/**
+ * Step 1's other button: a flight plan file the pilot chooses in the system's own dialog, saved by
+ * Little Navmap (.lnmpln) or exported for X-Plane (.fms) (idea 11, 2026-10-11). The engine opens
+ * the dialog and reads the file; its route then goes the way of a SimBrief plan.
+ */
+async function openFlightPlanFile() {
+  if (flightPlanLoading) return;
+  flightPlanLoading = true;
+  showFlightPlanError(null);
+  renderFlightPlan();
+  try {
+    const r = Math.max(1, Math.min(300, Number($("radius-input").value) || 15));
+    let start = null;
+    try {
+      start = localStorage.getItem(PLAN_FOLDER_KEY);
+    } catch {
+      /* the storage is refused: the engine chooses the folder */
+    }
+    const plan = await api("POST", "/api/flightplan/file", { radius_km: r, prompt: t("flightplan.open_prompt"), start });
+    if (!plan?.chosen) return;
+    try {
+      localStorage.setItem(PLAN_FOLDER_KEY, plan.folder);
+    } catch {
+      /* not kept: the next dialog opens in the engine's choice */
+    }
+    replaceFlightPlan(plan);
+  } catch (err) {
+    const d = errorDetail(err);
+    showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
+  } finally {
+    flightPlanLoading = false;
+    renderFlightPlan();
+  }
+}
+
 /** A plan in place of the one before: its squares chosen, its levels at their defaults. */
 function replaceFlightPlan(plan) {
   if (state.flightPlan) state.tiles = withoutPlan(state.tiles, state.flightPlan, state.byHand);
@@ -3362,6 +3404,7 @@ function renderFlightPlan() {
   if (!load) return;
   load.disabled = flightPlanLoading;
   load.textContent = flightPlanLoading ? t("flightplan.loading") : t("flightplan.load");
+  $("flightplan-open").disabled = flightPlanLoading;
   const fp = state.flightPlan;
   $("flightplan-found").hidden = !fp;
   if (!fp) return;
@@ -6761,6 +6804,7 @@ async function boot() {
     planMap?.planChanged();
   });
   $("flightplan-load").addEventListener("click", loadFlightPlan);
+  $("flightplan-open").addEventListener("click", openFlightPlanFile);
   $("flightplan-delete").addEventListener("click", deleteFlightPlan);
   $("flightplan-recenter").addEventListener("click", () => planMap?.fitRoute());
   for (const group of ["ends", "along"]) {
