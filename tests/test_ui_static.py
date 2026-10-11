@@ -3192,16 +3192,21 @@ def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> No
     other one, and both answers say why."""
     doc = _mock_json("settings")
     plain = _node_json("settings.js", f"m.questionChoices('overlays', {json.dumps(doc)}, {{}})")
-    assert [c["value"] for c in plain] == ["xplane", "none"]
+    assert [c["value"] for c in plain] == ["xplane", "roads", "none"]
     assert plain[0]["recommended"] and not plain[1].get("recommended")
+    assert not plain[2].get("recommended")
     assert not plain[0].get("note")
 
     found = _node_json(
         "settings.js",
         f"m.questionChoices('overlays', {json.dumps(doc)}, {{ownScenery: ['simHeaven X-World']}})",
     )
-    assert not found[0].get("recommended") and found[1]["recommended"]
-    assert "simHeaven X-World" in found[0]["note"] and "simHeaven X-World" in found[1]["note"]
+    assert not found[0].get("recommended") and found[2]["recommended"]
+    assert not found[1].get("recommended"), "roads only is a choice, never the recommendation"
+    for choice in found:
+        assert "simHeaven X-World" in choice["note"]
+    # idea 6: with such a pack, roads only means turning its own roads off
+    assert "two road networks" in found[1]["note"]
 
 
 def test_questions_offer_valid_answers_and_one_recommended_each() -> None:

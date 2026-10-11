@@ -199,12 +199,13 @@
     },
     "overlays": {
      "default": "xplane",
-     "description": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+     "description": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps X-Plane's roads, railways and power lines alone, for a pack that brings its own forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
      "enum": [
       "xplane",
+      "roads",
       "none"
      ],
-     "hint": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+     "hint": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps X-Plane's roads, railways and power lines alone, for a pack that brings its own forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
      "level": "essential",
      "ortho4xp": null,
      "title": "Overlays",

@@ -164,16 +164,17 @@ class Essential(BaseModel):
         description="Elevation source: the global DEM, or a local raster file.",
         json_schema_extra={"level": "essential"},
     )
-    overlays: Literal["xplane", "none"] = _field(
+    overlays: Literal["xplane", "roads", "none"] = _field(
         "xplane",
         "essential",
         None,
         "",
         hint=(
             "Roads, railways, power lines, forests and buildings over the photo tiles, taken "
-            "from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds "
-            "none and takes a tile's own out of X-Plane when it is built again, for simHeaven "
-            "X-World or another pack that brings them."
+            "from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps "
+            "X-Plane's roads, railways and power lines alone, for a pack that brings its own "
+            "forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when "
+            "it is built again, for simHeaven X-World or another pack that brings them."
         ),
     )
     photo_look: Literal["as_delivered", "softer", "much_softer", "custom"] = _field(

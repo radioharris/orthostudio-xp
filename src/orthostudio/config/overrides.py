@@ -13,7 +13,12 @@ from typing import Any
 
 from orthostudio.config.models import Advanced, Settings
 
-__all__ = ["AIRPORT_MODES", "to_build_overrides"]
+__all__ = ["AIRPORT_MODES", "ROADS_ONLY_EXCLUSION", "to_build_overrides"]
+
+ROADS_ONLY_EXCLUSION = "."
+"""The ``ovl_exclude_pol`` item that keeps X-Plane's network alone: a user of simHeaven X-World Pro
+did it by hand in the expert field (2026-10-04); the answer « roads » of the overlay question does
+it for him (idea 6, 2026-10-11)."""
 
 AIRPORT_MODES: dict[str, str] = {
     "off": "False",
@@ -159,4 +164,9 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
     for osxp_name, ortho4xp_name in _SAME:
         value = getattr(a, osxp_name) if osxp_name in _ADVANCED else getattr(x, osxp_name)
         out[ortho4xp_name] = list(value) if isinstance(value, list) else value
+    if e.overlays == "roads":
+        # X-Plane's network alone (idea 6): every polygon definition has a dot in its file name
+        # (.for, .agp, .fac...), so "." leaves out the forests and buildings and keeps the roads,
+        # railways, power lines and their bridges, which are the network (``overlays.md``).
+        out["ovl_exclude_pol"] = [*out["ovl_exclude_pol"], ROADS_ONLY_EXCLUSION]
     return out

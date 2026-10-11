@@ -141,6 +141,12 @@ def test_the_photo_look_and_the_decals_on_the_sea_reach_the_build() -> None:
     assert to_build_overrides(Settings())["decal"] == "maquify_2_green_key.dcl"
     grass = Settings(expert=Expert(decal="grass_and_stony_dirt_1.dcl"))
     assert to_build_overrides(grass)["decal"] == "grass_and_stony_dirt_1.dcl"
+    # idea 6: roads only keeps X-Plane's network, the user's own exclusions kept
+    assert to_build_overrides(Settings())["ovl_exclude_pol"] == [0]
+    roads = Settings(
+        essential=Essential(overlays="roads"), expert=Expert(ovl_exclude_pol=[0, ".for"])
+    )
+    assert to_build_overrides(roads)["ovl_exclude_pol"] == [0, ".for", "."]
     # idea #8: helipads flattened unless the user says no, as Ortho4XP always does
     assert to_build_overrides(Settings())["flatten_helipads"] is True
     off = Settings(expert=Expert(flatten_helipads=False))

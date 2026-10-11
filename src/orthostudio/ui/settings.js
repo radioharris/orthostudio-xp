@@ -325,6 +325,11 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
           recommended: !brought,
         },
         {
+          value: "roads",
+          label: t("settings.q.overlays_roads"),
+          note: brought ? t("settings.q.overlays_roads_twice", { pack: brought }) : t("settings.q.overlays_roads_note"),
+        },
+        {
           value: "none",
           label: t("settings.q.overlays_none"),
           note: brought ? t("settings.q.overlays_found", { pack: brought }) : t("settings.q.overlays_none_note"),
@@ -409,7 +414,9 @@ export function settingsSummary(settings) {
   else if (relief === "south_america") parts.push(t("plan.s.relief_anadem"));
   else parts.push(t("plan.s.relief_auto"));
   if (relief !== "file" && String(e.relief?.folder || "").trim()) parts.push(t("plan.s.relief_own"));
-  parts.push(e.overlays === "none" ? t("plan.s.overlays_none") : t("plan.s.overlays_xplane"));
+  if (e.overlays === "none") parts.push(t("plan.s.overlays_none"));
+  else if (e.overlays === "roads") parts.push(t("plan.s.overlays_roads"));
+  else parts.push(t("plan.s.overlays_xplane"));
   return parts;
 }
 

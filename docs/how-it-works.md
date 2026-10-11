@@ -36,7 +36,10 @@ the measurements, `docs/benchmarks/`.
   its own, answer *None* to the Settings question on roads, forests and buildings; when OrthoStudio
   XP finds such a pack in your Custom Scenery it says so beside the question, and on a first run it
   answers *None* for you: OrthoStudio XP
-  then builds no overlay, and a tile built again takes its old one out of X-Plane. A
+  then builds no overlay, and a tile built again takes its old one out of X-Plane. A third answer,
+  *X-Plane's roads, railways and power lines only*, leaves X-Plane's forests and buildings out:
+  for a pack that brings its own but whose roads you would rather replace by X-Plane's (turn that
+  pack's roads off then, or you have two road networks). Bridges belong to the roads and stay. A
   `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled. One thing is left behind on
   purpose: the line X-Plane 12 draws around airport grass to blend it into the terrain. Over a
   photograph it has nothing to blend and shows as an outline around every airfield, so it is

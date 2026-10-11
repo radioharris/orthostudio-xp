@@ -1041,12 +1041,13 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    refused), and that the folder must be outside X-Plane's
    Custom Scenery, where OrthoStudio XP puts its own links (a user typed his Custom Scenery there
    and was only refused once he had saved, 2026-09-17), then roads,
-   forests and buildings (X-Plane's / none,
+   forests and buildings (X-Plane's / X-Plane's roads, railways and power lines only / none,
    `essential.overlays`, whose sentence starts "Using simHeaven X-World? Choose “None from
    OrthoStudio XP”", since a user looked for the simHeaven option and did not find it at the end of
    the list; **when the engine finds such a pack in Custom Scenery** the question answers itself:
    `xplane.packs_of_their_own` of `/api/status` names it, *None* becomes the recommended answer and
-   both answers say why, because a user of the X-Plane.Org page had X-World installed, kept ours,
+   every answer says why (roads only, never recommended, tells to turn that pack's own roads off,
+   idea 6, 2026-10-11), because a user of the X-Plane.Org page had X-World installed, kept ours,
    and had everything drawn twice, 2026-09-20. On a **first run**, with no settings file yet, such
    a pack also makes *None* the answer *chosen*, written to the file so that the page, a build and
    the command line agree: a user who never opens Settings is the one this happened to. Nothing is

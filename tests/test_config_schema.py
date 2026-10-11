@@ -16,7 +16,7 @@ ENUMS = {
     "essential.airports.mode": ["off", "on", "icao", "existing"],
     "essential.coast_transition.profile": ["sand", "rocks", "3steps"],
     "essential.water_rendering": ["XP11 + bathy", "XP12"],
-    "essential.overlays": ["xplane", "none"],
+    "essential.overlays": ["xplane", "roads", "none"],
     "essential.relief.source": [
         "auto",
         "file",
