@@ -154,7 +154,10 @@ def test_pack_placed_at_the_top_by_xplane_12_is_not_moved_and_siblings_go_below_
 def test_real_ini_copy_two_tiles_and_overlay_keep_every_airport_above(tmp_path: Path) -> None:
     """Read-only use of the user's file: a copy in ``tmp_path`` receives two tiles and the
     overlay; every line above ``*GLOBAL_AIRPORTS*`` (the airports and landmarks) is unchanged,
-    the three new lines sit between ``yAutoOrtho_Overlays`` and ``z_ao_eur``."""
+    the three new lines sit together below it, every other line keeps its order, and they go just
+    above AutoOrtho when the file lists it. The file is whatever the user's X-Plane holds today:
+    the test once asked for ``yAutoOrtho_Overlays``, which left his list on 2026-10-10 with its
+    folder."""
     if not REAL_INI.is_file():
         pytest.skip("no X-Plane 12 scenery_packs.ini on this machine")
     real = REAL_INI.read_bytes()
@@ -180,11 +183,12 @@ def test_real_ini_copy_two_tiles_and_overlay_keep_every_airport_above(tmp_path: 
     k = before.index(b"SCENERY_PACK *GLOBAL_AIRPORTS*")
     assert after[: k + 1] == before[: k + 1]
     names = SceneryPacks.load(copy).names()
-    i = names.index("yAutoOrtho_Overlays")
-    assert names[i + 1 : i + 5] == [
-        "yOrthoStudio_Overlays",
-        "zOrthoStudio_+43+005",
-        "zOrthoStudio_+43+004",
-        "z_ao_eur",
-    ]
+    added = ["yOrthoStudio_Overlays", "zOrthoStudio_+43+005", "zOrthoStudio_+43+004"]
+    i = names.index(added[0])
+    assert names[i : i + 3] == added
+    assert i > names.index("*GLOBAL_AIRPORTS*")
+    assert [n for n in names if n not in added] == SceneryPacks.from_bytes(original).names()
+    autoortho = [n for n in names if n.startswith(("z_ao_", "z_autoortho"))]
+    if autoortho:
+        assert names[i + 3] == autoortho[0]
     assert (tmp_path / "scenery_packs.ini.bak").read_bytes() == original
