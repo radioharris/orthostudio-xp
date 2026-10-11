@@ -3207,6 +3207,7 @@ def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> No
         assert "simHeaven X-World" in choice["note"]
     # idea 6: with such a pack, roads only means turning its own roads off
     assert "roads pack of simHeaven X-World off" in found[1]["note"]
+    assert found[1]["note"].startswith("For whoever prefers X-Plane's roads")
 
 
 def test_questions_offer_valid_answers_and_one_recommended_each() -> None:
