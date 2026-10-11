@@ -33,7 +33,7 @@
 #define ALPHA 235 /* the Mac's 0.92 */
 #define BACKGROUND RGB(20, 20, 20)
 #define PANEL_W 560
-#define PANEL_H 140
+#define PANEL_H 120
 #define BAR_W 480
 #define BAR_H 8
 #define NOTE_H 44
@@ -53,7 +53,7 @@ static volatile LONG pressed; /* the notice's cross, clicked since live_note_clo
 /* What X-Plane's thread wants shown, under lock. */
 static struct {
     int panel;
-    wchar_t what[200], progress[120], building[120];
+    wchar_t what[200], progress[120];
     double fraction;
     int note, french, note_serial; /* note_serial: a new notice, its window made again */
     wchar_t text[200];
@@ -151,14 +151,13 @@ static void wake(void) {
     if (thread) PostThreadMessageW(thread_id, WM_LIVE_SYNC, 0, 0);
 }
 
-void live_panel_show(const char *what, const char *progress, const char *building, double fraction) {
+void live_panel_show(const char *what, const char *progress, double fraction) {
     if (!running()) return;
     EnterCriticalSection(&lock);
     if (!want.panel) look_at_xplane();
     want.panel = 1;
     wide(what, want.what, (int)(sizeof want.what / sizeof *want.what));
     wide(progress, want.progress, (int)(sizeof want.progress / sizeof *want.progress));
-    wide(building ? building : "", want.building, (int)(sizeof want.building / sizeof *want.building));
     want.fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
     LeaveCriticalSection(&lock);
     wake();
@@ -299,7 +298,6 @@ static void paint(HWND w, HDC to) {
         text_in(dc, L"OrthoStudio XP Live", title_font, RGB(153, 153, 153), 20, 12, 520, 20, DT_CENTER);
         text_in(dc, want.what, head_font, RGB(255, 255, 255), 20, 36, 520, 26, DT_CENTER);
         text_in(dc, want.progress, detail_font, RGB(204, 204, 204), 20, 64, 520, 20, DT_CENTER);
-        text_in(dc, want.building, detail_font, RGB(204, 204, 204), 20, 84, 520, 20, DT_CENTER);
         bar(dc, (PANEL_W - BAR_W) / 2, PANEL_H - 16 - BAR_H, BAR_W, RGB(77, 77, 77));
         bar(dc, (PANEL_W - BAR_W) / 2, PANEL_H - 16 - BAR_H, (int)(BAR_W * want.fraction), RGB(64, 153, 255));
     } else if (kind == NOTICE) {

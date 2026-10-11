@@ -118,7 +118,7 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define NOTE_EVERY_S 1.0f /* in flight: whether the streamer has a notice */
 
 /* The loading window and the notice (live_panel.m, live_panel_win.c, live_panel_x11.c). */
-void live_panel_show(const char *what, const char *progress, const char *building, double fraction);
+void live_panel_show(const char *what, const char *progress, double fraction);
 void live_panel_hide(void);
 void live_note_show(const char *text, int french); /* the notice, with its cross */
 void live_note_hide(void);
@@ -272,9 +272,9 @@ static void drain(void) {
 
 /* What the streamer says while X-Plane waits: "LIVE1 WAIT n=12 b=4 p=450 s=23 mbs=15.2 lang=en at=LFBO runway
    14L" is 12 textures left, 4 of them with all their photos, being built (b=, the rest waiting for
-   theirs), 45.0 % of the work done, 23 s since the start was known, downloading at 15.2 MB/s, the
-   Live window's language (the words shown take it), and where (the rest of the line, in that
-   language). */
+   theirs: all of them, "every photo in" instead of the rate), 45.0 % of the work done, 23 s since
+   the start was known, downloading at 15.2 MB/s, the Live window's language (the words shown take
+   it), and where (the rest of the line, in that language). */
 struct state {
     int left, building, permille, secs;
     double mbs;
@@ -341,32 +341,27 @@ static void tell_start(void) {
     send_line(sock, line);
 }
 
-/* Two lines: the textures waiting for their photos and the rate they come at, then those with
-   all their photos, being built. One count of both, with 0.0 MB/s once every photo was in, read
-   as stuck while the textures went down (the user's Shadow, 2026-10-11). */
+/* One line: the textures left, then the download rate, or once every photo they wait for is in
+   (all of them being built: b= reaches n=), that instead of a rate of 0.0, which read as stuck
+   while the count went down (the user's Shadow, 2026-10-11). */
 static void show(const struct state *st) {
-    char what[200], progress[100], building[100];
-    int built = st->building < 0 ? 0 : st->building > st->left ? st->left : st->building;
-    int photos = st->left - built;
+    char what[200], progress[120];
+    int photos_in = st->left > 0 && st->building >= st->left;
     if (french) {
-        char rate[32], *dot;
-        snprintf(rate, sizeof rate, "%.1f", st->mbs);
+        char rate[48], *dot;
+        snprintf(rate, sizeof rate, "%.1f Mo/s", st->mbs);
         if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */
         snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
-        if (photos > 0)
-            snprintf(progress, sizeof progress, "%d textures à télécharger  -  %s Mo/s  -  %d s", photos, rate, st->secs);
-        else
-            snprintf(progress, sizeof progress, "Toutes les photos sont arrivées  -  %d s", st->secs);
-        snprintf(building, sizeof building, "%d textures à construire", built);
+        snprintf(progress, sizeof progress, "%d textures à construire  -  %s  -  %d s", st->left,
+                 photos_in ? "photos reçues, construction en cours" : rate, st->secs);
     } else {
+        char rate[48];
+        snprintf(rate, sizeof rate, "%.1f MB/s", st->mbs);
         snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
-        if (photos > 0)
-            snprintf(progress, sizeof progress, "%d textures to download  -  %.1f MB/s  -  %d s", photos, st->mbs, st->secs);
-        else
-            snprintf(progress, sizeof progress, "Every photo is in  -  %d s", st->secs);
-        snprintf(building, sizeof building, "%d textures to build", built);
+        snprintf(progress, sizeof progress, "%d textures to build  -  %s  -  %d s", st->left,
+                 photos_in ? "every photo in, building" : rate, st->secs);
     }
-    live_panel_show(what, progress, building, st->permille / 1000.0);
+    live_panel_show(what, progress, st->permille / 1000.0);
 }
 
 static void hold(const char *at) {

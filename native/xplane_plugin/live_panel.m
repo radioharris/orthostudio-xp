@@ -27,7 +27,7 @@
 #include <string.h>
 
 static NSPanel *panel;
-static NSTextField *headline, *detail, *building_line;
+static NSTextField *headline, *detail;
 static CALayer *track, *fill;
 
 #define BAR_W 480.0
@@ -52,13 +52,13 @@ static NSTextField *label(NSRect frame, CGFloat size, NSColor *color) {
     return t;
 }
 
-void live_panel_show(const char *what, const char *progress, const char *building, double fraction) {
+void live_panel_show(const char *what, const char *progress, double fraction) {
     if (NSApp == nil) return;
     @autoreleasepool {
         if (panel == nil) {
             NSWindow *xp = xplane_window();
             NSRect around = xp ? xp.frame : [NSScreen mainScreen].frame;
-            NSRect r = NSMakeRect(NSMidX(around) - 280, NSMidY(around) - 70, 560, 140);
+            NSRect r = NSMakeRect(NSMidX(around) - 280, NSMidY(around) - 60, 560, 120);
             panel = [[NSPanel alloc] initWithContentRect:r
                                                styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                  backing:NSBackingStoreBuffered
@@ -76,12 +76,11 @@ void live_panel_show(const char *what, const char *progress, const char *buildin
             box.layer.cornerRadius = 12;
             panel.contentView = box;
 
-            NSTextField *title = label(NSMakeRect(20, 108, 520, 20), 12, [NSColor colorWithCalibratedWhite:0.6 alpha:1]);
+            NSTextField *title = label(NSMakeRect(20, 88, 520, 20), 12, [NSColor colorWithCalibratedWhite:0.6 alpha:1]);
             title.stringValue = @"OrthoStudio XP Live";
-            headline = label(NSMakeRect(20, 78, 520, 26), 17, [NSColor whiteColor]);
-            detail = label(NSMakeRect(20, 56, 520, 20), 13, [NSColor colorWithCalibratedWhite:0.8 alpha:1]);
-            building_line = label(NSMakeRect(20, 36, 520, 20), 13, [NSColor colorWithCalibratedWhite:0.8 alpha:1]);
-            for (NSView *v in @[ title, headline, detail, building_line ]) [box addSubview:v];
+            headline = label(NSMakeRect(20, 58, 520, 26), 17, [NSColor whiteColor]);
+            detail = label(NSMakeRect(20, 36, 520, 20), 13, [NSColor colorWithCalibratedWhite:0.8 alpha:1]);
+            for (NSView *v in @[ title, headline, detail ]) [box addSubview:v];
             track = [CALayer layer];
             track.frame = CGRectMake((r.size.width - BAR_W) / 2, 16, BAR_W, BAR_H);
             track.backgroundColor = [NSColor colorWithCalibratedWhite:0.3 alpha:1].CGColor;
@@ -96,7 +95,6 @@ void live_panel_show(const char *what, const char *progress, const char *buildin
         }
         headline.stringValue = [NSString stringWithUTF8String:what] ?: @"";
         detail.stringValue = [NSString stringWithUTF8String:progress] ?: @"";
-        building_line.stringValue = [NSString stringWithUTF8String:building ? building : ""] ?: @"";
         [CATransaction begin];
         [CATransaction setDisableActions:YES]; /* no animation: nothing would run it */
         fill.frame = CGRectMake(0, 0, BAR_W * (fraction < 0 ? 0 : fraction > 1 ? 1 : fraction), BAR_H);

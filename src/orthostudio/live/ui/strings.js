@@ -37,9 +37,8 @@ export const STRINGS = {
       "X-Plane reads its textures from Live's pack: the pack comes out of X-Plane once X-Plane has quit.",
     "state.deleting": "Deleting…",
     "state.error": "Live stopped: {error}",
-    "hold.text": "{photos} textures to download · {mbs} MB/s · {seconds} s",
-    "hold.photos_in": "Every photo is in · {seconds} s",
-    "hold.building": "{building} textures to build",
+    "hold.text": "{left} textures to build · {mbs} MB/s · {seconds} s",
+    "hold.photos_in": "{left} textures to build · every photo in, building · {seconds} s",
 
     "action.start": "Start Live",
     "action.stop": "Stop",
@@ -386,9 +385,8 @@ export const STRINGS = {
       "X-Plane lit ses textures dans le pack de Live : le pack sort de X-Plane quand X-Plane quitte.",
     "state.deleting": "Suppression…",
     "state.error": "Live s'est arrêté : {error}",
-    "hold.text": "{photos} textures à télécharger · {mbs} Mo/s · {seconds} s",
-    "hold.photos_in": "Toutes les photos sont arrivées · {seconds} s",
-    "hold.building": "{building} textures à construire",
+    "hold.text": "{left} textures à construire · {mbs} Mo/s · {seconds} s",
+    "hold.photos_in": "{left} textures à construire · photos reçues, construction en cours · {seconds} s",
 
     "action.start": "Démarrer Live",
     "action.stop": "Arrêter",
