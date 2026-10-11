@@ -3197,7 +3197,9 @@ function airportTrouble(err, code) {
   return t("plan.icao_unknown", { icao: code });
 }
 
-let flightPlanLoading = false;
+/** What reads a plan now: "simbrief", "file" (the dialog and the file) or "kept" (the plan kept
+ * between two visits), `null` when nothing does. One at a time; each button names its own wait. */
+let flightPlanLoading = null;
 
 /** The plan kept between two visits, or taken away; a browser that refuses to keep it keeps it
  * as long as the page is open. */
@@ -3245,7 +3247,7 @@ function showFlightPlanError(message) {
  */
 async function loadFlightPlan() {
   if (flightPlanLoading) return;
-  flightPlanLoading = true;
+  flightPlanLoading = "simbrief";
   showFlightPlanError(null);
   renderFlightPlan();
   try {
@@ -3256,7 +3258,7 @@ async function loadFlightPlan() {
     const d = errorDetail(err);
     showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
   } finally {
-    flightPlanLoading = false;
+    flightPlanLoading = null;
     renderFlightPlan();
   }
 }
@@ -3271,7 +3273,7 @@ const PLAN_FOLDER_KEY = "osxp.planFolder";
  */
 async function openFlightPlanFile() {
   if (flightPlanLoading) return;
-  flightPlanLoading = true;
+  flightPlanLoading = "file";
   showFlightPlanError(null);
   renderFlightPlan();
   try {
@@ -3294,7 +3296,7 @@ async function openFlightPlanFile() {
     const d = errorDetail(err);
     showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
   } finally {
-    flightPlanLoading = false;
+    flightPlanLoading = null;
     renderFlightPlan();
   }
 }
@@ -3378,7 +3380,7 @@ async function restoreFlightPlan() {
     return;
   }
   if (flightPlanLoading) return;
-  flightPlanLoading = true;
+  flightPlanLoading = "kept";
   renderFlightPlan();
   try {
     const plan = await api("POST", "/api/flightplan", saved.route);
@@ -3392,7 +3394,7 @@ async function restoreFlightPlan() {
   } catch {
     /* kept as it is: the next visit asks again */
   } finally {
-    flightPlanLoading = false;
+    flightPlanLoading = null;
     renderFlightPlan();
   }
 }
@@ -3402,9 +3404,13 @@ async function restoreFlightPlan() {
 function renderFlightPlan() {
   const load = $("flightplan-load");
   if (!load) return;
-  load.disabled = flightPlanLoading;
-  load.textContent = flightPlanLoading ? t("flightplan.loading") : t("flightplan.load");
-  $("flightplan-open").disabled = flightPlanLoading;
+  // Both buttons wait while either reads a plan, and only the one pressed says it is reading: the
+  // SimBrief button said "Reading the plan…" while a file was being chosen (2026-10-11).
+  load.disabled = Boolean(flightPlanLoading);
+  load.textContent = flightPlanLoading === "simbrief" ? t("flightplan.loading") : t("flightplan.load");
+  const open = $("flightplan-open");
+  open.disabled = Boolean(flightPlanLoading);
+  open.textContent = flightPlanLoading === "file" ? t("flightplan.opening") : t("flightplan.open");
   const fp = state.flightPlan;
   $("flightplan-found").hidden = !fp;
   if (!fp) return;

@@ -6782,7 +6782,7 @@ def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
     assert got["levels"] == {"ends": 17, "along": 13} and got["off"] is False
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     restore = _function_body(app_js, "restoreFlightPlan")
-    assert restore.index("flightPlanLoading = true;") < restore.index(
+    assert restore.index('flightPlanLoading = "kept";') < restore.index(
         'api("POST", "/api/flightplan", saved.route)'
     )
     assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
@@ -6838,7 +6838,9 @@ def test_a_flight_plan_is_read_one_at_a_time_and_its_levels_are_its_own() -> Non
     load = _function_body(app_js, "loadFlightPlan")
     assert load.index("if (flightPlanLoading) return;") < load.index('api("GET"')
     assert "/api/flightplan/simbrief?radius_km=" in load
-    assert "load.disabled = flightPlanLoading;" in _function_body(app_js, "renderFlightPlan")
+    assert "load.disabled = Boolean(flightPlanLoading);" in _function_body(
+        app_js, "renderFlightPlan"
+    )
     step = app_js[app_js.index('$("zl-select").addEventListener("change"') :]
     step = step[: step.index("});")]
     assert "flightPlan" not in step and "tileZl" not in step
@@ -7608,3 +7610,48 @@ def test_the_mock_files_tiles_like_the_engine() -> None:
     got = _node_mock(script)
     assert got["hows"] == ["copy", "imported"] and got["room"] is True
     assert got["to"] == got["path"] == "/Volumes/Big/Alps/zOrthoStudio_+43+005"
+
+
+def test_three_plans_in_a_row_keep_only_the_last() -> None:
+    """A user opened three plan files one after the other and asked whether the first two stayed
+    (2026-10-11): each plan replaces the one before as ``replaceFlightPlan`` does, its squares
+    going but for those chosen by hand, so only the last plan's squares and the hand-chosen ones
+    remain."""
+    script = """
+      const plan = (from, to, ends, along) => ({ from, to, squares: { ends, along } });
+      const plans = [
+        plan("LSGG", "LGAV", ["+46+006", "+37+023"], ["+45+007", "+44+008"]),
+        plan("ENAT", "ENTC", ["+69+023", "+69+018"], ["+69+020"]),
+        plan("EDDM", "LSGG", ["+48+011", "+46+006"], ["+47+009"]),
+      ];
+      const byHand = new Set(["+44+008", "+43+005"]);
+      let tiles = ["+43+005", "+44+008"];
+      let fp = null;
+      for (const p of plans) {
+        if (fp) tiles = m.withoutPlan(tiles, fp, byHand);
+        fp = m.newFlightPlan(p, { ends: 16, along: 14 });
+        tiles = m.withPlan(tiles, fp, { cap: 500 }).tiles;
+      }
+      ({ tiles: [...tiles].sort(), kept: fp.plan.from + "-" + fp.plan.to })
+    """
+    got = _node_json(
+        "flightplan.js", "(() => {" + script.replace("({ tiles", "return ({ tiles") + "})()"
+    )
+    assert got["kept"] == "EDDM-LSGG"
+    assert got["tiles"] == sorted(["+43+005", "+44+008", "+48+011", "+46+006", "+47+009"])
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    replace = code[code.index("function replaceFlightPlan(") :]
+    replace = replace[: replace.index("\n}\n")]
+    assert "withoutPlan(state.tiles, state.flightPlan, state.byHand)" in replace
+    assert "setFlightPlanState(" in replace, "the plan kept is the new one, not one more"
+
+
+def test_only_the_pressed_flight_plan_button_says_it_reads() -> None:
+    """Opening a file greyed the SimBrief button and wrote « Reading the plan… » on it
+    (2026-10-11): both wait, and only the one pressed says what it does."""
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    render = code[code.index("function renderFlightPlan(") :]
+    render = render[: render.index("\n}\n")]
+    assert 'flightPlanLoading === "simbrief" ? t("flightplan.loading")' in render
+    assert 'flightPlanLoading === "file" ? t("flightplan.opening")' in render
+    assert 'flightPlanLoading = "file";' in code and 'flightPlanLoading = "simbrief";' in code
