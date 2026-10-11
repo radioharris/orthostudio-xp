@@ -160,7 +160,10 @@ zone over a whole tile is about twelve thousand cells and one outline. Checked a
 `dsf.zones.texture_map`, what the DSF is written from (`tests/test_zone_cells.py`). The map draws
 each area pale and dashed in the zone's colour, under its outline (pane `osxpZoneAreas`, z 390),
 and the list says *N squares of about 1 km*, or *This zone takes no square* when the zones above
-it take every one it covers. A document the engine refuses (a level too high) draws no area: the
+it take every one it covers. Only for a zone sharper than the tiles it falls in (`sharpens`, the
+level the list's *below the tiles* warning compares with): a zone at their level or below only
+recolours, and its colours follow the outline itself, so an area drawn around it said they would
+spread; it shows its outline alone. A document the engine refuses (a level too high) draws no area: the
 zone is marked in the list already. Nothing is written.
 
 ## 4. From zones to a tile's `zone_list` (`src/orthostudio/zones.py`)

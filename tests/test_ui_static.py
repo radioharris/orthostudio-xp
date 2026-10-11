@@ -7675,7 +7675,11 @@ def test_the_map_shows_the_squares_each_zone_takes() -> None:
     assert "scheduleAreas();" in body("renderZones")
     areas = body("renderZoneAreas")
     assert 'pane: "osxpZoneAreas"' in areas and "osxp-zone-area zl-${z.zl}" in areas
+    # a zone that only recolours draws no area: its colours follow the outline (2026-10-11)
+    assert "if (!a || !sharpens(z, selectedTiles)) continue;" in areas
+    assert "return !Number.isInteger(level) || z.zl > level;" in body("sharpens")
     item = body("zoneItem")
+    assert "const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;" in item
     assert 't("zones.takes_none")' in item and 't("zones.cells", { n: fmtInt(area.count) })' in item
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".plan-map .osxp-zone-area {" in css

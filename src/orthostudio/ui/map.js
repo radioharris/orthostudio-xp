@@ -2189,16 +2189,32 @@ export function createPlanMap(ctx) {
     renderList();
   }
 
+  /** The level of the chosen squares a zone falls in (a flight plan may vary it), else step 1's:
+   * what the zone is compared with, by the list's warning and by its area alike. */
+  function tilesZlOf(z, selectedTiles = new Set(ctx.tiles())) {
+    const inside = zoneTiles(z).filter((n) => selectedTiles.has(n));
+    return inside.length ? Math.max(...inside.map(ctx.tileZl)) : Number(ctx.planZl());
+  }
+
+  /** A zone sharper than the tiles it falls in: its squares change what X-Plane shows. A zone at
+   * their level or below only recolours, and its colours follow the outline itself, not the
+   * squares: an area drawn around it said the colours would spread (2026-10-11). */
+  function sharpens(z, selectedTiles) {
+    const level = tilesZlOf(z, selectedTiles);
+    return !Number.isInteger(level) || z.zl > level;
+  }
+
   /** The squares each zone takes, under its outline: the sharp area as it will be built, which
    * runs in straight lines up to a square beyond what was drawn. Painted from the end of the
    * list like the zones, so the first zone's area is on top. */
   function renderZoneAreas() {
     if (!map) return;
     layers.zoneAreas.clearLayers();
+    const selectedTiles = new Set(ctx.tiles());
     for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
       const z = zs.zones[i];
       const a = zs.areas.get(z.id);
-      if (!a) continue;
+      if (!a || !sharpens(z, selectedTiles)) continue;
       for (const rings of a.area || []) {
         const shape = rings.map((ring) => ring.map(([lon, lat]) => [lat, lon]));
         layers.zoneAreas.addLayer(L.polygon(shape, { pane: "osxpZoneAreas", className: `osxp-zone-area zl-${z.zl}`, interactive: false, weight: 1.5 }));
@@ -2209,6 +2225,7 @@ export function createPlanMap(ctx) {
   function renderZones() {
     if (!map) return;
     scheduleAreas();
+    renderZoneAreas(); // the tiles' level may have moved: which zones sharpen moves with it
     layers.zones.clearLayers();
     // Painted from the end of the list, so the first zone (the one that wins) is on top.
     for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
@@ -2808,8 +2825,7 @@ export function createPlanMap(ctx) {
       }, t("zones.outside_add", { n: touched.length })));
     }
     // the level of the chosen squares this zone falls in, which a flight plan may vary
-    const inside = touched.filter((n) => selectedTiles.has(n));
-    const tilesZl = inside.length ? Math.max(...inside.map(ctx.tileZl)) : Number(ctx.planZl());
+    const tilesZl = tilesZlOf(z, selectedTiles);
     if (usableZl(z.zl) && Number.isInteger(tilesZl) && z.zl < tilesZl) {
       // Less sharp than the tiles: the area comes out blurrier than the rest of the tile.
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.below_tiles", { level: detailName(tilesZl) })));
@@ -2817,7 +2833,7 @@ export function createPlanMap(ctx) {
     if (!z.provider && source && Number.isInteger(source.max_zl) && z.zl > source.max_zl) {
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.above_source", { provider: source.name || source.code, level: detailName(source.max_zl) })));
     }
-    const area = zs.areas.get(z.id);
+    const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;
     if (area && area.count === 0) {
       // under the zones above it in the list, which take every square it covers (idea 7)
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.takes_none")));
@@ -3002,6 +3018,7 @@ export function createPlanMap(ctx) {
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();
       renderGrid();
+      renderZoneAreas(); // a zone sharpens or not against the tiles it falls in
       renderList();
       renderSizes();
       renderHint();
@@ -3010,6 +3027,7 @@ export function createPlanMap(ctx) {
     planChanged() {
       setBaseLayer();
       renderToolOptions();
+      renderZoneAreas();
       renderList();
       renderSizes();
     },
