@@ -1309,6 +1309,8 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 .flightplan-groups label { font-size: var(--fs-2); }
 /* The route's squares may be left out: a tick before its words (a user, 2026-09-25). */
 .flightplan-along { display: flex; align-items: center; gap: 6px; }
+/* a checkbox and its words on one line, inside a question of Settings */
+.check-row { display: flex; align-items: center; gap: 6px; }
 .flightplan-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
 .flightplan-note { margin: var(--gap) 0 0; }
 .flightplan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--gap); }

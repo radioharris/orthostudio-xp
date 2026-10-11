@@ -130,6 +130,18 @@ class Relief(BaseModel):
             "of Europe by the hundred and asked to name the folder once (2026-09-19)."
         ),
     )
+    own_first: bool = _field(
+        False,
+        "essential",
+        None,
+        "",
+        hint=(
+            "Use the files of the folder above even where they are coarser than the relief chosen "
+            "here: they then come first on every square they cover, smoothed between their points. "
+            "Off, the finest relief wins. A pilot whose files were coarser than his choice found "
+            "them left aside (idea 9, 2026-10-11)."
+        ),
+    )
     fill_nodata: Literal["nearest", "zero"] = _field("nearest", "essential", "fill_nodata", "")
 
     @model_validator(mode="after")

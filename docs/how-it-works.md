@@ -515,7 +515,10 @@ same place, 3", 1" and 0.5" for instance, the finest file is used for each squar
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
 downloaded is what is built. The finest wins the other way round too: where the relief you chose is
 sharper than your file, as the United States relief at a third of an arc-second is against a file
-of one second, the relief answers and the report names the file it left aside. In the Library,
+of one second, the relief answers and the report names the file it left aside. Tick *Use my files
+even where they are coarser than the relief above* to have your files first on every square they
+cover, whatever their resolution: they are then smoothed between their points over the finer grid,
+not repeated in steps. In the Library,
 *Built by* unfolds what a tile was built with: its *Relief* line names the file of yours the tile
 stands on, "with your file N50E011.hgt over it", or says why it was not used, "93 m between
 points, where Copernicus has 31 m". Where your folder has nothing, the relief you chose stays in charge, so

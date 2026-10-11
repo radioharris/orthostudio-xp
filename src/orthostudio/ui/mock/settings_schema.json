@@ -178,6 +178,16 @@
        "type": "string",
        "unit": ""
       },
+      "own_first": {
+       "default": false,
+       "description": "Use the files of the folder above even where they are coarser than the relief chosen here: they then come first on every square they cover, smoothed between their points. Off, the finest relief wins. A pilot whose files were coarser than his choice found them left aside (idea 9, 2026-10-11).",
+       "hint": "Use the files of the folder above even where they are coarser than the relief chosen here: they then come first on every square they cover, smoothed between their points. Off, the finest relief wins. A pilot whose files were coarser than his choice found them left aside (idea 9, 2026-10-11).",
+       "level": "essential",
+       "ortho4xp": null,
+       "title": "Own First",
+       "type": "boolean",
+       "unit": ""
+      },
       "fill_nodata": {
        "default": "nearest",
        "description": "When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data).",

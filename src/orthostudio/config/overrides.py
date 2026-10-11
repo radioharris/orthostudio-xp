@@ -157,6 +157,7 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
         "water_tech": e.water_rendering,
         "custom_dem": _with_folder(_custom_dem(e.relief), e.relief),
         "fill_nodata": e.relief.fill_nodata == "nearest",
+        "own_relief_first": bool(e.relief.own_first),
         "ratio_water": float(a.ratio_water_pct) / 100.0,
         "overlay_lod": float(a.overlay_lod_km) * 1000.0,
         **_photo(e.photo_look, x),

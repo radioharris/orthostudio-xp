@@ -158,7 +158,7 @@ export const QUESTION_PATHS = {
   lakes: ["advanced.ratio_water_pct"],
   colours: ["essential.photo_look", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"],
   relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata"],
-  own: ["essential.relief.folder"],
+  own: ["essential.relief.folder", "essential.relief.own_first"],
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
   data: ["essential.data_dir"],
@@ -1016,12 +1016,22 @@ function ownFolderQuestion(view) {
         view.changed();
       } }, t("settings.q.own_choose"))
     : null;
+  // Idea 9 (2026-10-11): a pilot whose files were coarser than the relief chosen above found them
+  // left aside; ticked, they come first on every square they cover.
+  const first = h("input", { type: "checkbox", id: "q-relief-own-first", dataset: { focusKey: "q:relief-own-first" } });
+  first.checked = Boolean(getPath(d, "essential.relief.own_first"));
+  first.addEventListener("change", () => {
+    setPath(d, "essential.relief.own_first", first.checked);
+    view.changed();
+  });
   return questionBox(view, "own",
     h("div", { class: "sub-question" },
       h("label", { class: "sub-question-title", for: "q-relief-folder" }, t("settings.q.own_folder")),
       h("div", { class: "path-row" }, field, choose)),
     h("p", { class: "question-help" }, t("settings.q.own_names")),
-    h("p", { class: "question-help" }, t("settings.q.own_rest")));
+    h("p", { class: "question-help" }, t("settings.q.own_rest")),
+    h("label", { class: "check-row", for: "q-relief-own-first" }, first, " ", t("settings.q.own_first")),
+    h("p", { class: "question-help" }, t("settings.q.own_first_help")));
 }
 
 /**

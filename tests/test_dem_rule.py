@@ -62,6 +62,8 @@ def test_rule_declaration() -> None:
         "fill_nodata",
         "dem1_local_fallback",
         "own_stamp",
+        # idea 9: one's own files first even where coarser
+        "own_relief_first",
     }
 
 
