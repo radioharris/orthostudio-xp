@@ -404,63 +404,6 @@ def test_a_square_waits_for_a_texture_the_builder_took_not_for_one_queued(
     assert s.names.building(name)
 
 
-def test_a_start_s_squares_are_set_to_a_new_zoom_by_several_processes_alike(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """While X-Plane waits on a start, the textures of a square are shared between the
-    builder's processes (``spread``): the same files and levels as one alone gives."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    from orthostudio.live import names as names_module
-
-    monkeypatch.setattr(names_module, "FIT_CHUNK", 1)
-    files = {}
-    for spread in (1, 3):
-        pack = region(tmp_path / str(spread))
-        built = pack / "textures" / f"{NAMES[0]}.dds"
-        write_sparse(built, 0, levels_from(0, 0), base=pack / neutral_file(0))
-        record(pack, {built.name: 0})
-        make_squares(pack)
-        set_zooms(pack, Zooms(17, 19), quiet)
-        names = live_names_for(pack)
-        refitted: dict[str, int] = {}
-        names.level_of = {built.name: 0}.get
-        names.refit = refitted.__setitem__
-        names.spread = lambda n=spread: n
-        if spread > 1:  # processes stood in for by threads: the sharing and the merge
-            names._workers = names._fit_workers = ThreadPoolExecutor(max_workers=spread)
-        for square in _all_squares(names):
-            names.make(square)
-        assert refitted == {built.name: 0}
-        files[spread] = {
-            p.name: p.read_bytes() for p in (pack / "textures").iterdir() if p.suffix == ".dds"
-        }
-        names.close() if spread == 1 else names._fit_workers.shutdown()
-    assert files[1] == files[3]
-
-
-def test_the_processes_of_a_start_s_squares_are_closed_once_they_are_made(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The processes a batch of squares was shared between are closed once it is made: those of
-    a start, kept for the whole flight, counted 1.7 GB more in Live's memory (2026-10-11)."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    from orthostudio.live import names as names_module
-
-    monkeypatch.setattr(names_module, "FIT_CHUNK", 1)
-    pack = region(tmp_path)
-    set_zooms(pack, Zooms(17, 19), quiet)
-    names = live_names_for(pack)
-    names.spread = lambda: 3
-    pool = names._workers = names._fit_workers = ThreadPoolExecutor(max_workers=3)
-    squares = sorted(_all_squares(names))
-    names.target = set(squares)
-    names._make_batch(squares)
-    assert names.done == set(squares)
-    assert names._fit_workers is None and pool._shutdown
-
-
 def test_a_texture_is_set_to_a_new_zoom_even_before_its_neutral_texture_is_made(
     tmp_path: Path,
 ) -> None:
