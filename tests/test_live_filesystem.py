@@ -170,3 +170,23 @@ def test_a_file_extended_on_windows_takes_no_disk(tmp_path: Path) -> None:
         os.close(fd)
     assert path.stat().st_size == 45_000_000
     assert 1_000_000 <= filesystem.allocated(path) < 2_000_000
+
+
+def test_a_name_replaced_by_another_name_of_the_same_file_leaves_no_temporary(
+    tmp_path: Path,
+) -> None:
+    """A rename between two names of one file does nothing (POSIX): the temporary name stayed
+    beside the textures, 11,865 of them after one session (2026-10-10). Now removed instead."""
+    from orthostudio.live.filesystem import replace
+
+    neutral = tmp_path / "neutral.dds"
+    neutral.write_bytes(b"N" * 64)
+    name, tmp = tmp_path / "a.dds", tmp_path / ".live-tmp-1-a.dds"
+    os.link(neutral, name)
+    os.link(neutral, tmp)
+    replace(tmp, name)
+    assert not tmp.exists() and name.read_bytes() == b"N" * 64
+    other = tmp_path / ".live-tmp-1-b.dds"  # another file: renamed over it, as always
+    other.write_bytes(b"B")
+    replace(other, name)
+    assert not other.exists() and name.read_bytes() == b"B"

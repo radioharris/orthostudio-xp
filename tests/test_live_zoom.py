@@ -1135,3 +1135,26 @@ def test_a_start_s_wait_tells_the_textures_waiting_for_photos_from_those_being_b
     s.in_flight[far] = (40.0, 4)  # being built too, but X-Plane does not wait for it
     s.photos_in_names = frozenset({taken, far})
     assert s.urgent_building() == 1
+
+
+def test_a_neutral_name_made_neutral_again_and_a_stopped_live_s_files_leave_nothing(
+    tmp_path: Path,
+) -> None:
+    """A texture already a name of the neutral texture made one again (a reset of what was
+    recorded as built) leaves no temporary file; those a Live stopped in the middle of a write left
+    are removed at the next start, the textures kept."""
+    from orthostudio.live.names import NeutralPool
+    from orthostudio.live.region import TEMP_PREFIX, remove_temps
+
+    pack = region(tmp_path)
+    textures = pack / "textures"
+    name = textures / f"{NAMES[0]}.dds"
+    pool = NeutralPool(pack)
+    pool.replace(0, name)
+    pool.replace(0, name)  # already the neutral texture's name
+    assert not [p for p in textures.iterdir() if p.name.startswith(TEMP_PREFIX)]
+    left = textures / f"{TEMP_PREFIX}4980-{NAMES[1]}.dds"
+    left.write_bytes(b"half written")
+    before = {p.name for p in textures.iterdir()} - {left.name}
+    assert remove_temps(pack) == 1
+    assert {p.name for p in textures.iterdir()} == before

@@ -312,6 +312,22 @@ def set_zooms(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) 
     ).start()
 
 
+TEMP_PREFIX = ".live-tmp-"  # a file being written, renamed over its name once whole
+
+
+def remove_temps(pack_dir: Path) -> int:
+    """The files a Live stopped in the middle of a write left beside the textures, removed: at a
+    start, before anything writes there (the next writes' own names are the same kind)."""
+    removed = 0
+    with contextlib.suppress(FileNotFoundError):
+        for entry in os.scandir(pack_dir / "textures"):
+            if entry.name.startswith(TEMP_PREFIX):
+                with contextlib.suppress(OSError):
+                    os.unlink(entry.path)
+                    removed += 1
+    return removed
+
+
 def remove_aside(pack_dir: Path) -> int:
     """The terrain files a new zoom set aside (:func:`set_zooms`), removed: those of a start that
     stopped before they were gone too."""

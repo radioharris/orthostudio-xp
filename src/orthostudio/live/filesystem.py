@@ -67,7 +67,16 @@ def pwrite(fd: int, data: bytes, offset: int) -> None:
 
 def replace(src: str | Path, dst: str | Path) -> None:
     """``src`` renamed over ``dst``, atomically: X-Plane opens either the old file or the new one.
-    On Windows a file open in another program cannot be replaced: tried again for a moment."""
+    On Windows a file open in another program cannot be replaced: tried again for a moment. Two
+    names of one file (a neutral texture's name made its name again): ``src`` only removed, as a
+    rename between them does nothing and left it, 11,865 of them after one session (2026-10-10)."""
+    try:
+        same = os.path.samestat(os.stat(src), os.stat(dst))
+    except OSError:
+        same = False
+    if same:
+        os.unlink(src)
+        return
     if not WINDOWS:
         os.replace(src, dst)
         return

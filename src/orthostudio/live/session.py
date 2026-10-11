@@ -231,6 +231,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         region_layout,
         relayout,
         remove_aside,
+        remove_temps,
         set_zooms,
         setup_region,
     )
@@ -295,6 +296,9 @@ def prepare(options: Options, log: Log) -> Prepared:
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
         setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+        left = remove_temps(pack_dir)  # before anything writes there
+        if left:
+            log(f"{left} unfinished files a stopped Live left among the textures removed")
         laid_out, layout = region_layout(pack_dir)
         if (laid_out, layout) != (zooms, LAYOUT_FIXED):  # each texture at its new size
             if xplane_running() and needs_relayout(pack_dir, zooms):
