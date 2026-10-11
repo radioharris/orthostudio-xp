@@ -369,6 +369,7 @@ class Streamer:
         self._window = XPlaneWindow()  # where X-Plane's window is (follow_window)
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.ready_now = 0  # textures with all their photos, waiting for an encoder
+        self.photos_in_names: frozenset[str] = frozenset()  # all their photos: waiting or encoded
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
@@ -959,6 +960,13 @@ class Streamer:
         self._want_squares(fix, starting)
         return jobs
 
+    def urgent_building(self) -> int:
+        """Of the textures X-Plane may already be showing, those with all their photos, being
+        built: what a start's wait says apart from those still waiting for theirs."""
+        with self.lock:
+            urgent = self._urgent_locked()
+            return sum(1 for name in urgent if name in self.photos_in_names)
+
     def take_batch(
         self, max_pieces: int = BATCH_PIECES, urgent_only: bool = False
     ) -> list[tuple[str, int, float]]:
@@ -1343,6 +1351,9 @@ class Streamer:
                     submit_ready(pool)
                     self.encoding_now = len(encoding)
                     self.ready_now = len(ready)
+                    self.photos_in_names = frozenset(j.name for j in ready) | frozenset(
+                        j.name for j in encoding.values()
+                    )
                     self.pieces_pending = len(requested)
                     if not requested:  # nothing awaited: nothing stalled
                         self.last_progress = time.monotonic()
@@ -1727,6 +1738,7 @@ def progress_report(
             "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
             "ready": arrival.ready_at is not None,
             "left": left,
+            "building": streamer.urgent_building(),  # of them, all their photos in
             "progress": arrival.progress(work),
             "seconds": now - arrival.since,
         }
@@ -1898,6 +1910,10 @@ def run(
                             and streamer.squares_ready(arrival.lat, arrival.lon)
                             and streamer.squares_ready(lat, lon)
                         )
+                        # apart: those waiting for their photos, those being built (one count of
+                        # both, at 0.0 MB/s once every photo was in, read as stuck: the user's
+                        # Shadow, 2026-10-11)
+                        building = streamer.urgent_building()
                         gate.answer(
                             addr,
                             ready or stalled,
@@ -1907,6 +1923,7 @@ def run(
                             took,
                             mbs,
                             lang=language(),
+                            building=building,
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
@@ -1925,8 +1942,8 @@ def run(
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: {left} textures to build "
-                                f"around {arrival.name} "
-                                f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
+                                f"around {arrival.name}, {left - building} of them waiting for "
+                                f"their photos ({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
                             )
                         elif not ready and not stalled and now - last_wait >= 5:
                             last_wait = now

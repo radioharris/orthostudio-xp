@@ -118,7 +118,7 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define NOTE_EVERY_S 1.0f /* in flight: whether the streamer has a notice */
 
 /* The loading window and the notice (live_panel.m, live_panel_win.c, live_panel_x11.c). */
-void live_panel_show(const char *what, const char *progress, double fraction);
+void live_panel_show(const char *what, const char *progress, const char *building, double fraction);
 void live_panel_hide(void);
 void live_note_show(const char *text, int french); /* the notice, with its cross */
 void live_note_hide(void);
@@ -270,12 +270,13 @@ static void drain(void) {
     }
 }
 
-/* What the streamer says while X-Plane waits: "LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFBO runway 14L"
-   is 12 textures left, 45.0 % of the work done, 23 s since the start was known, downloading at
-   15.2 MB/s, the Live window's language (the words shown take it), and where (the rest of the
-   line, in that language). */
+/* What the streamer says while X-Plane waits: "LIVE1 WAIT n=12 b=4 p=450 s=23 mbs=15.2 lang=en at=LFBO runway
+   14L" is 12 textures left, 4 of them with all their photos, being built (b=, the rest waiting for
+   theirs), 45.0 % of the work done, 23 s since the start was known, downloading at 15.2 MB/s, the
+   Live window's language (the words shown take it), and where (the rest of the line, in that
+   language). */
 struct state {
-    int left, permille, secs;
+    int left, building, permille, secs;
     double mbs;
     char where[128];
 };
@@ -287,7 +288,8 @@ static void parse_wait(char *p, struct state *st) {
             if (p[3]) snprintf(st->where, sizeof st->where, "%s", p + 3);
             return;
         }
-        if (sscanf(p, "n=%d", &st->left) != 1 && sscanf(p, "p=%d", &st->permille) != 1 &&
+        if (sscanf(p, "n=%d", &st->left) != 1 && sscanf(p, "b=%d", &st->building) != 1 &&
+            sscanf(p, "p=%d", &st->permille) != 1 &&
             sscanf(p, "s=%d", &st->secs) != 1 && sscanf(p, "mbs=%lf", &st->mbs) != 1 && *p >= '0' && *p <= '9')
             st->left = atoi(p); /* "LIVE1 WAIT 12": the count alone */
         while (*p && *p != ' ') p++;
@@ -339,24 +341,37 @@ static void tell_start(void) {
     send_line(sock, line);
 }
 
+/* Two lines: the textures waiting for their photos and the rate they come at, then those with
+   all their photos, being built. One count of both, with 0.0 MB/s once every photo was in, read
+   as stuck while the textures went down (the user's Shadow, 2026-10-11). */
 static void show(const struct state *st) {
-    char what[200], progress[100];
+    char what[200], progress[100], building[100];
+    int built = st->building < 0 ? 0 : st->building > st->left ? st->left : st->building;
+    int photos = st->left - built;
     if (french) {
         char rate[32], *dot;
         snprintf(rate, sizeof rate, "%.1f", st->mbs);
         if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */
         snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
-        snprintf(progress, sizeof progress, "%d textures à construire  -  %d s  -  %s Mo/s", st->left, st->secs, rate);
+        if (photos > 0)
+            snprintf(progress, sizeof progress, "%d textures à télécharger  -  %s Mo/s  -  %d s", photos, rate, st->secs);
+        else
+            snprintf(progress, sizeof progress, "Toutes les photos sont arrivées  -  %d s", st->secs);
+        snprintf(building, sizeof building, "%d textures à construire", built);
     } else {
         snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
-        snprintf(progress, sizeof progress, "%d textures to build  -  %d s  -  %.1f MB/s", st->left, st->secs, st->mbs);
+        if (photos > 0)
+            snprintf(progress, sizeof progress, "%d textures to download  -  %.1f MB/s  -  %d s", photos, st->mbs, st->secs);
+        else
+            snprintf(progress, sizeof progress, "Every photo is in  -  %d s", st->secs);
+        snprintf(building, sizeof building, "%d textures to build", built);
     }
-    live_panel_show(what, progress, st->permille / 1000.0);
+    live_panel_show(what, progress, building, st->permille / 1000.0);
 }
 
 static void hold(const char *at) {
     char line[96];
-    struct state st = {-1, 0, 0, 0.0, ""};
+    struct state st = {-1, 0, 0, 0, 0.0, ""};
     const char *why = strcmp(at, "the start of a new flight") == 0 ? "flight" : "aircraft";
     double lat, lon, start, answered = 0, t;
     int told = 0, r;

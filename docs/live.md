@@ -117,8 +117,9 @@ slow disk).
 3. **Start X-Plane** (the button beside Live's), choose your flight and click Start Flight. X-Plane
    waits on its loading screen until the ground around your departure is built: a few seconds
    where you have flown before, a minute or two the first time in a new area. Live's window and a
-   small panel over X-Plane count down the textures left, with the download rate. X-Plane's own
-   window looks frozen meanwhile: it is waiting, it has not crashed.
+   small panel over X-Plane count down, on two lines, the textures still to download (with the
+   download rate) and those to build from the photos already in. X-Plane's own window looks frozen
+   meanwhile: it is waiting, it has not crashed.
    ![Live preparing a departure from Munich: its state says it builds the ortho around EDDM, with a bar, the textures left, the seconds gone by and the download rate](images/live/departure.png)
 
 4. **Fly**, anywhere. Another flight started from X-Plane's menu waits the same way.

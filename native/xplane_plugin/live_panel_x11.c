@@ -31,9 +31,10 @@
 
 #ifdef LIVE_NO_X11
 
-void live_panel_show(const char *what, const char *progress, double fraction) {
+void live_panel_show(const char *what, const char *progress, const char *building, double fraction) {
     (void)what;
     (void)progress;
+    (void)building;
     (void)fraction;
 }
 void live_panel_hide(void) {}
@@ -63,7 +64,7 @@ void live_panels_close(void) {}
 #include <unistd.h>
 
 #define PANEL_W 560
-#define PANEL_H 120
+#define PANEL_H 140
 #define BAR_W 480
 #define BAR_H 8
 #define NOTE_H 44
@@ -148,7 +149,7 @@ static GC gc;
 static double scale = 1.0;
 static int pressed;                      /* the notice's cross clicked */
 static int note_french;
-static char what_now[200], progress_now[100], note_now[160];
+static char what_now[200], progress_now[100], building_now[100], note_now[160];
 static double fraction_now;
 static int cross_x, cross_y, cross_w;    /* the cross, in the notice's window */
 static int note_w;
@@ -503,6 +504,7 @@ static void draw(Window win) {
         text_in(win, ftdraw, "OrthoStudio XP Live", TITLE_F, TITLE, 20, 12, 520, 20, 1);
         text_in(win, ftdraw, what_now, HEAD_F, WHITE, 20, 36, 520, 26, 1);
         text_in(win, ftdraw, progress_now, DETAIL_F, DETAIL, 20, 64, 520, 20, 1);
+        text_in(win, ftdraw, building_now, DETAIL_F, DETAIL, 20, 84, 520, 20, 1);
         bar(win, (PANEL_W - BAR_W) / 2, PANEL_H - 16 - BAR_H, BAR_W, TRACK);
         bar(win, (PANEL_W - BAR_W) / 2, PANEL_H - 16 - BAR_H, (int)(BAR_W * fraction_now), FILL);
     } else {
@@ -542,10 +544,11 @@ static Window make(int x, int y, int w, int h) {
     return win;
 }
 
-void live_panel_show(const char *what, const char *progress, double fraction) {
+void live_panel_show(const char *what, const char *progress, const char *building, double fraction) {
     if (!ready()) return;
     snprintf(what_now, sizeof what_now, "%s", what ? what : "");
     snprintf(progress_now, sizeof progress_now, "%s", progress ? progress : "");
+    snprintf(building_now, sizeof building_now, "%s", building ? building : "");
     fraction_now = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
     if (!panel) {
         int x, y, w, h;

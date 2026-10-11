@@ -1170,3 +1170,25 @@ def test_a_start_knows_when_it_sets_the_textures_to_a_new_zoom(tmp_path: Path) -
     relayout(pack, Zooms(14, 16), quiet)
     assert not session.relayout_due(lower) and session.relayout_due(same)
     assert not session.relayout_due(session.Options(pack=tmp_path / "none", max_zoom=14))
+
+
+def test_a_start_s_wait_tells_the_textures_waiting_for_photos_from_those_being_built(
+    tmp_path: Path,
+) -> None:
+    """A start's wait counts apart the textures waiting for their photos and those with all their
+    photos, being built: the plugin's and the window's two lines. One count of both, at 0.0 MB/s
+    once every photo was in, read as stuck (the user's Shadow, 2026-10-11)."""
+    from orthostudio.live.gate import _wait_line
+
+    line = _wait_line(801, "LFBO", 0.37, 100, 0.0, "fr", building=400)
+    assert line.startswith("LIVE1 WAIT n=801 b=400 p=370 s=100 mbs=0.0 lang=fr at=")
+    s = row_streamer(tmp_path)
+    queued, taken, far = f"{ROW[0]}.dds", f"{ROW[1]}.dds", f"{ROW[5]}.dds"
+    s.queue[queued] = (0.0, 0)  # urgent, its photos still to ask for
+    s.in_flight[taken] = (0.0, 0)  # urgent, its photos coming
+    assert s.urgent_building() == 0
+    s.photos_in_names = frozenset({taken})  # all its photos in: being built
+    assert s.urgent_building() == 1
+    s.in_flight[far] = (40.0, 4)  # being built too, but X-Plane does not wait for it
+    s.photos_in_names = frozenset({taken, far})
+    assert s.urgent_building() == 1

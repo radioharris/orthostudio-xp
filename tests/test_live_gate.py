@@ -218,7 +218,8 @@ class GateTest(unittest.TestCase):
                 )
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
                 self.assertEqual(
-                    p.recv(100), b"LIVE1 WAIT n=12 p=457 s=23 mbs=15.2 lang=en at=LFML runway 13L"
+                    p.recv(100),
+                    b"LIVE1 WAIT n=12 b=0 p=457 s=23 mbs=15.2 lang=en at=LFML runway 13L",
                 )
                 gate.answer(got[1][3], False, 3, "LFPG Aérogare 2 機", lang="fr")
                 self.assertTrue(p.recv(100).endswith("lang=fr at=LFPG Aérogare 2 機".encode()))
@@ -239,7 +240,7 @@ class GateTest(unittest.TestCase):
                 p.connect(("127.0.0.1", self.port))
                 p.settimeout(1.0)  # the plugin's second
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
-                self.assertEqual(p.recv(100), b"LIVE1 WAIT n=0 p=0 s=0 mbs=0.0")
+                self.assertEqual(p.recv(100), b"LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0")
                 gate.hold_at("LGAV parking B17", "fr")  # the start the loop plans next
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
                 self.assertTrue(p.recv(100).endswith(b"lang=fr at=LGAV parking B17"))

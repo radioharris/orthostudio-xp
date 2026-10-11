@@ -198,11 +198,17 @@ function drawState(status) {
   $("hold").hidden = !holding;
   if (holding) {
     $("hold-bar").style.width = `${Math.round(start.progress * 1000) / 10}%`;
-    $("hold-text").textContent = t("hold.text", {
-      left: number(start.left),
+    // two lines, as the plugin's: the textures waiting for their photos and their rate, then
+    // those with all their photos, being built (one count of both, at 0.0 MB/s once every photo
+    // was in, read as stuck: the user's Shadow, 2026-10-11)
+    const building = Math.min(start.building || 0, start.left);
+    const photos = start.left - building;
+    $("hold-text").textContent = t(photos > 0 ? "hold.text" : "hold.photos_in", {
+      photos: number(photos),
       seconds: number(start.seconds),
       mbs: number(status.stream.mbs, 1),
     });
+    $("hold-building").textContent = t("hold.building", { building: number(building) });
   }
 
   const error = status.state === "idle" && status.error;

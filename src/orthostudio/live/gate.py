@@ -121,9 +121,14 @@ def place_in(name: str, lang: str) -> str:
     return name
 
 
-def _wait_line(left: int, name: str, done: float, took: float, mbs: float, lang: str) -> str:
+def _wait_line(
+    left: int, name: str, done: float, took: float, mbs: float, lang: str, building: int = 0
+) -> str:
+    """``building``: of the ``left``, those with all their photos, being built (the plugin's
+    second line)."""
     return (
-        f"LIVE1 WAIT n={left} p={round(max(0.0, min(1.0, done)) * 1000)} s={round(took)} "
+        f"LIVE1 WAIT n={left} b={building} p={round(max(0.0, min(1.0, done)) * 1000)} "
+        f"s={round(took)} "
         f"mbs={mbs:.1f} lang={lang} at={_fitted(place_in(name, lang), 100)}"
     )
 
@@ -158,7 +163,7 @@ class Gate:
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
-        self._wait = "LIVE1 WAIT n=0 p=0 s=0 mbs=0.0"  # what the gate says for the loop
+        self._wait = "LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0"  # what the gate says for the loop
         self._stood_in: list[float] = []  # how late the loop was, each time
         self._closed = threading.Event()
         threading.Thread(target=self._stand_in, name="live-gate", daemon=True).start()
@@ -253,11 +258,12 @@ class Gate:
         took: float = 0.0,
         mbs: float = 0.0,
         lang: str = "en",
+        building: int = 0,
     ) -> None:
         if go:
             line = f"LIVE1 GO {left}"
         else:
-            line = self._wait = _wait_line(left, name, done, took, mbs, lang)
+            line = self._wait = _wait_line(left, name, done, took, mbs, lang, building)
         self._send(line, addr)
 
     def note(
