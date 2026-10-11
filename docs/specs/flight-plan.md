@@ -119,7 +119,9 @@ Both routes are one computation (`answer` in the router). API level 24.
 `{radius_km, prompt, start}`: the engine opens the system's own file dialog (`fsutil.choose_file`:
 the Finder's through `osascript`, Windows' `OpenFileDialog`, zenity's or kdialog's), offering
 `.lnmpln` and `.fms`, in `start` when it is a folder (the page keeps the last one,
-`osxp.planFolder`), else Little Navmap's `Documents/Little Navmap Files/Flight Plans`, else
+`osxp.planFolder`), else the folder Little Navmap's own dialog last used (`LnmPlnFileDialogDir` of
+`~/.config/ABarthel/little_navmap.ini`, `%APPDATA%\ABarthel` on Windows: a user's plans were in
+iCloud Drive, 2026-10-11), else Little Navmap's `Documents/Little Navmap Files/Flight Plans`, else
 X-Plane's `Output/FMS plans`, else the home folder. `planfile.read_plan_file` reads the file once
 and keeps nothing: XML whose root is `LittleNavmap`, one `Waypoint` per point (`Ident`, `Name`,
 `Pos Lat Lon`); or X-Plane's FMS text, versions 3 and 1100, one line per point (`type ident [via]

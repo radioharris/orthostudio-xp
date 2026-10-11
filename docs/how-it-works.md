@@ -487,7 +487,7 @@ computed again at each visit, so a new version's rules apply to it. Only your na
 simbrief.com, only when you press the button. *Open a flight plan…*, beside it, takes a plan file
 instead, saved by Little Navmap (`.lnmpln`) or exported for X-Plane (`.fms`), which Little Navmap
 and most planners write: the same squares, the same line, nothing sent anywhere. The dialog opens
-in Little Navmap's plan folder the first time, then where you took the last plan from.
+where Little Navmap last saved a plan the first time, then where you took the last plan from.
 
 **Choosing many squares at once.** Hold Shift, press the mouse on the map and draw a rectangle:
 every square inside it is chosen as you go, and drawing back the other way lets them go again. If

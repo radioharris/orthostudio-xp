@@ -150,3 +150,18 @@ async def test_a_file_that_is_not_a_plan_says_so(tmp_path: Path) -> None:
         got = await c.post("/api/flightplan/file", json={})
     assert got.status_code == 422
     assert got.json()["error"]["code"] == "CFG_PLAN_FILE_INVALID"
+
+
+def test_the_dialog_opens_where_little_navmap_last_saved(tmp_path: Path) -> None:
+    """A user's plans were in iCloud Drive, where Little Navmap's own dialog opens, not in its
+    plan folder (2026-10-11): its settings name that folder, and the dialog goes there first."""
+    from orthostudio.api.simbrief import little_navmap_folder, plan_folders
+
+    ini = _write(
+        tmp_path,
+        "little_navmap.ini",
+        "[Route]\nLnmPlnFileDialogDir=/Users/pilot/Library/Mobile Documents/FMS plans\n",
+    )
+    assert little_navmap_folder(ini) == Path("/Users/pilot/Library/Mobile Documents/FMS plans")
+    assert plan_folders(None, ini)[0] == Path("/Users/pilot/Library/Mobile Documents/FMS plans")
+    assert little_navmap_folder(tmp_path / "absent.ini") is None

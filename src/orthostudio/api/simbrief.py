@@ -29,7 +29,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -84,11 +86,36 @@ class PlanFileRequest(BaseModel):
     radius_km: float = Field(default=RADIUS_KM, ge=0.0, le=300.0)
 
 
-def plan_folders(global_scenery: Path | None) -> list[Path]:
-    """Where a pilot's plans are, in the order the dialog prefers them: Little Navmap's own folder,
-    then X-Plane's, then the home folder."""
+def little_navmap_ini() -> Path:
+    """Little Navmap's settings file: under ``%APPDATA%`` on Windows, ``~/.config`` elsewhere."""
+    appdata = os.environ.get("APPDATA")
+    base = Path(appdata) if sys.platform == "win32" and appdata else Path.home() / ".config"
+    return base / "ABarthel" / "little_navmap.ini"
+
+
+def little_navmap_folder(ini: Path | None = None) -> Path | None:
+    """The folder Little Navmap last saved or opened a plan in (``LnmPlnFileDialogDir``), or None.
+
+    A user's plans were in iCloud Drive, not in Little Navmap's own folder (2026-10-11): the dialog
+    opens where Little Navmap's does."""
+    try:
+        text = (ini or little_navmap_ini()).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("LnmPlnFileDialogDir="):
+            value = line.split("=", 1)[1].strip().strip('"')
+            return Path(value) if value else None
+    return None
+
+
+def plan_folders(global_scenery: Path | None, ini: Path | None = None) -> list[Path]:
+    """Where a pilot's plans are, in the order the dialog prefers them: the folder Little Navmap
+    last used, its own plan folder, X-Plane's, then the home folder."""
     home = Path.home()
-    out = [home / "Documents" / "Little Navmap Files" / "Flight Plans"]
+    last = little_navmap_folder(ini)
+    out = [last] if last is not None else []
+    out.append(home / "Documents" / "Little Navmap Files" / "Flight Plans")
     if global_scenery is not None:
         out.append(Path(global_scenery).parent / "Output" / "FMS plans")
     out.append(home)
