@@ -407,9 +407,11 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
         os.replace(tmp, final)
 
 
+# Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
+# layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
 @rule(
     name="orthostudio.vectors",
-    version=1,
+    version=2,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -421,4 +423,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@1``. Not wired by default in wave 1 (arbitration A7)."""
+"""``orthostudio.vectors@2``."""

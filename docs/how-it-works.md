@@ -102,6 +102,12 @@ requests to the provider at the same time (a limit measured not to get throttled
 its own beside it, one tile at a time, so the images never wait for it. On a cold build the
 imagery is most of the time, and the processor mostly waits for the provider.
 
+**Which water.** The lakes, ponds, rivers and docks of OpenStreetMap become X-Plane's water, as in
+Ortho4XP, with one exception: the rainwater basins OpenStreetMap marks as dry most of the year
+(`water=basin` with `intermittent=yes`, often beside runways and motorways) keep the photo's ground,
+where Ortho4XP draws water over the grass. A treatment basin, or a lake that dries in summer, stays
+water. Water smaller than `min_area` (Settings, for experts) is left to the photo.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

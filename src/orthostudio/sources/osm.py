@@ -289,7 +289,9 @@ LAYERS: Mapping[str, LayerSpec] = {
                 'way["waterway"="riverbank"]',
                 'way["waterway"="dock"]',
             ),
-            tags_of_interest=("name",),
+            # ``water`` and ``intermittent`` are OrthoStudio XP's: they tell a dry rainwater basin
+            # (``vectors.water.is_dry_basin``), which Ortho4XP draws as water.
+            tags_of_interest=("name", "water", "intermittent"),
             origin="O4_Vector_Map.py:525-539",
         ),
     )

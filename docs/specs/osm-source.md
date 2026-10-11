@@ -97,7 +97,7 @@ Selectors copied verbatim from `O4_Vector_Map.py`; only the output format change
 | `big_roads` | `:261-275` | `way["highway"="motorway"]`, `way["highway"="trunk"]`, `way["highway"="primary"]`, `way["highway"="secondary"]`, `way["railway"="rail"]`, `way["railway"="narrow_gauge"]` | `["bridge", "tunnel"]` |
 | `small_roads` | `:290-306` | `way["highway"="tertiary"]`; `road_level >= 3` adds `way["highway"="unclassified"]`, `way["highway"="residential"]`; `>= 4` adds `way["highway"="service"]`; `>= 5` adds `way["highway"="track"]` | `["bridge", "tunnel"]` |
 | `coastline` | `:391-399` | `way["natural"="coastline"]` | `[]` |
-| `water` | `:525-539` | `rel["natural"="water"]`, `rel["waterway"="riverbank"]`, `way["natural"="water"]`, `way["waterway"="riverbank"]`, `way["waterway"="dock"]` | `["name"]` |
+| `water` | `:525-539` | `rel["natural"="water"]`, `rel["waterway"="riverbank"]`, `way["natural"="water"]`, `way["waterway"="riverbank"]`, `way["waterway"="dock"]` | `["name"]`; OrthoStudio XP adds `water` and `intermittent` (dry basins, `vectors-water-roads.md` 2.1) |
 
 `small_roads` exists only at `road_level >= 2`; `layers_for(road_level)` returns the layers a
 tile needs (four at the Ortho4XP default `road_level = 1`).
