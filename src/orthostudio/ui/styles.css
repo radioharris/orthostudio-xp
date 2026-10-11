@@ -1084,13 +1084,22 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }
 .popover {
-  position: absolute; bottom: 100%; left: 0; z-index: 6; min-width: 300px; max-width: 480px;
+  position: absolute; bottom: 100%; left: 0; z-index: 6; width: max-content; min-width: 300px;
+  max-width: min(480px, calc(100vw - 24px));
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); padding: 8px 10px; margin-bottom: 6px;
 }
-.popover ul { list-style: none; margin: 0; padding: 0; }
-.popover li { display: flex; gap: 8px; padding: 2px 0; align-items: baseline; }
-.popover li .name { font-family: var(--mono); min-width: 90px; }
+/* One grid for every row: the pills share the widest one's width, the names and the texts each
+   start on one line (a flex row per check let "skip", wider than "ok", push its row right). */
+.popover ul {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: max-content max-content minmax(0, 1fr);
+  column-gap: 8px; row-gap: 5px; align-items: baseline;
+}
+.popover li { display: contents; }
+.popover li .pill { justify-self: stretch; justify-content: center; }
+.popover li .name { font-family: var(--mono); }
+.popover li > span:last-child { overflow-wrap: anywhere; }
 
 /* --------------------------------------------------------- toast */
 
