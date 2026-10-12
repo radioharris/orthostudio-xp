@@ -254,6 +254,11 @@ export const STRINGS = {
       "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only, around you; a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
     "zoom.max": "Zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
+    "zoom.choice_standard": "16/18 · standard",
+    "zoom.choice_airports": "16/19 · sharper airports",
+    "zoom.choice_sharpest": "17/19 · sharpest",
+    "zoom.choices_help":
+      "Away from airports / around them. 16/18: the package's. 16/19: 8192 px textures round airports, where you fly low. 17/19: 8192 px everywhere, the most to download.",
     "zoom.airports": "Airports",
     "zoom.airports_help": "Around airports, where the package's zoom is 18.",
     "zoom.lower": "ZL{zl}: less sharp up close, {times} times less to download",
@@ -263,8 +268,10 @@ export const STRINGS = {
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
       "A new zoom applies at the next start of Live, X-Plane closed, at once: each texture takes its new size only when X-Plane comes near it, with nothing to download.",
+    "zoom.disk":
+      "The 8192 px textures of 16/19 and 17/19 need at least {gb} GB of disk space: Live's space is raised to {gb} GB (Settings, Disk space).",
     "zoom.memory":
-      "This computer has {ram} GB of memory, and ZL17 and ZL19 need {need} GB: X-Plane may stutter or run out of memory. ZL16 and ZL18, the package's, suit it better.",
+      "This computer has {ram} GB of memory, and the 8192 px textures of 16/19 and 17/19 need {need} GB: X-Plane may stutter or run out of memory. 16/18, the package's, suits it better.",
     "home.title": "When the app starts",
     "home.help":
       "What the app shows first: Live, or OrthoStudio XP, to build tiles. Build | Live, at the top of the window, goes from one to the other.",
@@ -314,6 +321,7 @@ export const STRINGS = {
     "disk.help":
       "The space Live may take on the disk: half for the ortho made for X-Plane, half for the downloaded photos, kept to make it again without downloading them twice. Beyond it, what is farthest and oldest goes, and Live makes it again if you fly back there.",
     "disk.space": "Space for Live",
+    "disk.raised": "At least {gb} GB with these zooms: the space is set to {gb} GB.",
     "disk.now": "Now: {gb} GB ({textures} GB of ortho, {imagery} GB of photos).",
     "disk.delete": "Delete…",
     "disk.delete_streaming": "Stop Live to delete.",
@@ -604,6 +612,11 @@ export const STRINGS = {
       "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol, autour de vous ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
     "zoom.max": "Zoom",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
+    "zoom.choice_standard": "16/18 · standard",
+    "zoom.choice_airports": "16/19 · aéroports plus nets",
+    "zoom.choice_sharpest": "17/19 · le plus net",
+    "zoom.choices_help":
+      "Loin des aéroports / autour d'eux. 16/18 : celui du package. 16/19 : textures de 8192 px autour des aéroports, là où on vole bas. 17/19 : 8192 px partout, le plus à télécharger.",
     "zoom.airports": "Aéroports",
     "zoom.airports_help": "Autour des aéroports, où le zoom du package est 18.",
     "zoom.lower": "ZL{zl} : moins net de près, {times} fois moins à télécharger",
@@ -614,8 +627,10 @@ export const STRINGS = {
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
     "zoom.change":
       "Un nouveau zoom s'applique au prochain démarrage de Live, X-Plane fermé, tout de suite : chaque texture prend sa nouvelle taille seulement quand X-Plane s'en approche, sans rien télécharger.",
+    "zoom.disk":
+      "Les textures de 8192 px de 16/19 et 17/19 demandent au moins {gb} Go sur le disque : l'espace de Live passe à {gb} Go (Réglages, Place sur le disque).",
     "zoom.memory":
-      "Cet ordinateur a {ram} Go de mémoire, et ZL17 et ZL19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. ZL16 et ZL18, ceux du package, lui conviennent mieux.",
+      "Cet ordinateur a {ram} Go de mémoire, et les textures de 8192 px de 16/19 et 17/19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. 16/18, celui du package, lui convient mieux.",
     "home.title": "Au lancement de l'application",
     "home.help":
       "Ce que l'application montre d'abord : Live, ou OrthoStudio XP pour construire des tuiles. Construire | Live, en haut de la fenêtre, passe de l'un à l'autre.",
@@ -667,6 +682,7 @@ export const STRINGS = {
     "disk.help":
       "La place que Live peut prendre sur le disque : moitié pour l'ortho préparée pour X-Plane, moitié pour les photos téléchargées, gardées pour la refaire sans les retélécharger. Au-delà, ce qui est le plus loin et le plus ancien s'en va, et Live le refait si vous y revenez.",
     "disk.space": "Place pour Live",
+    "disk.raised": "Au moins {gb} Go avec ces zooms : l'espace est réglé à {gb} Go.",
     "disk.now": "En ce moment : {gb} Go ({textures} Go d'ortho, {imagery} Go de photos).",
     "disk.delete": "Supprimer…",
     "disk.delete_streaming": "Arrêtez Live pour supprimer.",

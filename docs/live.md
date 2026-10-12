@@ -139,8 +139,8 @@ asks first: a build takes a lot of processor time and may slow X-Plane down.
 and on the right:
 
 - **The state**: Ready, Starting, X-Plane waiting with a countdown, Following the aircraft, with
-  what to do next. Under it the photo source and its two zooms on one line (chosen before Start,
-  locked while Live runs, what each zoom does in its hover), the departure to prepare, and Live's
+  what to do next. Under it the photo source and its zoom on one line (chosen before Start,
+  locked while Live runs, what each choice does in its hover), the departure to prepare, and Live's
   buttons: Start Live (with its From scratch box), Start X-Plane, Stop.
 - **Flight**: whether X-Plane sends its position; the altitude, the ground speed and the position;
   how far X-Plane's image is sharp (from your screen's width and field of view), the SimBrief plan
@@ -171,14 +171,14 @@ either), what the app opens on, and Live's folder. They apply with Save, at the 
 
 ## The zoom
 
-As in AutoOrtho: a zoom away from airports (ZL14 to ZL17, ZL16 by default) and a zoom around them
-(ZL16 to ZL19, ZL18 by default, for the mesh's airport textures). X-Plane picks by itself, by
-distance, which version of a texture it shows; the zoom sets the sharpest version there is, the
-one seen up close.
+One list, three choices: a zoom away from airports and a zoom around them (for the mesh's airport
+textures), as AutoOrtho's two. X-Plane picks by itself, by distance, which version of a texture it
+shows; the zoom sets the sharpest version there is, the one seen up close.
 
-- **Below the default**, a texture is smaller (1024 px at ZL14): less sharp near the ground, four
-  times less to download for each step, shorter waits at a start. It is blurrier within about
-  38 km, the ground under the aircraft at cruise too.
+- **16/18, standard** (the default): the package's own zooms, 4096 px textures.
+- **16/19, sharper airports**: 8192 px textures around airports, where you fly low; the rest as
+  in 16/18.
+- **17/19, sharpest**: 8192 px textures everywhere.
 - **One above** (ZL17, ZL19), a texture is 8192 px: sharper near the ground only, within about
   15 km of the aircraft, of its path and of the camera at ZL17 (about 4 km at ZL19 around
   airports). It takes more memory: with less than 32 GB, the
@@ -284,7 +284,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | AutoOrtho setting | In OrthoStudio XP Live |
 |---|---|
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
-| Maximum zoom, zoom near airports | The same two, on Live's tab beside the photo source ("Zoom" and "Airports"). |
+| Maximum zoom, zoom near airports | One list on Live's tab beside the photo source: 16/18, 16/19 or 17/19. Below 16 is not offered, nor 18 away from airports (16,384 px textures). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
 | Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (ten minutes along a SimBrief route), the rings with a 25 % margin, and 10 km more for external views. |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
@@ -309,7 +309,9 @@ Windows, ext4 on Linux, never Mac OS Extended, exFAT or FAT32.
 - `overlays`: the roads, forests and buildings of Live's squares, linked as `y_osxp_live_overlays`
   while Live runs.
 
-The textures and the imagery share one disk space, 40 GB by default, set in the Settings tab. Past
+The textures and the imagery share one disk space, 20 GB by default, set in the Settings tab, and
+never under 10 GB at 16/18 nor 20 GB at 16/19 and 17/19: a smaller space is raised to it, and the
+window says so (a 20-minute flight took about 4 GB of textures at 16/18 and 12 GB at 17/19). Past
 it, Live makes the textures seen longest ago coarser, only where nothing can show it, and drops the
 imagery used longest ago. The same tab deletes the textures (built again when flown over) or the
 imagery (downloaded again when needed).

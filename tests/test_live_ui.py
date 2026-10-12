@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 import test_api_fakes as fakes
 from live_helpers import make_source
@@ -1429,3 +1430,16 @@ def test_the_plugin_speaks_the_window_s_language(
         c.set_language("de")
     c.stop()
     assert c.wait_idle(5)
+
+
+def test_the_disk_space_is_raised_to_the_floor_of_its_zooms(home: Path) -> None:
+    """20 GB by default; never under 10 GB at 16/18 nor 20 GB with 8192 px textures (16/19, 17/19):
+    a smaller space is raised rather than refused, as a 20-minute flight at 17/19 took 11.7 GB of
+    textures given 4 (2026-10-12); nought or less stays wrong."""
+    assert LiveSettings().disk_gb == 20
+    assert LiveSettings(disk_gb=4).disk_gb == 10
+    assert LiveSettings(disk_gb=12, max_zoom=17, max_zoom_airports=19).disk_gb == 20
+    assert LiveSettings(disk_gb=12, max_zoom=16, max_zoom_airports=19).disk_gb == 20
+    assert LiveSettings(disk_gb=12).disk_gb == 12
+    with pytest.raises(ValidationError):
+        LiveSettings(disk_gb=0)

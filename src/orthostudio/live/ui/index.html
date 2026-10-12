@@ -113,6 +113,8 @@
               <label for="set-provider" data-i18n="source.title">Photo source</label>
               <select id="set-provider" name="provider" class="question-select"></select>
             </div>
+            <!-- one list of three combinations (the user, 2026-10-12): 16/18, 16/19, 17/19; the two
+                 zooms chosen apart before, kept here in case they come back (live.js, the same):
             <div class="field">
               <label for="set-max-zoom" data-i18n="zoom.max">Zoom</label>
               <select id="set-max-zoom" name="max_zoom" class="question-select"></select>
@@ -121,10 +123,17 @@
               <label for="set-max-zoom-airports" data-i18n="zoom.airports">Airports</label>
               <select id="set-max-zoom-airports" name="max_zoom_airports" class="question-select"></select>
             </div>
+            -->
+            <div class="field">
+              <label for="set-zooms" data-i18n="zoom.max">Zoom</label>
+              <select id="set-zooms" name="zooms" class="question-select"></select>
+            </div>
           </div>
           <p class="question-help is-warn" id="provider-note" hidden></p>
           <!-- ZL17 or ZL19 on a computer with less memory than they need -->
           <p class="question-help is-warn" id="zoom-memory" hidden></p>
+          <!-- ZL17 or ZL19 chosen with less disk space than they need: raised (settings.disk_floor) -->
+          <p class="question-help is-warn" id="zoom-disk" hidden></p>
           <!-- while Live runs, the source's server refusing this computer (live.js refusedText) -->
           <p class="error-inline" id="source-refused" role="alert" hidden></p>
           <p class="error-inline" id="source-error" role="alert" hidden></p>
@@ -291,8 +300,10 @@
         <p class="question-detected" id="disk-now"></p>
         <div class="sub-question">
           <label class="sub-question-title" for="set-disk" data-i18n="disk.space">Space for Live</label>
-          <div class="with-unit"><input type="number" id="set-disk" name="disk_gb" min="4" step="1">
+          <div class="with-unit"><input type="number" id="set-disk" name="disk_gb" min="10" step="1">
             <span class="unit" data-i18n="unit.gb">GB</span></div>
+          <!-- a space under the zooms' floor, raised to it as it was saved (settings.disk_floor) -->
+          <p class="question-help is-warn" id="disk-raised" hidden></p>
         </div>
         <div class="actions live-delete">
           <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>

@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orthostudio.config.store import toml_dumps
 from orthostudio.fsutil import atomic_write_text
@@ -23,6 +23,16 @@ from orthostudio.live import settings_file
 TABLE = "stream"
 TEXTURES_SHARE = 0.5  # of Live's disk space: the textures built; the rest, the downloaded imagery
 OLD_BUDGETS = {"disk_budget_gb": 20.0, "cache_budget_gb": 10.0}  # the two spaces set before, apart
+# The least disk space Live is given, by its zooms: a 20-minute turning flight at Toulouse took 3.9
+# GB of textures at ZL16/18 and 11.7 GB at ZL17/19 given 4 GB (2026-10-12): Live never makes coarser
+# a texture X-Plane may read, so a smaller space was not kept, only exceeded
+DISK_MIN_GB = 10.0
+DISK_MIN_SHARP_GB = 20.0  # ZL17 or ZL19: 8192 px textures
+
+
+def disk_floor(max_zoom: int, max_zoom_airports: int) -> float:
+    """The least disk space Live is given at these zooms."""
+    return DISK_MIN_SHARP_GB if max_zoom > 16 or max_zoom_airports > 18 else DISK_MIN_GB
 
 
 class LiveSettings(BaseModel):
@@ -30,10 +40,12 @@ class LiveSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    disk_gb: float = Field(40.0, ge=4.0, le=20_000.0)
+    disk_gb: float = Field(20.0, ge=DISK_MIN_GB, le=20_000.0)
     """Disk Live may take, one space as AutoOrtho's and XPME's cache: half for the textures built
     (beyond it, the farthest are made coarser), half for the downloaded imagery (beyond it, the
-    oldest goes). Two spaces, set apart, confused a user (2026-09-27): which one to raise?"""
+    oldest goes). Two spaces, set apart, confused a user (2026-09-27): which one to raise? Never
+    less than :func:`disk_floor` for the zooms: a smaller one is raised to it (``_disk_floor``).
+    20 GB by default, both zooms' floor, 40 GB until 2026-10-12."""
     max_zoom: int = Field(16, ge=14, le=17)
     """AutoOrtho's max_zoom: the zoom of the textures away from airports. Below the mesh's (16), a
     smaller texture; 17, an 8192 px one."""
@@ -61,6 +73,24 @@ class LiveSettings(BaseModel):
     tint_8192: bool = False
     """A test: the 8192 px level of every texture built pink, the smaller ones as they are, so that
     a pilot sees where X-Plane shows the 8192 px, which the eye hardly tells from 4096 px."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _disk_floor(cls, data: Any) -> Any:
+        """The disk space raised to its floor for the zooms, rather than refused: a pilot set at
+        12 GB who chooses ZL17 gets 20, and the window says so."""
+        if not isinstance(data, dict):
+            return data
+        try:
+            floor = disk_floor(
+                int(data.get("max_zoom", 16)), int(data.get("max_zoom_airports", 18))
+            )
+            disk = float(data["disk_gb"]) if "disk_gb" in data else None
+        except (TypeError, ValueError):
+            return data  # the fields' own checks say what is wrong
+        if disk is not None and 0 < disk < floor:  # nought or less: wrong, refused as it was
+            data = {**data, "disk_gb": floor}
+        return data
 
     @property
     def textures_gb(self) -> float:
