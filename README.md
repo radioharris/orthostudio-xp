@@ -323,3 +323,11 @@ docs/benchmarks/  the measurements behind each design choice
 tools/            network benchmarks, borders data, the installers (package/)
 tests/
 ```
+
+## Support OrthoStudio XP
+
+OrthoStudio XP is free. If it brings you nicer flights and you feel like saying thanks,
+a donation is very welcome: it pays for the coffee (and the occasional avgas) behind the
+next versions. No pressure, though: reporting a problem or sharing an idea helps just as much.
+
+[![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://paypal.me/radioharris)
