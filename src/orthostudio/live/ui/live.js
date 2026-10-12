@@ -749,7 +749,7 @@ const ZOOMS = { max_zoom: [16, [14, 15, 16, 17]], max_zoom_airports: [18, [16, 1
 
 /** The combinations offered, in one list (the user, 2026-10-12): the package's, sharper airports,
  * sharper everywhere. 14 and 15 went (a saving nobody was measured to need) and 18 away from
- * airports never came (16,384 px textures). A pilot's other combination is shown as it is. */
+ * airports never came (16,384 px textures). Live was out with none other, so none other is shown. */
 const ZOOM_CHOICES = [
   [16, 18, "zoom.choice_standard"],
   [16, 19, "zoom.choice_airports"],
@@ -762,16 +762,14 @@ function zoomsChosen() {
   return [zoom, airports];
 }
 
-/** The list of combinations, the pilot's own kept when it is none of them. */
+/** The list of combinations, ``current`` chosen. */
 function renderZooms(current) {
   const select = $("set-zooms");
   const value = current || select.value || "16/18";
-  const choices = ZOOM_CHOICES.map(([zoom, airports, key]) => [`${zoom}/${airports}`, t(key)]);
-  if (!choices.some(([v]) => v === value)) choices.push([value, `ZL${value.replace("/", " / ZL")}`]);
-  select.replaceChildren(...choices.map(([v, text]) => {
+  select.replaceChildren(...ZOOM_CHOICES.map(([zoom, airports, key]) => {
     const option = document.createElement("option");
-    option.value = v;
-    option.textContent = text;
+    option.value = `${zoom}/${airports}`;
+    option.textContent = t(key);
     return option;
   }));
   select.value = value;
