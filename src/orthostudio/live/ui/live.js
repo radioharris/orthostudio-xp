@@ -4,6 +4,7 @@
 // what X-Plane is doing, what is being built, the checks and the settings. The streaming itself
 // runs in the engine (orthostudio/live/control.py); this page only starts it, stops it and shows it.
 
+import { DEFAULT_LOOKS, LOOK_VALUES, lookImageData } from "./look.js";
 import { applyStatic, countryName, detectLanguage, language, setLanguage, t } from "./strings.js";
 
 const POLL_MS = 1000;
@@ -223,6 +224,7 @@ function drawState(status) {
   const tint = running ? Boolean(running.tint_8192) : Boolean(status.settings?.tint_8192);
   $("tint-note").hidden = !tint;
   $("tint-note").textContent = tint ? t(running ? "state.tint_on" : "state.tint_next") : "";
+  $("season-note").textContent = seasonText(running, status.settings);
   // the photos and their zooms: chosen before Start, and kept until Live stops
   $("set-provider").disabled = !idle;
   $("set-provider").title = idle ? "" : t("source.running");
@@ -883,6 +885,139 @@ function drawMemory() {
   if (short) note.textContent = t("zoom.memory", { ram: m.ram_gb, need: m.sharp_ram_gb });
 }
 
+// ---------------------------------------------------------------- the season
+
+/** The line of Live's screen: the season the stream builds in, else what the next start takes. */
+function seasonText(running, settings) {
+  if (running?.season) return t("state.season", { season: t(`season.${running.season}`).toLocaleLowerCase() });
+  const chosen = settings?.season || "auto";
+  return chosen === "auto"
+    ? t("state.season_auto")
+    : t("state.season", { season: t(`season.${chosen}`).toLocaleLowerCase() });
+}
+
+let seasonLooks = null; // each season's colours as the sliders hold them, saved with the form
+let seasonEdited = "autumn"; // the season whose sliders are shown
+let seasonPlace = 0; // which of the places Live keeps the preview shows (GET look/sample)
+let seasonPhoto = null; // its image, once loaded; false: Live keeps no photo yet
+let seasonFrame = 0;
+
+/** The season answers of the settings: the switch, the season chosen without it, the sliders. */
+function fillSeason(settings) {
+  const auto = (settings.season || "auto") === "auto";
+  $("set-season-auto").checked = auto;
+  $("set-season").value = auto ? "summer" : settings.season; // greyed while the date decides
+  seasonLooks = structuredClone(settings.seasons || DEFAULT_LOOKS);
+  if (!auto) seasonEdited = settings.season;
+  drawSeason();
+}
+
+function seasonChosen() {
+  return $("set-season-auto").checked ? "auto" : $("set-season").value;
+}
+
+/** The sliders of the season shown, and its preview. */
+function drawSeason() {
+  $("set-season").disabled = $("set-season-auto").checked;
+  for (const tab of $("season-tabs").querySelectorAll(".tab")) {
+    tab.setAttribute("aria-selected", String(tab.dataset.season === seasonEdited));
+  }
+  const box = $("season-sliders");
+  box.replaceChildren();
+  const look = seasonLooks?.[seasonEdited] || DEFAULT_LOOKS[seasonEdited];
+  for (const [key, min, max] of LOOK_VALUES) {
+    const id = `season-${key}`;
+    const slider = document.createElement("input");
+    Object.assign(slider, { type: "range", id, min: String(min), max: String(max), step: "0.01" });
+    slider.value = String(look[key] ?? 0);
+    const shown = document.createElement("output");
+    shown.className = "colour-value";
+    shown.htmlFor = id;
+    const show = () => {
+      const v = Math.round(Number(slider.value) * 100);
+      shown.textContent = `${v > 0 ? "+" : ""}${v} %`;
+    };
+    show();
+    slider.addEventListener("input", () => {
+      seasonLooks[seasonEdited] = { ...seasonLooks[seasonEdited], [key]: Number(slider.value) };
+      show();
+      paintSeason(true);
+    });
+    const label = document.createElement("label");
+    label.className = "sub-question-title";
+    label.htmlFor = id;
+    label.textContent = t(`season.v_${key}`);
+    label.title = t(`season.v_${key}_help`);
+    const row = document.createElement("div");
+    row.className = "colour-row";
+    row.append(label, slider, shown);
+    box.append(row);
+  }
+  $("season-after-label").textContent = t(`season.${seasonEdited}`);
+  paintSeason();
+}
+
+/** The preview: a photo Live keeps, as delivered and in the season shown; at the next frame while
+ * a slider moves (``soon``), at once otherwise: a hidden page has no frames to wait for. */
+function paintSeason(soon = false) {
+  if (seasonPhoto === null) {
+    loadSeasonPhoto();
+    return;
+  }
+  const quiet = seasonPhoto === false;
+  $("season-preview").hidden = quiet;
+  $("season-place").hidden = quiet;
+  $("season-preview-note").textContent = t(quiet ? "season.preview_none" : "season.preview_note");
+  if (quiet || seasonPhoto === undefined) return; // none, or on its way
+  cancelAnimationFrame(seasonFrame);
+  const paint = () => {
+    const side = $("season-before").width;
+    for (const [id, look] of [["season-before", null], ["season-after", seasonLooks?.[seasonEdited]]]) {
+      const ctx = $(id).getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(seasonPhoto, 0, 0, side, side);
+      if (look) ctx.putImageData(lookImageData(ctx.getImageData(0, 0, side, side), look), 0, 0);
+    }
+  };
+  if (soon) seasonFrame = requestAnimationFrame(paint);
+  else paint();
+}
+
+function loadSeasonPhoto() {
+  const image = new Image();
+  seasonPhoto = undefined; // on its way
+  image.addEventListener("load", () => {
+    seasonPhoto = image;
+    paintSeason();
+  });
+  image.addEventListener("error", () => {
+    seasonPhoto = false;
+    paintSeason();
+  });
+  image.src = `api/live/look/sample?index=${seasonPlace}`;
+}
+
+function bindSeason() {
+  $("set-season-auto").addEventListener("change", drawSeason);
+  $("set-season").addEventListener("change", () => {
+    seasonEdited = $("set-season").value;
+    drawSeason();
+  });
+  $("season-tabs").addEventListener("click", (event) => {
+    const tab = event.target.closest(".tab");
+    if (!tab) return;
+    seasonEdited = tab.dataset.season;
+    drawSeason();
+  });
+  $("season-default").addEventListener("click", () => {
+    seasonLooks[seasonEdited] = { ...DEFAULT_LOOKS[seasonEdited] };
+    drawSeason();
+  });
+  $("season-place").addEventListener("click", () => {
+    seasonPlace += 1;
+    loadSeasonPhoto();
+  });
+}
+
 function fillSettings(settings) {
   renderZooms(`${settings.max_zoom}/${settings.max_zoom_airports}`);
   $("set-disk").value = String(settings.disk_gb);
@@ -898,6 +1033,7 @@ function fillSettings(settings) {
   drawSimbrief();
   drawStart();
   drawZooms();
+  fillSeason(settings);
   if (providers.length) renderProviders(settings.provider);
 }
 
@@ -911,6 +1047,8 @@ function formSettings() {
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
+    season: seasonChosen(),
+    seasons: seasonLooks || saved?.seasons,
   };
 }
 
@@ -918,7 +1056,9 @@ function formSettings() {
 function settingsChanged() {
   if (!saved) return false;
   const now = formSettings();
-  return Object.keys(now).some((key) => String(now[key] ?? "") !== String(saved[key] ?? ""));
+  // the seasons' sliders are an object: compared as written
+  const text = (value) => (typeof value === "object" ? JSON.stringify(value) : String(value ?? ""));
+  return Object.keys(now).some((key) => text(now[key]) !== text(saved[key]));
 }
 
 async function saveSettings(event) {
@@ -1510,6 +1650,7 @@ function languageChanged() {
   textSizeRefresh?.();
   renderZooms();
   renderProviders($("set-provider").value);
+  if (seasonLooks) drawSeason();
   drawSearch();
   drawDeparture();
   if (last) draw(last);
@@ -1588,6 +1729,7 @@ function boot() {
   $("delete-btn").addEventListener("click", openDelete);
   $("delete-dialog").addEventListener("close", deleteClosed);
   $("settings-form").addEventListener("submit", saveSettings);
+  bindSeason();
   $("settings-undo").addEventListener("click", () => {
     if (saved) fillSettings(saved);
     $("settings-status").textContent = "";

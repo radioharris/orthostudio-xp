@@ -13,7 +13,7 @@
  *   the aircraft loads.
  * - At the radio's FMOD_BANK_LOADED and at LIVERY_LOADED, it waits for the streamer to say that
  *   every texture X-Plane will read there is built. It asks every ASK_EVERY_S over UDP on
- *   127.0.0.1:LIVE_PORT.
+ *   127.0.0.1:LIVE_PORT, with the flight's date, which sets the photos' season.
  * - A new flight with the same aircraft loads no aircraft, so none of these messages come. There,
  *   the plugin waits at message 115 (1), which is undocumented and came first in the loading of the
  *   first flight. It does so only once a flight has been loaded: at the first flight it would hold
@@ -86,6 +86,7 @@ typedef float (*XPLMFlightLoop_f)(float inElapsedSinceLastCall, float inElapsedT
                                   int inCounter, void *inRefcon);
 extern XPLMDataRef XPLMFindDataRef(const char *inDataRefName);
 extern double XPLMGetDatad(XPLMDataRef inDataRef);
+extern int XPLMGetDatai(XPLMDataRef inDataRef);
 extern void XPLMDebugString(const char *inString);
 extern void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, float inInterval, void *inRefcon);
 extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void *inRefcon);
@@ -158,6 +159,7 @@ static int holding = 0; /* hold() runs: on Windows X-Plane's window may be hande
                            meanwhile (live_panel_tick), which may come back here */
 static int flights = 0; /* flights whose aircraft has loaded */
 static XPLMDataRef lat_ref, lon_ref;
+static XPLMDataRef day_ref; /* the flight's date: its day of the year, from 0 */
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
 static int french = 0; /* the Live window's language, which each answer says: its words in X-Plane */
 static char note[160]; /* its words */
@@ -371,7 +373,9 @@ static void hold(const char *at) {
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock == NO_SOCKET || !position(&lat, &lon)) return;
-    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s", lat, lon, why);
+    /* the date too: the streamer gives the photos its season (a start's, never in flight) */
+    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s day=%d", lat, lon, why,
+             day_ref ? XPLMGetDatai(day_ref) : -1);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
     holding = 1;
@@ -539,6 +543,7 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outDesc, "Makes X-Plane wait, while a flight loads, until OrthoStudio XP Live has built the ortho around the start.");
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
+    day_ref = XPLMFindDataRef("sim/time/local_date_days");
 #ifdef _WIN32
     {
         WSADATA wsa;

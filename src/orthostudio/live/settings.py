@@ -30,6 +30,49 @@ DISK_MIN_GB = 10.0
 DISK_MIN_SHARP_GB = 20.0  # ZL17 or ZL19: 8192 px textures
 
 
+SEASON_CHOICES = ("auto", "spring", "summer", "autumn", "winter")
+
+
+class LookValues(BaseModel):
+    """A season's five colour values (``orthostudio.live.look.Look``), each a deviation: 0
+    changes nothing. The window's sliders, with their ends."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    brightness: float = Field(0.0, ge=-0.5, le=0.5)
+    contrast: float = Field(0.0, ge=-0.5, le=0.5)
+    saturation: float = Field(0.0, ge=-1.0, le=1.0)
+    temperature: float = Field(0.0, ge=-1.0, le=1.0)
+    vegetation: float = Field(0.0, ge=-1.0, le=1.0)
+
+    def look(self):
+        from orthostudio.live.look import Look
+
+        return Look(**self.model_dump())
+
+
+def _default(season: str) -> LookValues:
+    from orthostudio.live.look import DEFAULT_LOOKS
+
+    return LookValues(**DEFAULT_LOOKS[season].__dict__)
+
+
+class SeasonLooks(BaseModel):
+    """Each season's colours: Live's own (``look.DEFAULT_LOOKS``) until the pilot moves them."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    spring: LookValues = Field(default_factory=lambda: _default("spring"))
+    summer: LookValues = Field(default_factory=lambda: _default("summer"))
+    autumn: LookValues = Field(default_factory=lambda: _default("autumn"))
+    winter: LookValues = Field(default_factory=lambda: _default("winter"))
+
+    def looks(self) -> dict:
+        return {
+            name: getattr(self, name).look() for name in ("spring", "summer", "autumn", "winter")
+        }
+
+
 def disk_floor(max_zoom: int, max_zoom_airports: int) -> float:
     """The least disk space Live is given at these zooms."""
     return DISK_MIN_SHARP_GB if max_zoom > 16 or max_zoom_airports > 18 else DISK_MIN_GB
@@ -73,6 +116,12 @@ class LiveSettings(BaseModel):
     tint_8192: bool = False
     """A test: the 8192 px level of every texture built pink, the smaller ones as they are, so that
     a pilot sees where X-Plane shows the 8192 px, which the eye hardly tells from 4096 px."""
+    season: Literal["auto", "spring", "summer", "autumn", "winter"] = "auto"
+    """The photos' season (``orthostudio.live.look``): "auto" follows the date of the flight
+    X-Plane starts, astronomical seasons at its latitude; or always the one named. Chosen for a
+    start, never changed in flight (the user, 2026-10-13)."""
+    seasons: SeasonLooks = Field(default_factory=SeasonLooks)
+    """Each season's colours, as the window's sliders set them."""
 
     @model_validator(mode="before")
     @classmethod

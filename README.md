@@ -138,6 +138,8 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
 - **Measured on the same flight**: the ground ready about twice as fast as with XPME and five times
   as fast as with AutoOrtho, for a third of a processor core.
 - **Your own tiles come first**: Live downloads nothing where you built one.
+- **Seasons**: the photos in the colours of the season of your flight's date in X-Plane, or of
+  the one you choose.
 
 Its guide, with the steps of a flight, the window and the measurements:
 [docs/live.md](docs/live.md).

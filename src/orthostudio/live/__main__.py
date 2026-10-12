@@ -206,7 +206,14 @@ def stream(
         typer.Option(
             help="disk Live may take: half for the textures built (beyond it, the farthest are "
             "made coarser), half for the downloaded imagery (beyond it, the oldest goes) "
-            "(default: the window's, 40)"
+            "(default: the window's, 20)"
+        ),
+    ] = None,
+    season: Annotated[
+        str | None,
+        typer.Option(
+            help="the photos' colours: auto (the date of the flight X-Plane starts), spring, "
+            "summer, autumn or winter (default: the window's)"
         ),
     ] = None,
 ) -> None:
@@ -214,11 +221,13 @@ def stream(
 
     The options left out are the Live window's settings."""
     from orthostudio.live import pools
-    from orthostudio.live.settings import LiveSettings, load_settings
+    from orthostudio.live.settings import SEASON_CHOICES, LiveSettings, load_settings
 
     pools.start_server()  # before the engine loads PROJ (orthostudio.live.pools)
     saved = load_settings()
     space = saved
+    if season is not None and season not in SEASON_CHOICES:
+        raise typer.Exit(_fail(f"--season: one of {', '.join(SEASON_CHOICES)}"))
     if disk_gb is not None:
         try:  # checked as the window checks it
             space = LiveSettings.model_validate({**saved.model_dump(), "disk_gb": disk_gb})
@@ -245,6 +254,8 @@ def stream(
         disk_budget_gb=space.textures_gb,
         cache_budget_gb=space.imagery_gb,
         tint_8192=saved.tint_8192 if tint_8192 is None else tint_8192,
+        season=saved.season if season is None else season,
+        looks=saved.seasons.looks(),
     )
     try:
         prepared = session.prepare(options, typer.echo)

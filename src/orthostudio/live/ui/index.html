@@ -104,6 +104,8 @@
         </div>
         <p class="error-inline" id="state-error" role="alert" hidden></p>
         <p class="question-help is-warn" id="tint-note" hidden></p>
+        <!-- the photos' season: the stream's, else what the next start takes (Settings, Season) -->
+        <p class="question-help" id="season-note"></p>
         <!-- the photos and their two zooms on one line (the user, 2026-10-09), chosen first, before
              Start: saved as soon as chosen; the photos' credit and licence at the foot of the map
              (basemap.js), what each zoom does in its hover (live.js drawZooms) -->
@@ -278,6 +280,46 @@
               <span data-i18n="start.tint">Test: show the 8192 px textures in pink</span></label>
             <p class="question-help" data-i18n="start.tint_help"></p>
           </div>
+        </fieldset>
+      </fieldset>
+
+      <!-- the photos' colours: a season per start, never one in flight (orthostudio.live.look) -->
+      <fieldset class="question" id="q-season">
+        <legend class="question-title" data-i18n="season.title">Season</legend>
+        <p class="question-help" data-i18n="season.help"></p>
+        <label class="switch"><input type="checkbox" id="set-season-auto">
+          <span data-i18n="season.auto">Follow the date of the flight in X-Plane</span></label>
+        <p class="question-help" data-i18n="season.auto_help"></p>
+        <div class="sub-question" id="season-fixed">
+          <label class="sub-question-title" for="set-season" data-i18n="season.fixed">Always</label>
+          <select id="set-season">
+            <option value="spring" data-i18n="season.spring">Spring</option>
+            <option value="summer" data-i18n="season.summer">Summer</option>
+            <option value="autumn" data-i18n="season.autumn">Autumn</option>
+            <option value="winter" data-i18n="season.winter">Winter</option>
+          </select>
+        </div>
+        <fieldset class="sub-question">
+          <legend class="sub-question-title" data-i18n="season.colours">The colours of each season</legend>
+          <div class="tabs" id="season-tabs" role="tablist">
+            <button type="button" class="tab" role="tab" data-season="spring" data-i18n="season.spring">Spring</button>
+            <button type="button" class="tab" role="tab" data-season="summer" data-i18n="season.summer">Summer</button>
+            <button type="button" class="tab" role="tab" data-season="autumn" data-i18n="season.autumn">Autumn</button>
+            <button type="button" class="tab" role="tab" data-season="winter" data-i18n="season.winter">Winter</button>
+          </div>
+          <div class="colour-values" id="season-sliders"></div>
+          <div class="photo-preview is-wide" id="season-preview">
+            <div class="photo-shot"><canvas class="photo-canvas" id="season-before" width="512" height="512"></canvas>
+              <span class="photo-label" data-i18n="season.before">As delivered</span></div>
+            <div class="photo-shot"><canvas class="photo-canvas" id="season-after" width="512" height="512"></canvas>
+              <span class="photo-label" id="season-after-label"></span></div>
+          </div>
+          <p class="question-help" id="season-preview-note" data-i18n="season.preview_note"></p>
+          <div class="actions">
+            <button type="button" class="btn btn-small" id="season-place" data-i18n="season.place">Another place</button>
+            <button type="button" class="btn btn-small" id="season-default" data-i18n="season.default">Live's values</button>
+          </div>
+          <p class="question-help" data-i18n="season.change"></p>
         </fieldset>
       </fieldset>
 

@@ -17,6 +17,7 @@ design and the measurements behind it are in [specs/live.md](specs/live.md) and
 - [A flight, step by step](#a-flight-step-by-step)
 - [The window](#the-window)
 - [The zoom](#the-zoom)
+- [The season](#the-season)
 - [Imagery sources, your own tiles, roads and forests](#imagery-sources-your-own-tiles-roads-and-forests)
 - [The mesh, by region](#the-mesh-by-region)
 - [What happens while you fly](#what-happens-while-you-fly)
@@ -196,6 +197,39 @@ hour; with ZL17 and 19, about 1.4 GB and 13 GB.
 To see where X-Plane really shows the 8192 px: "Test: show the 8192 px textures in pink" (Settings,
 Zoom) builds that level washed with pink. Untick it after, and delete the textures: they are built
 again, their sharpest photos downloaded again.
+
+## The season
+
+The photos are mostly taken in summer. Live can give them the colours of another season
+(Settings, Season), as measured on satellite photos of the same places through the year:
+
+- **Spring**: what is green a little yellower.
+- **Summer**: the photos as delivered.
+- **Autumn**: what is green a little yellower and paler.
+- **Winter**: what is green turns olive. No snow: white cannot be made from a summer photo
+  without looking wrong.
+
+The changes are discreet because the real ones are: most of a season's change is field by field
+(a crop grown, harvested, ploughed), which no colour can guess, and in the south of France summer
+is the driest season. The light of the season, a lower sun in winter, is X-Plane's own. The
+sliders go further for those who want more.
+
+**Follow the date of the flight in X-Plane** (the default): Live reads the date you chose in
+X-Plane when you click Start Flight, and takes its astronomical season there: spring from 20
+March, summer from 21 June, autumn from 23 September, winter from 21 December. South of the equator
+the seasons are the other way round, and between the tropics the photos stay as delivered (summer).
+Untick it to have always the season you choose.
+
+Each season has five sliders: brightness, contrast, saturation, temperature (colder or warmer) and
+vegetation (greener, or yellow and russet: only what is green in the photo, never fields, roofs,
+roads or water). A preview shows a place you flew over, from the photos Live keeps, as delivered
+and in the season; "Another place" shows another one, "Live's values" sets the season back.
+
+The season is chosen when a flight starts and never changes in flight: X-Plane reads each texture
+once. When the season changes, Live builds the textures again as you fly: the far ones from the
+photos it keeps, the sharpest ones (4096 and 8192 px) downloaded again, as on a first flight there,
+since Live does not keep their photos. That start takes as long as a first one. Your own scenery
+keeps its colours.
 
 ## Imagery sources, your own tiles, roads and forests
 

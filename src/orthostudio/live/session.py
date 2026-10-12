@@ -22,6 +22,7 @@ from typing import Any
 
 from orthostudio.errors import OsxpError
 from orthostudio.live.filesystem import is_folder_link
+from orthostudio.live.gate import read_flight_time
 from orthostudio.live.pack import (
     LINK_NAME,
     OVERLAY_LINK_NAME,
@@ -84,6 +85,8 @@ class Options:
     disk_budget_gb: float = 20.0
     cache_budget_gb: float = 10.0
     tint_8192: bool = False  # the test: the 8192 px levels built pink, where X-Plane shows them
+    season: str = "auto"  # the photos' season: "auto" (X-Plane's date), or spring... winter
+    looks: dict | None = None  # each season's colours (orthostudio.live.look.Look); None: Live's
 
 
 @dataclass
@@ -418,6 +421,24 @@ def follow(
     computer = machine.share(options.workers)
     for line in computer.notes(options.max_zoom, options.max_zoom_airports):
         log(line)
+    season_for = None
+    if options.season == "auto":
+        from orthostudio.live.look import SEASONS
+        from orthostudio.live.pack import load_built
+
+        season_for = _season_for(prepared.xplane)
+        built_in = load_built(prepared.pack).get("season")
+        if prepared.fix is None and built_in in SEASONS:
+            # no start yet: the textures built keep their season until a flight's date says
+            # another (a guess from the date saved last threw them away, then built them again)
+            season, why = built_in, "the textures built, until a flight's date"
+        else:
+            saved = read_flight_time(_freeflight(prepared.xplane))
+            lat = prepared.fix.lat if prepared.fix is not None else (saved and saved[1])
+            season, why = season_for(lat if lat is not None else 45.0)
+    else:
+        season, why = options.season, "chosen in Live's settings"
+    log(f"season: {season} ({why})")
     try:
         xp = XPlaneUDP([d for _, d in DATAREFS], port=options.port)
         try:
@@ -443,6 +464,8 @@ def follow(
                     covered=prepared.covered,
                     simbrief_user=options.simbrief_user,
                     tint_8192=options.tint_8192,
+                    looks=options.looks,
+                    season=season,
                     flight_encodes=computer.flight_encodes,
                     sharp_builds=computer.sharp_builds,
                     installed_regions=lambda: {
@@ -471,6 +494,7 @@ def follow(
                     report=report,
                     language=language or (lambda: options.language),
                     departure=departure or (lambda: None),
+                    season_for=season_for,
                 )
             finally:
                 if attach is not None:
@@ -481,6 +505,32 @@ def follow(
     finally:
         if prepared.gate is not None:
             prepared.gate.close()
+
+
+def _freeflight(xplane: Path) -> Path:
+    return xplane / "Output" / "preferences" / "Freeflight.prf"
+
+
+def _season_for(xplane: Path) -> Callable[..., tuple[str, str]]:
+    """The season of a start at a latitude, and why, for the log: from ``day``, the flight's date
+    the plugin gives as X-Plane loads it, else the date of the flight X-Plane saved last
+    (``gate.read_flight_time``: the one it starts, read at the click), today's when none is
+    saved."""
+    import datetime
+
+    from orthostudio.live.look import season_on, today
+
+    prefs = _freeflight(xplane)
+
+    def season_for(lat: float, day: int | None = None) -> tuple[str, str]:
+        whose = "the flight's date in X-Plane"
+        if day is None:
+            saved = read_flight_time(prefs)
+            day, whose = (today(), "today") if saved is None else (saved[0], "X-Plane's date")
+        date = datetime.date(datetime.date.today().year, 1, 1) + datetime.timedelta(days=day - 1)
+        return season_on(day, lat), f"{whose}, {date.day} {date:%b}, at {lat:.1f}°"
+
+    return season_for
 
 
 def uninstall(xplane: Path, log: Log) -> None:

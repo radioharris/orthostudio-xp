@@ -298,11 +298,44 @@ export const STRINGS = {
 
     "plan.title": "Flight plan",
     "plan.help":
-      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 90 seconds straight ahead.",
+      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 2 minutes straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
     "plan.privacy":
       "Only this name goes to simbrief.com: when a flight starts, and while the Live window is open (when it opens, when you come back to it, and every two minutes), to offer your departure and tell you when your plan changes. Empty: nothing is asked.",
     "plan.take": "Take OrthoStudio XP's: {name}",
+
+    "state.season": "Season: {season}.",
+    "state.season_auto": "Season: the date of the flight in X-Plane.",
+    "season.title": "Season",
+    "season.help":
+      "The photos are mostly taken in summer. Live can give them the colours of another season, as measured on satellite photos of the same places through the year: what is green turns olive in winter, a little yellower and paler in spring and autumn (no snow). The light of the season is X-Plane's own. Your own scenery keeps its colours.",
+    "season.auto": "Follow the date of the flight in X-Plane",
+    "season.auto_help":
+      "The season of the date chosen in X-Plane, read when you click Start Flight: spring from 20 March, summer from 21 June, autumn from 23 September, winter from 21 December; the other way round south of the equator, and summer between the tropics.",
+    "season.fixed": "Otherwise, always",
+    "season.spring": "Spring",
+    "season.summer": "Summer",
+    "season.autumn": "Autumn",
+    "season.winter": "Winter",
+    "season.colours": "The colours of each season",
+    "season.v_brightness": "Brightness",
+    "season.v_brightness_help": "Darker to the left, lighter to the right.",
+    "season.v_contrast": "Contrast",
+    "season.v_contrast_help": "Softer to the left, stronger to the right.",
+    "season.v_saturation": "Saturation",
+    "season.v_saturation_help": "Greyer to the left, more colourful to the right.",
+    "season.v_temperature": "Temperature",
+    "season.v_temperature_help": "Colder (bluer) to the left, warmer (yellower) to the right.",
+    "season.v_vegetation": "Vegetation",
+    "season.v_vegetation_help":
+      "Only what is green in the photo: greener to the left, yellow and russet to the right. Fields, roofs, roads and water stay as they are.",
+    "season.before": "As delivered",
+    "season.preview_note": "A place you flew over, from the photos Live keeps.",
+    "season.preview_none": "The preview appears once you have flown with Live: it shows the photos Live keeps.",
+    "season.place": "Another place",
+    "season.default": "Live's values for this season",
+    "season.change":
+      "The season is chosen when a flight starts and stays until the next one. When it changes, Live builds the textures again as you fly: the far ones from the photos it keeps, the sharpest ones (4096 and 8192 px) downloaded again, as on a first flight there, since Live does not keep their photos. That start takes as long as a first one.",
 
     "start.title": "When a flight starts",
     "start.plain":
@@ -659,11 +692,44 @@ export const STRINGS = {
 
     "plan.title": "Plan de vol",
     "plan.help":
-      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 90 secondes tout droit devant.",
+      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 2 minutes tout droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
     "plan.privacy":
       "Seul ce nom est envoyé à simbrief.com : au départ de chaque vol, et tant que la fenêtre de Live est ouverte (à son ouverture, quand vous y revenez, et toutes les deux minutes), pour proposer votre départ et vous dire quand votre plan change. Vide : rien n'est demandé.",
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
+
+    "state.season": "Saison : {season}.",
+    "state.season_auto": "Saison : la date du vol dans X-Plane.",
+    "season.title": "Saison",
+    "season.help":
+      "Les photos sont surtout prises en été. Live peut leur donner les couleurs d'une autre saison, telles que mesurées sur des photos satellite des mêmes endroits au fil de l'année : ce qui est vert devient olive en hiver, un peu plus jaune et plus pâle au printemps et en automne (sans neige). La lumière de la saison est celle de X-Plane. Vos propres scènes gardent leurs couleurs.",
+    "season.auto": "Suivre la date du vol dans X-Plane",
+    "season.auto_help":
+      "La saison de la date choisie dans X-Plane, lue au clic sur Start Flight : le printemps dès le 20 mars, l'été dès le 21 juin, l'automne dès le 23 septembre, l'hiver dès le 21 décembre ; à l'inverse au sud de l'équateur, et l'été entre les tropiques.",
+    "season.fixed": "Sinon, toujours",
+    "season.spring": "Printemps",
+    "season.summer": "Été",
+    "season.autumn": "Automne",
+    "season.winter": "Hiver",
+    "season.colours": "Les couleurs de chaque saison",
+    "season.v_brightness": "Luminosité",
+    "season.v_brightness_help": "Plus sombre à gauche, plus clair à droite.",
+    "season.v_contrast": "Contraste",
+    "season.v_contrast_help": "Plus doux à gauche, plus marqué à droite.",
+    "season.v_saturation": "Saturation",
+    "season.v_saturation_help": "Plus gris à gauche, plus coloré à droite.",
+    "season.v_temperature": "Température",
+    "season.v_temperature_help": "Plus froid (bleu) à gauche, plus chaud (jaune) à droite.",
+    "season.v_vegetation": "Végétation",
+    "season.v_vegetation_help":
+      "Seulement ce qui est vert sur la photo : plus vert à gauche, jauni et roux à droite. Les champs, les toits, les routes et l'eau restent tels quels.",
+    "season.before": "Telle que livrée",
+    "season.preview_note": "Un endroit que vous avez survolé, parmi les photos que Live garde.",
+    "season.preview_none": "L'aperçu apparaît une fois que vous avez volé avec Live : il montre les photos que Live garde.",
+    "season.place": "Un autre endroit",
+    "season.default": "Valeurs de Live pour cette saison",
+    "season.change":
+      "La saison est choisie au démarrage d'un vol et reste jusqu'au suivant. Quand elle change, Live refait les textures au fil du vol : les lointaines à partir des photos qu'il garde, les plus nettes (4096 et 8192 px) retéléchargées, comme au premier vol à cet endroit, car Live ne garde pas leurs photos. Ce démarrage-là prend autant de temps qu'un premier.",
 
     "start.title": "Au démarrage d'un vol",
     "start.plain":

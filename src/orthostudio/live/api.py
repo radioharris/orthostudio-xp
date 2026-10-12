@@ -35,7 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from orthostudio.live import session
@@ -336,6 +336,23 @@ def live_router(
             raise HTTPException(404, f"{target} is not there")
         reveal_in_file_manager(target)
         return {"revealed": str(target)}
+
+    @router.get("/look/sample")
+    def look_sample(index: int = 0, provider: str | None = None) -> Response:
+        """A photo of the ground Live keeps, for the season preview: the places downloaded last,
+        ``index`` going through them (404: none kept yet)."""
+        from orthostudio.live.look import sample_photo
+        from orthostudio.live.pack import default_cache_path
+        from orthostudio.live.providers import cache_key
+
+        try:
+            key = cache_key(provider or load_settings().provider)
+        except ValueError as e:
+            raise HTTPException(404, str(e)) from e
+        body = sample_photo(default_cache_path(), key, index)
+        if body is None:
+            raise HTTPException(404, "Live keeps no photo yet: fly once with Live")
+        return Response(body, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @router.get("/settings")
     def get_settings() -> dict[str, Any]:

@@ -357,31 +357,35 @@ def tinted(img):
     return (img.astype(np.float32) * (1.0 - TINT_ALPHA) + pink * TINT_ALPHA).astype(np.uint8)
 
 
-def encode_levels(img, tint_top: bool = False) -> list[bytes]:
+def encode_levels(img, tint_top: bool = False, look=None) -> list[bytes]:
     """BC1 blocks of ``img`` and of every smaller level down to 1 x 1; ``tint_top``: ``img``'s own
-    level pink, the smaller ones made from it untinted before."""
+    level pink, the smaller ones made from it untinted before; ``look``: the season's colours
+    (``orthostudio.live.look``, five values), given to the blocks of every level."""
     from .imaging import encode_bc1, mip_chain
+    from .look import look_blocks
 
     levels = mip_chain(img)
     if tint_top:
         levels[0] = tinted(levels[0])
-    return [encode_bc1(level) for level in levels]
+    return [look_blocks(encode_bc1(level), look) for level in levels]
 
 
 def build_job(job) -> tuple[str, int, int, int]:
-    """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint[, built]]]]) ->
-    (name, top level, from parent, blank). ``base``: the neutral texture the file starts from, of
-    the file's size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``: the
-    test of the 8192 px, their level pink (:func:`encode_levels`); ``built``: the level the file
-    holds already, kept below a sharper build (``write_sparse``'s ``keep_from``)."""
+    """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint[, built[, look]]]]])
+    -> (name, top level, from parent, blank). ``base``: the neutral texture the file starts from,
+    of the file's size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``:
+    the test of the 8192 px, their level pink (:func:`encode_levels`); ``built``: the level the
+    file holds already, kept below a sharper build (``write_sparse``'s ``keep_from``); ``look``:
+    the season's five values, or None for the photos as delivered."""
     name, level, pieces, parents, path = job[:5]
     base = Path(job[5]) if len(job) > 5 and job[5] else None
     file_top = job[6] if len(job) > 6 else 0
     tint = bool(job[7]) if len(job) > 7 else False
     built = job[8] if len(job) > 8 else None
+    look = job[9] if len(job) > 9 else None
     tex = parse_texture_name(name)
     img, from_parent, blank = assemble(tex, level, pieces, parents)
-    levels = encode_levels(img, tint_top=tint and level < 0)
+    levels = encode_levels(img, tint_top=tint and level < 0, look=look)
     write_sparse(
         Path(path),
         level,

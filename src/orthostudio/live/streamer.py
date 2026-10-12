@@ -62,6 +62,7 @@ from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
+from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
 from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
@@ -147,6 +148,10 @@ STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is 
 # textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
 EVICT_BATCH = 50
+# textures built in another season (stale): their files made neutral again a few at a time, at
+# most this long every STALE_EVERY_S, those X-Plane may read built again first by the planner
+STALE_EVERY_S = 1.0
+STALE_WORK_S = 0.2
 FRESH_S = (
     2.0  # X-Plane's position is live if it came this recently: X-Plane is running, not loading
 )
@@ -276,6 +281,7 @@ class _Job:
     parents_missing: set[Key] = field(default_factory=set)
     stage: str = "pieces"
     patched: set[Key] = field(default_factory=set)  # pieces that did not come: the zoom below's
+    gen: int = 0  # the season it was encoded in (Streamer.look_gen)
 
 
 class TextureIndex:
@@ -326,6 +332,8 @@ class Streamer:
         simbrief_user: str = "",
         installed_regions: Callable[[], Collection[str]] = frozenset,
         tint_8192: bool = False,
+        looks: dict[str, Look] | None = None,
+        season: str = "summer",
         flight_encodes: int = FLIGHT_ENCODES,
         sharp_builds: int = SHARP_WORKERS,
         memory_pressure: Callable[[], int] = machine.memory_pressure,
@@ -334,7 +342,9 @@ class Streamer:
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
         builder feeds: ``submit(key, priority)``, ``close()``, and its counters. ``region_lists``:
-        where each region's textures are kept from one start to the next (``names.one_region``)."""
+        where each region's textures are kept from one start to the next (``names.one_region``).
+        ``looks``: each season's colours (``orthostudio.live.look``); ``season``: the one the
+        textures are built in, until :meth:`choose_season` changes it."""
         self.pack_dir = pack_dir
         self.cache = cache
         self.downloader_factory = downloader_factory
@@ -388,6 +398,25 @@ class Streamer:
         self.seen: dict[str, float] = dict(
             self.meta.get("seen", {})
         )  # when a built texture was last in reach
+        # The season's colours (orthostudio.live.look). Textures built in another season are
+        # stale: forgotten as built, so that the planner builds them again (their 4096 and 8192
+        # px photos downloaded again, UNCACHED_FROM), their files the old season's until then or
+        # until made neutral again (drop_stale).
+        self.looks: dict[str, Look] = {**DEFAULT_LOOKS, **(looks or {})}
+        self.season = season
+        self.look = self.looks.get(season, Look())
+        self.look_gen = 0  # one more at each change of season: a texture encoded before is stale
+        self.stale: dict[str, int] = {
+            n: lv for n, lv in self.meta.get("stale", {}).items() if isinstance(lv, int)
+        }
+        recorded = self.meta.get("look")
+        was = Look(*recorded) if isinstance(recorded, list) and len(recorded) == 5 else Look()
+        if was != self.look and self.built:  # a pack of before the seasons: its photos as delivered
+            log(
+                f"season {season}: the {len(self.built)} textures built in another season built "
+                "again as X-Plane comes (their 4096 and 8192 px photos downloaded again)"
+            )
+            self._make_stale()
         self.disk_budget = disk_budget
         self.cache_budget = cache_budget
         self._cache_size = 0  # the imagery cache's disk, as the last eviction round measured it
@@ -476,6 +505,72 @@ class Streamer:
             )
             self.names.yielding = self.yielding
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
+
+    # --- the season ---------------------------------------------------------------------------
+
+    def _make_stale(self) -> int:
+        """Every texture built forgotten as built, its file kept until built again or made
+        neutral (:meth:`drop_stale`): built in another season. Under ``self.lock`` once the
+        streamer runs. Returns how many."""
+        n = len(self.built)
+        self.stale.update(self.built)
+        self.built.clear()
+        self.seen.clear()
+        self.patchy.clear()
+        self.copied_up.clear()
+        self.to_copy.clear()
+        self.built_version += 1
+        return n
+
+    def choose_season(self, season: str, why: str) -> bool:
+        """Build in ``season`` from now on: what was built in another look is built again as
+        X-Plane comes, its far levels from the imagery kept, its 4096 and 8192 px ones downloaded
+        again (``UNCACHED_FROM``: their photos are not kept). A start's season, never one in
+        flight (the user, 2026-10-13): called as a start is expected. Whether the look changed."""
+        look = self.looks.get(season, Look())
+        with self.lock:
+            self.season = season
+            if look == self.look:
+                return False
+            self.look = look
+            self.look_gen += 1
+            n = self._make_stale()
+        self.log(
+            f"season {season} ({why}): {n} textures built in another season, built again as "
+            "X-Plane comes (their 4096 and 8192 px photos downloaded again)"
+        )
+        return True
+
+    def drop_stale(self, budget_s: float = STALE_WORK_S) -> int:
+        """Files of textures built in another season made neutral again, as the disk budget
+        does (:meth:`evict`), for at most ``budget_s``: the disk they take is no longer counted.
+        Never one queued or building: the planner wants it, and its new file is on its way.
+        Builder thread. Returns how many."""
+        with self.lock:
+            if not self.stale:
+                return 0
+            busy = set(self.in_flight) | set(self.queue)
+            names = [n for n in self.stale if n not in busy]
+        t0 = time.monotonic()
+        done = 0
+        for name in names:
+            if time.monotonic() - t0 > budget_s:
+                break
+            if self._fitting(name):
+                continue
+            path = self.pack_dir / "textures" / name
+            try:
+                if self.names is not None and self.names.holds(name):
+                    self.names.pool.replace(self.top_of(name), path)
+                else:
+                    path.unlink(missing_ok=True)
+            except OSError as e:
+                self.log(f"  could not make {name} neutral again: {e}")
+                continue
+            with self.lock:
+                self.stale.pop(name, None)
+            done += 1
+        return done
 
     # --- the squares' files -------------------------------------------------------------------
 
@@ -1080,10 +1175,16 @@ class Streamer:
 
     # --- building -----------------------------------------------------------------------------
 
-    def _finished(self, fut: Future, name: str, level: int, patched: bool = False) -> None:
+    def _finished(
+        self, fut: Future, name: str, level: int, patched: bool = False, gen: int | None = None
+    ) -> None:
         try:
             fut.result()
             with self.lock:  # the status line and the save copy them whole, from the main thread
+                if gen is not None and gen != self.look_gen:  # encoded in the season before
+                    self.stale[name] = level
+                    return
+                self.stale.pop(name, None)  # its file written again, whole
                 self.built[name] = level
                 self.built_version += 1
                 self.done[level] += 1
@@ -1184,6 +1285,9 @@ class Streamer:
                 ready.remove(job)
                 job.stage = "encoding"
                 top = self.top_of(job.name)
+                with self.lock:
+                    look, job.gen = self.look, self.look_gen
+                    built = self.built.get(job.name)  # its levels kept below a sharper build
                 fut = (sharp_pool if job.level < 0 else pool).submit(
                     build_job,
                     (
@@ -1195,7 +1299,8 @@ class Streamer:
                         self.neutral_for(top),
                         top,
                         self.tint_8192,
-                        self.built.get(job.name),  # its levels kept below a sharper build
+                        built,
+                        None if look.unchanged else look.values(),
                     ),
                 )
                 encoding[fut] = job
@@ -1296,7 +1401,7 @@ class Streamer:
                     if job is not None:
                         without(job, key, None, True, pool)
 
-        last_flush = last_evict = time.monotonic()
+        last_flush = last_evict = last_stale = time.monotonic()
         with (
             pools.RenewingPool(
                 lambda: ProcessPoolExecutor(
@@ -1349,7 +1454,7 @@ class Streamer:
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)
-                        self._finished(fut, job.name, job.level, bool(job.patched))
+                        self._finished(fut, job.name, job.level, bool(job.patched), job.gen)
                     submit_ready(pool)
                     self.encoding_now = len(encoding)
                     self.ready_now = len(ready)
@@ -1371,6 +1476,9 @@ class Streamer:
                     ):
                         self.evict()
                         last_evict = time.monotonic()
+                    if self.stale and time.monotonic() - last_stale > STALE_EVERY_S:
+                        self.drop_stale()
+                        last_stale = time.monotonic()
                     if self.stop.is_set() and not encoding:
                         break
             finally:
@@ -1508,7 +1616,12 @@ class Streamer:
             textures = dict(self.built)
             seen = {n: round(t) for n, t in self.seen.items() if n in textures}
             patchy = sorted(n for n in self.patchy if n in textures)
+            stale = dict(self.stale)
+            look, season = self.look, self.season
         meta = load_built(self.pack_dir)
+        meta["look"] = list(look.values())  # what the textures recorded are built in
+        meta["season"] = season
+        meta["stale"] = stale
         if self.screen is not None:
             meta["screen"] = self.screen
         meta["textures"] = textures
@@ -1553,6 +1666,8 @@ class Streamer:
                 1 for name, level in built.items() if shown(level, self.top_of(name)) < 0
             ),
             "tint_8192": self.tint_8192,
+            "season": self.season,  # the textures' colours (choose_season): the window says it
+            "stale": len(self.stale),
             "flight_plan": None
             if self.flight_plan is None
             else {
@@ -1774,6 +1889,7 @@ def run(
     report: Callable[[dict], None] | None = None,
     language: Callable[[], str] = lambda: "en",
     departure: Callable[[], tuple[float, float, str] | None] = lambda: None,
+    season_for: Callable[..., tuple[str, str]] | None = None,
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
@@ -1781,7 +1897,10 @@ def run(
     from the plugin,
     and holds X-Plane until everything it will read there is built. ``report`` is given every
     second what the Live window shows (:func:`progress_report`). ``departure``: a start the Live
-    window asks to prepare before X-Plane loads it (lat, lon, its name), as ``--from``."""
+    window asks to prepare before X-Plane loads it (lat, lon, its name), as ``--from``.
+    ``season_for(lat, day=None)``: the season of a start at that latitude and why, when it follows
+    X-Plane's date (``day``: the flight's, as the plugin gives it while X-Plane loads it; else the
+    one X-Plane saved); None: the season chosen stays."""
     from .scenery import xplane_pid, xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
@@ -1808,7 +1927,7 @@ def run(
     if FROZEN_IN_FLIGHT:
         log("  a test flight's: Live builds nothing once the aircraft flies (frozen in flight)")
 
-    def expect(lat: float, lon: float, name: str, how: str) -> None:
+    def expect(lat: float, lon: float, name: str, how: str, day: int | None = None) -> None:
         nonlocal arrival
         # A click while X-Plane runs is a start only once X-Plane stops to load it: X-Plane also
         # writes Freeflight.prf when it quits.
@@ -1822,6 +1941,11 @@ def run(
         )
         if gate is not None:  # the gate's word to a waiting X-Plane while this start is planned
             gate.hold_at(name, language())
+        # A start's season, never one in flight: the date X-Plane saved at the click, or the one
+        # the plugin gives as X-Plane holds; a flight X-Plane loads unclicked (its web API, a
+        # situation) saves none, so its LOAD waits for the HOLD's date
+        if season_for is not None and (day is not None or how != "plugin"):
+            streamer.choose_season(*season_for(lat, day))
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         streamer.refresh_flight_plan()  # a new flight may have a new plan
@@ -1891,10 +2015,21 @@ def run(
                         if kind == "HOLD":  # a livery changed in flight: nothing loads
                             gate.answer(addr, True, 0, lang=language())
                         continue
+                    # the flight's date as X-Plane loads it: its season, over the one saved
+                    day = gate.held_day if kind == "HOLD" else None
                     if arrival is None or (
                         arrival.how not in ("click", "from") and not arrival.near(lat, lon)
                     ):
-                        expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin")
+                        expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin", day)
+                    elif (
+                        season_for is not None
+                        and day is not None
+                        and streamer.choose_season(*season_for(arrival.lat, day))
+                    ):  # built in another season: planned again before X-Plane is answered (it
+                        # went on after 1 s with every texture still summer's, 2026-10-13)
+                        streamer.plan(
+                            Fix(arrival.lat, arrival.lon), x_plane_there=False, starting=True
+                        )
                     arrival.loading = True
                     if kind == "HOLD":
                         streamer.hold_at(lat, lon)

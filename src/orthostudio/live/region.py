@@ -653,12 +653,12 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     """Every built texture back to the neutral one, and forgotten: the pack as the first time.
 
     Only the textures the streamer recorded as built are touched (``_live/ortho.json``), so a reset
-    takes seconds."""
+    takes seconds; those built in another season and not made neutral yet too (``stale``)."""
     from .names import NeutralPool
     from .pack import MARKER, load_built
 
     meta = load_built(pack_dir)
-    built = meta.get("textures", {})
+    built = {**meta.get("stale", {}), **meta.get("textures", {})}
     zooms, layout = region_layout(pack_dir)
     pool = NeutralPool(pack_dir)
     for name in built:
@@ -668,7 +668,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         if path.exists():
             pool.replace(top, path)
     if meta:
-        meta["textures"], meta["seen"], meta["patchy"] = {}, {}, []
+        meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta.pop("grown", None)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))

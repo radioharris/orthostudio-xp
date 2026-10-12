@@ -8,6 +8,7 @@ EXPORTS
     XPLMEnableFeature
     XPLMFindDataRef
     XPLMGetDatad
+    XPLMGetDatai
     XPLMGetSystemPath
     XPLMRegisterFlightLoopCallback
     XPLMUnregisterFlightLoopCallback

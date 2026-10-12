@@ -207,6 +207,7 @@ class GateTest(unittest.TestCase):
                 p.send(b"LIVE1 LOAD 43.438210 5.212888")
                 p.send(b"nonsense")
                 p.send(b"LIVE1 HOLD 43.438210 5.212888 flight")
+                p.send(b"LIVE1 HOLD 43.438210 5.212888 flight day=287")  # the flight's date
                 time.sleep(0.1)
                 got = gate.requests()
                 self.assertEqual(
@@ -214,8 +215,10 @@ class GateTest(unittest.TestCase):
                     [
                         ("LOAD", 43.43821, 5.212888, "aircraft"),
                         ("HOLD", 43.43821, 5.212888, "flight"),
+                        ("HOLD", 43.43821, 5.212888, "flight"),
                     ],
                 )
+                self.assertEqual(gate.held_day, 288)  # 15 October: X-Plane counts from 0
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
                 self.assertEqual(
                     p.recv(100),
@@ -426,7 +429,8 @@ class PluginTest(unittest.TestCase):
             let_go(sock)
         heard = [h for h in heard if h != "LIVE1 HELLO"]  # the plugin's start: is Live there?
         self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900")  # PLANE_LOADED tells where
-        self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft" for h in heard[1:]))
+        # the stand-in X-Plane's date: day 0
+        self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft day=0" for h in heard[1:]))
         self.assertGreater(took["112:1"], 0.6)  # three waits of 0.25 s before the go
         self.assertLess(took["112:1"], 3.0)
         for other in (
@@ -569,6 +573,8 @@ class FlightStartTest(unittest.TestCase):
                 gate=self.gate,
                 should_stop=self.stop.is_set,
                 log=self.log.append,
+                # the season of the flight's date: autumn from day 266 (23 September)
+                season_for=lambda lat, day=None: ("autumn" if (day or 0) >= 266 else "summer", "t"),
             ),
         )
         self.thread.start()
@@ -607,6 +613,27 @@ class FlightStartTest(unittest.TestCase):
             self.assertEqual(self.ask(p, b"LIVE1 ASK"), "LIVE1 NONE lang=en")
             self.assertEqual(set(self.streamer.built.values()), {0})  # read at 4096 px: kept
             self.assertEqual(self.xp.commands, [])  # never a reload
+
+    def test_a_flight_in_another_season_waits_for_its_colours(self):
+        """The same start again, its date in autumn: X-Plane waits until the textures are built
+        again in autumn's colours (it went on after 1 s with summer's, 2026-10-13)."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+            p.connect(("127.0.0.1", self.port))
+            p.settimeout(2)
+            end = time.time() + 60
+            summer = f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} flight day=200".encode()
+            while not self.ask(p, summer).startswith("LIVE1 GO"):
+                self.assertLess(time.time(), end)
+                time.sleep(0.1)
+            self.assertEqual(self.streamer.season, "summer")
+            built = dict(self.streamer.built)
+            autumn = f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} flight day=287".encode()
+            self.assertTrue(self.ask(p, autumn).startswith("LIVE1 WAIT"))
+            while not self.ask(p, autumn).startswith("LIVE1 GO"):
+                self.assertLess(time.time(), end)
+                time.sleep(0.1)
+            self.assertEqual(self.streamer.season, "autumn")
+            self.assertEqual(self.streamer.built, built)  # every one built again, in autumn
 
 
 @unittest.skipUnless(sys.platform == "darwin" and CLANG, "the Mac's build, with clang")
@@ -791,6 +818,7 @@ class PrebuiltTest(unittest.TestCase):
                 "XPLMEnableFeature",
                 "XPLMFindDataRef",
                 "XPLMGetDatad",
+                "XPLMGetDatai",
                 "XPLMGetSystemPath",
                 "XPLMRegisterFlightLoopCallback",
                 "XPLMUnregisterFlightLoopCallback",

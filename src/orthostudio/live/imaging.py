@@ -68,6 +68,16 @@ def mip_chain(rgb: np.ndarray) -> list[np.ndarray]:
     return out
 
 
+def expand_565(c: np.ndarray) -> np.ndarray:
+    """Packed 5:6:5 colours (uint16, shape n) as (n, 3) RGB uint8, by bit replication as a GPU
+    reads them."""
+    r5 = (c >> 11) & 0x1F
+    g6 = (c >> 5) & 0x3F
+    b5 = c & 0x1F
+    rgb = np.stack([(r5 << 3) | (r5 >> 2), (g6 << 2) | (g6 >> 4), (b5 << 3) | (b5 >> 2)], axis=-1)
+    return rgb.astype(np.uint8)
+
+
 def four_colour(blocks: bytes) -> bytes:
     """Put every BC1 block in four-colour mode (first endpoint larger), keeping its colours.
 

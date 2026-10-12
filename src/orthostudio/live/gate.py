@@ -7,10 +7,13 @@ OrthoStudio XP Live's X-Plane plugin (``native/xplane_plugin/live_gate.c``, put 
 X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:GATE_PORT:
 
 - ``LIVE1 LOAD lat lon``: a flight is loading there (PLANE_LOADED); no answer is expected.
-- ``LIVE1 HOLD lat lon why``: X-Plane waits for the answer. ``why`` is ``flight`` at message 115,
-  where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or livery, which a
-  livery changed in flight also sends. The gate sends ``LIVE1 GO n`` once every texture X-Plane
-  will read there is built. Otherwise it sends, for instance,
+- ``LIVE1 HOLD lat lon why day=N``: X-Plane waits for the answer. ``why`` is ``flight`` at
+  message 115, where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or
+  livery, which a livery changed in flight also sends. ``day`` is the flight's date, its day of
+  the year from 0 (``sim/time/local_date_days``), kept as :attr:`Gate.held_day` for the photos'
+  season: a flight started otherwise than by a click on Start Flight (X-Plane's web API, a
+  situation) saves no date in Freeflight.prf (2026-10-13). The gate sends ``LIVE1 GO n`` once
+  every texture X-Plane will read there is built. Otherwise it sends, for instance,
   ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
   - n is how many textures are left;
   - p is the progress in thousandths, counted from the first moment the start was known;
@@ -78,6 +81,36 @@ def read_last_start(prefs: Path) -> dict | None:
                     return value if isinstance(value, dict) else None
     except (OSError, ValueError):
         pass
+    return None
+
+
+def read_flight_time(prefs: Path) -> tuple[int, float | None] | None:
+    """The date of the last flight X-Plane started, from ``_time`` of Freeflight.prf, saved with
+    ``_last_start`` at the click on Start Flight: (its day of the year, 1 for 1 January; the
+    latitude saved with it, or None). E.g. ``{"local_time": {"day_of_year": 259, "latitude":
+    37.43, ...}}``; the day is found wherever the object holds it. X-Plane counts the days from 0
+    (``sim/time/local_date_days``), so one is added."""
+    try:
+        with open(prefs, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("_time "):
+                    return _day_in(json.loads(line[len("_time ") :]))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _day_in(value) -> tuple[int, float | None] | None:
+    if isinstance(value, dict):
+        day = value.get("day_of_year")
+        if isinstance(day, int | float) and not isinstance(day, bool) and 0 <= day <= 366:
+            lat = value.get("latitude")
+            ok = isinstance(lat, int | float) and not isinstance(lat, bool) and abs(lat) <= 90
+            return int(day) + 1, float(lat) if ok else None
+        for inner in value.values():
+            found = _day_in(inner)
+            if found is not None:
+                return found
     return None
 
 
@@ -160,6 +193,7 @@ class Gate:
         self.sock.setblocking(False)
         no_port_unreachable(self.sock)  # Windows: an answer to a plugin gone with X-Plane
         self._mtime = self._prefs_mtime()
+        self.held_day: int | None = None  # the date of the flight the plugin last held, from 1
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
@@ -217,7 +251,12 @@ class Gate:
             parts = data.decode("ascii", "replace").split()
             if parts[:2] == ["LIVE1", "ASK"]:  # its frames of the second after: "max=123 n=45"
                 out.append(("ASK", 0.0, 0.0, addr, " ".join(parts[2:])))
-            elif len(parts) in (4, 5) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
+            elif len(parts) in (4, 5, 6) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
+                if len(parts) == 6 and parts[5].startswith("day="):  # the flight's date
+                    with contextlib.suppress(ValueError):
+                        day = int(parts[5][4:])
+                        self.held_day = day + 1 if 0 <= day <= 365 else None
+                    parts = parts[:5]
                 with contextlib.suppress(ValueError):
                     out.append(
                         (

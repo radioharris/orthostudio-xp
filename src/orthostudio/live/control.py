@@ -108,6 +108,8 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         overlays=settings.overlays,
         language=settings.language,
         tint_8192=settings.tint_8192,
+        season=settings.season,
+        looks=settings.seasons.looks(),
         fresh=fresh,
     )
 
