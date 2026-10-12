@@ -5,7 +5,10 @@
 Live looks ahead along the aircraft's track, two minutes straight on, which a turn, a departure
 procedure or an approach leaves: after a tight turn, a few textures near the aircraft could not
 grow to 8192 px in time. With the pilot's last SimBrief plan, the path ahead follows the route
-instead, ten minutes of it, while the aircraft is on it (within ROUTE_KM, going its way).
+instead, as far as the track's look-ahead (``streamer.LOOKAHEAD_MIN``), while the aircraft is on
+it (within ROUTE_KM, going its way): ten minutes until 2026-10-12, which nothing measured as
+needed, the track's two minutes having late none in tight turns, and which downloaded ten minutes
+of route for nothing when the pilot left it (the user: « mets 2 min pour les deux »).
 
 SimBrief serves a pilot's last plan without a key or a password, from their name or pilot ID
 (``orthostudio.api.simbrief``, OrthoStudio XP's own reading of it). The name is Live's setting,
@@ -23,7 +26,6 @@ from dataclasses import dataclass
 from .route import KM_PER_DEG
 
 ROUTE_KM = 15.0  # the aircraft this near the route follows it
-ROUTE_LOOKAHEAD_MIN = 10.0  # the route ahead the planner looks along
 WRONG_WAY_DEG = 100.0  # an aircraft flying this far from the route's way is not following it
 MOVING_MS = 25.0  # slower, taxiing or turning on the ground: its track says nothing of the route
 

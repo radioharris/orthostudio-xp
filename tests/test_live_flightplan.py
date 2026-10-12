@@ -93,8 +93,8 @@ def test_the_route_after_a_turn_is_prepared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Heading north, a straight line misses the row of textures east of the turn: only those
-    around the aircraft get their 8192 px. The plan reaches the row, and every texture along it
-    gets its 8192 px before X-Plane reads it."""
+    around the aircraft get their 8192 px. The plan reaches the row past the turn, as far as the
+    track's look-ahead, and those textures get their 8192 px before X-Plane reads them."""
     pack = tmp_path / "pack"
     setup_region(make_source(tmp_path, textures=ROW), pack, log=lambda _: None, zooms=Zooms(17, 18))
     s = Streamer(
@@ -121,7 +121,9 @@ def test_the_route_after_a_turn_is_prepared(
         time.sleep(0.02)
     jobs = s.plan(fix, x_plane_there=False)
     assert s.on_route
-    assert sharp(jobs) == list(range(12))  # along the route east, 5 km from it
+    # along the route east, 5 km from it, as far as the track looks (two minutes at 200 m/s: 24 km,
+    # 5 north then 19 east): past the turn, where the straight line reached none
+    assert sharp(jobs) == [0, 1, 2, 3, 4]
     plan = s.snapshot()["flight_plan"]
     assert (plan["name"], plan["following"]) == ("LFXX-LFYY", True)
     first = north_then_east().points[0]

@@ -60,7 +60,7 @@ from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
-from .flightplan import MOVING_MS, ROUTE_LOOKAHEAD_MIN, FlightPlan, last_plan
+from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .mapdata import route_points, shown
 from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
@@ -82,7 +82,9 @@ PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px leve
 LOAD_KM = (
     230.0  # X-Plane loads a tile's DSF, reading 256 px, from about this far (probe: 130-230 km)
 )
-# The path ahead the planner looks along, straight on the track. Two minutes: the same turning
+# The path ahead the planner looks along, straight on the track, and along the pilot's SimBrief
+# route while they fly it (ten minutes until 2026-10-12, which nothing measured as needed). Two
+# minutes: the same turning
 # flight at ZL17/19, twice each (2026-10-12), had 4 textures' 8192 px photos late with 90 seconds
 # and none with two or two and a half minutes, for 6 % and 14 % more downloaded; the frames alike.
 # Five minutes made a turn sweep 38 km of path all around the aircraft: 233 textures at 8192 px
@@ -844,7 +846,7 @@ class Streamer:
         route = None  # the flight plan ahead, when the aircraft follows it, beside the track
         plan = self.flight_plan
         if plan is not None and not starting:
-            km = max(fix.gs_ms, 0.0) * ROUTE_LOOKAHEAD_MIN * 60.0 / 1000.0
+            km = max(fix.gs_ms, 0.0) * LOOKAHEAD_MIN * 60.0 / 1000.0  # as far as the track
             track = fix.trk_deg if fix.gs_ms > MOVING_MS else None
             along = plan.ahead(fix.lat, fix.lon, km, track)
             if along is not None:
