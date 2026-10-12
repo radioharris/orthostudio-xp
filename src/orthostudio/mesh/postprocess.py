@@ -152,13 +152,19 @@ def post_process_altitudes(
     water_smoothing: int = 10,
     sea_smoothing_mode: str = "zero",
     water_in_set_order: bool = True,
-) -> None:
+) -> int:
     """Apply ``post_process_nodes_altitudes`` (``O4_Mesh_Utils.py:230-324``) to ``points``.
 
     ``points`` is the ``(N, 6)`` Triangle4XP node table (``x y z u v alt``) and is modified in
     place; ``tris`` the ``(M, 3)`` **0-based** corners. The three steps are applied in Ortho4XP's
     order: inland water, then sea, then the interpolated altitudes (so a vertex that is both
     keeps the interpolated one).
+
+    Returns how many vertices had an empty interpolated altitude (``nan``). They keep the height
+    of the ground Triangle4XP read under them (spec ``mesh-build.md`` 5.3): written as it
+    is, an empty altitude became 0 m on an Apple processor and minus nine billion billion metres
+    on an Intel or AMD one, which X-Plane could not read (EGJA and LFRT, 2026-10-12). Ortho4XP
+    reads the text ``nan`` back as 0.
     """
     if water_smoothing and classes.water.size:
         z = points[:, Z].tolist()
@@ -181,11 +187,16 @@ def post_process_altitudes(
             unique = np.unique(sea_corners)
             points[unique, Z] = np.maximum(points[unique, Z], 0.0)
 
+    empty = 0
     if classes.interp_alt.size:
         unique = np.unique(tris[classes.interp_alt])
-        points[unique, Z] = points[unique, ALT]
+        alt = points[unique, ALT]
+        known = np.isfinite(alt)
+        empty = int(np.count_nonzero(~known))
+        points[unique, Z] = np.where(known, alt, points[unique, Z])
         points[unique, U] = 0.0
         points[unique, V] = 0.0
+    return empty
 
 
 # -- the water table the masks stage consumes --------------------------------------------------
