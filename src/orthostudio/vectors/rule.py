@@ -409,7 +409,10 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
 
 @rule(
     name="orthostudio.vectors",
-    version=1,
+    # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
+    # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
+    # 2026-10-12): a tile built again recomputes its airports.
+    version=2,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -421,4 +424,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@1``. Not wired by default in wave 1 (arbitration A7)."""
+"""``orthostudio.vectors@2``. Not wired by default in wave 1 (arbitration A7)."""
