@@ -199,6 +199,28 @@ The four concatenations, with `a = linear[i]`, `b = linear[j]`:
 `a[-1] == b[0]` gives `a + b[1:]`; `a[-1] == b[-1]` gives `a + b[-2::-1]`;
 `a[0] == b[0]` gives `a[::-1] + b[1:]`; `a[0] == b[-1]` gives `b + a[1:]`.
 
+**Loops (wanted difference, 2026-10-12).** A concatenation whose first and last nodes are the
+same point is not a centre line: its axis (section 3.4) would be zero long, the altitude fitted
+along it (`airports-encoding.md`) divides by that length, and every vertex near it gets an
+empty altitude. Ortho4XP makes that join; its text `.node` file carries the `nan` and Triangle4XP
+reads it back as 0, so the runway sits at 0 m. OrthoStudio XP passed the empty value on to the
+DSF, where an Apple processor writes 0 m and an Intel or AMD one minus nine billion billion
+metres: X-Plane on Windows stopped at "Reading scenery" on +48-003 (LFRT) and lost the ground of
++49-003 (EGJA) and its neighbours. OSM draws such a loop two ways, and the planet of 2026-10-07
+holds 16 of them among 61 009 groups of open runway ways:
+
+* **an outline drawn in parts** (EGJA 08/26, three ways round the asphalt; 5 cases): the loop is
+  tried as an area runway (section 3.1, without the `custom` bypass) and, when accepted, joins
+  `runways_as_area` after the closed ways and relations, the two parts leaving `linear`;
+* **one centre line drawn twice** between the same two nodes (LFRT 06/24; 11 cases): the loop
+  encloses nothing, is refused as an area, and the two parts are **left apart**, each its own
+  linear runway of the right length.
+
+After the rule no glued line of zero length is left on the planet (`scan_rule.py`, session of
+2026-10-12). `orthostudio.vectors` went up one version with it (2 in 1.0.1, 3 together with
+the dry basins of `vectors-water-roads.md` 2.1), so a tile built again recomputes its airports. Should an empty altitude still reach the mesh, it keeps the ground's height there
+(`mesh-build.md` 5.3).
+
 ### 3.4 Linear runways: the rectangle (`:626-664`)
 
 The axis is `[first node, last node]` of the merged part (**not** the polyline: a runway is

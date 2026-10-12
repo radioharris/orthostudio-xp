@@ -481,6 +481,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "send serve.log with a report naming the tile.",
     ),
     _spec(
+        "MESH_ALTITUDE_MISSING",
+        _D,
+        _C,
+        "{count} points of airports, roads or patches on tile {tile} had no altitude; they keep "
+        "the height of the ground.",
+        "Nothing to do for this tile. Send serve.log with a report naming the tile: the map data "
+        "of one of its airports or roads needs a fix in OrthoStudio XP.",
+    ),
+    _spec(
         "MESH_TRIANGLE_BUDGET_REACHED",
         _I,
         _C,

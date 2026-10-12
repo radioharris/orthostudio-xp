@@ -413,9 +413,13 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
 
 # Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
 # layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
+# Version 3: a runway drawn in parts that close on themselves is an outline or two copies of one
+# line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
+# 2026-10-12; version 2 in 1.0.1, which has no dry basins): a tile built again recomputes its
+# airports.
 @rule(
     name="orthostudio.vectors",
-    version=2,
+    version=3,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -427,4 +431,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@2``."""
+"""``orthostudio.vectors@3``."""

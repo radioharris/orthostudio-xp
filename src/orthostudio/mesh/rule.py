@@ -169,7 +169,8 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
     )
 
 
-@rule(name="orthostudio.mesh", version=1, params=MeshParams, inputs=("vectors", "dem", "coastline"),
+# version 2: an empty interpolated altitude keeps the ground's height (``mesh-build.md`` 5.3)
+@rule(name="orthostudio.mesh", version=2, params=MeshParams, inputs=("vectors", "dem", "coastline"),
       ram_mb=900, kind="dir")  # fmt: skip
 def osxp_mesh(ctx: RunContext) -> None:
     """Native stage 2: ``Data<tile>.mesh``, ``mesh.npz``, ``water_tris.npz``, ``stats.json``."""

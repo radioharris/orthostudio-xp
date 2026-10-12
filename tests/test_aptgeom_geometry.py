@@ -248,6 +248,42 @@ def test_the_merged_width_is_the_largest_of_the_parts() -> None:
     assert airport.areas.runway_as_line[0].width == pytest.approx(55.0)
 
 
+def test_an_outline_drawn_in_parts_becomes_an_area_runway() -> None:
+    """EGJA 08/26 (2026-10-12): the outline of the asphalt in open parts that close on
+    themselves. Glued as a centre line it was zero long and emptied the airport's altitudes."""
+    store = _store()
+    _way(store, -1, [(3000, 2977.5), (2500, 2977.5), (2500, 3022.5), (3000, 3022.5)])
+    _way(store, -2, [(3000, 3022.5), (3500, 3022.5), (3500, 2977.5), (3000, 2977.5)])
+    store.ways[-2][0] = store.ways[-1][-1]
+    store.ways[-2][-1] = store.ways[-1][0]
+    airport = _airport(runway=[-1, -2])
+    result = _build(store, airport)
+    assert airport.areas.runway_as_line == ()
+    assert len(airport.areas.runway_as_area) == 1
+    runway = airport.areas.runway_as_area[0]
+    assert runway.width == pytest.approx(45, abs=0.2)
+    assert abs(runway.end[0] - runway.start[0]) == pytest.approx(1000 * M_TO_LON, rel=1e-3)
+    assert result.runways == 1
+
+
+def test_one_centre_line_drawn_twice_stays_two_full_lines() -> None:
+    """LFRT 06/24 (2026-10-12): two ways between the same two nodes. Glued, they went there
+    and back to a zero-long axis; left apart, each is the runway at its length."""
+    store = _store()
+    _way(store, -1, [(0, 3000), (400, 3000), (1000, 3000)], width="45")
+    _way(store, -2, [(0, 3000), (600, 3000.5), (1000, 3000)], width="45")
+    store.ways[-2][0] = store.ways[-1][0]
+    store.ways[-2][-1] = store.ways[-1][-1]
+    airport = _airport(runway=[-1, -2])
+    result = _build(store, airport)
+    assert result.merged == 0
+    assert airport.areas.runway_as_area == ()
+    assert len(airport.areas.runway_as_line) == 2
+    for runway in airport.areas.runway_as_line:
+        assert abs(runway.end[0] - runway.start[0]) == pytest.approx(1000 * M_TO_LON, rel=1e-3)
+        assert runway.width == pytest.approx(55.0)
+
+
 # -- duplicates --------------------------------------------------------------------------------
 
 

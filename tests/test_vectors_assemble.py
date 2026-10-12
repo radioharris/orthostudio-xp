@@ -241,7 +241,7 @@ def test_an_unnamed_marker_is_refused_at_the_layer() -> None:
 
 # ----------------------------------------------------------------------------- rule
 def test_the_rule_declares_what_it_consumes_and_nothing_else() -> None:
-    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 2, "dir")
+    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 3, "dir")
     assert VECTORS.inputs == ("airports", "dem", "osm", "patches")
     assert set(VECTORS.consumed) == {
         "tile",

@@ -236,8 +236,11 @@ def build_runways(
                     reject(airport, outcome)
                 continue
             as_area.append(outcome)
-        linear, linear_width, joins = _merge_runway_parts(store, linear, linear_width, params)
+        linear, linear_width, joins, outlines = _merge_runway_parts(
+            store, linear, linear_width, params, tile
+        )
         counts["merged"] += joins
+        as_area.extend(outlines)
         as_line = _grow_linear_runways(store, tile, scalx, linear, linear_width, as_area, params)
         airport.areas.runway = ensure_multipolygon(
             ops.unary_union([runway.polygon for runway in as_area + as_line])
@@ -309,9 +312,17 @@ def _merge_runway_parts(
     linear: list[list[int]],
     linear_width: list[float],
     params: RunwayParams,
-) -> tuple[list[list[int]], list[float], int]:
-    """Re-assemble the parts OSM cut a runway into (``:536-625``, spec section 3.3)."""
+    tile: TileRef,
+) -> tuple[list[list[int]], list[float], int, list[RunwayPart]]:
+    """Re-assemble the parts OSM cut a runway into (``:536-625``, spec section 3.3).
+
+    A join that would end where it starts is not a centre line (spec section 3.3, *loops*): its
+    axis would be zero long and every altitude fitted along it empty. When the loop goes round
+    a runway, it is that runway's outline drawn in parts and comes back as an area runway, the
+    last of the four values; otherwise the two parts are left apart.
+    """
     joins = 0
+    outlines: list[RunwayPart] = []
     grouped = False
     while not grouped:
         grouped = True
@@ -323,6 +334,20 @@ def _merge_runway_parts(
                 merged = _joined(linear[i], linear[j])
                 if merged is None:
                     continue
+                if store.nodes[merged[0]] == store.nodes[merged[-1]]:
+                    outline = _area_runway(
+                        _local(store, merged, tile), scale_x(tile), params, False
+                    )
+                    if isinstance(outline, str):
+                        continue
+                    outlines.append(outline)
+                    linear = [linear[k] for k in range(len(linear)) if k not in (i, j)]
+                    linear_width = [
+                        linear_width[k] for k in range(len(linear_width)) if k not in (i, j)
+                    ]
+                    grouped = False
+                    joins += 1
+                    break
                 width = max(linear_width[i], linear_width[j])
                 linear = [linear[k] for k in range(len(linear)) if k not in (i, j)] + [merged]
                 linear_width = [
@@ -333,7 +358,7 @@ def _merge_runway_parts(
                 break
             if not grouped:
                 break
-    return linear, linear_width, joins
+    return linear, linear_width, joins, outlines
 
 
 def _grow_linear_runways(

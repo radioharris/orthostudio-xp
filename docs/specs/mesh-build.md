@@ -318,6 +318,17 @@ The water loop is the only Python-level loop left: `water_smoothing` sweeps over
 triangles (107 881 on +43+005, so 1.08 M iterations). It runs on a plain Python list of
 altitudes (`z.tolist()`), which avoids numpy scalar boxing, and writes back once.
 
+### 5.3 An empty interpolated altitude (wanted difference, 2026-10-12)
+
+Step 4 copies column 5 into the altitude. When that column is `nan` (a vector altitude fitted
+along a runway of zero length, `airports-geometry.md` 3.3), Ortho4XP never sees it as such: it
+writes `nan` in its text `.node`, Triangle4XP's text reader takes it as 0, and the vertex sits at
+0 m. The binary exchange (`mesh-triangle-io.md`) keeps the `nan`, and the DSF writer then gave it
+a value that depends on the processor (0 m on Apple silicon, minus nine billion billion metres on
+Intel or AMD), which X-Plane on Windows could not load. Step 4 now keeps column 2, the height of
+the ground Triangle4XP read under the vertex, wherever column 5 is not finite; the count goes in
+`MESH_ALTITUDE_MISSING` (degraded, continue) and the log. `orthostudio.mesh` went to version 2.
+
 ## 6. Output: `Data<tile>.mesh` and `mesh.npz`
 
 Built through `mesh_file.MeshData` and `mesh_file.write_mesh_text` (`docs/specs/mesh-file.md`):
@@ -524,6 +535,8 @@ needs when two tiles overlap.
     No airport of the reference tile triggers it (stage 1 only collects airports whose
     boundary meets the tile), so the byte-identity is unaffected; tested explicitly in
     `test_meshbuild_weights.py::test_a_box_entirely_outside_the_tile_is_dropped_unlike_ortho4xp`.
+11. An empty interpolated altitude keeps the ground's height, where Ortho4XP's text exchange
+    turns it into 0 m (section 5.3).
 
 ## 13. Blocages
 
