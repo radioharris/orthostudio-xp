@@ -150,6 +150,10 @@ also includes the weight map, the Python post-processing and the `.mesh` text wr
   equally valid mesh (+43+005: 603 221 vs 603 209 vertices, 1 197 782 vs 1 197 758 triangles).
   So Ortho4XP itself produces different meshes on Intel and Apple Silicon Macs. Parity tests must
   run the official binary and the osxp build on the same architecture.
+* **`nan` in the text exchange**: Ortho4XP writes an empty vector altitude as `nan` in its
+  `.node`, and Triangle4XP's text reader reads it as 0. The binary exchange carries the `nan`
+  through, so the post-processing decides what it becomes: the ground's height
+  (`mesh-build.md` 5.3).
 * **Short `.alt` / `.weight` files**: Ortho4XP silently meshes with uninitialised memory;
   OrthoStudio XP's build of the sidecar exits with an error, and the mesh stage refuses a `.alt`
   shorter than its window before starting it, with `MESH_INPUT_MISSING` (wanted difference,

@@ -14,7 +14,10 @@ the measurements, `docs/benchmarks/`.
   the relief as a mesh of triangles and, for each triangle, the texture to lay on it. X-Plane ships
   one per tile in its default scenery; the DSF OrthoStudio XP builds replaces it. Like Ortho4XP, it
   stores each corner to about 20 cm; a triangle thinner than that which the rounding stands on its
-  edge is left out, because X-Plane's flight model stops on such a vertical face.
+  edge is left out, because X-Plane's flight model stops on such a vertical face. Every point of
+  a runway, taxiway, apron or levelled road carries the height it is flattened to; a point that
+  would come out with none keeps the height of the ground and the build log says so, because a
+  missing height made X-Plane on Windows stop loading the tile (Alderney and Saint-Brieuc, 2026).
 - **Texture**: one aerial image of 4096 × 4096 pixels, stored as DDS (compressed for the graphics
   card, with its smaller versions for distance). At ZL16 a texture covers about 7 km on a side,
   so a tile uses about 180 to 230 of them, about 1.4 GB. Each comes with a small `.ter` file

@@ -534,7 +534,7 @@ def build_mesh_native(
     # -- post-processing
     t = time.perf_counter()
     classes = classify_triangles(attr, skip_multiples_of_ten=params.skip_multiples_of_ten)
-    post_process_altitudes(
+    empty_altitudes = post_process_altitudes(
         points,
         tris.astype(np.int32),
         classes,
@@ -543,6 +543,18 @@ def build_mesh_native(
         water_in_set_order=params.water_in_set_order,
     )
     timings["postprocess"] = time.perf_counter() - t
+    if empty_altitudes:
+        warnings.append(
+            OsxpError(
+                "MESH_ALTITUDE_MISSING", context={"tile": tile.name, "count": empty_altitudes}
+            )
+        )
+        log.warning(
+            "mesh %s: %d points of airports, roads or patches had no altitude; they keep the "
+            "ground's",
+            tile.name,
+            empty_altitudes,
+        )
 
     vertices = np.empty((points.shape[0], 3), dtype=np.float64)
     vertices[:, 0] = points[:, 0] + tile.lon

@@ -242,3 +242,21 @@ def test_water_tris_of_an_empty_mesh(tmp_path: Path) -> None:
     assert len(table) == 0 and table.bary.shape == (0, 2)
     write_water_tris_npz(tmp_path / "w.npz", table)
     assert len(read_water_tris_npz(tmp_path / "w.npz")) == 0
+
+
+def test_an_empty_altitude_keeps_the_ground_and_is_counted() -> None:
+    """A runway of zero length gave its airport ``nan`` altitudes (EGJA, LFRT, 2026-10-12):
+    such a vertex keeps the ground Triangle4XP read under it, never 0 or the DSF's guess."""
+    points = np.array(
+        [
+            [0.0, 0.0, 100.0, 0.5, 0.5, 7.0],
+            [1.0, 0.0, 200.0, 0.5, 0.5, np.nan],
+            [0.0, 1.0, 300.0, 0.5, 0.5, 9.0],
+        ]
+    )
+    tris = np.array([[0, 1, 2]], dtype=np.int32)
+    attrs = np.array([ATTRIBUTES["RUNWAY"]], dtype=np.int64)
+    empty = post_process_altitudes(points, tris, classify_triangles(attrs))
+    assert empty == 1
+    assert points[:, 2].tolist() == [7.0, 200.0, 9.0]
+    assert points[:, 3].tolist() == [0.0, 0.0, 0.0]

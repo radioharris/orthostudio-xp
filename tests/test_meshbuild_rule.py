@@ -166,7 +166,7 @@ def test_dem_spec_errors(tmp_path: Path) -> None:
 
 def test_rule_declares_exactly_what_it_consumes() -> None:
     assert OSXP_MESH.name == "orthostudio.mesh"
-    assert OSXP_MESH.version == 1
+    assert OSXP_MESH.version == 2
     assert OSXP_MESH.kind == "dir"
     assert OSXP_MESH.inputs == ("coastline", "dem", "vectors")
     assert OSXP_MESH.ram_mb == 900
