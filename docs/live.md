@@ -239,7 +239,7 @@ the map leaves out squares of open sea.
 ## What happens while you fly
 
 Every two seconds Live reads where the aircraft is, where it is heading and how fast, and where the
-camera is. It looks 90 seconds ahead along the track (ten minutes of your SimBrief route while you
+camera is. It looks two minutes ahead along the track (ten minutes of your SimBrief route while you
 follow it), and for every texture within 300 km it works out how sharp X-Plane will want it when the
 aircraft, or the camera, passes closest. What is missing is downloaded and built, the most urgent
 first. X-Plane picks the new file up by itself the next time it wants that texture sharper.
@@ -286,7 +286,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | The same two, on Live's tab beside the photo source ("Zoom" and "Airports"). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, 90 seconds ahead along the track (ten minutes along a SimBrief route), the rings with a 25 % margin, and 10 km more for external views. |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (ten minutes along a SimBrief route), the rings with a 25 % margin, and 10 km more for external views. |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
 | Cache sizes, workers, pipelines | Internal. |
 

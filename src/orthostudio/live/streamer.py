@@ -82,11 +82,12 @@ PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px leve
 LOAD_KM = (
     230.0  # X-Plane loads a tile's DSF, reading 256 px, from about this far (probe: 130-230 km)
 )
-# The path ahead the planner looks along, straight on the track. 90 seconds keep about two minutes
-# before X-Plane reads each level, at any speed; five minutes made a turn sweep 38 km of path all
-# around the aircraft: 233 textures at 8192 px where X-Plane read 133, and the encoding cost frames
-# (the mountain test pair of 2026-09-28; simulated on its path, 329 built for 145, none missed).
-LOOKAHEAD_MIN = 1.5
+# The path ahead the planner looks along, straight on the track. Two minutes: the same turning
+# flight at ZL17/19, twice each (2026-10-12), had 4 textures' 8192 px photos late with 90 seconds
+# and none with two or two and a half minutes, for 6 % and 14 % more downloaded; the frames alike.
+# Five minutes made a turn sweep 38 km of path all around the aircraft: 233 textures at 8192 px
+# where X-Plane read 133, and the encoding cost frames (the mountain test pair of 2026-09-28).
+LOOKAHEAD_MIN = 2.0
 PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most this often
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
