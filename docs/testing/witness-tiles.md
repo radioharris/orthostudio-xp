@@ -14,7 +14,7 @@ every time: which tiles changed, where, and by how much.
 
 ## 2. What it proves, and what it does not
 
-* **The fixed list** (`tiles.txt`, 62 tiles) holds every tile that ever showed a bug, and tiles of
+* **The fixed list** (`tiles.txt`, 72 tiles) holds every tile that ever showed a bug, and tiles of
   every kind of ground: coasts, deltas, lagoons, islands alone in the sea, high mountains, big
   cities and airports, deserts, the far north and south, the antimeridian. A tile that shows a new
   bug is added and never leaves. Every tile needs X-Plane's own Global Scenery (not its Demo Areas),
@@ -42,7 +42,7 @@ OSXP_HOME=/tmp/witness-home .venv/bin/python tools/witness/witness.py build --ou
 .venv/bin/python tools/witness/witness.py compare ~/Desktop/Dev/osxp-witness/v1.0.2 ~/Desktop/Dev/osxp-witness/<branch> --report report.txt
 ```
 
-Measured on the reference Mac (2026-10-13): 62 tiles in about 12 minutes, 1.9 GB kept per
+Measured on the reference Mac (2026-10-13): 72 tiles in 14 minutes, 2.1 GB kept per
 version (the meshes). The reference of a release is built once, outside the repository, and kept
 until the next release.
 
