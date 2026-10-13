@@ -728,3 +728,168 @@ def check_planar(
     z = np.zeros(len(a))
     ev_seg, _, _, _, _ = _pair_events(a, b, z, z, np.zeros(len(a)), i, j)
     return len(np.unique(ev_seg))
+
+
+#: Metres per degree of latitude (``O4_Geo_Utils.py:4``'s radius).
+_LAT_TO_M = np.pi * 6378137.0 / 180
+#: A node closer than this to an edge it does not end is put on that edge
+#: (:func:`join_near_nodes`).
+NEAR_NODE_M = 0.05
+#: Passes of :func:`join_near_nodes`: a sub-edge it makes may pass near one more node.
+NEAR_NODE_PASSES = 8
+#: The bits that make a triangle water (``remap_tri_types``): WATER, SEA, SEA_EQUIV.
+_WATER_BITS = MARKERS["WATER"] | MARKERS["SEA"] | MARKERS["SEA_EQUIV"]
+
+
+def join_near_nodes(
+    graph: NodedGraph, lat: int, tolerance_m: float = NEAR_NODE_M
+) -> tuple[NodedGraph, int]:
+    """Put on an edge the nodes that lie closer than ``tolerance_m`` to it.
+
+    The noding keeps a node that misses an edge by a few micrometres apart from it: two OSM
+    ways that should share a node and do not (a river and a canal at Odaiba, 7 micrometres),
+    a runway outline laid twice, 1 to 4 cm apart, with short lines between the two. The node,
+    the edge and the node's edge to the edge's end then close a sliver whose angles are nearly
+    zero; Triangle4XP fills it with hundreds of thousands of points, and X-Plane, draping an
+    airport's painted lines over that fan, never finished loading (+35+139, 2026-10-13;
+    Ortho4XP builds the same mesh). The edge goes through the node instead: the node does not
+    move, the edge bends by less than ``tolerance_m``, and edges that become the same carry the
+    OR of their markers.
+
+    Two limits keep it to that sliver (``vectors-pslg.md`` 2.14):
+
+    * a node on a shore is not put on an edge of the same kind of water (water, sea, sea-like
+      lake) unless it already shares an edge with one of its ends. An islet's shore 10 cm from a
+      river bank (+46+006) stays apart: the two shores touching shut a pocket of the river away
+      from its seed, and Triangle4XP made it land. Only the water bits decide land and water,
+      so the runway outlines laid twice at Haneda are joined all the same;
+    * a join whose new edges would meet another edge anywhere but at their ends is not made,
+      and that edge stays as it was (a knot of nodes a few millimetres apart, +22+113).
+
+    A graph with no such node comes back as the very same object, so nothing else changes.
+    ``lat`` is the tile's south edge (the metres of a degree of longitude at its middle).
+    Returns the graph and the number of node-edge contacts resolved.
+    """
+    joined = 0
+    scale = np.array([_LAT_TO_M * np.cos(np.radians(lat + 0.5)), _LAT_TO_M])
+    for _ in range(NEAR_NODE_PASSES):
+        node, edge, t = _near_contacts(graph, scale, tolerance_m)
+        if not len(node):
+            break
+        refused = np.zeros(len(graph.edges), dtype=bool)
+        result: NodedGraph | None = None
+        while True:
+            keep = ~refused[edge]
+            if not keep.any():
+                break
+            result, source = _split_at(graph, node[keep], edge[keep], t[keep])
+            crossing = _crossing_sources(result, source)
+            if not len(crossing):
+                joined += int(keep.sum())
+                break
+            refused[crossing] = True
+            result = None
+        if result is None:
+            break
+        graph = result
+    return graph, joined
+
+
+def _near_contacts(
+    graph: NodedGraph, scale: NDArray[np.float64], tolerance_m: float
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.float64]]:
+    """(node, edge, t) of the nodes within ``tolerance_m`` of an edge, strictly between its ends,
+    less those of a shore near an edge of the same water that share no edge with its ends."""
+    nodes, edges, markers = graph
+    empty = np.zeros(0, dtype=np.intp)
+    if not len(edges):
+        return empty, empty, np.zeros(0)
+    xy = nodes[:, :2] * scale
+    a, b = xy[edges[:, 0]], xy[edges[:, 1]]
+    lines = shapely.linestrings(np.stack([a, b], axis=1))
+    node, edge = STRtree(lines).query(shapely.points(xy), predicate="dwithin", distance=tolerance_m)
+    foreign = (edges[edge, 0] != node) & (edges[edge, 1] != node)
+    node, edge = node[foreign], edge[foreign]
+    ab = b[edge] - a[edge]
+    t = np.einsum("ij,ij->i", xy[node] - a[edge], ab) / np.einsum("ij,ij->i", ab, ab)
+    inside = (t > 0) & (t < 1)
+    node, edge, t = node[inside], edge[inside], t[inside]
+    if not len(node):
+        return node, edge, t
+    keys = np.sort(_edge_keys(edges.min(axis=1), edges.max(axis=1)))
+    ends = edges[edge]
+
+    def linked(end: NDArray[np.integer]) -> NDArray[np.bool_]:
+        k = _edge_keys(np.minimum(node, end), np.maximum(node, end))
+        at = np.minimum(np.searchsorted(keys, k), len(keys) - 1)
+        return keys[at] == k
+
+    shore = np.zeros(len(nodes), dtype=np.uint8)
+    np.bitwise_or.at(shore, edges.ravel(), np.repeat(markers & _WATER_BITS, 2))
+    same_water = (shore[node] & markers[edge]) != 0
+    keep = ~same_water | linked(ends[:, 0]) | linked(ends[:, 1])
+    return node[keep], edge[keep], t[keep]
+
+
+def _split_at(
+    graph: NodedGraph,
+    node: NDArray[np.intp],
+    edge: NDArray[np.intp],
+    t: NDArray[np.float64],
+) -> tuple[NodedGraph, NDArray[np.intp]]:
+    """Each edge of ``edge`` becomes the chain of its end, its nodes in order, its other end.
+
+    Returns the graph and, for each of its edges, the edge of ``graph`` it was cut from (-1 for
+    an edge that was there already).
+    """
+    nodes, edges, markers = graph
+    order = np.lexsort((t, edge))
+    node, edge = node[order], edge[order]
+    first = np.r_[True, edge[1:] != edge[:-1]]
+    last = np.r_[edge[1:] != edge[:-1], True]
+    starts = np.where(first, edges[edge, 0], np.r_[-1, node[:-1]])
+    sub = np.concatenate(
+        [np.column_stack([starts, node]), np.column_stack([node[last], edges[edge[last], 1]])]
+    )
+    sub_of = np.concatenate([edge, edge[last]])
+    sub_rank = np.concatenate([np.arange(len(edge)), np.full(last.sum(), len(edge))])
+    kept = np.ones(len(edges), dtype=bool)
+    kept[edge] = False
+    rows = np.concatenate([edges[kept].astype(np.int64), sub])
+    row_markers = np.concatenate([markers[kept], markers[sub_of]])
+    row_source = np.concatenate([np.full(kept.sum(), -1, dtype=np.intp), sub_of])
+    # Keep the edges in their order, each chain where its edge was.
+    position = np.concatenate([np.flatnonzero(kept), sub_of])
+    rank = np.concatenate([np.zeros(kept.sum(), dtype=np.int64), sub_rank])
+    place = np.lexsort((rank, position))
+    rows, row_markers, row_source = rows[place], row_markers[place], row_source[place]
+    lo, hi = np.minimum(rows[:, 0], rows[:, 1]), np.maximum(rows[:, 0], rows[:, 1])
+    _, first_row, inverse = np.unique(_edge_keys(lo, hi), return_index=True, return_inverse=True)
+    keep_order = np.argsort(first_row, kind="stable")
+    rank_of = np.empty(len(first_row), dtype=np.int64)
+    rank_of[keep_order] = np.arange(len(first_row))
+    merged = np.zeros(len(first_row), dtype=np.uint8)
+    np.bitwise_or.at(merged, rank_of[inverse], row_markers)
+    out = np.column_stack([lo[first_row], hi[first_row]])[keep_order].astype(np.int32)
+    return NodedGraph(nodes, out, merged), row_source[first_row][keep_order]
+
+
+def _crossing_sources(graph: NodedGraph, source: NDArray[np.intp]) -> NDArray[np.intp]:
+    """The edges cut by :func:`_split_at` one of whose pieces meets another edge of ``graph``
+    anywhere but at their common ends (the contact test of :func:`check_planar`)."""
+    new = np.flatnonzero(source >= 0)
+    if not len(new):
+        return np.zeros(0, dtype=np.intp)
+    nodes, edges, _ = graph
+    a, b = nodes[edges[:, 0], :2], nodes[edges[:, 1], :2]
+    i, j = _bbox_pairs(a, b, a[new], b[new], self_pairs=False)
+    j = new[j]
+    distinct = i != j
+    i, j = np.minimum(i, j)[distinct], np.maximum(i, j)[distinct]
+    if not len(i):
+        return np.zeros(0, dtype=np.intp)
+    pairs = np.unique(np.column_stack([i, j]), axis=0)
+    z = np.zeros(len(a))
+    touched, _, _, _, _ = _pair_events(a, b, z, z, np.zeros(len(a)), pairs[:, 0], pairs[:, 1])
+    hit = np.unique(source[np.unique(touched)])
+    return hit[hit >= 0]

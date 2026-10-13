@@ -412,7 +412,11 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
     # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
     # 2026-10-12): a tile built again recomputes its airports.
-    version=2,
+    # 4: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of its
+    # ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13); a tile with no
+    # such node gets the same files again, so its mesh and DSF come from the cache. Version 3
+    # was a first form of the rule, never released.
+    version=4,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -424,4 +428,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@2``. Not wired by default in wave 1 (arbitration A7)."""
+"""``orthostudio.vectors@4``. Not wired by default in wave 1 (arbitration A7)."""

@@ -517,6 +517,14 @@ coarser grid for want of memory, and which relief answered instead. A relief tha
 the mesh finer: if it reaches the budget of triangles (*Maximum triangles per tile*, in the
 advanced settings, 3 million by default, up to 5), Works says so.
 
+**Lines that almost touch.** OpenStreetMap sometimes draws two shores, or a runway outline twice,
+a few millimetres apart without joining them. Left that way, the mesh fills the sliver between them
+with hundreds of thousands of needle-thin triangles, and X-Plane can stall while it lays an
+airport's painted lines over them (Tokyo, `+35+139`, did with OrthoStudio XP 1.0.1 and with
+Ortho4XP). A point closer than 5 cm to a line it does not end is therefore put on that line,
+unless that would make two separate shores of the same water touch: the mesh looks the same,
+without the needles, and a tile with no such point is built exactly as before.
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in
