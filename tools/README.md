@@ -8,3 +8,5 @@ into a picture of the page alone, for the README and the store listing. `package
 installers, Python inside (`docs/specs/packaging.md`), and the macOS app that runs a checkout.
 `relief/`: says how far apart two relief sources are over one square, from the files a build
 keeps (ANADEM against Copernicus, a folder of one's own against either).
+`witness/`: builds the witness tiles (`witness/tiles.txt`) with a checkout, up to their DSF, and compares two
+such builds tile by tile: what a change touches, before it is released (`docs/testing/witness-tiles.md`).
