@@ -32,7 +32,13 @@ TRIANGLE = Path(__file__).resolve().parents[1] / "native" / "triangle4xp" / "bui
 
 
 def _moved(name: str, value: object) -> bool:
-    inputs = {"osm": "a" * 64, "dem": "b" * 64, "patches": None, "airports": None}
+    inputs = {
+        "osm": "a" * 64,
+        "dem": "b" * 64,
+        "patches": None,
+        "airports": None,
+        "global_scenery": None,
+    }
     base = VectorsParams(tile=TILE.name)
     other = base.model_copy(update={name: value})
     return key_for(VECTORS, base, inputs)[0] != key_for(VECTORS, other, inputs)[0]
@@ -61,11 +67,18 @@ def test_every_consumed_parameter_is_in_the_key() -> None:
 
 def test_the_inputs_are_in_the_key_too() -> None:
     params = VectorsParams(tile=TILE.name)
-    base = {"osm": "a" * 64, "dem": "b" * 64, "patches": None, "airports": None}
+    base = {
+        "osm": "a" * 64,
+        "dem": "b" * 64,
+        "patches": None,
+        "airports": None,
+        "global_scenery": None,
+    }
     key = key_for(VECTORS, params, base)[0]
     assert key != key_for(VECTORS, params, {**base, "osm": "c" * 64})[0]
     assert key != key_for(VECTORS, params, {**base, "dem": "c" * 64})[0]
     assert key != key_for(VECTORS, params, {**base, "patches": "c" * 64})[0]
+    assert key != key_for(VECTORS, params, {**base, "global_scenery": "c" * 64})[0]
 
 
 def test_an_unknown_field_is_refused() -> None:

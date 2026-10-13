@@ -182,6 +182,10 @@ class LayerRequest:
     airports: Path | None = None
     """Wave 2: the airport artefact. Always ``None`` while ``orthostudio.airports`` does
     not exist."""
+    global_scenery: Path | None = None
+    """The tile's DSF of X-Plane's Global Scenery: its elevation says where X-Plane draws land,
+    which guards a tile against a coastline that would make it all sea (``vectors-coastline.md``
+    section 9). ``None`` without X-Plane's scenery: the coastline is taken as it is."""
     cancel: threading.Event | None = None
     progress: Callable[[float, str], None] | None = None
     """Where each family says it has started. This step said nothing at all, from beginning to
@@ -332,6 +336,7 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
         dem=dem,
         patches=_optional(dict(ctx.inputs), "patches"),
         airports=_optional(dict(ctx.inputs), "airports"),
+        global_scenery=_optional(dict(ctx.inputs), "global_scenery"),
         cancel=job.cancel,
         progress=job.progress,
     )
@@ -418,7 +423,7 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # was a first form of the rule, never released.
     version=4,
     params=VectorsParams,
-    inputs=("osm", "dem", "patches", "airports"),
+    inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,
     kind="dir",
 )

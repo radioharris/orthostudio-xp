@@ -35,7 +35,9 @@ experimental.
   `scenery_packs.ini`.
 - **Map data in seconds.** The airports, roads, coastline and water of every tile of the planet
   come from OrthoStudio XP's own library (OpenStreetMap as of 7 October 2026, updated regularly),
-  and from the public Overpass servers when the library cannot answer.
+  and from the public Overpass servers when the library cannot answer. A tile OpenStreetMap would
+  put under the sea, a building or a river island tagged as a coastline, stays land where X-Plane
+  has land.
 - **Relief from X-Plane 12 itself**, nothing to download, or a finer one: Copernicus, the USGS
   over North America, Canada's lidar, ANADEM over South America, or your own elevation files at
   their own resolution. Works says which relief a build actually read, and a tile outside a

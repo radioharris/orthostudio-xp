@@ -78,7 +78,13 @@ builds at road level 0 and 1 only, since its small roads do not say which road l
 A prepared library is behind the live map by design, and it is baked again regularly. A tile
 whose coastline in the library would not close, which OpenStreetMap sometimes has for a few
 hours, is taken from the servers instead, and one whose kept map data has such a coastline is
-asked for again at its next build. There is
+asked for again at its next build. A coastline can also be wrong the other way: a building, a
+river island or a lake island tagged as a coastline in OpenStreetMap is read, as Ortho4XP reads
+it, as an island in the open sea, and the whole tile around it becomes sea at 0 m. Tehran, Manaus,
+Chengdu and Asuncion were drowned that way in October 2026. When a coastline would make a whole tile
+sea, its sea is checked against X-Plane's own scenery: if X-Plane draws more than half of it as
+land, the coastline is ignored, the tile is land, and Works says where that coastline is, so it
+can be corrected in OpenStreetMap. There is
 no button to skip it, on purpose: a build from the library is the fast one. The command line keeps
 `--osm-refresh <anything>`, which skips both and goes to the servers. One tile downloads at a
 time, since the servers refuse more, but the other tiles do not wait: each goes on with its relief

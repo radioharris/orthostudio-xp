@@ -211,6 +211,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Free disk space or fix permissions on the cache directory; the build continues.",
     ),
     _spec(
+        "OSM_COAST_ON_LAND",
+        _D,
+        _C,
+        "The OSM coastline of tile {tile} would make it all sea where X-Plane draws land "
+        "({share} of it): it is ignored, the tile is land.",
+        "Nothing to do. To help others, check the natural=coastline way near {where} in "
+        "OpenStreetMap: it is usually a building, an island in a river or a lake.",
+    ),
+    _spec(
         "OSM_COAST_OPEN_END",
         _B,
         _S,

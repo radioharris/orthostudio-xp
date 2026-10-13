@@ -224,7 +224,8 @@ defensive only.
 | two chains sharing an init arclength | uncaught `ValueError`, step 1 dies | `OSM_COAST_TRIPLE_JUNCTION` |
 | way with < 2 points | dropped silently (`O4_OSM_Utils.py:629-630`) | dropped, counted in `stats.ways_dropped` |
 | no coastline way at all | `include_sea` returns before any of this (`O4_Vector_Map.py:403`) | empty `CoastResult`, no seed |
-| only rings, no open chain | whole tile is sea, minus the islands | same |
+| only rings, no open chain | whole tile is sea, minus the islands | same, unless X-Plane's scenery draws more than half of that sea as land: the coastline is ignored, `OSM_COAST_ON_LAND` (9.4) |
+| ways only along the tile's border (the antimeridian) | nothing left inside, whole tile is sea | same, with the same guard (9.4) |
 | only an interior-sea ring | tile turned inside out | same (parity), warned in `stats` |
 | island inside a lake | island swallowed by the lake | same (parity), counted in `stats.islands_swallowed` |
 
@@ -343,11 +344,32 @@ here and none is claimed**: step 1's 23 s were in `insert_way`, which is the nod
    once instead of twice, and the chains are concatenated with numpy instead of Python list
    `+=`. Same values, no semantic change (8.1).
 
+4. **a coastline that would drown a land tile is ignored.** With no open chain in the tile, the
+   whole tile is sea but for the rings (`O4_Vector_Utils.py:963-964`); when the rings are no
+   islands, a land tile drowns at 0 m. OpenStreetMap had eleven such tiles in the library of
+   2026-10-07: a market in Tehran, a hotel in Manaus, a resort in Chengdu, a ditch in Asuncion,
+   river and lake islands on the Don, in Idaho, Michigan and Manitoba, and three tiles of Chukotka
+   whose only coastline is the line OpenStreetMap draws along the antimeridian, on the tile's
+   border. `build_sea_layers(..., land=)` asks, in that case only, which share of the sea it would
+   make X-Plane's own scenery draws as land: the elevation posts of the tile's Global Scenery DSF
+   (`dem/xplane.py`, north to south), one in four each way, above 0.5 m (X-Plane's sea is at
+   0 m; a sea below it, the Caspian, is no land). Above `LAND_SHARE_MAX` = 0.5 the coastline is
+   ignored as if there were none, `OSM_COAST_ON_LAND` names where its rings are, and `stats.json`
+   gives `coastline.on_land_percent`. Measured over the 831 tiles of the library a coastline of
+   rings makes all sea (2026-10-13): the guard fires on the eleven, where X-Plane has 100 % land,
+   and on no other, the true seas holding at most 0.5 % (islands of the Kara Sea). The DSF is the
+   vector stage's `global_scenery` input, absent without X-Plane's scenery, and then the
+   coastline is taken as it is. Elsewhere the stage writes the very bytes it wrote before.
+   Limit: the mesh's weight map still reads the ignored coastline (`orthostudio.coastline`), so
+   the mesh is a little finer around the ring than with no coastline at all: Tehran rebuilt
+   with the guard has the same land, lakes and sea to the square metre as with the coastline
+   removed from the library, and its triangles differ in 14 cells around the market.
+
 **Candidate fixes, NOT implemented (parity first):**
 
-4. island inside a lake is swallowed (4.4). Fix: symmetric-difference the islands and the
+5. island inside a lake is swallowed (4.4). Fix: symmetric-difference the islands and the
    interior seas separately, innermost first. Needs a real tile that exhibits it.
-5. a tile whose only coastline is an interior-sea ring comes out inverted (4.3). Fix: when
+6. a tile whose only coastline is an interior-sea ring comes out inverted (4.3). Fix: when
    there is no open chain, take the tile as sea only if at least one ring is an island.
-6. the first-match float equality of `inits.index` (4.3) picks arbitrarily between two chains
+7. the first-match float equality of `inits.index` (4.3) picks arbitrarily between two chains
    starting at the same arclength. Fix: pair them by proximity of the chain ends.
