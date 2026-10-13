@@ -192,6 +192,28 @@ def test_the_written_files_are_the_graph_that_was_assembled(tmp_path: Path) -> N
     assert stats["edges_by_marker"]["SEA"] > 0
 
 
+def test_the_stats_count_the_nodes_put_on_an_edge_only_when_there_are_some(
+    tmp_path: Path,
+) -> None:
+    """``vectors-pslg.md`` 2.14: a tile without a node next to an edge writes the stats.json it
+    always wrote, so its mesh and DSF stay in the store; one with such a node says how many. The
+    second water way passes 2 mm from the first one's edge without touching it."""
+    assemble_vectors(sample_layers(), TILE, FakeDem(), SMALL, out_dir=tmp_path / "none")
+    assert "near_nodes_joined" not in json.loads((tmp_path / "none" / STATS_JSON).read_text())
+    off = 0.002 / 111_319.49
+    layers = VectorLayers(
+        water=[
+            line_layer("river", "WATER", LineString([(0.70, 0.70), (0.71, 0.70)])),
+            line_layer(
+                "canal", "WATER", LineString([(0.70, 0.70), (0.705, 0.70 + off), (0.71, 0.70)])
+            ),
+        ]
+    )
+    result = assemble_vectors(layers, TILE, FakeDem(), SMALL, out_dir=tmp_path / "one")
+    assert json.loads((tmp_path / "one" / STATS_JSON).read_text())["near_nodes_joined"] == 1
+    assert check_planar(result.graph.nodes, result.graph.edges) == 0
+
+
 def test_the_replay_file_holds_the_segments_that_were_noded(tmp_path: Path) -> None:
     result = assemble_vectors(sample_layers(), TILE, FakeDem(), SMALL, out_dir=tmp_path)
     data = np.load(tmp_path / LAYERS_NPZ)
@@ -241,7 +263,7 @@ def test_an_unnamed_marker_is_refused_at_the_layer() -> None:
 
 # ----------------------------------------------------------------------------- rule
 def test_the_rule_declares_what_it_consumes_and_nothing_else() -> None:
-    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 3, "dir")
+    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 5, "dir")
     assert VECTORS.inputs == ("airports", "dem", "osm", "patches")
     assert set(VECTORS.consumed) == {
         "tile",

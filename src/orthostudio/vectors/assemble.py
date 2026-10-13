@@ -38,6 +38,7 @@ from orthostudio.vectors.noding import (
     Layer,
     NodedGraph,
     check_planar,
+    join_near_nodes,
     node_layers,
 )
 from orthostudio.vectors.noding import linework as _geometry_parts
@@ -311,6 +312,7 @@ def assemble_vectors(
 
     noding_started = time.perf_counter()
     graph = node_layers([layer.as_noding_layer() for layer in passes], cancel=params.cancel)
+    graph, joined = join_near_nodes(graph, tile.lat)
     noding_s = time.perf_counter() - noding_started
 
     check()
@@ -331,6 +333,7 @@ def assemble_vectors(
             final_seeds,
             seeds,
             violations=violations,
+            joined=joined,
         ),
     )
     # how long it took goes to the log, not into the artefact (:func:`_stats`)
@@ -375,6 +378,7 @@ def _stats(
     accumulated: SeedSet,
     *,
     violations: int | None,
+    joined: int = 0,
 ) -> dict[str, Any]:
     """The ``stats.json`` document: what went in and what came out.
 
@@ -383,9 +387,12 @@ def _stats(
     its mesh, masks and DSF were made again and its whole folder copied again after its cache was
     freed (found on the owner's Shadow, 2026-10-06). The DSF's stats leave theirs out for that
     reason.
+
+    ``near_nodes_joined`` (:func:`join_near_nodes`) is written only when some were: a tile
+    without any keeps the very ``stats.json`` it had, so its mesh and DSF stay in the cache.
     """
     values, counts = np.unique(graph.markers, return_counts=True)
-    return {
+    stats = {
         "format": STATS_FORMAT,
         "tile": tile.name,
         "mesh_zl": params.mesh_zl,
@@ -412,6 +419,9 @@ def _stats(
         "seeds_skipped": accumulated.skipped,
         "planarity_violations": violations,
     }
+    if joined:
+        stats["near_nodes_joined"] = joined
+    return stats
 
 
 def _write_layers_npz(path: Path, layers: Sequence[VectorLayer]) -> None:

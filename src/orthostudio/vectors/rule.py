@@ -417,9 +417,13 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
 # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
 # 2026-10-12; version 2 in 1.0.1, which has no dry basins): a tile built again recomputes its
 # airports.
+# Version 5: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of
+# its ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13; version 4 in
+# 1.0.2, which has no dry basins); a tile with no such node gets the same files again, so its mesh
+# and DSF come from the cache.
 @rule(
     name="orthostudio.vectors",
-    version=3,
+    version=5,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -431,4 +435,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@3``."""
+"""``orthostudio.vectors@5``."""
