@@ -7361,7 +7361,10 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
         const plan = (mb, need, free) => ({ network: { mb }, disk: { needed_gb: need, free_gb: free } });
         const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)]);
         const short = m.rebuildQuestion(reqs, [plan(800, 3, 8), plan(420, 1.5, 8)]);
-        process.stdout.write(JSON.stringify({ reqs, q, short }));"""
+        const after = { ...plan(800, 3, 200), tiles: [{ nodes: [{ role: "vectors", status: "build" },
+                                                            { role: "textures", status: "unknown" }] }] };
+        const most = m.rebuildQuestion(reqs, [after, plan(420, 1.5, 200)]);
+        process.stdout.write(JSON.stringify({ reqs, q, short, most }));"""
     )
     assert got["reqs"] == [
         {
@@ -7383,6 +7386,12 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     assert got["q"]["go"] is True
     assert got["short"]["go"] is False
     assert got["short"]["body"][-1].startswith("Not enough free disk space")
+    # after an update that changes a stage, the estimate cannot know what follows it: "up to"
+    # (two tiles built a minute before were said to need 343 MB, 2026-10-15)
+    assert got["most"]["body"][1] == (
+        "To download: up to 1.22 GB. On disk: up to 4.5 GB to write, 200 GB free. Less if the "
+        "tiles have not changed: that is known only once built."
+    )
 
 
 def test_build_again_is_wired_in_the_library_bar() -> None:

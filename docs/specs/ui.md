@@ -812,9 +812,11 @@ each tile at its own level (the most common one is the build's `zoom_level`, the
 `tiles_zl`), a tile picked in two folders built once; zones, colours and settings are left to the
 engine, which takes today's, as for a Plan. Each build is estimated first (`POST /api/plan`); a
 modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
-(its source and level) and what is today's, the download and the disk summed over the builds,
-and how many go back into X-Plane; when the disk cannot hold them (the Plan's rule, twice the room
-needed) it says so in the Plan's words and builds nothing. *Build again* sends them like the Plan
+(its source and level) and what is today's, the download and the disk summed over the builds
+("up to", with "less if the tiles have not changed", when a stage of the estimate is `unknown`:
+after an update that changes a stage, what follows it is known only once built), and how many go
+back into X-Plane; when the disk cannot hold them (the Plan's rule, twice the room needed) it says
+so in the Plan's words and builds nothing. *Build again* sends them like the Plan
 (`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
 (a toast says when all wait); a refusal is an error card under the table.
 

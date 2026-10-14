@@ -6236,7 +6236,9 @@ export function rebuildRequests(rows) {
 /** What the question says before tiles are built again: how many, what each keeps and what is
  * today's, the download and the disk from the engine's estimates of the builds (`POST /api/plan`),
  * and how many go back into X-Plane. `go` is false when the disk cannot hold them, by the Plan's
- * own rule (twice the room the builds need). */
+ * own rule (twice the room the builds need). A stage the estimate cannot know before an earlier
+ * one runs (`unknown`, after an update that changes it) may still find its work done: the figures
+ * are then an upper bound, and the question says "up to". */
 export function rebuildQuestion(requests, plans) {
   const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
   const back = requests.filter((r) => r.install).reduce((sum, r) => sum + r.tiles.length, 0);
@@ -6245,7 +6247,9 @@ export function rebuildQuestion(requests, plans) {
   const need = verdicts.reduce((sum, v) => sum + (v.needed || 0), 0);
   const free = verdicts.find((v) => v.free !== null)?.free ?? null;
   const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
-  const body = [t("library.rebuild_kept"), t("library.rebuild_costs", { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) })];
+  const unsure = plans.some((p) => (p?.tiles || []).some((te) => (te.nodes || []).some((nd) => nd.status === "unknown")));
+  const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
+  const body = [t("library.rebuild_kept"), unsure ? t("library.rebuild_costs_most", figures) : t("library.rebuild_costs", figures)];
   if (back) body.push(t("library.rebuild_back", { n: fmtInt(back) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
   return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: !short };

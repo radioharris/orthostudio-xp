@@ -399,6 +399,15 @@ For each spec, without building anything:
 | `compute_s` | the sum of the `build` and `unknown` node estimates plus `textures.total x` the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
 | `dds_gb`, `disk_free_gb`, `disk_ok` | DDS bytes of the plan; `shutil.disk_usage` of the store root; `disk_ok = free > 2 x needed` |
 
+The graph is declared as a build would declare it, the OSM snapshot of a tile included: the one
+the store holds is found as phase 0 finds it, its key a pure function of its params, but read only
+(`stored_osm_refs`: nothing touched, no kept snapshot set aside), and only a tile with none plans
+its layers as still to fetch, a placeholder. With the placeholder for every tile, two tiles built
+a minute before planned every node after their layers "to build" and 343 MB of photos to
+download, where the build that followed took everything from the store (2026-10-15). A node whose
+inputs are not all known before an earlier node runs stays `unknown` (a stage whose version
+changed, and what follows it): its textures and their download are then an upper bound.
+
 Output: JSON (`--json`) or a two-line summary ("network: your line ..." / "compute: your
 Mac ...") per tile. Nothing is written except the probe's 20 chunks, which are **not** stored.
 
@@ -605,7 +614,8 @@ reads Ortho4XP's cache).
 The mesh and the vector stage therefore never read two different extracts of the coast. There
 always is one: the vector stage demands the `coastline` layer at every road level, so a tile
 without any fails at its vector stage. An estimate declares the graph without downloading: the
-coastline then reads the placeholder of the layers still to fetch, like the vector stage.
+coastline reads the snapshot the store holds, as a build does, else the placeholder of the layers
+still to fetch, like the vector stage (section 5).
 
 Ortho4XP preferred a coastline the user curated by hand in its `OSM_data/` folder
 (`O4_Mesh_Utils.py:166-186`). OrthoStudio XP read that file too until decision 0010; a curated

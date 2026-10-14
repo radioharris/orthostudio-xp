@@ -2715,6 +2715,30 @@ def _osm_outcome(tile: TileRef, node: Node, collector: _Collector) -> OsmOutcome
     return OsmOutcome(tile, error=failed.error if failed is not None else None)
 
 
+def stored_osm_refs(specs: Sequence[BuildSpec], env: BuildEnv) -> dict[TileRef, ArtifactRef]:
+    """The OSM snapshots the store holds for the tiles of ``specs``, found as :func:`osm_plan`
+    finds them (the key is a pure function of the params) but read only: an estimate does not
+    touch the store or set a kept snapshot aside, as a build may. The first spec of a tile decides;
+    a tile built with ``--no-osm-fetch`` has none here, as in a build."""
+    refs: dict[TileRef, ArtifactRef] = {}
+    seen: set[TileRef] = set()
+    for spec in specs:
+        if spec.tile in seen:
+            continue
+        seen.add(spec.tile)
+        if not spec.osm_fetch:
+            continue
+        road_level = int(spec.tile_config().get("road_level", 1) or 0)
+        params = OsmParams(tile=spec.tile.name, road_level=road_level, refresh=spec.osm_refresh)
+        key, _recipe = key_for(OSM_RULE, params, {})
+        info = env.store.info(key) if env.store.has(key) else None
+        if info is not None:
+            refs[spec.tile] = ArtifactRef(
+                info.key, info.digest, info.path, info.rule, info.kind, info.size
+            )
+    return refs
+
+
 def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> OsmOutcome | None:
     """The ``orthostudio.osm`` artefact this store already holds for the tile, if any.
 

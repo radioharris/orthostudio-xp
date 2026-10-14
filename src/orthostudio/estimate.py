@@ -31,6 +31,7 @@ from orthostudio.pipeline.build import (
     TileNodes,
     declare,
     make_scheduler,
+    stored_osm_refs,
     texture_jobs_from_json,
 )
 from orthostudio.sched import PlanEntry
@@ -322,7 +323,12 @@ def estimate(
     """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe."""
     env = env if env is not None else BuildEnv.create(specs)
     scheduler = make_scheduler(env.store, env, cpu_in_threads=True)
-    graphs = declare(specs, scheduler, env, planning=True)
+    # The OSM snapshots the store already holds, found as the build finds them (no network): a
+    # tile built before plans as built, where a placeholder for its layers made every node after
+    # them "to build" and its photos a download (343 MB for two tiles built a minute before,
+    # 2026-10-15). A tile with none plans its layers as still to fetch.
+    stored = stored_osm_refs(specs, env)
+    graphs = declare(specs, scheduler, env, planning=True, osm_artefacts=stored)
     entries = {e.node_id: e for e in scheduler.plan([g.target.id for g in graphs])}
     per_texture_entry = scheduler.costs.entry(PER_TEXTURE_COST)
     per_texture = per_texture_entry.ewma if per_texture_entry else DEFAULT_PER_TEXTURE_S
