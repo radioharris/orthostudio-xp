@@ -111,8 +111,9 @@ looks better than XPME.
   drawn leaves its water: Copalis Beach (S16), a beach runway with no aerodrome outline, stays in
   the sea. Shenzhen's outline holds 76 ha of ponds that XPME keeps as water and the rule dries.
 * **A step at the edge** where OpenStreetMap's water covers high ground: at Avranches its sea covers
-  240 m of salt meadows the relief puts at 6 m, and the aerodrome stands 6 m above it (XPME's water
-  lies at 2.5 m there, a 4 m step).
+  240 m of salt meadows the relief puts at 6 m; the aerodrome stands at 6 m and the sea beside it at
+  0 m, a 6 m step. 1.0.2 has none there (all water, its surface sloping down from 6 m), nor has XPME
+  (its water lies at the land's height, 6 to 7 m), measured across the edge (2026-10-15).
 * **Runways X-Plane does not have.** The rule follows OpenStreetMap's runways. At Homey Airport
   (KXTA) it draws a second pair of runways 03/21 on Groom Lake, 1.2 km north-west of X-Plane's,
   one of them closed, and the aerodrome's outline wraps them in a narrow strip: that strip of the
