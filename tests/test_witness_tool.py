@@ -113,3 +113,144 @@ def test_the_report_asks_to_look_only_at_what_matters() -> None:
     assert witness.alerts(moved) and "6.1" in witness.alerts(moved)[0]
     assert witness.alerts({**base, "vectors.crossings": [0, 2]}) == ["crossings 0 -> 2"]
     assert witness.alerts({"verdict": "failed"}) == ["failed"]
+
+
+def test_mask_pixels_go_back_to_degrees() -> None:
+    from orthostudio.masks.water import wgs84_to_pix
+
+    for lat, lon in ((46.5, 6.5), (-33.9, 18.4), (64.2, -51.7)):
+        px, py = wgs84_to_pix(lat, lon, 14)
+        back_lon, back_lat = witness.pixels_to_lonlat(np.array([px]), np.array([py]), 14)
+        assert abs(back_lon[0] - lon) < 1e-4 and abs(back_lat[0] - lat) < 1e-4
+
+
+def test_mask_pixels_are_told_near_or_far_from_the_pavement_taken_out(tmp_path: Path) -> None:
+    """Only the pixels over the tile count: the rest of a cell, beyond the tile's border, is
+    black where no neighbour was built, and no part of this tile's DSF uses it."""
+    import shapely
+    from PIL import Image
+
+    from orthostudio.imagery.grid import texture_at
+    from orthostudio.masks.water import mask_cells
+    from orthostudio.model import TileRef
+
+    zl = 14
+    middle = texture_at(46.5, 6.5, zl, "")  # a cell well inside the tile +46+006
+    corner_x, corner_y = mask_cells(TileRef(46, 6), zl).cells()[0]  # one across its border
+    names = [f"{middle.til_y}_{middle.til_x}.png", f"{corner_y}_{corner_x}.png"]
+    ref = np.zeros((4096, 4096), np.uint8)
+    new = ref.copy()
+    new[100:110, 200:210] = 255  # next to the pavement taken out
+    new[3000, 3000] = 40  # about 18 km away
+    edge = ref.copy()
+    edge[0, 0] = 255  # the north-west corner of the cell across the border: not over the tile
+    for side, images in (("ref", (ref, ref)), ("new", (new, edge))):
+        (tmp_path / side / TILE / "masks").mkdir(parents=True)
+        for name, image in zip(names, images, strict=True):
+            Image.fromarray(image).save(tmp_path / side / TILE / "masks" / name)
+    x0, y0 = witness.mask_origin(names[0], zl)
+    lon, lat = witness.pixels_to_lonlat(np.array([x0 + 205.0]), np.array([y0 + 105.0]), zl)
+    dry = shapely.Point(lon[0], lat[0]).buffer(0.0001)
+    files_ref = {"zl": zl, "files": dict.fromkeys(names, "a")}
+    files_new = {"zl": zl, "files": dict.fromkeys(names, "b")}
+    cells = witness.compare_masks(
+        tmp_path / "ref", tmp_path / "new", TILE, files_ref, files_new, dry
+    )
+    cell, across = sorted(cells, key=lambda c: c["file"] != names[0])
+    assert cell["pixels"] == 101 and cell["max"] == 255 and cell["outside_pixels"] == 0
+    assert cell["far_pixels"] == 1 and cell["far_max"] == 40
+    far_lon, far_lat = witness.pixels_to_lonlat(
+        np.array([x0 + 3000.5]), np.array([y0 + 3000.5]), zl
+    )
+    assert cell["far_at"] == [round(float(far_lat[0]), 5), round(float(far_lon[0]), 5)]
+    assert across["pixels"] == 0 and across["outside_pixels"] == 1
+    alone = witness.compare_masks(
+        tmp_path / "ref", tmp_path / "new", TILE, files_ref, files_new, None
+    )
+    assert sorted(c["far_pixels"] for c in alone) == [0, 101]
+
+
+def test_what_was_taken_out_next_door_counts_only_in_the_same_batch(tmp_path: Path) -> None:
+    import shapely
+
+    def record(tile: str, batch: list[str], dry: object = None) -> dict:
+        (tmp_path / tile).mkdir()
+        rec: dict = {"batch": batch, "xp_pavement": ["RJTT"] if dry is not None else []}
+        if dry is not None:
+            (tmp_path / tile / witness.XP_DRY[0]).write_bytes(shapely.to_wkb(dry))
+            rec["xp_dry"] = {"m2": 5.0}
+        return rec
+
+    east = shapely.box(140.0, 35.5, 140.001, 35.501)
+    me = record("+35+139", ["+35+139", "+35+140"])
+    record("+35+140", ["+35+139", "+35+140"], east)
+    record("+36+139", ["+36+139"], shapely.box(139.5, 36.0, 139.501, 36.001))
+    out = witness.taken_out(tmp_path, "+35+139", me)
+    assert out["here_m2"] == 0.0 and out["neighbours"] == ["+35+140"]
+    assert out["geometry"].equals(east)
+
+
+def test_a_change_with_nothing_taken_out_around_is_called_out() -> None:
+    same = {"vectors": True, "mesh": True, "masks": False, "dsf": False}
+    nothing = {"here_m2": 0.0, "airports": [], "neighbours": []}
+    alone = {"verdict": "changed", "same": {**same, "vectors": False}, "taken_out": nothing}
+    assert witness.isolation(alone) == [
+        "changed, yet no pavement was taken out of the water in this tile"
+    ]
+    next_door = {
+        "verdict": "changed",
+        "same": same,
+        "taken_out": {**nothing, "neighbours": ["+35+140"]},
+        "mask_cells": [{"far_pixels": 0}],
+    }
+    assert witness.isolation(next_door) == []
+    far = {**next_door, "mask_cells": [{"far_pixels": 3, "far_max": 40, "far_at": [35.1, 139.2]}]}
+    assert "3 pixels" in witness.isolation(far)[0]
+    assert witness.isolation({**next_door, "taken_out": nothing}) == [
+        "masks changed, yet no pavement was taken out of the water here or next door"
+    ]
+    here = {"verdict": "identical", "taken_out": {**nothing, "here_m2": 12.0}}
+    assert witness.isolation(here) == ["pavement taken out of the water, yet nothing changed"]
+    assert witness.isolation({"verdict": "identical", "taken_out": nothing}) == []
+
+
+def test_a_tile_kept_as_digests_only_is_still_told_identical_or_changed(tmp_path: Path) -> None:
+    import json
+
+    def record(side: str, tile: str, mesh_sha: str) -> None:
+        (tmp_path / side / tile).mkdir(parents=True)
+        rec = {
+            "ok": True,
+            "batch": [tile],
+            "vectors": {
+                "node_sha": "n",
+                "poly_sha": "p",
+                "nodes": 1,
+                "segments": 1,
+                "seeds": 1,
+                "crossings": 0,
+            },
+            "mesh": {
+                "npz_sha": mesh_sha,
+                "triangles": 2,
+                "needles": 0,
+                "fan": 3,
+                "area_m2": {"land": 1.0, "inland": 0.0, "sea": 0.0},
+            },
+            "masks": {"zl": 14, "index_sha": "i", "files": {}},
+            "dsf": {"sha": "d", "bytes": 1},
+        }
+        (tmp_path / side / tile / "witness.json").write_text(json.dumps(rec))
+
+    record("ref", "+46+006", "a")
+    record("new", "+46+006", "a")
+    record("ref", "+46+007", "a")
+    record("new", "+46+007", "b")
+    same = witness.compare_tile(tmp_path / "ref", tmp_path / "new", "+46+006")
+    assert same["verdict"] == "identical"
+    moved = witness.compare_tile(tmp_path / "ref", tmp_path / "new", "+46+007")
+    assert moved["verdict"] == "changed" and moved["digests_only"]
+    assert "places" not in moved
+    assert witness.isolation(moved) == [
+        "changed, yet no pavement was taken out of the water in this tile"
+    ]

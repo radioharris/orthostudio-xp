@@ -7,8 +7,9 @@ See ``docs/testing/witness-tiles.md``.
 ``build`` builds the tiles of ``tiles.txt`` (and with ``--random N`` N more, drawn among X-Plane's
 Global Scenery) through the app's own path at a new user's settings, up to their DSF: the terrain,
 without imagery. It keeps a small record of each tile in ``--out``: the digests of the vector
-files and of the DSF, the counts of the graph, and the mesh itself. ``compare`` sets two such
-folders side by side and says, tile by tile, whether anything changed, and where and how much.
+files, of the masks and of the DSF, the counts of the graph, the mesh and the masks themselves.
+``compare`` sets two such folders side by side and says, tile by tile, whether anything changed,
+and where and how much.
 
 Run ``build`` with the Python of the checkout to measure and ``OSXP_HOME`` set to a folder of its
 own, never your real one: the settings and the cache of the builds go there, the cache emptied
@@ -35,11 +36,15 @@ import sys
 import time
 import tomllib
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import shapely
+from shapely.geometry.base import BaseGeometry
 
 TILES_FILE = Path(__file__).with_name("tiles.txt")
 FORMAT = "osxp-witness-1"
@@ -51,6 +56,13 @@ CELL_DEG = 0.01
 """Changed triangles are gathered into cells of a hundredth of a degree (about 1 km)."""
 LAND_MOVE_M = 0.01
 """A land vertex that moved more than this is reported: land heights come from the relief alone."""
+XP_DRY = ("xp_dry_sea.wkb", "xp_dry_inland.wkb")
+"""What the vector stage took out of the water for X-Plane's pavement, when it took anything: out
+of the sea and of the lakes masked like it, and out of the other lakes and rivers."""
+NEAR_DRY_M = 200.0
+"""A mask pixel that changed within this distance of the pavement taken out of the water (in the
+tile, or in a neighbour built in the same batch, whose mesh the masks read) is that pavement's
+doing: the masks fade over 100 m (``masks_width``) from the water's edge."""
 
 
 # -- the list ------------------------------------------------------------------------------------
@@ -176,7 +188,10 @@ def locate(mesh: Mesh, points: np.ndarray, cell: float = 0.002) -> tuple[np.ndar
     pc = np.floor((points - origin) / cell).astype(np.int64)
     inside = (pc[:, 0] >= 0) & (pc[:, 0] < width) & (pc[:, 1] >= 0)
     pkey = np.where(inside, pc[:, 1] * width + pc[:, 0], -1)
-    start, stop = np.searchsorted(key, pkey, "left"), np.searchsorted(key, pkey, "right")
+    start, stop = (
+        np.searchsorted(key, pkey, "left"),
+        np.searchsorted(key, pkey, "right"),
+    )
     for s in range(0, len(points), 100_000):
         idx = np.arange(s, min(s + 100_000, len(points)))
         n = stop[idx] - start[idx]
@@ -317,6 +332,107 @@ def compare_meshes(ref: Mesh, new: Mesh, tile: str) -> dict[str, Any]:
     return out
 
 
+def _png(path: Path) -> np.ndarray:
+    from PIL import Image
+
+    with Image.open(path) as im:
+        return np.asarray(im.convert("L"))
+
+
+def pixels_to_lonlat(px: np.ndarray, py: np.ndarray, zl: int) -> tuple[np.ndarray, np.ndarray]:
+    """Absolute web-mercator pixels at ``zl`` to degrees, the inverse of ``wgs84_to_pix``."""
+    n = 2.0 ** (zl + 7)
+    lon = (px / n - 1) * 180
+    lat = 360 / math.pi * np.arctan(np.exp(math.pi * (1 - py / n))) - 90
+    return lon, lat
+
+
+def mask_origin(name: str, zl: int) -> tuple[int, int]:
+    """Absolute pixel of the top-left corner of the mask ``<til_y>_<til_x>[_dist].png``: the
+    corner of its cell, the working margin cropped off."""
+    from orthostudio.masks.water import cell_pixel_origin
+
+    til_y, til_x = (int(v) for v in name.split(".")[0].split("_")[:2])
+    return cell_pixel_origin(til_x, til_y, zl, 0)
+
+
+def compare_masks(
+    ref_dir: Path,
+    new_dir: Path,
+    tile: str,
+    ref_masks: dict[str, Any],
+    new_masks: dict[str, Any],
+    dry: BaseGeometry | None,
+) -> list[dict[str, Any]]:
+    """The masks that differ: how many pixels changed, by how much at most, where, and how many
+    of them lie farther than ``NEAR_DRY_M`` from ``dry`` (degrees; ``None`` when nothing was
+    taken out of the water around)."""
+    k = M_PER_DEG * math.cos(math.radians(int(tile[:3]) + 0.5))
+    near = None
+    if dry is not None and not dry.is_empty:
+        near = shapely.transform(dry, lambda c: c * np.array([k, M_PER_DEG]))
+        shapely.prepare(near)
+    zl = new_masks["zl"]
+    out = []
+    for name in sorted(set(ref_masks["files"]) | set(new_masks["files"])):
+        a, b = ref_masks["files"].get(name), new_masks["files"].get(name)
+        if a == b:
+            continue
+        ra = _png(ref_dir / tile / "masks" / name) if a else None
+        rb = _png(new_dir / tile / "masks" / name) if b else None
+        # only the pixels over the tile: the rest of a cell, beyond the tile's border, is black
+        # where no neighbour was built and no part of this tile's DSF uses it
+        have = ra if ra is not None else rb
+        x0, y0 = mask_origin(name, zl)
+        lon_x, _ = pixels_to_lonlat(x0 + np.arange(have.shape[1]) + 0.5, np.zeros(1), zl)
+        _, lat_y = pixels_to_lonlat(np.zeros(1), y0 + np.arange(have.shape[0]) + 0.5, zl)
+        lat0, lon0 = int(tile[:3]), int(tile[3:])
+        over = np.outer((lat_y >= lat0) & (lat_y < lat0 + 1), (lon_x >= lon0) & (lon_x < lon0 + 1))
+        if ra is None or rb is None:
+            # a cell without water, all land or all water is not written: the nearer of the
+            # two over the tile
+            fill = 0 if (have[over] == 0).sum() > (have[over] == 255).sum() else 255
+            ra, rb = (
+                (np.full_like(have, fill), rb) if ra is None else (ra, np.full_like(have, fill))
+            )
+        diff = np.abs(ra.astype(np.int16) - rb.astype(np.int16))
+        outside = int(np.count_nonzero(diff[~over]))
+        diff[~over] = 0
+        ys, xs = np.nonzero(diff)
+        lon, lat = pixels_to_lonlat(x0 + xs + 0.5, y0 + ys + 0.5, zl)
+        cell: dict[str, Any] = {
+            "file": name,
+            "only_in": None if a and b else ("reference" if a else "new"),
+            "pixels": len(ys),
+            "outside_pixels": outside,
+            "max": int(diff.max()),
+            "far_pixels": 0,
+        }
+        if len(ys):
+            cell["box"] = [
+                round(float(lat.min()), 4),
+                round(float(lon.min()), 4),
+                round(float(lat.max()), 4),
+                round(float(lon.max()), 4),
+            ]
+            if near is None:
+                far = np.ones(len(ys), bool)
+            else:
+                points = shapely.points(lon * k, lat * M_PER_DEG)
+                far = ~shapely.dwithin(near, points, NEAR_DRY_M)
+            if far.any():
+                d = diff[ys[far], xs[far]]
+                i = int(np.argmax(d))
+                cell["far_pixels"] = int(far.sum())
+                cell["far_max"] = int(d[i])
+                cell["far_at"] = [
+                    round(float(lat[far][i]), 5),
+                    round(float(lon[far][i]), 5),
+                ]
+        out.append(cell)
+    return out
+
+
 # -- build ---------------------------------------------------------------------------------------
 
 
@@ -359,8 +475,18 @@ def _save_settings(xplane: Path, library_from: Path) -> None:
     config.save_settings(s.model_copy(update={"essential": essential, "expert": expert}))
 
 
-def _record(tile: dict[str, Any], why: str, out: Path, label: str, seconds: float) -> bool:
-    """Keep what the comparison needs of one built tile: ``witness.json`` and ``mesh.npz``."""
+def _record(
+    tile: dict[str, Any],
+    why: str,
+    out: Path,
+    label: str,
+    seconds: float,
+    batch: list[str],
+    digests_only: bool = False,
+) -> bool:
+    """Keep what the comparison needs of one built tile: ``witness.json``, ``mesh.npz``, the
+    masks, and what the vector stage took out of the water; with ``digests_only``, the digests
+    without the mesh and the masks themselves."""
     from orthostudio.graph.store import Store
     from orthostudio.home import default_store_root
     from orthostudio.vectors.noding import check_planar
@@ -376,6 +502,8 @@ def _record(tile: dict[str, Any], why: str, out: Path, label: str, seconds: floa
         "commit": _commit(),
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "batch_seconds": round(seconds, 1),
+        # the masks read the meshes of the neighbours built in the same batch
+        "batch": batch,
         "nodes": {
             role: {"status": n["status"], "error": n.get("error")}
             for role, n in nodes.items()
@@ -401,8 +529,38 @@ def _record(tile: dict[str, Any], why: str, out: Path, label: str, seconds: floa
                 "seeds": len(po.seeds),
                 "crossings": int(check_planar(nd.xy, po.segments)),
             }
+            stats = json.loads((vec / "stats.json").read_text(encoding="utf-8"))
+            rec["xp_pavement"] = stats["families"].get("xp_pavement", {}).get("airports", [])
+            for part in XP_DRY:
+                if (vec / part).is_file():
+                    shutil.copyfile(vec / part, here / part)
+                else:
+                    (here / part).unlink(missing_ok=True)
+            dry = _dry(out, name)
+            if dry is not None:
+                k = M_PER_DEG * math.cos(math.radians(int(name[:3]) + 0.5))
+                rec["xp_dry"] = {
+                    "m2": round(float(dry.area) * k * M_PER_DEG, 2),
+                    "bounds": [round(v, 6) for v in dry.bounds],
+                }
+            if nodes.get("masks", {}).get("status") in ("built", "hit"):
+                masks = store.path(nodes["masks"]["key"])
+                if not digests_only:
+                    (here / "masks").mkdir(exist_ok=True)
+                files = {}
+                for png in sorted(masks.glob("*.png")):
+                    if not digests_only:
+                        shutil.copyfile(png, here / "masks" / png.name)
+                    files[png.name] = _sha(png)
+                index = masks / "index.json"
+                rec["masks"] = {
+                    "zl": json.loads(index.read_text(encoding="utf-8"))["mask_zl"],
+                    "index_sha": _sha(index),
+                    "files": files,
+                }
             npz = store.path(nodes["mesh"]["key"]) / "mesh.npz"
-            shutil.copyfile(npz, here / "mesh.npz")
+            if not digests_only:
+                shutil.copyfile(npz, here / "mesh.npz")
             rec["mesh"] = {"npz_sha": _sha(npz), **mesh_measures(load_mesh(npz), name)}
             dsfs = sorted(store.path(nodes["dsf"]["key"]).rglob("*.dsf"))
             rec["dsf"] = {"sha": _sha(dsfs[0]), "bytes": dsfs[0].stat().st_size} if dsfs else None
@@ -425,13 +583,25 @@ def _batch(args: argparse.Namespace) -> None:
     whys = json.loads(args.whys)
     settings = config.load_settings(None, [])
     specs = make_specs(
-        PlanRequest(tiles=args.tiles), settings=settings, install=False, config_module=config
+        PlanRequest(tiles=args.tiles),
+        settings=settings,
+        install=False,
+        config_module=config,
     )
     t0 = time.perf_counter()
     report = pb.build_tiles(specs).to_dict()
     seconds = time.perf_counter() - t0
     for tile in report["tiles"]:
-        ok = _record(tile, whys.get(tile["tile"], ""), Path(args.out), args.label, seconds)
+        why = whys.get(tile["tile"], "")
+        ok = _record(
+            tile,
+            why,
+            Path(args.out),
+            args.label,
+            seconds,
+            list(args.tiles),
+            args.digests_only,
+        )
         print(f"   {tile['tile']}: {'recorded' if ok else 'FAILED'}", flush=True)
 
 
@@ -484,12 +654,16 @@ def build(args: argparse.Namespace) -> None:
                 label,
                 "--whys",
                 json.dumps({t: whys.get(t, "") for t in batch}),
+                *(["--digests-only"] if args.digests_only else []),
                 *batch,
             ],
             check=False,
         )
         shutil.rmtree(store_root, ignore_errors=True)
-        print(f"   {time.perf_counter() - t0:.0f} s, {i + len(batch)}/{len(todo)}", flush=True)
+        print(
+            f"   {time.perf_counter() - t0:.0f} s, {i + len(batch)}/{len(todo)}",
+            flush=True,
+        )
 
 
 # -- compare -------------------------------------------------------------------------------------
@@ -500,23 +674,74 @@ def _read(folder: Path, tile: str) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+def _dry(folder: Path, tile: str) -> BaseGeometry | None:
+    parts = [
+        shapely.from_wkb(path.read_bytes())
+        for path in (folder / tile / name for name in XP_DRY)
+        if path.is_file()
+    ]
+    return shapely.union_all(parts) if parts else None
+
+
+def taken_out(new_dir: Path, tile: str, new: dict[str, Any]) -> dict[str, Any]:
+    """What the new side took out of the water in ``tile`` and in its neighbours of the same
+    batch, whose meshes its masks read; ``geometry`` is their union, in degrees."""
+    from orthostudio.masks.water import NEIGHBOUR_OFFSETS
+    from orthostudio.model import TileRef
+
+    here = TileRef.parse(tile)
+    batch = set(new.get("batch", []))
+    parts = [g for g in [_dry(new_dir, tile)] if g is not None]
+    neighbours = []
+    for dlat, dlon in NEIGHBOUR_OFFSETS.values():
+        nb = here.neighbour(dlat, dlon).name
+        if nb in batch and (g := _dry(new_dir, nb)) is not None:
+            neighbours.append(nb)
+            parts.append(g)
+    return {
+        "here_m2": (new.get("xp_dry") or {}).get("m2", 0.0),
+        "airports": new.get("xp_pavement", []),
+        "neighbours": sorted(neighbours),
+        "geometry": shapely.union_all(parts) if parts else None,
+    }
+
+
 def compare_tile(ref_dir: Path, new_dir: Path, tile: str) -> dict[str, Any]:
     ref, new = _read(ref_dir, tile), _read(new_dir, tile)
     if ref is None or new is None:
-        return {"tile": tile, "verdict": "missing", "side": "reference" if ref is None else "new"}
+        return {
+            "tile": tile,
+            "verdict": "missing",
+            "side": "reference" if ref is None else "new",
+        }
     out: dict[str, Any] = {"tile": tile, "why": new.get("why") or ref.get("why", "")}
     if not new["ok"] or not ref["ok"]:
         out["verdict"] = "failed" if not new["ok"] else "fixed"
         out["nodes"] = {"reference": ref["nodes"], "new": new["nodes"]}
         return out
+    taken = taken_out(new_dir, tile, new)
+    dry = taken.pop("geometry")
+    out["taken_out"] = taken
     same_vectors = all(ref["vectors"][k] == new["vectors"][k] for k in ("node_sha", "poly_sha"))
     same_mesh = ref["mesh"]["npz_sha"] == new["mesh"]["npz_sha"]
     same_dsf = ref["dsf"] == new["dsf"]
-    if same_vectors and same_mesh and same_dsf:
+    # records written before the masks were kept compare without them
+    same_masks = ref["masks"] == new["masks"] if "masks" in ref and "masks" in new else None
+    if same_vectors and same_mesh and same_dsf and same_masks is not False:
         out["verdict"] = "identical"
         return out
     out["verdict"] = "changed"
-    out["same"] = {"vectors": same_vectors, "mesh": same_mesh, "dsf": same_dsf}
+    out["same"] = {
+        "vectors": same_vectors,
+        "mesh": same_mesh,
+        "masks": same_masks,
+        "dsf": same_dsf,
+    }
+    kept = all((d / tile / "mesh.npz").is_file() for d in (ref_dir, new_dir))
+    if not kept:
+        out["digests_only"] = True
+    if same_masks is False and kept:
+        out["mask_cells"] = compare_masks(ref_dir, new_dir, tile, ref["masks"], new["masks"], dry)
     for part, keys in (
         ("vectors", ("nodes", "segments", "seeds", "crossings")),
         ("mesh", ("triangles", "needles", "fan")),
@@ -527,22 +752,53 @@ def compare_tile(ref_dir: Path, new_dir: Path, tile: str) -> dict[str, Any]:
         k: round(new["mesh"]["area_m2"][k] - ref["mesh"]["area_m2"][k], 1)
         for k in ("land", "inland", "sea")
     }
-    if not same_mesh:
+    if not same_mesh and kept:
         out.update(
             compare_meshes(
-                load_mesh(ref_dir / tile / "mesh.npz"), load_mesh(new_dir / tile / "mesh.npz"), tile
+                load_mesh(ref_dir / tile / "mesh.npz"),
+                load_mesh(new_dir / tile / "mesh.npz"),
+                tile,
             )
         )
     return out
 
 
-def alerts(r: dict[str, Any]) -> list[str]:
-    """What deserves a look before a release, in words."""
-    if r["verdict"] in ("failed", "missing"):
-        return [r["verdict"]]
+def isolation(r: dict[str, Any]) -> list[str]:
+    """For a branch that takes X-Plane's pavement out of the water: a change anywhere else."""
+    taken = r.get("taken_out", {})
+    if r["verdict"] == "identical":
+        return ["pavement taken out of the water, yet nothing changed"] if taken["here_m2"] else []
     if r["verdict"] != "changed":
         return []
     out = []
+    same = r["same"]
+    if not taken["here_m2"]:
+        if not (same["vectors"] and same["mesh"]):
+            out.append("changed, yet no pavement was taken out of the water in this tile")
+        elif same["masks"] is not False:
+            out.append("the DSF changed alone")
+        elif not taken["neighbours"]:
+            out.append(
+                "masks changed, yet no pavement was taken out of the water here or next door"
+            )
+    cells = [c for c in r.get("mask_cells", []) if c["far_pixels"]]
+    if cells:
+        worst = max(cells, key=lambda c: c["far_max"])
+        out.append(
+            f"masks changed farther than {NEAR_DRY_M:.0f} m from the pavement taken out "
+            f"({sum(c['far_pixels'] for c in cells)} pixels, up to {worst['far_max']} "
+            f"at {worst['far_at'][0]},{worst['far_at'][1]})"
+        )
+    return out
+
+
+def alerts(r: dict[str, Any], pavement_rule: bool = False) -> list[str]:
+    """What deserves a look before a release, in words."""
+    if r["verdict"] in ("failed", "missing"):
+        return [r["verdict"]]
+    out = isolation(r) if pavement_rule else []
+    if r["verdict"] != "changed":
+        return out
     if r.get("land_vertices_moved"):
         out.append(
             f"land heights moved ({r['land_vertices_moved']} vertices, "
@@ -600,6 +856,20 @@ def _line(r: dict[str, Any]) -> str:
     parts.append(f"needles {r['mesh.needles'][0]}->{r['mesh.needles'][1]}")
     parts.append(f"fan {r['mesh.fan'][0]}->{r['mesh.fan'][1]}")
     parts.append(f"crossings {r['vectors.crossings'][0]}->{r['vectors.crossings'][1]}")
+    if r["same"].get("masks") is False:
+        cells = r["mask_cells"]
+        far = sum(c["far_pixels"] for c in cells)
+        parts.append(
+            f"masks: {len(cells)} file(s) changed, {sum(c['pixels'] for c in cells)} pixels, "
+            f"{far} farther than {NEAR_DRY_M:.0f} m from the pavement taken out"
+        )
+    taken = r.get("taken_out", {})
+    if taken.get("here_m2"):
+        parts.append(
+            f"taken out of the water: {taken['here_m2']:.0f} m2 ({' '.join(taken['airports'])})"
+        )
+    if taken.get("neighbours"):
+        parts.append(f"taken out next door: {' '.join(taken['neighbours'])}")
     return f"{r['tile']}  changed: " + "; ".join(p for p in parts if p)
 
 
@@ -609,7 +879,8 @@ def compare(args: argparse.Namespace) -> None:
         {p.parent.name for p in ref_dir.glob("*/witness.json")}
         | {p.parent.name for p in new_dir.glob("*/witness.json")}
     )
-    results = [compare_tile(ref_dir, new_dir, t) for t in tiles]
+    with ProcessPoolExecutor(args.workers) as pool:
+        results = list(pool.map(partial(compare_tile, ref_dir, new_dir), tiles))
     counts: dict[str, int] = defaultdict(int)
     for r in results:
         counts[r["verdict"]] += 1
@@ -618,9 +889,19 @@ def compare(args: argparse.Namespace) -> None:
     lines = [
         f"Witness tiles: {first and first['label']} -> {last and last['label']}",
         f"{len(results)} tiles: " + ", ".join(f"{n} {v}" for v, n in sorted(counts.items())),
-        "",
     ]
-    flagged = [(r, a) for r in results if (a := alerts(r))]
+    if args.pavement_rule:
+        changed = [r for r in results if r["verdict"] == "changed"]
+        here = sum(1 for r in changed if r["taken_out"]["here_m2"])
+        next_door = sum(
+            1 for r in changed if not r["taken_out"]["here_m2"] and r["taken_out"]["neighbours"]
+        )
+        lines.append(
+            f"changed where pavement was taken out of the water: {here}; next to such a tile, "
+            f"in the same batch: {next_door}; elsewhere: {len(changed) - here - next_door}"
+        )
+    lines.append("")
+    flagged = [(r, a) for r in results if (a := alerts(r, args.pavement_rule))]
     lines.append(f"To look at: {len(flagged)}" if flagged else "To look at: nothing")
     lines += [f"  {r['tile']}: " + "; ".join(a) for r, a in flagged]
     lines.append("")
@@ -642,17 +923,29 @@ def main() -> None:
     b.add_argument("--random", type=int, default=0)
     b.add_argument("--seed", type=int, default=1)
     b.add_argument("--batch", type=int, default=8)
+    b.add_argument(
+        "--digests-only",
+        action="store_true",
+        help="keep the digests only, not the meshes and masks: identity checks over many tiles",
+    )
     b.add_argument("--xplane", default="")
     b.add_argument("--library-from", default="~/.orthostudio/config.toml")
     k = sub.add_parser("_batch")
     k.add_argument("--out", required=True)
     k.add_argument("--label", required=True)
     k.add_argument("--whys", required=True)
+    k.add_argument("--digests-only", action="store_true")
     k.add_argument("tiles", nargs="+")
     c = sub.add_parser("compare", help="compare two witness folders")
     c.add_argument("ref")
     c.add_argument("new")
     c.add_argument("--report", default="")
+    c.add_argument("--workers", type=int, default=1, help="tiles compared at once")
+    c.add_argument(
+        "--pavement-rule",
+        action="store_true",
+        help="the branch takes X-Plane's pavement out of the water: every change must come from it",
+    )
     args = ap.parse_args()
     {"build": build, "_batch": _batch, "compare": compare}[args.cmd](args)
 
