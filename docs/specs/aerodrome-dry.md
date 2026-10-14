@@ -113,7 +113,13 @@ looks better than XPME.
 * **A step at the edge** where OpenStreetMap's water covers high ground: at Avranches its sea covers
   240 m of salt meadows the relief puts at 6 m; the aerodrome stands at 6 m and the sea beside it at
   0 m, a 6 m step. 1.0.2 has none there (all water, its surface sloping down from 6 m), nor has XPME
-  (its water lies at the land's height, 6 to 7 m), measured across the edge (2026-10-15).
+  (its water lies at the land's height, 6 to 7 m), measured across the edge (2026-10-15). The
+  mesh lays every corner of a sea triangle at 0 m (`sea_smoothing_mode` zero), the new rim of
+  what was taken included, so the land falls from 6 m to 0 at the rim; 1.0.2's airport points kept
+  their own height there. Only Avranches among the 31 tiles; the rim keeping the land's height is
+  the fix in view, after the release.
+* **The blue patch moves with the camera.** At KXTA it stays 40 to 70 m ahead of X-Plane's camera
+  and grows as the camera nears it, only near the cut; 740 m away over the same lake, none.
 * **Runways X-Plane does not have.** The rule follows OpenStreetMap's runways. At Homey Airport
   (KXTA) it draws a second pair of runways 03/21 on Groom Lake, 1.2 km north-west of X-Plane's,
   one of them closed, and the aerodrome's outline wraps them in a narrow strip: that strip of the
