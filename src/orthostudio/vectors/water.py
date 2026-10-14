@@ -180,16 +180,40 @@ class DryAerodromes(NamedTuple):
     """Their outlines as OpenStreetMap draws them, tile-local."""
     surfaces: BaseGeometry
     """Their runways, taxiways and aprons: a piece of water inside an outline is taken out only
-    where they touch it. Drying all the water inside the outline dried 419 ha of the lake of
+    where they enter it. Drying all the water inside the outline dried 419 ha of the lake of
     Cazaux and Lake Hood's seaplane water (census and X-Plane, 2026-10-14)."""
+    scale: tuple[float, float]
+    """Metres per tile-local degree, east and north, at the tile's middle."""
+
+
+TOUCH_MIN_M = 20.0
+"""A runway, taxiway or apron that enters a piece of water by less than this, a line, or less
+than its square, an area, does not count: two maps that hardly meet. Lake Hood's lake, the
+seaplane base of Anchorage, is entered by 9 m of a line; the bridges and runways the rule is for
+cross 600 m (Haneda) to 1.6 km (Macau) of water (census, 2026-10-14)."""
 
 
 def touched_pieces(water: BaseGeometry, dry: DryAerodromes) -> list[geometry.Polygon]:
-    """The pieces of ``water`` inside the aerodromes that their runways, taxiways or aprons touch.
+    """The pieces of ``water`` inside the aerodromes that their runways, taxiways or aprons enter
+    by :data:`TOUCH_MIN_M` at least.
 
     Surfaces only: a cut can come back with a line beside its surfaces, and the outline of what was
     taken is then no outline (13 tiles of the X-Plane pavement rule failed so, 2026-10-14)."""
-    return [p for p in polygons_of(water.intersection(dry.outlines)) if p.intersects(dry.surfaces)]
+    kx, ky = dry.scale
+    out: list[geometry.Polygon] = []
+    for piece in polygons_of(water.intersection(dry.outlines)):
+        if not piece.intersects(dry.surfaces):
+            continue
+        inside = shapely.get_parts(dry.surfaces.intersection(piece))
+        length = sum(
+            float(shapely.length(shapely.transform(part, lambda c: c * (kx, ky))))
+            for part in inside
+            if part.geom_type in ("LineString", "LinearRing")
+        )
+        area = sum(part.area for part in inside if part.geom_type == "Polygon") * kx * ky
+        if length >= TOUCH_MIN_M or area >= TOUCH_MIN_M**2:
+            out.append(piece)
+    return out
 
 
 # -- geometry helpers (shared with roads.py) ---------------------------------------------------

@@ -2,7 +2,7 @@
 
 Status: in branch `aerodrome-dry` (2026-10-14). Code: `vectors/layers.py` (`dry_aerodromes`),
 `vectors/water.py` (`DryAerodromes`, `touched_pieces`, `without`, `build_water_layers(dry=)`),
-`vectors/coast.py` (`build_sea_layers(dry=)`), `vectors/rule.py` (version 7). Tests:
+`vectors/coast.py` (`build_sea_layers(dry=)`), `vectors/rule.py` (version 8). Tests:
 `tests/test_aerodrome_dry.py`.
 
 ## 1. The problem
@@ -30,9 +30,12 @@ distance to the runways does not explain it. The vector stage takes out the wate
 itself stands on:
 
 * **Which aerodromes.** The `aeroway=aerodrome` polygons of the airports layer, closed ways and
-  multipolygons, that meet a runway (`aeroway=runway`, line or area) whose `surface` is not
-  `water` (`dry_aerodromes`). A seaplane base, whose runways are water or which has none, keeps its
-  water; an aerodrome drawn as a point has no outline and changes nothing.
+  multipolygons, that meet a land runway (`aeroway=runway`, line or area) and no water runway
+  (`dry_aerodromes`). A runway is water when its `surface` is `water` or when its ends are named
+  as water runways are, a `W` after the number (`02W/20W`): Kenai's is tagged `surface=unpaved`.
+  A seaplane base keeps its water, and so does an airport with a float pond beside its runways:
+  Fairbanks' and Kenai's taxiways run into theirs (census, 2026-10-14). An aerodrome drawn as a
+  point has no outline and changes nothing.
 * **Only the water its surfaces touch.** The water inside the outlines is cut into its pieces, and
   a piece is taken out only where the aerodrome's runways, taxiways, taxilanes or aprons
   (`aeroway`, lines and areas, not `surface=water`) touch it (`touched_pieces`). The first form
@@ -40,6 +43,10 @@ itself stands on:
   air base's outline, far from any of its surfaces, and X-Plane showed them as a flat meadow
   under Bing's blurred photo of a military site; Lake Hood, the seaplane base of Anchorage, which
   also has a dirt strip and whose water lanes OpenStreetMap does not tag, lost 80 ha of its lake.
+* **A touch is not a crossing.** A line that enters a piece of water by less than 20 m in all, or
+  an area that covers less than 400 m2 of it, does not count (`TOUCH_MIN_M`): two maps that hardly
+  meet. Lake Hood's lake is entered by 9 m of a line; the bridges and runways the rule is for cross
+  600 m (Haneda) to 1.6 km (Macau) of water.
 * **Out of the lakes and rivers.** Those pieces are taken out of the merged WATER and SEA_EQUIV
   polygons before they are encoded and seeded (`water.without`). A polygon with no such piece is
   the same object.
@@ -57,13 +64,21 @@ ground blue, the photo of the place shows.
 
 ## 3. Isolation and the cache
 
-* `orthostudio.vectors` goes to version 7; 5 is taken by the dry basins of the `ideas` branch and
-  6 by the first form of this rule, whose artefacts may be in a store. Every tile runs its vector
+* `orthostudio.vectors` goes to version 8; 5 is taken by the dry basins of the `ideas` branch, 6
+  and 7 by first forms of this rule, whose artefacts may be in a store. Every tile runs its vector
   stage again once; a tile without such an aerodrome writes the same files, so its mesh, masks
   and DSF come from the store.
 * `stats.json` says what happened (`water.dry`, `coastline.dry`), only when something did.
 
 ## 4. Measured
+
+World census (2026-10-14): the library's 11 914 tiles with airports through the stage's own
+functions, no error. Taking all the water inside the outlines touched 2 228 aerodromes on 1 518
+tiles, 9 578 ha; the surfaces that touch it, 64 aerodromes and 1 799 ha; the rule as it stands,
+35 aerodromes on 33 tiles, 1 611 ha (397 ha of sea, 1 214 ha of lakes and rivers). The largest are
+the salt pans of Bitterwasser in Namibia (508 ha on each of its two tiles), whose runways lie on
+the pan, the ice runway of McMurdo in Antarctica (241 ha of sea ice), Macau (123 ha), Shenzhen
+(52 ha), Groom Lake (31 ha), Avranches (19 ha) and Haneda (14 ha).
 
 Five tiles built with 1.0.2 and with the branch, up to the DSF (2026-10-14): the water taken out is
 the census' (Macau's tile 199 ha, Shenzhen's 76 ha among them; Haneda 16 ha; Avranches 20.5 ha;

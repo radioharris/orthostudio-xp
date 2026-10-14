@@ -26,6 +26,7 @@ Spec: ``docs/specs/vectors-assembly.md`` section 7.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -57,7 +58,13 @@ from orthostudio.vectors.osmdata import OsmData
 from orthostudio.vectors.patches import build_patch_layers
 from orthostudio.vectors.roads import RoadParams, build_road_layers
 from orthostudio.vectors.rule import LayerBuild
-from orthostudio.vectors.water import DryAerodromes, WaterParams, build_water_layers
+from orthostudio.vectors.water import (
+    LAT_TO_M,
+    DryAerodromes,
+    WaterParams,
+    build_water_layers,
+    lon_to_m,
+)
 
 __all__ = [
     "LayerCounts",
@@ -240,7 +247,7 @@ def build_layers(request: object) -> LayerBuild:
     started = time.perf_counter()
     airport_store = _required(layer_store(source, "airports", on_skip=on_skip), source, "airports")
     timing.read_s += time.perf_counter() - started
-    dry = dry_aerodromes(airport_store)
+    dry = dry_aerodromes(airport_store, tile)
     started = time.perf_counter()
     airports, airport_counts = build_airports(
         airport_store, tile, airport_params, on_event=on_event
@@ -456,30 +463,49 @@ def _no_airport_artefact(request: object) -> None:
     )
 
 
-def dry_aerodromes(store: OsmData) -> DryAerodromes | None:
-    """The aerodromes OpenStreetMap draws with a runway out of the water, tile-local, and their
-    runways, taxiways and aprons: the water inside their outline that these touch is taken out of
-    it (``aerodrome-dry.md``). ``None`` when there is none. A seaplane base, whose runways are water
-    or which has none, keeps its water; an aerodrome drawn as a point has no outline."""
+def dry_aerodromes(store: OsmData, tile: TileRef) -> DryAerodromes | None:
+    """The aerodromes OpenStreetMap draws with a runway out of the water and none on it,
+    tile-local, and their runways, taxiways and aprons: the water inside their outline that these
+    enter is taken out of it (``aerodrome-dry.md``). ``None`` when there is none.
+
+    A seaplane base keeps its water, and so does an aerodrome with a water runway beside its land
+    ones: Fairbanks' and Kenai's taxiways run into their float ponds (census, 2026-10-14). An
+    aerodrome drawn as a point has no outline and changes nothing."""
     outlines = [item.polygon for item in store.multipolygons_with([("aeroway", "aerodrome")])]
     if not outlines:
         return None
     kinds = [("aeroway", kind) for kind in ("runway", "taxiway", "taxilane", "apron")]
-    surfaces: list[tuple[str, BaseGeometry]] = [
-        (way.tags.get("aeroway", ""), geometry.LineString(way.coords))
+    found: list[tuple[str, bool, BaseGeometry]] = [
+        (way.tags.get("aeroway", ""), _water_runway(way.tags), geometry.LineString(way.coords))
         for way in store.ways_with(kinds)
-        if way.tags.get("surface") != "water"
     ]
-    surfaces += [
-        (item.tags.get("aeroway", ""), item.polygon)
+    found += [
+        (item.tags.get("aeroway", ""), _water_runway(item.tags), item.polygon)
         for item in store.multipolygons_with(kinds)
-        if item.tags.get("surface") != "water"
     ]
-    runways = [g for kind, g in surfaces if kind == "runway"]
-    kept = [outline for outline in outlines if any(outline.intersects(r) for r in runways)]
+    land = [g for kind, wet, g in found if kind == "runway" and not wet]
+    water = [g for kind, wet, g in found if kind == "runway" and wet]
+    kept = [
+        outline
+        for outline in outlines
+        if any(outline.intersects(r) for r in land)
+        and not any(outline.intersects(r) for r in water)
+    ]
     if not kept:
         return None
-    return DryAerodromes(shapely.union_all(kept), shapely.union_all([g for _, g in surfaces]))
+    surfaces = shapely.union_all([g for _, wet, g in found if not wet])
+    return DryAerodromes(shapely.union_all(kept), surfaces, (lon_to_m(tile.lat + 0.5), LAT_TO_M))
+
+
+def _water_runway(tags: Mapping[str, str]) -> bool:
+    """A runway for seaplanes: ``surface=water``, or ends named the way water runways are, a ``W``
+    after the number (``02W/20W``): Kenai's is tagged ``surface=unpaved``."""
+    if tags.get("aeroway") != "runway":
+        return False
+    if tags.get("surface") == "water":
+        return True
+    ends = [end.strip() for end in tags.get("ref", "").split("/")]
+    return any(re.fullmatch(r"\d{1,2}[LRC]?W", end) for end in ends if end)
 
 
 def stores_of(source: OsmSource, names: Sequence[str]) -> list[OsmData]:
