@@ -420,7 +420,9 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # enter is taken out of it, but for an aerodrome with a water runway (``aerodrome-dry.md``,
     # 2026-10-14). Version 5 is taken by the dry basins of the ideas branch, 6 and 7 by first
     # forms of this rule; artefacts of all three may be in a store already.
-    version=8,
+    # 9: what such a cut leaves is put on the noder's grid, so a lake it leaves in two lobes that
+    # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
+    version=9,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,

@@ -42,11 +42,10 @@ from orthostudio.vectors.geom import (
     cut_to_tile,
     ensure_multilinestring,
     ensure_multipolygon,
-    polygons_of,
     wrap_local_x,
 )
 from orthostudio.vectors.noding import MARKERS
-from orthostudio.vectors.water import DryAerodromes, touched_pieces
+from orthostudio.vectors.water import DryAerodromes, left_after, touched_pieces
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from orthostudio.vectors.noding import Layer
@@ -619,7 +618,7 @@ def build_sea_layers(
         cut = touched_pieces(sea, dry)
         if cut:
             taken = shapely.union_all(cut)
-            sea = geometry.MultiPolygon(polygons_of(sea.difference(taken)))
+            sea = geometry.MultiPolygon(left_after(sea, taken))
             rim = _encoded_lines(taken.boundary)
             sea_lines = geometry.MultiLineString(list(sea_lines.geoms) + list(rim.geoms))
 

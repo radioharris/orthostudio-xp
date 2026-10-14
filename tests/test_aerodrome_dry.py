@@ -164,6 +164,21 @@ def test_water_inside_the_aerodrome_that_nothing_touches_stays_water(tmp_path: P
     )
 
 
+def test_a_lake_left_in_two_lobes_gets_a_seed_in_each(tmp_path: Path) -> None:
+    """KXTA (2026-10-14): the outline of Homey Airport passes a hair's breadth from a point of
+    Groom Lake's shore, and what the cut left was one polygon of two lobes joined there. The noder
+    puts its nodes on a grid of 9 decimals, where they touch: one seed flooded one lobe, and
+    Triangle4XP made the other land (12.8 ha). Here the outline stops 1e-12 degree short of the
+    shore; each lobe must come out with its seed."""
+    lake = _osm(tmp_path / "w.osm", [(_box(0.2, 0.2, 0.3, 0.3), {"natural": "water"})], "water")
+    band = geometry.box(0.19, 0.24, 0.3 - 1e-12, 0.26)
+    dry = DryAerodromes(band, geometry.LineString([(0.21, 0.25), (0.29, 0.25)]), SCALE)
+    after = build_water_layers(lake, TILE, WaterParams(), dry=dry)
+    seeds = [geometry.Point(at) for at in after.seeds["WATER"]]
+    for lobe in (geometry.box(0.2, 0.2, 0.3, 0.24), geometry.box(0.2, 0.26, 0.3, 0.3)):
+        assert any(lobe.contains(at) for at in seeds)
+
+
 def test_the_sea_stops_at_the_aerodrome(tmp_path: Path) -> None:
     """A coastline across the tile, land to its left (south), sea to the north; an aerodrome
     reaching into the sea with a runway in it: the sea loses it, its outline joins the SEA lines,

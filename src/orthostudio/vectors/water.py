@@ -36,7 +36,7 @@ from shapely.geometry.base import BaseGeometry
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.vectors.geom import cut_to_tile, polygons_of
-from orthostudio.vectors.noding import MARKERS, Layer
+from orthostudio.vectors.noding import MARKERS, SNAP_DIGITS, Layer
 from orthostudio.vectors.osmdata import OsmData, PolygonGeometry
 
 __all__ = [
@@ -214,6 +214,17 @@ def touched_pieces(water: BaseGeometry, dry: DryAerodromes) -> list[geometry.Pol
         if length >= TOUCH_MIN_M or area >= TOUCH_MIN_M**2:
             out.append(piece)
     return out
+
+
+def left_after(water: BaseGeometry, taken: BaseGeometry) -> list[geometry.Polygon]:
+    """``water`` without ``taken``, in its parts, on the noder's grid (``SNAP_DIGITS``).
+
+    The noder puts every node on that grid, so a shore the cut passes a hair's breadth from
+    touches it there, and the mesh holds two lakes where the polygon held one: the outline of
+    Homey Airport (KXTA) passes so near a point of Groom Lake's shore (2026-10-14). On the grid
+    they come apart here already, each with its own seed; with one seed for both, Triangle4XP
+    made the other land (12.8 ha)."""
+    return polygons_of(shapely.set_precision(water.difference(taken), 10.0**-SNAP_DIGITS))
 
 
 # -- geometry helpers (shared with roads.py) ---------------------------------------------------
@@ -501,7 +512,7 @@ def without(
             out.append(polygon)
             continue
         taken.extend(cut)
-        out.extend(polygons_of(polygon.difference(shapely.union_all(cut))))
+        out.extend(left_after(polygon, shapely.union_all(cut)))
     return out
 
 
