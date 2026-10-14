@@ -32,7 +32,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
+import shapely
 from numpy.typing import NDArray
+from shapely import geometry
 from shapely.geometry.base import BaseGeometry
 
 from orthostudio.airports_vec.stage import (
@@ -50,6 +52,7 @@ from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.vectors import osmdata
 from orthostudio.vectors.assemble import VectorLayer, VectorLayers, to_vector_layers
 from orthostudio.vectors.coast import CoastParams, build_sea_layers
+from orthostudio.vectors.geom import polygons_of
 from orthostudio.vectors.osmdata import OsmData
 from orthostudio.vectors.patches import build_patch_layers
 from orthostudio.vectors.roads import RoadParams, build_road_layers
@@ -237,6 +240,7 @@ def build_layers(request: object) -> LayerBuild:
     started = time.perf_counter()
     airport_store = _required(layer_store(source, "airports", on_skip=on_skip), source, "airports")
     timing.read_s += time.perf_counter() - started
+    dry = dry_aerodromes(airport_store)
     started = time.perf_counter()
     airports, airport_counts = build_airports(
         airport_store, tile, airport_params, on_event=on_event
@@ -349,6 +353,7 @@ def build_layers(request: object) -> LayerBuild:
         ),
         dem,
         on_event=on_event,
+        dry=dry,
     )
     water = to_vector_layers("water", water_result.layers, _seeds(water_result.seeds))
     counts["water"] = dict(water_result.counts)
@@ -366,6 +371,7 @@ def build_layers(request: object) -> LayerBuild:
         tile,
         CoastParams(),
         sea_equiv=water_result.sea_equiv,
+        dry=dry,
     )
     coastline = to_vector_layers(
         "coastline",
@@ -379,6 +385,8 @@ def build_layers(request: object) -> LayerBuild:
         "polygons": coast_result.stats.sea_polygons,
         "seeds": coast_result.stats.seeds,
     }
+    if not coast_result.dry.is_empty:
+        counts["coastline"]["dry"] = len(polygons_of(coast_result.dry))
     timing.coastline_s = time.perf_counter() - started
 
     log.info(
@@ -446,6 +454,28 @@ def _no_airport_artefact(request: object) -> None:
         "itself, from the aeroway layer of its osm input.",
         remedy="Leave the airports input unset.",
     )
+
+
+def dry_aerodromes(store: OsmData) -> BaseGeometry | None:
+    """The outlines of the aerodromes OpenStreetMap draws, tile-local, with a runway out of the
+    water: the water they hold is taken out of it, as XPME does (``aerodrome-dry.md``). ``None``
+    when there is none. A seaplane base, whose runways are water or which has none, keeps its
+    water; an aerodrome drawn as a point has no outline and changes nothing."""
+    outlines = [item.polygon for item in store.multipolygons_with([("aeroway", "aerodrome")])]
+    if not outlines:
+        return None
+    runways: list[BaseGeometry] = [
+        geometry.LineString(way.coords)
+        for way in store.ways_with([("aeroway", "runway")])
+        if way.tags.get("surface") != "water"
+    ]
+    runways += [
+        item.polygon
+        for item in store.multipolygons_with([("aeroway", "runway")])
+        if item.tags.get("surface") != "water"
+    ]
+    kept = [outline for outline in outlines if any(outline.intersects(r) for r in runways)]
+    return shapely.union_all(kept) if kept else None
 
 
 def stores_of(source: OsmSource, names: Sequence[str]) -> list[OsmData]:

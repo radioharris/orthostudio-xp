@@ -167,7 +167,10 @@ class WaterResult:
     lakes: tuple[LakeDecision, ...] = ()
     """Every body compared against ``max_area``, masked or not."""
     counts: dict[str, int] = field(default_factory=dict)
-    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``."""
+    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``; and
+    ``dry``, the pieces the aerodromes took out, only when there are some."""
+    dry: BaseGeometry = field(default_factory=geometry.Polygon)
+    """What the aerodromes took out of the lakes and rivers (tile-local)."""
 
 
 # -- geometry helpers (shared with roads.py) ---------------------------------------------------
@@ -353,11 +356,15 @@ def build_water_layers(
     dem: Altitudes | None = None,
     *,
     on_event: EventHandler | None = None,
+    dry: BaseGeometry | None = None,
 ) -> WaterResult:
     """The ``WATER`` and ``SEA_EQUIV`` layers of one tile (``include_water``, ``:453-589``).
 
     ``osm_data`` is the ``water`` layer store (or a user file loaded with ``layer=None``);
     ``dem`` gives the vertex altitudes and may be ``None`` in tests, which zeroes them.
+    ``dry`` (tile-local) is taken out of the lakes and rivers before they are encoded and seeded:
+    the aerodromes that hold water (``docs/specs/aerodrome-dry.md``). A polygon it does not reach
+    is kept as it is, so a tile without such an aerodrome gets the very layers it got before.
     """
     polygons = osm_data.multipolygons_with(on_skip=lambda code, ctx: _report(on_event, code, ctx))
     threshold = params.max_area * 1e6 / (LAT_TO_M * lon_to_m(tile.lat + 0.5))
@@ -395,6 +402,10 @@ def build_water_layers(
     merged_sea = merge_overlapping_polygons(
         sea_pols, merge=params.clean_bad_geometries, on_event=on_event
     )
+    taken: list[BaseGeometry] = []
+    if dry is not None and not dry.is_empty:
+        merged_water = without(merged_water, dry, taken)
+        merged_sea = without(merged_sea, dry, taken)
     alt = _alt_of(dem)
     area_limit = params.min_area / 10000
     simplify = params.water_simplification * M_TO_LAT
@@ -411,21 +422,48 @@ def build_water_layers(
             continue
         layers.append(encoded.layer(name))
         seeds[name] = encoded.seeds
+    counts = {
+        "elements": len(element_area),
+        "polygons": len(polygons),
+        "merged": len(merged_water) + len(merged_sea),
+        "water": len(encoded_water.geometry.geoms),
+        "sea_equiv": len(encoded_sea.geometry.geoms),
+        "dropped": encoded_water.dropped + encoded_sea.dropped,
+    }
+    if taken:
+        counts["dry"] = len(taken)
     return WaterResult(
         layers=tuple(layers),
         seeds=seeds,
         water=encoded_water.geometry,
         sea_equiv=encoded_sea.geometry,
         lakes=tuple(lakes),
-        counts={
-            "elements": len(element_area),
-            "polygons": len(polygons),
-            "merged": len(merged_water) + len(merged_sea),
-            "water": len(encoded_water.geometry.geoms),
-            "sea_equiv": len(encoded_sea.geometry.geoms),
-            "dropped": encoded_water.dropped + encoded_sea.dropped,
-        },
+        counts=counts,
+        dry=shapely.union_all(taken) if taken else geometry.Polygon(),
     )
+
+
+def without(
+    polygons: Sequence[geometry.Polygon], dry: BaseGeometry, taken: list[BaseGeometry]
+) -> list[geometry.Polygon]:
+    """``polygons`` with ``dry`` taken out, in their order; what was taken goes into ``taken``.
+
+    A polygon ``dry`` does not reach, or only touches, is the same object. Only surfaces are kept
+    on either side: a cut can come back with a line beside its surfaces, and the outline of what
+    was taken is then no outline (13 tiles of the X-Plane pavement rule failed so, 2026-10-14).
+    """
+    out: list[geometry.Polygon] = []
+    for polygon in polygons:
+        if not polygon.intersects(dry):
+            out.append(polygon)
+            continue
+        cut = polygons_of(polygon.intersection(dry))
+        if not cut:
+            out.append(polygon)
+            continue
+        taken.extend(cut)
+        out.extend(polygons_of(polygon.difference(dry)))
+    return out
 
 
 def _report(on_event: EventHandler | None, code: str, context: dict[str, object]) -> None:

@@ -1,0 +1,119 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
+"""The water an aerodrome holds is taken out of it (``docs/specs/aerodrome-dry.md``).
+
+Haneda's taxiway bridges sat under the water's surface in our tiles (forum report, 2026-10-13),
+and Avranches' whole aerodrome lay in the sea of OpenStreetMap's coastline. XPME, a mesh many
+pilots use, turns the water inside the aerodrome OpenStreetMap draws into land (measured on its
+tiles, 2026-10-14): the same here.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import shapely
+from shapely import geometry
+
+from orthostudio.model import TileRef
+from orthostudio.vectors.coast import build_sea_layers
+from orthostudio.vectors.layers import dry_aerodromes
+from orthostudio.vectors.osmdata import OsmData
+from orthostudio.vectors.water import WaterParams, build_water_layers
+
+TILE = TileRef(48, -2)
+
+
+def _osm(
+    path: Path, ways: list[tuple[list[tuple[float, float]], dict[str, str]]], layer: str
+) -> OsmData:
+    """An OSM file of the given ways (tile-local coordinates), loaded as ``layer``."""
+    nodes, way_xml, node_id = [], [], 0
+    for way_id, (coords, tags) in enumerate(ways, start=1):
+        refs = []
+        for x, y in coords:
+            if refs and (x, y) == coords[0]:
+                refs.append(refs[0])
+                continue
+            node_id += 1
+            nodes.append(
+                f'  <node id="{node_id}" lat="{y + TILE.lat:.7f}" '
+                f'lon="{x + TILE.lon:.7f}" version="1"/>\n'
+            )
+            refs.append(node_id)
+        nd = "".join(f'    <nd ref="{r}"/>\n' for r in refs)
+        tg = "".join(f'    <tag k="{k}" v="{v}"/>\n' for k, v in tags.items())
+        way_xml.append(f'  <way id="{way_id}" version="1">\n{nd}{tg}  </way>\n')
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="test">\n'
+        + "".join(nodes)
+        + "".join(way_xml)
+        + "</osm>"
+    )
+    return OsmData.load(path, layer=layer, tile=TILE)
+
+
+def _box(x0: float, y0: float, x1: float, y1: float) -> list[tuple[float, float]]:
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+
+
+AERODROME = _box(0.25, 0.24, 0.35, 0.30)
+RUNWAY = [(0.26, 0.27), (0.34, 0.27)]
+
+
+def test_an_aerodrome_with_a_runway_on_land_is_taken_out_of_the_water(tmp_path: Path) -> None:
+    store = _osm(
+        tmp_path / "a.osm",
+        [(AERODROME, {"aeroway": "aerodrome"}), (RUNWAY, {"aeroway": "runway"})],
+        "airports",
+    )
+    dry = dry_aerodromes(store)
+    assert dry is not None and abs(dry.area - 0.1 * 0.06) < 1e-12
+
+
+def test_a_seaplane_base_keeps_its_water(tmp_path: Path) -> None:
+    """Its runways are water, or it has none: drying it would put a meadow where seaplanes land."""
+    on_water = _osm(
+        tmp_path / "s.osm",
+        [
+            (AERODROME, {"aeroway": "aerodrome"}),
+            (RUNWAY, {"aeroway": "runway", "surface": "water"}),
+        ],
+        "airports",
+    )
+    none = _osm(tmp_path / "n.osm", [(AERODROME, {"aeroway": "aerodrome"})], "airports")
+    assert dry_aerodromes(on_water) is None and dry_aerodromes(none) is None
+
+
+def test_a_lake_loses_what_lies_inside_the_aerodrome(tmp_path: Path) -> None:
+    lake = _osm(tmp_path / "w.osm", [(_box(0.2, 0.2, 0.3, 0.3), {"natural": "water"})], "water")
+    dry = geometry.Polygon(AERODROME)
+    before = build_water_layers(lake, TILE, WaterParams())
+    after = build_water_layers(lake, TILE, WaterParams(), dry=dry)
+    taken = before.water.area - after.water.area
+    assert abs(taken - 0.05 * 0.06) < 1e-9 and abs(after.dry.area - taken) < 1e-12
+    assert after.counts["dry"] == 1 and "dry" not in before.counts
+    seeds = [geometry.Point(at) for at in after.seeds["WATER"]]
+    assert seeds and all(after.water.contains(at) and not dry.contains(at) for at in seeds)
+    elsewhere = build_water_layers(lake, TILE, WaterParams(), dry=geometry.box(0.6, 0.6, 0.7, 0.7))
+    assert elsewhere.counts == before.counts and elsewhere.dry.is_empty
+    assert all(
+        shapely.equals_exact(a[0], b[0], 0)
+        for a, b in zip(elsewhere.layers, before.layers, strict=True)
+    )
+
+
+def test_the_sea_stops_at_the_aerodrome(tmp_path: Path) -> None:
+    """A coastline across the tile, land to its left (south), sea to the north; an aerodrome
+    reaching into the sea: the sea loses it, its outline joins the SEA lines, no seed is in it."""
+    coast = geometry.MultiLineString([[(1.0, 0.5), (0.0, 0.5)]])
+    dry = geometry.box(0.4, 0.45, 0.45, 0.7)
+    before = build_sea_layers(coast, TILE)
+    after = build_sea_layers(coast, TILE, dry=dry)
+    assert abs(after.dry.area - 0.05 * 0.2) < 1e-9
+    assert abs(before.sea_polygons.area - after.sea_polygons.area - 0.05 * 0.2) < 1e-9
+    assert len(after.sea_lines.geoms) > len(before.sea_lines.geoms)
+    assert not any(dry.contains(geometry.Point(p)) for p in after.seeds)
+    assert after.sea_polygons.contains(geometry.MultiPoint([tuple(p) for p in after.seeds]))
+    untouched = build_sea_layers(coast, TILE, dry=geometry.box(0.4, 0.1, 0.45, 0.2))
+    assert untouched.sea_lines.equals(before.sea_lines) and untouched.dry.is_empty

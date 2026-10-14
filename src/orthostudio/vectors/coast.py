@@ -42,6 +42,7 @@ from orthostudio.vectors.geom import (
     cut_to_tile,
     ensure_multilinestring,
     ensure_multipolygon,
+    polygons_of,
     wrap_local_x,
 )
 from orthostudio.vectors.noding import MARKERS
@@ -208,6 +209,8 @@ class CoastResult:
     islands and interior seas are taken into account."""
     seeds: F64 = field(default_factory=lambda: np.zeros((0, 2), dtype=np.float64))
     """(S, 2) representative points of :attr:`sea_polygons`, marker ``SEA``."""
+    dry: BaseGeometry = field(default_factory=geometry.Polygon)
+    """What the aerodromes took out of the sea (tile-local), its outline added to the SEA lines."""
     stats: CoastStats = field(default_factory=CoastStats)
     errors: tuple[OsxpError, ...] = ()
     """Non-fatal problems, when ``on_bad_coastline='record'`` kept them non-fatal."""
@@ -563,6 +566,7 @@ def build_sea_layers(
     params: CoastParams | None = None,
     *,
     sea_equiv: geometry.MultiPolygon | None = None,
+    dry: BaseGeometry | None = None,
 ) -> CoastResult:
     """Build the SEA line layer and the SEA region seeds of ``tile``.
 
@@ -575,6 +579,10 @@ def build_sea_layers(
     The order of operations is Ortho4XP's (``O4_Vector_Map.py:402-451``): the lines are encoded
     first, from the *strictly* cut coastline, then the topology is rebuilt from a *different*
     cut -- rings uncut, open chains cut and line-merged -- and the seeds come last.
+
+    ``dry`` (tile-local) is taken out of the sea before its seeds are placed, and the outline of
+    what it took joins the SEA lines, so the sea stops there: the aerodromes that hold water
+    (``docs/specs/aerodrome-dry.md``). A sea it does not reach is the very result of before.
     """
     params = params or CoastParams()
     coastline, ways_read, ways_dropped = coastline_multilinestring(osm_data, tile, params)
@@ -605,12 +613,21 @@ def build_sea_layers(
         errors = (exc,)
         area = SeaArea(empty, empty, empty, empty, CoastTopology(), 0, 0)
 
+    sea, taken = area.sea, geometry.Polygon()
+    if dry is not None and not dry.is_empty and not sea.is_empty and sea.intersects(dry):
+        cut = polygons_of(sea.intersection(dry))
+        if cut:
+            taken = shapely.union_all(cut)
+            sea = geometry.MultiPolygon(polygons_of(sea.difference(dry)))
+            rim = _encoded_lines(taken.boundary)
+            sea_lines = geometry.MultiLineString(list(sea_lines.geoms) + list(rim.geoms))
+
     seeds = np.zeros((0, 2), dtype=np.float64)
-    if not area.sea.is_empty:
-        seeds = shapely.get_coordinates(shapely.point_on_surface(np.asarray(area.sea.geoms)))
+    if not sea.is_empty:
+        seeds = shapely.get_coordinates(shapely.point_on_surface(np.asarray(sea.geoms)))
 
     topo = area.topology
-    tile_assumed_sea = not topo.chain_coords and not area.sea.is_empty
+    tile_assumed_sea = not topo.chain_coords and not sea.is_empty
     stats = CoastStats(
         ways_read=ways_read,
         ways_dropped=ways_dropped,
@@ -620,7 +637,7 @@ def build_sea_layers(
         interior_seas=len(topo.interior_seas),
         open_chains=len(topo.chain_coords),
         border_polygons=area.chains_closed,
-        sea_polygons=len(area.sea.geoms),
+        sea_polygons=len(sea.geoms),
         seeds=len(seeds),
         islands_swallowed=area.islands_swallowed,
         tile_assumed_sea=tile_assumed_sea,
@@ -628,12 +645,13 @@ def build_sea_layers(
     )
     return CoastResult(
         sea_lines=sea_lines,
-        sea_polygons=area.sea,
+        sea_polygons=sea,
         sea_equiv=sea_equiv or geometry.MultiPolygon(),
         islands=area.islands,
         interior_seas=area.interior_seas,
         open_chains_closed=area.border_polygons,
         seeds=seeds,
+        dry=taken,
         stats=stats,
         errors=errors,
     )
