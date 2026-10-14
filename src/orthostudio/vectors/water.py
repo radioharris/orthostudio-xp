@@ -173,6 +173,25 @@ class WaterResult:
     """What the aerodromes took out of the lakes and rivers (tile-local)."""
 
 
+class DryAerodromes(NamedTuple):
+    """The aerodromes whose water is taken out of it (``docs/specs/aerodrome-dry.md``)."""
+
+    outlines: BaseGeometry
+    """Their outlines as OpenStreetMap draws them, tile-local."""
+    surfaces: BaseGeometry
+    """Their runways, taxiways and aprons: a piece of water inside an outline is taken out only
+    where they touch it. Drying all the water inside the outline dried 419 ha of the lake of
+    Cazaux and Lake Hood's seaplane water (census and X-Plane, 2026-10-14)."""
+
+
+def touched_pieces(water: BaseGeometry, dry: DryAerodromes) -> list[geometry.Polygon]:
+    """The pieces of ``water`` inside the aerodromes that their runways, taxiways or aprons touch.
+
+    Surfaces only: a cut can come back with a line beside its surfaces, and the outline of what was
+    taken is then no outline (13 tiles of the X-Plane pavement rule failed so, 2026-10-14)."""
+    return [p for p in polygons_of(water.intersection(dry.outlines)) if p.intersects(dry.surfaces)]
+
+
 # -- geometry helpers (shared with roads.py) ---------------------------------------------------
 
 
@@ -356,15 +375,15 @@ def build_water_layers(
     dem: Altitudes | None = None,
     *,
     on_event: EventHandler | None = None,
-    dry: BaseGeometry | None = None,
+    dry: DryAerodromes | None = None,
 ) -> WaterResult:
     """The ``WATER`` and ``SEA_EQUIV`` layers of one tile (``include_water``, ``:453-589``).
 
     ``osm_data`` is the ``water`` layer store (or a user file loaded with ``layer=None``);
     ``dem`` gives the vertex altitudes and may be ``None`` in tests, which zeroes them.
-    ``dry`` (tile-local) is taken out of the lakes and rivers before they are encoded and seeded:
-    the aerodromes that hold water (``docs/specs/aerodrome-dry.md``). A polygon it does not reach
-    is kept as it is, so a tile without such an aerodrome gets the very layers it got before.
+    ``dry`` gives the aerodromes whose water is taken out of the lakes and rivers before they are
+    encoded and seeded (``docs/specs/aerodrome-dry.md``). A polygon they do not reach is kept as
+    it is, so a tile without such an aerodrome gets the very layers it got before.
     """
     polygons = osm_data.multipolygons_with(on_skip=lambda code, ctx: _report(on_event, code, ctx))
     threshold = params.max_area * 1e6 / (LAT_TO_M * lon_to_m(tile.lat + 0.5))
@@ -403,7 +422,7 @@ def build_water_layers(
         sea_pols, merge=params.clean_bad_geometries, on_event=on_event
     )
     taken: list[BaseGeometry] = []
-    if dry is not None and not dry.is_empty:
+    if dry is not None:
         merged_water = without(merged_water, dry, taken)
         merged_sea = without(merged_sea, dry, taken)
     alt = _alt_of(dem)
@@ -444,25 +463,21 @@ def build_water_layers(
 
 
 def without(
-    polygons: Sequence[geometry.Polygon], dry: BaseGeometry, taken: list[BaseGeometry]
+    polygons: Sequence[geometry.Polygon], dry: DryAerodromes, taken: list[BaseGeometry]
 ) -> list[geometry.Polygon]:
-    """``polygons`` with ``dry`` taken out, in their order; what was taken goes into ``taken``.
-
-    A polygon ``dry`` does not reach, or only touches, is the same object. Only surfaces are kept
-    on either side: a cut can come back with a line beside its surfaces, and the outline of what
-    was taken is then no outline (13 tiles of the X-Plane pavement rule failed so, 2026-10-14).
-    """
+    """``polygons`` with the pieces :func:`touched_pieces` finds taken out, in their order; what
+    was taken goes into ``taken``. A polygon with no such piece is the same object."""
     out: list[geometry.Polygon] = []
     for polygon in polygons:
-        if not polygon.intersects(dry):
+        if not polygon.intersects(dry.outlines):
             out.append(polygon)
             continue
-        cut = polygons_of(polygon.intersection(dry))
+        cut = touched_pieces(polygon, dry)
         if not cut:
             out.append(polygon)
             continue
         taken.extend(cut)
-        out.extend(polygons_of(polygon.difference(dry)))
+        out.extend(polygons_of(polygon.difference(shapely.union_all(cut))))
     return out
 
 

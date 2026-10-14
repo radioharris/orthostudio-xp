@@ -48,6 +48,9 @@ experimental.
 - **The squares of a flight plan.** Your last SimBrief plan chooses the squares along its route,
   within the radius you set.
 - **Hand-made mesh patches**, those published for Ortho4XP included, read as they come.
+- **Airports out of the water.** Water OpenStreetMap draws inside an aerodrome, under or against
+  its runways, taxiways and aprons, becomes land, so taxiway bridges, piers and aerodromes in a
+  tidal bay no longer sink under the sea; seaplane bases keep their water.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
   only what it touches, and imagery is never downloaded twice.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then

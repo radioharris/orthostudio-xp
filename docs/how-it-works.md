@@ -525,6 +525,15 @@ Ortho4XP). A point closer than 5 cm to a line it does not end is therefore put o
 unless that would make two separate shores of the same water touch: the mesh looks the same,
 without the needles, and a tile with no such point is built exactly as before.
 
+**Airports and water.** X-Plane lays the pavement of its airports on the ground the tile gives
+it. Where OpenStreetMap has water inside an airport, the bridges and piers of an airport built over
+the sea, a canal under a runway, an aerodrome in a tidal bay, that pavement sank under the water's
+surface (Tokyo Haneda's taxiway bridges, in Ortho4XP's tiles too). Much as XPME does, OrthoStudio
+XP turns into land the water inside the aerodrome OpenStreetMap draws that its runways, taxiways
+or aprons touch: the bridges are dry, and the photo of the place stays on the ground. A lake inside
+an air base's fence that no runway touches stays a lake, a seaplane base keeps its water, and
+elsewhere a tile comes out as it was.
+
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
 published for Ortho4XP fits as it is, with the tree it comes in

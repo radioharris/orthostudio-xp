@@ -19,7 +19,7 @@ from orthostudio.model import TileRef
 from orthostudio.vectors.coast import build_sea_layers
 from orthostudio.vectors.layers import dry_aerodromes
 from orthostudio.vectors.osmdata import OsmData
-from orthostudio.vectors.water import WaterParams, build_water_layers
+from orthostudio.vectors.water import DryAerodromes, WaterParams, build_water_layers
 
 TILE = TileRef(48, -2)
 
@@ -68,7 +68,8 @@ def test_an_aerodrome_with_a_runway_on_land_is_taken_out_of_the_water(tmp_path: 
         "airports",
     )
     dry = dry_aerodromes(store)
-    assert dry is not None and abs(dry.area - 0.1 * 0.06) < 1e-12
+    assert dry is not None and abs(dry.outlines.area - 0.1 * 0.06) < 1e-12
+    assert dry.surfaces.equals(geometry.LineString(RUNWAY))
 
 
 def test_a_seaplane_base_keeps_its_water(tmp_path: Path) -> None:
@@ -85,35 +86,56 @@ def test_a_seaplane_base_keeps_its_water(tmp_path: Path) -> None:
     assert dry_aerodromes(on_water) is None and dry_aerodromes(none) is None
 
 
-def test_a_lake_loses_what_lies_inside_the_aerodrome(tmp_path: Path) -> None:
+def test_a_lake_loses_what_the_runway_touches_inside_the_aerodrome(tmp_path: Path) -> None:
     lake = _osm(tmp_path / "w.osm", [(_box(0.2, 0.2, 0.3, 0.3), {"natural": "water"})], "water")
-    dry = geometry.Polygon(AERODROME)
+    outline = geometry.Polygon(AERODROME)
+    dry = DryAerodromes(outline, geometry.LineString(RUNWAY))
     before = build_water_layers(lake, TILE, WaterParams())
     after = build_water_layers(lake, TILE, WaterParams(), dry=dry)
     taken = before.water.area - after.water.area
     assert abs(taken - 0.05 * 0.06) < 1e-9 and abs(after.dry.area - taken) < 1e-12
     assert after.counts["dry"] == 1 and "dry" not in before.counts
     seeds = [geometry.Point(at) for at in after.seeds["WATER"]]
-    assert seeds and all(after.water.contains(at) and not dry.contains(at) for at in seeds)
-    elsewhere = build_water_layers(lake, TILE, WaterParams(), dry=geometry.box(0.6, 0.6, 0.7, 0.7))
-    assert elsewhere.counts == before.counts and elsewhere.dry.is_empty
+    assert seeds and all(after.water.contains(at) and not outline.contains(at) for at in seeds)
+    elsewhere = DryAerodromes(geometry.box(0.6, 0.6, 0.7, 0.7), geometry.box(0.6, 0.6, 0.7, 0.7))
+    away = build_water_layers(lake, TILE, WaterParams(), dry=elsewhere)
+    assert away.counts == before.counts and away.dry.is_empty
     assert all(
         shapely.equals_exact(a[0], b[0], 0)
-        for a, b in zip(elsewhere.layers, before.layers, strict=True)
+        for a, b in zip(away.layers, before.layers, strict=True)
+    )
+
+
+def test_water_inside_the_aerodrome_that_nothing_touches_stays_water(tmp_path: Path) -> None:
+    """Cazaux (2026-10-14): the air base's outline holds 419 ha of its lake, far from any runway,
+    taxiway or apron; drying it laid a flat, blurred meadow on the lake. XPME keeps that water."""
+    lake = _osm(tmp_path / "w.osm", [(_box(0.2, 0.2, 0.3, 0.3), {"natural": "water"})], "water")
+    before = build_water_layers(lake, TILE, WaterParams())
+    dry = DryAerodromes(
+        geometry.Polygon(AERODROME), geometry.LineString([(0.31, 0.27), (0.34, 0.27)])
+    )
+    after = build_water_layers(lake, TILE, WaterParams(), dry=dry)
+    assert after.dry.is_empty and after.counts == before.counts
+    assert all(
+        shapely.equals_exact(a[0], b[0], 0)
+        for a, b in zip(after.layers, before.layers, strict=True)
     )
 
 
 def test_the_sea_stops_at_the_aerodrome(tmp_path: Path) -> None:
     """A coastline across the tile, land to its left (south), sea to the north; an aerodrome
-    reaching into the sea: the sea loses it, its outline joins the SEA lines, no seed is in it."""
+    reaching into the sea with a runway in it: the sea loses it, its outline joins the SEA lines,
+    no seed is in it."""
     coast = geometry.MultiLineString([[(1.0, 0.5), (0.0, 0.5)]])
-    dry = geometry.box(0.4, 0.45, 0.45, 0.7)
+    box = geometry.box(0.4, 0.45, 0.45, 0.7)
+    dry = DryAerodromes(box, geometry.LineString([(0.425, 0.46), (0.425, 0.69)]))
     before = build_sea_layers(coast, TILE)
     after = build_sea_layers(coast, TILE, dry=dry)
     assert abs(after.dry.area - 0.05 * 0.2) < 1e-9
     assert abs(before.sea_polygons.area - after.sea_polygons.area - 0.05 * 0.2) < 1e-9
     assert len(after.sea_lines.geoms) > len(before.sea_lines.geoms)
-    assert not any(dry.contains(geometry.Point(p)) for p in after.seeds)
+    assert not any(box.contains(geometry.Point(p)) for p in after.seeds)
     assert after.sea_polygons.contains(geometry.MultiPoint([tuple(p) for p in after.seeds]))
-    untouched = build_sea_layers(coast, TILE, dry=geometry.box(0.4, 0.1, 0.45, 0.2))
+    on_land = geometry.box(0.4, 0.1, 0.45, 0.2)
+    untouched = build_sea_layers(coast, TILE, dry=DryAerodromes(on_land, on_land))
     assert untouched.sea_lines.equals(before.sea_lines) and untouched.dry.is_empty

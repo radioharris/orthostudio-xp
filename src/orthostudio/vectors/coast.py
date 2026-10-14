@@ -46,6 +46,7 @@ from orthostudio.vectors.geom import (
     wrap_local_x,
 )
 from orthostudio.vectors.noding import MARKERS
+from orthostudio.vectors.water import DryAerodromes, touched_pieces
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from orthostudio.vectors.noding import Layer
@@ -566,7 +567,7 @@ def build_sea_layers(
     params: CoastParams | None = None,
     *,
     sea_equiv: geometry.MultiPolygon | None = None,
-    dry: BaseGeometry | None = None,
+    dry: DryAerodromes | None = None,
 ) -> CoastResult:
     """Build the SEA line layer and the SEA region seeds of ``tile``.
 
@@ -580,9 +581,9 @@ def build_sea_layers(
     first, from the *strictly* cut coastline, then the topology is rebuilt from a *different*
     cut -- rings uncut, open chains cut and line-merged -- and the seeds come last.
 
-    ``dry`` (tile-local) is taken out of the sea before its seeds are placed, and the outline of
-    what it took joins the SEA lines, so the sea stops there: the aerodromes that hold water
-    (``docs/specs/aerodrome-dry.md``). A sea it does not reach is the very result of before.
+    ``dry`` gives the aerodromes whose water is taken out of the sea before its seeds are placed
+    (``docs/specs/aerodrome-dry.md``); the outline of what was taken joins the SEA lines, so the
+    sea stops there. A sea they do not reach is the very result of before.
     """
     params = params or CoastParams()
     coastline, ways_read, ways_dropped = coastline_multilinestring(osm_data, tile, params)
@@ -614,11 +615,11 @@ def build_sea_layers(
         area = SeaArea(empty, empty, empty, empty, CoastTopology(), 0, 0)
 
     sea, taken = area.sea, geometry.Polygon()
-    if dry is not None and not dry.is_empty and not sea.is_empty and sea.intersects(dry):
-        cut = polygons_of(sea.intersection(dry))
+    if dry is not None and not sea.is_empty and sea.intersects(dry.outlines):
+        cut = touched_pieces(sea, dry)
         if cut:
             taken = shapely.union_all(cut)
-            sea = geometry.MultiPolygon(polygons_of(sea.difference(dry)))
+            sea = geometry.MultiPolygon(polygons_of(sea.difference(taken)))
             rim = _encoded_lines(taken.boundary)
             sea_lines = geometry.MultiLineString(list(sea_lines.geoms) + list(rim.geoms))
 

@@ -57,7 +57,7 @@ from orthostudio.vectors.osmdata import OsmData
 from orthostudio.vectors.patches import build_patch_layers
 from orthostudio.vectors.roads import RoadParams, build_road_layers
 from orthostudio.vectors.rule import LayerBuild
-from orthostudio.vectors.water import WaterParams, build_water_layers
+from orthostudio.vectors.water import DryAerodromes, WaterParams, build_water_layers
 
 __all__ = [
     "LayerCounts",
@@ -456,26 +456,30 @@ def _no_airport_artefact(request: object) -> None:
     )
 
 
-def dry_aerodromes(store: OsmData) -> BaseGeometry | None:
-    """The outlines of the aerodromes OpenStreetMap draws, tile-local, with a runway out of the
-    water: the water they hold is taken out of it, as XPME does (``aerodrome-dry.md``). ``None``
-    when there is none. A seaplane base, whose runways are water or which has none, keeps its
-    water; an aerodrome drawn as a point has no outline and changes nothing."""
+def dry_aerodromes(store: OsmData) -> DryAerodromes | None:
+    """The aerodromes OpenStreetMap draws with a runway out of the water, tile-local, and their
+    runways, taxiways and aprons: the water inside their outline that these touch is taken out of
+    it (``aerodrome-dry.md``). ``None`` when there is none. A seaplane base, whose runways are water
+    or which has none, keeps its water; an aerodrome drawn as a point has no outline."""
     outlines = [item.polygon for item in store.multipolygons_with([("aeroway", "aerodrome")])]
     if not outlines:
         return None
-    runways: list[BaseGeometry] = [
-        geometry.LineString(way.coords)
-        for way in store.ways_with([("aeroway", "runway")])
+    kinds = [("aeroway", kind) for kind in ("runway", "taxiway", "taxilane", "apron")]
+    surfaces: list[tuple[str, BaseGeometry]] = [
+        (way.tags.get("aeroway", ""), geometry.LineString(way.coords))
+        for way in store.ways_with(kinds)
         if way.tags.get("surface") != "water"
     ]
-    runways += [
-        item.polygon
-        for item in store.multipolygons_with([("aeroway", "runway")])
+    surfaces += [
+        (item.tags.get("aeroway", ""), item.polygon)
+        for item in store.multipolygons_with(kinds)
         if item.tags.get("surface") != "water"
     ]
+    runways = [g for kind, g in surfaces if kind == "runway"]
     kept = [outline for outline in outlines if any(outline.intersects(r) for r in runways)]
-    return shapely.union_all(kept) if kept else None
+    if not kept:
+        return None
+    return DryAerodromes(shapely.union_all(kept), shapely.union_all([g for _, g in surfaces]))
 
 
 def stores_of(source: OsmSource, names: Sequence[str]) -> list[OsmData]:

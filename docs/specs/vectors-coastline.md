@@ -260,8 +260,13 @@ the two agree on the markers:
 ## 7. OrthoStudio XP contract
 
 ```python
-build_sea_layers(osm_data, tile, params=CoastParams(), *, sea_equiv=None) -> CoastResult
+build_sea_layers(osm_data, tile, params=CoastParams(), *, sea_equiv=None, dry=None) -> CoastResult
 ```
+
+* `dry`: `DryAerodromes(outlines, surfaces)`, tile-local (`aerodrome-dry.md`); the pieces of the
+  sea inside the outlines that the surfaces touch are taken out of it before its seeds are placed,
+  the outline of what was taken joins the SEA lines, and `CoastResult.dry` holds it. A sea they
+  do not reach is the very result of before.
 
 * `osm_data`: the `natural=coastline` layer, in any of four shapes.
   * **the integration path**: `osmdata.load(snapshot, layer="coastline",

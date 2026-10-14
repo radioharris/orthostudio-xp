@@ -254,8 +254,12 @@ folder Settings names (`expert.patches_dir`, `pipeline-build.md`), not from Orth
 
 ```python
 # water.py
-build_water_layers(osm_data, tile, params=WaterParams(), dem=None, *, on_event=None)
-    -> WaterResult(layers, seeds, water, sea_equiv, lakes, counts)
+build_water_layers(osm_data, tile, params=WaterParams(), dem=None, *, on_event=None, dry=None)
+    -> WaterResult(layers, seeds, water, sea_equiv, lakes, counts, dry)
+    # dry: DryAerodromes(outlines, surfaces), tile-local; the pieces of water inside the outlines
+    # that the surfaces touch are taken out of the merged polygons before they are encoded and
+    # seeded (water.without, aerodrome-dry.md); WaterResult.dry is what was taken, counts["dry"]
+    # its pieces, only when there are some
 merge_overlapping_polygons(polygons, *, merge=True, on_event=None) -> list[Polygon]
 encode_multipolygon(polygons, *, pol_to_alt, area_limit=1e-10, simplify=0.0, refine=0.0,
                     scalx=1.0, cut=True) -> EncodedLayer(geometry, z, seeds, dropped)

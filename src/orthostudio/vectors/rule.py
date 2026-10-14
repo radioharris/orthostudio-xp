@@ -416,10 +416,11 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13); a tile with no
     # such node gets the same files again, so its mesh and DSF come from the cache. Version 3
     # was a first form of the rule, never released.
-    # 6: the water an aerodrome OpenStreetMap draws holds is taken out of it, as XPME does
-    # (``aerodrome-dry.md``, 2026-10-14). Version 5 is taken: the dry basins of the ideas branch,
-    # whose artefacts may be in a store already.
-    version=6,
+    # 7: the water inside an aerodrome OpenStreetMap draws that its runways, taxiways or aprons
+    # touch is taken out of it (``aerodrome-dry.md``, 2026-10-14). Version 5 is taken by the dry
+    # basins of the ideas branch and 6 by a first form of this rule that took all the water inside
+    # the outline; artefacts of both may be in a store already.
+    version=7,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
