@@ -337,6 +337,7 @@
         </label>
         <span class="library-pick-count" id="library-pick-count"></span>
         <button type="button" class="btn btn-small btn-primary" id="library-file" data-i18n="library.file">File elsewhere…</button>
+        <button type="button" class="btn btn-small" id="library-rebuild" data-i18n="library.rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What has not changed is reused.">Build again…</button>
       </div>
       <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
         <span id="library-filing-text"></span>
@@ -468,6 +469,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.file_cancel">Cancel</button>
       <button type="submit" class="btn btn-primary" value="file" id="library-file-go" data-i18n="library.file_go">File</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The Library's "Build again…" confirmation (app.js confirmRebuild), like the filing one. -->
+<dialog id="library-rebuild-dialog" class="dialog" role="alertdialog" aria-labelledby="library-rebuild-title" aria-describedby="library-rebuild-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="library-rebuild-title"></h2>
+    <div class="dialog-text" id="library-rebuild-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.rebuild_cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" value="rebuild" id="library-rebuild-go" data-i18n="library.rebuild_go">Build again</button>
     </div>
   </form>
 </dialog>

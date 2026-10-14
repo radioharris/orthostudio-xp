@@ -173,6 +173,13 @@ with *Stop*: the tile under way stays where it was. Then the Library and X-Plane
 to their new folder, roads and forests included, and X-Plane keeps each line as you left it,
 enabled or not.
 
+To build tiles again after an update, without choosing them again in the Plan, tick them in the
+Library and press *Build again…*. Each tile keeps its imagery source and its zoom level; the
+zones, colours and settings are today's, as if you chose those tiles in the Plan. A question says
+first how many tiles, what has to be downloaded and written on the disk, and how many go back
+into X-Plane; what has not changed is reused. The builds then appear in Works, one after the
+other.
+
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
 and read back on another, the old version taken away only once the new one is in place. Built again

@@ -803,6 +803,21 @@ let go at each drawing. A build asked for during a filing, or a Library change r
 build, a delete or a filing runs, says so in words that cover each (`plan.busy_deleting`,
 `library.err_busy`), never "delete the tile again" (a review, 2026-10-05).
 
+**Tiles built again** (2026-10-15; rebuilding tiles spread far apart from the Plan was not
+practical, a user, 2026-10-14): *Build again…* (« Reconstruire… », `#library-rebuild`) beside
+*File elsewhere…* takes the tiles picked, disabled with no pick or during a filing, not during a
+build: what it asks for waits for its turn. It asks for the builds the Plan would
+(`rebuildRequests`): one per imagery source and per "put back in X-Plane" (the rows' `installed`),
+each tile at its own level (the most common one is the build's `zoom_level`, the others go in
+`tiles_zl`), a tile picked in two folders built once; zones, colours and settings are left to the
+engine, which takes today's, as for a Plan. Each build is estimated first (`POST /api/plan`); a
+modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
+(its source and level) and what is today's, the download and the disk summed over the builds,
+and how many go back into X-Plane; when the disk cannot hold them (the Plan's rule, twice the room
+needed) it says so in the Plan's words and builds nothing. *Build again* sends them like the Plan
+(`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
+(a toast says when all wait); a refusal is an error card under the table.
+
 **A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
 Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
 its own (one more takes too much room); the cell's tooltip says how far the copy is

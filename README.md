@@ -28,8 +28,9 @@ experimental.
   every Ortho4XP setting under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
-  delete it, file it on any disk ([docs/workshop.md](docs/workshop.md)), and free the space the
-  cache takes. Tiles built with Ortho4XP are listed too, and never deleted.
+  delete it, file it on any disk ([docs/workshop.md](docs/workshop.md)), build the tiles you tick
+  again after an update, and free the space the cache takes. Tiles built with Ortho4XP are listed
+  too, and never deleted.
 - **Installation handled.** Each tile goes into Custom Scenery in the order X-Plane needs, with its
   roads, forests and buildings (left out when simHeaven X-World brings its own) and a backup of
   `scenery_packs.ini`.

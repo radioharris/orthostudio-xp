@@ -3647,12 +3647,15 @@ def test_each_screen_keeps_its_own_scroll_place() -> None:
     back = "if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);"
     assert body.rstrip().endswith(back + "\n}")
     assert body.index("markWideTables();") < body.index(back)
-    # a screen is opened on something only by its address and by the build just started
+    # a screen is opened on something only by its address and by the build just started, from
+    # the Plan or from the Library's Build again (2026-10-15)
     assert 'showScreen("works", res.job_id);' in _function_body(app_js, "build")
+    assert 'showScreen("works", started);' in _function_body(app_js, "rebuildLibraryTiles")
     calls = re.findall(r"(?<!function )showScreen\(([^)]*)\)", app_js)
     assert [c for c in calls if "," in c] == [
         'm ? m[1] : "plan", m ? m[2] : undefined',
         '"works", res.job_id',
+        '"works", started',
     ]
     # the Settings field a refusal points to is scrolled to after, so the field wins
     focus = _function_body(app_js, "focusSettingsField")
@@ -7335,6 +7338,67 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
         "+46+007 is filed, but its old folder could not be removed, likely because of a file "
         "open in another program: ~/OSXP/tiles/zOrthoStudio_+46+007. You can delete it."
     )
+
+
+def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None:
+    """Rebuilding tiles spread far apart from the Plan was not practical (a user, 2026-10-14):
+    the Library's Build again… asks for the builds the Plan would, one per imagery source and per
+    "put back in X-Plane", each tile at its own level, zones, colours and settings left to the
+    engine (today's). The question says what each tile keeps, the download and the disk from the
+    engine's estimates, how many go back into X-Plane, and builds nothing the disk cannot hold."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const rows = [
+          { tile: "+46+007", provider: "BI", zl: 16, installed: true, path: "/a/z1" },
+          { tile: "+46+006", provider: "BI", zl: 17, installed: true, path: "/a/z2" },
+          { tile: "+45+006", provider: "BI", zl: 16, installed: true, path: "/a/z3" },
+          { tile: "+45+006", provider: "BI", zl: 16, installed: false, path: "/b/z3" },
+          { tile: "+44+006", provider: "GO2", zl: 18, installed: false, path: "/a/z4" },
+        ];
+        const reqs = m.rebuildRequests(rows);
+        const plan = (mb, need, free) => ({ network: { mb }, disk: { needed_gb: need, free_gb: free } });
+        const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)]);
+        const short = m.rebuildQuestion(reqs, [plan(800, 3, 8), plan(420, 1.5, 8)]);
+        process.stdout.write(JSON.stringify({ reqs, q, short }));"""
+    )
+    assert got["reqs"] == [
+        {
+            "tiles": ["+45+006", "+46+006", "+46+007"],
+            "provider": "BI",
+            "zoom_level": 16,
+            "tiles_zl": {"+46+006": 17},
+            "install": True,
+        },
+        {"tiles": ["+44+006"], "provider": "GO2", "zoom_level": 18, "install": False},
+    ]
+    assert got["q"]["title"] == "Build 4 tile(s) again?"
+    assert got["q"]["body"] == [
+        "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
+        "today's, as in the Plan. What has not changed is reused.",
+        "To download: 1.22 GB. On disk: 4.5 GB to write, 200 GB free.",
+        "3 tile(s) in X-Plane will be put back in it.",
+    ]
+    assert got["q"]["go"] is True
+    assert got["short"]["go"] is False
+    assert got["short"]["body"][-1].startswith("Not enough free disk space")
+
+
+def test_build_again_is_wired_in_the_library_bar() -> None:
+    """The button sits beside File elsewhere…, waits for a pick and for no filing, and asks its
+    question in a modal dialog of its own; the request to the engine is the Plan's."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    assert bar.index('id="library-file"') < bar.index('id="library-rebuild"')
+    assert '<dialog id="library-rebuild-dialog"' in html and 'id="library-rebuild-go"' in html
+    assert '$("library-rebuild").addEventListener("click", rebuildLibraryTiles);' in app_js
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert '$("library-rebuild").disabled = !picked.length || Boolean(state.filing) || state.rebuilding;' in pick
+    flow = _function_body(app_js, "rebuildLibraryTiles")
+    assert flow.index('api("POST", "/api/plan", req)') < flow.index("confirmRebuild(question)")
+    assert flow.index("confirmRebuild(question)") < flow.index('api("POST", "/api/jobs", { ...req, queue: true })')
 
 
 def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:

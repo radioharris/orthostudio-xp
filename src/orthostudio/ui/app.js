@@ -214,6 +214,8 @@ const state = {
   libraryPicked: new Set(),
   /** The filing under way: `{n, i, tile, folder, stop, progress}`, or null. */
   filing: null,
+  /** Tiles picked being built again: estimated, asked, then sent (the Library's Build again…). */
+  rebuilding: false,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -6023,6 +6025,8 @@ function renderLibraryPick(rows, shown) {
   const waits = activeJobs().length > 0;
   file.disabled = !picked.length || Boolean(state.filing) || waits;
   setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));
+  // a build asked for while another runs waits for its turn: Build again does not wait
+  $("library-rebuild").disabled = !picked.length || Boolean(state.filing) || state.rebuilding;
 }
 
 /** "Pick all shown": every row the search and the folder leave, or none of them. */
@@ -6199,6 +6203,111 @@ async function stopFiling() {
     await api("POST", "/api/library/filing/stop", {});
   } catch (_err) {
     // the next tile is not sent: the stop holds at the end of this one
+  }
+}
+
+// -- tiles built again from the Library (2026-10-15) ---------------------------------------------
+
+/** The builds that make the tiles picked again, as the Plan would ask for them: one per imagery
+ * source and per "put back in X-Plane", each tile at its own level (the most common one is the
+ * build's, the others go in `tiles_zl`). Zones, colours and settings are left to the engine, which
+ * takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was not practical
+ * (a user, 2026-10-14). A tile picked twice (two folders) is built once. */
+export function rebuildRequests(rows) {
+  const groups = new Map();
+  const seen = new Set();
+  for (const e of rows) {
+    if (seen.has(e.tile)) continue;
+    seen.add(e.tile);
+    const key = `${e.provider}|${e.installed ? 1 : 0}`;
+    if (!groups.has(key)) groups.set(key, { provider: e.provider, install: Boolean(e.installed), tiles: [] });
+    groups.get(key).tiles.push({ tile: e.tile, zl: Number(e.zl) });
+  }
+  return [...groups.values()].map(({ provider, install, tiles }) => {
+    tiles.sort((a, b) => a.tile.localeCompare(b.tile));
+    const counts = new Map();
+    for (const { zl } of tiles) counts.set(zl, (counts.get(zl) || 0) + 1);
+    const zoom = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+    const own = Object.fromEntries(tiles.filter((x) => x.zl !== zoom).map((x) => [x.tile, x.zl]));
+    return { tiles: tiles.map((x) => x.tile), provider, zoom_level: zoom, ...(Object.keys(own).length ? { tiles_zl: own } : {}), install };
+  });
+}
+
+/** What the question says before tiles are built again: how many, what each keeps and what is
+ * today's, the download and the disk from the engine's estimates of the builds (`POST /api/plan`),
+ * and how many go back into X-Plane. `go` is false when the disk cannot hold them, by the Plan's
+ * own rule (twice the room the builds need). */
+export function rebuildQuestion(requests, plans) {
+  const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
+  const back = requests.filter((r) => r.install).reduce((sum, r) => sum + r.tiles.length, 0);
+  const mb = plans.reduce((sum, p) => sum + (Number(p?.network?.mb) || 0), 0);
+  const verdicts = plans.map((p) => diskVerdict(p?.disk));
+  const need = verdicts.reduce((sum, v) => sum + (v.needed || 0), 0);
+  const free = verdicts.find((v) => v.free !== null)?.free ?? null;
+  const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
+  const body = [t("library.rebuild_kept"), t("library.rebuild_costs", { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) })];
+  if (back) body.push(t("library.rebuild_back", { n: fmtInt(back) }));
+  if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
+  return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: !short };
+}
+
+/** The question in the page's modal <dialog>, like the filing one; resolves true for "Build
+ * again". */
+function confirmRebuild(question) {
+  const dialog = $("library-rebuild-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-rebuild-title").textContent = question.title;
+  clear($("library-rebuild-text")).append(...question.body.map((line) => h("p", null, line)));
+  $("library-rebuild-go").hidden = !question.go;
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "rebuild"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** "Build again…": the builds worked out, estimated, asked, then sent like the Plan's (each one
+ * waits for its turn behind a build under way); the Works screen opens on the first that starts. */
+async function rebuildLibraryTiles() {
+  if (state.filing || state.rebuilding) return;
+  const building = tilesInBuilds(activeJobs());
+  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  if (!picked.length) return;
+  const errors = clear($("library-errors"));
+  state.rebuilding = true;
+  renderLibrary();
+  try {
+    const requests = rebuildRequests(picked);
+    const plans = [];
+    for (const { install: _install, ...req } of requests) plans.push(await api("POST", "/api/plan", req));
+    const question = rebuildQuestion(requests, plans);
+    if (!(await confirmRebuild(question)) || !question.go) return;
+    let started = null;
+    let waits = 0;
+    for (const req of requests) {
+      const res = await api("POST", "/api/jobs", { ...req, queue: true });
+      if (res.queue_position > 0) waits = waits || res.queue_position;
+      else started = started || res.job_id;
+    }
+    state.libraryPicked.clear();
+    if (started) {
+      toast(t("plan.started"));
+      showScreen("works", started);
+    } else {
+      toast(t("plan.queued", { n: waits }));
+      await refreshJobList();
+    }
+  } catch (err) {
+    errors.append(libraryErrorCard(err, picked[0]));
+    refreshJobList();
+  } finally {
+    state.rebuilding = false;
+    renderLibrary();
   }
 }
 
@@ -6795,6 +6904,7 @@ async function boot() {
   });
   $("library-pick-all").addEventListener("change", (e) => pickAllShown(e.target.checked));
   $("library-file").addEventListener("click", fileLibraryTiles);
+  $("library-rebuild").addEventListener("click", rebuildLibraryTiles);
   $("library-filing-stop").addEventListener("click", stopFiling);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {
