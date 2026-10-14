@@ -7342,10 +7342,12 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
 
 def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None:
     """Rebuilding tiles spread far apart from the Plan was not practical (a user, 2026-10-14):
-    the Library's Build again… asks for the builds the Plan would, one per imagery source and per
-    "put back in X-Plane", each tile at its own level, zones, colours and settings left to the
-    engine (today's). The question says what each tile keeps, the download and the disk from the
-    engine's estimates, how many go back into X-Plane, and builds nothing the disk cannot hold."""
+    the Library's Build again… asks for the builds the Plan's Build would, one per imagery source,
+    each tile at its own level, none installed (a tile X-Plane shows is built again in its folder,
+    which X-Plane keeps showing; one build per "put back in X-Plane" made two builds of two tiles,
+    2026-10-15), zones, colours and settings left to the engine (today's). The question says what
+    each tile keeps, the download and the disk from the engine's estimates, how many X-Plane shows,
+    and builds nothing the disk cannot hold."""
     if NODE is None:
         pytest.skip("node is not installed")
     got = _run_node(
@@ -7359,7 +7361,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
         ];
         const reqs = m.rebuildRequests(rows);
         const plan = (mb, need, free) => ({ network: { mb }, disk: { needed_gb: need, free_gb: free } });
-        const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)]);
+        const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)], 3);
         const short = m.rebuildQuestion(reqs, [plan(800, 3, 8), plan(420, 1.5, 8)]);
         const after = { ...plan(800, 3, 200), tiles: [{ nodes: [{ role: "vectors", status: "build" },
                                                             { role: "textures", status: "unknown" }] }] };
@@ -7372,7 +7374,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
             "provider": "BI",
             "zoom_level": 16,
             "tiles_zl": {"+46+006": 17},
-            "install": True,
+            "install": False,
         },
         {"tiles": ["+44+006"], "provider": "GO2", "zoom_level": 18, "install": False},
     ]
@@ -7381,7 +7383,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
         "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
         "today's, as in the Plan. What has not changed is reused.",
         "To download: 1.22 GB. On disk: 4.5 GB to write, 200 GB free.",
-        "3 tile(s) in X-Plane will be put back in it.",
+        "3 tile(s) in X-Plane stay in it, updated; the others do not go in.",
     ]
     assert got["q"]["go"] is True
     assert got["short"]["go"] is False

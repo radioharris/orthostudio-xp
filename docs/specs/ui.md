@@ -806,16 +806,18 @@ build, a delete or a filing runs, says so in words that cover each (`plan.busy_d
 **Tiles built again** (2026-10-15; rebuilding tiles spread far apart from the Plan was not
 practical, a user, 2026-10-14): *Build again…* (« Reconstruire… », `#library-rebuild`) beside
 *File elsewhere…* takes the tiles picked, disabled with no pick or during a filing, not during a
-build: what it asks for waits for its turn. It asks for the builds the Plan would
-(`rebuildRequests`): one per imagery source and per "put back in X-Plane" (the rows' `installed`),
-each tile at its own level (the most common one is the build's `zoom_level`, the others go in
-`tiles_zl`), a tile picked in two folders built once; zones, colours and settings are left to the
-engine, which takes today's, as for a Plan. Each build is estimated first (`POST /api/plan`); a
+build: what it asks for waits for its turn. It asks for the builds the Plan's *Build* would
+(`rebuildRequests`): one per imagery source (a build has one), each tile at its own level (the most
+common one is the build's `zoom_level`, the others go in `tiles_zl`), none installed, a tile picked
+in two folders built once: a tile X-Plane shows is built again in its own folder, which X-Plane
+keeps showing, and one it does not show stays out (one build per "put back in X-Plane" made two
+builds of two tiles, 2026-10-15). Zones, colours and settings are left to the engine, which takes
+today's, as for a Plan. Each build is estimated first (`POST /api/plan`); a
 modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
 (its source and level) and what is today's, the download and the disk summed over the builds
 ("up to", with "less if the tiles have not changed", when a stage of the estimate is `unknown`:
-after an update that changes a stage, what follows it is known only once built), and how many go
-back into X-Plane; when the disk cannot hold them (the Plan's rule, twice the room needed) it says
+after an update that changes a stage, what follows it is known only once built), and how many
+X-Plane shows, which stay in it, updated; when the disk cannot hold them (the Plan's rule, twice the room needed) it says
 so in the Plan's words and builds nothing. *Build again* sends them like the Plan
 (`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
 (a toast says when all wait); a refusal is an error card under the table.

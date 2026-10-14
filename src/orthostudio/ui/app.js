@@ -6208,20 +6208,21 @@ async function stopFiling() {
 
 // -- tiles built again from the Library (2026-10-15) ---------------------------------------------
 
-/** The builds that make the tiles picked again, as the Plan would ask for them: one per imagery
- * source and per "put back in X-Plane", each tile at its own level (the most common one is the
- * build's, the others go in `tiles_zl`). Zones, colours and settings are left to the engine, which
- * takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was not practical
- * (a user, 2026-10-14). A tile picked twice (two folders) is built once. */
+/** The builds that make the tiles picked again, as the Plan's *Build* would ask for them: one per
+ * imagery source (a build has one), each tile at its own level (the most common one is the build's,
+ * the others go in `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
+ * folder, which X-Plane keeps showing, and one it does not show stays out (one build per "put back
+ * in X-Plane" made two builds of two tiles, 2026-10-15). Zones, colours and settings are left to
+ * the engine, which takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was
+ * not practical (a user, 2026-10-14). A tile picked twice (two folders) is built once. */
 export function rebuildRequests(rows) {
   const groups = new Map();
   const seen = new Set();
   for (const e of rows) {
     if (seen.has(e.tile)) continue;
     seen.add(e.tile);
-    const key = `${e.provider}|${e.installed ? 1 : 0}`;
-    if (!groups.has(key)) groups.set(key, { provider: e.provider, install: Boolean(e.installed), tiles: [] });
-    groups.get(key).tiles.push({ tile: e.tile, zl: Number(e.zl) });
+    if (!groups.has(e.provider)) groups.set(e.provider, { provider: e.provider, install: false, tiles: [] });
+    groups.get(e.provider).tiles.push({ tile: e.tile, zl: Number(e.zl) });
   }
   return [...groups.values()].map(({ provider, install, tiles }) => {
     tiles.sort((a, b) => a.tile.localeCompare(b.tile));
@@ -6235,13 +6236,13 @@ export function rebuildRequests(rows) {
 
 /** What the question says before tiles are built again: how many, what each keeps and what is
  * today's, the download and the disk from the engine's estimates of the builds (`POST /api/plan`),
- * and how many go back into X-Plane. `go` is false when the disk cannot hold them, by the Plan's
+ * and how many X-Plane shows, which stay in it, updated (`inXplane`). `go` is false when the disk
+ * cannot hold them, by the Plan's
  * own rule (twice the room the builds need). A stage the estimate cannot know before an earlier
  * one runs (`unknown`, after an update that changes it) may still find its work done: the figures
  * are then an upper bound, and the question says "up to". */
-export function rebuildQuestion(requests, plans) {
+export function rebuildQuestion(requests, plans, inXplane = 0) {
   const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
-  const back = requests.filter((r) => r.install).reduce((sum, r) => sum + r.tiles.length, 0);
   const mb = plans.reduce((sum, p) => sum + (Number(p?.network?.mb) || 0), 0);
   const verdicts = plans.map((p) => diskVerdict(p?.disk));
   const need = verdicts.reduce((sum, v) => sum + (v.needed || 0), 0);
@@ -6250,7 +6251,7 @@ export function rebuildQuestion(requests, plans) {
   const unsure = plans.some((p) => (p?.tiles || []).some((te) => (te.nodes || []).some((nd) => nd.status === "unknown")));
   const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
   const body = [t("library.rebuild_kept"), unsure ? t("library.rebuild_costs_most", figures) : t("library.rebuild_costs", figures)];
-  if (back) body.push(t("library.rebuild_back", { n: fmtInt(back) }));
+  if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
   return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: !short };
 }
@@ -6289,7 +6290,8 @@ async function rebuildLibraryTiles() {
     const requests = rebuildRequests(picked);
     const plans = [];
     for (const { install: _install, ...req } of requests) plans.push(await api("POST", "/api/plan", req));
-    const question = rebuildQuestion(requests, plans);
+    const shown = new Set(picked.filter((e) => e.installed).map((e) => e.tile));
+    const question = rebuildQuestion(requests, plans, shown.size);
     if (!(await confirmRebuild(question)) || !question.go) return;
     let started = null;
     let waits = 0;
