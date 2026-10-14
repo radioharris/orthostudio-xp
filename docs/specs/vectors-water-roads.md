@@ -46,6 +46,12 @@ and valid, then relations as `union(outer) - union(inner)`. A user file
 (`:509-522`). OrthoStudio XP read it from review 5 until decision 0010; a build reads no Ortho4XP
 folder now, so it has no source.
 
+**Dry rainwater basins are left out** (`is_dry_basin`, wanted difference 10): a way or relation
+tagged `water=basin` and `intermittent=yes` is dropped before the areas are summed, and
+`counts["dry_basins"]` says how many. For it the layer keeps two more tags of interest, `water`
+and `intermittent`, beside `name`. A basin that is not intermittent (a treatment basin) and an
+intermittent lake or pond stay water.
+
 ### 2.2 Lakes larger than `max_area` (`filter_large_lakes`, `:456-500`)
 
 `large_lake_threshold = max_area * 1e6 / (lat_to_m * lon_to_m(lat + 0.5))` — square degrees of
@@ -353,6 +359,15 @@ and one `weighted_normals` each).
    the DEM.
 9. **`resolution=1`** is spelled `quad_segs=1`: shapely 2.1 deprecates the old name, the
    value and the geometry are unchanged (checked segment by segment on the reference tile).
+10. **Dry rainwater basins are not water** (2.1). OpenStreetMap maps rainwater basins as
+   `natural=water` + `water=basin` (retention, detention, infiltration), most marked
+   `intermittent=yes` because they are dry grass most of the year; Ortho4XP draws them as water,
+   and a user saw X-Plane's water over the photo's grass at Leipzig/Halle (EDDP, `+51+012`, idea
+   #13, 2026-10-11). Measured on `+51+012`, default settings, the prepared library of 7 October
+   2026: 558 basins left out of the tile, none of the 37 around the airport left as water; the
+   treatment basin beside it (not intermittent) and the ponds stay water. `min_area` was the only
+   way around it before, and it took every pond of the tile under its area too. The rule
+   `orthostudio.vectors` went to version 2 with it, so a tile built again recomputes its water.
 
 ## 8. Acceptance
 

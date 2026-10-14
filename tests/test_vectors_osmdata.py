@@ -78,13 +78,17 @@ def test_tag_sets_of_the_water_layer_leave_nodes_empty() -> None:
     """``tags_of_interest`` is appended per selector type (``O4_OSM_Utils.py:409-419``)."""
     tags = LAYER_TAGS["water"]
     assert tags.input_tags["r"] == (("natural", "water"), ("waterway", "riverbank"))
-    # the interest loop runs after *each* selector, so ("name", "") lands between the two
+    # the interest loop runs after *each* selector, so the tags of interest land between the two;
+    # ``water`` and ``intermittent`` are OrthoStudio XP's, for the dry basins
     assert tags.target_tags["r"] == (
         ("natural", "water"),
         ("name", ""),
+        ("water", ""),
+        ("intermittent", ""),
         ("waterway", "riverbank"),
     )
-    assert ("name", "") in tags.target_tags["w"]
+    for interest in (("name", ""), ("water", ""), ("intermittent", "")):
+        assert interest in tags.target_tags["w"]
     assert tags.target_tags["n"] == ()
     assert not tags.keeps("n", "name", "Etang de Berre")
     assert tags.keeps("w", "name", "Etang de Berre")

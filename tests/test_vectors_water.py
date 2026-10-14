@@ -23,6 +23,7 @@ from orthostudio.vectors.water import (
     build_water_layers,
     cut_to_tile,
     encode_multipolygon,
+    is_dry_basin,
     lon_to_m,
     merge_overlapping_polygons,
     refine_way,
@@ -222,6 +223,31 @@ def test_build_water_layers_gives_one_water_layer(tmp_path: Path) -> None:
     assert result.counts["water"] == 1
     assert result.seeds["WATER"].shape == (1, 2)
     assert not result.lakes
+
+
+def test_a_dry_rainwater_basin_is_left_out_of_the_water(tmp_path: Path) -> None:
+    """OpenStreetMap maps rainwater basins as water, most of them dry most of the year: around
+    EDDP (``+51+012``) a user saw X-Plane's water over the grass of the photo (idea #13,
+    2026-10-11). ``water=basin`` with ``intermittent=yes`` is left out; a basin that is not
+    intermittent and a pond that is stay water. Through ``OsmData``, as a build reads them: the
+    layer's tag filter must keep ``water`` and ``intermittent``, which Ortho4XP's drops."""
+    dry = {"natural": "water", "water": "basin", "intermittent": "yes", "basin": "infiltration"}
+    wet_basin = {**dry, "intermittent": "no"}
+    pond = {"natural": "water", "water": "pond", "intermittent": "yes"}
+    body = water_ways(
+        [
+            ([(5.20, 43.20), (5.21, 43.20), (5.21, 43.21), (5.20, 43.21)], dry),
+            ([(5.30, 43.20), (5.31, 43.20), (5.31, 43.21), (5.30, 43.21)], wet_basin),
+            ([(5.40, 43.20), (5.41, 43.20), (5.41, 43.21), (5.40, 43.21)], pond),
+        ]
+    )
+    result = build_water_layers(load(tmp_path, body), TILE, WaterParams(), FlatDem())
+    assert result.counts["dry_basins"] == 1
+    assert result.counts["water"] == 2
+    kept = [g.representative_point().x for g in result.water.geoms]  # tile-local: lon - 5
+    assert not any(0.20 < x < 0.21 for x in kept), "the dry basin is not water"
+    assert any(0.30 < x < 0.31 for x in kept) and any(0.40 < x < 0.41 for x in kept)
+    assert is_dry_basin(dry) and not is_dry_basin(wet_basin) and not is_dry_basin(pond)
 
 
 def test_a_lake_larger_than_max_area_becomes_sea_equiv(tmp_path: Path) -> None:

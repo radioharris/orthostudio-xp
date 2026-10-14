@@ -29,6 +29,10 @@ route's squares at all: a tick before *Along the route*, which leaves the depart
 alone (2026-09-25). Then a *Recenter* button, for a map moved away from the route, and the button
 of the plan in the middle of its words rather than against their last line (the same evening).
 
+A second button, *Open a flight plan…*, takes a plan file instead: Little Navmap's own (`.lnmpln`)
+or the one it and most planners export for X-Plane (`.fms`), for a pilot who plans in Little Navmap
+rather than SimBrief (asked on X-Plane.Org, idea 11, 2026-10-11, section 4.1).
+
 Typing the airports of a route (`LSGG LFMN`), which the first version also offered, is left out:
 that is where several of its faults were (codes dropped without a word, one request per code), and
 a pilot who files a plan has it in SimBrief.
@@ -109,6 +113,24 @@ same: its squares and its line computed again, by the rules of the version that 
 SimBrief and without a name (section 5). It takes nothing else: squares sent with it are refused
 (422), like fewer than 2 points or more than 402, a point off the globe, a radius outside 0 to 300.
 Both routes are one computation (`answer` in the router). API level 24.
+
+### 4.1 A plan file: `POST /api/flightplan/file`
+
+`{radius_km, prompt, start}`: the engine opens the system's own file dialog (`fsutil.choose_file`:
+the Finder's through `osascript`, Windows' `OpenFileDialog`, zenity's or kdialog's), offering
+`.lnmpln` and `.fms`, in `start` when it is a folder (the page keeps the last one,
+`osxp.planFolder`), else the folder Little Navmap's own dialog last used (`LnmPlnFileDialogDir` of
+`~/.config/ABarthel/little_navmap.ini`, `%APPDATA%\ABarthel` on Windows: a user's plans were in
+iCloud Drive, 2026-10-11), else Little Navmap's `Documents/Little Navmap Files/Flight Plans`, else
+X-Plane's `Output/FMS plans`, else the home folder. `planfile.read_plan_file` reads the file once
+and keeps nothing: XML whose root is `LittleNavmap`, one `Waypoint` per point (`Ident`, `Name`,
+`Pos Lat Lon`); or X-Plane's FMS text, versions 3 and 1100, one line per point (`type ident [via]
+altitude lat lon`, types 1, 2, 3, 11, 13 and 28; `ADEP` and `ADES` name the two ends). The content
+decides, not the name. The answer is SimBrief's, plus `chosen: true`, `file` and `folder`;
+`{chosen: false}` when the dialog was cancelled. A file larger than 5 MB, in neither format, or
+holding fewer than two points with a position: `CFG_PLAN_FILE_INVALID` (422, with the file's name
+and why). A second dialog while one is open: `SYS_BUSY` (409); a system without a file dialog:
+`SYS_NO_FOLDER_DIALOG` (501). The route is then kept and computed again like a SimBrief one.
 
 ## 5. The page: one object, everything else derived
 

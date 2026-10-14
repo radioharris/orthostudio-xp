@@ -878,6 +878,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Generate a flight plan on simbrief.com, then try again.",
     ),
     _spec(
+        "CFG_PLAN_FILE_INVALID",
+        _B,
+        _S,
+        "The flight plan {file} could not be read: {reason}.",
+        "Choose a plan saved by Little Navmap (.lnmpln) or exported for X-Plane (.fms).",
+    ),
+    _spec(
         "CFG_LATLON_INVALID",
         _B,
         _S,

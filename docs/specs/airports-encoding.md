@@ -296,6 +296,10 @@ equal to the mean, and seed it. Otherwise the hangar is dropped — outline and 
 Note that step 2 tests the centre against the union of step 1 **before** the cut to the tile,
 and step 3 cuts: a helipad straddling the tile side is kept and clipped. **Keep.**
 
+**Off with `flatten_helipads=False`** (OrthoStudio XP's own setting, `settings.md`, idea #8): no
+helipad polygon is inserted and `counts["helipads"]` is 0, so the ground keeps the relief's slope
+there. On by default, which is Ortho4XP's behaviour.
+
 On `+43+005`, 55 helipads survive the two exclusions and their union, cut to the tile, gives
 **52 flattened polygons**. They matter for a second reason: Ortho4XP inserts them with the same
 marker as the roads that follow, so the recorded `INTERP_ALT` run of the reference tile

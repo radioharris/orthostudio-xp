@@ -140,8 +140,11 @@
           <p class="help way-error" id="way-error" role="status" hidden></p>
           <div class="flightplan" id="flightplan">
             <span class="sub-question-title" data-i18n="flightplan.title">Along my flight plan</span>
-            <button type="button" class="btn" id="flightplan-load" data-i18n="flightplan.load">My SimBrief plan</button>
-            <p class="help" data-i18n="flightplan.help">Your last SimBrief plan: its departure, its arrival and every square near its route, within the radius above. Your SimBrief name is set in Settings.</p>
+            <div class="flightplan-buttons">
+              <button type="button" class="btn" id="flightplan-load" data-i18n="flightplan.load">My SimBrief plan</button>
+              <button type="button" class="btn" id="flightplan-open" data-i18n="flightplan.open">Open a flight plan…</button>
+            </div>
+            <p class="help" data-i18n="flightplan.help">Your last SimBrief plan, or a plan saved by Little Navmap (.lnmpln) or exported for X-Plane (.fms): its departure, its arrival and every square near its route, within the radius above. Your SimBrief name is set in Settings.</p>
             <p class="help way-error" id="flightplan-error" role="status" hidden></p>
             <div class="flightplan-found" id="flightplan-found" hidden>
               <p class="flightplan-what" id="flightplan-what"></p>

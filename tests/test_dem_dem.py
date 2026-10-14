@@ -746,3 +746,29 @@ def test_the_raster_is_written_as_it_is_and_its_voids_counted_by_blocks(tmp_path
         np.fromfile(tmp_path / "Data.alt", dtype=np.float32).reshape(alt.shape), alt
     )
     assert dem.meta()["nodata_pixels"] == 600 == dem_module._count_equal(alt, -32768.0)
+
+
+def test_a_coarser_file_of_ones_own_comes_first_when_asked(tmp_path: Path) -> None:
+    """A pilot whose files were coarser than the relief chosen in Settings found them left aside
+    and wanted them all the same (idea 9, 2026-10-11). With ``own_first`` the coarser file is laid
+    on every point it covers, smoothed between its own points rather than repeated in steps over
+    the finer grid, and the Library is told it was used."""
+    base = _hgt(tmp_path / "base.hgt", 3601, 10)  # the finer relief
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    ramp = np.tile(np.arange(1201, dtype=np.int16) * 3, (1201, 1))  # 3 m a point, west to east
+    (mine / "N43E005.hgt").write_bytes(ramp.astype(">i2").tobytes())
+    opts = EnsureOptions(elevation_dir=tmp_path, download=no_download)
+    events: list[OsxpError] = []
+    dem = Dem.build(
+        TileRef(43, 5), opts, custom_dem=f"{base};{mine}", on_event=events.append, own_first=True
+    )
+    assert dem.laid_over == (str(mine),)
+    assert not [e for e in events if e.code == "DEM_OVERLAY_COARSER"]
+    assert (dem.nxdem, dem.nydem) == (3601, 3601), "the finer grid stays"
+    row = np.asarray(dem.alt_dem[1800], dtype=np.float64)
+    # smoothed: one metre a point of the finer grid, no step of three
+    assert np.allclose(np.diff(row), 1.0, atol=1e-3)
+    assert row[0] == pytest.approx(0.0) and row[-1] == pytest.approx(3600.0)
+    file = str(mine / "N43E005.hgt")
+    assert dem.own == ({"file": file, "used": True, "coarser": True},)

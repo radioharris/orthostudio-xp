@@ -56,6 +56,10 @@ class DemParams(RuleParams):
     fill_nodata: bool = True
     """Ortho4XP's boolean: True = nearest neighbour, False = every void to 0 m (spec section 7)."""
 
+    own_relief_first: bool = False
+    """OrthoStudio XP's: a file of one's own in the folder of Settings is laid even where it is
+    coarser than the relief chosen there (idea 9, 2026-10-11); off, the finest wins."""
+
     dem1_local_fallback: bool = False
     """osxp-only, TODO (spec 9.1, blocker B2): reuse a local 3" file when the 1" archive is
     unavailable. Off by default: turning it on changes ``Data<tile>.alt`` and the mesh."""
@@ -156,6 +160,7 @@ def build_dem(
             custom_dem=params.custom_dem,
             fill_nodata=params.fill,
             on_event=job.on_event,
+            own_first=params.own_relief_first,
         )
     finally:
         opts.memo.save()

@@ -31,7 +31,9 @@ the measurements, `docs/benchmarks/`.
   (airports, places you fly low). A zone sharpens whole squares of about 1 km, every one it
   covers a part of: everything you draw is at least at its level, and the sharp area ends on
   those squares' edges, up to a square beyond your outline (a small helipad where four squares
-  meet sharpens the four).
+  meet sharpens the four). The Plan's map shows those squares, pale and dashed under each zone,
+  and the list of zones says how many each takes, or that one takes none because the zones above
+  it in the list already take every square it covers.
 - **Overlay**: roads, buildings, forests, power lines and night lighting. They live in the same
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,
@@ -39,7 +41,10 @@ the measurements, `docs/benchmarks/`.
   its own, answer *None* to the Settings question on roads, forests and buildings; when OrthoStudio
   XP finds such a pack in your Custom Scenery it says so beside the question, and on a first run it
   answers *None* for you: OrthoStudio XP
-  then builds no overlay, and a tile built again takes its old one out of X-Plane. A
+  then builds no overlay, and a tile built again takes its old one out of X-Plane. A third answer,
+  *X-Plane's roads, railways and power lines only*, leaves X-Plane's forests and buildings out:
+  for a pack that brings its own but whose roads you would rather replace by X-Plane's (turn that
+  pack's roads off then, or you have two road networks). Bridges belong to the roads and stay. A
   `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled. One thing is left behind on
   purpose: the line X-Plane 12 draws around airport grass to blend it into the terrain. Over a
   photograph it has nothing to blend and shows as an outline around every airfield, so it is
@@ -104,6 +109,16 @@ requests to the provider at the same time (a limit measured not to get throttled
 `docs/benchmarks/network.md`). A relief you chose to download (Copernicus, USGS) has a lane of
 its own beside it, one tile at a time, so the images never wait for it. On a cold build the
 imagery is most of the time, and the processor mostly waits for the provider.
+
+**Which water.** The lakes, ponds, rivers and docks of OpenStreetMap become X-Plane's water, as in
+Ortho4XP, with one exception: the rainwater basins OpenStreetMap marks as dry most of the year
+(`water=basin` with `intermittent=yes`, often beside runways and motorways) keep the photo's ground,
+where Ortho4XP draws water over the grass. A treatment basin, or a lake that dries in summer, stays
+water. Water smaller than `min_area` (Settings, for experts) is left to the photo.
+
+**Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
+Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
+on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.
 
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
@@ -482,7 +497,10 @@ build would stop on them, and a route longer than one build takes stops at a squ
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
 kept in the browser until then, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
-simbrief.com, only when you press the button.
+simbrief.com, only when you press the button. *Open a flight plan…*, beside it, takes a plan file
+instead, saved by Little Navmap (`.lnmpln`) or exported for X-Plane (`.fms`), which Little Navmap
+and most planners write: the same squares, the same line, nothing sent anywhere. The dialog opens
+where Little Navmap last saved a plan the first time, then where you took the last plan from.
 
 **Choosing many squares at once.** Hold Shift, press the mouse on the map and draw a rectangle:
 every square inside it is chosen as you go, and drawing back the other way lets them go again. If
@@ -510,7 +528,10 @@ same place, 3", 1" and 0.5" for instance, the finest file is used for each squar
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
 downloaded is what is built. The finest wins the other way round too: where the relief you chose is
 sharper than your file, as the United States relief at a third of an arc-second is against a file
-of one second, the relief answers and the report names the file it left aside. In the Library,
+of one second, the relief answers and the report names the file it left aside. Tick *Use my files
+even where they are coarser than the relief above* to have your files first on every square they
+cover, whatever their resolution: they are then smoothed between their points over the finer grid,
+not repeated in steps. In the Library,
 *Built by* unfolds what a tile was built with: its *Relief* line names the file of yours the tile
 stands on, "with your file N50E011.hgt over it", or says why it was not used, "93 m between
 points, where Copernicus has 31 m". Where your folder has nothing, the relief you chose stays in charge, so

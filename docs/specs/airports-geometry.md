@@ -217,8 +217,8 @@ holds 16 of them among 61 009 groups of open runway ways:
   linear runway of the right length.
 
 After the rule no glued line of zero length is left on the planet (`scan_rule.py`, session of
-2026-10-12). `orthostudio.vectors` went to version 2 with it, so a tile built again recomputes
-its airports. Should an empty altitude still reach the mesh, it keeps the ground's height there
+2026-10-12). `orthostudio.vectors` went up one version with it (2 in 1.0.1, 3 together with
+the dry basins of `vectors-water-roads.md` 2.1), so a tile built again recomputes its airports. Should an empty altitude still reach the mesh, it keeps the ground's height there
 (`mesh-build.md` 5.3).
 
 ### 3.4 Linear runways: the rectangle (`:626-664`)

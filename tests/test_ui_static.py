@@ -3192,16 +3192,22 @@ def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> No
     other one, and both answers say why."""
     doc = _mock_json("settings")
     plain = _node_json("settings.js", f"m.questionChoices('overlays', {json.dumps(doc)}, {{}})")
-    assert [c["value"] for c in plain] == ["xplane", "none"]
+    assert [c["value"] for c in plain] == ["xplane", "roads", "none"]
     assert plain[0]["recommended"] and not plain[1].get("recommended")
+    assert not plain[2].get("recommended")
     assert not plain[0].get("note")
 
     found = _node_json(
         "settings.js",
         f"m.questionChoices('overlays', {json.dumps(doc)}, {{ownScenery: ['simHeaven X-World']}})",
     )
-    assert not found[0].get("recommended") and found[1]["recommended"]
-    assert "simHeaven X-World" in found[0]["note"] and "simHeaven X-World" in found[1]["note"]
+    assert not found[0].get("recommended") and found[2]["recommended"]
+    assert not found[1].get("recommended"), "roads only is a choice, never the recommendation"
+    for choice in found:
+        assert "simHeaven X-World" in choice["note"]
+    # idea 6: with such a pack, roads only means turning its own roads off
+    assert "roads pack of simHeaven X-World off" in found[1]["note"]
+    assert found[1]["note"].startswith("For whoever prefers X-Plane's roads")
 
 
 def test_questions_offer_valid_answers_and_one_recommended_each() -> None:
@@ -6287,6 +6293,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
             [{ exclusiveMinimum: 0, default: 2 }, ""],
             [{ default: 19 }, "ZL"],
             [{ minimum: 14, maximum: 20, default: 18 }, "ZL"],
+            [{ minimum: 0, exclusiveMaximum: 50, default: 3 }, "million"],
             [{}, ""],
           ];
           return cases.map(([prop, unit]) => m.rangeText(prop, unit));
@@ -6298,6 +6305,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
         "More than 0, 2 by default.",
         "ZL19 by default.",
         "From ZL14 to ZL20, ZL18 by default.",
+        "From 0 to less than 50 million, 3 million by default.",
         "",
     ]
     code = (UI / "settings.js").read_text(encoding="utf-8")
@@ -6777,7 +6785,7 @@ def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
     assert got["levels"] == {"ends": 17, "along": 13} and got["off"] is False
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     restore = _function_body(app_js, "restoreFlightPlan")
-    assert restore.index("flightPlanLoading = true;") < restore.index(
+    assert restore.index('flightPlanLoading = "kept";') < restore.index(
         'api("POST", "/api/flightplan", saved.route)'
     )
     assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
@@ -6833,7 +6841,9 @@ def test_a_flight_plan_is_read_one_at_a_time_and_its_levels_are_its_own() -> Non
     load = _function_body(app_js, "loadFlightPlan")
     assert load.index("if (flightPlanLoading) return;") < load.index('api("GET"')
     assert "/api/flightplan/simbrief?radius_km=" in load
-    assert "load.disabled = flightPlanLoading;" in _function_body(app_js, "renderFlightPlan")
+    assert "load.disabled = Boolean(flightPlanLoading);" in _function_body(
+        app_js, "renderFlightPlan"
+    )
     step = app_js[app_js.index('$("zl-select").addEventListener("change"') :]
     step = step[: step.index("});")]
     assert "flightPlan" not in step and "tileZl" not in step
@@ -7360,11 +7370,13 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
           { tile: "+44+006", provider: "GO2", zl: 18, installed: false, path: "/a/z4" },
         ];
         const reqs = m.rebuildRequests(rows);
-        const plan = (mb, need, free) => ({ network: { mb }, disk: { needed_gb: need, free_gb: free } });
+        const plan = (mb, need, free) => ({ network: { mb },
+                                            disk: { needed_gb: need, free_gb: free } });
         const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)], 3);
         const short = m.rebuildQuestion(reqs, [plan(800, 3, 8), plan(420, 1.5, 8)]);
-        const after = { ...plan(800, 3, 200), tiles: [{ nodes: [{ role: "vectors", status: "build" },
-                                                            { role: "textures", status: "unknown" }] }] };
+        const nodes = [{ role: "vectors", status: "build" },
+                       { role: "textures", status: "unknown" }];
+        const after = { ...plan(800, 3, 200), tiles: [{ nodes }] };
         const most = m.rebuildQuestion(reqs, [after, plan(420, 1.5, 200)]);
         process.stdout.write(JSON.stringify({ reqs, q, short, most }));"""
     )
@@ -7406,10 +7418,12 @@ def test_build_again_is_wired_in_the_library_bar() -> None:
     assert '<dialog id="library-rebuild-dialog"' in html and 'id="library-rebuild-go"' in html
     assert '$("library-rebuild").addEventListener("click", rebuildLibraryTiles);' in app_js
     pick = _function_body(app_js, "renderLibraryPick")
-    assert '$("library-rebuild").disabled = !picked.length || Boolean(state.filing) || state.rebuilding;' in pick
+    waits = "!picked.length || Boolean(state.filing) || state.rebuilding;"
+    assert f'$("library-rebuild").disabled = {waits}' in pick
     flow = _function_body(app_js, "rebuildLibraryTiles")
     assert flow.index('api("POST", "/api/plan", req)') < flow.index("confirmRebuild(question)")
-    assert flow.index("confirmRebuild(question)") < flow.index('api("POST", "/api/jobs", { ...req, queue: true })')
+    send = flow.index('api("POST", "/api/jobs", { ...req, queue: true })')
+    assert flow.index("confirmRebuild(question)") < send
 
 
 def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
@@ -7675,3 +7689,84 @@ def test_the_mock_files_tiles_like_the_engine() -> None:
     got = _node_mock(script)
     assert got["hows"] == ["copy", "imported"] and got["room"] is True
     assert got["to"] == got["path"] == "/Volumes/Big/Alps/zOrthoStudio_+43+005"
+
+
+def test_three_plans_in_a_row_keep_only_the_last() -> None:
+    """A user opened three plan files one after the other and asked whether the first two stayed
+    (2026-10-11): each plan replaces the one before as ``replaceFlightPlan`` does, its squares
+    going but for those chosen by hand, so only the last plan's squares and the hand-chosen ones
+    remain."""
+    script = """
+      const plan = (from, to, ends, along) => ({ from, to, squares: { ends, along } });
+      const plans = [
+        plan("LSGG", "LGAV", ["+46+006", "+37+023"], ["+45+007", "+44+008"]),
+        plan("ENAT", "ENTC", ["+69+023", "+69+018"], ["+69+020"]),
+        plan("EDDM", "LSGG", ["+48+011", "+46+006"], ["+47+009"]),
+      ];
+      const byHand = new Set(["+44+008", "+43+005"]);
+      let tiles = ["+43+005", "+44+008"];
+      let fp = null;
+      for (const p of plans) {
+        if (fp) tiles = m.withoutPlan(tiles, fp, byHand);
+        fp = m.newFlightPlan(p, { ends: 16, along: 14 });
+        tiles = m.withPlan(tiles, fp, { cap: 500 }).tiles;
+      }
+      ({ tiles: [...tiles].sort(), kept: fp.plan.from + "-" + fp.plan.to })
+    """
+    got = _node_json(
+        "flightplan.js", "(() => {" + script.replace("({ tiles", "return ({ tiles") + "})()"
+    )
+    assert got["kept"] == "EDDM-LSGG"
+    assert got["tiles"] == sorted(["+43+005", "+44+008", "+48+011", "+46+006", "+47+009"])
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    replace = code[code.index("function replaceFlightPlan(") :]
+    replace = replace[: replace.index("\n}\n")]
+    assert "withoutPlan(state.tiles, state.flightPlan, state.byHand)" in replace
+    assert "setFlightPlanState(" in replace, "the plan kept is the new one, not one more"
+
+
+def test_only_the_pressed_flight_plan_button_says_it_reads() -> None:
+    """Opening a file greyed the SimBrief button and wrote « Reading the plan… » on it
+    (2026-10-11): both wait, and only the one pressed says what it does."""
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    render = code[code.index("function renderFlightPlan(") :]
+    render = render[: render.index("\n}\n")]
+    assert 'flightPlanLoading === "simbrief" ? t("flightplan.loading")' in render
+    assert 'flightPlanLoading === "file" ? t("flightplan.opening")' in render
+    assert 'flightPlanLoading = "file";' in code and 'flightPlanLoading = "simbrief";' in code
+
+
+def test_the_map_shows_the_squares_each_zone_takes() -> None:
+    """Every square a zone touches takes its level, so the sharp area runs past the outline, and a
+    zone under the zones above it may take none: seen only in X-Plane until the map drew them
+    (idea 7, 2026-10-11). The page asks the engine (POST /api/zones/cells) once the zones stop
+    changing, draws each area under its zone's outline, and the list says how many it takes."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", code, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    fetch = body("fetchAreas")
+    assert 'ctx.api("POST", "/api/zones/cells", { zones, provider: ctx.planProvider() })' in fetch
+    assert "if (mine !== zs.areasSeq) return;" in fetch, "only the last answer is drawn"
+    assert "scheduleAreas();" in body("renderZones")
+    areas = body("renderZoneAreas")
+    assert 'pane: "osxpZoneAreas"' in areas and "osxp-zone-area zl-${z.zl}" in areas
+    # a zone that only recolours draws no area: its colours follow the outline (2026-10-11)
+    assert "if (!a || !sharpens(z, selectedTiles)) continue;" in areas
+    assert "return !Number.isInteger(level) || z.zl > level;" in body("sharpens")
+    item = body("zoneItem")
+    assert "const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;" in item
+    assert 't("zones.takes_none")' in item and 't("zones.cells", { n: fmtInt(area.count) })' in item
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".plan-map .osxp-zone-area {" in css
+    # the demo answers, and a zone inside the one above it takes none there too
+    doc = _mock_json("zones")
+    got = _node_mock(
+        "const r = await m.mockApi('POST', '/api/zones/cells', {zones: "
+        + json.dumps(doc["zones"])
+        + ", provider: 'BI'});\nprocess.stdout.write(JSON.stringify(r));"
+    )
+    assert [z["id"] for z in got["zones"]] == [z["id"] for z in doc["zones"]]

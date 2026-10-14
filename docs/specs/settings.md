@@ -44,9 +44,9 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 
 | Level | Planned | Leaves here | Note |
 |---|---|---|---|
-| essential | 8 | 17 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 4 |
+| essential | 8 | 18 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 5 (`own_first` since idea 9) |
 | advanced | 14 | 14 | |
-| expert | 20 | 29 | the plan's expert list named 19 parameters under the heading "20"; ten of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates` |
+| expert | 20 | 30 | the plan's expert list named 19 parameters under the heading "20"; eleven of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads` |
 | total | 42 | 60 | |
 
 The 19 expert parameters that carry an Ortho4XP variable plus the 14 advanced plus the 11 Ortho4XP
@@ -75,10 +75,11 @@ Ortho4XP variable, and the hint (verbatim from `cfg_vars` unless marked "(OrthoS
 | `relief.source` | E `auto` / `file` / `copernicus` / `usgs` / `usgs1` / `canada` / `south_america` | - | `auto` | `custom_dem` (empty = auto, `COP30`, `NED1/3`, `NED1`, `COP30;HRDEM`, `COP30;ANADEM`) | Path to an elevation data file to be used instead of the default Viewfinderpanoramas.org ones (J. de Ferranti). [...] |
 | `relief.file` | str (path; required non-empty when `source` is `file`) | - | `""` | `custom_dem` | same hint |
 | `relief.fill_nodata` | E `nearest` / `zero` | - | `nearest` | `fill_nodata` (`True` = nearest) | When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data). |
-| `overlays` | E `xplane` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 4 and 4.3). Such a pack in Custom Scenery makes `none` the recommended answer, and the answer itself on a first run (`install/xplane.py` `packs_of_their_own`, `ui.md` 2.4). |
+| `overlays` | E `xplane` / `roads` / `none` | - | `xplane` | - (OrthoStudio XP) | Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into `yOrthoStudio_Overlays`. `roads` keeps X-Plane's network alone (roads, railways, power lines and their bridges): `to_build_overrides` adds `"."` (`ROADS_ONLY_EXCLUSION`) to `ovl_exclude_pol`, which every polygon definition matches, the user's own items kept (idea 6, 2026-10-11, after a simHeaven X-World Pro user did it by hand on 2026-10-04). `none` builds none (the page's builds: `BuildSpec.overlay = False`; `osxp build` keeps `--overlay/--no-overlay`) and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them (user request, 2026-09-13; `install.md` 4 and 4.3). Such a pack in Custom Scenery makes `none` the recommended answer, and the answer itself on a first run (`install/xplane.py` `packs_of_their_own`, `ui.md` 2.4). |
 | `xplane_dir` | str or absent (`None` = detected by `install.detect_xplane`) | - | `None` | `custom_scenery_dir` (its parent) | Your X-Plane Custom Scenery. Used only for "1-click" creation (or deletion) of symbolic links from Ortho4XP tiles to there. |
 | `data_dir` | str or absent (`None` = `$OSXP_HOME`); `PUT /api/settings` accepts a new folder only when `orthostudio.home.check_data_dir` does (absolute, found, writable, outside X-Plane's `Custom Scenery`, on a disk that hard-links files) and no build runs or waits | - | `None` | - (OrthoStudio XP) | The folder of the tiles OrthoStudio XP builds, of the imagery it downloads and of its caches, several GB per tile: on an external disk, for instance (user request, 2026-09-15; `pipeline-textures.md` 2). Empty: OrthoStudio XP's own folder. Its disk must hard-link files (APFS, Mac OS Extended, NTFS, ext4; not exFAT or FAT32). What was downloaded before stays where it is. |
 | `relief.folder` | str (empty = none) | - | `""` | `custom_dem` (as an overlay) | A folder of elevation files of the user's own, one per one-degree square, named after it (`N47E011.hgt`, `.tif`), subfolders included (user request, 2026-09-19; `dem.md` 3.0a). It is laid over the relief chosen, whichever that is: a square the folder holds takes its file when that file is at least as fine as that relief, and every other square keeps that relief (a coarser file is left out since 2026-09-20, which `DEM_OVERLAY_COARSER` says). |
+| `relief.own_first` | bool | - | false | – (OrthoStudio XP) | The files of `relief.folder` are laid even where they are coarser than the relief chosen, first on every square they cover and smoothed between their points (idea 9, 2026-10-11: a pilot whose files were coarser than his choice found them left aside). Off, the finest wins. Reaches `DemParams.own_relief_first` (`dem.md` 3.0a), in the key. |
 | `simbrief_user` | str or absent (`None` = the button is refused before anything is asked) | - | `None` | - (OrthoStudio XP) | The SimBrief name, or pilot ID, whose last flight plan step 1 of the Plan reads to choose the squares of a flight (user request, 2026-09-19; `flight-plan.md`, `api.md` `GET /api/flightplan/simbrief`). It is the one thing of the user that leaves the machine, and only when that button is pressed; *Default values* keeps it, as it keeps the folders of this computer. |
 
 `region`, planned to replace `lat`/`lon`/`zone_list`, did not become a setting: the request's
@@ -93,7 +94,7 @@ the sources with their maximum zoom level.
 | OrthoStudio XP | type / validation | unit | default | Ortho4XP | hint |
 |---|---|---|---|---|---|
 | `curvature_tol` | float `> 0` | - | 2 | `curvature_tol` | This parameter is intrinsically linked the mesh final density. [...] A higher curvature tolerance yields fewer triangles. |
-| `limit_tris` | float `[0, 5]` | M triangles | 3 | `limit_tris` | If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it. |
+| `limit_tris` | float `[0, 50)` | M triangles | 3 | `limit_tris` | If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it. |
 | `road_level` | int E `0..5` | - | 1 | `road_level` | Allows to level the mesh along roads and railways. Zero means nothing such is included; "1" looks for banking ways among motorways, primary and secondary roads and railway tracks; "2" adds tertiary roads; "3" brings residential and unclassified roads; "4" takes service roads, and 5 finishes with tracks. [...] |
 | `min_area` | float `>= 0` | km² | 0.001 | `min_area` | Minimum area (in km^2) a water patch needs to be in order to be included in the mesh as such. Contiguous water patches are merged before area computation. |
 | `max_area` | float `>= 0` | km² | 200 | `max_area` | Any water patch larger than this quantity (in km^2) will be masked like the sea. |
@@ -135,6 +136,7 @@ the sources with their maximum zoom level.
 | `photo_brightness` | float `[-0.5, 0.5]` | - | 0 | – | Brightness of the photo, used when `essential.photo_look` is `custom`. |
 | `photo_contrast` | float `[-0.5, 0.5]` | - | 0 | – | Contrast of the photo, used when `essential.photo_look` is `custom`. |
 | `photo_saturation` | float `[-1, 0.5]` | - | 0 | – | Colour of the photo, used when `essential.photo_look` is `custom`; -1 is grey. |
+| `flatten_helipads` | bool | - | true | – | OrthoStudio XP's own (idea #8, 2026-10-11): the helipads of OpenStreetMap are made flat, as Ortho4XP always makes them (`airports-encoding.md` 9). Off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way. It reaches the rule `orthostudio.vectors` as `VectorsParams.flatten_helipads`, in its key. |
 | `decal_on_sea` | bool | - | false | – | The decals go on land only. With this on they go on the sea as well, as Ortho4XP writes them; lakes and rivers never have them. |
 | `decal` | one of 67 names | - | `maquify_2_green_key.dcl` | none | OrthoStudio XP's own: which of X-Plane 12's decals the terrain files name when decals are on (`orthostudio/decals.py`: the list of the setdecal tool, less the five names X-Plane 12.4.4 no longer exports). The pack writes it, so another choice, or turning decals on or off, assembles the pack again and builds nothing else (`pipeline-build.md` 2.3). |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
@@ -226,7 +228,7 @@ fields (`tests/test_config_schema.py`).
 `to_build_overrides(settings) -> dict[str, object]`: the Ortho4XP tile variables (names of
 `tilefiles.TILE_PARAMETERS`), the two overlay settings, and OrthoStudio XP's own keys of
 `tilefiles.OSXP_PARAMETERS` but `photo_zones`, which comes from the zones (`osm_folder`,
-`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, and `photo_brightness`,
+`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `flatten_helipads`, and `photo_brightness`,
 `photo_contrast`, `photo_saturation` from `photo_look`), typed as `BuildSpec.config` expects them
 (`pipeline/build.py`, `BuildSpec.tile_config`):
 

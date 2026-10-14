@@ -261,6 +261,17 @@ def test_a_helipad_alone_is_flattened_without_inventing_an_airport(tmp_path: Pat
     assert not {"RUNWAY", "TAXIWAY", "HANGAR"} & set(stats["seeds_by_marker"])
 
 
+def test_a_helipad_keeps_its_slope_when_flattening_is_off(tmp_path: Path) -> None:
+    """Idea #8 (2026-10-11): a scenery author who places a helipad on a slope wants the ground as
+    it is. ``flatten_helipads=False`` leaves out the flat polygon the same node gets above; the rule
+    and the tile's own setting carry it (``config.overrides``, ``VectorsParams``)."""
+    osm = OsmXml()
+    osm.node(5.5, 43.5, aeroway="helipad")
+    out = run_rule(tmp_path, osm, flatten_helipads=False)
+    stats = json.loads((out / "stats.json").read_text(encoding="utf-8"))
+    assert stats["seeds_by_marker"].get("INTERP_ALT", 0) == 0
+
+
 def test_a_tiny_aerodrome_is_discarded_with_a_code_not_silently() -> None:
     builder = Store()
     aerodrome(builder, 5.5, 43.5, 0.0003, "LFAH")

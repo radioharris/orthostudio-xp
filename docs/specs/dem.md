@@ -506,7 +506,14 @@ the 30 m grid under it in silence), and the overlays' rasters are let go once la
 raster is saved. An overlay coarser
 than the base is left aside with `DEM_OVERLAY_COARSER`, which names the file and both steps (a user
 with Sonny's 1" sets and the USGS 1/3" relief asked which one answers, 2026-09-20; the American sets
-of one's own are made from that very source). Equal steps go to the overlay, which is what a file
+of one's own are made from that very source). **Unless `own_relief_first`** (Settings' *Use my
+files even where they are coarser than the relief above*, `essential.relief.own_first`, idea 9,
+2026-10-11: a pilot whose files were coarser than his choice found them left aside): a file of one's
+own is then laid however coarse, first, so that a finer overlay after it still wins where both have
+data, on the base's grid, smoothed between its own points (`_lay_one_smooth`: bilinear where its
+four nearest points have data, the nearest where only that one has), and `own` says `"used": true,
+"coarser": true`. A source laid as an overlay (Canada's lidar) keeps the rule. It is in
+`DemParams`, so the key changes with it. Equal steps go to the overlay, which is what a file
 of one's own is for. The comparison is on the *file*, not on the raster in hand (`_file_step`):
 `read_elevation_from_file` refines a 1201 point `.hgt` to 3601 as Ortho4XP does, so a 3" file would
 otherwise pass for a 1" one. `meta.json` names what was

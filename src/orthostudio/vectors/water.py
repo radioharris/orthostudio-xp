@@ -20,7 +20,7 @@ Nothing here touches the network.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import cos, pi
 from typing import NamedTuple, Protocol
@@ -48,6 +48,7 @@ __all__ = [
     "build_water_layers",
     "cut_to_tile",
     "encode_multipolygon",
+    "is_dry_basin",
     "lon_to_m",
     "merge_overlapping_polygons",
     "scale_x",
@@ -167,8 +168,8 @@ class WaterResult:
     lakes: tuple[LakeDecision, ...] = ()
     """Every body compared against ``max_area``, masked or not."""
     counts: dict[str, int] = field(default_factory=dict)
-    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``; and
-    ``dry``, the pieces the aerodromes took out, only when there are some."""
+    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``,
+    ``dry_basins``; and ``dry``, the pieces the aerodromes took out, only when there are some."""
     dry: BaseGeometry = field(default_factory=geometry.Polygon)
     """What the aerodromes took out of the lakes and rivers (tile-local)."""
 
@@ -403,6 +404,18 @@ def _element_areas(polygons: Sequence[PolygonGeometry]) -> dict[tuple[str, int],
     return areas
 
 
+def is_dry_basin(tags: Mapping[str, str]) -> bool:
+    """A rainwater basin OpenStreetMap marks dry most of the year: ``water=basin`` with
+    ``intermittent=yes`` (retention, detention, infiltration).
+
+    Ortho4XP draws it as water, so the grass of the photo lay under X-Plane's water: 37 of them
+    around Leipzig/Halle airport (EDDP, ``+51+012``), up to 29,000 m², a user's screenshot and
+    idea #13 (2026-10-11). Left out, its ground is the photo's. A lake or a pond marked
+    intermittent, and a basin that is not, stay water.
+    """
+    return tags.get("water") == "basin" and tags.get("intermittent") == "yes"
+
+
 def build_water_layers(
     osm_data: OsmData,
     tile: TileRef,
@@ -421,6 +434,8 @@ def build_water_layers(
     it is, so a tile without such an aerodrome gets the very layers it got before.
     """
     polygons = osm_data.multipolygons_with(on_skip=lambda code, ctx: _report(on_event, code, ctx))
+    dry_basins = {(item.kind, item.id) for item in polygons if is_dry_basin(item.tags)}
+    polygons = [item for item in polygons if (item.kind, item.id) not in dry_basins]
     threshold = params.max_area * 1e6 / (LAT_TO_M * lon_to_m(tile.lat + 0.5))
     element_area = _element_areas(polygons)
     lakes: list[LakeDecision] = []
@@ -483,6 +498,7 @@ def build_water_layers(
         "water": len(encoded_water.geometry.geoms),
         "sea_equiv": len(encoded_sea.geometry.geoms),
         "dropped": encoded_water.dropped + encoded_sea.dropped,
+        "dry_basins": len(dry_basins),
     }
     if taken:
         counts["dry"] = len(taken)

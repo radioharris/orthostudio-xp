@@ -158,7 +158,7 @@ export const QUESTION_PATHS = {
   lakes: ["advanced.ratio_water_pct"],
   colours: ["essential.photo_look", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"],
   relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata"],
-  own: ["essential.relief.folder"],
+  own: ["essential.relief.folder", "essential.relief.own_first"],
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
   data: ["essential.data_dir"],
@@ -325,6 +325,11 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
           recommended: !brought,
         },
         {
+          value: "roads",
+          label: t("settings.q.overlays_roads"),
+          note: brought ? t("settings.q.overlays_roads_twice", { pack: brought }) : t("settings.q.overlays_roads_note"),
+        },
+        {
           value: "none",
           label: t("settings.q.overlays_none"),
           note: brought ? t("settings.q.overlays_found", { pack: brought }) : t("settings.q.overlays_none_note"),
@@ -409,7 +414,9 @@ export function settingsSummary(settings) {
   else if (relief === "south_america") parts.push(t("plan.s.relief_anadem"));
   else parts.push(t("plan.s.relief_auto"));
   if (relief !== "file" && String(e.relief?.folder || "").trim()) parts.push(t("plan.s.relief_own"));
-  parts.push(e.overlays === "none" ? t("plan.s.overlays_none") : t("plan.s.overlays_xplane"));
+  if (e.overlays === "none") parts.push(t("plan.s.overlays_none"));
+  else if (e.overlays === "roads") parts.push(t("plan.s.overlays_roads"));
+  else parts.push(t("plan.s.overlays_xplane"));
   return parts;
 }
 
@@ -429,7 +436,7 @@ function patchesDefault(view) {
 const THREE_STEPS = "coast.three_steps";
 
 export const EXPERT_GROUPS = [
-  { id: "airports", title: () => t("settings.x.group_airports"), fields: ["essential.airports.zoom_level", "essential.airports.extent_km"] },
+  { id: "airports", title: () => t("settings.x.group_airports"), fields: ["essential.airports.zoom_level", "essential.airports.extent_km", "expert.flatten_helipads"] },
   { id: "coast", title: () => t("settings.x.group_coast"), fields: [THREE_STEPS, "expert.mask_zl", "expert.distance_masks_too", "expert.sea_texture_blur", "advanced.overlay_lod_km"] },
   { id: "water", title: () => t("settings.x.group_water"), fields: ["advanced.max_area", "advanced.min_area", "advanced.use_masks_for_inland", "advanced.water_smoothing", "expert.water_simplification", "advanced.sea_smoothing_mode"] },
   {
@@ -485,6 +492,7 @@ const FIELD_TEXT = {
   "expert.normal_map_strength": [() => t("settings.x.normals"), () => t("settings.x.normals_hint")],
   "expert.use_decal_on_terrain": [() => t("settings.x.decal"), () => t("settings.x.decal_hint")],
   "expert.decal_on_sea": [() => t("settings.x.decal_sea"), () => t("settings.x.decal_sea_hint")],
+  "expert.flatten_helipads": [() => t("settings.x.flatten_helipads"), () => t("settings.x.flatten_helipads_hint")],
   "expert.decal": [() => t("settings.x.decal_name"), () => t("settings.x.decal_name_hint")],
   "expert.photo_brightness": [() => t("settings.x.photo_brightness"), () => t("settings.x.photo_brightness_hint")],
   "expert.photo_contrast": [() => t("settings.x.photo_contrast"), () => t("settings.x.photo_contrast_hint")],
@@ -531,6 +539,7 @@ export function rangeText(prop, unit = "") {
   const u = !unit || unit === "ZL" ? "" : unit === "°" ? unit : ` ${unit}`;
   let range = "";
   if (known(prop.minimum) && known(prop.maximum)) range = t("settings.x.range_between", { min: num(prop.minimum), max: num(prop.maximum) + u });
+  else if (known(prop.minimum) && known(prop.exclusiveMaximum)) range = t("settings.x.range_between_under", { min: num(prop.minimum), max: num(prop.exclusiveMaximum) + u });
   else if (known(prop.minimum)) range = t("settings.x.range_at_least", { min: num(prop.minimum) + u });
   else if (known(prop.exclusiveMinimum)) range = t("settings.x.range_above", { min: num(prop.exclusiveMinimum) + u });
   const byDefault = known(prop.default) ? t("settings.x.range_default", { value: num(prop.default) + u }) : "";
@@ -1007,12 +1016,22 @@ function ownFolderQuestion(view) {
         view.changed();
       } }, t("settings.q.own_choose"))
     : null;
+  // Idea 9 (2026-10-11): a pilot whose files were coarser than the relief chosen above found them
+  // left aside; ticked, they come first on every square they cover.
+  const first = h("input", { type: "checkbox", id: "q-relief-own-first", dataset: { focusKey: "q:relief-own-first" } });
+  first.checked = Boolean(getPath(d, "essential.relief.own_first"));
+  first.addEventListener("change", () => {
+    setPath(d, "essential.relief.own_first", first.checked);
+    view.changed();
+  });
   return questionBox(view, "own",
     h("div", { class: "sub-question" },
       h("label", { class: "sub-question-title", for: "q-relief-folder" }, t("settings.q.own_folder")),
       h("div", { class: "path-row" }, field, choose)),
     h("p", { class: "question-help" }, t("settings.q.own_names")),
-    h("p", { class: "question-help" }, t("settings.q.own_rest")));
+    h("p", { class: "question-help" }, t("settings.q.own_rest")),
+    h("label", { class: "check-row", for: "q-relief-own-first" }, first, " ", t("settings.q.own_first")),
+    h("p", { class: "question-help" }, t("settings.q.own_first_help")));
 }
 
 /**

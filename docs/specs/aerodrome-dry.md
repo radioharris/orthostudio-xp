@@ -3,7 +3,7 @@
 Status: in branch `aerodrome-dry` (2026-10-14). Code: `vectors/layers.py` (`dry_aerodromes`),
 `vectors/water.py` (`DryAerodromes`, `touched_pieces`, `left_after`, `without`,
 `build_water_layers(dry=)`), `vectors/coast.py` (`build_sea_layers(dry=)`), `vectors/rule.py`
-(version 9). Tests:
+(version 10 in 1.1.0, with the dry basins). Tests:
 `tests/test_aerodrome_dry.py`.
 
 ## 1. The problem
@@ -71,8 +71,9 @@ ground blue, the photo of the place shows.
 
 ## 3. Isolation and the cache
 
-* `orthostudio.vectors` goes to version 9; 5 is taken by the dry basins of the `ideas` branch, 6
-  to 8 by first forms of this rule, whose artefacts may be in a store. Every tile runs its vector
+* `orthostudio.vectors` goes to version 9 on the rule's branch and to 10 in 1.1.0, where the dry
+  basins of the `ideas` branch (5) join it; 6 to 8 are first forms of this rule, whose artefacts
+  may be in a store. Every tile runs its vector
   stage again once; a tile without such an aerodrome writes the same files, so its mesh, masks
   and DSF come from the store.
 * `stats.json` says what happened (`water.dry`, `coastline.dry`), only when something did.

@@ -104,6 +104,10 @@ class VectorsParams(RuleParams):
     mesh_zl: int = 19
     """Zoom level of the orthophoto grid inserted as DUMMY edges (``:96-117``)."""
 
+    flatten_helipads: bool = True
+    """Ortho4XP flattens every OSM helipad (``flatten_helipads``, ``O4_Airport_Utils.py:1370``);
+    off, the ground keeps its slope there (OrthoStudio XP's, idea #8, 2026-10-11)."""
+
     apt_smoothing_pix: int = 8
     """Airport elevation smoothing width, in DEM pixels (``O4_Config_Utils.py:117``).
 
@@ -407,6 +411,16 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
         os.replace(tmp, final)
 
 
+# Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
+# layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
+# Version 3: a runway drawn in parts that close on themselves is an outline or two copies of one
+# line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
+# 2026-10-12; version 2 in 1.0.1, which has no dry basins): a tile built again recomputes its
+# airports.
+# Version 5: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of
+# its ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13; version 4 in
+# 1.0.2, which has no dry basins); a tile with no such node gets the same files again, so its mesh
+# and DSF come from the cache.
 @rule(
     name="orthostudio.vectors",
     # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
@@ -422,7 +436,8 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # forms of this rule; artefacts of all three may be in a store already.
     # 9: what such a cut leaves is put on the noder's grid, so a lake it leaves in two lobes that
     # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
-    version=9,
+    # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15).
+    version=10,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports"),
     ram_mb=1200,
@@ -434,4 +449,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@4``. Not wired by default in wave 1 (arbitration A7)."""
+"""``orthostudio.vectors@10``."""
