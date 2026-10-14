@@ -186,6 +186,10 @@ class LayerRequest:
     airports: Path | None = None
     """Wave 2: the airport artefact. Always ``None`` while ``orthostudio.airports`` does
     not exist."""
+    global_scenery: Path | None = None
+    """The tile's DSF of X-Plane's Global Scenery: its elevation says where X-Plane draws land,
+    which guards a tile against a coastline that would make it all sea (``vectors-coastline.md``
+    section 9). ``None`` without X-Plane's scenery: the coastline is taken as it is."""
     cancel: threading.Event | None = None
     progress: Callable[[float, str], None] | None = None
     """Where each family says it has started. This step said nothing at all, from beginning to
@@ -336,6 +340,7 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
         dem=dem,
         patches=_optional(dict(ctx.inputs), "patches"),
         airports=_optional(dict(ctx.inputs), "airports"),
+        global_scenery=_optional(dict(ctx.inputs), "global_scenery"),
         cancel=job.cancel,
         progress=job.progress,
     )
@@ -436,10 +441,11 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # forms of this rule; artefacts of all three may be in a store already.
     # 9: what such a cut leaves is put on the noder's grid, so a lake it leaves in two lobes that
     # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
-    # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15).
+    # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15), with the
+    # coastline guard's new input, the tile's Global Scenery DSF (``vectors-coastline.md``).
     version=10,
     params=VectorsParams,
-    inputs=("osm", "dem", "patches", "airports"),
+    inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,
     kind="dir",
 )

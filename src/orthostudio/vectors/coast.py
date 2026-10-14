@@ -185,6 +185,18 @@ class CoastStats:
     inverted_tile: bool = False
 
 
+LAND_SHARE_MAX = 0.5
+"""Above this share of land in X-Plane's own scenery, the sea a coastline of rings alone would make
+is no sea, and the coastline is ignored. A coastline with no open chain makes the whole tile sea
+but for its islands: right in the open sea, a whole city drowned when the ring is a building OSM
+tags ``natural=coastline`` (Tehran's market, Manaus's hotel, 2026-10). Over the 831 tiles of the
+library taken as sea that way (2026-10-13), the true seas had at most 0.5 % of X-Plane land where
+the sea would go (islands of the Kara Sea), the eleven drowned tiles all of it."""
+
+LandShare = Callable[[BaseGeometry], "float | None"]
+"""The share of a tile-local area X-Plane's own scenery draws as land, ``None`` when unknown."""
+
+
 @dataclass(frozen=True, slots=True)
 class CoastResult:
     """Everything the PSLG assembler needs from the coastline layer."""
@@ -214,6 +226,11 @@ class CoastResult:
     stats: CoastStats = field(default_factory=CoastStats)
     errors: tuple[OsxpError, ...] = ()
     """Non-fatal problems, when ``on_bad_coastline='record'`` kept them non-fatal."""
+    on_land: float | None = None
+    """Set when the coastline was ignored (:data:`LAND_SHARE_MAX`): the share of the sea it would
+    have made that X-Plane's own scenery draws as land."""
+    on_land_at: tuple[tuple[float, float], ...] = ()
+    """``(lat, lon)`` of the rings of that coastline: where to look in OpenStreetMap."""
 
     def to_layers(
         self, alt_vec: Callable[[NDArray[np.floating]], NDArray[np.floating]] | None = None
@@ -566,6 +583,7 @@ def build_sea_layers(
     params: CoastParams | None = None,
     *,
     sea_equiv: geometry.MultiPolygon | None = None,
+    land: LandShare | None = None,
     dry: DryAerodromes | None = None,
 ) -> CoastResult:
     """Build the SEA line layer and the SEA region seeds of ``tile``.
@@ -579,6 +597,11 @@ def build_sea_layers(
     The order of operations is Ortho4XP's (``O4_Vector_Map.py:402-451``): the lines are encoded
     first, from the *strictly* cut coastline, then the topology is rebuilt from a *different*
     cut -- rings uncut, open chains cut and line-merged -- and the seeds come last.
+
+    ``land`` guards the one case where a coastline makes the whole tile sea, the one without an
+    open chain: when X-Plane's scenery draws more than :data:`LAND_SHARE_MAX` of that sea as land,
+    the coastline is ignored and the tile is land, as with no coastline at all. Without ``land``,
+    or in any other case, the result is the very one of before.
 
     ``dry`` gives the aerodromes whose water is taken out of the sea before its seeds are placed
     (``docs/specs/aerodrome-dry.md``); the outline of what was taken joins the SEA lines, so the
@@ -613,6 +636,22 @@ def build_sea_layers(
         errors = (exc,)
         area = SeaArea(empty, empty, empty, empty, CoastTopology(), 0, 0)
 
+    topo = area.topology
+    tile_assumed_sea = not topo.chain_coords and not area.sea.is_empty
+    if tile_assumed_sea and land is not None:
+        share = land(area.sea)
+        if share is not None and share > LAND_SHARE_MAX:
+            at = tuple(
+                (round(p.y + tile.lat, 5), round(p.x + tile.lon, 5))
+                for p in (geometry.Polygon(loop).representative_point() for loop in loops[:5])
+            )
+            return CoastResult(
+                sea_equiv=sea_equiv or geometry.MultiPolygon(),
+                stats=empty_stats,
+                on_land=share,
+                on_land_at=at,
+            )
+
     sea, taken = area.sea, geometry.Polygon()
     if dry is not None and not sea.is_empty and sea.intersects(dry.outlines):
         cut = touched_pieces(sea, dry)
@@ -626,8 +665,6 @@ def build_sea_layers(
     if not sea.is_empty:
         seeds = shapely.get_coordinates(shapely.point_on_surface(np.asarray(sea.geoms)))
 
-    topo = area.topology
-    tile_assumed_sea = not topo.chain_coords and not sea.is_empty
     stats = CoastStats(
         ways_read=ways_read,
         ways_dropped=ways_dropped,

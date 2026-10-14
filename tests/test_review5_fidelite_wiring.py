@@ -67,7 +67,13 @@ def test_the_parameters_are_ortho4xps_stage_1_minus_two_documented_absences() ->
 
 def test_every_declared_parameter_changes_the_artefact_key() -> None:
     """A parameter that does not enter the key is a parameter the store cannot tell apart."""
-    inputs = {"osm": "a" * 64, "dem": "b" * 64, "patches": None, "airports": None}
+    inputs = {
+        "osm": "a" * 64,
+        "dem": "b" * 64,
+        "patches": None,
+        "airports": None,
+        "global_scenery": None,
+    }
     base = VectorsParams(tile=TILE.name)
     reference = key_for(VECTORS, base, inputs)
     changed = {
@@ -98,10 +104,11 @@ def test_every_input_of_the_rule_changes_the_artefact_key() -> None:
         "dem": "b" * 64,
         "patches": None,
         "airports": None,
+        "global_scenery": None,
     }
     params = VectorsParams(tile=TILE.name)
     reference = key_for(VECTORS, params, inputs)
-    for name in ("osm", "dem", "patches", "airports"):
+    for name in ("osm", "dem", "patches", "airports", "global_scenery"):
         assert key_for(VECTORS, params, inputs | {name: "c" * 64}) != reference, name
 
 

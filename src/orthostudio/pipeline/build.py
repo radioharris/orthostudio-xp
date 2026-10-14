@@ -2143,6 +2143,9 @@ def declare(
                 # ``osm`` (``airports-integration.md`` 1); the input keeps its place in the key
                 # and stays absent.
                 "airports": None,
+                # X-Plane's own land, which a coastline that would make the whole tile sea must
+                # agree with (``vectors-coastline.md`` section 9; Tehran and Manaus, 2026-10).
+                "global_scenery": global_source(spec.tile),
             },
             # Not "cpu": a cpu node is shipped to a spawned worker process, and neither this
             # node's run closure (it binds the build env) nor the decorated rule function

@@ -47,12 +47,13 @@ from orthostudio.airports_vec.stage import (
     smooth_elevation,
 )
 from orthostudio.dem.dem import Dem
+from orthostudio.dem.xplane import NODATA_I16, read_elevation_posts
 from orthostudio.errors import OsxpError, Severity
 from orthostudio.model import TileRef
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.vectors import osmdata
 from orthostudio.vectors.assemble import VectorLayer, VectorLayers, to_vector_layers
-from orthostudio.vectors.coast import CoastParams, build_sea_layers
+from orthostudio.vectors.coast import CoastParams, LandShare, build_sea_layers
 from orthostudio.vectors.geom import polygons_of
 from orthostudio.vectors.osmdata import OsmData
 from orthostudio.vectors.patches import build_patch_layers
@@ -381,6 +382,7 @@ def build_layers(request: object) -> LayerBuild:
         tile,
         CoastParams(),
         sea_equiv=water_result.sea_equiv,
+        land=xp_land_share(getattr(request, "global_scenery", None), tile),
         dry=dry,
     )
     coastline = to_vector_layers(
@@ -397,6 +399,19 @@ def build_layers(request: object) -> LayerBuild:
     }
     if not coast_result.dry.is_empty:
         counts["coastline"]["dry"] = len(polygons_of(coast_result.dry))
+    if coast_result.on_land is not None:
+        counts["coastline"]["on_land_percent"] = round(100 * coast_result.on_land)
+        on_event(
+            OsxpError(
+                "OSM_COAST_ON_LAND",
+                context={
+                    "tile": tile.name,
+                    "share": f"{coast_result.on_land:.0%}",
+                    "where": " ".join(f"{lat},{lon}" for lat, lon in coast_result.on_land_at)
+                    or "the tile's border",
+                },
+            )
+        )
     timing.coastline_s = time.perf_counter() - started
 
     log.info(
@@ -511,6 +526,43 @@ def _water_runway(tags: Mapping[str, str]) -> bool:
         return True
     ends = [end.strip() for end in tags.get("ref", "").split("/")]
     return any(re.fullmatch(r"\d{1,2}[LRC]?W", end) for end in ends if end)
+
+
+#: X-Plane's elevation posts are read one in this many each way: 301 x 301 points, a share to
+#: well under a percent (the guard's margin is from 0.5 % to 100 %).
+LAND_STRIDE = 4
+
+
+def xp_land_share(dsf: Path | None, tile: TileRef) -> LandShare | None:
+    """The share of an area X-Plane's own scenery draws as land, from the elevation of the tile's
+    Global Scenery DSF: land is above 0.5 m, X-Plane's sea being at 0 m (a sea below it, the
+    Caspian at -28 m, is no land). The DSF is read only when asked, which only a tile whose
+    coastline would make it all sea does. ``None`` without the DSF, or when it cannot be read:
+    the coastline is then taken as it is, as always."""
+    if dsf is None:
+        return None
+    posts: list[NDArray[np.float32]] = []
+
+    def share(area: BaseGeometry) -> float | None:
+        if not posts:
+            try:
+                posts.append(read_elevation_posts(dsf, tile.lat, tile.lon))
+            except OsxpError as exc:
+                log.info("%s: X-Plane's land could not be read (%s)", tile.name, exc.code)
+                return None
+        full = posts[0]  # rows north to south, columns west to east, edges included
+        rows = np.arange(0, full.shape[0], LAND_STRIDE)
+        cols = np.arange(0, full.shape[1], LAND_STRIDE)
+        z = full[np.ix_(rows, cols)]
+        y, x = np.meshgrid(
+            1.0 - rows / (full.shape[0] - 1), cols / (full.shape[1] - 1), indexing="ij"
+        )
+        inside = shapely.contains_xy(area, x, y) & (z > NODATA_I16)
+        if not inside.any():
+            return None
+        return float((z[inside] > 0.5).mean())
+
+    return share
 
 
 def stores_of(source: OsmSource, names: Sequence[str]) -> list[OsmData]:
