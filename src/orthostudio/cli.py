@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -534,10 +535,12 @@ def _plan(specs: list, *, online: bool, json_output: bool, xplane: Path | None =
     from orthostudio.airports import default_index
     from orthostudio.estimate import estimate, render_text
 
-    try:  # X-Plane's airport list places the airports of a tile whose map data is not read yet
-        airports = default_index(xplane)
-    except OsxpError:
-        airports = None
+    airports = None
+    if any(s.config.get("cover_airports_with_highres") in ("True", "ICAO") for s in specs):
+        try:  # X-Plane's list places the airports of a tile whose map data is not read yet
+            airports = default_index(xplane)
+        except (OsxpError, OSError, sqlite3.Error):
+            airports = None
     est = estimate(specs, online=online, airports=airports)
     if json_output:
         typer.echo(json.dumps(est.to_dict(), indent=1))

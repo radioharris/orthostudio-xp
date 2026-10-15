@@ -422,8 +422,10 @@ usually adds, or its reference point without a runway. On the 18 tiles of a data
 data held their airports, the runways gave 1 037 ZL18 textures of ICAO airports against the 1 150
 the builds made, within a fifth on 15 tiles (Key West's naval air station, a base around short
 runways, at a quarter); 500 m gave 1 199 but a third too many on a tile, the reference point with
-1 km around 1 036 with Schiphol at half. Without the map data and without the list (no X-Plane
-folder), nothing is counted. Until 1.1.0 the plan of a tile never built left the airports out: 54
+1 km around 1 036 with Schiphol at half. The list is asked for only when the settings make airports
+sharper; without the map data and without the list (no X-Plane folder, no `apt.dat`, an error while
+the list is made), the airports are not counted and the plan answers all the same: a disk error
+while the list was made took the whole plan down before 1.1.0 was out (2026-10-15). Until 1.1.0 the plan of a tile never built left the airports out: 54
 textures announced for +43+006, 114 built (49 at ZL15, 65 at ZL18, 2026-10-15). The notes say
 where the airports were read.
 

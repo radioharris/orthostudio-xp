@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 import stat
 import subprocess
 import threading
@@ -1643,11 +1644,17 @@ def create_app(
                 env = _call_env_factory(factory, specs)
             try:
                 # the airports a build makes sharper, placed for a tile whose map data is not
-                # read yet: without X-Plane's list, the Plan counts them once it is
-                try:
-                    airports = airport_index()
-                except OsxpError:
-                    airports = None
+                # read yet; X-Plane's list is asked only then, and a list that cannot be had
+                # (no apt.dat, a disk error while it is made) leaves them uncounted, never the
+                # Plan unanswered
+                airports = None
+                if any(
+                    s.config.get("cover_airports_with_highres") in ("True", "ICAO") for s in specs
+                ):
+                    try:
+                        airports = airport_index()
+                    except (OsxpError, OSError, sqlite3.Error) as exc:
+                        log.info("the Plan counts no airport of X-Plane's list: %s", exc)
                 est = estimate(specs, online=req.online, env=env, airports=airports)
             finally:
                 if isinstance(env, BuildEnv):
