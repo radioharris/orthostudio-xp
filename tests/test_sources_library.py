@@ -844,3 +844,44 @@ def test_the_last_osm_line_says_the_layers_arrived() -> None:
         1.0,
         "+47+011: 4 OSM layers received from library (2026-09-13 #27a5d866778b)",
     )
+
+
+def test_the_kept_connections_are_dropped_when_the_network_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The connections kept to the library do not survive a change of network: after a VPN was
+    switched on, the first tile waited 18.5 s for them (2026-10-15). Where this computer would
+    send from is read before each request, and when it changed the kept session is closed and a
+    new one made; while it stays, or cannot be told, the session is kept."""
+    import curl_cffi.requests
+
+    from orthostudio.sources import library
+
+    made: list[object] = []
+    closed: list[object] = []
+
+    class Session:
+        def __init__(self, **_kw: object) -> None:
+            made.append(self)
+
+        async def close(self) -> None:
+            closed.append(self)
+
+    monkeypatch.setattr(curl_cffi.requests, "AsyncSession", Session)
+    used: list[object] = []
+
+    async def work(session: object) -> list[tuple[int, bytes, str]]:
+        used.append(session)
+        return []
+
+    kept = library._Connections()
+    try:
+        for route in ("192.168.1.20", "192.168.1.20", "", "100.64.0.7", "100.64.0.7"):
+            kept.run(work, route)
+    finally:
+        kept.close()
+    assert len(made) == 2 and closed[:1] == [made[0]]
+    assert used == [made[0], made[0], made[0], made[1], made[1]]
+    # a server on this computer is reached from this computer; no address, nothing to tell
+    assert library._route_mark("http://127.0.0.1:9/manifest.json") == "127.0.0.1"
+    assert library._route_mark("not an address") == ""

@@ -28,6 +28,7 @@ import functools
 import hashlib
 import io
 import logging
+import socket
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import orjson
 import zstandard
@@ -180,9 +182,16 @@ class _Connections:
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._session: Any = None
+        self._route = ""
+        """Where the kept connections were made from (:func:`_route_mark`)."""
 
-    def run(self, work: Callable[[Any], Awaitable[list[Answer]]]) -> list[Answer]:
-        """``work(session)``, run on the kept loop, from whichever thread asks."""
+    def run(self, work: Callable[[Any], Awaitable[list[Answer]]], route: str = "") -> list[Answer]:
+        """``work(session)``, run on the kept loop, from whichever thread asks.
+
+        ``route`` is where this computer would now send from (:func:`_route_mark`). When it is not
+        where the kept connections were made, the network changed under them -- a VPN switched on
+        or off, another Wi-Fi -- and they are dropped for new ones: the first tile after a VPN was
+        switched on waited 18.5 s for them, the next ones 0.9 and 1.8 s (2026-10-15)."""
         with self._lock:
             if self._loop is None or self._loop.is_closed():
                 self._loop = asyncio.new_event_loop()
@@ -191,9 +200,20 @@ class _Connections:
                     target=self._loop.run_forever, name="osxp-library-http", daemon=True
                 ).start()
             loop = self._loop
-        return asyncio.run_coroutine_threadsafe(self._with_session(work), loop).result()
+            moved = bool(route and self._route and route != self._route)
+            if route:
+                self._route = route
+        if moved:
+            log.info("library: the network changed; new connections")
+        return asyncio.run_coroutine_threadsafe(self._with_session(work, moved), loop).result()
 
-    async def _with_session(self, work: Callable[[Any], Awaitable[list[Answer]]]) -> list[Answer]:
+    async def _with_session(
+        self, work: Callable[[Any], Awaitable[list[Answer]]], moved: bool = False
+    ) -> list[Answer]:
+        if moved and self._session is not None:
+            old, self._session = self._session, None
+            with contextlib.suppress(Exception):  # dead connections: closing them is local
+                await asyncio.wait_for(old.close(), timeout=2.0)
         if self._session is None:  # made on its loop: nothing awaits between test and assignment
             from curl_cffi.requests import AsyncSession
 
@@ -222,6 +242,29 @@ class _Connections:
 
 _CONNECTIONS = _Connections()
 atexit.register(_CONNECTIONS.close)
+
+
+def _route_mark(url: str) -> str:
+    """The address this computer would send from to reach ``url``'s server, ``""`` when it cannot
+    tell. It changes with the network (a VPN switched on or off, another Wi-Fi, a cable pulled),
+    which the kept connections do not survive. No packet leaves: connecting a UDP socket only
+    picks the route, the same way on macOS, Windows and Linux."""
+    parts = urlsplit(url)
+    if not parts.hostname:
+        return ""
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        found = socket.getaddrinfo(parts.hostname, port, type=socket.SOCK_DGRAM)
+    except (OSError, ValueError):
+        return ""
+    for family, _kind, _proto, _name, address in found:
+        try:
+            with socket.socket(family, socket.SOCK_DGRAM) as probe:
+                probe.connect(address)
+                return str(probe.getsockname()[0])
+        except OSError:  # an IPv6 address with no IPv6 route: the next one
+            continue
+    return ""
 
 
 def _why(exc: BaseException) -> str:
@@ -275,7 +318,7 @@ def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[Answ
 
         return list(await asyncio.gather(*(one(url) for url in urls)))
 
-    return _CONNECTIONS.run(run)
+    return _CONNECTIONS.run(run, _route_mark(urls[0]) if urls else "")
 
 
 # -- the manifest -----------------------------------------------------------------------------
