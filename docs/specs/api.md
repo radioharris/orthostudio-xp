@@ -563,7 +563,7 @@ did on its own, per tile, for the page's end-of-build panel:
 |---|---|---|
 | `nodes` | the events | `hit`, `built`, `failed`, `skipped` counts |
 | `stage_time` | the events | `seconds` per stage (`{osm: 1.9, relief: 21.5, ...}`) |
-| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained) |
+| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found, the newest of the tile's own level, with every report of the same `key12`: one per level the node prepared, those of the zones and of the airports made sharper too (only the tile's own was read, and +45+005 said 63 textures where its build made 174, 2026-10-15) | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained), summed over those reports |
 | `degraded` | `failed` events with severity `degraded` / `info` | `code`, `count`, `message` |
 | `pack` | `TileOutcome.pack_dir` | `bytes`, `path`, `installed` |
 

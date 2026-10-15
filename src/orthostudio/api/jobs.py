@@ -1154,7 +1154,13 @@ def _dir_bytes(path: Path) -> int:
 
 
 def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] | None:
-    """Read the textures report ``build_tiles`` wrote next to the logs (spec 5.5)."""
+    """Read the textures reports ``build_tiles`` wrote next to the logs (spec 5.5).
+
+    The textures node writes one report per level it prepares, named
+    ``textures-<tile>-<source><level>-<key>.json`` with the node's key: the tile's own level, and
+    those of its zones and of the airports made sharper. All of them count. Only the tile's own
+    was read, and the report of +45+005 said 63 textures where its build had made 174, 111 of
+    them at ZL18 around its airports (2026-10-15)."""
     if env is None:
         return None
     level = f"{ts.provider}{ts.zl}"
@@ -1167,22 +1173,33 @@ def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] |
         return None
     if not candidates:
         return None
+    key = candidates[-1].stem.rsplit("-", 1)[-1]
     try:
-        doc = json.loads(candidates[-1].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    outcomes = doc.get("outcomes", [])
-    counts = doc.get("counts", {})
+        reports = sorted(env.logs.glob(f"textures-{ts.tile}-*-{key}.json"))
+    except OSError:
+        reports = [candidates[-1]]
+    outcomes: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for path in reports:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            if path == candidates[-1]:
+                return None
+            continue
+        outcomes += doc.get("outcomes", [])
+        for name in ("built", "hits", "chunks_second_pass", "chunks_recovered"):
+            counts[name] = counts.get(name, 0) + int(doc.get("counts", {}).get(name, 0))
     return {
         "total": len(outcomes),
-        "built": int(counts.get("built", 0)),
-        "hits": int(counts.get("hits", 0)),
+        "built": counts["built"],
+        "hits": counts["hits"],
         "missing": sum(1 for o in outcomes if o.get("status") in ("incomplete", "failed")),
         "parent_fallback": sum(int(o.get("from_fallback", 0)) for o in outcomes),
         "placeholders": sum(int(o.get("placeholders", 0)) for o in outcomes),
         # chunks a transient failure sent to the second pass, and those it brought back
-        "second_pass": int(counts.get("chunks_second_pass", 0)),
-        "recovered": int(counts.get("chunks_recovered", 0)),
+        "second_pass": counts["chunks_second_pass"],
+        "recovered": counts["chunks_recovered"],
         "report": str(candidates[-1]),
     }
 

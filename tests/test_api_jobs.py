@@ -665,3 +665,55 @@ async def test_http_removes_one_finished_job_and_refuses_a_live_one(
         assert (await c.get(f"/api/jobs/{done_id}")).status_code == 404
         assert (await c.delete(f"/api/jobs/{done_id}")).status_code == 404, "gone is gone"
     mgr.close()
+
+
+def test_the_final_report_counts_the_textures_of_every_level(tmp_path: Path) -> None:
+    """The textures node writes one report per level it prepares, all under its key: the tile's
+    own, and those of its zones and of the airports made sharper. The final report read the tile's
+    own alone, and +45+005 said 63 textures where its build had made 174, 111 of them at ZL18
+    around its airports (2026-10-15). The reports of another build of the tile stay out."""
+    import os
+    from types import SimpleNamespace
+
+    from orthostudio.api.jobs import _textures_decision
+    from orthostudio.imagery.grid import TextureId
+    from orthostudio.pipeline.textures import TextureOutcome, TexturesReport, write_report
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+
+    def report(zl: int, key: str, statuses: list[str], **counts: int) -> Path:
+        outcomes = [
+            TextureOutcome(
+                f"t{i}",
+                TextureId(16 * i, 0, zl, "Arc"),
+                ("land",),
+                status,
+                from_fallback=int(zl == 18 and i == 0),
+            )
+            for i, status in enumerate(statuses)
+        ]
+        r = TexturesReport("+45+005", "Arc", zl, "out", "chunks", "store", "ispc", "1", 4,
+                           outcomes=outcomes, counts=counts)  # fmt: skip
+        path = logs / f"textures-+45+005-Arc{zl}-{key}.json"
+        write_report(r, path)
+        return path
+
+    for old in (report(15, "aaaaaaaaaaaa", ["built"] * 7), report(18, "aaaaaaaaaaaa", ["hit"] * 9)):
+        os.utime(old, (1, 1))  # another build of the tile, before
+    own = report(15, "bbbbbbbbbbbb", ["built", "built", "hit"], built=2, hits=1)
+    report(18, "bbbbbbbbbbbb", ["built", "incomplete"], built=1, chunks_second_pass=2,
+           chunks_recovered=1)  # fmt: skip
+    env = SimpleNamespace(logs=logs)
+    got = _textures_decision(env, SimpleNamespace(tile="+45+005", provider="Arc", zl=15))  # type: ignore[arg-type]
+    assert got == {
+        "total": 5,
+        "built": 3,
+        "hits": 1,
+        "missing": 1,
+        "parent_fallback": 1,
+        "placeholders": 0,
+        "second_pass": 2,
+        "recovered": 1,
+        "report": str(own),
+    }
