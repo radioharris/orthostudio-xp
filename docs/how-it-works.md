@@ -198,7 +198,8 @@ To build tiles again after an update, without choosing them again in the Plan, t
 Library and press *Build again…*. Each tile keeps its imagery source and its zoom level; the
 zones, colours and settings are today's, as if you chose those tiles in the Plan. A question says
 first how many tiles, what has to be downloaded and written on the disk, and how many X-Plane
-shows; what has not changed is reused. They are built together, in one build per imagery source,
+shows; what the data folder already holds is reused (a data folder just changed in Settings holds
+nothing yet, so everything is made again there). They are built together, in one build per imagery source,
 like the Plan's *Build*: a tile X-Plane shows is built again in its own folder and stays in
 X-Plane, updated, and one it does not show stays out.
 

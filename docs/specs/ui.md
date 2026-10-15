@@ -820,7 +820,10 @@ after an update that changes a stage, what follows it is known only once built),
 X-Plane shows, which stay in it, updated; when the disk cannot hold them (the Plan's rule, twice the room needed) it says
 so in the Plan's words and builds nothing. *Build again* sends them like the Plan
 (`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
-(a toast says when all wait); a refusal is an error card under the table.
+(a toast says when all wait); a refusal is an error card under the Library's buttons. Its tooltip,
+like that of Works' *Build again*, says what is reused: what the data folder already holds. Both
+promised reuse, and a data folder just changed in Settings holds nothing yet, so everything was
+downloaded and made again without a word (found in the 0.1.19 review).
 
 **A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
 Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
