@@ -55,6 +55,8 @@ experimental.
 - **Airports out of the water.** Water OpenStreetMap draws inside an aerodrome, under or against
   its runways, taxiways and aprons, becomes land, so taxiway bridges, piers and aerodromes in a
   tidal bay no longer sink under the sea; seaplane bases keep their water.
+- **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
+  is, so X-Plane no longer draws its deep seabed at the edge of a lake.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
   only what it touches, and imagery is never downloaded twice.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then

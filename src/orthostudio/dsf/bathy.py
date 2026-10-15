@@ -12,10 +12,18 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+import shapely
 
 from orthostudio.textures.imprint import load_mask
 
-__all__ = ["depth_ratio_u16", "node_bathy_from_distance_masks", "orthogrid", "st_coord_arrays"]
+__all__ = [
+    "SHORE_SHALLOW_M",
+    "depth_ratio_u16",
+    "near_shore",
+    "node_bathy_from_distance_masks",
+    "orthogrid",
+    "st_coord_arrays",
+]
 
 MaskLookup = Callable[[int, int], "Path | None"]
 
@@ -101,3 +109,58 @@ def depth_ratio_u16(
     r = np.maximum(r, 0.1)
     r[node_is_coast] = 0.0
     return (65535 * r).astype(np.uint16)
+
+
+SHORE_SHALLOW_M = 1.0
+"""A water node closer than this to the shore is shallow, wherever it comes from. Ortho4XP marks
+every water node that touches no land deep, and X-Plane then reads the seabed under it from its
+own raster; a node a hair's breadth off the shore got that seabed at the shore itself: 200 m under
+Groom Lake at Homey Airport (KXTA), seen in X-Plane as blue triangles, then as blue needles along
+the straight shore an aerodrome's cut makes (2026-10-15). Thin slivers along such a shore put
+mesh nodes there (7 to 34 cm off it), and the recut put its midpoints on it."""
+
+
+def near_shore(
+    coords: np.ndarray,
+    tris: np.ndarray,
+    tri_types: np.ndarray,
+    node_is_coast: np.ndarray,
+    lat: float,
+    metres: float = SHORE_SHALLOW_M,
+) -> np.ndarray:
+    """``(N,)`` bool: the water nodes, not on the shore, closer than ``metres`` to it.
+
+    The shore is the edges of the land triangles whose two ends are coast nodes. Only the nodes of
+    a water triangle with a coast corner are measured: a node that close to the shore has one."""
+    out = np.zeros(len(coords), dtype=bool)
+    land = tris[tri_types == 0]
+    water = tris[tri_types != 0]
+    if len(land) == 0 or len(water) == 0:
+        return out
+    edges = np.concatenate([land[:, [0, 1]], land[:, [1, 2]], land[:, [2, 0]]])
+    edges = edges[node_is_coast[edges[:, 0]] & node_is_coast[edges[:, 1]]]
+    if len(edges) == 0:
+        return out
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    shore_tris = water[node_is_coast[water].any(axis=1)]
+    candidates = np.unique(shore_tris)
+    candidates = candidates[~node_is_coast[candidates]]
+    if len(candidates) == 0:
+        return out
+    kx, ky = 111320.0 * np.cos(np.radians(lat)), 111320.0
+    x, y = coords[:, 0] * kx, coords[:, 1] * ky
+    lines = shapely.linestrings(
+        np.stack(
+            [
+                np.stack([x[edges[:, 0]], y[edges[:, 0]]], 1),
+                np.stack([x[edges[:, 1]], y[edges[:, 1]]], 1),
+            ],
+            1,
+        )
+    )
+    tree = shapely.STRtree(lines)
+    found, _ = tree.query_nearest(
+        shapely.points(x[candidates], y[candidates]), max_distance=metres, return_distance=True
+    )
+    out[candidates[np.unique(found[0])]] = True
+    return out

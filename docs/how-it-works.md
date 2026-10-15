@@ -122,6 +122,13 @@ Ortho4XP, with one exception: the rainwater basins OpenStreetMap marks as dry mo
 where Ortho4XP draws water over the grass. A treatment basin, or a lake that dries in summer, stays
 water. Water smaller than `min_area` (Settings, for experts) is left to the photo.
 
+**Depth at the shore.** X-Plane 12 draws the depth of the water from a map of the seabed each tile
+carries, and the mesh says, point by point, where the water is deep. A point of the water closer
+than a metre to the shore is shallow, as the shore itself is. Without that rule, which Ortho4XP
+does not have, a point a few centimetres off a straight shore took the full seabed at the shore:
+on Groom Lake (Homey Airport, KXTA), where X-Plane has no lake and its seabed lies 200 m down, that
+drew blue triangles and needles along the shore. The open water keeps its depth.
+
 **Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
 Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
 on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.

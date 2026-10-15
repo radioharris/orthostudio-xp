@@ -1254,7 +1254,9 @@ TILE_DSF: Rule = rule(
     # 3: the triangles the rounding of the DSF leaves with no area or turned over are no longer
     # written (``dsf.encode._flat_or_reversed``): a tile built before keeps its vertical faces in
     # the store, and only a new key gets them out when it is built again (2026-10-09).
-    version=3,
+    # 4: a water node closer than 1 m to the shore is shallow (``dsf/bathy.near_shore``): the
+    # deep ones there drew blue triangles and needles along Groom Lake's cut (KXTA, 2026-10-15).
+    version=4,
     params=TileDsfParams,
     inputs=("mesh", "masks", "rasters", "vectors"),
     ram_mb=3000,
