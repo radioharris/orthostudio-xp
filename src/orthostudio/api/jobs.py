@@ -1005,7 +1005,13 @@ class Job:
         return self.journal_path.with_suffix(".json")
 
     def save_state(self) -> None:
-        doc = {**self.state(), "specs": [_spec_to_json(s) for s in self.specs]}
+        # the job's own error goes in by its name: ``load`` reads it so, and a build failed as a
+        # whole came back from a restart failed without a word (2026-10-15)
+        doc = {
+            **self.state(),
+            "job_error": self.job_error,
+            "specs": [_spec_to_json(s) for s in self.specs],
+        }
         atomic_write_text(self.state_path(), json.dumps(doc, ensure_ascii=False, indent=1))
 
     def mark_interrupted(self) -> None:
@@ -1045,7 +1051,9 @@ class Job:
                 self.finished_at = self.journal_path.stat().st_mtime
             except OSError:
                 self.finished_at = self.started_at or self.created_at
-            self.job_error = error_json(OsxpError("SYS_BUILD_INTERRUPTED"))
+            # a build waiting behind another never wrote a line: it did not start
+            code = "SYS_BUILD_INTERRUPTED" if events else "SYS_BUILD_NOT_STARTED"
+            self.job_error = error_json(OsxpError(code))
         try:
             self._open_file()
             self._append(

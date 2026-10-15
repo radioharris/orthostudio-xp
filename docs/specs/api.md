@@ -828,7 +828,8 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   The start of the engine lists the `<id>.json` files; one still `queued` or `running` was
   stopped by the program's end (closed by force, a crash, a power cut): its rows are replayed
   from its journal (`started`, `done`, `failed`), a step started and not ended becomes
-  `cancelled`, and the job ends `failed` with `SYS_BUILD_INTERRUPTED` and a `finished` line,
+  `cancelled`, and the job ends `failed` with `SYS_BUILD_INTERRUPTED` (`SYS_BUILD_NOT_STARTED`
+  for one that was still waiting behind another: its journal holds no line) and a `finished` line,
   written so (`Job.mark_interrupted`). Works lists it with *Build again*. Only a finished
   build wrote its file before, and a build killed during its images was missing from Works
   after the restart, its journal left on the disk (2026-10-15).
