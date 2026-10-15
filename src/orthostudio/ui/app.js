@@ -5741,6 +5741,7 @@ async function setOverlays(tiles, use) {
     errors.append(libraryErrorCard(err, { tile: tiles.join(" ") }));
   }
   await loadLibrary();
+  showLibraryErrors();
 }
 
 function renderLibrary() {
@@ -5941,6 +5942,15 @@ function libraryErrorCard(err, e) {
   return card;
 }
 
+/** The Library's error cards stand under its buttons, above the table, and one just added is brought
+ * into view wherever the page was scrolled (a row's button far down a long list). A refusal of File
+ * elsewhere showed under the last row of 16, out of sight, and the pilot could believe nothing had
+ * happened (2026-10-06). */
+function showLibraryErrors() {
+  const list = $("library-errors");
+  if (list.childElementCount) list.scrollIntoView?.({ block: "nearest" });
+}
+
 /**
  * One change of a library row: its buttons are disabled until the engine answers; a success runs
  * `onSuccess`. Either way the library (and with it the map) and the status bar are read again,
@@ -5975,7 +5985,7 @@ async function runLibraryChange(e, request, onSuccess) {
   const card = failure ? libraryErrorCard(failure, e) : null;
   if (card) errors.append(card);
   focusLibraryRow(key, index, used);
-  card?.scrollIntoView?.({ block: "nearest" });
+  showLibraryErrors();
 }
 
 /** "Add to X-Plane" / "Remove from X-Plane": `POST /api/library/{name}/install|uninstall`. */
@@ -6162,6 +6172,7 @@ async function fileLibraryTiles() {
     plan = await api("POST", "/api/library/file-plan", { tiles: picked.map((e) => ({ name: entryName(e), path: e.path })), folder });
   } catch (err) {
     errors.append(libraryErrorCard(err, picked[0]));
+    showLibraryErrors();
     return;
   }
   const question = filingQuestion(plan);
@@ -6213,6 +6224,7 @@ async function runFiling(go, folder) {
     // an old folder a file held there stays until the user deletes it: said where, not a toast
     for (const text of lefts) errors.append(h("div", { class: "overlay-notice overlay-notice-fail" }, h("p", null, text)));
     if (failure) errors.append(libraryErrorCard(failure, failed));
+    showLibraryErrors();
   }
 }
 
@@ -6375,6 +6387,7 @@ async function rebuildLibraryTiles() {
     }
   } catch (err) {
     errors.append(libraryErrorCard(err, picked[0]));
+    showLibraryErrors();
     refreshJobList();
   } finally {
     state.rebuilding = false;

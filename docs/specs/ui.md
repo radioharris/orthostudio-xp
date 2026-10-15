@@ -955,7 +955,11 @@ space could not be freed), the toast gives no size: "Tile +45+005 deleted. The s
 the cache will be freed later."
 
 **Errors** become error cards in `#library-errors` (a polite live region), shown once the library is
-loaded again, naming the tile and cleared by the next action, like on Works. For the refusals the
+loaded again, naming the tile and cleared by the next action, like on Works. The list stands under
+the Library's buttons (*File elsewhere…*, *Build again…*), above the table, and a card just added is
+brought into view wherever the page was scrolled (`app.js` `showLibraryErrors`): it stood under the
+last row, and a refusal of *File elsewhere…* on a list of 16 tiles showed out of sight, the pilot
+believing nothing had happened (2026-10-06). For the refusals the
 Library knows, the card is blocking (the change did not happen), has no action button (the remedy is
 never in Settings) and says what happened in the Library's own words, since the engine's speak of
 installing, paths, `orthostudio.toml` or `osxp clean`; the engine's message and remedy stay in the

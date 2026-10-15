@@ -1181,6 +1181,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .library-pick-all input { margin: 0; }
 .library-pick-count { font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .library-filing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); margin: 0 0 var(--block-gap); font-variant-numeric: tabular-nums; }
+.library-errors:not(:empty) { margin-bottom: var(--block-gap); }
 .table .tile-pick { margin: 0; vertical-align: middle; }
 /* the folder a tile is in, under its name */
 .table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }

@@ -350,6 +350,9 @@
         <span id="library-filing-text"></span>
         <button type="button" class="btn btn-small" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
       </p>
+      <!-- Under the buttons, above the table: a refusal of File elsewhere showed under the last row,
+           out of sight (app.js showLibraryErrors). -->
+      <div id="library-errors" class="error-list library-errors" aria-live="polite"></div>
     </div>
     <div class="table-wrap">
       <table class="table library-table" id="library-table">
@@ -367,7 +370,6 @@
         <tbody id="library-body"></tbody>
       </table>
     </div>
-    <div id="library-errors" class="error-list" aria-live="polite"></div>
 
     <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
       <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>

@@ -7414,6 +7414,19 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     )
 
 
+def test_a_refusal_in_the_library_shows_where_it_is_seen() -> None:
+    """A refusal of File elsewhere showed under the last row of a list of 16 tiles, out of sight,
+    and the pilot could believe nothing had happened (2026-10-06): the error cards stand under the
+    Library's buttons, above the table, and every place that adds one brings it into view."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    errors = html.index('id="library-errors"')
+    assert html.index('id="library-pick"') < errors < html.index('class="table-wrap"')
+    assert "list.scrollIntoView" in _function_body(app_js, "showLibraryErrors")
+    for name in ("fileLibraryTiles", "runFiling", "rebuildLibraryTiles", "runLibraryChange"):
+        assert "showLibraryErrors();" in _function_body(app_js, name), name
+
+
 def test_answers_not_saved_are_said_until_they_are_saved() -> None:
     """A user set the folder of his lidar in Settings, left without Save and built: the tile came
     out with Copernicus alone, and the message given on leaving Settings had gone by in three
