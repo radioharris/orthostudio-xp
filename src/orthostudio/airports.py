@@ -45,7 +45,9 @@ __all__ = [
     "tiles_within",
 ]
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+"""2 (2026-10-15) adds the box of the land runways, which the Plan reads for the textures of
+the airports a build makes sharper (``orthostudio.estimate``)."""
 BLOCK_SIZE = 8 * 1024 * 1024
 EARTH_RADIUS_KM = 6371.0088
 KM_PER_DEGREE = math.pi * EARTH_RADIUS_KM / 180.0
@@ -90,6 +92,9 @@ class Airport:
     kind: AirportKind
     has_datum: bool
     icao_explicit: bool = True
+    runways: tuple[float, float, float, float] | None = None
+    """``(south, west, north, east)`` of the ends of its land runways (rows ``100``), ``None``
+    without one."""
 
     @property
     def tile(self) -> TileRef:
@@ -136,7 +141,9 @@ def _latlon(fields: list[bytes], i: int, j: int) -> tuple[float, float] | None:
     return lat, lon
 
 
-Row = tuple[str, str, str, float, float, int | None, str, int, int]
+Box = tuple[float, float, float, float]
+"""``(south, west, north, east)`` in degrees."""
+Row = tuple[str, str, str, float, float, int | None, str, int, int, Box | None]
 
 
 class _Record:
@@ -152,6 +159,7 @@ class _Record:
         "ident",
         "kind",
         "name",
+        "runways",
     )
 
     def __init__(self, kind: AirportKind, rest: bytes) -> None:
@@ -169,6 +177,21 @@ class _Record:
         self.datum_lon: float | None = None
         self.fallback: tuple[float, float] | None = None
         self.fallback_kind: bytes | None = None
+        self.runways: Box | None = None
+
+    def add_runway(self, fields: list[bytes]) -> None:
+        """Widen the runway box to both ends of a land runway (row ``100``)."""
+        for i, j in _GEO_FIELDS[b"100"]:
+            pt = _latlon(fields, i, j)
+            if pt is None:
+                continue
+            lat, lon = pt
+            box = self.runways
+            self.runways = (
+                (lat, lon, lat, lon)
+                if box is None
+                else (min(box[0], lat), min(box[1], lon), max(box[2], lat), max(box[3], lon))
+            )
 
     def finish(self, stats: BuildStats) -> Row | None:
         if not self.ident and not self.icao:
@@ -194,7 +217,18 @@ class _Record:
             stats.skipped_no_position += 1
             return None
         explicit = 1 if self.icao is not None else 0
-        return (icao, ident, self.name, lat, lon, self.elev_ft, self.kind, has_datum, explicit)
+        return (
+            icao,
+            ident,
+            self.name,
+            lat,
+            lon,
+            self.elev_ft,
+            self.kind,
+            has_datum,
+            explicit,
+            self.runways,
+        )
 
 
 def parse_apt_dat(
@@ -202,7 +236,8 @@ def parse_apt_dat(
 ) -> Iterator[Row]:
     """Stream the airports of ``apt_dat`` as ``Row`` tuples.
 
-    A row is ``(icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit)``.
+    A row is ``(icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit,
+    runways)``.
 
     Reads the file in blocks (spec section 2); never holds more than one block. Duplicate
     identifiers are *not* resolved here (the sqlite insert does it): every record is yielded.
@@ -255,9 +290,11 @@ def parse_apt_dat(
                         else:
                             current.datum_lon = num
                 elif m.group("geo") is not None:
+                    geo = m.group("geo")
+                    fields = m.group("geo_rest").split()
+                    if geo == b"100":
+                        current.add_runway(fields)
                     if current.fallback is None:
-                        geo = m.group("geo")
-                        fields = m.group("geo_rest").split()
                         for i, j in _GEO_FIELDS[geo]:
                             pt = _latlon(fields, i, j)
                             if pt is not None:
@@ -340,7 +377,11 @@ CREATE TABLE airports (
   lon REAL NOT NULL,
   elev_ft INTEGER,
   kind TEXT NOT NULL,
-  has_datum INTEGER NOT NULL
+  has_datum INTEGER NOT NULL,
+  runway_south REAL,
+  runway_west REAL,
+  runway_north REAL,
+  runway_east REAL
 );
 CREATE INDEX airports_icao ON airports (icao);
 CREATE INDEX airports_name_lc ON airports (name_lc);
@@ -348,11 +389,15 @@ CREATE INDEX airports_name_lc ON airports (name_lc);
 
 _INSERT = """
 INSERT OR IGNORE INTO airports
-  (icao, ident, icao_explicit, name, name_lc, lat, lon, elev_ft, kind, has_datum)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (icao, ident, icao_explicit, name, name_lc, lat, lon, elev_ft, kind, has_datum,
+   runway_south, runway_west, runway_north, runway_east)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
-_COLUMNS = "icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit"
+_COLUMNS = (
+    "icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit, "
+    "runway_south, runway_west, runway_north, runway_east"
+)
 #: The record X-Plane itself would pick for a code shared by several records (spec 2).
 _PREFERRED = "icao_explicit DESC, (ident = icao) DESC, rowid"
 _SELECT = f"SELECT {_COLUMNS} FROM airports"
@@ -360,6 +405,10 @@ _SELECT = f"SELECT {_COLUMNS} FROM airports"
 
 def _row_to_airport(row: tuple[Any, ...]) -> Airport:
     icao, ident, name, lat, lon, elev, kind, has_datum, explicit = row[:9]
+    box = row[9:13]
+    runways: Box | None = None
+    if len(box) == 4 and None not in box:
+        runways = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
     return Airport(
         icao=str(icao),
         ident=str(ident),
@@ -370,6 +419,7 @@ def _row_to_airport(row: tuple[Any, ...]) -> Airport:
         kind=kind,
         has_datum=bool(has_datum),
         icao_explicit=bool(explicit),
+        runways=runways,
     )
 
 
@@ -399,11 +449,26 @@ class AirportIndex:
                 con.executescript(_SCHEMA)
                 con.execute("BEGIN")
                 batch: list[tuple[object, ...]] = []
-                for icao, ident, name, lat, lon, elev, kind, has_datum, explicit in parse_apt_dat(
-                    apt_dat, progress=progress, stats=stats
-                ):
+                for row in parse_apt_dat(apt_dat, progress=progress, stats=stats):
+                    icao, ident, name, lat, lon, elev, kind, has_datum, explicit, box = row
+                    south, west, north, east = box if box is not None else (None,) * 4
                     batch.append(
-                        (icao, ident, explicit, name, name.lower(), lat, lon, elev, kind, has_datum)
+                        (
+                            icao,
+                            ident,
+                            explicit,
+                            name,
+                            name.lower(),
+                            lat,
+                            lon,
+                            elev,
+                            kind,
+                            has_datum,
+                            south,
+                            west,
+                            north,
+                            east,
+                        )
                     )
                     if len(batch) >= 5000:
                         self._flush(con, batch, stats)

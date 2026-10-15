@@ -40,7 +40,7 @@ Only these row codes are read (first whitespace-separated token of a line); ever
 | `17` | heliport header, same layout | one row, `kind = heli` |
 | `1302 icao_code XXXX` | metadata: the official ICAO code | overrides the header identifier as `icao` |
 | `1302 datum_lat` / `1302 datum_lon` | metadata: the airport reference point | `lat`, `lon` when both present |
-| `100` | land runway: lat/lon of both ends at fields 9-10 and 18-19 | fallback centre = midpoint of the first one |
+| `100` | land runway: lat/lon of both ends at fields 9-10 and 18-19 | fallback centre = the first end of the first one; every end widens the runway box |
 | `101` | water runway: ends at fields 4-5 and 7-8 | idem |
 | `102` | helipad: centre at fields 2-3 | fallback centre |
 | `14` | tower viewpoint: fields 1-2 | fallback centre |
@@ -106,11 +106,17 @@ CREATE TABLE airports (
   lat REAL NOT NULL, lon REAL NOT NULL,
   elev_ft INTEGER,
   kind TEXT NOT NULL,         -- 'land' | 'sea' | 'heli'
-  has_datum INTEGER NOT NULL  -- 1 when the point is the 1302 datum, 0 when a fallback
+  has_datum INTEGER NOT NULL, -- 1 when the point is the 1302 datum, 0 when a fallback
+  runway_south REAL, runway_west REAL, runway_north REAL, runway_east REAL
+                              -- the box of the ends of its land runways (rows 100), NULL without one
 );
 CREATE INDEX airports_icao ON airports (icao);
 CREATE INDEX airports_name_lc ON airports (name_lc);
 ```
+
+The runway box (schema 2, 2026-10-15) places the airports a build makes sharper in the plan of a
+tile whose map data is not read yet (`pipeline-build.md` 5); a water runway or a helipad gives
+none. The schema change rebuilds an index of schema 1 once, about 2 s on the reference machine.
 
 No FTS: 39 k rows. Prefix search on `icao`/`ident` uses the indexes with a range predicate
 (`>= q AND < q || char(0xFFFF)`), substring search on `name_lc` is `instr(name_lc, q) > 0`, a
@@ -164,6 +170,7 @@ class Airport:
     icao: str; ident: str; name: str; lat: float; lon: float
     elev_ft: int | None; kind: Literal["land", "sea", "heli"]; has_datum: bool
     icao_explicit: bool = True
+    runways: tuple[float, float, float, float] | None = None   # (south, west, north, east)
     @property tile -> TileRef
 
 @dataclass(slots=True)
@@ -208,8 +215,9 @@ prose; the API chantier calls `default_index(...)` and never `build` directly).
 ## 7. Acceptance
 
 Unit (synthetic `apt.dat`, 8 records): BOM + CRLF tolerated; `1302 icao_code` overrides the header
-identifier; a record without datum takes the first runway midpoint, a heliport without datum its
-first `102`; a record with no geometry is dropped and counted; a duplicate identifier keeps the
+identifier; a record without datum takes the first end of its first runway, a heliport without
+datum its first `102`; the land runways give their box, a helipad or a water runway none; a record
+with no geometry is dropped and counted; a duplicate identifier keeps the
 first; a shared ICAO code resolves to the record with the explicit `1302 icao_code`, the first of
 the two in that file, while `search` lists both; UTF-8 names with accents round-trip; `search`
 prefix / substring / limit / empty query / `kinds`; `tiles_around` at r = 0, at a tile corner

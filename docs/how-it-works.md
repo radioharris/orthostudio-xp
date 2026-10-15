@@ -260,6 +260,10 @@ roads, forests and buildings. Three presets answer several questions at once; ev
 under *For experts*, with its name in Ortho4XP. The Plan recalls the answers in one sentence before
 you build, and works out the cost by itself as you choose: disk space, download and time, with
 nothing to press first. *Build* waits only when the disk cannot hold the build, and says so.
+The photos of the airports made sharper count too: for a tile built before, from their outline in
+its OpenStreetMap data; for a tile never built, from X-Plane's own list of airports, their runways
+and 250 m around, which comes close (1 037 photos against 1 150 on 18 tiles). Until 1.1.0 the Plan
+of a tile never built left them out: 54 photos announced, 114 built (2026-10-15).
 Answers count once saved: until then the Settings tab carries a dot, and the Plan and the Library's
 *Build again…* say that a build uses the settings saved before.
 
@@ -334,7 +338,8 @@ one when the app starts.
   config.toml      settings;  zones.json  the zones drawn on the map;  sources.toml  your sources
   library.sqlite   the tiles OrthoStudio XP knows (the Library screen)
   jobs/            build journals
-  airports.sqlite  X-Plane's airports, for the search of the Plan
+  airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
+                   and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
 
 the data folder (~/.orthostudio unless Settings name another one)/

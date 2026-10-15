@@ -1642,7 +1642,13 @@ def create_app(
 
                 env = _call_env_factory(factory, specs)
             try:
-                est = estimate(specs, online=req.online, env=env)
+                # the airports a build makes sharper, placed for a tile whose map data is not
+                # read yet: without X-Plane's list, the Plan counts them once it is
+                try:
+                    airports = airport_index()
+                except OsxpError:
+                    airports = None
+                est = estimate(specs, online=req.online, env=env, airports=airports)
             finally:
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open

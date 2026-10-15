@@ -5,18 +5,22 @@
 Nothing is built. The node statuses come from ``Scheduler.plan`` (keys computed as far as
 the built inputs allow), the texture list from the DSF artefact when it is in the store
 (exact) or from the imagery grid (every texture of the tile, plus the textures of its
-``zone_list`` at their zoom levels: ``map-zones.md`` 5), the requests from the chunk store,
+``zone_list`` at their zoom levels: ``map-zones.md`` 5, and of the airports the build makes
+sharper), the requests from the chunk store,
 the time from the learnt costs and, online, from a 20-request probe of the provider.
 """
 
 from __future__ import annotations
 
 import shutil
+import sqlite3
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from orthostudio.dsf.params import DsfParams
+from orthostudio.dsf.zones import M_TO_LAT, airport_covers, m_to_lon
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus, ChunkStore
 from orthostudio.imagery.grid import TextureId, texture_tiles, textures_covering
@@ -36,6 +40,9 @@ from orthostudio.pipeline.build import (
 )
 from orthostudio.sched import PlanEntry
 from orthostudio.zones import zone_list_textures
+
+if TYPE_CHECKING:
+    from orthostudio.airports import AirportIndex
 
 __all__ = [
     "BC1_BYTES",
@@ -61,6 +68,14 @@ DEFAULT_REQ_PER_S = 400.0
 OTHER_ARTEFACTS_GB = 0.25
 """DSF, mesh, vectors and their npz twins per tile, roughly."""
 PROBE_REQUESTS = 20
+RUNWAY_MARGIN_M = 250.0
+"""Around the runways of an airport in X-Plane's list, the ground its map data adds (aprons,
+terminals), for a tile whose map data is not read yet. On the 18 tiles of a data folder whose map
+data holds their airports, the ICAO airports' ZL18 textures came to 1 037 against the 1 150 the
+builds made, within a fifth on 15 tiles (2026-10-15); 500 m gave 1 199 but a third too many on a
+tile, and the reference point with 1 km around 1 036 with Schiphol at half."""
+AIRPORT_SEARCH_PAD_DEG = 0.1
+"""How far outside the tile an airport's reference point may lie and its runways still reach it."""
 
 
 @dataclass(slots=True)
@@ -155,6 +170,9 @@ class TileEstimate:
     textures_zones: int = 0
     """Textures the tile's zones add on top of its own, included in ``textures_total`` (upper
     bound only: an exact count, read from the DSF, already holds them)."""
+    textures_airports: int = 0
+    """Textures the airports made sharper add on top of the tile's and the zones', included in
+    ``textures_total`` (upper bound only, as :attr:`textures_zones`)."""
 
     @property
     def hits(self) -> int:
@@ -186,6 +204,7 @@ class TileEstimate:
                 "exact": self.textures_exact,
                 "masked": self.textures_masked,
                 "zones": self.textures_zones,
+                "airports": self.textures_airports,
             },
             "requests": self.requests,
             "download_mb": round(self.download_mb, 1),
@@ -288,15 +307,87 @@ def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> int:
     return total
 
 
-def _tile_textures(
-    env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]
-) -> tuple[list[TextureId], bool, int | None, int]:
-    """``(textures, exact, masked, zone textures)`` of one tile.
+def _airport_zones(
+    env: BuildEnv,
+    nodes: TileNodes,
+    entries: dict[str, PlanEntry],
+    airports: AirportIndex | None,
+) -> tuple[list[list[Any]], str]:
+    """The airports the build makes sharper, as ``zone_list`` entries at ``cover_zl``, and where
+    they were read: ``"map"``, ``"list"``, or ``""`` when there is none to read.
 
-    Exact when the DSF is in the store (its texture list, zones included). Otherwise an upper bound:
-    every texture of the tile at its level, then, for each ``zone_list`` entry, the textures at the
-    entry's level whose square overlaps it (``orthostudio.zones.zone_list_textures``) that are not
-    already counted.
+    The build raises every mesh cell an airport covers, its boundary widened by ``cover_extent``
+    and snapped to the textures of ``cover_zl`` (``dsf.zones._airport_array``): the textures of
+    that level the widened boundary overlaps. The boundary comes from the tile's map data, when
+    the store holds it; else from X-Plane's airport list, the box of its runways widened by
+    :data:`RUNWAY_MARGIN_M`. Without either, nothing is counted: the Plan of a tile never built
+    left the airports out altogether, 54 textures announced against 114 built (2026-10-15).
+    """
+    params = nodes.dsf.params
+    if not isinstance(params, DsfParams):
+        return [], ""
+    mode = params.cover_airports_with_highres
+    if mode not in ("True", "ICAO"):
+        return [], ""
+    tile = nodes.spec.tile
+    boxes: list[tuple[float, float, float, float]] = []  # west, south, east, north
+    source = ""
+    vectors = entries.get(nodes.vectors.id)
+    if vectors is not None and vectors.status == "hit" and vectors.key is not None:
+        try:
+            covers = airport_covers(env.store.path(vectors.key))
+        except OsxpError:
+            covers = None
+        if covers is not None:
+            source = "map"
+            for c in covers:
+                if mode == "True" or c.is_icao:
+                    boxes.append(
+                        (tile.lon + c.xmin, tile.lat + c.ymin, tile.lon + c.xmax, tile.lat + c.ymax)
+                    )
+    if not source and airports is not None:
+        pad = AIRPORT_SEARCH_PAD_DEG
+        try:
+            found = airports.in_bounds(
+                tile.lon - pad,
+                tile.lat - pad,
+                tile.lon + 1 + pad,
+                tile.lat + 1 + pad,
+                limit=10_000,
+                kinds=["land"],
+                icao_only=mode == "ICAO",
+            )
+        except (OSError, sqlite3.Error):
+            found = None
+        if found is not None:
+            source = "list"
+            dx, dy = RUNWAY_MARGIN_M * m_to_lon(tile.lat), RUNWAY_MARGIN_M * M_TO_LAT
+            for a in found:
+                south, west, north, east = a.runways or (a.lat, a.lon, a.lat, a.lon)
+                boxes.append((west - dx, south - dy, east + dx, north + dy))
+    extent = 1000 * params.cover_extent
+    dx, dy = extent * m_to_lon(tile.lat), extent * M_TO_LAT
+    zones = []
+    for west, south, east, north in boxes:
+        w, s, e, n = west - dx, south - dy, east + dx, north + dy
+        zones.append([[s, w, s, e, n, e, n, w], params.cover_zl, nodes.spec.provider])
+    return zones, source
+
+
+def _tile_textures(
+    env: BuildEnv,
+    nodes: TileNodes,
+    entries: dict[str, PlanEntry],
+    airports: AirportIndex | None = None,
+) -> tuple[list[TextureId], bool, int | None, int, int, str]:
+    """``(textures, exact, masked, zone textures, airport textures, airports read from)`` of one
+    tile.
+
+    Exact when the DSF is in the store (its texture list, zones and airports included). Otherwise
+    an upper bound: every texture of the tile at its level, then, for each ``zone_list`` entry,
+    the textures at the entry's level whose square overlaps it
+    (``orthostudio.zones.zone_list_textures``), then those of the airports the build makes sharper
+    (:func:`_airport_zones`), each not already counted.
     """
     spec = nodes.spec
     dsf_entry = entries.get(nodes.dsf.id)
@@ -305,12 +396,15 @@ def _tile_textures(
         if path.is_file():
             jobs = texture_jobs_from_json(path)
             masked = sum(1 for j in jobs if j.has_sea)
-            return [j.texture for j in jobs], True, masked, 0
+            return [j.texture for j in jobs], True, masked, 0, 0, ""
     lat, lon = spec.tile.lat, spec.tile.lon
     textures = textures_covering(lat + 1, lon, lat, lon + 1, spec.zl, spec.provider)
     zone_list = spec.config.get("zone_list") or ()
     extra = sorted(zone_list_textures(zone_list, spec.tile) - set(textures)) if zone_list else []
-    return textures + extra, False, None, len(extra)
+    apt_zones, source = _airport_zones(env, nodes, entries, airports)
+    counted = set(textures) | set(extra)
+    apt = sorted(zone_list_textures(apt_zones, spec.tile) - counted) if apt_zones else []
+    return textures + extra + apt, False, None, len(extra), len(apt), source
 
 
 def estimate(
@@ -319,8 +413,10 @@ def estimate(
     online: bool = False,
     env: BuildEnv | None = None,
     probe: ProbeResult | None = None,
+    airports: AirportIndex | None = None,
 ) -> Estimate:
-    """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe."""
+    """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe.
+    ``airports`` (X-Plane's list) places the airports of a tile whose map data is not read yet."""
     env = env if env is not None else BuildEnv.create(specs)
     scheduler = make_scheduler(env.store, env, cpu_in_threads=True)
     # The OSM snapshots the store already holds, found as the build finds them (no network): a
@@ -345,7 +441,9 @@ def estimate(
             for role, node in g.by_role.items()
             if (e := entries.get(node.id)) is not None
         ]
-        textures, exact, masked, zone_textures = _tile_textures(env, g, entries)
+        textures, exact, masked, zone_textures, apt_textures, apt_source = _tile_textures(
+            env, g, entries, airports
+        )
         notes: list[str] = []
         if not exact:
             notes.append(
@@ -357,6 +455,16 @@ def estimate(
                 f"{zone_textures} texture(s) added for the zones at their zoom levels: every "
                 "texture a zone overlaps, while the tile's own textures under the zones stay "
                 "counted (an upper bound)"
+            )
+        if apt_textures:
+            where = (
+                "their outline in the tile's map data"
+                if apt_source == "map"
+                else f"X-Plane's airport list: their runways and {RUNWAY_MARGIN_M:.0f} m around, "
+                "until the tile's map data is read"
+            )
+            notes.append(
+                f"{apt_textures} texture(s) added for the airports made sharper, from {where}"
             )
         requests = _requests_for(chunks, textures)
         if requests and first_probe_texture is None:
@@ -388,6 +496,7 @@ def estimate(
                 network_s=0.0,
                 notes=notes,
                 textures_zones=zone_textures,
+                textures_airports=apt_textures,
             )
         )
     if probe is None and online and first_probe_texture is not None:
@@ -433,6 +542,8 @@ def render_text(est: Estimate) -> str:
         masked = "" if t.textures_masked is None else f", {t.textures_masked} masked"
         if t.textures_zones:
             masked += f", {t.textures_zones} for the zones"
+        if t.textures_airports:
+            masked += f", {t.textures_airports} for the airports"
         lines.append(
             f"{t.tile} {t.provider}{t.zl}: {t.textures_total} textures ({exact}{masked}), "
             f"{t.requests} requests ({t.download_mb:.0f} MB), {t.dds_gb:.2f} GB of DDS; "

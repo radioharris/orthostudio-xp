@@ -9,21 +9,30 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+from shapely import geometry
 
+from orthostudio.airports import AirportIndex
+from orthostudio.airports_vec.artefact import write_airports
+from orthostudio.airports_vec.model import Airport as VectorAirport
+from orthostudio.airports_vec.model import AirportSet
+from orthostudio.dsf.zones import M_TO_LAT, m_to_lon
 from orthostudio.estimate import (
     BC1_BYTES,
     DEFAULT_KB_PER_REQUEST,
     DEFAULT_REQ_PER_S,
+    RUNWAY_MARGIN_M,
     ProbeResult,
+    _airport_zones,
     estimate,
     render_text,
 )
 from orthostudio.graph import Store
 from orthostudio.imagery.chunks import ChunkContainer, ChunkEntry, ChunkStatus, ChunkStore
-from orthostudio.imagery.grid import textures_covering
+from orthostudio.imagery.grid import TextureId, textures_covering
 from orthostudio.imagery.providers import Provider, cache_name, load_registry
 from orthostudio.model import TileRef
-from orthostudio.pipeline.build import BuildEnv, BuildSpec
+from orthostudio.pipeline.build import BuildEnv, BuildSpec, declare, make_scheduler
+from orthostudio.sched import PlanEntry
 
 T = TileRef(43, 5)
 
@@ -143,3 +152,98 @@ def test_two_specs_share_the_scheduler_plan(tmp_path: Path, env: BuildEnv) -> No
     assert [t.zl for t in est.tiles] == [14, 15]
     assert est.tiles[1].textures_total == len(textures_covering(44, 5, 43, 6, 15, "BI"))
     assert est.compute_s == pytest.approx(sum(t.compute_s for t in est.tiles))
+
+
+# -- the airports a build makes sharper --------------------------------------------------------
+
+_APT = (
+    "A\n1200 by hand\n\n"
+    "1     74 0 0 LFML Marseille Provence\n"
+    "1302 icao_code LFML\n1302 datum_lat 43.436666667\n1302 datum_lon 5.215\n"
+    "100 45.11 1 0 0.00 0 0 0 13L 43.4300 5.2100 0 0 1 0 0 0 31R 43.4500 5.2300 0 0 1 0 0 0\n\n"
+    "1    500 0 0 XLF001 A strip without a code\n"
+    "100 20.00 3 0 0.00 0 0 0 09 43.7000 5.7000 0 0 1 0 0 0 27 43.7000 5.7100 0 0 1 0 0 0\n\n"
+    "99\n"
+)
+
+
+@pytest.fixture
+def xplane_list(tmp_path: Path) -> AirportIndex:
+    apt = tmp_path / "apt.dat"
+    apt.write_text(_APT, encoding="utf-8")
+    index = AirportIndex(tmp_path / "airports.sqlite")
+    index.build(apt)
+    return index
+
+
+def _sharper(tmp_path: Path, mode: str, zl: int = 15) -> BuildSpec:
+    return dataclasses.replace(
+        _spec(tmp_path, zl),
+        config={"cover_airports_with_highres": mode, "cover_zl": 18, "cover_extent": 1.0},
+    )
+
+
+def _around(box: tuple[float, float, float, float], metres: float) -> set[TextureId]:
+    """The ZL18 textures of a ``(south, west, north, east)`` box widened by ``metres``."""
+    south, west, north, east = box
+    dx, dy = metres * m_to_lon(T.lat), metres * M_TO_LAT
+    return set(textures_covering(north + dy, west - dx, south - dy, east + dx, 18, "BI"))
+
+
+def test_the_airports_made_sharper_count_before_the_first_build(
+    tmp_path: Path, env: BuildEnv, xplane_list: AirportIndex
+) -> None:
+    """A tile never built planned its own textures alone: 54 announced, 114 built with its
+    airports at ZL18 (2026-10-15). X-Plane's list places them by their runways, widened by the
+    margin and by ``cover_extent``, as the build widens their outline."""
+    plain = estimate([_spec(tmp_path, 15)], env=env, airports=xplane_list).tiles[0]
+    est = estimate([_sharper(tmp_path, "ICAO")], env=env, airports=xplane_list)
+    (t,) = est.tiles
+    lfml = _around((43.43, 5.21, 43.45, 5.23), RUNWAY_MARGIN_M + 1000)
+    assert t.textures_airports == len(lfml) > 0 and plain.textures_airports == 0
+    assert t.textures_total == plain.textures_total + len(lfml)
+    assert t.requests == plain.requests + 256 * len(lfml)  # downloads and disk follow
+    assert any("X-Plane's airport list" in note for note in t.notes)
+    assert f"{len(lfml)} for the airports" in render_text(est)
+    # every airport when the setting takes them all, the strip without a code too
+    (every,) = estimate([_sharper(tmp_path, "True")], env=env, airports=xplane_list).tiles
+    strip = _around((43.70, 5.70, 43.70, 5.71), RUNWAY_MARGIN_M + 1000)
+    assert every.textures_airports == len(lfml | strip)
+    # none when the setting is off, or when neither the map data nor X-Plane's list is there
+    (off,) = estimate([_sharper(tmp_path, "False")], env=env, airports=xplane_list).tiles
+    (blind,) = estimate([_sharper(tmp_path, "ICAO")], env=env).tiles
+    assert off.textures_airports == blind.textures_airports == 0
+    assert blind.textures_total == plain.textures_total
+
+
+def test_the_map_data_in_the_store_gives_the_airports_outline(
+    tmp_path: Path, env: BuildEnv, xplane_list: AirportIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tile whose map data is in the store, built before at another level, is planned from its
+    airports' own outline (what the build reads), not from X-Plane's runways."""
+    spec = _sharper(tmp_path, "ICAO", zl=16)
+    (nodes,) = declare([spec], make_scheduler(env.store, env, cpu_in_threads=True), env,
+                       planning=True)  # fmt: skip
+    record = tmp_path / "vectors"
+    record.mkdir()
+    airports = AirportSet()
+    outline = geometry.MultiPolygon([geometry.box(0.1, 0.1, 0.2, 0.2)])
+    airports.add(VectorAirport("LFXX", "icao", "Test field", (5.15, 43.15), boundary=outline))
+    write_airports(record, airports, T)
+    monkeypatch.setattr(env.store, "path", lambda key: record)
+    entries = {nodes.vectors.id: PlanEntry(nodes.vectors.id, "k", "hit", 0.0)}
+    zones, source = _airport_zones(env, nodes, entries, xplane_list)
+    assert source == "map" and len(zones) == 1
+    ring, level, provider = zones[0]
+    dx, dy = 1000 * m_to_lon(T.lat), 1000 * M_TO_LAT
+    assert (level, provider) == (18, "BI")
+    assert ring == pytest.approx([43.1 - dy, 5.1 - dx, 43.1 - dy, 5.2 + dx,
+                                  43.2 + dy, 5.2 + dx, 43.2 + dy, 5.1 - dx])  # fmt: skip
+    # map data holding no airport: none, X-Plane's list is not asked
+    monkeypatch.setattr(env.store, "path", lambda key: tmp_path / "no-airport")
+    assert _airport_zones(env, nodes, entries, xplane_list) == ([], "map")
+    # a record that cannot be read: X-Plane's list answers instead
+    (record / "airports.npz").write_bytes(b"broken")
+    monkeypatch.setattr(env.store, "path", lambda key: record)
+    zones, source = _airport_zones(env, nodes, entries, xplane_list)
+    assert source == "list" and len(zones) == 1  # LFML; the strip carries no ICAO code

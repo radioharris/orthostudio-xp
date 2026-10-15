@@ -139,6 +139,7 @@ class FakeAirport:
     name: str
     lat: float
     lon: float
+    runways: tuple[float, float, float, float] | None = None
 
 
 class FakeIndex:
@@ -163,6 +164,7 @@ class FakeIndex:
         *,
         limit: int = 400,
         kinds: object = None,
+        icao_only: bool = False,
     ) -> list[FakeAirport]:
         return [a for a in self.rows if south <= a.lat <= north and west <= a.lon <= east][:limit]
 

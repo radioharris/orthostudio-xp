@@ -393,7 +393,7 @@ For each spec, without building anything:
 | Field | How |
 |---|---|
 | `nodes` | `Scheduler.plan(targets)`: `hit` / `build` / `unknown` and the EWMA seconds of each node (spec `scheduler.md` 2.8) |
-| `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture); else every texture covering the tile (`textures_covering`), `exact = false` |
+| `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture); else every texture covering the tile (`textures_covering`), plus those of its zones (`textures.zones`, `map-zones.md` 5) and of the airports the build makes sharper (`textures.airports`, below), `exact = false` |
 | `textures.masked` | from the same list: textures with a sea kind (DXT5, 22.4 MB) versus DXT1 (11.2 MB); unknown without the DSF: all DXT1 plus a note |
 | `requests`, `download_mb` | per texture, the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
 | `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s, and no more than the provider's `server_req_per_s` when it has one (`ProbeResult.throughput`): the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
@@ -409,6 +409,23 @@ a minute before planned every node after their layers "to build" and 343 MB of p
 download, where the build that followed took everything from the store (2026-10-15). A node whose
 inputs are not all known before an earlier node runs stays `unknown` (a stage whose version
 changed, and what follows it): its textures and their download are then an upper bound.
+
+**The airports made sharper** (`cover_airports_with_highres` `True` or `ICAO`). The DSF raises to
+`cover_zl` every mesh cell an airport's outline covers, widened by `cover_extent` and snapped to the
+textures of that level (`dsf/zones.py` `_airport_array`). Without the DSF, the plan counts the
+textures of `cover_zl` each widened outline overlaps, as it counts a zone's, those not counted yet
+(`_airport_zones`). The outline is the airport's boundary in the tile's map data when the vectors
+node is a hit (`airport_covers`, what the DSF reads); else, from X-Plane's airport list
+(`airports-index.md`: the ICAO airports in `ICAO` mode, every land airport in `True` mode), the box
+of its land runways widened by `RUNWAY_MARGIN_M`, 250 m, for the aprons and terminals the map data
+usually adds, or its reference point without a runway. On the 18 tiles of a data folder whose map
+data held their airports, the runways gave 1 037 ZL18 textures of ICAO airports against the 1 150
+the builds made, within a fifth on 15 tiles (Key West's naval air station, a base around short
+runways, at a quarter); 500 m gave 1 199 but a third too many on a tile, the reference point with
+1 km around 1 036 with Schiphol at half. Without the map data and without the list (no X-Plane
+folder), nothing is counted. Until 1.1.0 the plan of a tile never built left the airports out: 54
+textures announced for +43+006, 114 built (49 at ZL15, 65 at ZL18, 2026-10-15). The notes say
+where the airports were read.
 
 Output: JSON (`--json`) or a two-line summary ("network: your line ..." / "compute: your
 Mac ...") per tile. Nothing is written except the probe's 20 chunks, which are **not** stored.
