@@ -1032,6 +1032,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Nothing to do; the build resumes from the last completed node.",
     ),
     _spec(
+        "SYS_BUILD_INTERRUPTED",
+        _B,
+        _S,
+        "OrthoStudio XP stopped during this build: closed by force, a crash or a power cut.",
+        "What was built is kept: Build again goes on from there.",
+    ),
+    _spec(
         "SYS_UPSTREAM_FAILED",
         _I,
         _S,

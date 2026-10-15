@@ -1008,6 +1008,56 @@ class Job:
         doc = {**self.state(), "specs": [_spec_to_json(s) for s in self.specs]}
         atomic_write_text(self.state_path(), json.dumps(doc, ensure_ascii=False, indent=1))
 
+    def mark_interrupted(self) -> None:
+        """A job read back queued or running: the program stopped while it waited or ran (closed
+        by force, a crash, a power cut). Its file is written when it starts, and its rows follow
+        its journal; a step it had started and not ended is cancelled, and the job ends failed
+        with ``SYS_BUILD_INTERRUPTED``, written so. A build killed during its images was missing
+        from Works after the restart, its journal left on the disk (2026-10-15): it is listed
+        again, and Build again goes on from what it had built."""
+        events = self.events()
+        with self._lock:
+            for e in events:
+                kind = e.get("event")
+                if kind == "stats" and isinstance(e.get("stats"), dict):
+                    self._stats = e["stats"]
+                node = e.get("node")
+                if not node or kind not in ("started", "done", "failed"):
+                    continue
+                st = self._node(str(node))
+                if kind == "started":
+                    if st.status not in ("done", "hit"):
+                        st.status = "running"
+                elif kind == "done":
+                    st.status = "hit" if e.get("hit") else "done"
+                    st.hit, st.key, st.fraction = e.get("hit"), e.get("key"), 1.0
+                    st.wall_s = float(e.get("wall_s") or 0.0)
+                else:
+                    st.status = "skipped" if e.get("skipped") else "failed"
+                    if isinstance(e.get("error"), dict):
+                        st.error = e["error"]
+            for ts in self._tiles.values():
+                for st in ts.nodes.values():
+                    if st.status == "running":
+                        st.status = "cancelled"
+            self.status = "failed"
+            try:
+                self.finished_at = self.journal_path.stat().st_mtime
+            except OSError:
+                self.finished_at = self.started_at or self.created_at
+            self.job_error = error_json(OsxpError("SYS_BUILD_INTERRUPTED"))
+        try:
+            self._open_file()
+            self._append(
+                "finished", status="failed", report=None, decisions=[], error=self.job_error
+            )
+        finally:
+            if self._file is not None:
+                with contextlib.suppress(OSError):
+                    self._file.close()
+                self._file = None
+        self.save_state()
+
     @classmethod
     def load(cls, state_path: Path) -> Job:
         """A finished job read back from ``<id>.json`` (events come from the ``.jsonl``)."""
@@ -1246,6 +1296,11 @@ class JobManager:
             except (OSError, ValueError, KeyError, TypeError):
                 log.warning("unreadable past job %s", path)
                 continue
+            if job.status in ("queued", "running"):
+                try:
+                    job.mark_interrupted()
+                except (OSError, ValueError, KeyError, TypeError):
+                    log.warning("past job %s could not be marked interrupted", path)
             self._jobs[job.id] = job
 
     # -- queries -----------------------------------------------------------------------------
@@ -1315,6 +1370,11 @@ class JobManager:
                 specs, install=install, request=request, journal_path=self.jobs_dir / "pending"
             )
             job.journal_path = self.jobs_dir / f"{job.id}.jsonl"
+            # written at once and again at the end: a build the program stopped during (closed by
+            # force, a crash, a power cut) is found again at the next start (:meth:`_load_past`)
+            with contextlib.suppress(OSError):
+                self.jobs_dir.mkdir(parents=True, exist_ok=True)
+                job.save_state()
             self._jobs[job.id] = job
             if busy:
                 self._queue.append(job)

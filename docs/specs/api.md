@@ -824,6 +824,14 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   dependency on the server's loop (the CLI could drive a `JobManager` too).
 * `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s;
   `active_job` is the id of the queued or running job, else `null`.
+* A job's `<id>.json` is written when it is created, queued or started, and again at its end.
+  The start of the engine lists the `<id>.json` files; one still `queued` or `running` was
+  stopped by the program's end (closed by force, a crash, a power cut): its rows are replayed
+  from its journal (`started`, `done`, `failed`), a step started and not ended becomes
+  `cancelled`, and the job ends `failed` with `SYS_BUILD_INTERRUPTED` and a `finished` line,
+  written so (`Job.mark_interrupted`). Works lists it with *Build again*. Only a finished
+  build wrote its file before, and a build killed during its images was missing from Works
+  after the restart, its journal left on the disk (2026-10-15).
 * A job's end is one step under the manager's lock: its `finished` event, its `<id>.json`
   written, the job out of the active slot and the next queued job started. A page that hears
   `finished` asks the status at once, and the status named the job still while its state was

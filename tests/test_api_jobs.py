@@ -300,6 +300,36 @@ def test_manager_reloads_past_jobs(home: Path) -> None:
     assert past.state()["tiles"][0]["stages"]["osm"]["status"] == "done"
 
 
+def test_a_build_the_program_stopped_during_is_listed_again(home: Path) -> None:
+    """Killed during a build, the program came back without it: only a finished build wrote its
+    file, and the start lists the files (2026-10-15). The file is written when the build starts;
+    found again still running, the build is failed with ``SYS_BUILD_INTERRUPTED``, its rows as
+    its journal left them (a step under way cancelled), written so, and can be built again."""
+    build = FakeBuild(delay_s=0.3)
+    mgr = _manager(home, build)
+    job = mgr.start([make_spec(home=home)])
+    assert job.state_path().is_file(), "written when the build starts"
+    deadline = time.monotonic() + 10
+    while sum(1 for e in job.events() if e["event"] == "done") < 2:
+        assert time.monotonic() < deadline, "the build did not get going"
+        time.sleep(0.05)
+    try:
+        # the program stops here: the next start reads the files as they are
+        past = _manager(home, FakeBuild()).get(job.id)
+        assert past is not None and past.status == "failed" and past.finished
+        state = past.state()
+        assert [e["code"] for e in state["errors"]][-1] == "SYS_BUILD_INTERRUPTED"
+        nodes = [n for st in state["tiles"][0]["stages"].values() for n in st["nodes"]]
+        statuses = [n["status"] for n in nodes]
+        assert statuses.count("done") >= 2 and "running" not in statuses
+        assert "cancelled" in statuses  # the step under way when it stopped
+        assert past.events()[-1]["event"] == "finished" and len(past.specs) == 1
+        again = _manager(home, FakeBuild()).get(job.id)  # written so: read as a finished build
+        assert again is not None and again.status == "failed"
+    finally:
+        assert mgr.cancel(job.id) and job.wait(10.0)
+
+
 def test_manager_clears_finished_jobs_and_their_files(home: Path) -> None:
     """The Works list can be emptied: the finished jobs go with their state and journal files, a
     running one stays, and a restart does not bring the cleared ones back."""
