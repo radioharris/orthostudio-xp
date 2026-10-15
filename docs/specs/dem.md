@@ -695,6 +695,24 @@ void-filled and upsampled to 3601.
 The raster itself is 54 MB; the declared `ram_mb = 600` covers the raster, the four 3601
 intermediates of the upsample and the fill working arrays with margin.
 
+Two sources take more, and their node says so (`pipeline/build.py` `RELIEF_SOURCE_RAM`,
+`dem_ram`): the USGS 1/3" declares 1 200 MB and ANADEM 800 MB. Measured on 2026-10-15, the
+step alone in a process of its own, the same code on a Mac and on a Windows PC of 16 GB:
+
+| Source | Windows | Mac | Declared |
+|---|---|---|---|
+| X-Plane 12's relief (`+46+006`) | 313 MB | 493 MB | 600 |
+| Copernicus (`+46+006`) | 300 MB | 392 MB, 553 while downloading | 600 |
+| USGS 1" (`+39-106`) | 160 MB | 348 MB | 600 |
+| Canada's lidar over Copernicus (`+45-074`) | 310 MB | 582 MB | 600 |
+| ANADEM over Copernicus (`-23-047`) | 310 MB | 697 MB | 800 |
+| USGS 1/3" (`+39-106`) | 1 350 MB | 1 970 MB, 2 900 while downloading | 1 200 |
+
+Python's own count (`tracemalloc`) is the same on both (306 and 311 MB for X-Plane's relief, 250
+for Copernicus); the Mac's 150 MB more are outside it. The two figures are set near the Windows
+peaks, not at the Mac's highest: a reservation only makes other steps wait, and a machine of
+16 GB or more has the room. A file of one's own that asks more still wins (`relief_ram`).
+
 Where the x15 on `alt_vec` comes from: Ortho4XP builds four Python lists of 100 000 `numpy.float32`
 scalars per call (`[self.alt_dem[i][j] for i, j in zip(...)]`), i.e. 400 000 interpreter round trips
 and 400 000 temporary objects; OrthoStudio XP issues four fancy-indexing gathers. The arithmetic

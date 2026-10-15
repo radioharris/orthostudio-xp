@@ -1950,3 +1950,10 @@ def test_the_scheduler_weighs_a_relief_of_ones_own(tmp_path: Path) -> None:
     from orthostudio.mesh.rule import OSXP_MESH
 
     assert build_mod.relief_ram(OSXP_MESH, 500.0, 2.0, 600) == {}
+    # the sources whose step was measured above 600 MB declare what they take (2026-10-15)
+    assert build_mod.dem_ram("NED1/3", 0.0, False) == {"ram_mb": 1200}
+    assert build_mod.dem_ram("COP30;ANADEM", 0.0, False) == {"ram_mb": 800}
+    assert build_mod.dem_ram(f"NED1/3;{folder}", 0.0, True) == {"ram_mb": 1200}
+    for source in ("", "XP12", "COP30", "NED1", "COP30;HRDEM"):
+        assert build_mod.dem_ram(source, 0.0, False) == {}, source
+    assert build_mod.dem_ram("COP30;ANADEM", 3000.0, True) == {"ram_mb": 7200}  # a lidar wins

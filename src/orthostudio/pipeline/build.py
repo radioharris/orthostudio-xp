@@ -1969,6 +1969,17 @@ folder's file is laid into the relief under it (the composite of 28 011 points a
 file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports), Triangle4XP
 6.0 to 6.3 GB (the heights and their curvature, and the mesh)."""
 
+RELIEF_SOURCE_RAM = {"NED1/3": 1200, "ANADEM": 800}
+"""What the relief node declares for a source whose step takes more than the rule's 600 MB.
+Measured on 2026-10-15, the relief step alone in a process of its own, the same code on a Mac and
+on a Windows PC of 16 GB: the USGS 1/3" (``+39-106``) 1 350 MB on Windows, 1 970 on the Mac (2 900
+while its file downloads); ANADEM (``-23-047``) 310 and 697 MB; every other source within 600
+(X-Plane 12's relief 313 and 493, Copernicus 300 and 392 to 553, the USGS 1" 160 and 348, Canada's
+lidar 310 and 582). The Mac counts some 150 MB more for the same work, outside Python (whose own
+count is the same on both). Set near the Windows peak rather than at the Mac's highest, the
+owner's choice: a reservation only makes other steps wait, and a machine of 16 GB or more has
+the room."""
+
 MESH_STRUCTURES_MB = 600
 """What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
 triangles (``docs/specs/mesh-build.md``)."""
@@ -2003,6 +2014,16 @@ def relief_ram(rule_: Rule, relief_mb: float, factor: float, extra_mb: float = 0
         return {}
     need = int(factor * relief_mb + extra_mb)
     return {"ram_mb": need} if need > rule_.ram_mb else {}
+
+
+def dem_ram(custom_dem: str, relief_mb: float, laid_over: bool) -> dict[str, int]:
+    """``ram_mb=`` for a tile's relief node: the larger of what its source asks
+    (:data:`RELIEF_SOURCE_RAM`) and what a raster of one's own asks (:func:`relief_ram`), or
+    nothing when the rule's own 600 MB stands."""
+    by_source = max((RELIEF_SOURCE_RAM.get(p, 0) for p in custom_dem.split(";")), default=0)
+    by_file = relief_ram(DEM_RULE, relief_mb, RELIEF_RAM["dem_overlay" if laid_over else "dem"])
+    need = max(by_source, by_file.get("ram_mb", 0))
+    return {"ram_mb": need} if need > DEM_RULE.ram_mb else {}
 
 
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
@@ -2109,7 +2130,7 @@ def declare(
             kind="subprocess" if dem_cfg.get("custom_dem") == XP12_SOURCE else "net",
             lane=None if dem_cfg.get("custom_dem") == XP12_SOURCE else RELIEF_LANE,
             run=_dem_run(env, spec),
-            **relief_ram(DEM_RULE, relief_mb, RELIEF_RAM["dem_overlay" if laid_over else "dem"]),
+            **dem_ram(str(dem_cfg.get("custom_dem") or ""), relief_mb, laid_over),
         )
         osm_ref = osm_refs.get(spec.tile)
         osm_input: Node | ArtifactRef
