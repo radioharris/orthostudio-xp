@@ -159,6 +159,14 @@ terminal. The page's time left is the API's own estimate from the nodes' rows
   then terminates the worker processes (`ProcessPoolExecutor.terminate_workers`, 3.14; the
   private process table before). Pending nodes are `Failed` with `SYS_CANCELLED`. A cancel
   with cooperative nodes returns in well under one second (`test_cancel_under_one_second`).
+* When the engine itself is gone without shutting its pools down (killed, crashed), every worker
+  leaves on its own: its initializer starts a thread waiting on its parent's sentinel
+  (`multiprocessing.parent_process().sentinel`: a pipe only the parent holds on macOS and Linux,
+  the parent's process handle on Windows) that ends the process
+  (`orthostudio.parentwatch.leave_with_parent`). The same holds for the textures' encoders and
+  the masks' cells. Killed during a build, the engine had left 11 workers behind, idle, holding
+  about 7.3 GB and files on the data disk until the computer restarted (2026-10-15); with the
+  watch, killed with 7 encoders running, none was left four seconds later.
 * `run()` returns the refs of the **targets that succeeded**; `scheduler.failed` holds the
   error of every node that did not; a caller that wants an exception checks it. Nothing
   partial is ever indexed (P0 write protocol).

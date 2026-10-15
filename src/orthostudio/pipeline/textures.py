@@ -57,6 +57,7 @@ from orthostudio.imagery.chunks import (
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles
 from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, tile_url
 from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats
+from orthostudio.parentwatch import leave_with_parent
 from orthostudio.pipeline.home import default_chunks_root, default_store_root
 from orthostudio.pipeline.parents import (
     ParentCache,
@@ -619,9 +620,11 @@ _WORKER_STORE: Store | None = None
 
 
 def _worker_init() -> None:
-    """Workers ignore Ctrl-C: the parent cancels them through the pool (spec section 8)."""
+    """Workers ignore Ctrl-C: the parent cancels them through the pool (spec section 8). They
+    leave when the engine is gone (:func:`orthostudio.parentwatch.leave_with_parent`)."""
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+    leave_with_parent()
 
 
 def _worker_store(root: Path, fsync: bool) -> Store:

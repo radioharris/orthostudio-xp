@@ -23,6 +23,7 @@ from orthostudio.errors import OsxpError, wrap
 from orthostudio.graph.rule import Rule, RuleParams
 from orthostudio.graph.store import Store
 from orthostudio.model import ArtifactRef
+from orthostudio.parentwatch import leave_with_parent
 from orthostudio.sched.node import CancelToken, NodeContext, NodeRun, run_p0_rule
 
 __all__ = ["CpuJob", "Outcome", "cpu_entry", "cpu_init", "error_from_dict", "execute"]
@@ -126,11 +127,13 @@ _STORE: Store | None = None
 
 
 def cpu_init(cancel_event: CancelToken, progress_queue: Any) -> None:
-    """``ProcessPoolExecutor`` initializer: keep the shared primitives, ignore Ctrl-C."""
+    """``ProcessPoolExecutor`` initializer: keep the shared primitives, ignore Ctrl-C, and leave
+    when the engine is gone (:func:`orthostudio.parentwatch.leave_with_parent`)."""
     global _CANCEL, _PROGRESS
     _CANCEL, _PROGRESS = cancel_event, progress_queue
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+    leave_with_parent()
 
 
 def _worker_store(root: Path, fsync: bool) -> Store:

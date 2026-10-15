@@ -385,7 +385,8 @@ either: a tile's are forced as a group before the tile is handed to X-Plane, so 
 file a power cut could still spoil, and a build that follows one cut short by a power cut, a
 crash of the system or a disk unplugged first checks what that build wrote since its last tile,
 and makes again what did not reach the disk whole; Works counts the files as they are checked, a
-matter of seconds on an SSD and of a minute or more on a hard disk. A file another program holds at that moment
+matter of seconds on an SSD and of a minute or more on a hard disk. If the program itself is
+stopped by force or crashes, its helper processes end with it rather than staying in memory. A file another program holds at that moment
 (an antivirus, a sync tool) cannot be forced under Windows: the tile goes on all the same, the
 log names the file, and the next build checks it. At the start of the app, the Library reads nothing
 of the tiles but their folders: a tile's size, its colours and what it was built with are
