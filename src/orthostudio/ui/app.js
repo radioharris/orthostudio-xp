@@ -2265,10 +2265,6 @@ const screenScroll = new Map();
 
 function showScreen(name, arg) {
   if (!SCREENS.includes(name)) name = "plan";
-  if (state.screen === "settings" && name !== "settings" && state.settingsDraft && !sameValue(state.settingsDraft, state.settings)) {
-    // an answer changed without Save changes nothing yet: say it rather than let the Plan look stale
-    toast(t("settings.left_unsaved"));
-  }
   // read while the screen left still shows: hidden, a shorter page would have scrolled it up
   const left = state.screen;
   if (left !== name) screenScroll.set(left, window.scrollY);
@@ -6309,7 +6305,7 @@ export function rebuildRequests(rows) {
  * own rule (twice the room the builds need). A stage the estimate cannot know before an earlier
  * one runs (`unknown`, after an update that changes it) may still find its work done: the figures
  * are then an upper bound, and the question says "up to". */
-export function rebuildQuestion(requests, plans, inXplane = 0) {
+export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) {
   const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
   const mb = plans.reduce((sum, p) => sum + (Number(p?.network?.mb) || 0), 0);
   const verdicts = plans.map((p) => diskVerdict(p?.disk));
@@ -6321,6 +6317,7 @@ export function rebuildQuestion(requests, plans, inXplane = 0) {
   const body = [t("library.rebuild_kept"), unsure ? t("library.rebuild_costs_most", figures) : t("library.rebuild_costs", figures)];
   if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
+  if (unsaved) body.push(t("settings.unsaved_build"));
   return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: !short };
 }
 
@@ -6359,7 +6356,7 @@ async function rebuildLibraryTiles() {
     const plans = [];
     for (const { install: _install, ...req } of requests) plans.push(await api("POST", "/api/plan", req));
     const shown = new Set(picked.filter((e) => e.installed).map((e) => e.tile));
-    const question = rebuildQuestion(requests, plans, shown.size);
+    const question = rebuildQuestion(requests, plans, shown.size, settingsUnsaved());
     if (!(await confirmRebuild(question)) || !question.go) return;
     let started = null;
     let waits = 0;
@@ -6542,11 +6539,31 @@ function renderSettings(message, kind) {
 
 /** "Changes not saved yet", or the message of the last change: the line beside Save. */
 function renderSettingsStatus(message, kind) {
-  const dirty = !sameValue(state.settingsDraft, state.settings);
+  const dirty = settingsUnsaved();
   const line = $("settings-status");
   const text = message || (dirty ? t("settings.unsaved") : "");
   if (line.textContent !== text) line.textContent = text;
   if (line.classList.contains("is-fail") !== (kind === "fail")) line.classList.toggle("is-fail");
+  renderUnsaved();
+}
+
+/** Answers changed in Settings and not yet saved: a build would not use them. */
+function settingsUnsaved() {
+  return Boolean(state.settingsDraft && state.settings) && !sameValue(state.settingsDraft, state.settings);
+}
+
+/** For as long as Settings hold answers not saved, the Settings tab carries a dot and the Plan says a
+ * build uses the settings saved before. A message on leaving Settings went by in three seconds, and
+ * a user built his tile with Copernicus alone, the folder of his lidar never saved (2026-10-15). */
+function renderUnsaved() {
+  const dirty = settingsUnsaved();
+  const tab = document.querySelector('.nav-btn[data-screen="settings"]');
+  if (tab) {
+    tab.classList.toggle("is-unsaved", dirty);
+    if (dirty) tab.title = t("settings.unsaved");
+    else tab.removeAttribute("title");
+  }
+  $("plan-unsaved").hidden = !dirty;
 }
 
 /** The Plan says in a few words what the build will use, and where to change it. */
@@ -6554,6 +6571,7 @@ function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
   $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
   renderPlanXplane();
+  renderUnsaved();
 }
 
 /** Step 1: the colours of the squares chosen, with the three sliders and the preview.

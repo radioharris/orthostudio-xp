@@ -1021,7 +1021,12 @@ name and the places the map data comes from (a folder of one's own, a library's 
 kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
-"Changes not saved yet". The action bar sticks to the bottom, and a save the engine refuses says
+"Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says
+the same), step 3 of the Plan says "Your changes in Settings are not saved: a build uses the
+settings saved before. Save them in Settings first if they are meant for it.", and so does the
+Library's *Build again…* question (`app.js` `renderUnsaved`); Save or *Undo my changes* clears the
+three. A message given on leaving Settings went by in three seconds, and a user built a tile with
+Copernicus alone, the folder of his lidar never saved (2026-10-15). The action bar sticks to the bottom, and a save the engine refuses says
 why in it, in the page's words for the code: "Not saved: /Volumes/… will not do: files cannot be
 linked there, as in a folder shared over a network or with a virtual machine, and on a disk
 formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and tells
@@ -1529,8 +1534,9 @@ are this build's, and works out its estimate again with the saved settings. From
 screen without saying so (`saveSettings`). It also reads `GET /api/status` again before saying
 *Saved* (the X-Plane folder may have changed: the *Detected* line of Settings, step 3's notice and
 the status bar follow) and drops a refusal step 3 still showed. The folder field's hint "empty =
-the detected folder" shows only when a folder was detected. Leaving Settings with answers not
-saved says so in a toast; nothing is saved by leaving.
+the detected folder" shows only when a folder was detected. Nothing is saved by leaving Settings:
+answers not saved are said on the tab and in step 3 until they are saved or undone (see the
+Settings screen above; until 2026-10-15 a toast said it once, on leaving).
 
 ## 3. Mock mode
 

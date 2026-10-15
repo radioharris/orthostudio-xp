@@ -230,6 +230,11 @@ a { color: var(--accent); }
 }
 .nav-btn:hover { color: var(--fg); background: var(--bg-3); }
 .nav-btn[aria-current="page"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+/* Settings changed and not saved (app.js renderUnsaved): a dot on the tab, on every screen. */
+.nav-btn.is-unsaved::after {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px;
+  border-radius: 50%; background: var(--warn); vertical-align: middle;
+}
 
 .topbar-tools { display: flex; align-items: center; gap: 6px; }
 /* The three of them together, at one height: Quit took its height from .btn-small, which sets a
@@ -1266,12 +1271,12 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 .plan-settings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap); }
 .plan-settings .help { margin: 0; flex: 1 1 240px; }
 /* No X-Plane 12 folder known: said before Estimate, with the way to give it (app.js xplaneNotice). */
-.plan-xplane {
+.plan-xplane, .plan-unsaved {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap);
   padding: 6px 10px; border-radius: var(--radius); font-size: var(--fs-2);
   background: var(--warn-soft); color: var(--fg); border: 1px solid var(--warn); border-left-width: 3px;
 }
-.plan-xplane p { margin: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.plan-xplane p, .plan-unsaved p { margin: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
 .plan-error { margin-top: var(--help-gap); }
 .plan-error .error-inline { margin: 0; }
 

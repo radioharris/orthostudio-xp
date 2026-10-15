@@ -259,6 +259,8 @@ roads, forests and buildings. Three presets answer several questions at once; ev
 under *For experts*, with its name in Ortho4XP. The Plan recalls the answers in one sentence before
 you build, and works out the cost by itself as you choose: disk space, download and time, with
 nothing to press first. *Build* waits only when the disk cannot hold the build, and says so.
+Answers count once saved: until then the Settings tab carries a dot, and the Plan and the Library's
+*Build again…* say that a build uses the settings saved before.
 
 **Where X-Plane is.** OrthoStudio XP works with the X-Plane 12 installed on the same computer: it
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its

@@ -3372,7 +3372,7 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
 
 def test_a_save_drops_an_estimate_that_no_longer_holds() -> None:
     """Saving changes what a build would cost, so the estimate on the Plan is worked out again,
-    and leaving Settings with answers not saved says so.
+    and the Plan says when Settings hold answers not saved.
 
     This test used to check that the Plan *took* the saved detail level, which a user had asked
     for on 2026-09-14. That was undone on 2026-09-21, for the reason
@@ -3380,7 +3380,7 @@ def test_a_save_drops_an_estimate_that_no_longer_holds() -> None:
     writing over each other in both directions. The estimate is what survives of it."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert "planChanged();" in _function_body(app_js, "saveSettings")
-    assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
 
 
 def test_step_3_says_when_x_plane_is_not_found() -> None:
@@ -4735,7 +4735,7 @@ def test_settings_are_where_the_next_plan_starts_and_nothing_more() -> None:
     # nothing of the three attempts at making the two screens talk is left
     for gone in ("sourceChanged", "planSourceChosen", "persistSettings"):
         assert gone not in app_js, gone
-    assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
 
     # the Plan starts from the settings, and only there
     assert "state.settings?.essential?.provider" in _function_body(app_js, "renderSourceOptions")
@@ -7412,6 +7412,46 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
         "To download: up to 1.22 GB. On disk: up to 4.5 GB to write, 200 GB free. Less if the "
         "tiles have not changed: that is known only once built."
     )
+
+
+def test_answers_not_saved_are_said_until_they_are_saved() -> None:
+    """A user set the folder of his lidar in Settings, left without Save and built: the tile came
+    out with Copernicus alone, and the message given on leaving Settings had gone by in three
+    seconds (2026-10-15). For as long as the draft differs from the saved settings, the Settings
+    tab carries a dot, step 3 of the Plan says a build uses the settings saved before, and so
+    does the Library's Build again question; saving or undoing clears all three."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "left_unsaved" not in app_js  # the passing message is gone, the lasting ones replace it
+    assert re.search(r'<div class="plan-unsaved" id="plan-unsaved" role="status" hidden>', html)
+    assert ".nav-btn.is-unsaved::after" in css
+    unsaved = _function_body(app_js, "renderUnsaved")
+    assert 'tab.classList.toggle("is-unsaved", dirty)' in unsaved
+    assert '$("plan-unsaved").hidden = !dirty' in unsaved
+    # drawn wherever the draft or the saved settings change, and on the Plan
+    assert "renderUnsaved();" in _function_body(app_js, "renderSettingsStatus")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
+    assert "settingsUnsaved()" in _function_body(app_js, "rebuildLibraryTiles")
+    tables = _i18n_tables()
+    assert all(tables[lang].get("settings.unsaved_build") for lang in tables)
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const reqs = [{ tiles: ["+45+006"], provider: "BI", zoom_level: 16, install: false }];
+        const plan = { network: { mb: 0 }, disk: { needed_gb: 0.1, free_gb: 200 } };
+        const saved = m.rebuildQuestion(reqs, [plan], 0);
+        const draft = m.rebuildQuestion(reqs, [plan], 0, true);
+        process.stdout.write(JSON.stringify({ saved, draft }));"""
+    )
+    said = (
+        "Your changes in Settings are not saved: a build uses the settings saved before. Save "
+        "them in Settings first if they are meant for it."
+    )
+    assert said not in got["saved"]["body"]
+    assert got["draft"]["body"][-1] == said
+    assert got["draft"]["go"] is True  # said, not refused: the pilot may mean the saved ones
 
 
 def test_build_again_is_wired_in_the_library_bar() -> None:

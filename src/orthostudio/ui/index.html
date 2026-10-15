@@ -244,6 +244,10 @@
             <p id="plan-xplane-text"></p>
             <button type="button" class="btn btn-small" id="plan-xplane-choose" data-i18n="plan.xplane_choose">Choose the X-Plane 12 folder</button>
           </div>
+          <!-- Answers changed in Settings and not saved: said for as long as it lasts (app.js renderUnsaved). -->
+          <div class="plan-unsaved" id="plan-unsaved" role="status" hidden>
+            <p data-i18n="settings.unsaved_build">Your changes in Settings are not saved: a build uses the settings saved before. Save them in Settings first if they are meant for it.</p>
+          </div>
           <div class="plan-settings">
             <p class="help" id="plan-settings-summary" aria-live="polite"></p>
             <button type="button" class="btn btn-small" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
