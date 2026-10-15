@@ -902,7 +902,7 @@ def import_ortho4xp(
     folder: Annotated[
         Path,
         typer.Argument(
-            help="the Ortho4XP folder (the one holding Ortho4XP.py), or a folder of its tiles"
+            help="the Ortho4XP folder (the one holding Ortho4XP.py), or any folder of photo tiles"
         ),
     ],
     library: Annotated[Path | None, typer.Option("--library", help="library sqlite file")] = None,

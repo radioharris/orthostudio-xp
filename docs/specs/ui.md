@@ -975,7 +975,9 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 Any other error (a network failure included) shows the engine's words, or the page's for the
 codes `i18n.js` knows.
 
-*Import my Ortho4XP tiles…* is one button (user report, 2026-09-21: a field, *Choose…* beside it
+*Import tiles built elsewhere…* (« Importer des tuiles faites ailleurs… », *Import my Ortho4XP
+tiles…* until 1.1.0, which said less than it does: a pack of photo tiles is known by its images
+since 0.1.14, whatever made it, a user's remark, 2026-10-15) is one button (user report, 2026-09-21: a field, *Choose…* beside it
 and *Import* were two buttons for one thing, and the field left empty imported nothing without a
 word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
 /api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
@@ -986,7 +988,8 @@ the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then
 overlays pack beside them, and names the folder ("2 tile(s) imported from ~/Ortho4XP."); finding
 none, it says where it looked (`searched`). A cancel changes nothing. Where no dialog opens (a
 Linux without zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the
-page), the field *Ortho4XP folder* appears and the button imports what is typed in it. The status
+page), the field *Tiles folder* appears and the button imports what is typed in it; finding
+nothing, the line says « No photo tile found in … ». The status
 bar's count is `library_count`, which counts tiles, not rows.
 
 ### 2.4 Settings
@@ -1512,7 +1515,7 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), *Import my Ortho4XP tiles…* in the Library (above) and
+label for both read as the same button), *Import tiles built elsewhere…* in the Library (above) and
 *Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in

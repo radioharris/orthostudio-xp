@@ -5324,7 +5324,13 @@ def test_importing_ortho4xp_tiles_is_one_button_that_says_where_it_looked() -> N
         assert "{where}" in tables[lang]["library.imported"]
         assert tables[lang]["library.import_none"] and tables[lang]["library.import_type_first"]
     # the help says which folder before anything else
-    assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
+    assert tables["en"]["library.import_help"].startswith(
+        "Ortho4XP's folder (the one holding Ortho4XP.py), or any folder of photo tiles"
+    )
+    # the button says what it takes: tiles from anywhere, known by their images since 0.1.14;
+    # "Import my Ortho4XP tiles…" said less than it does (a user's remark, 2026-10-15)
+    assert tables["en"]["library.import"] == "Import tiles built elsewhere…"
+    assert tables["fr"]["library.import"] == "Importer des tuiles faites ailleurs…"
 
 
 def _css_rules(css: str) -> list[tuple[str, str]]:
