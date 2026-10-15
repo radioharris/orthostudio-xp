@@ -210,12 +210,14 @@ const state = {
   libraryKnown: false,
   /** The folder the Library shows the tiles of (`tileFolder`'s key), or "" for every folder. */
   libraryFolder: "",
+  libraryShow: "",
   /** The tiles picked to be filed elsewhere, by their row's key (the atelier, step 3). */
   libraryPicked: new Set(),
   /** The filing under way: `{n, i, tile, folder, stop, progress}`, or null. */
   filing: null,
   /** Tiles picked being built again: estimated, asked, then sent (the Library's Build again…). */
   rebuilding: false,
+  bulk: null,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -5352,14 +5354,16 @@ export function libraryFolders(rows, atelier, platform) {
  * folders of its filter, the folder kept (none once it is gone), the rows both keep, and the
  * note under the search (``{text, warn}``, or null). A search that finds tiles in other folders
  * only says so, where it said no tile matched (a review, 2026-10-05). */
-export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = null, platform = "") {
+export function libraryView(tiles, { query = "", folder = "", show = "" } = {}, atelier = null, platform = "") {
   const folders = libraryFolders(tiles, atelier, platform);
   const kept = folders.some((f) => f.key === folder) ? folder : "";
   const inFolder = (e) => !kept || tileFolder(e, atelier, platform).key === kept;
   const q = String(query || "").trim();
-  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));
+  const shows = libraryShows(tiles);
+  const shown = shows.find((c) => c.key === show) || null;
+  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q) && (!shown || shown.test(e)));
   let note = null;
-  if ((q || kept) && tiles.length) {
+  if ((q || kept || shown) && tiles.length) {
     if (rows.length) {
       note = { text: t("library.search_found", { n: fmtInt(rows.length), total: fmtInt(tiles.length) }), warn: false };
     } else {
@@ -5367,7 +5371,22 @@ export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = n
       note = { text: elsewhere ? t("library.search_none_folder", { n: fmtInt(elsewhere) }) : t("library.search_none"), warn: true };
     }
   }
-  return { folders, folder: kept, rows, note };
+  return { folders, folder: kept, shows: shows.map(({ key, n }) => ({ key, n })), show: shown ? shown.key : "", rows, note };
+}
+
+/** The Library's "Show" choices beside "All tiles" (a user, 2026-10-16, keeping track of the
+ * Ortho4XP tiles replaced by OrthoStudio XP ones): ``missing``, the tiles whose folder is no longer
+ * found (a disk not plugged in comes back by itself: not one of them), and ``twice``, every tile of
+ * a square the list holds more than once, an Ortho4XP tile and an OrthoStudio XP one, or one built
+ * into two folders. ``[{key, n, test}]``, ``n`` over all the tiles. */
+export function libraryShows(tiles) {
+  const per = new Map();
+  for (const e of tiles) per.set(e.tile, (per.get(e.tile) || 0) + 1);
+  const choices = [
+    { key: "missing", test: (e) => e.present === false && !e.disk_absent },
+    { key: "twice", test: (e) => (per.get(e.tile) || 0) > 1 },
+  ];
+  return choices.map((c) => ({ ...c, n: tiles.filter(c.test).length }));
 }
 
 /** Which way round each Library column sorts at its first click: its most useful order. The
@@ -5587,7 +5606,7 @@ function folderIcon() {
 export function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
   // a filing under way: one at a time, and nothing else changes the tiles meanwhile
-  const busy = libraryBusy.has(key) || Boolean(state.filing);
+  const busy = libraryBusy.has(key) || Boolean(state.filing) || Boolean(state.bulk);
   const present = e.present !== false;
   const byOsxp = e.built_by === "osxp";
   const jobs = activeJobs();
@@ -5770,12 +5789,14 @@ function renderLibrary() {
     const way = LIBRARY_SORT_FIRST[th.dataset.sort] * (sort.dir === -1 ? -1 : 1);
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
-  // the tiles of one folder, or all: the folders come from the list itself
+  // the tiles of one folder, or all, and of one "Show" choice: they come from the list itself
   const atelier = atelierFolders(state.status);
   const platform = state.status?.platform || "";
-  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
+  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: state.libraryShow }, atelier, platform);
   state.libraryFolder = view.folder;
+  state.libraryShow = view.show;
   renderLibraryFolders(view.folders, view.folder);
+  renderLibraryShows(view.shows, view.show, rows.length > 0);
   renderLibraryPick(rows, view.rows);
   const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
@@ -5808,6 +5829,22 @@ export function renderLibraryFolders(folders, chosen) {
   if (select.dataset.choices !== signature) {
     clear(select);
     select.append(h("option", { value: "" }, all));
+    for (const [key, label] of choices) select.append(h("option", { value: key }, label));
+    select.dataset.choices = signature;
+  }
+  if (select.value !== chosen) select.value = chosen;
+}
+
+/** The "Show" menu above the Library: all its tiles, or those of one of `libraryShows`, each with
+ * how many; shown once there is a tile. */
+export function renderLibraryShows(shows, chosen, any) {
+  $("library-show-wrap").hidden = !any;
+  const select = $("library-show");
+  const names = { missing: t("library.show_missing"), twice: t("library.show_twice") };
+  const choices = [["", t("library.show_all")], ...shows.map((c) => [c.key, `${names[c.key]} (${fmtInt(c.n)})`])];
+  const signature = JSON.stringify(choices);
+  if (select.dataset.choices !== signature) {
+    clear(select);
     for (const [key, label] of choices) select.append(h("option", { value: key }, label));
     select.dataset.choices = signature;
   }
@@ -6035,6 +6072,99 @@ function forgetLibraryTile(e) {
   return runLibraryChange(e, () => api("POST", req.path, req.body), () => toast(t("library.forgotten", { tile: e.tile })));
 }
 
+/** What "Remove from the list…" asks of the tiles it takes off the list (`forgettable`, among
+ * those picked): ``{title, body}``, how many, and how many X-Plane shows, taken out of it first.
+ * ``left`` the tiles picked it leaves aside. */
+export function forgetQuestion(go, left = 0) {
+  const shown = go.filter((e) => e.installed).length;
+  const body = [t("library.forget_body")];
+  if (shown) body.push(t("library.forget_body_xplane", { n: fmtInt(shown) }));
+  if (left) body.push(t("library.bulk_left", { n: fmtInt(left) }));
+  return { title: t("library.forget_title", { n: fmtInt(go.length) }), body, go: "forget" };
+}
+
+/** What "Delete…" asks of the tiles OrthoStudio XP built among those picked: ``{title, body}``,
+ * how many, the space their files take when the engine knows it, how many have no files left here
+ * (they only leave the list), how many X-Plane shows, and that the cache keeps their imagery. ``left`` the tiles picked it leaves aside. */
+export function deleteManyQuestion(go, left = 0) {
+  const here = go.filter((e) => e.present !== false);
+  const bytes = here.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  const shown = go.filter((e) => e.installed).length;
+  const body = [];
+  if (here.length) body.push(bytes ? t("library.delete_n_size", { size: fmtBytes(bytes) }) : t("library.delete_n"));
+  // a tile whose files are gone only leaves the list, as a row's Delete… says (`deleteQuestion`)
+  if (here.length < go.length) body.push(t("library.delete_n_missing", { n: fmtInt(go.length - here.length) }));
+  if (shown) body.push(t("library.delete_n_xplane", { n: fmtInt(shown) }));
+  body.push(t("library.delete_cache"));
+  if (left) body.push(t("library.bulk_left", { n: fmtInt(left) }));
+  return { title: t("library.delete_n_title", { n: fmtInt(go.length) }), body, go: "delete" };
+}
+
+/** A question of the bar in the page's modal <dialog>; resolves true for its action. Focus starts
+ * on the way back (autofocus), and Escape keeps the tiles. */
+function confirmBulk(question) {
+  const dialog = $("library-bulk-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-bulk-title").textContent = question.title;
+  clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
+  const go = $("library-bulk-go");
+  go.textContent = question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go");
+  go.classList.toggle("btn-danger", question.go === "delete");
+  go.classList.toggle("btn-primary", question.go !== "delete");
+  dialog.returnValue = "";
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "go"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** One of the bar's actions on the tiles picked and shown it takes (`bulkTargets`), one tile after the other
+ * with the row's own requests (`POST /api/library/{name}/install|uninstall|delete|forget`); "Remove
+ * from the list…" takes a tile X-Plane shows out of it first, and "Delete…" and "Remove from the
+ * list…" ask first. A tile that fails is said, the others go on; the toast says what was done. */
+async function bulkLibraryAction(action) {
+  if (state.filing || state.bulk) return;
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library)));
+  const go = bulkTargets(picked, tilesInBuilds(activeJobs()), activeJobs().length)[action];
+  if (!go.length) return;
+  const left = picked.length - go.length;
+  if (action === "delete" && !(await confirmBulk(deleteManyQuestion(go, left)))) return;
+  if (action === "forget" && !(await confirmBulk(forgetQuestion(go, left)))) return;
+  const errors = clear($("library-errors"));
+  state.bulk = action;
+  renderLibrary();
+  let done = 0;
+  let freed = 0;
+  try {
+    for (const e of go) {
+      try {
+        if (action === "forget" && e.installed) {
+          const out = libraryRequest(e, "uninstall");
+          await api("POST", out.path, out.body);
+        }
+        const req = libraryRequest(e, action);
+        const res = await api("POST", req.path, req.body);
+        freed += Number(res?.freed_bytes) || 0;
+        if (action === "delete" || action === "forget") state.libraryPicked.delete(libraryKey(e));
+        done += 1;
+      } catch (err) {
+        errors.append(libraryErrorCard(err, e));
+      }
+    }
+  } finally {
+    state.bulk = null;
+    await loadLibrary();
+    loadStatus();
+    showLibraryErrors();
+  }
+  if (!done) return;
+  const n = fmtInt(done);
+  if (action === "install") toast(t("library.bulk_added", { n }));
+  else if (action === "uninstall") toast(t("library.bulk_removed", { n }));
+  else if (action === "delete") toast(freed ? t("library.bulk_deleted_size", { n, size: fmtBytes(freed) }) : t("library.bulk_deleted", { n }));
+  else toast(t("library.forgotten_n", { n }));
+}
+
 /** "Find again…" (a tile OrthoStudio XP built whose folder was moved by hand, its disk here): the
  * user shows the tile's folder or the one holding it, and the Library and every X-Plane that showed
  * the tile follow (`POST /api/library/{name}/find`, the atelier's step 2, 2026-10-05). The dialog
@@ -6058,21 +6188,51 @@ export function foundMessage(res, tile) {
 
 // -- tiles filed elsewhere (the atelier, step 3, 2026-10-05) ------------------------------------
 
-/** Whether a row may be picked to be filed elsewhere: a tile OrthoStudio XP built, where the
- * Library says, and not in a build (whose end decides where it is). */
-function pickable(e, building) {
+/** Whether a picked row may be filed elsewhere or built again: a tile OrthoStudio XP built, where
+ * the Library says, and not in a build (whose end decides where it is). */
+function fileable(e, building) {
   return e.built_by === "osxp" && e.present !== false && !building.has(e.tile);
 }
 
-/** The box that picks a row to be filed elsewhere, in the row's first column. */
-function pickBox(e, key, inBuild) {
-  if (e.built_by !== "osxp" || e.present === false || inBuild) return null;
-  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+/** Whether a picked row may be taken off the list ("Remove from the list…"): a tile OrthoStudio XP
+ * did not build, its files here or gone. A user replacing their Ortho4XP tiles with OrthoStudio XP
+ * ones took them off one by one (2026-10-16). */
+export function forgettable(e) {
+  return e.built_by !== "osxp";
 }
 
-/** The rows the search and the folder leave, as the table shows them. */
+/** Whether a row has a box: one of the bar's buttons can take it. A tile OrthoStudio XP built that
+ * a build under way or waiting holds has none: the end of the build decides what it is. */
+function pickable(e, building) {
+  return !(e.built_by === "osxp" && building.has(e.tile));
+}
+
+/** What each of the bar's buttons takes among the rows ``picked`` (a user asked for every action
+ * of a row on the tiles picked, 2026-10-16), by the rules of the row's own buttons: ``install``
+ * the tiles here that X-Plane does not show, ``uninstall`` those it shows (an imported tile whose
+ * files are gone keeps that way out), ``delete`` the tiles OrthoStudio XP built, only between
+ * builds (``jobs``, how many run or wait), ``forget`` the others, and ``file`` those that may be
+ * filed elsewhere or built again. ``building`` the tiles a build holds (`tilesInBuilds`). */
+export function bulkTargets(picked, building, jobs = 0) {
+  const held = (e) => e.built_by === "osxp" && building.has(e.tile);
+  return {
+    install: picked.filter((e) => e.present !== false && !e.installed && !held(e)),
+    uninstall: picked.filter((e) => e.installed && (e.present !== false || e.built_by !== "osxp") && !held(e)),
+    delete: jobs ? [] : picked.filter((e) => e.built_by === "osxp" && !held(e)),
+    forget: picked.filter(forgettable),
+    file: picked.filter((e) => fileable(e, building)),
+  };
+}
+
+/** The box that picks a row, in the row's first column. */
+function pickBox(e, key, inBuild) {
+  if (inBuild) return null;
+  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing) || Boolean(state.bulk), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+}
+
+/** The rows the search, the folder and the "Show" choice leave, as the table shows them. */
 function shownLibraryRows(rows) {
-  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelierFolders(state.status), state.status?.platform || "").rows;
+  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: state.libraryShow }, atelierFolders(state.status), state.status?.platform || "").rows;
 }
 
 function pickLibraryTile(key, on) {
@@ -6083,32 +6243,60 @@ function pickLibraryTile(key, on) {
   renderLibraryPick(rows, shownLibraryRows(rows));
 }
 
-/** The bar over the table: "Pick all shown", how many are picked and their size, and "File
- * elsewhere…"; the picks a row can no longer take (deleted, in a build) are let go. */
+/** The bar over the table: "Pick all shown", how many are picked and their size, "File
+ * elsewhere…" and "Build again…" for the tiles OrthoStudio XP built, "Remove from the list…" for
+ * the others; the picks a row can no longer take (deleted, in a build) are let go. */
 function renderLibraryPick(rows, shown) {
   const building = tilesInBuilds(activeJobs());
   const can = new Set(rows.filter((e) => pickable(e, building)).map(libraryKey));
   for (const key of [...state.libraryPicked]) if (!can.has(key)) state.libraryPicked.delete(key);
   const shownKeys = shown.map(libraryKey).filter((key) => can.has(key));
   const picked = rows.filter((e) => state.libraryPicked.has(libraryKey(e)));
+  // the bar acts on the tiles picked that are shown: one picked, then hidden by the search, the
+  // folder or Show, stays picked and is not touched (Delete… on "Files missing" counted the
+  // tiles picked before, out of sight; a review, 2026-10-16)
+  const acted = pickedShown(shown);
   $("library-pick").hidden = !can.size;
   const all = $("library-pick-all");
   const on = shownKeys.filter((key) => state.libraryPicked.has(key)).length;
   all.checked = shownKeys.length > 0 && on === shownKeys.length;
   all.indeterminate = on > 0 && on < shownKeys.length;
-  all.disabled = !shownKeys.length || Boolean(state.filing);
-  const bytes = picked.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
-  setText($("library-pick-count"), picked.length ? t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) }) : "");
+  all.disabled = !shownKeys.length || Boolean(state.filing) || Boolean(state.bulk);
+  const bytes = acted.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  let count = "";
+  if (picked.length === acted.length && picked.length) count = t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) });
+  else if (picked.length) count = t("library.pick_count_shown", { n: fmtInt(picked.length), shown: fmtInt(acted.length), size: fmtBytes(bytes) });
+  setText($("library-pick-count"), count);
   // tiles are filed between builds: the button says why it waits (a review, 2026-10-05)
   const file = $("library-file");
   const waits = activeJobs().length > 0;
-  file.disabled = !picked.length || Boolean(state.filing) || waits;
+  const take = bulkTargets(acted, building, activeJobs().length);
+  const ours = rows.some((e) => e.built_by === "osxp");
+  const busy = Boolean(state.filing) || Boolean(state.bulk);
+  file.hidden = !ours;
+  file.disabled = !take.file.length || busy || waits;
   setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));
   // a build asked for while another runs waits for its turn: Build again does not wait
-  $("library-rebuild").disabled = !picked.length || Boolean(state.filing) || state.rebuilding;
+  const rebuild = $("library-rebuild");
+  rebuild.hidden = !ours;
+  rebuild.disabled = !take.file.length || busy || state.rebuilding;
+  $("library-add").disabled = !take.install.length || busy;
+  $("library-remove").disabled = !take.uninstall.length || busy;
+  const del = $("library-delete-picked");
+  del.hidden = !ours;
+  del.disabled = !take.delete.length || busy;
+  setAttr(del, "title", waits ? t("library.delete_wait") : t("library.delete_picked_help"));
+  const forget = $("library-forget");
+  forget.hidden = !rows.some(forgettable);
+  forget.disabled = !take.forget.length || busy;
 }
 
-/** "Pick all shown": every row the search and the folder leave, or none of them. */
+/** The tiles picked among ``shown``, the rows the table shows: what the bar's actions take. */
+function pickedShown(shown) {
+  return shown.filter((e) => state.libraryPicked.has(libraryKey(e)));
+}
+
+/** "Pick all shown": every row the search, the folder and the "Show" choice leave, or none of them. */
 function pickAllShown(on) {
   const building = tilesInBuilds(activeJobs());
   for (const e of shownLibraryRows(libraryTiles(state.library))) {
@@ -6167,7 +6355,7 @@ function confirmFiling(question) {
 async function fileLibraryTiles() {
   if (state.filing) return;
   const building = tilesInBuilds(activeJobs());
-  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library))).filter((e) => fileable(e, building));
   if (!picked.length) return;
   const folder = await chooseFolder(t("library.file_prompt", { n: fmtInt(picked.length) }));
   if (!folder) return;
@@ -6363,7 +6551,7 @@ function confirmRebuild(question) {
 async function rebuildLibraryTiles() {
   if (state.filing || state.rebuilding) return;
   const building = tilesInBuilds(activeJobs());
-  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library))).filter((e) => fileable(e, building));
   if (!picked.length) return;
   const errors = clear($("library-errors"));
   state.rebuilding = true;
@@ -7015,9 +7203,17 @@ async function boot() {
     state.libraryFolder = e.target.value;
     renderLibrary();
   });
+  $("library-show").addEventListener("change", (e) => {
+    state.libraryShow = e.target.value;
+    renderLibrary();
+  });
   $("library-pick-all").addEventListener("change", (e) => pickAllShown(e.target.checked));
   $("library-file").addEventListener("click", fileLibraryTiles);
   $("library-rebuild").addEventListener("click", rebuildLibraryTiles);
+  $("library-add").addEventListener("click", () => bulkLibraryAction("install"));
+  $("library-remove").addEventListener("click", () => bulkLibraryAction("uninstall"));
+  $("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));
+  $("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));
   $("library-filing-stop").addEventListener("click", stopFiling);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {

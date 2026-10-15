@@ -334,17 +334,26 @@
           <span data-i18n="library.folder">Folder</span>
           <select id="library-folder"></select>
         </label>
+        <label class="library-folder" id="library-show-wrap" hidden>
+          <span data-i18n="library.show">Show</span>
+          <select id="library-show"></select>
+        </label>
       </div>
       <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
-      <!-- the atelier, step 3: the tiles picked are filed elsewhere -->
+      <!-- the tiles picked: every action of a row on all of them at once (the atelier, step 3, and
+           a user's ask, 2026-10-16) -->
       <div class="library-pick" id="library-pick" hidden>
         <label class="library-pick-all">
           <input type="checkbox" id="library-pick-all">
           <span data-i18n="library.pick_all">Pick all shown</span>
         </label>
         <span class="library-pick-count" id="library-pick-count"></span>
+        <button type="button" class="btn btn-small" id="library-add" data-i18n="library.add" data-i18n-title="library.add_picked_help" title="Puts the tiles picked into X-Plane.">Add to X-Plane</button>
+        <button type="button" class="btn btn-small" id="library-remove" data-i18n="library.remove" data-i18n-title="library.remove_picked_help" title="X-Plane stops showing the tiles picked. Their files stay on this computer.">Remove from X-Plane</button>
         <button type="button" class="btn btn-small btn-primary" id="library-file" data-i18n="library.file">File elsewhere…</button>
         <button type="button" class="btn btn-small" id="library-rebuild" data-i18n="library.rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused.">Build again…</button>
+        <button type="button" class="btn btn-small" id="library-forget" data-i18n="library.forget_picked" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them.">Remove from the list…</button>
+        <button type="button" class="btn btn-small btn-danger" id="library-delete-picked" data-i18n="library.delete" data-i18n-title="library.delete_picked_help" title="Delete the files of the tiles picked that OrthoStudio XP built (asks first).">Delete…</button>
       </div>
       <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
         <span id="library-filing-text"></span>
@@ -490,6 +499,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.rebuild_cancel">Cancel</button>
       <button type="submit" class="btn btn-primary" value="rebuild" id="library-rebuild-go" data-i18n="library.rebuild_go">Build again</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The question of "Delete…" and "Remove from the list…" on the tiles picked (app.js confirmBulk). -->
+<dialog id="library-bulk-dialog" class="dialog" role="alertdialog" aria-labelledby="library-bulk-title" aria-describedby="library-bulk-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="library-bulk-title"></h2>
+    <div class="dialog-text" id="library-bulk-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.bulk_keep">Keep them</button>
+      <button type="submit" class="btn btn-primary" value="go" id="library-bulk-go"></button>
     </div>
   </form>
 </dialog>

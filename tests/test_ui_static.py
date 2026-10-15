@@ -2637,7 +2637,10 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
     body = _function_body(app_js, "renderLibrary")
     assert "const shown = sortLibrary(view.rows, sort);" in body
     view = _function_body(app_js, "libraryView")
-    assert "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));" in view
+    assert (
+        "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q) && (!shown || shown.test(e)));"
+        in view
+    )
     assert 't("library.search_found"' in view and 't("library.search_none")' in view
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
     assert (
@@ -7175,7 +7178,8 @@ def test_the_folder_filter_is_wired() -> None:
     body = _function_body(app_js, "renderLibrary")
     for needle in (
         "const atelier = atelierFolders(state.status);",
-        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier",
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: "
+        "state.libraryShow }, atelier",
         "state.libraryFolder = view.folder;",
         "renderLibraryFolders(view.folders, view.folder);",
         "note.hidden = !view.note;",
@@ -7492,8 +7496,7 @@ def test_build_again_is_wired_in_the_library_bar() -> None:
     assert '<dialog id="library-rebuild-dialog"' in html and 'id="library-rebuild-go"' in html
     assert '$("library-rebuild").addEventListener("click", rebuildLibraryTiles);' in app_js
     pick = _function_body(app_js, "renderLibraryPick")
-    waits = "!picked.length || Boolean(state.filing) || state.rebuilding;"
-    assert f'$("library-rebuild").disabled = {waits}' in pick
+    assert "rebuild.disabled = !take.file.length || busy || state.rebuilding;" in pick
     flow = _function_body(app_js, "rebuildLibraryTiles")
     assert flow.index('api("POST", "/api/plan", req)') < flow.index("confirmRebuild(question)")
     send = flow.index('api("POST", "/api/jobs", { ...req, queue: true })')
@@ -7558,9 +7561,10 @@ def test_a_tile_x_plane_shows_rebuilt_while_it_runs_says_build_again() -> None:
 
 
 def test_the_pick_boxes_and_the_filing_are_wired() -> None:
-    """A box on each tile OrthoStudio XP built that is in its place and not in a build; "Pick all
-    shown" acts on the rows the search and the folder leave; nothing else changes a tile while
-    tiles are filed, one at a time."""
+    """A box on each tile but those of OrthoStudio XP a build holds (every action of a row on the
+    tiles picked, a user's ask, 2026-10-16); "Pick all shown" acts on the rows the search, the
+    folder and the "Show" choice leave; nothing else changes a tile while tiles are filed, one at a
+    time, or while one of the bar's actions runs."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for needle in (
         'id="library-pick" hidden',
@@ -7574,13 +7578,14 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
         assert needle in html, needle
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
-    assert "const busy = libraryBusy.has(key) || Boolean(state.filing);" in row
-    assert 'if (e.built_by !== "osxp" || e.present === false || inBuild) return null;' in (
-        _function_body(app_js, "pickBox")
+    assert (
+        "const busy = libraryBusy.has(key) || Boolean(state.filing) || Boolean(state.bulk);" in row
     )
+    assert "if (inBuild) return null;" in _function_body(app_js, "pickBox")
     assert "renderLibraryPick(rows, view.rows);" in _function_body(app_js, "renderLibrary")
-    assert "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }" in (
-        _function_body(app_js, "shownLibraryRows")
+    assert (
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: "
+        "state.libraryShow }" in _function_body(app_js, "shownLibraryRows")
     )
     assert "shownLibraryRows(libraryTiles(state.library))" in _function_body(app_js, "pickAllShown")
     # a box ticked draws the bar again, not the table: the focus stays on it, and 800 rows are
@@ -7605,7 +7610,7 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
     ):
         assert listener in app_js, listener
     pick = _function_body(app_js, "renderLibraryPick")
-    assert "file.disabled = !picked.length || Boolean(state.filing) || waits;" in pick
+    assert "file.disabled = !take.file.length || busy || waits;" in pick
     assert (
         'setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));'
         in (pick)
@@ -7723,10 +7728,11 @@ process.stdout.write(JSON.stringify({
     # the folder under the name: the box on the name's line, not between the two lines
     top = ["library-pick-cell is-top", box]
     assert got["folder"] == {**got["built"], "pick": top, "where": ["/T"]}
-    # a tile Ortho4XP built has no box: its column stays, empty, and its name lines up
+    # a tile Ortho4XP built has its box too: the bar takes it off the list, or out of X-Plane
+    # (2026-10-16)
     assert got["imported"] == {
         "cells": columns,
-        "pick": ["library-pick-cell is-top", None],
+        "pick": ["library-pick-cell is-top", ["input", "checkbox", "tile-pick", "Pick +44+005"]],
         "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name", "+44+005"],
         "where": ["/O"],
         "span": None,
@@ -7891,3 +7897,201 @@ def test_a_refused_number_says_its_field_and_the_values_it_takes() -> None:
     assert said["fr"][1:] == [None, None, None]
     code = (UI / "app.js").read_text(encoding="utf-8")
     assert "refusedValueText(d.context, state.schema)" in code, "Settings' save says it so"
+
+
+def test_the_show_choice_finds_missing_files_and_squares_twice() -> None:
+    """A user keeping track of the Ortho4XP tiles he replaced with OrthoStudio XP ones asked for
+    two filters (2026-10-16): the tiles whose folder is no longer found (a disk not plugged in is
+    not one: it comes back by itself), and every tile of a square the list holds more than once.
+    Each choice counts over all the tiles, and narrows the rows with the search and the folder."""
+    got = _step1(
+        """(() => {
+          const o4 = "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_";
+          const row = (tile, extra) => ({ tile, path: `${o4}${tile}`,
+                                          built_by: "ortho4xp", present: true, ...extra });
+          const tiles = m.libraryTiles([
+            row("+43+004"),
+            { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004",
+              built_by: "osxp", present: true },
+            row("+44+005", { present: false }),
+            row("+45+006", { present: false, disk_absent: true }),
+            { tile: "+46+006", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+006",
+              built_by: "osxp", present: false },
+            row("+47+007"),
+            { tile: "+47+007", kind: "overlay",
+              path: "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays" },
+          ]);
+          const view = (asked) => {
+            const v = m.libraryView(tiles, asked, mac, "mac");
+            return { show: v.show, shows: v.shows, note: v.note,
+                     rows: v.rows.map((e) => `${e.tile} ${e.built_by}`) };
+          };
+          return {
+            all: view({}),
+            missing: view({ show: "missing" }),
+            twice: view({ show: "twice" }),
+            twiceSearch: view({ show: "twice", query: "+47" }),
+            unknown: view({ show: "nonsense" }),
+          };
+        })()"""
+    )
+    assert got["all"]["shows"] == [{"key": "missing", "n": 2}, {"key": "twice", "n": 2}]
+    assert got["all"]["show"] == "" and len(got["all"]["rows"]) == 6 and got["all"]["note"] is None
+    # the files gone, whoever built the tile; the disk not plugged in is left out
+    assert got["missing"]["rows"] == ["+44+005 ortho4xp", "+46+006 osxp"]
+    assert got["missing"]["note"] == {"text": "2 of 6 tiles.", "warn": False}
+    # both rows of the square listed twice; an overlay row is no tile, so +47+007 is once
+    assert got["twice"]["rows"] == ["+43+004 ortho4xp", "+43+004 osxp"]
+    assert got["twiceSearch"]["rows"] == [] and got["twiceSearch"]["note"]["warn"] is True
+    assert got["unknown"]["show"] == "" and len(got["unknown"]["rows"]) == 6
+
+
+def test_each_button_of_the_bar_takes_the_tiles_picked_it_applies_to() -> None:
+    """Every action of a row on the tiles picked (a user's ask, 2026-10-16), by the rules of the
+    row's own buttons: Add and Remove from X-Plane leave a tile a build holds; Delete takes only
+    the tiles OrthoStudio XP built, and none while a build runs or waits; Remove from the list
+    takes the others, their files here or gone; File elsewhere and Build again take only the tiles
+    OrthoStudio XP built that are in their place."""
+    got = _step1(
+        """(() => {
+          const t = (tile, by, extra) =>
+            ({ tile, built_by: by, present: true, installed: false, ...extra });
+          const picked = [
+            t("+40+000", "osxp", { installed: true }),
+            t("+41+000", "osxp"),
+            t("+42+000", "osxp", { present: false }),
+            t("+43+000", "osxp", { installed: true }),  // a build holds it
+            t("+44+000", "ortho4xp", { installed: true }),
+            t("+45+000", "ortho4xp", { installed: true, present: false }),
+            t("+46+000", "ortho4xp"),
+          ];
+          const names = (o) =>
+            Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.map((e) => e.tile)]));
+          return {
+            free: names(m.bulkTargets(picked, new Set(["+43+000"]), 0)),
+            building: names(m.bulkTargets(picked, new Set(["+43+000"]), 1)),
+            forgettable: picked.map(m.forgettable),
+          };
+        })()"""
+    )
+    free = got["free"]
+    assert free["install"] == ["+41+000", "+46+000"]
+    # an imported tile whose files are gone keeps its way out of X-Plane
+    assert free["uninstall"] == ["+40+000", "+44+000", "+45+000"]
+    assert free["delete"] == ["+40+000", "+41+000", "+42+000"]
+    assert free["forget"] == ["+44+000", "+45+000", "+46+000"]
+    assert free["file"] == ["+40+000", "+41+000"]
+    assert got["building"]["delete"] == []  # deleting waits for the builds, as a row's Delete…
+    assert got["building"]["install"] == free["install"]
+    assert got["forgettable"] == [False, False, False, False, True, True, True]
+
+
+def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
+    """Delete… and Remove from the list… on the tiles picked ask first, in one question: how many,
+    the space the files take, how many X-Plane shows, and how many picked the action leaves
+    aside."""
+    got = _step1(
+        """(() => {
+          const t = (tile, extra) => ({ tile, installed: false, ...extra });
+          return {
+            del: m.deleteManyQuestion([t("+40+000", { size_bytes: 2e9, installed: true }),
+                                       t("+41+000", { size_bytes: 1e9 })], 1),
+            delUnknown: m.deleteManyQuestion([t("+40+000")]),
+            delGone: m.deleteManyQuestion([t("+42+000", { present: false })]),
+            delMixed: m.deleteManyQuestion([t("+41+000", { size_bytes: 1e9 }),
+                                            t("+42+000", { present: false })]),
+            forget: m.forgetQuestion([t("+44+000", { installed: true }), t("+45+000"),
+                                      t("+46+000", { installed: true })], 2),
+            forgetPlain: m.forgetQuestion([t("+44+000")]),
+          };
+        })()"""
+    )
+    assert got["del"]["title"] == "Delete 2 tile(s)?" and got["del"]["go"] == "delete"
+    assert got["del"]["body"] == [
+        "Their files are deleted from this computer (about 3 GB).",
+        "1 of them are in X-Plane: they are removed from it.",
+        "The imagery already downloaded stays in the cache, so building it again later is faster.",
+        "1 other tile(s) picked are left as they are: this action does not apply to them.",
+    ]
+    assert got["delUnknown"]["body"][0] == "Their files are deleted from this computer."
+    # a tile whose files are gone only leaves the list, as a row's Delete… says
+    assert (
+        got["delGone"]["body"][0] == "1 of them have no files left here: they only leave the list."
+    )
+    assert got["delMixed"]["body"][:2] == [
+        "Their files are deleted from this computer (about 1 GB).",
+        "1 of them have no files left here: they only leave the list.",
+    ]
+    assert got["forget"]["title"] == "Remove 3 tile(s) from the list?"
+    assert got["forget"]["body"][1:] == [
+        "2 of them are in X-Plane: they are taken out of it first.",
+        "2 other tile(s) picked are left as they are: this action does not apply to them.",
+    ]
+    assert got["forgetPlain"]["body"] == [
+        "OrthoStudio XP stops listing them; their files stay where Ortho4XP put them. Importing "
+        "your Ortho4XP folder again lists them again."
+    ]
+
+
+def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
+    """The "Show" menu beside the folder's, the bar's buttons in the row's order (into X-Plane and
+    out of it, then filing and building again, then off the list and Delete… last), the question
+    in a modal dialog of its own, and each button's request the row's own."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
+    assert 'id="library-show-wrap" hidden' in filters and 'data-i18n="library.show"' in filters
+    assert filters.index('id="library-folder"') < filters.index('id="library-show"')
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    order = [
+        "library-add",
+        "library-remove",
+        "library-file",
+        "library-rebuild",
+        "library-forget",
+        "library-delete-picked",
+    ]
+    assert [bar.index(f'id="{b}"') for b in order] == sorted(bar.index(f'id="{b}"') for b in order)
+    assert 'class="btn btn-small btn-danger" id="library-delete-picked"' in bar
+    assert '<dialog id="library-bulk-dialog"' in html and 'value="go" id="library-bulk-go"' in html
+    assert 'value="cancel" autofocus data-i18n="library.bulk_keep"' in html
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    for listener in (
+        '$("library-show").addEventListener("change"',
+        '$("library-add").addEventListener("click", () => bulkLibraryAction("install"));',
+        '$("library-remove").addEventListener("click", () => bulkLibraryAction("uninstall"));',
+        '$("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));',
+        '$("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));',
+    ):
+        assert listener in app_js, listener
+    # the bar acts on the tiles picked that are shown; one hidden by a filter is left alone
+    assert "const acted = pickedShown(shown);" in _function_body(app_js, "renderLibraryPick")
+    assert "bulkTargets(acted, building, activeJobs().length)" in (
+        _function_body(app_js, "renderLibraryPick")
+    )
+    for flow_name in ("bulkLibraryAction", "fileLibraryTiles", "rebuildLibraryTiles"):
+        assert "pickedShown(shownLibraryRows(libraryTiles(state.library)))" in (
+            _function_body(app_js, flow_name)
+        ), flow_name
+    flow = _function_body(app_js, "bulkLibraryAction")
+    # off the list: out of X-Plane first, then the row's own request
+    assert flow.index('libraryRequest(e, "uninstall")') < flow.index("libraryRequest(e, action)")
+    assert "confirmBulk(deleteManyQuestion(go, left))" in flow
+    assert "confirmBulk(forgetQuestion(go, left))" in flow
+    assert "errors.append(libraryErrorCard(err, e));" in flow  # one tile fails, the others go on
+    assert "renderLibraryShows(view.shows, view.show, rows.length > 0);" in (
+        _function_body(app_js, "renderLibrary")
+    )
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.show",
+            "library.show_all",
+            "library.show_missing",
+            "library.show_twice",
+            "library.forget_picked",
+            "library.bulk_left",
+            "library.delete_n_title",
+            "library.forgotten_n",
+            "library.pick_count_shown",
+        ):
+            assert tables[lang].get(key), (lang, key)

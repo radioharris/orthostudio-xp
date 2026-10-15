@@ -778,17 +778,48 @@ of this folder matches; {n} in other folders." A folder gone from the list (its 
 puts the choice back to all. The choice is kept for the session only. Nothing is read on the
 disk: the rows say where each pack is.
 
-**Tiles filed elsewhere** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
-several disks): a box before the name of each tile OrthoStudio XP built that is where the Library
-says and not in a build (`pickBox`), in a narrow column of its own, the table's first
+*Show* beside it (`#library-show-wrap`, `#library-show`, `libraryShows`, `renderLibraryShows`;
+a user keeping track of the Ortho4XP tiles they replaced with OrthoStudio XP ones, 2026-10-16),
+shown once there is a tile, lists *All tiles* (« Toutes les tuiles »), *Files missing* (« Fichiers
+manquants »), the tiles whose folder is no longer found, whoever built them (a disk not plugged in
+is not one: it comes back by itself), and *Same square twice* (« Même carré en double »), every
+tile of a square the list holds more than once (an Ortho4XP tile and an OrthoStudio XP one, or one
+built into two folders; an overlay row is not a tile), each with how many over all the tiles. A
+choice narrows the rows with the search and the folder (`libraryView`), "{n} of {total} tiles."
+saying so; an unknown one is all. It is kept for the session only.
+
+**The tiles picked** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
+several disks; every action of a row on the tiles picked, a user's ask, 2026-10-16): a box before
+the name of each tile but those of OrthoStudio XP a build holds (`pickBox`, `pickable`), in a
+narrow column of its own, the table's first
 (`.library-pick-cell`, its header named for screen readers only), so that the names line up with
 or without a box (a user, 2026-10-07); when the folder under the name makes the row two lines
 high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
 search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
-affichées »), acting on the rows
-the search and the folder leave, how many tiles are picked and their size, and *File elsewhere…*,
-its box over the rows' boxes; while a build runs or waits the button is disabled, its tooltip
-saying that tiles are filed between builds (`library.file_wait_build`). The folder dialog asks
+affichées »), acting on the rows the search, the folder and *Show* leave, how many tiles are
+picked and their size, then the row's actions on the tiles picked that are shown (`pickedShown`:
+one picked, then hidden by the search, the folder or *Show*, stays picked and is not touched;
+*Delete…* on *Files missing* counted the tiles picked before, out of sight, a review of
+2026-10-16; the count then says "{n} tile(s) picked, {shown} of them shown", the size being the
+shown ones'), each taking those it applies to by the rules of the row's own buttons
+(`bulkTargets`) and disabled when it takes none: *Add to
+X-Plane* (the tiles here X-Plane does not show), *Remove from X-Plane* (those it shows; an imported
+tile whose files are gone keeps that way out), *File elsewhere…* and *Build again…* (the tiles
+OrthoStudio XP built, in their place), *Remove from the list…* (« Retirer de la liste… », the
+tiles OrthoStudio XP did not build, `forgettable`) and *Delete…* (the tiles OrthoStudio XP built,
+only between builds, its tooltip then `library.delete_wait`). The buttons for one kind of tile are
+hidden when the list holds none. *Delete…* and *Remove from the list…* ask first, in one modal
+question (`#library-bulk-dialog`, `deleteManyQuestion`, `forgetQuestion`): how many, the space the
+files take when it is known, how many have no files left here (they only leave the list, as a
+row's *Delete…* says), how many X-Plane shows (removed from it; taken out of it first before
+leaving the list), that the cache keeps the imagery, and how many picked the action leaves aside
+(`library.bulk_left`); *Keep them* has the focus. Each action sends the row's own requests, one
+tile after the other (`bulkLibraryAction`, `POST /api/library/{name}/install|uninstall|delete|forget`,
+*Remove from the list…* sending `uninstall` first for a tile X-Plane shows); a tile that fails gets
+its card under the bar and the others go on; the toast says how many were done (and the space
+freed). While one runs, the rows' buttons and boxes and the bar wait (`state.bulk`). While a build
+runs or waits *File elsewhere…* is disabled, its tooltip saying that tiles are filed between builds
+(`library.file_wait_build`). The folder dialog asks
 where; `POST
 /api/library/file-plan` says what each tile does; a modal question (`#library-file-dialog`,
 `filingQuestion`) says how many move (one disk, at once), how many are copied and read back (the

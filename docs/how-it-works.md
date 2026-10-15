@@ -184,9 +184,19 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
+**Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on. The
+bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
+(a tile ticked, then hidden by the search, the folder or *Show*, stays ticked and is left alone): *Add
+to X-Plane*, *Remove from X-Plane*, *File elsewhere…*, *Build again…*, *Remove from the list…* for
+the tiles Ortho4XP built (taken out of X-Plane first; their files stay where they are) and
+*Delete…* for those OrthoStudio XP built. *Delete…* and *Remove from the list…* ask first, saying
+how many and which ticked tiles they leave aside. *Show* beside the search keeps to the tiles whose
+files are missing, or to the squares listed twice, an Ortho4XP tile and an OrthoStudio XP one for
+instance: tick them all, and one click takes the old ones off the list.
+
 The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
-To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
-the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
+To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search,
+the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
 copied, read back file by file, and only then taken out of the workshop, the cache staying there.
 X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
