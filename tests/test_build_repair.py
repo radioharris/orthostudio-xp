@@ -30,7 +30,13 @@ from orthostudio.pipeline import build as build_mod
 from orthostudio.pipeline import native
 from orthostudio.pipeline.build import BuildEnv, BuildSpec
 from orthostudio.pipeline.filing import filing_plan
-from orthostudio.pipeline.pack import install_receipt, library_pack, pack_is_intact, read_manifest
+from orthostudio.pipeline.pack import (
+    install_receipt,
+    leave_overlay,
+    library_pack,
+    pack_is_intact,
+    read_manifest,
+)
 from orthostudio.sched import Done, Scheduler
 from test_clean_filed import A, World, _put, _ref
 
@@ -177,3 +183,53 @@ def test_a_build_found_whole_in_the_cache_puts_its_own_keys_in_the_library(
     # the next build of it finds the tile whole and its row right: nothing to do
     assert third().repaired == []
     assert _row(w).keys == sharp.keys
+
+
+def test_a_tile_whose_roads_are_left_to_another_pack_is_not_repaired_at_each_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, xplane: Path
+) -> None:
+    """Found in the review of 0.1.18: once a tile's roads were left to another pack's overlays,
+    every later build repaired its pack, the repair writing a manifest other than the build's,
+    which the next build found different again. A repair has written the build's own manifest
+    since 0.1.22: whether the pack step ran before the roads were left or after, three builds
+    found whole in the cache repair nothing, and a repair is done once (2026-10-15, checked on
+    1.0.2 too)."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OSXP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(install_packs, "xplane_running", lambda: False)
+    cs = xplane / "Custom Scenery"
+    w = World(tmp_path)
+    keys = w.build(A, 1, osm=w.osm)
+    pack = w.pack(A, keys, w.tiles)
+    installed = tmp_path / "install-artefact.json"
+
+    def install() -> None:
+        receipt = install_receipt(pack, cs, tile=A, library_path=w.library)
+        installed.write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
+
+    def three_builds(manifest: str) -> list[list[str]]:
+        reports = [
+            _built_again(
+                w, tmp_path, monkeypatch, keys, manifest, installed=installed, custom_scenery=cs
+            )
+            for _ in range(3)
+        ]
+        assert all(r.tiles[0].ok for r in reports)
+        return [list(r.tiles[0].repaired) for r in reports]
+
+    install()
+    before = (pack / "orthostudio.toml").read_text()
+    assert read_manifest(pack).files["overlay"]
+    assert leave_overlay(pack, A)
+    assert three_builds(before) == [[], [], []]
+    # a texture lost: the first build repairs the pack, with the roads still left, and the next
+    # ones find it whole (the loop: assembling wrote the manifest of roads left, not the build's)
+    os.unlink(sorted((pack / "textures").glob("*.dds"))[0])
+    assert three_builds(before) == [["pack"], [], []]
+    assert (pack / "orthostudio.toml").read_text() == before
+    # the pack step run again while they are left: the manifest names no roads of its own
+    w.pack(A, keys, w.tiles)
+    install()
+    after = (pack / "orthostudio.toml").read_text()
+    assert read_manifest(pack).files["overlay"] == ""
+    assert three_builds(after) == [[], [], []]
