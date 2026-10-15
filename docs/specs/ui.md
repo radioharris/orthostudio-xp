@@ -434,7 +434,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");
-  - *Compute: your Mac* — images to prepare (textures), already prepared, seconds;
+  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (textures), already prepared, seconds;
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "insufficient" in red
     after a red line "Not enough free disk space: this build needs about X, and OrthoStudio XP asks

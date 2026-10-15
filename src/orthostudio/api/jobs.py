@@ -1195,7 +1195,9 @@ def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] |
         "built": counts["built"],
         "hits": counts["hits"],
         "missing": sum(1 for o in outcomes if o.get("status") in ("incomplete", "failed")),
-        "parent_fallback": sum(int(o.get("from_fallback", 0)) for o in outcomes),
+        # textures that took pieces from a level above, as the report's line says: it summed the
+        # pieces, 599 "textures" for a tile of 136 once the airports' ZL18 counted (2026-10-15)
+        "parent_fallback": sum(1 for o in outcomes if int(o.get("from_fallback", 0)) > 0),
         "placeholders": sum(int(o.get("placeholders", 0)) for o in outcomes),
         # chunks a transient failure sent to the second pass, and those it brought back
         "second_pass": counts["chunks_second_pass"],

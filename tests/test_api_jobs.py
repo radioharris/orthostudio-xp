@@ -671,7 +671,9 @@ def test_the_final_report_counts_the_textures_of_every_level(tmp_path: Path) -> 
     """The textures node writes one report per level it prepares, all under its key: the tile's
     own, and those of its zones and of the airports made sharper. The final report read the tile's
     own alone, and +45+005 said 63 textures where its build had made 174, 111 of them at ZL18
-    around its airports (2026-10-15). The reports of another build of the tile stay out."""
+    around its airports (2026-10-15). The reports of another build of the tile stay out. The
+    textures that took pieces from a level above are counted as textures, as the report's line
+    says, not by their pieces (599 for a tile of 136 on the Shadow, the same day)."""
     import os
     from types import SimpleNamespace
 
@@ -689,7 +691,8 @@ def test_the_final_report_counts_the_textures_of_every_level(tmp_path: Path) -> 
                 TextureId(16 * i, 0, zl, "Arc"),
                 ("land",),
                 status,
-                from_fallback=int(zl == 18 and i == 0),
+                from_fallback=37 if zl == 18 and i == 0 else 0,  # pieces of one texture
+                placeholders=5 if zl == 18 and i == 0 else 0,
             )
             for i, status in enumerate(statuses)
         ]
@@ -712,7 +715,7 @@ def test_the_final_report_counts_the_textures_of_every_level(tmp_path: Path) -> 
         "hits": 1,
         "missing": 1,
         "parent_fallback": 1,
-        "placeholders": 0,
+        "placeholders": 5,
         "second_pass": 2,
         "recovered": 1,
         "report": str(own),

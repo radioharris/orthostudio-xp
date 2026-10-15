@@ -11,7 +11,7 @@ is a static client of this API; the CLI keeps working without it.
 
 `osxp serve` starts a small HTTP server bound to `127.0.0.1` only and opens the page. The page
 asks the engine what this machine looks like (`/api/status`), what it would cost to build a
-set of tiles (`/api/plan`: two lines, *network: your line* and *compute: your Mac*), starts
+set of tiles (`/api/plan`: two lines, *network: your line* and *compute: your computer*), starts
 **one** build at a time (`/api/jobs`), follows it live (`/api/jobs/{id}/events`, Server-Sent
 Events, resumable), stops it, retries the same build after a failure (the artefacts already
 in the store are hits: "Retry the missing ones"), and manages the library of built packs
@@ -563,7 +563,7 @@ did on its own, per tile, for the page's end-of-build panel:
 |---|---|---|
 | `nodes` | the events | `hit`, `built`, `failed`, `skipped` counts |
 | `stage_time` | the events | `seconds` per stage (`{osm: 1.9, relief: 21.5, ...}`) |
-| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found, the newest of the tile's own level, with every report of the same `key12`: one per level the node prepared, those of the zones and of the airports made sharper too (only the tile's own was read, and +45+005 said 63 textures where its build made 174, 2026-10-15) | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained), summed over those reports |
+| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found, the newest of the tile's own level, with every report of the same `key12`: one per level the node prepared, those of the zones and of the airports made sharper too (only the tile's own was read, and +45+005 said 63 textures where its build made 174, 2026-10-15) | `total`, `built`, `hits`, `missing`, `parent_fallback` (textures that took at least one chunk from a parent level: the chunks were summed until 1.1.0, 599 "textures" for a tile of 136), `placeholders` (chunks replaced, the provider having no image), `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained), summed over those reports |
 | `degraded` | `failed` events with severity `degraded` / `info` | `code`, `count`, `message` |
 | `pack` | `TileOutcome.pack_dir` | `bytes`, `path`, `installed` |
 

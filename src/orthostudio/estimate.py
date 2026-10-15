@@ -566,7 +566,7 @@ def render_text(est: Estimate) -> str:
             parts.append(f"textures {t.textures_total} x {est.per_texture_s:.2f} s")
         detail = ", ".join(parts) if parts else "everything is in the store"
         lines.append(
-            f"  compute: your Mac    ~{_fmt_s(t.compute_s)} ({est.workers} workers; {detail})"
+            f"  compute: your computer ~{_fmt_s(t.compute_s)} ({est.workers} workers; {detail})"
         )
         for note in t.notes:
             lines.append(f"  note: {note}")

@@ -84,7 +84,7 @@ def test_offline_estimate_on_an_empty_store(tmp_path: Path, env: BuildEnv) -> No
     assert est.probe is None and est.to_dict()["tiles"][0]["textures"]["exact"] is False
     text = render_text(est)
     assert "+43+005 BI14" in text and "upper bound" in text and "network: your line" in text
-    assert "compute: your Mac" in text and "disk:" in text
+    assert "compute: your computer" in text and "disk:" in text
 
 
 def test_requests_count_only_what_the_chunk_store_lacks(tmp_path: Path, env: BuildEnv) -> None:
