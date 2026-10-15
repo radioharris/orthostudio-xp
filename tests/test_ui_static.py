@@ -7414,7 +7414,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     assert got["q"]["title"] == "Build 4 tile(s) again?"
     assert got["q"]["body"] == [
         "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
-        "today's, as in the Plan. What has not changed is reused.",
+        "today's, as in the Plan. What the data folder already holds is reused.",
         "To download: 1.22 GB. On disk: 4.5 GB to write, 200 GB free.",
         "3 tile(s) in X-Plane stay in it, updated; the others do not go in.",
     ]

@@ -827,7 +827,8 @@ so in the Plan's words and builds nothing. *Build again* sends them like the Pla
 (a toast says when all wait); a refusal is an error card under the Library's buttons. Its tooltip,
 like that of Works' *Build again*, says what is reused: what the data folder already holds. Both
 promised reuse, and a data folder just changed in Settings holds nothing yet, so everything was
-downloaded and made again without a word (found in the 0.1.19 review).
+downloaded and made again without a word (found in the 0.1.19 review). The question's first line
+says it in the same words; it kept "What has not changed is reused" until 2026-10-15.
 
 **A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
 Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
