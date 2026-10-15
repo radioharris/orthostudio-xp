@@ -7844,3 +7844,50 @@ def test_the_map_shows_the_squares_each_zone_takes() -> None:
         + ", provider: 'BI'});\nprocess.stdout.write(JSON.stringify(r));"
     )
     assert [z["id"] for z in got["zones"]] == [z["id"] for z in doc["zones"]]
+
+
+def test_a_refused_number_says_its_field_and_the_values_it_takes() -> None:
+    """Typed 50 million triangles, Settings said "Not saved: advanced.limit_tris = 50: Input should
+    be less than 50. Set advanced.limit_tris to a value of type less_than in range lt 50.0."
+    (2026-10-15). The page now names the field as it shows it, and the values it takes as its
+    hint says them. The engine's own refusal and schema, read by the page."""
+    from orthostudio.config.models import Settings
+    from orthostudio.config.schema import settings_schema
+    from orthostudio.config.store import settings_from_dict
+    from orthostudio.errors import OsxpError
+
+    doc = Settings().model_dump(mode="json")
+    doc["advanced"]["limit_tris"] = 50
+    with pytest.raises(OsxpError) as refused:
+        settings_from_dict(doc)
+    assert refused.value.code == "CFG_VALUE_INVALID"
+    context = json.dumps(refused.value.context)
+    schema = json.dumps(settings_schema())
+    said = _run_node(f"""
+    globalThis.document = {{ documentElement: {{}}, getElementById: () => null }};
+    const i = await import("./i18n.js");
+    const s = await import("./settings.js");
+    const schema = {schema};
+    const out = {{}};
+    for (const lang of ["fr", "en"]) {{
+      i.setLanguage(lang);
+      out[lang] = [
+        s.refusedValueText({context}, schema),
+        s.refusedValueText({{ name: "settings", value: "-" }}, schema),
+        s.refusedValueText({{ name: "essential.provider", value: "XX" }}, schema),
+        s.refusedValueText(null, schema),
+      ];
+    }}
+    process.stdout.write(JSON.stringify(out));
+    """)
+    assert said["en"] == [
+        "Maximum triangles per tile: 50 is not accepted. "
+        "From 0 to less than 50 million, 3 million by default.",
+        None,
+        None,
+        None,
+    ]
+    assert said["fr"][0].startswith("Nombre maximal de triangles par tuile : 50 n'est pas accepté.")
+    assert said["fr"][1:] == [None, None, None]
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    assert "refusedValueText(d.context, state.schema)" in code, "Settings' save says it so"

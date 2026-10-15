@@ -554,6 +554,21 @@ const UNIT_TEXT = {
   "expert.sea_texture_blur": () => "px",
 };
 
+/** A number the engine refused, in the page's words: the field as the page names it, the value,
+ * and the values it takes, as its hint says them. The engine's own words named the setting by
+ * its key and asked for "a value of type less_than in range lt 50.0" when 50 million triangles
+ * were typed (2026-10-15). ``null`` for a refusal that is not about a number of this page: the
+ * engine's words then. */
+export function refusedValueText(context, schema) {
+  const path = context && typeof context.name === "string" ? context.name : "";
+  const prop = schemaLeaves(schema)[path];
+  if (!prop || !FIELD_TEXT[path] || (prop.type !== "number" && prop.type !== "integer")) return null;
+  const unit = UNIT_TEXT[path] ? UNIT_TEXT[path]() : prop.unit || "";
+  const n = Number(context.value);
+  const value = Number.isFinite(n) ? fmtNum(n, 3) : String(context.value ?? "");
+  return t("settings.refused_value", { label: fieldLabel(path), value, range: rangeText(prop, unit) }).trim();
+}
+
 export function fieldLabel(path) {
   return FIELD_TEXT[path] ? FIELD_TEXT[path][0]() : path;
 }

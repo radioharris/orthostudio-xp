@@ -1014,7 +1014,11 @@ in bold, with what it may take and what it is unless changed: *From 0 to 30°, 1
 *0 km² or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value
 lies before moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds
 the schema holds, which are what the engine checks; a number it does not bound says its default
-alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages.
+alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages. A number the
+engine refuses on Save is said the same way, by the field's own name: "Not saved: Maximum
+triangles per tile: 50 is not accepted. From 0 to less than 50 million, 3 million by default."
+(`settings.js` `refusedValueText`), where the engine's words named the setting by its key and asked
+for "a value of type less_than in range lt 50.0" (2026-10-15).
 `settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
 `app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
 answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a

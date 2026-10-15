@@ -30,7 +30,7 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
@@ -6743,7 +6743,9 @@ async function saveSettings(ev) {
     // the page's words for the code and its remedy: which folder, and what to do (a user on a
     // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
     const d = errorDetail(e);
-    const detail = d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e);
+    // a number out of its range: the field's name and the values it takes, not the setting's key
+    const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
+    const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
     err.textContent = t("settings.invalid", { detail });
   }
 }
