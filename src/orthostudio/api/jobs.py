@@ -385,8 +385,11 @@ class Job:
         self._loaded = False
         # -- job-level progress (api/progress.py) --
         self._phase = "build"
-        """``build``, or ``data`` while a build that downloads its OSM data before its graph (an
-        older engine's phase 0, the tests) says so."""
+        """``build``; ``check`` while the build reads again what an interrupted one left
+        (``Phase("check")``); ``data`` while a build that downloads its OSM data before its graph
+        (an older engine's phase 0, the tests) says so."""
+        self._check: tuple[int, int] = (0, 0)
+        """``Phase("check")``: the artefacts read again so far, of how many."""
         self._phase_at: float | None = None
         """When the ``build`` phase began (the declaration of the main graph follows)."""
         self._declared = False
@@ -636,6 +639,11 @@ class Job:
 
     def _on_phase(self, event: Phase) -> None:
         now = self._clock()
+        if event.name == "check":
+            # before anything else of the build, and only after one cut short: no clock starts
+            self._phase, self._check = "check", (event.checked, event.total)
+            self._emit_stats()
+            return
         if event.name == "data":
             self._phase = "data"
         elif self._phase_at is None:
@@ -824,6 +832,11 @@ class Job:
             "eta_low_s": None if low is None else round(low, 1),
             "eta_high_s": None if high is None else round(high, 1),
             "phase": self._phase,
+            **(
+                {"check": {"done": self._check[0], "total": self._check[1]}}
+                if self._phase == "check"
+                else {}
+            ),
         }
 
     def _emit_stats(self, *, min_period: float = 0.0) -> None:

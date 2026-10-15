@@ -21,7 +21,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -559,22 +559,33 @@ class Store:
             self._write_durable(until, {k: c for k, c in forced.items() if c > until})
             return sent
 
-    def recover(self) -> RecoverReport:
+    def recover(self, on_progress: Callable[[int, int], None] | None = None) -> RecoverReport:
         """When a build starts: check the artefacts of :data:`DEFERRED_RULES` indexed since the
         durable point against their digest, drop the torn ones (a power cut, a crash of the
         system or a disk unplugged before a durable point), and make the rest durable.
 
         After a build that ended normally there is nothing to check: what its last point forced
         within its margin is listed with it. A build still running in another process has its
-        fresh artefacts checked too, which reads them and finds them whole."""
+        fresh artefacts checked too, which reads them and finds them whole.
+
+        After a build cut short, up to a tile's textures are read again: 1 to 3 minutes on a hard
+        disk, which Works showed as a build stuck at 0 % (review of 0.1.19). ``on_progress(checked,
+        total)`` is called before each artefact and once all are read, so the build can say it;
+        what it raises stops the check, and what was not read yet is checked at the next start."""
         since, forced = self._durable()
         rows = [
             row
             for row in self._deferred_since(since)
             if forced.get(str(row["key"])) != float(row["created_at"])
         ]
+        if rows:
+            log.info(
+                "%d artefacts an interrupted build left are read again before any reuse", len(rows)
+            )
         dropped: list[str] = []
-        for row in rows:
+        for i, row in enumerate(rows):
+            if on_progress is not None:
+                on_progress(i, len(rows))
             key = str(row["key"])
             path = self.artifact_path(str(row["rule"]), key)
             if not path.exists():
@@ -587,6 +598,8 @@ class Store:
                 log.warning("artefact %s was not whole on disk; dropped", key[:16])
                 self.delete(key, force=True)
                 dropped.append(key)
+        if rows and on_progress is not None:
+            on_progress(len(rows), len(rows))
         self.make_durable()
         return RecoverReport(checked=len(rows), dropped=tuple(dropped))
 

@@ -167,7 +167,10 @@ committed without forcing, and made durable as a group:
 * `Store.recover()`, when a build starts, checks every artefact of these rules indexed since
   the point and not listed with it against its digest, drops the torn ones before anything can
   reuse them, and makes the rest durable. After a build that ended normally there is nothing to
-  check; after a power cut, at most what was built since the last pack.
+  check; after a power cut, at most what was built since the last pack. It tells its caller how
+  far it is (`on_progress(checked, total)`, before each artefact and once all are read):
+  `build_tiles` says it as `Phase("check")`, and Works shows the count, where a build read up to a
+  tile's textures again for 1 to 3 minutes on a hard disk standing at 0 % (review of 0.1.19).
 * A store without a durable point (every earlier version forced file by file) gets one on
   opening, and none of what it holds is checked.
 

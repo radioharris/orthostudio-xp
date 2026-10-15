@@ -4472,9 +4472,14 @@ function updateJobView(v, job) {
   v.barFill.style.width = `${pct}%`;
 
   const dataPhase = active && st.phase === "data";
-  v.phase.hidden = !dataPhase && !waiting;
+  // a build cut short left files the next one reads again before reusing them: minutes on a hard
+  // disk, which stood at 0 % without a word (review of 0.1.19)
+  const check = active && st.phase === "check" && st.check && st.check.done < st.check.total ? st.check : null;
+  v.phase.hidden = !dataPhase && !check && !waiting;
   if (waiting) {
     setText(v.phase, t("works.queued_note"));
+  } else if (check) {
+    setText(v.phase, t("works.phase_check", { done: fmtInt(check.done), total: fmtInt(check.total) }));
   } else if (dataPhase) {
     const n = dataPhaseTiles(job);
     setText(v.phase, n ? t("works.phase_data", { n: fmtInt(n) }) : t("works.phase_data_any"));

@@ -551,6 +551,10 @@ The selected job (default: the running one, else the newest) shows, from top to 
     water) for N tile(s) before building" (`orthostudio.sources.osm.LAYERS`), N counting the tiles
     whose `osm` row is not a hit. The current engine downloads a tile's map data in its OSM step,
     and says `build`.
+  - While `stats.phase` is `"check"` and `check.done` is below `check.total`, the same line says
+    "A build was interrupted: what it wrote is checked before it is reused, N of M": a build cut
+    short leaves up to a tile's textures that the next one reads again, 1 to 3 minutes on a hard
+    disk, where the bar stood at 0 % without a word (review of 0.1.19).
 - **One row per tile**, seven step cells *OSM · Relief · Terrain · Coast · Imagery · Assembly ·
   Install*.
   Each cell has a dot, its name, a thin progress bar (`role="progressbar"`, `aria-valuenow`, the

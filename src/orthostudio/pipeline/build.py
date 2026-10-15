@@ -20,6 +20,7 @@ import dataclasses
 import datetime as dt
 import json
 import logging
+import math
 import os
 import shutil
 import signal
@@ -2503,9 +2504,11 @@ class Phase:
     """The batch enters a phase (spec section 4.1). ``build_tiles`` emits it through
     ``on_event``, next to the scheduler's events; the scheduler never does.
 
-    ``data`` is phase 0, the OSM downloads on a scheduler of their own; ``build`` is the main
-    graph. Each scheduler's ``Stats`` only knows its own nodes, so a consumer that shows the
-    whole job needs to know where one phase ends and which nodes the next one declared.
+    ``check`` comes first, and only after a build cut short: the store reads again what that
+    build left (``Store.recover``), ``checked`` of ``total`` artefacts so far. ``data`` is phase
+    0, the OSM downloads on a scheduler of their own; ``build`` is the main graph. Each
+    scheduler's ``Stats`` only knows its own nodes, so a consumer that shows the whole job needs
+    to know where one phase ends and which nodes the next one declared.
 
     ``nodes`` holds ``(node id, kind, rule name)`` of every node the phase declared, or is
     ``None`` when the phase has begun but not declared yet (``build`` is announced as soon as
@@ -2514,7 +2517,7 @@ class Phase:
     key of that snapshot; they are known before any download starts.
     """
 
-    name: Literal["data", "build"]
+    name: Literal["check", "data", "build"]
     nodes: tuple[tuple[str, NodeKind, str], ...] | None = None
     reused: tuple[tuple[str, str | None], ...] = ()
     learned: tuple[tuple[str, float], ...] = ()
@@ -2523,6 +2526,9 @@ class Phase:
     :data:`LEARNED_MIN` times at least; the textures are weighed by their images instead. What a
     step that reports nothing shows while it runs is its time against this one
     (``sched.costs.timed_fraction``)."""
+    checked: int = 0
+    total: int = 0
+    """``check`` only: the artefacts read so far, of how many."""
 
 
 BuildEvent = Event | Phase
@@ -2532,6 +2538,31 @@ BuildEvent = Event | Phase
 def _emit_phase(on_event: Callable[[BuildEvent], None] | None, phase: Phase) -> None:
     if on_event is not None:
         on_event(phase)
+
+
+CHECK_SAID_EVERY_S = 0.5
+"""How often ``Phase("check")`` tells how far the check of an interrupted build is, the first and
+the last count always said."""
+
+
+def _check_progress(
+    on_event: Callable[[BuildEvent], None] | None,
+) -> Callable[[int, int], None] | None:
+    """``Store.recover``'s ``on_progress``: ``Phase("check")`` at most every
+    :data:`CHECK_SAID_EVERY_S`, so that Works says the build reads again what an interrupted one
+    left rather than standing at 0 % for minutes on a hard disk."""
+    if on_event is None:
+        return None
+    said = [-math.inf]
+
+    def say(checked: int, total: int) -> None:
+        now = time.monotonic()
+        if checked not in (0, total) and now - said[0] < CHECK_SAID_EVERY_S:
+            return
+        said[0] = now
+        on_event(Phase("check", checked=checked, total=total))
+
+    return say
 
 
 def _declared(scheduler: Scheduler) -> tuple[tuple[str, NodeKind, str], ...]:
@@ -3350,7 +3381,7 @@ def build_tiles(
     store = env.store
     # What a build interrupted by a power cut left torn is dropped before anything reuses it
     # (graph/store.py DEFERRED_RULES): after a build that ended normally, next to nothing to check.
-    recovered = store.recover()
+    recovered = store.recover(on_progress=_check_progress(on_event))
     if recovered.dropped:
         log.warning(
             "%d artefacts of an interrupted build were not whole on disk and are built again",

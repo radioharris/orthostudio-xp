@@ -1674,6 +1674,21 @@ def test_the_data_phase_names_the_layers_it_downloads() -> None:
             assert "bâtiment" not in text, (lang, key)
 
 
+def test_works_says_the_check_of_an_interrupted_build() -> None:
+    """While a build reads again what an interrupted one left (``stats.phase`` ``check``), the
+    line under the bar says so with the count, and goes once all are read: it stood at 0 % for
+    minutes on a hard disk without a word (review of 0.1.19)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'st.phase === "check"' in app_js
+    assert 't("works.phase_check", { done: fmtInt(check.done), total: fmtInt(check.total) })' in (
+        app_js
+    )
+    tables = _i18n_tables()
+    for lang in tables:
+        text = tables[lang]["works.phase_check"]
+        assert "{done}" in text and "{total}" in text, lang
+
+
 def test_the_log_is_appended_to_and_never_rebuilt() -> None:
     """Opening the log survived one event only: the panel was rebuilt on each. The log's element is
     built once per job and language, new lines are appended (the oldest leave past 500), and it

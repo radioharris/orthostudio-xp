@@ -341,6 +341,27 @@ def test_a_durable_point_stops_before_a_file_another_program_holds(
         assert s.recover().checked == 0
 
 
+def test_the_check_of_an_interrupted_build_says_how_far_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After a build cut short, the next start reads again up to a tile's textures: minutes on a
+    hard disk with nothing said (review of 0.1.19). ``recover`` tells its caller before each
+    artefact and once all are read; with nothing to read it says nothing."""
+    from orthostudio.graph import store as store_mod
+
+    monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
+    with Store(tmp_path / "store", fsync=True) as s:
+        time.sleep(0.01)
+        for n in (1, 2, 3):
+            _put_dds(s, n, f"DDS {n}".encode())
+        said: list[tuple[int, int]] = []
+        report = s.recover(on_progress=lambda done, total: said.append((done, total)))
+        assert report.checked == 3 and said == [(0, 3), (1, 3), (2, 3), (3, 3)]
+        said.clear()
+        assert s.recover(on_progress=lambda done, total: said.append((done, total))).checked == 0
+        assert said == []
+
+
 def test_the_next_start_reads_nothing_the_last_point_forced_within_its_margin(
     tmp_path: Path,
 ) -> None:

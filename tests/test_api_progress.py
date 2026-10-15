@@ -444,6 +444,42 @@ def test_replay_stages_read_what_their_nodes_do(
     assert job.state()["tiles"][0]["stages"]["assembly"]["status"] == "running"
 
 
+def test_the_check_of_an_interrupted_build_is_said_with_its_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A build cut short leaves files the next start reads again before reusing them, minutes on
+    a hard disk where Works stood at 0 % without a word (review of 0.1.19). The build announces
+    ``Phase("check")`` with its count, at most every half second, the first and last always;
+    the job's stats say ``check`` and the count until the build goes on."""
+    events: list[Any] = []
+    now = [100.0]
+    monkeypatch.setattr(build_mod.time, "monotonic", lambda: now[0])
+    say = build_mod._check_progress(events.append)
+    assert say is not None and build_mod._check_progress(None) is None
+    for done, t in ((0, 0.0), (1, 0.1), (2, 0.7), (3, 0.8), (4, 0.9)):
+        now[0] = 100.0 + t
+        say(done, 4)
+    assert [(e.name, e.checked, e.total) for e in events] == [
+        ("check", 0, 4),
+        ("check", 2, 4),
+        ("check", 4, 4),
+    ]
+
+    clock = Clock()
+    job = _job([_spec("+46+008")], clock)
+    clock.t = 0.1
+    job.on_event(Phase("check", checked=0, total=700))
+    stats = job.state()["stats"]
+    assert stats["phase"] == "check" and stats["check"] == {"done": 0, "total": 700}
+    clock.t = 0.6
+    job.on_event(Phase("check", checked=312, total=700))
+    assert job.state()["stats"]["check"] == {"done": 312, "total": 700}
+    clock.t = 1.0
+    job.on_event(Phase("build"))
+    stats = job.state()["stats"]
+    assert stats["phase"] == "build" and "check" not in stats
+
+
 def test_osm_row_reused_by_phase_0_is_a_journaled_hit(tmp_path: Path) -> None:
     clock = Clock()
     job = _job([_spec("+46+005", zl=14, install=False)], clock, tmp_path)

@@ -577,7 +577,7 @@ did on its own, per tile, for the page's end-of-build panel:
 | `progress` | 0-1, weighted by expected cost over every expected node, never decreasing during a run; 1 in the last line of a job that is `done` |
 | `eta_low_s`, `eta_high_s` | seconds left for the whole job; `null` only when the job has no row to estimate; 0 in the last line |
 | `running`, `pending`, `done`, `failed`, `hits` | counts over every row of the job (`done` includes the hits, `failed` the skipped and cancelled rows) |
-| `phase` | `build`; `data` only while a build that downloads its OSM data before its graph (an older engine's phase 0) says so, for a plain-words hint |
+| `phase` | `build`; `check` while the build reads again what an interrupted one left (`Phase("check")`, before anything else), with `check: {done, total}` beside it; `data` only while a build that downloads its OSM data before its graph (an older engine's phase 0) says so, for a plain-words hint |
 
 A line is journaled at every `Phase`, after a scheduler `Stats` when the last line is at least
 0.5 s old (a burst of sixty hits was sixty lines), at least once a second while the job runs --
