@@ -341,19 +341,34 @@
       </div>
       <p class="help library-search-note" id="library-search-note" aria-live="polite" hidden></p>
       <!-- the tiles picked: every action of a row on all of them at once (the atelier, step 3, and
-           a user's ask, 2026-10-16) -->
+           a user's ask, 2026-10-16). The box and the count on a line, the actions on the next in
+           three groups, each button with how many tiles it takes: into X-Plane and out of it; the
+           tiles' own, Build again… and File elsewhere…; off the list and Delete… apart at the end
+           (eight buttons on one line in a row were too many to read, a user, 2026-10-16) -->
       <div class="library-pick" id="library-pick" hidden>
-        <label class="library-pick-all">
-          <input type="checkbox" id="library-pick-all">
-          <span data-i18n="library.pick_all">Pick all shown</span>
-        </label>
-        <span class="library-pick-count" id="library-pick-count"></span>
-        <button type="button" class="btn btn-small" id="library-add" data-i18n="library.add" data-i18n-title="library.add_picked_help" title="Puts the tiles picked into X-Plane.">Add to X-Plane</button>
-        <button type="button" class="btn btn-small" id="library-remove" data-i18n="library.remove" data-i18n-title="library.remove_picked_help" title="X-Plane stops showing the tiles picked. Their files stay on this computer.">Remove from X-Plane</button>
-        <button type="button" class="btn btn-small btn-primary" id="library-file" data-i18n="library.file">File elsewhere…</button>
-        <button type="button" class="btn btn-small" id="library-rebuild" data-i18n="library.rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused.">Build again…</button>
-        <button type="button" class="btn btn-small" id="library-forget" data-i18n="library.forget_picked" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them.">Remove from the list…</button>
-        <button type="button" class="btn btn-small btn-danger" id="library-delete-picked" data-i18n="library.delete" data-i18n-title="library.delete_picked_help" title="Delete the files of the tiles picked that OrthoStudio XP built (asks first).">Delete…</button>
+        <div class="library-pick-line">
+          <label class="library-pick-all">
+            <input type="checkbox" id="library-pick-all">
+            <span data-i18n="library.pick_all">Pick all shown</span>
+          </label>
+          <span class="library-pick-count" id="library-pick-count"></span>
+        </div>
+        <div class="library-acts">
+          <div class="library-act" role="group" aria-labelledby="library-act-xplane">
+            <span class="library-act-name" id="library-act-xplane" data-i18n="library.act_xplane">X-Plane</span>
+            <button type="button" class="btn btn-small" id="library-add" data-i18n-title="library.add_picked_help" title="Puts the tiles picked into X-Plane."><span data-i18n="library.act_add">Add</span><span class="library-act-n" id="library-add-n"></span></button>
+            <button type="button" class="btn btn-small" id="library-remove" data-i18n-title="library.remove_picked_help" title="X-Plane stops showing the tiles picked. Their files stay on this computer."><span data-i18n="library.act_remove">Remove</span><span class="library-act-n" id="library-remove-n"></span></button>
+          </div>
+          <div class="library-act" id="library-act-tiles" role="group" aria-labelledby="library-act-tiles-name">
+            <span class="library-act-name" id="library-act-tiles-name" data-i18n="library.act_tiles">Tiles</span>
+            <button type="button" class="btn btn-small" id="library-rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused."><span data-i18n="library.rebuild">Build again…</span><span class="library-act-n" id="library-rebuild-n"></span></button>
+            <button type="button" class="btn btn-small" id="library-file"><span data-i18n="library.file">File elsewhere…</span><span class="library-act-n" id="library-file-n"></span></button>
+          </div>
+          <div class="library-act library-act-end" id="library-act-end" role="group" data-i18n-aria-label="library.act_end" aria-label="Off the list">
+            <button type="button" class="btn btn-small" id="library-forget" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them."><span data-i18n="library.forget_picked">Remove from the list…</span><span class="library-act-n" id="library-forget-n"></span></button>
+            <button type="button" class="btn btn-small btn-danger" id="library-delete-picked" data-i18n-title="library.delete_picked_help" title="Delete the files of the tiles picked that OrthoStudio XP built (asks first)."><span data-i18n="library.delete">Delete…</span><span class="library-act-n" id="library-delete-picked-n"></span></button>
+          </div>
+        </div>
       </div>
       <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
         <span id="library-filing-text"></span>

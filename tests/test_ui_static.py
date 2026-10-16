@@ -7487,12 +7487,12 @@ def test_answers_not_saved_are_said_until_they_are_saved() -> None:
 
 
 def test_build_again_is_wired_in_the_library_bar() -> None:
-    """The button sits beside File elsewhere…, waits for a pick and for no filing, and asks its
+    """The button sits before File elsewhere…, waits for a pick and for no filing, and asks its
     question in a modal dialog of its own; the request to the engine is the Plan's."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
-    assert bar.index('id="library-file"') < bar.index('id="library-rebuild"')
+    assert bar.index('id="library-rebuild"') < bar.index('id="library-file"')
     assert '<dialog id="library-rebuild-dialog"' in html and 'id="library-rebuild-go"' in html
     assert '$("library-rebuild").addEventListener("click", rebuildLibraryTiles);' in app_js
     pick = _function_body(app_js, "renderLibraryPick")
@@ -8033,9 +8033,44 @@ def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
     ]
 
 
+def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
+    """The box and the count on a line, the actions on the next in three groups: X-Plane's two,
+    the tiles' own two, and off the list and Delete… apart at the right end; no blue button in
+    the bar. Each button says how many tiles it takes and nothing when it takes none, and a
+    group whose buttons are all hidden goes with them (eight buttons on one line were too many
+    to read, a user, 2026-10-16)."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    assert bar.index('class="library-pick-line"') < bar.index('class="library-acts"')
+    assert bar.index('id="library-pick-all"') < bar.index('class="library-acts"')
+    groups = bar.split('<div class="library-act')[2:]
+    assert ['id="library-add"' in groups[0], 'id="library-remove"' in groups[0]] == [True, True]
+    assert 'data-i18n="library.act_xplane"' in groups[0]
+    assert 'id="library-act-tiles"' in groups[1] and 'data-i18n="library.act_tiles"' in groups[1]
+    assert 'id="library-rebuild"' in groups[1] and 'id="library-file"' in groups[1]
+    assert 'library-act-end" id="library-act-end"' in groups[2]
+    assert 'id="library-forget"' in groups[2] and 'id="library-delete-picked"' in groups[2]
+    assert "btn-primary" not in bar
+    for b in ("add", "remove", "rebuild", "file", "forget", "delete-picked"):
+        assert f'<span class="library-act-n" id="library-{b}-n"></span></button>' in bar, b
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".library-act-end { margin-left: auto; }" in css
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert 'setText($(`${id}-n`), $(id).disabled ? "" : `(${fmtInt(tiles.length)})`);' in pick
+    assert '$("library-act-tiles").hidden = !ours;' in pick
+    assert '$("library-act-end").hidden = forget.hidden && del.hidden;' in pick
+    tables = _i18n_tables()
+    assert [tables["fr"][f"library.act_{k}"] for k in ("add", "remove", "tiles")] == [
+        "Ajouter",
+        "Retirer",
+        "Tuiles",
+    ]
+
+
 def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
-    """The "Show" menu beside the folder's, the bar's buttons in the row's order (into X-Plane and
-    out of it, then filing and building again, then off the list and Delete… last), the question
+    """The "Show" menu beside the folder's, the bar's buttons in three groups (into X-Plane and
+    out of it, then building again and filing, then off the list and Delete… last), the question
     in a modal dialog of its own, and each button's request the row's own."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
@@ -8045,8 +8080,8 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
     order = [
         "library-add",
         "library-remove",
-        "library-file",
         "library-rebuild",
+        "library-file",
         "library-forget",
         "library-delete-picked",
     ]

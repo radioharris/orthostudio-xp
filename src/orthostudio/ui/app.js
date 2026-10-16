@@ -6289,6 +6289,15 @@ function renderLibraryPick(rows, shown) {
   const forget = $("library-forget");
   forget.hidden = !rows.some(forgettable);
   forget.disabled = !take.forget.length || busy;
+  // each button says how many tiles it takes, nothing when it takes none; a group whose buttons
+  // are all hidden goes with them
+  const takes = { "library-add": take.install, "library-remove": take.uninstall, "library-rebuild": take.file,
+    "library-file": take.file, "library-forget": take.forget, "library-delete-picked": take.delete };
+  for (const [id, tiles] of Object.entries(takes)) {
+    setText($(`${id}-n`), $(id).disabled ? "" : `(${fmtInt(tiles.length)})`);
+  }
+  $("library-act-tiles").hidden = !ours;
+  $("library-act-end").hidden = forget.hidden && del.hidden;
 }
 
 /** The tiles picked among ``shown``, the rows the table shows: what the bar's actions take. */

@@ -797,14 +797,19 @@ or without a box (a user, 2026-10-07); when the folder under the name makes the 
 high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
 search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
 affichées »), acting on the rows the search, the folder and *Show* leave, how many tiles are
-picked and their size, then the row's actions on the tiles picked that are shown (`pickedShown`:
+picked and their size on a line, then on the next the row's actions in three groups (eight
+buttons on one line were too many to read, a user, 2026-10-16): *X-Plane* with *Add* and *Remove*,
+*Tiles* with *Build again…* and *File elsewhere…*, and *Remove from the list…* and *Delete…* apart
+at the right end (`.library-act-end`), no blue button among them; each button says how many tiles
+it takes, « Supprimer… (3) », and nothing when it is disabled (`library-…-n`), and a group whose
+buttons are all hidden goes with them. The actions take the tiles picked that are shown (`pickedShown`:
 one picked, then hidden by the search, the folder or *Show*, stays picked and is not touched;
 *Delete…* on *Files missing* counted the tiles picked before, out of sight, a review of
 2026-10-16; the count then says "{n} tile(s) picked, {shown} of them shown", the size being the
 shown ones'), each taking those it applies to by the rules of the row's own buttons
-(`bulkTargets`) and disabled when it takes none: *Add to
-X-Plane* (the tiles here X-Plane does not show), *Remove from X-Plane* (those it shows; an imported
-tile whose files are gone keeps that way out), *File elsewhere…* and *Build again…* (the tiles
+(`bulkTargets`) and disabled when it takes none: *Add*
+(the tiles here X-Plane does not show), *Remove* (those it shows; an imported
+tile whose files are gone keeps that way out), *Build again…* and *File elsewhere…* (the tiles
 OrthoStudio XP built, in their place), *Remove from the list…* (« Retirer de la liste… », the
 tiles OrthoStudio XP did not build, `forgettable`) and *Delete…* (the tiles OrthoStudio XP built,
 only between builds, its tooltip then `library.delete_wait`). The buttons for one kind of tile are

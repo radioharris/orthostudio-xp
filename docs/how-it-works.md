@@ -199,10 +199,11 @@ at the bottom, where another pack's mesh may hide it.
 
 **Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on. The
 bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
-(a tile ticked, then hidden by the search, the folder or *Show*, stays ticked and is left alone): *Add
-to X-Plane*, *Remove from X-Plane*, *File elsewhere…*, *Build again…*, *Remove from the list…* for
-the tiles Ortho4XP built (taken out of X-Plane first; their files stay where they are) and
-*Delete…* for those OrthoStudio XP built. *Delete…* and *Remove from the list…* ask first, saying
+(a tile ticked, then hidden by the search, the folder or *Show*, stays ticked and is left alone).
+Its buttons stand in three groups, each saying how many ticked tiles it takes: *X-Plane*, *Add* and
+*Remove*; *Tiles*, *Build again…* and *File elsewhere…*; then apart at the right end *Remove from
+the list…* for the tiles Ortho4XP built (taken out of X-Plane first; their files stay where they
+are) and *Delete…* for those OrthoStudio XP built. *Delete…* and *Remove from the list…* ask first, saying
 how many and which ticked tiles they leave aside. *Show* beside the search keeps to the tiles whose
 files are missing, or to the squares listed twice, an Ortho4XP tile and an OrthoStudio XP one for
 instance: tick them all, and one click takes the old ones off the list.
