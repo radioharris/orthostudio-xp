@@ -310,6 +310,9 @@ class TexturesSpec:
     quiet: bool = False
     cancel: threading.Event | None = None
     fsync: bool = True
+    wrote: Callable[[int], None] | None = None
+    """Told what the image pieces kept in the cache add to the disk (``ChunkStore.on_write``):
+    the build step's count of what it wrote, Works' report."""
 
 
 @dataclass(slots=True)
@@ -878,9 +881,9 @@ class _Pipeline:
         # what a power cut damaged is fetched again. Forcing one per texture, which Windows does
         # for real, made a hard disk wait at every texture and the images crawl (2026-09-28).
         self.chunk_store = ChunkStore(
-            spec.chunks_root, fsync=False, folders={spec.provider.code: folder}
+            spec.chunks_root, fsync=False, folders={spec.provider.code: folder}, on_write=spec.wrote
         )
-        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False)
+        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False, on_write=spec.wrote)
         self.store = Store(spec.store_root, fsync=spec.fsync)
         self.workers = default_workers() if spec.workers is None else max(0, spec.workers)
         self.jobs = merge_jobs(spec.jobs)

@@ -43,6 +43,10 @@ class Done:
     """True when the artefact was already in the store (or built by another node of the run)."""
     wall_s: float
     ref: ArtifactRef
+    written: int = 0
+    """Bytes the run put on the disk (``NodeContext.written``); 0 for a hit."""
+    downloaded: int = 0
+    """Bytes the run received from the network (``NodeContext.downloaded``); 0 for a hit."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +56,10 @@ class Failed:
     cause: str | None = None
     """Id of the upstream node whose failure skipped this one (``error.code`` is then
     ``SYS_CANCELLED``); ``None`` when the node itself raised or the run was cancelled."""
+    written: int = 0
+    """What the run had put on the disk before it failed (a cache it filled stays)."""
+    downloaded: int = 0
+    """What it had received from the network before it failed."""
 
 
 @dataclass(frozen=True, slots=True)

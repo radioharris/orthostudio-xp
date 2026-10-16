@@ -447,7 +447,7 @@ class Scheduler:
                 internal = error.code == "SYS_INTERNAL_ERROR"
                 level = logging.ERROR if internal else logging.DEBUG
                 log.log(level, "node %s failed:\n%s", rec.node.id, outcome.traceback)
-            self._fail(rec, error)
+            self._fail(rec, error, written=outcome.written, downloaded=outcome.downloaded)
             for w in waiters:
                 self._fail_downstream(self._recs[w], rec, error)
             return
@@ -469,7 +469,14 @@ class Scheduler:
         self.costs.observe(rec.node.rule, outcome.wall_s)
         if rec.workdir is not None:
             shutil.rmtree(rec.workdir, ignore_errors=True)
-        self._complete(rec, ref, hit=False, wall_s=outcome.wall_s)
+        self._complete(
+            rec,
+            ref,
+            hit=False,
+            wall_s=outcome.wall_s,
+            written=outcome.written,
+            downloaded=outcome.downloaded,
+        )
         for w in waiters:
             self._complete(self._recs[w], ref, hit=True, wall_s=0.0)
 
@@ -618,7 +625,16 @@ class Scheduler:
 
     # -- completion, failure, cancellation ---------------------------------------------------
 
-    def _complete(self, rec: _Rec, ref: ArtifactRef, *, hit: bool, wall_s: float) -> None:
+    def _complete(
+        self,
+        rec: _Rec,
+        ref: ArtifactRef,
+        *,
+        hit: bool,
+        wall_s: float,
+        written: int = 0,
+        downloaded: int = 0,
+    ) -> None:
         rec.state = "done"
         rec.ref = ref
         rec.last_fraction = 1.0
@@ -626,7 +642,7 @@ class Scheduler:
         if hit:
             self._counts["hits"] += 1
         assert rec.key is not None
-        self._emit(Done(rec.node.id, rec.key, hit, wall_s, ref))
+        self._emit(Done(rec.node.id, rec.key, hit, wall_s, ref, written, downloaded))
         for d in rec.dependants:
             drec = self._recs[d]
             drec.deps_left -= 1
@@ -634,13 +650,21 @@ class Scheduler:
                 self._mark_ready(drec)
         self._emit(self._stats())
 
-    def _fail(self, rec: _Rec, error: OsxpError, cause: str | None = None) -> None:
+    def _fail(
+        self,
+        rec: _Rec,
+        error: OsxpError,
+        cause: str | None = None,
+        *,
+        written: int = 0,
+        downloaded: int = 0,
+    ) -> None:
         if rec.terminal:
             return
         rec.state = "failed"
         self._counts["failed"] += 1
         self.failed[rec.node.id] = error
-        self._emit(Failed(rec.node.id, error, cause))
+        self._emit(Failed(rec.node.id, error, cause, written, downloaded))
         root = cause if cause is not None else rec.node.id
         for d in rec.dependants:
             self._fail_downstream(self._recs[d], rec, error, root)

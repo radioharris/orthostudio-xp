@@ -72,7 +72,14 @@ class ParentCache:
     ``NOT_FETCHED`` for the tiles no chain has reached yet (dette D3).
     """
 
-    def __init__(self, chunks_root: Path, provider: str, *, fsync: bool = False) -> None:
+    def __init__(
+        self,
+        chunks_root: Path,
+        provider: str,
+        *,
+        fsync: bool = False,
+        on_write: Callable[[int], None] | None = None,
+    ) -> None:
         self.root = Path(chunks_root) / provider / _PARENTS_DIR
         self.provider = provider
         self.fsync = fsync
@@ -80,7 +87,7 @@ class ParentCache:
         self._chunk_store = ChunkStore(chunks_root, fsync=fsync)
         self._containers: dict[TextureId, ChunkContainer | None] = {}
         # own store: <chunks_root>/<provider>/_parents/<zl>/<til_y>_<til_x>.chunks
-        self._store = ChunkStore(Path(chunks_root) / provider, fsync=fsync)
+        self._store = ChunkStore(Path(chunks_root) / provider, fsync=fsync, on_write=on_write)
         self._own: dict[TextureId, ChunkContainer] = {}
 
     def texture_id(self, x: int, y: int, zl: int) -> TextureId:

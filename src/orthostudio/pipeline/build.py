@@ -79,6 +79,7 @@ from orthostudio.mesh.build import mesh_file_name
 from orthostudio.mesh.mesh_file import read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
+from orthostudio.meter import counting
 from orthostudio.model import OVERLAY_PACK, ArtifactRef, TileRef
 from orthostudio.overlays import OverlayExclusions, build_overlay_detailed, find_dsftool
 from orthostudio.overlays.source import resolve_global_scenery_dir
@@ -1156,8 +1157,16 @@ def _tile_textures(ctx: RunContext) -> None:
             quiet=True,
             cancel=stop,
             fsync=env.store.fsync,
+            wrote=node.wrote,
         )
         report: TexturesReport = build_textures(spec)
+        # what this group really received and prepared, for Works' report: the pieces the cache
+        # kept are counted as written (spec.wrote), the images the workers committed here
+        node.fetched(int(report.network.get("bytes", 0) or 0))
+        for o in report.outcomes:
+            info = env.store.info(o.key) if o.status == "built" and o.key else None
+            if info is not None:
+                node.wrote(info.size)
         env.logs.mkdir(parents=True, exist_ok=True)
         write_report(report, env.logs / f"textures-{tile.name}-{code}{zl}-{ctx.key[:12]}.json")
         if report.cancelled:
@@ -1494,6 +1503,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             if answer.body:
                 got[0] += 1
                 got[1] += len(answer.body)
+                ctx.fetched(len(answer.body))
             reading()
             return answer
 
@@ -1508,6 +1518,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             if body:
                 got[0] += 1
                 got[1] += body
+                ctx.fetched(body)
             reading()
             return answers
 
@@ -1529,7 +1540,8 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
         ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
         ticker.start()
         try:
-            with dem_job(job):
+            # the relief files it writes beside the store count as this step's (meter.py)
+            with dem_job(job), counting(wrote=ctx.wrote):
                 ref = run_p0_rule(ctx)
         finally:
             stop.set()
@@ -1571,7 +1583,9 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
             # is weeks behind, which is the whole reason for pressing it (``osm-prepared.md`` 1)
             refresh=bool(getattr(params, "refresh", "")),
         )
-        with osm_job(job):
+        # what the library or Overpass sends counts as this step's download, and the copy of the
+        # library's manifest it keeps as written (meter.py)
+        with osm_job(job), counting(ctx.fetched, ctx.wrote):
             return run_p0_rule(ctx)
 
     return run
@@ -1682,7 +1696,8 @@ def _pack_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
     )
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        with pack_env(penv):
+        # a file copied into the tile's folder (another disk than the store) counts as written
+        with pack_env(penv), counting(wrote=ctx.wrote):
             return run_p0_rule(ctx)
 
     return run
@@ -2386,6 +2401,12 @@ class NodeOutcome:
     wall_s: float = 0.0
     error: dict[str, Any] | None = None
     cause: str | None = None
+    written: int = 0
+    """Bytes the node put on the disk during the build, every pass and attempt summed: what it
+    committed to the store, links to it left out, and what it wrote beside it (image pieces,
+    relief files); 0 when it came from the store."""
+    downloaded: int = 0
+    """Bytes the node received from the network during the build."""
 
 
 @dataclass(slots=True)
@@ -2465,6 +2486,8 @@ class BuildReport:
                             "wall_s": round(n.wall_s, 3),
                             "error": n.error,
                             "cause": n.cause,
+                            "written": n.written,
+                            "downloaded": n.downloaded,
                         }
                         for n in t.nodes
                     ],
@@ -2887,6 +2910,9 @@ class _Collector:
         self.on_event = on_event
         self.done: dict[str, Done] = {}
         self.failed: dict[str, Failed] = {}
+        self.bytes: dict[str, list[int]] = {}
+        """Per node, ``[written, downloaded]`` summed over its events: a second pass or a retry
+        adds what it did to what the first did."""
         self.laid: set[str] = set()
         """The pack nodes whose folder was laid again so."""
         self._installs: dict[str, TileNodes] = {}
@@ -2903,6 +2929,10 @@ class _Collector:
         self._env = env
 
     def __call__(self, event: Event) -> None:
+        if isinstance(event, Done | Failed):
+            counted = self.bytes.setdefault(event.node_id, [0, 0])
+            counted[0] += event.written
+            counted[1] += event.downloaded
         if isinstance(event, Done):
             self.done[event.node_id] = event
             nodes = self._installs.get(event.node_id)
@@ -2928,16 +2958,33 @@ class _Collector:
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
+        written, downloaded = self.bytes.get(node.id, (0, 0))
         if node.id in self.done:
             d = self.done[node.id]
             return NodeOutcome(
-                node.id, role, rule_name, d.key, "hit" if d.hit else "built", d.wall_s
+                node.id,
+                role,
+                rule_name,
+                d.key,
+                "hit" if d.hit else "built",
+                d.wall_s,
+                written=written,
+                downloaded=downloaded,
             )
         if node.id in self.failed:
             f = self.failed[node.id]
             status = "skipped" if f.cause is not None else "failed"
             return NodeOutcome(
-                node.id, role, rule_name, None, status, 0.0, f.error.to_dict(), f.cause
+                node.id,
+                role,
+                rule_name,
+                None,
+                status,
+                0.0,
+                f.error.to_dict(),
+                f.cause,
+                written=written,
+                downloaded=downloaded,
             )
         return NodeOutcome(node.id, role, rule_name, None, "pending")
 

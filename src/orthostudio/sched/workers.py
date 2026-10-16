@@ -39,6 +39,10 @@ class Outcome:
     error: dict[str, Any] | None
     wall_s: float
     traceback: str = ""
+    written: int = 0
+    """``NodeContext.written`` at the end of the run, failed or not."""
+    downloaded: int = 0
+    """``NodeContext.downloaded`` at the end of the run, failed or not."""
 
 
 @dataclass(slots=True)
@@ -89,6 +93,7 @@ def execute(
 ) -> Outcome:
     """Run one node to completion; never raises."""
     t0 = time.perf_counter()
+    ctx: NodeContext | None = None
     try:
         workdir.mkdir(parents=True, exist_ok=True)
         ctx = NodeContext(
@@ -114,9 +119,18 @@ def execute(
                     "detail": f"node {node_id!r} returned {type(ref).__name__}, not ArtifactRef",
                 },
             )
-        return Outcome(ref, None, time.perf_counter() - t0)
+        return Outcome(
+            ref, None, time.perf_counter() - t0, written=ctx.written, downloaded=ctx.downloaded
+        )
     except Exception as exc:
-        return Outcome(None, wrap(exc).to_dict(), time.perf_counter() - t0, traceback.format_exc())
+        return Outcome(
+            None,
+            wrap(exc).to_dict(),
+            time.perf_counter() - t0,
+            traceback.format_exc(),
+            written=ctx.written if ctx is not None else 0,
+            downloaded=ctx.downloaded if ctx is not None else 0,
+        )
 
 
 # -- worker process side ---------------------------------------------------------------------

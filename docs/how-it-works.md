@@ -140,6 +140,13 @@ after a pause of 5 s, then 15 s, then 45 s, each time through another Bing serve
 then not installed, and *Retry the missing ones* fetches just those pieces. The final report counts
 the pieces asked for again and those recovered.
 
+**What a build really wrote and downloaded.** The final report in Works says, for each step and
+in total, how much the build wrote on your disk and how much it downloaded: measured as it ran,
+not estimated. A step taken from the data folder counts nothing, and neither does a link to what
+the folder already holds (the tile's folder links to the images instead of copying them). What
+is written includes the image pieces and relief files kept for later builds, and OpenStreetMap's
+library index the first time it is read.
+
 **What the Plan counts after an update.** When a new version only writes the X-Plane terrain of
 your tiles differently, the images already prepared are kept as they are, and the Plan counts
 only those that are not, and each step to run counts what it wrote the last time: *Build again…*

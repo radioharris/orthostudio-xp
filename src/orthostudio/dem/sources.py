@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 from orthostudio.errors import OsxpError
+from orthostudio.meter import written
 
 __all__ = [
     "ALPHABET",
@@ -798,6 +799,7 @@ def _atomic_write_bytes(path: Path, body: bytes) -> None:
     try:
         tmp.write_bytes(body)
         os.replace(tmp, path)
+        written(len(body))  # the relief step's count of what it wrote (meter.py)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)

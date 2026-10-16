@@ -358,5 +358,13 @@ def test_a_build_gives_the_osm_node_the_jobs_own_fifteen_minutes(monkeypatch: An
 
     monkeypatch.setattr(build, "run_p0_rule", fake_rule)
     run = build._osm_run(SimpleNamespace(prepared=None))
-    run(SimpleNamespace(params=SimpleNamespace(refresh=""), cancel_event=None, progress=None))
+    run(
+        SimpleNamespace(
+            params=SimpleNamespace(refresh=""),
+            cancel_event=None,
+            progress=None,
+            fetched=lambda nbytes: None,
+            wrote=lambda nbytes: None,
+        )
+    )
     assert seen["timeout_s"] == native.OSM_TIMEOUT_S == 900.0

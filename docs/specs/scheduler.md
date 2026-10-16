@@ -48,11 +48,22 @@ Scheduler(store, *, cpu_workers: int | None = None, subprocess_slots: int = 1,
   costs: CostModel
 
 Events: Started(node_id, kind, key) · Progress(node_id, fraction, message) ·
-        Done(node_id, key, hit, wall_s, ref) · Failed(node_id, error, cause) ·
+        Done(node_id, key, hit, wall_s, ref, written, downloaded) ·
+        Failed(node_id, error, cause, written, downloaded) ·
         Stats(running, pending, done, failed, hits, elapsed_s, eta_s)
 ```
 
 `ArtifactRef(key, digest, path, rule, kind, size)` lives in `orthostudio.model` with `TileRef`.
+
+`written` and `downloaded` are the bytes the run really put on the disk and received from the
+network (0 for a hit), carried from the run in `Outcome`, whether it succeeded or failed (a cache
+it filled stays). The run counts them on its `NodeContext`: `commit` adds what it committed to
+the store, links to what the store already holds left out (`own_bytes`: a hard link takes no room);
+`wrote(n)` and `fetched(n)` add the rest. Code deep down that receives or writes bytes for a step
+(the OSM library, Overpass, a relief file, a copy into a tile's folder) says so with
+`orthostudio.meter.received` / `written`, which count only where a step bound its counters with
+`meter.counting` (a context variable: the step's thread and the coroutines `asyncio.run` starts
+there). Works' final report shows both per step (a user, 2026-10-16).
 
 ### 2.1 Node identity and validation
 

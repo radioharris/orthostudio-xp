@@ -8,10 +8,11 @@ tiles, only the assembled 4096² JPEG (``O4_Imagery_Utils.py:1329-1368``).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import struct
 import time
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
@@ -244,11 +245,19 @@ class ChunkStore:
     user's is kept under its address as well (``providers.cache_name``)."""
 
     def __init__(
-        self, root: Path, *, fsync: bool = True, folders: Mapping[str, str] | None = None
+        self,
+        root: Path,
+        *,
+        fsync: bool = True,
+        folders: Mapping[str, str] | None = None,
+        on_write: Callable[[int], None] | None = None,
     ) -> None:
         self.root = Path(root)
         self.fsync = fsync
         self.folders = dict(folders or {})
+        self.on_write = on_write
+        """Told what each :meth:`write` added to the disk: the container's growth (a build's
+        count of what it wrote, Works' report)."""
 
     def path(self, t: TextureId) -> Path:
         folder = self.folders.get(t.provider, t.provider)
@@ -276,7 +285,15 @@ class ChunkStore:
 
     def write(self, t: TextureId, c: ChunkContainer) -> Path:
         """Write to a temporary file in the same directory, fsync, then rename over the target."""
-        return atomic_write_bytes(self.path(t), c.to_bytes(), fsync=self.fsync)
+        data = c.to_bytes()
+        before = 0
+        if self.on_write is not None:
+            with contextlib.suppress(OSError):
+                before = self.path(t).stat().st_size
+        path = atomic_write_bytes(self.path(t), data, fsync=self.fsync)
+        if self.on_write is not None and len(data) > before:
+            self.on_write(len(data) - before)
+        return path
 
     def delete(self, t: TextureId) -> bool:
         """Remove the container; True when it existed."""

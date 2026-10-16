@@ -42,6 +42,7 @@ import orjson
 import zstandard
 
 from orthostudio.errors import OsxpError
+from orthostudio.meter import received, written
 from orthostudio.model import TileRef
 from orthostudio.net import USER_AGENT
 from orthostudio.sources.osm import LayerSpec, OsmSnapshot, layers_for, narrowed
@@ -318,7 +319,10 @@ def _http_get_many(urls: Sequence[str], headers: Mapping[str, str]) -> list[Answ
 
         return list(await asyncio.gather(*(one(url) for url in urls)))
 
-    return _CONNECTIONS.run(run, _route_mark(urls[0]) if urls else "")
+    answers = _CONNECTIONS.run(run, _route_mark(urls[0]) if urls else "")
+    # counted here, in the step's thread: the connections' loop runs in a thread of its own
+    received(sum(len(body) for _status, body, _etag in answers))
+    return answers
 
 
 # -- the manifest -----------------------------------------------------------------------------
@@ -565,8 +569,10 @@ class LibrarySource:
             tag = self.cache_dir / f"{self.name}-manifest.etag"
             tag.unlink(missing_ok=True)  # never a validator beside a copy it was not given with
             partial = path.with_name(path.name + ".part")
+            before = path.stat().st_size if path.is_file() else 0
             partial.write_bytes(body)
             partial.replace(path)
+            written(len(body) - before)  # what the copy added, the OSM step's count (meter.py)
             if validator:
                 tag.write_bytes(orjson.dumps({"library": self._library_mark(), "etag": validator}))
         except OSError:  # a library that cannot be kept is still usable

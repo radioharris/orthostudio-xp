@@ -633,8 +633,12 @@ The selected job (default: the running one, else the newest) shows, from top to 
   500, it stays open or closed as the user left it, and it follows new lines only while scrolled
   to its end (scrolled up, the lines under the eyes stay still). The summary counts its lines.
 - When the job is finished, the **report**: already done / to build / failed (`report.hits`,
-  `built`, `failed`), elapsed, size and *Install n / m*; per step, hits, built, failed and time
-  (from `report.tiles[].nodes[]`, by `role`); the decisions (textures, built, cached, parent
+  `built`, `failed`), elapsed, size, *Written to disk* and *Downloaded* (the sums of the step
+  columns), and *Install n / m*; per step, hits, built, failed, time, *Written* and *Downloaded*
+  (from `report.tiles[].nodes[]`, by `role`). The bytes are what the steps really did, counted as
+  they ran (`pipeline-build.md`, `written` and `downloaded`), not worked out before (a user,
+  2026-10-16): "0" for a step that wrote or received nothing, a dash for a report of an earlier
+  version, which has neither; the decisions (textures, built, cached, parent
   fallback, placeholders, missing; "Steps not done (an earlier step failed)" for
   `SYS_UPSTREAM_FAILED` when there are some; "Image pieces asked for again after a pause" and
   "Image pieces recovered after a pause" whenever a textures decision's `second_pass` is above 0,
@@ -645,7 +649,8 @@ The selected job (default: the running one, else the newest) shows, from top to 
   for the same tiles: adding them read "Install 6 / 6" for 3 tiles installed out of 6.) Three
   columns under two titles on one line, *Final report* over the figures and the steps and
   *Decisions* over its list (a user saw *Decisions* stand lower than *Final report*, 2026-09-21);
-  one column under 1080px, each title above its own part.
+  one column under 1280px, each title above its own part (the steps take 480px with their bytes,
+  472 in French, and the figures 220).
 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus

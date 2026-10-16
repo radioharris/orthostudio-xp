@@ -28,6 +28,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from orthostudio.errors import OsxpError
+from orthostudio.meter import written
 
 __all__ = [
     "HEADER_BYTES",
@@ -442,5 +443,6 @@ def write_geotiff(
             f.write(bytes(body))
             f.write(bytes(tail))
         os.replace(tmp, out)
+        written(out.stat().st_size)  # the relief step's count of what it wrote (meter.py)
     finally:
         tmp.unlink(missing_ok=True)

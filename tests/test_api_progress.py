@@ -1142,6 +1142,14 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
 
     class Ctx:
         cancel_event = None
+        downloaded = 0
+        written = 0
+
+        def fetched(self, nbytes: int) -> None:
+            self.downloaded += nbytes
+
+        def wrote(self, nbytes: int) -> None:
+            self.written += nbytes
 
         def progress(self, fraction: float, message: str) -> None:
             seen.append((fraction, message))
@@ -1158,8 +1166,10 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
     monkeypatch.setattr(build_mod.dem_sources, "http_download", fetched)
     monkeypatch.setattr(build_mod, "run_p0_rule", rule)
     monkeypatch.setattr(build_mod, "RELIEF_TICK_S", 60.0)  # the reading's ticks: the next test
-    build_mod._dem_run(cast(Any, None), _spec("+46+006", zl=14))(Ctx())
+    ctx = Ctx()
+    build_mod._dem_run(cast(Any, None), _spec("+46+006", zl=14))(ctx)
     assert answers and answers[0].ok
+    assert ctx.downloaded == 3_000_000  # what Works' report says the step received
     # the bar moves with the bytes (the download's share of it), then stays while it is read
     fractions = [fraction for fraction, _ in seen]
     assert fractions[:3] == [0.0, 0.0, 0.0] and 0.0 < fractions[3] < 1.0
@@ -1192,6 +1202,14 @@ def test_a_downloaded_relief_moves_its_bar_while_it_is_read(
 
     class Ctx:
         cancel_event = None
+        downloaded = 0
+        written = 0
+
+        def fetched(self, nbytes: int) -> None:
+            self.downloaded += nbytes
+
+        def wrote(self, nbytes: int) -> None:
+            self.written += nbytes
 
         def progress(self, fraction: float, message: str) -> None:
             seen.append((fraction, message))
@@ -1833,6 +1851,14 @@ def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPa
 
     class Ctx:
         cancel_event = None
+        downloaded = 0
+        written = 0
+
+        def fetched(self, nbytes: int) -> None:
+            self.downloaded += nbytes
+
+        def wrote(self, nbytes: int) -> None:
+            self.written += nbytes
 
         def progress(self, fraction: float, message: str) -> None:
             seen.append(message)
@@ -1889,6 +1915,14 @@ def test_the_relief_says_in_works_when_his_file_is_coarser_than_the_relief_chose
 
     class Ctx:
         cancel_event = None
+        downloaded = 0
+        written = 0
+
+        def fetched(self, nbytes: int) -> None:
+            self.downloaded += nbytes
+
+        def wrote(self, nbytes: int) -> None:
+            self.written += nbytes
 
         def progress(self, fraction: float, message: str) -> None:
             seen.append(message)

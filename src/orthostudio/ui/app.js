@@ -880,7 +880,12 @@ function mockOutcome(run) {
     const target = tile.nodes.filter((n) => n.role === (tile.install ? "install" : "pack"));
     const ok = target.length > 0 && target.every((n) => n.status === "done" || n.status === "hit");
     const packDir = ok ? `/Users/pilot/.orthostudio/tiles/zOrthoStudio_${tile.tile}` : null;
-    const nodes = tile.nodes.filter((n) => n.status !== "pending").map((n) => ({ id: n.node, role: n.role, rule: n.role, key: n.key, status: reportStatus[n.status] || n.status, wall_s: n.wall_s, error: n.error, cause: n.cause }));
+    // what a step wrote and received, as the engine measures them (a plausible size per role)
+    const mockBytes = { osm: [9e6, 7e6], dem: [1.2e8, 9e7], vectors: [3e6, 0], mesh: [2.4e8, 0], masks: [6e7, 0], dsf: [6e7, 0], textures: [2.1e9, 3.4e8] };
+    const nodes = tile.nodes.filter((n) => n.status !== "pending").map((n) => {
+      const [written, downloaded] = n.status === "done" ? mockBytes[n.role] || [0, 0] : [0, 0];
+      return { id: n.node, role: n.role, rule: n.role, key: n.key, status: reportStatus[n.status] || n.status, wall_s: n.wall_s, error: n.error, cause: n.cause, written, downloaded };
+    });
     const counts = { hit: 0, built: 0, failed: 0, skipped: 0 };
     const seconds = Object.fromEntries(STEPS.map((s) => [s, 0]));
     for (const n of tile.nodes) {
@@ -4972,7 +4977,10 @@ function updateLog(v, job, active) {
 
 function renderReport(job) {
   const rep = job.report;
-  const per = Object.fromEntries(STEPS.map((s) => [s, { hits: 0, built: 0, failed: 0, seconds: 0 }]));
+  const per = Object.fromEntries(STEPS.map((s) => [s, { hits: 0, built: 0, failed: 0, seconds: 0, written: 0, downloaded: 0 }]));
+  // What each step really wrote on the disk and received from the network, measured as the build
+  // ran, not worked out before (a user, 2026-10-16); a report of an earlier version has neither.
+  const measured = (rep.tiles || []).some((tile) => (tile.nodes || []).some((node) => node.written !== undefined));
   for (const tile of rep.tiles || []) {
     for (const node of tile.nodes || []) {
       const s = stepOfNode(node.id, node.role);
@@ -4981,11 +4989,15 @@ function renderReport(job) {
       else if (node.status === "built") per[s].built += 1;
       else if (node.status === "failed") per[s].failed += 1;
       per[s].seconds += node.wall_s || 0;
+      per[s].written += node.written || 0;
+      per[s].downloaded += node.downloaded || 0;
     }
   }
+  const bytes = (n) => (!measured ? "—" : n ? fmtBytes(n) : "0");
   const table = h("table", null,
-    h("thead", null, h("tr", null, h("th", null, t("works.report_step")), h("th", null, t("works.report_hits")), h("th", null, t("works.report_built")), h("th", null, t("works.report_failed")), h("th", null, t("works.report_time")))),
-    h("tbody", null, STEPS.map((s) => h("tr", null, h("td", null, STEP_KEYS[s]()), h("td", null, fmtInt(per[s].hits)), h("td", null, fmtInt(per[s].built)), h("td", null, fmtInt(per[s].failed)), h("td", null, fmtDuration(per[s].seconds))))));
+    h("thead", null, h("tr", null, h("th", null, t("works.report_step")), h("th", null, t("works.report_hits")), h("th", null, t("works.report_built")), h("th", null, t("works.report_failed")), h("th", null, t("works.report_time")), h("th", null, t("works.report_written")), h("th", null, t("works.report_downloaded")))),
+    h("tbody", null, STEPS.map((s) => h("tr", null, h("td", null, STEP_KEYS[s]()), h("td", null, fmtInt(per[s].hits)), h("td", null, fmtInt(per[s].built)), h("td", null, fmtInt(per[s].failed)), h("td", null, fmtDuration(per[s].seconds)), h("td", null, bytes(per[s].written)), h("td", null, bytes(per[s].downloaded))))));
+  const sum = (field) => STEPS.reduce((total, s) => total + per[s][field], 0);
 
   const counts = decisionCounts(job);
   const decisions = h("ul", { class: "decisions" });
@@ -5012,6 +5024,8 @@ function renderReport(job) {
     [t("works.report_failed"), fmtInt(rep.failed), rep.failed ? "fail" : null],
     [t("works.elapsed"), fmtDuration(rep.elapsed_s)],
     [t("works.size"), totals.bytes != null ? fmtBytes(totals.bytes) : "—"],
+    [t("works.written_total"), bytes(sum("written"))],
+    [t("works.downloaded_total"), bytes(sum("downloaded"))],
     [t("step.install"), job.install ? `${fmtInt(totals.installed)} / ${fmtInt(totals.tiles)}` : t("works.no_install")],
   ]);
   // Built only: the tiles are on the disk, not in X-Plane. A user looked for a way to "import"

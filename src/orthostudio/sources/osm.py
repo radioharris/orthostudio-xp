@@ -34,6 +34,7 @@ import zstandard
 
 from orthostudio.errors import OsxpError
 from orthostudio.home import data_root
+from orthostudio.meter import received
 from orthostudio.model import TileRef
 from orthostudio.net.certs import ca_bundle
 
@@ -1558,6 +1559,7 @@ class OverpassClient:
 
         def count(reply: HttpReply) -> None:
             wire[0] += reply.wire_bytes or len(reply.body)
+            received(reply.wire_bytes or len(reply.body))  # the step's own count (meter.py)
 
         def report() -> None:
             if progress is not None:

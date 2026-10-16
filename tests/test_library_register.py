@@ -222,7 +222,7 @@ def test_a_pack_reached_through_a_link_has_one_row(
 
     node = SimpleNamespace(rule=TILE_INSTALL, key="install", inputs={}, begin=begin,
                            params=InstallParams(tile=T.name, custom_scenery=str(cs)),
-                           commit=lambda build: build.out)  # fmt: skip
+                           commit=lambda build: build.out, wrote=lambda nbytes: None)  # fmt: skip
     _pack_run(env, spec)(node)  # type: ignore[arg-type]
 
     rows = [r for r in _library_rows(cs) if r["kind"] == "ortho"]

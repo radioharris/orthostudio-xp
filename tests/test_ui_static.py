@@ -8174,3 +8174,32 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
             "library.pick_count_shown",
         ):
             assert tables[lang].get(key), (lang, key)
+
+
+def test_the_report_shows_what_each_step_wrote_and_downloaded() -> None:
+    """A user asked for the gigabytes written and the megabytes downloaded of each step, the real
+    ones and not figures worked out before (2026-10-16): the engine counts them as each step runs
+    (``written``, ``downloaded`` on the report's nodes), and the final report shows them in two
+    columns, their totals beside the size. A report of an earlier version has neither: a dash,
+    not a zero it never measured."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderReport")
+    assert (
+        'h("th", null, t("works.report_written")), h("th", null, t("works.report_downloaded"))'
+        in body
+    )
+    assert 'h("td", null, bytes(per[s].written)), h("td", null, bytes(per[s].downloaded))' in body
+    assert "node.written !== undefined" in body
+    assert 'const bytes = (n) => (!measured ? "—" : n ? fmtBytes(n) : "0");' in body
+    assert '[t("works.written_total"), bytes(sum("written"))],' in body
+    assert '[t("works.downloaded_total"), bytes(sum("downloaded"))],' in body
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key, fr, en in (
+        ("works.report_written", "Écrit", "Written"),
+        ("works.report_downloaded", "Téléchargé", "Downloaded"),
+        ("works.written_total", "Écrit sur le disque", "Written to disk"),
+    ):
+        assert f'"{key}": "{fr}",' in i18n and f'"{key}": "{en}",' in i18n, key
+    # the mock report carries them too, as the engine's does
+    mock = _function_body(app_js, "mockOutcome")
+    assert "written, downloaded };" in mock

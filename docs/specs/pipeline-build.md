@@ -348,6 +348,17 @@ its relief does not wait for them at all. Artefacts shared between tiles are ded
 neighbours' meshes, the overlays of a tile built at two levels, the `texture.dds` of overlapping
 zones.
 
+Each row of the report (`NodeOutcome`, `BuildReport.to_dict` `tiles[].nodes[]`) carries what its
+node really did on the disk and the network during the build, every pass and retry summed by the
+collector (`_Collector.bytes`): `written`, the bytes it committed to the store with links to what
+the store holds left out (`sched.node.own_bytes`), plus what it wrote beside it (the image pieces
+a container grew by, `ChunkStore.on_write`; the images its workers committed; relief files; the
+copy of the OSM library's manifest; a copy into a tile's folder on another disk), and
+`downloaded`, the bytes received (the library's and Overpass' answers, relief files and ranges,
+`TexturesReport.network["bytes"]`). A hit counts 0 for both (`scheduler.md` 2.5). Measured on a
+fresh +43+007 BI14 build: 540.7 MB written for 540.9 MB of data on the disk, 60 MB downloaded
+(2026-10-16).
+
 Failures do not stop the batch (`fail_fast=False`): the tiles that fail are reported with their
 coded error and the first upstream cause; the others are packed and installed. A tile whose OSM
 download fails is reported like any failed stage: its `osm` row carries the download's error, the

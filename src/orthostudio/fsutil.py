@@ -23,6 +23,7 @@ from collections.abc import Callable
 from pathlib import Path, PurePath
 
 from orthostudio import winfront
+from orthostudio.meter import written
 
 __all__ = [
     "NO_CONSOLE_WINDOW",
@@ -196,6 +197,8 @@ def atomic_write_text(
 def atomic_link_or_copy(src: Path, dest: Path, *, link: bool = True) -> Path:
     """Put ``src`` at ``dest`` atomically: a hard link when allowed and possible, else a copy."""
 
+    copied = [0]
+
     def produce(tmp: Path) -> None:
         if link:
             try:
@@ -204,8 +207,11 @@ def atomic_link_or_copy(src: Path, dest: Path, *, link: bool = True) -> Path:
             except OSError:
                 pass
         shutil.copyfile(src, tmp)
+        copied[0] = tmp.stat().st_size
 
-    return _atomic(dest, produce, fsync=False)
+    placed = _atomic(dest, produce, fsync=False)
+    written(copied[0])  # a copy takes room, a link none: the build step's count (meter.py)
+    return placed
 
 
 def platform_name() -> str:
