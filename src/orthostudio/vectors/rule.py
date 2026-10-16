@@ -443,7 +443,10 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
     # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15), with the
     # coastline guard's new input, the tile's Global Scenery DSF (``vectors-coastline.md``).
-    version=10,
+    # 12: every region seed lies 10 cm inside its polygon, or the polygon gets none
+    # (``vectors-assembly.md`` 4.1): a Haneda RUNWAY seed 1 mm from its edge made all +35+139
+    # runway (2026-10-16). 11 is taken by a first fix of the same tile, never released.
+    version=12,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,

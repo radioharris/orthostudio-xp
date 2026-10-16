@@ -50,6 +50,7 @@ from orthostudio.vectors.water import (
     EventHandler,
     refine_way,
     scale_x,
+    seed_margin,
 )
 
 __all__ = [
@@ -600,18 +601,20 @@ def _encode_runways(
     return encoded, last, traverses_total
 
 
-def _runway_seeds(polygons: Sequence[geometry.Polygon]) -> list[NDArray[np.float64]]:
+def _runway_seeds(polygons: Sequence[geometry.Polygon], margin: float) -> list[NDArray[np.float64]]:
     """One seed per sub-region of the runway union, crossings included (``:1195-1203``).
 
     For each encoded polygon: first the parts it does not share with any other, then the parts
     it does. Two crossing runways therefore leave a seed in the crossing itself, which is a
-    region of its own once Triangle4XP has cut the graph.
+    region of its own once Triangle4XP has cut the graph. Two outlines that nearly coincide
+    leave slivers a few millimetres wide instead, which get no seed (``margin``,
+    :func:`orthostudio.vectors.seeds.inner_points`): Haneda's flooded +35+139 with RUNWAY.
     """
     seeds: list[NDArray[np.float64]] = []
     for polygon in polygons:
         others = ops.unary_union([other for other in polygons if other != polygon])
         for part in (polygon.difference(others), polygon.intersection(others)):
-            points, _ = polygon_seeds(ensure_multipolygon(part))
+            points, _ = polygon_seeds(ensure_multipolygon(part), margin=margin)
             seeds.extend(np.asarray(points, dtype=np.float64).reshape(-1, 2))
     return seeds
 
@@ -622,6 +625,7 @@ def _encode_taxiways(
     field_of: AltitudeField,
     scalx: float,
     params: AirportEncodeParams,
+    margin: float,
 ) -> tuple[BaseGeometry, list[NDArray[np.float64]], int]:
     """The cleaned taxiway area, its seeds and how many polygons were encoded (``:1205-1232``).
 
@@ -652,7 +656,7 @@ def _encode_taxiways(
         altitudes = _split(field_of(np.vstack(ways)), [len(way) for way in ways])
         for way, z in zip(ways, altitudes, strict=True):
             runs.add(geometry.LineString(way), MARKERS["TAXIWAY"], z)
-        points, _ = polygon_seeds(polygon)
+        points, _ = polygon_seeds(polygon, margin=margin)
         seeds.extend(np.asarray(points, dtype=np.float64).reshape(-1, 2))
         encoded += 1
     return cleaned, seeds, encoded
@@ -667,6 +671,7 @@ def _encode_aprons(
     osm: OsmData,
     last_runway: geometry.Polygon | None,
     on_event: EventHandler | None,
+    margin: float,
 ) -> tuple[list[NDArray[np.float64]], int]:
     """The aprons a user tagged ``include`` by hand (``:1234-1277``).
 
@@ -694,7 +699,7 @@ def _encode_aprons(
             )
             continue
         runs.add(geometry.LineString(way), MARKERS["APRON"], field_of(way))
-        points, _ = polygon_seeds(polygon)
+        points, _ = polygon_seeds(polygon, margin=margin)
         seeds.extend(np.asarray(points, dtype=np.float64).reshape(-1, 2))
         encoded += 1
     return seeds, encoded
@@ -706,6 +711,7 @@ def _encode_hangars(
     runs: Runs,
     dem: Altitudes,
     params: AirportEncodeParams,
+    margin: float,
 ) -> tuple[list[NDArray[np.float64]], int, int]:
     """Flat hangar outlines (``encode_hangars``, ``:1344-1370``).
 
@@ -726,7 +732,7 @@ def _encode_hangars(
                 continue
             z = np.full(len(way), float(np.mean(altitudes)), dtype=np.float64)
             runs.add(geometry.LineString(way), MARKERS["HANGAR"], z)
-            points, _ = polygon_seeds(polygon)
+            points, _ = polygon_seeds(polygon, margin=margin)
             seeds.extend(np.asarray(points, dtype=np.float64).reshape(-1, 2))
             encoded += 1
     return seeds, encoded, dropped
@@ -784,6 +790,7 @@ def encode_airports(
     and raises ``SYS_CANCELLED`` (review 6).
     """
     scalx = scale_x(tile)
+    margin = seed_margin(tile)
     runs = Runs()
     seeds: dict[str, list[NDArray[np.float64]]] = {
         "RUNWAY": [],
@@ -826,18 +833,22 @@ def encode_airports(
         )
         last_runway = last if last is not None else last_runway
         counts["traverses"] += traverses
-        seeds["RUNWAY"].extend(_runway_seeds(polygons))
-        cleaned, taxi_seeds, taxiways = _encode_taxiways(airport, runs, field_of, scalx, params)
+        seeds["RUNWAY"].extend(_runway_seeds(polygons, margin))
+        cleaned, taxi_seeds, taxiways = _encode_taxiways(
+            airport, runs, field_of, scalx, params, margin
+        )
         cleaned_taxiways[index] = cleaned
         seeds["TAXIWAY"].extend(taxi_seeds)
         counts["taxiways"] += taxiways
         apron_seeds, aprons = _encode_aprons(
-            airport, runs, field_of, scalx, params, osm, last_runway, on_event
+            airport, runs, field_of, scalx, params, osm, last_runway, on_event, margin
         )
         seeds["APRON"].extend(apron_seeds)
         counts["aprons"] += aprons
 
-    hangar_seeds, hangars, dropped = _encode_hangars(airports, patch_names, runs, dem, params)
+    hangar_seeds, hangars, dropped = _encode_hangars(
+        airports, patch_names, runs, dem, params, margin
+    )
     seeds["HANGAR"].extend(hangar_seeds)
     counts["hangars"] = hangars
     counts["hangars_dropped"] = dropped

@@ -597,6 +597,14 @@ Ortho4XP). A point closer than 5 cm to a line it does not end is therefore put o
 unless that would make two separate shores of the same water touch: the mesh looks the same,
 without the needles, and a tile with no such point is built exactly as before.
 
+The same slivers fooled the marks that say what each part of the mesh is. Each runway, lake or
+flattened road gets one point inside it that tells the mesh "runway here", and the mark spreads
+from that point until the outline stops it. At Haneda, where OpenStreetMap draws two runways twice,
+one such point fell a millimetre outside its sliver: the whole of `+35+139` was taken for runway,
+so its mountains were never cut finer and kept triangles over a kilometre long, up to a thousand
+metres under the summits (Ortho4XP's tile too). OrthoStudio XP puts that point at least 10 cm
+inside what it marks, and a sliver thinner than 20 cm gets none: elsewhere the tiles do not change.
+
 **Airports and water.** X-Plane lays the pavement of its airports on the ground the tile gives
 it. Where OpenStreetMap has water inside an airport, the bridges and piers of an airport built over
 the sea, a canal under a runway, an aerodrome in a tidal bay, that pavement sank under the water's

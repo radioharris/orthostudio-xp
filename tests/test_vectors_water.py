@@ -127,7 +127,7 @@ def test_merge_drops_empty_and_invalid_polygons() -> None:
 
 
 def test_encode_cuts_to_the_tile() -> None:
-    out = encode_multipolygon([square(0.5, 0.5, 1)], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon([square(0.5, 0.5, 1)], pol_to_alt=FlatDem().alt_vec, margin=0.0)
     assert len(out.geometry.geoms) == 1
     assert out.geometry.geoms[0].bounds == (0.5, 0.5, 1.0, 1.0)
 
@@ -137,6 +137,7 @@ def test_encode_drops_polygons_at_or_below_the_area_limit() -> None:
         [square(0.1, 0.1, 0.001), square(0.2, 0.2, 0.1)],
         pol_to_alt=FlatDem().alt_vec,
         area_limit=1e-5,
+        margin=0.0,
     )
     assert len(out.geometry.geoms) == 1
     assert out.dropped == 1
@@ -150,7 +151,9 @@ def test_encode_aligns_z_with_get_coordinates() -> None:
         [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)],
         [[(0.4, 0.4), (0.6, 0.4), (0.6, 0.6), (0.4, 0.6)]],
     )
-    out = encode_multipolygon([holed, square(0.2, 0.2, 0.05)], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon(
+        [holed, square(0.2, 0.2, 0.05)], pol_to_alt=FlatDem().alt_vec, margin=0.0
+    )
     coords = shapely.get_coordinates(out.geometry)
     assert len(out.z) == len(coords)
     np.testing.assert_allclose(out.z, FlatDem().alt_vec(coords))
@@ -158,13 +161,13 @@ def test_encode_aligns_z_with_get_coordinates() -> None:
 
 def test_encode_orients_the_exterior_counter_clockwise() -> None:
     clockwise = geometry.Polygon([(0.1, 0.1), (0.1, 0.5), (0.5, 0.5), (0.5, 0.1)])
-    out = encode_multipolygon([clockwise], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon([clockwise], pol_to_alt=FlatDem().alt_vec, margin=0.0)
     assert out.geometry.geoms[0].exterior.is_ccw
 
 
 def test_encode_plants_one_seed_per_polygon_inside_it() -> None:
     out = encode_multipolygon(
-        [square(0.1, 0.1, 0.2), square(0.5, 0.5, 0.2)], pol_to_alt=FlatDem().alt_vec
+        [square(0.1, 0.1, 0.2), square(0.5, 0.5, 0.2)], pol_to_alt=FlatDem().alt_vec, margin=0.0
     )
     assert out.seeds.shape == (2, 2)
     for seed, pol in zip(out.seeds, out.geometry.geoms, strict=True):

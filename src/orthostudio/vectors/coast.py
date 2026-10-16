@@ -45,7 +45,8 @@ from orthostudio.vectors.geom import (
     wrap_local_x,
 )
 from orthostudio.vectors.noding import MARKERS
-from orthostudio.vectors.water import DryAerodromes, left_after, touched_pieces
+from orthostudio.vectors.seeds import inner_points
+from orthostudio.vectors.water import DryAerodromes, left_after, seed_margin, touched_pieces
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from orthostudio.vectors.noding import Layer
@@ -663,7 +664,8 @@ def build_sea_layers(
 
     seeds = np.zeros((0, 2), dtype=np.float64)
     if not sea.is_empty:
-        seeds = shapely.get_coordinates(shapely.point_on_surface(np.asarray(sea.geoms)))
+        points = inner_points(np.asarray(sea.geoms), seed_margin(tile))
+        seeds = shapely.get_coordinates(points[~shapely.is_empty(points)])
 
     stats = CoastStats(
         ways_read=ways_read,

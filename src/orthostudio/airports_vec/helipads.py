@@ -28,7 +28,7 @@ from orthostudio.vectors.geom import cut_to_tile, ensure_multipolygon
 from orthostudio.vectors.osmdata import COORD_DIGITS, OsmData
 from orthostudio.vectors.seeds import polygon_seeds
 from orthostudio.vectors.tags import OsmType
-from orthostudio.vectors.water import M_TO_LAT, Altitudes
+from orthostudio.vectors.water import M_TO_LAT, Altitudes, seed_margin
 
 __all__ = [
     "HELIPAD_ANGLE",
@@ -164,5 +164,9 @@ def encode_helipads(
         z = np.full(len(way), float(np.mean(dem.alt_vec(way))), dtype=np.float64)
         ways.append((way, z))
         kept.append(polygon)
-    seeds = polygon_seeds(geometry.MultiPolygon(kept))[0] if kept else np.zeros((0, 2))
+    seeds = (
+        polygon_seeds(geometry.MultiPolygon(kept), margin=seed_margin(tile))[0]
+        if kept
+        else np.zeros((0, 2))
+    )
     return HelipadResult(tuple(ways), seeds, found, area)

@@ -14,7 +14,9 @@ Two consequences shape this module:
   ``orient``). :func:`polygon_seeds` is the shared primitive, :class:`SeedSet` the
   accumulator the assembler fills in layer order;
 * a map with no seed at all is not a map with no region: Ortho4XP then floods the whole tile with
-  SEA when the elevation raster is flat at sea level (:func:`default_seeds`).
+  SEA when the elevation raster is flat at sea level (:func:`default_seeds`);
+* a seed lies :data:`SEED_MARGIN_M` inside its polygon, or the polygon gets none
+  (:func:`inner_points`): Triangle4XP drops it among the edges as written, not on the polygon.
 
 Spec: ``docs/specs/vectors-assembly.md`` section 4.
 """
@@ -28,15 +30,17 @@ import shapely
 from numpy.typing import NDArray
 from shapely.geometry.base import BaseGeometry
 
-from orthostudio.vectors.noding import MARKERS
+from orthostudio.vectors.noding import MARKERS, NEAR_NODE_M
 
 __all__ = [
     "CENTRE_SEED",
     "MARKER_NAMES",
     "MIN_LAND_ALTITUDE",
     "OUTSIDE_SEED",
+    "SEED_MARGIN_M",
     "SeedSet",
     "default_seeds",
+    "inner_points",
     "marker_label",
     "marker_name",
     "polygon_seeds",
@@ -54,6 +58,20 @@ CENTRE_SEED = (0.5, 0.5)
 
 MIN_LAND_ALTITUDE = 1.0
 """``tile.dem.alt_dem.max() >= 1`` separates the two defaults (``O4_Vector_Map.py:161``)."""
+
+SEED_MARGIN_M = 2 * NEAR_NODE_M
+"""How far inside its polygon a seed lies, in metres (10 cm).
+
+A seed is placed on the polygon its builder encoded, but Triangle4XP drops it among the edges
+as they are written: rounded to ``COORD_DIGITS`` (up to 6 mm), then bent by up to
+``NEAR_NODE_M`` (5 cm) where :func:`orthostudio.vectors.noding.join_near_nodes` puts a node on
+an edge. A seed nearer its polygon's edge than that may fall on the other side, and its
+attribute then floods all that no edge of its kind stops: on +35+139, a RUNWAY seed of Haneda
+1 mm from the edge of a sliver between two runway outlines that nearly coincide made the whole
+tile runway, so Triangle4XP refined none of it and every vertex kept the height it was written
+with (``vectors-assembly.md`` 4.1, 2026-10-16). Ortho4XP places its seeds with no margin and
+floods that tile the same way.
+"""
 
 _EMPTY = np.zeros((0, 2), dtype=np.float64)
 
@@ -83,33 +101,60 @@ def marker_label(marker: int) -> str:
     return "|".join(names)
 
 
-def polygon_seeds(geometry: BaseGeometry) -> tuple[NDArray[np.float64], int]:
-    """One representative point per polygon of ``geometry``, in polygon order.
+def inner_points(
+    polygons: NDArray[np.object_],
+    margin: float,
+    chosen: NDArray[np.object_] | None = None,
+) -> NDArray[np.object_]:
+    """One point per polygon, at least ``margin`` inside it (tile-local degrees).
+
+    ``point_on_surface`` (Ortho4XP's ``representative_point()``), or the point the builder
+    ``chosen`` (an OBJ8 triangle's centroid), wherever that point already lies ``margin`` from
+    every edge of its polygon, holes included, which is almost always: the seeds of a tile only
+    move where they were fragile. Elsewhere the point of the polygon shrunk by ``margin``, and
+    an empty point when the polygon is nowhere ``2 * margin`` wide: such a sliver gets no seed,
+    and its few square centimetres keep whatever surrounds them.
+    """
+    points = shapely.point_on_surface(polygons) if chosen is None else np.array(chosen)
+    if margin <= 0 or len(polygons) == 0:
+        return points
+    near = shapely.distance(points, shapely.boundary(polygons)) < margin
+    if near.any():
+        points[near] = shapely.point_on_surface(shapely.buffer(polygons[near], -margin))
+    return points
+
+
+def polygon_seeds(geometry: BaseGeometry, *, margin: float) -> tuple[NDArray[np.float64], int]:
+    """One seed per polygon of ``geometry``, in polygon order, ``margin`` inside it.
 
     ``representative_point()`` is ``point_on_surface``: a point guaranteed inside the
     polygon, unlike the centroid. Ortho4XP calls it inside the encoding loop and catches whatever
     GEOS raises on a broken polygon, keeping the edges and losing the seed
     (``O4_Vector_Utils.py:419-424``); the count of those is returned here so the stage can
-    report it instead of losing it in a log.
+    report it instead of losing it in a log. ``margin`` is the tile's
+    :func:`orthostudio.vectors.water.seed_margin` (:func:`inner_points`); 0 is Ortho4XP's point.
 
-    Returns ``((K, 2) seeds, number of polygons that produced none)``.
+    Returns ``((K, 2) seeds, number of polygons that produced none)``: GEOS refused their point,
+    or they are nowhere ``2 * margin`` wide.
     """
     polygons = shapely.get_parts(shapely.get_parts(geometry))
     polygons = polygons[shapely.get_type_id(polygons) == shapely.GeometryType.POLYGON]
     if len(polygons) == 0:
         return _EMPTY, 0
     try:
-        points = shapely.point_on_surface(polygons)
+        points = inner_points(polygons, margin)
     except shapely.errors.GEOSException:
         kept, skipped = [], 0
         for polygon in polygons:
             try:
-                kept.append(shapely.point_on_surface(polygon))
+                kept.append(inner_points(np.array([polygon], dtype=object), margin)[0])
             except shapely.errors.GEOSException:
                 skipped += 1
+        points = np.asarray(kept, dtype=object)
         if not kept:
             return _EMPTY, skipped
-        return shapely.get_coordinates(np.asarray(kept, dtype=object)), skipped
+        good = ~shapely.is_empty(points)
+        return shapely.get_coordinates(points[good]), skipped + int((~good).sum())
     good = shapely.is_valid_input(points) & ~shapely.is_missing(points) & ~shapely.is_empty(points)
     return shapely.get_coordinates(points[good]), int((~good).sum())
 
@@ -125,7 +170,7 @@ class SeedSet:
 
     by_marker: dict[int, list[NDArray[np.float64]]] = field(default_factory=dict)
     skipped: int = 0
-    """Polygons whose representative point GEOS refused (spec 4.1)."""
+    """Polygons that produced no seed (spec 4.1): GEOS refused their point, or too thin."""
 
     def add(self, marker: int, seeds: NDArray[np.floating] | None) -> None:
         """Append the seeds of one encoded layer under its attribute value."""
@@ -137,9 +182,9 @@ class SeedSet:
         marker_name(marker)  # refuse an unnamed combination before it reaches the file
         self.by_marker.setdefault(int(marker), []).append(points)
 
-    def add_polygons(self, marker: int, geometry: BaseGeometry) -> None:
+    def add_polygons(self, marker: int, geometry: BaseGeometry, *, margin: float) -> None:
         """Convenience for a builder that hands over its polygons rather than its seeds."""
-        points, skipped = polygon_seeds(geometry)
+        points, skipped = polygon_seeds(geometry, margin=margin)
         self.skipped += skipped
         self.add(marker, points)
 

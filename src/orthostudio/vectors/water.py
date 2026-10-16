@@ -38,6 +38,7 @@ from orthostudio.model import TileRef
 from orthostudio.vectors.geom import cut_to_tile, polygons_of
 from orthostudio.vectors.noding import MARKERS, SNAP_DIGITS, Layer
 from orthostudio.vectors.osmdata import OsmData, PolygonGeometry
+from orthostudio.vectors.seeds import SEED_MARGIN_M, inner_points
 
 __all__ = [
     "M_TO_LAT",
@@ -52,6 +53,7 @@ __all__ = [
     "lon_to_m",
     "merge_overlapping_polygons",
     "scale_x",
+    "seed_margin",
 ]
 
 EARTH_RADIUS = 6378137.0
@@ -77,6 +79,16 @@ def scale_x(tile: TileRef) -> float:
     OrthoStudio XP passes it around instead, so two tiles may be built at the same time.
     """
     return cos((tile.lat + 0.5) * pi / 180)
+
+
+def seed_margin(tile: TileRef) -> float:
+    """:data:`orthostudio.vectors.seeds.SEED_MARGIN_M` in the tile-local degrees of ``tile``.
+
+    Counted on a degree of longitude at the tile's edge furthest from the equator, the shortest
+    a degree gets in the tile, so a seed is at least that far from its edges in every direction.
+    """
+    far = min(max(abs(tile.lat), abs(tile.lat + 1)), 89)
+    return SEED_MARGIN_M / lon_to_m(far)
 
 
 class Altitudes(Protocol):
@@ -275,6 +287,7 @@ def encode_multipolygon(
     refine: float = 0.0,
     scalx: float = 1.0,
     cut: bool = True,
+    margin: float,
 ) -> EncodedLayer:
     """``encode_MultiPolygon`` (``O4_Vector_Utils.py:365-436``) as one layer.
 
@@ -286,7 +299,7 @@ def encode_multipolygon(
     """
     kept: list[geometry.Polygon] = []
     altitudes: list[NDArray[np.float64]] = []
-    seeds: list[NDArray[np.float64]] = []
+    seeded: list[geometry.Polygon] = []
     dropped = 0
     for pol in polygons:
         cutted: BaseGeometry = cut_to_tile(pol) if cut else pol
@@ -311,11 +324,12 @@ def encode_multipolygon(
                 rings.append(way)
                 altitudes.append(np.asarray(pol_to_alt(way), dtype=np.float64).reshape(-1))
             kept.append(geometry.Polygon(rings[0], rings[1:]))
-            seeds.append(np.array(oriented.representative_point().coords[0], dtype=np.float64))
+            seeded.append(oriented)
+    points = inner_points(np.array(seeded, dtype=object), margin)
     return EncodedLayer(
         geometry.MultiPolygon(kept),
         np.concatenate(altitudes) if altitudes else np.zeros(0, dtype=np.float64),
-        np.array(seeds, dtype=np.float64).reshape(-1, 2),
+        shapely.get_coordinates(points[~shapely.is_empty(points)]).reshape(-1, 2),
         dropped,
     )
 
@@ -478,11 +492,12 @@ def build_water_layers(
     alt = _alt_of(dem)
     area_limit = params.min_area / 10000
     simplify = params.water_simplification * M_TO_LAT
+    margin = seed_margin(tile)
     encoded_water = encode_multipolygon(
-        merged_water, pol_to_alt=alt, area_limit=area_limit, simplify=simplify
+        merged_water, pol_to_alt=alt, area_limit=area_limit, simplify=simplify, margin=margin
     )
     encoded_sea = encode_multipolygon(
-        merged_sea, pol_to_alt=alt, area_limit=area_limit, simplify=simplify
+        merged_sea, pol_to_alt=alt, area_limit=area_limit, simplify=simplify, margin=margin
     )
     layers: list[Layer] = []
     seeds: dict[str, NDArray[np.float64]] = {}

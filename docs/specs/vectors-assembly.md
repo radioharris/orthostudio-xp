@@ -167,6 +167,32 @@ shared primitive (vectorised `shapely.point_on_surface`, with a per-polygon fall
 skips the ones GEOS refuses and counts them); `assemble_vectors` only accumulates what each
 layer hands it, in layer order then polygon order.
 
+**Diverge: 10 cm inside (2026-10-16).** Triangle4XP drops a seed among the edges as they are
+written, not on the polygon it came from: rounded to `COORD_DIGITS` (up to 6 mm), then bent by
+up to `NEAR_NODE_M` (5 cm) by `join_near_nodes`. A seed nearer than that to its polygon's edge may
+land on the other side, and its attribute then spreads over all that no edge carrying its bit
+stops. On +35+139 Haneda's runways are drawn twice, a few millimetres apart; `_runway_seeds` gives
+the slivers between the copies a seed each (the `intersection` parts), one of them 1 mm from its
+edge fell outside, and RUNWAY covered every triangle (Ortho4XP's tile 88 %). As Triangle4XP
+refines no triangle whose attribute is 8 or more and the post-processing keeps the written
+heights of such triangles' vertices, the tile kept its input triangulation (4 % of points added
+against 95 % for the median witness tile), with triangles 1.4 km long whose surface lay up to
+1 069 m under the relief, and walls where the orthophoto grid's interpolated heights met the
+next tile.
+
+So every seed lies at least `seeds.SEED_MARGIN_M` (10 cm, twice `NEAR_NODE_M`) inside its
+polygon, holes included: `seeds.inner_points` keeps `point_on_surface` (or the centroid an OBJ8
+patch triangle uses) when it is that far from every edge, which is the case of almost every seed,
+takes the point of the polygon shrunk by the margin otherwise, and gives none to a polygon that is
+nowhere 20 cm wide. The margin is in tile-local degrees, `water.seed_margin(tile)`: 10 cm counted
+on a degree of longitude at the tile's edge furthest from the equator. Every producer applies it:
+`polygon_seeds` (runways, taxiways, aprons, hangars, helipads), `encode_multipolygon` (water, sea
+equivalents, roads), the sea polygons of `build_sea_layers` and the patches. On +35+139 it drops
+the 6 runway seeds of Haneda's slivers and moves 3 other runway seeds and 1 INTERP_ALT seed
+inward; RUNWAY then covers 0.56 % of the
+triangles, the mesh has 2.06 million triangles instead of 0.97, and no point of the mountains at
+139.0-139.1 E, 35.50-35.65 N is more than 47 m from Copernicus (74 % were more than 50 m off).
+
 Lines never seed: `encode_MultiLineString` has no seed branch (`:436-467`). The orthophoto
 grid, the gluing border, the coastline layer (inserted as lines, `include_sea`) and the
 airport DUMMY traverses therefore contribute none; the sea seeds come from the polygons

@@ -74,7 +74,7 @@ def square(x: float, y: float, side: float = 0.1) -> Polygon:
 
 def polygon_layer(name: str, marker: str, *polygons: Polygon) -> VectorLayer:
     geometry = MultiPolygon(list(polygons))
-    seeds, _ = polygon_seeds(geometry)
+    seeds, _ = polygon_seeds(geometry, margin=0.0)
     z = np.zeros(shapely.count_coordinates(geometry))
     return VectorLayer(name, geometry, MARKERS[marker], z, seeds)
 
@@ -263,7 +263,7 @@ def test_an_unnamed_marker_is_refused_at_the_layer() -> None:
 
 # ----------------------------------------------------------------------------- rule
 def test_the_rule_declares_what_it_consumes_and_nothing_else() -> None:
-    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 10, "dir")
+    assert (VECTORS.name, VECTORS.version, VECTORS.kind) == ("orthostudio.vectors", 12, "dir")
     assert VECTORS.inputs == ("airports", "dem", "global_scenery", "osm", "patches")
     assert set(VECTORS.consumed) == {
         "tile",

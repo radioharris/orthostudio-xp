@@ -49,6 +49,7 @@ from orthostudio.vectors.water import (
     encode_multipolygon,
     refine_way,
     scale_x,
+    seed_margin,
 )
 
 __all__ = [
@@ -308,6 +309,7 @@ def build_road_layers(
         pol_to_alt=alt_vec_shift,
         refine=ROAD_REFINE_M,
         scalx=scalx,
+        margin=seed_margin(tile),
     )
     counts |= {"polygons": len(encoded.geometry.geoms), "dropped": encoded.dropped}
     if encoded.is_empty:
