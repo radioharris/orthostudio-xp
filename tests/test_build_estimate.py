@@ -337,3 +337,46 @@ def test_a_dsf_written_again_by_an_update_keeps_the_images_already_prepared(
             tile="+43+005", encoder="ispc", encoder_version="1", photo_brightness=0.1
         )
         assert _textures_kept(env, nodes, entries) == set()
+
+
+def test_the_steps_to_run_count_what_they_wrote_the_last_time(tmp_path: Path) -> None:
+    """A step to run counts the size of what it made the last time from the same params and
+    inputs, the store knowing it; a step taken from the store, or one whose artefacts are links
+    (the images, the pack), counts nothing; a tile with a step never run here counts the flat
+    allowance once. Build again of fifteen tiles after an update counted 3.75 GB this way for
+    0.9 GB written (2026-10-16)."""
+    from types import SimpleNamespace
+
+    from orthostudio.estimate import OTHER_ARTEFACTS_GB, _other_gb
+    from orthostudio.graph import artifact_key
+    from orthostudio.model import ArtifactRef
+    from orthostudio.pipeline.build import TILE_DSF, TileDsfParams
+
+    def ref(n: int) -> ArtifactRef:
+        return ArtifactRef(f"{n:064x}", f"{n + 100:064x}", tmp_path, "x", "dir")
+
+    with Store(tmp_path / "store", fsync=False) as store:
+        env = SimpleNamespace(store=store)
+        dsf_in = {"mesh": ref(1), "masks": ref(2), "rasters": ref(3), "vectors": ref(4)}
+        dsf = SimpleNamespace(
+            id="t/dsf", rule=TILE_DSF, params=TileDsfParams(tile="+43+005"), inputs=dsf_in
+        )
+        linked = SimpleNamespace(id="t/textures", rule=TILE_DSF, params=dsf.params, inputs={})
+        nodes = SimpleNamespace(by_role={"dsf": dsf, "textures": linked})
+        entries = {
+            "t/dsf": PlanEntry("t/dsf", "a" * 64, "build", 1.0),
+            "t/textures": PlanEntry("t/textures", None, "unknown", 1.0),
+        }
+        # never run here: the flat allowance, once
+        assert _other_gb(env, nodes, entries) == OTHER_ARTEFACTS_GB
+        digests = {name: r.digest for name, r in dsf_in.items()}
+        key, recipe = artifact_key(
+            TILE_DSF.name, TILE_DSF.version - 1, dsf.params.canonical(), digests
+        )
+        with store.begin(TILE_DSF.name, key, "dir") as b:
+            (b.out / "+43+005.dsf").write_bytes(b"D" * 20_000_000)
+            b.commit(version=1, recipe=recipe, inputs=[])
+        # what the earlier version wrote; the images step is counted elsewhere
+        assert _other_gb(env, nodes, entries) == pytest.approx(0.02, abs=1e-3)
+        entries["t/dsf"] = PlanEntry("t/dsf", key, "hit", 0.0)
+        assert _other_gb(env, nodes, entries) == 0.0

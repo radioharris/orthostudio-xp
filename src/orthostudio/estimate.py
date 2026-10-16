@@ -69,7 +69,11 @@ DEFAULT_KB_PER_REQUEST = 13.0
 DEFAULT_REQ_PER_S = 400.0
 """Conservative sustained throughput without a probe (``net-download.md`` measured 1 000+)."""
 OTHER_ARTEFACTS_GB = 0.25
-"""DSF, mesh, vectors and their npz twins per tile, roughly."""
+"""DSF, mesh, vectors and their npz twins per tile, roughly: what a tile whose steps never ran
+here is counted for (`_other_gb`)."""
+LINKED_ROLES = frozenset({"textures", "pack", "install"})
+"""Steps whose artefacts are links to others' files: the images (counted by ``dds_gb``) and the
+DSF, nothing written twice."""
 PROBE_REQUESTS = 20
 RUNWAY_MARGIN_M = 250.0
 """Around the runways of an airport in X-Plane's list, the ground its map data adds (aprons,
@@ -176,6 +180,8 @@ class TileEstimate:
     textures_airports: int = 0
     """Textures the airports made sharper add on top of the tile's and the zones', included in
     ``textures_total`` (upper bound only, as :attr:`textures_zones`)."""
+    other_gb: float = 0.0
+    """What the steps to run write besides the images (`_other_gb`)."""
 
     @property
     def hits(self) -> int:
@@ -212,6 +218,7 @@ class TileEstimate:
             "requests": self.requests,
             "download_mb": round(self.download_mb, 1),
             "dds_gb": round(self.dds_gb, 3),
+            "other_gb": round(self.other_gb, 3),
             "compute_s": round(self.compute_s, 1),
             "network_s": round(self.network_s, 1),
             "notes": list(self.notes),
@@ -479,6 +486,28 @@ def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry
     }
 
 
+def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> float:
+    """What the steps of the tile to run write besides the images, in GB: for each, the size of
+    what it made the last time from the same params and inputs (`_earlier_build`), the store
+    knowing it; :data:`OTHER_ARTEFACTS_GB` once when one of them has no such earlier artefact (a
+    tile never built here, or a step whose inputs are still to build). Build again of fifteen
+    tiles after an update counted 3.75 GB this way, a flat 0.25 GB each, for 0.9 GB written, the
+    new DSFs alone (2026-10-16)."""
+    total = 0
+    unknown = False
+    for role, node in nodes.by_role.items():
+        e = entries.get(node.id)
+        if e is None or e.status == "hit" or role in LINKED_ROLES:
+            continue
+        earlier = _earlier_build(env, node, entries)
+        info = env.store.info(earlier) if earlier is not None else None
+        if info is None:
+            unknown = True
+            continue
+        total += info.size
+    return total / 1e9 + (OTHER_ARTEFACTS_GB if unknown else 0.0)
+
+
 def estimate(
     specs: Sequence[BuildSpec],
     *,
@@ -574,6 +603,7 @@ def estimate(
                 notes=notes,
                 textures_zones=zone_textures,
                 textures_airports=apt_textures,
+                other_gb=_other_gb(env, g, entries),
             )
         )
     if probe is None and online and first_probe_texture is not None:
@@ -589,8 +619,7 @@ def estimate(
         free = shutil.disk_usage(env.store_root).free / 1e9
     except OSError:
         free = 0.0
-    needed = sum(t.dds_gb + t.download_mb / 1000.0 for t in tiles)
-    needed += OTHER_ARTEFACTS_GB * sum(1 for t in tiles if t.builds)
+    needed = sum(t.dds_gb + t.download_mb / 1000.0 + t.other_gb for t in tiles)
     return Estimate(
         tiles=tiles,
         probe=probe,

@@ -142,8 +142,9 @@ the pieces asked for again and those recovered.
 
 **What the Plan counts after an update.** When a new version only writes the X-Plane terrain of
 your tiles differently, the images already prepared are kept as they are, and the Plan counts
-only those that are not: *Build again…* of tiles built before an update asks for the space it
-will really use, not for every image a second time.
+only those that are not, and each step to run counts what it wrote the last time: *Build again…*
+of tiles built before an update asks for the space it will really use, not for every image a
+second time.
 
 **Progress and time left.** The percentage and the time left on the Works screen cover the whole
 build, the OpenStreetMap downloads included. Each step weighs what it usually costs, the imagery
