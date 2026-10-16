@@ -12,6 +12,7 @@ the time from the learnt costs and, online, from a 20-request probe of the provi
 
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 import time
@@ -22,9 +23,11 @@ from typing import TYPE_CHECKING, Any
 from orthostudio.dsf.params import DsfParams
 from orthostudio.dsf.zones import M_TO_LAT, airport_covers, m_to_lon
 from orthostudio.errors import OsxpError
+from orthostudio.graph.keys import artifact_key
 from orthostudio.imagery.chunks import ChunkStatus, ChunkStore
-from orthostudio.imagery.grid import TextureId, texture_tiles, textures_covering
+from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles, textures_covering
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
+from orthostudio.model import ArtifactRef
 from orthostudio.net import FetchRequest, fetch_all
 from orthostudio.pipeline.build import (
     DEFAULT_PER_TEXTURE_S,
@@ -391,8 +394,12 @@ def _tile_textures(
     """
     spec = nodes.spec
     dsf_entry = entries.get(nodes.dsf.id)
-    if dsf_entry is not None and dsf_entry.status == "hit" and dsf_entry.key is not None:
-        path = env.store.path(dsf_entry.key) / TEXTURES_JSON
+    dsf_key = dsf_entry.key if dsf_entry is not None and dsf_entry.status == "hit" else None
+    if dsf_key is None:
+        # an update that changed only how the DSF is written: the textures it names are the same
+        dsf_key = _earlier_build(env, nodes.dsf, entries)
+    if dsf_key is not None:
+        path = env.store.path(dsf_key) / TEXTURES_JSON
         if path.is_file():
             jobs = texture_jobs_from_json(path)
             masked = sum(1 for j in jobs if j.has_sea)
@@ -405,6 +412,71 @@ def _tile_textures(
     counted = set(textures) | set(extra)
     apt = sorted(zone_list_textures(apt_zones, spec.tile) - counted) if apt_zones else []
     return textures + extra + apt, False, None, len(extra), len(apt), source
+
+
+def _input_digests(
+    env: BuildEnv, node: Any, entries: dict[str, PlanEntry], given: dict[str, str] | None = None
+) -> dict[str, str | None] | None:
+    """The digests of ``node``'s inputs as its key takes them, ``given`` replacing some; None when
+    one of them is not in the store yet."""
+    inputs: dict[str, str | None] = {}
+    for name, dep in node.inputs.items():
+        if given and name in given:
+            inputs[name] = given[name]
+        elif dep is None:
+            inputs[name] = None
+        elif isinstance(dep, ArtifactRef):
+            inputs[name] = dep.digest
+        else:
+            e = entries.get(dep.id)
+            digest = env.store.digest_of(e.key) if e is not None and e.key is not None else None
+            if digest is None:
+                return None
+            inputs[name] = digest
+    return inputs
+
+
+def _earlier_build(
+    env: BuildEnv, node: Any, entries: dict[str, PlanEntry], given: dict[str, str] | None = None
+) -> str | None:
+    """The key of what ``node``'s rule made of the same params and inputs, at this version or an
+    earlier one, when the store still holds it: a step that runs again only because its rule
+    changed, as after an update. Rules 1.1.0 changed write every tile's DSF again, and the Plan
+    then counted every image as to prepare again, 53.5 GB for fifteen tiles whose images were all
+    in the cache, and refused the build for want of twice that free (2026-10-16)."""
+    inputs = _input_digests(env, node, entries, given)
+    if inputs is None:
+        return None
+    params = node.params.canonical()
+    for version in range(node.rule.version, 0, -1):
+        key, _ = artifact_key(node.rule.name, version, params, inputs)
+        if env.store.has(key):
+            return key
+    return None
+
+
+def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> set[str]:
+    """The textures of the tile a build takes from the store as they are: those an earlier build
+    prepared from the same params and masks, its DSF made of the same inputs (`_earlier_build`),
+    whose DDS the store still holds (the build's ``texture.dds`` hits). Empty when there is no
+    such build."""
+    dsf = _earlier_build(env, nodes.dsf, entries)
+    digest = env.store.digest_of(dsf) if dsf is not None else None
+    if digest is None:
+        return set()
+    textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest})
+    if textures is None:
+        return set()
+    path = env.store.path(textures) / "manifest.json"
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {
+        str(t.get("name"))
+        for t in manifest.get("textures", [])
+        if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
+    }
 
 
 def estimate(
@@ -475,11 +547,16 @@ def estimate(
                     break
         tex_entry = entries.get(g.textures.id)
         textures_build = tex_entry is None or tex_entry.status != "hit"
+        # the images already prepared the same way are taken as they are, not prepared again
+        kept = _textures_kept(env, g, entries) if textures_build else set()
+        to_prepare = sum(1 for t in textures if texture_name(t) not in kept)
         compute = sum(p.seconds for p in plans if p.status != "hit" and p.role != "textures")
         if textures_build:
-            compute += len(textures) * per_texture
+            compute += to_prepare * per_texture
         n_masked = masked or 0
         dds_bytes = n_masked * BC3_BYTES + (len(textures) - n_masked) * BC1_BYTES
+        if textures and to_prepare < len(textures):
+            dds_bytes = dds_bytes * to_prepare / len(textures)
         tiles.append(
             TileEstimate(
                 tile=spec.tile.name,

@@ -140,6 +140,11 @@ after a pause of 5 s, then 15 s, then 45 s, each time through another Bing serve
 then not installed, and *Retry the missing ones* fetches just those pieces. The final report counts
 the pieces asked for again and those recovered.
 
+**What the Plan counts after an update.** When a new version only writes the X-Plane terrain of
+your tiles differently, the images already prepared are kept as they are, and the Plan counts
+only those that are not: *Build again…* of tiles built before an update asks for the space it
+will really use, not for every image a second time.
+
 **Progress and time left.** The percentage and the time left on the Works screen cover the whole
 build, the OpenStreetMap downloads included. Each step weighs what it usually costs, the imagery
 most of all. The download time starts from the speed your connection showed on your last builds

@@ -247,3 +247,93 @@ def test_the_map_data_in_the_store_gives_the_airports_outline(
     monkeypatch.setattr(env.store, "path", lambda key: record)
     zones, source = _airport_zones(env, nodes, entries, xplane_list)
     assert source == "list" and len(zones) == 1  # LFML; the strip carries no ICAO code
+
+
+def test_a_dsf_written_again_by_an_update_keeps_the_images_already_prepared(
+    tmp_path: Path,
+) -> None:
+    """Rules 1.1.0 changed write every tile's DSF again (its rule's version), and the Plan of
+    Build again counted every image as to prepare again, 53.5 GB for fifteen tiles whose images
+    were all in the cache, refusing the build (2026-10-16). The DSF an earlier version of its rule
+    made of the same params and inputs gives the exact texture list, and the images the textures
+    step prepared from it, the same params and masks, whose DDS the store holds, are taken as
+    they are; an image whose DDS is gone, or a step with other params, is to prepare."""
+    import json
+    from types import SimpleNamespace
+
+    from orthostudio.estimate import _earlier_build, _textures_kept
+    from orthostudio.graph import artifact_key
+    from orthostudio.model import ArtifactRef
+    from orthostudio.pipeline.build import (
+        TILE_DSF,
+        TILE_TEXTURES,
+        TileDsfParams,
+        TileTexturesParams,
+    )
+
+    def ref(n: int) -> ArtifactRef:
+        return ArtifactRef(f"{n:064x}", f"{n + 100:064x}", tmp_path, "x", "dir")
+
+    def put(rule: str, key: str, recipe: str, files: dict[str, str]) -> str:
+        with store.begin(rule, key, "dir") as b:
+            for name, text in files.items():
+                (b.out / name).write_text(text, encoding="utf-8")
+            info, _ = b.commit(version=1, recipe=recipe, inputs=[])
+        return info.digest
+
+    with Store(tmp_path / "store", fsync=False) as store:
+        env = SimpleNamespace(store=store)
+        dsf_in = {"mesh": ref(1), "masks": ref(2), "rasters": ref(3), "vectors": ref(4)}
+        dsf = SimpleNamespace(
+            id="+43+005/dsf", rule=TILE_DSF, params=TileDsfParams(tile="+43+005"), inputs=dsf_in
+        )
+        params = TileTexturesParams(tile="+43+005", encoder="ispc", encoder_version="1")
+        tex = SimpleNamespace(
+            id="+43+005/textures",
+            rule=TILE_TEXTURES,
+            params=params,
+            inputs={"dsf": dsf, "masks": ref(2)},
+        )
+        entries: dict[str, PlanEntry] = {}
+        nodes = SimpleNamespace(dsf=dsf, textures=tex)
+        assert _earlier_build(env, dsf, entries) is None
+        assert _textures_kept(env, nodes, entries) == set()
+
+        # what the version before made of the same params and inputs
+        digests = {name: r.digest for name, r in dsf_in.items()}
+        old_key, old_recipe = artifact_key(
+            TILE_DSF.name, TILE_DSF.version - 1, dsf.params.canonical(), digests
+        )
+        old_digest = put(TILE_DSF.name, old_key, old_recipe, {"textures.json": "[]"})
+        assert _earlier_build(env, dsf, entries) == old_key
+        dds = {}
+        for name in ("a", "b"):
+            k, r = artifact_key("texture.dds", 1, {"n": name}, {})
+            with store.begin("texture.dds", k, "file") as b:
+                b.out.write_bytes(b"D")
+                b.commit(version=1, recipe=r, inputs=[])
+            dds[name] = k
+        manifest = {
+            "format": "osxp-textures-1",
+            "tile": "+43+005",
+            "textures": [
+                {"name": "a", "key": dds["a"], "status": "built"},
+                {"name": "b", "key": dds["b"], "status": "hit"},
+                {"name": "c", "key": "e" * 64, "status": "built"},  # its DDS is gone
+                {"name": "d", "key": dds["a"], "status": "failed"},
+            ],
+        }
+        tex_key, tex_recipe = artifact_key(
+            TILE_TEXTURES.name,
+            TILE_TEXTURES.version,
+            params.canonical(),
+            {"dsf": old_digest, "masks": ref(2).digest},
+        )
+        assert _textures_kept(env, nodes, entries) == set()  # no textures step yet
+        put(TILE_TEXTURES.name, tex_key, tex_recipe, {"manifest.json": json.dumps(manifest)})
+        assert _textures_kept(env, nodes, entries) == {"a", "b"}
+        # other colours: another textures step, nothing kept
+        tex.params = TileTexturesParams(
+            tile="+43+005", encoder="ispc", encoder_version="1", photo_brightness=0.1
+        )
+        assert _textures_kept(env, nodes, entries) == set()
