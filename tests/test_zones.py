@@ -527,6 +527,19 @@ def test_zone_textures_count_the_squares_a_zone_overlaps() -> None:
     assert info.value.code == "CFG_ZONE_LIST_INVALID"
 
 
+
+def test_a_zone_the_zones_above_cover_whole_adds_no_texture() -> None:
+    """The first zone of the list wins a cell (``dsf.zones``): a zone inside the one above it
+    adds nothing, while listed first it adds its own level's textures (a user saw a zone listed
+    as taking no square still counted in the Plan, 2026-10-16)."""
+    big = _zone("big", LSGG)
+    small = _zone("small", _square(6.100, 46.232, 6.115, 46.242), zl=17)
+    alone = zone_list_textures(zones_for_tile([big], GENEVA, "BI"), GENEVA)
+    assert zone_list_textures(zones_for_tile([big, small], GENEVA, "BI"), GENEVA) == alone
+    on_top = zone_list_textures(zones_for_tile([small, big], GENEVA, "BI"), GENEVA)
+    added = on_top - alone
+    assert added and all(t.zl == 17 for t in added)
+
 def _env(tmp_path: Path, tile: TileRef) -> BuildEnv:
     gs = tmp_path / "Global Scenery"
     p = gs / tile.dsf_relpath

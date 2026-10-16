@@ -8010,7 +8010,7 @@ def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
     assert got["del"]["body"] == [
         "Their files are deleted from this computer (about 3 GB).",
         "1 of them are in X-Plane: they are removed from it.",
-        "The imagery already downloaded stays in the cache, so building it again later is faster.",
+        "The imagery already downloaded stays in the cache, so a later build is faster.",
         "1 other tile(s) picked are left as they are: this action does not apply to them.",
     ]
     assert got["delUnknown"]["body"][0] == "Their files are deleted from this computer."
@@ -8031,6 +8031,27 @@ def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
         "OrthoStudio XP stops listing them; their files stay where Ortho4XP put them. Importing "
         "your Ortho4XP folder again lists them again."
     ]
+
+
+def test_a_zone_that_takes_no_square_adds_nothing_to_the_sizes() -> None:
+    """A zone the zones above it cover whole shows no size in the list and leaves "Extra detail
+    for the selected tiles": it was shown "about 45 MB" beside "This zone takes no square" and
+    counted in the total (a user's campaign, 2026-10-16). The total is drawn again once the
+    engine's squares arrive."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", map_js, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    none = body("takesNone")
+    assert "const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;" in none
+    assert "return Boolean(area) && area.count === 0;" in none
+    assert "if (takesNone(z, selectedTiles)) continue;" in body("selectionMB")
+    assert "if (usableZl(z.zl) && !takesNone(z, selectedTiles)) {" in body("zoneItem")
+    fetch = body("fetchAreas")
+    assert fetch.index("renderList();") < fetch.index("renderSizes();")
 
 
 def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:

@@ -209,8 +209,12 @@ built exactly as before (same keys). The CLI gains `osxp build --zones FILE`, wh
 whose `properties` carry `zl` and optionally `provider`, `name`, `id`.
 
 The estimate (`orthostudio.estimate`, `POST /api/plan`) counts the textures of the zones on top of
-the tile's own: for each entry, the textures at the zone's zoom level whose square intersects the
-clipped polygon. It stays an upper bound, and says so.
+the tile's own: for each entry, the textures at the zone's zoom level whose square intersects what
+the entries before it leave of the clipped polygon, since the first zone of the list wins a cell
+(`dsf.zones`). A zone the ones above it cover whole adds nothing, as the list says ("This zone takes
+no square"); it was still counted until 2026-10-16. It stays an upper bound, and says so. The page's
+own figures do the same: a zone the engine answers takes no square (`zone_cells`) shows no size in
+the list and leaves "Extra detail for the selected tiles" (`map.js` `takesNone`).
 
 ## 6. The base map (`GET /api/map/{provider}/{z}/{x}/{y}`)
 

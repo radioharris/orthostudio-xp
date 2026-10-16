@@ -395,7 +395,7 @@ def _tile_textures(
 
     Exact when the DSF is in the store (its texture list, zones and airports included). Otherwise
     an upper bound: every texture of the tile at its level, then, for each ``zone_list`` entry,
-    the textures at the entry's level whose square overlaps it
+    the textures at the entry's level whose square overlaps what the entries before it leave of it
     (``orthostudio.zones.zone_list_textures``), then those of the airports the build makes sharper
     (:func:`_airport_zones`), each not already counted.
     """

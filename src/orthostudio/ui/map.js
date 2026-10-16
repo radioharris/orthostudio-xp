@@ -461,6 +461,14 @@ export function createPlanMap(ctx) {
     return z.zl === ctx.tileZl(tile) && (z.provider || source) === source;
   }
 
+  /** A zone the zones above it in the list cover whole, by the engine's answer (``zone_cells``):
+   * it takes no square, so it adds nothing to download (a user saw "about 45 MB" beside "This zone
+   * takes no square", and counted in the total, 2026-10-16). */
+  function takesNone(z, selectedTiles = new Set(ctx.tiles())) {
+    const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;
+    return Boolean(area) && area.count === 0;
+  }
+
   /** Approximate extra megabytes of one zone, over every tile it covers (section 7.0.4). */
   function zoneMB(z) {
     let n = 0;
@@ -476,11 +484,13 @@ export function createPlanMap(ctx) {
     const source = ctx.planProvider();
     let own = 0;
     let extra = 0;
+    const selectedTiles = new Set(ctx.tiles());
     for (const tile of ctx.tiles()) {
       own += tileTextureCount(tile, ctx.tileZl(tile));
       const keys = new Set();
       for (const z of zs.zones) {
         if (!usableZl(z.zl) || addsNothingOn(z, tile) || !zoneTiles(z).includes(tile)) continue;
+        if (takesNone(z, selectedTiles)) continue;
         for (const k of zoneKeys(z, tile)) keys.add(`${z.provider || source}|${z.zl}|${k}`);
       }
       extra += keys.size;
@@ -2187,6 +2197,7 @@ export function createPlanMap(ctx) {
     zs.areasKey = key;
     renderZoneAreas();
     renderList();
+    renderSizes();  // a zone that takes no square leaves the total
   }
 
   /** The level of the chosen squares a zone falls in (a flight plan may vary it), else step 1's:
@@ -2807,7 +2818,7 @@ export function createPlanMap(ctx) {
     const del = button("delete", "×", t("zones.delete", { name: label }), () => removeZone(z.id), false);
 
     const notes = h("div", { class: "zone-notes" });
-    if (usableZl(z.zl)) {
+    if (usableZl(z.zl) && !takesNone(z, selectedTiles)) {
       const mb = zoneMB(z);
       notes.append(h("span", { class: "zone-size num" }, mb > 0 ? t("zones.size", { size: fmtMB(mb) }) : t("zones.size_none")));
     }

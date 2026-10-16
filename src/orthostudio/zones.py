@@ -1196,10 +1196,13 @@ def zone_textures(zone: Zone, tile: TileRef) -> int:
 
 def zone_list_textures(zone_list: Iterable[Sequence[Any]], tile: TileRef) -> set[TextureId]:
     """The textures a ``zone_list`` adds to ``tile``: for each entry, the textures at its zoom
-    level whose square overlaps the entry clipped to the tile (an upper bound of what the DSF
-    uses). Accepts any Ortho4XP ``zone_list``: an invalid ring is repaired first."""
+    level whose square overlaps what the entries before it leave of it, clipped to the tile (an
+    upper bound of what the DSF uses: the first zone of the list wins a cell, ``dsf.zones``, so an
+    entry the ones before it cover whole adds nothing; a zone listed as taking no square was still
+    counted, 2026-10-16). Accepts any Ortho4XP ``zone_list``: an invalid ring is repaired first."""
     cell = _cell(tile)
     found: set[TextureId] = set()
+    above: BaseGeometry | None = None
     for index, entry in enumerate(zone_list):
         try:
             coords, zl, provider = entry
@@ -1217,7 +1220,10 @@ def zone_list_textures(zone_list: Iterable[Sequence[Any]], tile: TileRef) -> set
         shape: BaseGeometry = Polygon(ring)
         if not shape.is_valid:
             shape = make_valid(shape)
-        for part in _polygons(shape.intersection(cell)):
+        clipped = shape.intersection(cell)
+        left = clipped.difference(above) if above is not None else clipped
+        for part in _polygons(left):
             if part.area > MIN_PART_AREA:
                 found |= _textures_of(part, level, str(provider))
+        above = clipped if above is None else above.union(clipped)
     return found
