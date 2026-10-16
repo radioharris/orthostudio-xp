@@ -190,7 +190,7 @@ def _nearest_outline(seeds: np.ndarray, outlines: list[Polygon]) -> float:
 
 
 def test_the_margin_is_ten_centimetres_along_the_shortest_degree_of_the_tile() -> None:
-    assert SEED_MARGIN_M == pytest.approx(0.10)
+    assert abs(SEED_MARGIN_M - 0.10) < 1e-12
     margin = seed_margin(TOKYO)
     assert margin * lon_to_m(36) == pytest.approx(0.10)  # the tile's edge furthest from the equator
     assert margin * LAT_TO_M > 0.10

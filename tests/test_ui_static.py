@@ -8050,7 +8050,8 @@ def test_a_tile_s_name_ticks_its_box_and_pick_all_s_words_line_up_with_the_names
     assert 'if (ev.detail === 1 && String(window.getSelection?.() || "")) return;' in by_name
     assert "box.click();" in by_name
     css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert ".library-pick-all { display: inline-flex; align-items: center; gap: 8px; padding-left: 9px;" in css
+    pick_all = ".library-pick-all { display: inline-flex; align-items: center; gap: 8px;"
+    assert pick_all + " padding-left: 9px;" in css
     assert ".table th, .table td { padding: 5px 8px;" in css  # the gap is this left padding
     assert ".library-table .tile-name.is-pick { cursor: pointer; }" in css
 
