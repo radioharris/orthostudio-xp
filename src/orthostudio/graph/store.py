@@ -29,6 +29,7 @@ from typing import Any
 
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
+from orthostudio.graph.canon import canonical_json
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
     ArtifactHeldError,
@@ -652,6 +653,40 @@ class Store:
                 (rule, digest),
             ).fetchall()
         return [str(r["key"]) for r in rows]
+
+    def last_made(
+        self,
+        rule: str,
+        params: dict[str, Any],
+        max_version: int,
+        inputs: dict[str, str] | None = None,
+    ) -> str | None:
+        """The newest present artefact ``rule`` made of exactly ``params``, at ``max_version`` or an
+        earlier version, whatever its inputs but those given in ``inputs``: what a step made the
+        last time for the same tile and settings, for the Plan to expect it again."""
+        want = canonical_json(params)
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT key, recipe FROM artifacts WHERE rule = ? AND version <= ?"
+                " ORDER BY created_at DESC",
+                (rule, int(max_version)),
+            ).fetchall()
+        for row in rows:
+            doc = json.loads(row["recipe"])
+            if canonical_json(doc.get("params", {})) != want:
+                continue
+            made_of = doc.get("inputs", {})
+            if inputs and any(made_of.get(name) != digest for name, digest in inputs.items()):
+                continue
+            if self.has(str(row["key"])):
+                return str(row["key"])
+        return None
+
+    def made_of(self, key: str) -> dict[str, str | None]:
+        """The input digests ``key`` was made of, as its recipe names them; empty when absent."""
+        with self._lock:
+            row = self._db.execute("SELECT recipe FROM artifacts WHERE key = ?", (key,)).fetchone()
+        return {} if row is None else dict(json.loads(row["recipe"]).get("inputs", {}))
 
     def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
         with self._lock:

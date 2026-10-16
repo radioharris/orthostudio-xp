@@ -352,6 +352,8 @@
             <span data-i18n="library.pick_all">Pick all shown</span>
           </label>
           <span class="library-pick-count" id="library-pick-count"></span>
+          <!-- Build again works out the cost of every tile before it asks (app.js rebuildLibraryTiles). -->
+          <span class="library-busy" id="library-busy" role="status" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="plan.estimating">Working out the cost…</span></span>
         </div>
         <div class="library-acts">
           <div class="library-act" role="group" aria-labelledby="library-act-xplane">

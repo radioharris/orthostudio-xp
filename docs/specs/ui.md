@@ -857,7 +857,9 @@ common one is the build's `zoom_level`, the others go in `tiles_zl`), none insta
 in two folders built once: a tile X-Plane shows is built again in its own folder, which X-Plane
 keeps showing, and one it does not show stays out (one build per "put back in X-Plane" made two
 builds of two tiles, 2026-10-15). Zones, colours and settings are left to the engine, which takes
-today's, as for a Plan. Each build is estimated first (`POST /api/plan`); a
+today's, as for a Plan. Each build is estimated first (`POST /api/plan`), seconds for many tiles,
+while the pick line shows the Plan's spinner and « Calcul du coût… » (`#library-busy`,
+`state.rebuildEstimating`): nothing moved and the app looked frozen (a user, 2026-10-16); a
 modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
 (its source and level) and what is today's, the download and the disk summed over the builds
 ("up to", with "less if the tiles have not changed", when a stage of the estimate is `unknown`:

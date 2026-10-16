@@ -144,7 +144,11 @@ the pieces asked for again and those recovered.
 your tiles differently, the images already prepared are kept as they are, and the Plan counts
 only those that are not, and each step to run counts what it wrote the last time: *Build again…*
 of tiles built before an update asks for the space it will really use, not for every image a
-second time.
+second time. When the new version also changes the map, the terrain and the water masks that
+follow it are made again, and the Plan goes by your tile's last build with the same settings:
+the images made from the photos alone are kept, those with a sea mask are counted as maybe to
+prepare again, so the figure is a most. While it works this out, the Library shows a spinner and
+*Working out the cost…* beside the tiles picked.
 
 **Progress and time left.** The percentage and the time left on the Works screen cover the whole
 build, the OpenStreetMap downloads included. Each step weighs what it usually costs, the imagery

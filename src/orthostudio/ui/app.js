@@ -217,6 +217,8 @@ const state = {
   filing: null,
   /** Tiles picked being built again: estimated, asked, then sent (the Library's Build again…). */
   rebuilding: false,
+  /** Build again is working out the cost of the tiles picked: the bar shows a spinner. */
+  rebuildEstimating: false,
   bulk: null,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
@@ -6293,6 +6295,7 @@ function renderLibraryPick(rows, shown) {
   const rebuild = $("library-rebuild");
   rebuild.hidden = !ours;
   rebuild.disabled = !take.file.length || busy || state.rebuilding;
+  $("library-busy").hidden = !state.rebuildEstimating;
   $("library-add").disabled = !take.install.length || busy;
   $("library-remove").disabled = !take.uninstall.length || busy;
   const del = $("library-delete-picked");
@@ -6577,11 +6580,14 @@ async function rebuildLibraryTiles() {
   if (!picked.length) return;
   const errors = clear($("library-errors"));
   state.rebuilding = true;
+  state.rebuildEstimating = true;
   renderLibrary();
   try {
     const requests = rebuildRequests(picked);
     const plans = [];
     for (const { install: _install, ...req } of requests) plans.push(await api("POST", "/api/plan", req));
+    state.rebuildEstimating = false;
+    renderLibrary();
     const shown = new Set(picked.filter((e) => e.installed).map((e) => e.tile));
     const question = rebuildQuestion(requests, plans, shown.size, settingsUnsaved());
     if (!(await confirmRebuild(question)) || !question.go) return;
@@ -6606,6 +6612,7 @@ async function rebuildLibraryTiles() {
     refreshJobList();
   } finally {
     state.rebuilding = false;
+    state.rebuildEstimating = false;
     renderLibrary();
   }
 }

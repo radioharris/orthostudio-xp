@@ -389,12 +389,15 @@ def _tile_textures(
     nodes: TileNodes,
     entries: dict[str, PlanEntry],
     airports: AirportIndex | None = None,
-) -> tuple[list[TextureId], bool, int | None, int, int, str]:
-    """``(textures, exact, masked, zone textures, airport textures, airports read from)`` of one
-    tile.
+) -> tuple[list[TextureId], bool, int | None, int, int, str, bool]:
+    """``(textures, exact, masked, zone textures, airport textures, airports read from, from the
+    last build)`` of one tile.
 
-    Exact when the DSF is in the store (its texture list, zones and airports included). Otherwise
-    an upper bound: every texture of the tile at its level, then, for each ``zone_list`` entry,
+    Exact when the DSF is in the store (its texture list, zones and airports included). When the
+    steps before it are still to make, the list of the tile's last build with the same settings
+    (:func:`_last_made`): an update that changes the map or the terrain leaves the images where
+    they were. Otherwise an upper bound: every texture of the tile at its level, then, for each
+    ``zone_list`` entry,
     the textures at the entry's level whose square overlaps what the entries before it leave of it
     (``orthostudio.zones.zone_list_textures``), then those of the airports the build makes sharper
     (:func:`_airport_zones`), each not already counted.
@@ -405,12 +408,17 @@ def _tile_textures(
     if dsf_key is None:
         # an update that changed only how the DSF is written: the textures it names are the same
         dsf_key = _earlier_build(env, nodes.dsf, entries)
+    last = False
+    if dsf_key is None:
+        # an update that changed a step before it: the tile's last build names them
+        dsf_key = _last_made(env, nodes.dsf)
+        last = dsf_key is not None
     if dsf_key is not None:
         path = env.store.path(dsf_key) / TEXTURES_JSON
         if path.is_file():
             jobs = texture_jobs_from_json(path)
             masked = sum(1 for j in jobs if j.has_sea)
-            return [j.texture for j in jobs], True, masked, 0, 0, ""
+            return [j.texture for j in jobs], not last, masked, 0, 0, "", last
     lat, lon = spec.tile.lat, spec.tile.lon
     textures = textures_covering(lat + 1, lon, lat, lon + 1, spec.zl, spec.provider)
     zone_list = spec.config.get("zone_list") or ()
@@ -418,7 +426,7 @@ def _tile_textures(
     apt_zones, source = _airport_zones(env, nodes, entries, airports)
     counted = set(textures) | set(extra)
     apt = sorted(zone_list_textures(apt_zones, spec.tile) - counted) if apt_zones else []
-    return textures + extra + apt, False, None, len(extra), len(apt), source
+    return textures + extra + apt, False, None, len(extra), len(apt), source, False
 
 
 def _input_digests(
@@ -462,16 +470,36 @@ def _earlier_build(
     return None
 
 
+def _last_made(env: BuildEnv, node: Any, given: dict[str, str] | None = None) -> str | None:
+    """What ``node``'s rule made the last time for the same params, whatever its inputs but those
+    ``given``: the tile's last build with the same settings, when the steps before it are still
+    to make and :func:`_earlier_build` cannot match their inputs. The map's rule 1.1.0 changed
+    made the Plan count every image of fifteen tiles as to prepare again, 50 GB, and refuse the
+    build for want of twice that free, their images all in the cache (2026-10-16)."""
+    return env.store.last_made(node.rule.name, node.params.canonical(), node.rule.version, given)
+
+
 def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> set[str]:
     """The textures of the tile a build takes from the store as they are: those an earlier build
     prepared from the same params and masks, its DSF made of the same inputs (`_earlier_build`),
     whose DDS the store still holds (the build's ``texture.dds`` hits). Empty when there is no
-    such build."""
+    such build.
+
+    When the steps before the DSF are still to make, the tile's last build with the same settings
+    (`_last_made`) stands in, the images made with a water mask left out: the masks are made
+    again and may change them; the others come from the photos alone (inland water too, unless
+    its masks are asked for)."""
     dsf = _earlier_build(env, nodes.dsf, entries)
+    last = dsf is None
+    if last:
+        dsf = _last_made(env, nodes.dsf)
     digest = env.store.digest_of(dsf) if dsf is not None else None
-    if digest is None:
+    if dsf is None or digest is None:
         return set()
-    textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest})
+    if last:
+        textures = _last_made(env, nodes.textures, {"dsf": digest})
+    else:
+        textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest})
     if textures is None:
         return set()
     path = env.store.path(textures) / "manifest.json"
@@ -482,15 +510,19 @@ def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry
     return {
         str(t.get("name"))
         for t in manifest.get("textures", [])
-        if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
+        if t.get("status") in ("built", "hit")
+        and t.get("key")
+        and env.store.has(str(t["key"]))
+        and not (last and env.store.made_of(str(t["key"])).get("mask"))
     }
 
 
 def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> float:
     """What the steps of the tile to run write besides the images, in GB: for each, the size of
-    what it made the last time from the same params and inputs (`_earlier_build`), the store
-    knowing it; :data:`OTHER_ARTEFACTS_GB` once when one of them has no such earlier artefact (a
-    tile never built here, or a step whose inputs are still to build). Build again of fifteen
+    what it made the last time from the same params and inputs (`_earlier_build`), or from the
+    same params when its inputs are still to make (`_last_made`), the store knowing it;
+    :data:`OTHER_ARTEFACTS_GB` once when one of them has no such artefact (a tile never built
+    here, or built with other settings). Build again of fifteen
     tiles after an update counted 3.75 GB this way, a flat 0.25 GB each, for 0.9 GB written, the
     new DSFs alone (2026-10-16)."""
     total = 0
@@ -499,7 +531,7 @@ def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) ->
         e = entries.get(node.id)
         if e is None or e.status == "hit" or role in LINKED_ROLES:
             continue
-        earlier = _earlier_build(env, node, entries)
+        earlier = _earlier_build(env, node, entries) or _last_made(env, node)
         info = env.store.info(earlier) if earlier is not None else None
         if info is None:
             unknown = True
@@ -542,11 +574,16 @@ def estimate(
             for role, node in g.by_role.items()
             if (e := entries.get(node.id)) is not None
         ]
-        textures, exact, masked, zone_textures, apt_textures, apt_source = _tile_textures(
+        textures, exact, masked, zone_textures, apt_textures, apt_source, last = _tile_textures(
             env, g, entries, airports
         )
         notes: list[str] = []
-        if not exact:
+        if last:
+            notes.append(
+                "texture list of the tile's last build with the same settings: the steps before "
+                "the DSF are to make again, the images with water counted as to prepare again"
+            )
+        elif not exact:
             notes.append(
                 "texture count is the whole tile (no DSF in the store yet): sea-only cells "
                 "produce no texture and every texture is counted as DXT1"

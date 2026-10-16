@@ -1189,6 +1189,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .library-pick-all { display: inline-flex; align-items: center; gap: 8px; padding-left: 9px; font-size: var(--fs-2); color: var(--fg-2); }
 .library-pick-all input { margin: 0; }
 .library-pick-count { font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
+/* Build again works out the cost first, seconds for many tiles: the page says so (a user, 2026-10-16). */
+.library-busy { display: inline-flex; align-items: center; gap: var(--gap); font-size: var(--fs-2); color: var(--fg-2); }
 .library-filing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); margin: 0 0 var(--block-gap); font-variant-numeric: tabular-nums; }
 .library-errors:not(:empty) { margin-bottom: var(--block-gap); }
 .table .tile-pick { margin: 0; vertical-align: middle; }

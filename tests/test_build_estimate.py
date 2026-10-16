@@ -380,3 +380,97 @@ def test_the_steps_to_run_count_what_they_wrote_the_last_time(tmp_path: Path) ->
         assert _other_gb(env, nodes, entries) == pytest.approx(0.02, abs=1e-3)
         entries["t/dsf"] = PlanEntry("t/dsf", key, "hit", 0.0)
         assert _other_gb(env, nodes, entries) == 0.0
+
+
+def test_a_map_changed_by_an_update_keeps_the_images_made_without_a_mask(tmp_path: Path) -> None:
+    """The map's rule 1.1.0 changed leaves the tile's terrain, masks and DSF to make again, so no
+    earlier build matches their inputs, and the Plan of Build again counted every image of fifteen
+    tiles as to prepare, 50 GB, refusing the build (2026-10-16). The tile's last build with the
+    same settings then gives the texture list, and its images whose DDS the store holds are taken
+    as they are, but those made with a water mask, counted again as the masks are made again.
+    Other settings: no such build, nothing kept."""
+    import json
+    from types import SimpleNamespace
+
+    from orthostudio.estimate import _other_gb, _textures_kept, _tile_textures
+    from orthostudio.graph import artifact_key
+    from orthostudio.imagery.grid import TextureId, texture_name
+    from orthostudio.pipeline.build import (
+        TEXTURES_FORMAT,
+        TILE_DSF,
+        TILE_TEXTURES,
+        TileDsfParams,
+        TileTexturesParams,
+    )
+
+    land, wet = TextureId(24000, 16000, 16, "BI"), TextureId(24016, 16000, 16, "BI")
+
+    def put(rule: str, key: str, recipe: str, files: dict[str, bytes]) -> str:
+        with store.begin(rule, key, "dir") as b:
+            for name, data in files.items():
+                (b.out / name).write_bytes(data)
+            info, _ = b.commit(version=1, recipe=recipe, inputs=[])
+        return info.digest
+
+    with Store(tmp_path / "store", fsync=False) as store:
+        env = SimpleNamespace(store=store)
+        mesh = SimpleNamespace(id="t/mesh")  # a step still to make: its digest is not known
+        dsf = SimpleNamespace(
+            id="t/dsf", rule=TILE_DSF, params=TileDsfParams(tile="+43+005"), inputs={"mesh": mesh}
+        )
+        params = TileTexturesParams(tile="+43+005", encoder="ispc", encoder_version="1")
+        tex = SimpleNamespace(id="t/textures", rule=TILE_TEXTURES, params=params, inputs={})
+        nodes = SimpleNamespace(spec=None, dsf=dsf, textures=tex, by_role={"dsf": dsf})
+        entries = {
+            "t/mesh": PlanEntry("t/mesh", None, "unknown", 1.0),
+            "t/dsf": PlanEntry("t/dsf", None, "unknown", 1.0),
+        }
+        assert _textures_kept(env, nodes, entries) == set()
+
+        # the tile's last build: other inputs, an earlier version of the rule
+        listed = {
+            "format": TEXTURES_FORMAT,
+            "textures": [
+                {"til_x": t.til_x, "til_y": t.til_y, "zl": t.zl, "provider": t.provider, "kinds": k}
+                for t, k in ((land, ["land"]), (wet, ["land", "sea_overlay"]))
+            ],
+        }
+        old_key, old_recipe = artifact_key(
+            TILE_DSF.name, TILE_DSF.version - 1, dsf.params.canonical(), {"mesh": "c" * 64}
+        )
+        old_dsf = put(
+            TILE_DSF.name,
+            old_key,
+            old_recipe,
+            {"textures.json": json.dumps(listed).encode(), "+43+005.dsf": b"D" * 10_000_000},
+        )
+        dds = {}
+        for t in (land, wet):
+            mask = {"mask": "e" * 64} if t is wet else {"mask": None}
+            k, r = artifact_key("texture.dds", 1, {"n": texture_name(t)}, mask)
+            with store.begin("texture.dds", k, "file") as b:
+                b.out.write_bytes(b"D")
+                b.commit(version=1, recipe=r, inputs=[])
+            dds[texture_name(t)] = k
+        manifest = {
+            "format": "osxp-textures-1",
+            "tile": "+43+005",
+            "textures": [{"name": n, "key": k, "status": "built"} for n, k in dds.items()],
+        }
+        tex_key, tex_recipe = artifact_key(
+            TILE_TEXTURES.name,
+            TILE_TEXTURES.version,
+            params.canonical(),
+            {"dsf": old_dsf, "masks": "d" * 64},
+        )
+        files = {"manifest.json": json.dumps(manifest).encode()}
+        put(TILE_TEXTURES.name, tex_key, tex_recipe, files)
+
+        assert _tile_textures(env, nodes, entries) == ([land, wet], False, 1, 0, 0, "", True)
+        assert _textures_kept(env, nodes, entries) == {texture_name(land)}
+        # the DSF to write again counts what the last one wrote
+        assert _other_gb(env, nodes, entries) == pytest.approx(0.01, abs=1e-3)
+
+        # other settings: not the same tile build, nothing to go by
+        dsf.params = TileDsfParams(tile="+43+005", default_zl=17)
+        assert _textures_kept(env, nodes, entries) == set()
