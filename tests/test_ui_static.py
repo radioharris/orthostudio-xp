@@ -7717,7 +7717,7 @@ process.stdout.write(JSON.stringify({
 """
     )
     box = ["input", "checkbox", "tile-pick", "Pick +46+006"]
-    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name", "+46+006"]
+    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name is-pick", "+46+006"]
     assert got["built"] == {
         "cells": columns,
         "pick": ["library-pick-cell", box],
@@ -7733,7 +7733,7 @@ process.stdout.write(JSON.stringify({
     assert got["imported"] == {
         "cells": columns,
         "pick": ["library-pick-cell is-top", ["input", "checkbox", "tile-pick", "Pick +44+005"]],
-        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name", "+44+005"],
+        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name is-pick", "+44+005"],
         "where": ["/O"],
         "span": None,
     }
@@ -8031,6 +8031,28 @@ def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
         "OrthoStudio XP stops listing them; their files stay where Ortho4XP put them. Importing "
         "your Ortho4XP folder again lists them again."
     ]
+
+
+def test_a_tile_s_name_ticks_its_box_and_pick_all_s_words_line_up_with_the_names() -> None:
+    """A click on a tile's name ticks or unticks its box (a user, 2026-10-16). The name is not a
+    label, which the page leaves to its text (isTitleClick): a double-click ticks and unticks, so
+    the box stays and the name is selected to copy; a drag selecting text ticks nothing; a tile a
+    build holds has no box and a plain name. « Pick all shown »'s words start where the names
+    do: its gap is the name cell's left padding."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert (
+        'const tileName = h("span", { class: box ? "tile-name is-pick" : "tile-name", onclick: box'
+        " ? (ev) => pickByName(ev, box) : null }, e.tile);" in row
+    )
+    by_name = _function_body(app_js, "pickByName")
+    assert "if (box.disabled || ev.detail > 2) return;" in by_name
+    assert 'if (ev.detail === 1 && String(window.getSelection?.() || "")) return;' in by_name
+    assert "box.click();" in by_name
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".library-pick-all { display: inline-flex; align-items: center; gap: 8px; padding-left: 9px;" in css
+    assert ".table th, .table td { padding: 5px 8px;" in css  # the gap is this left padding
+    assert ".library-table .tile-name.is-pick { cursor: pointer; }" in css
 
 
 def test_a_zone_that_takes_no_square_adds_nothing_to_the_sizes() -> None:

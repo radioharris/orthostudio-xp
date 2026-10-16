@@ -794,9 +794,14 @@ the name of each tile but those of OrthoStudio XP a build holds (`pickBox`, `pic
 narrow column of its own, the table's first
 (`.library-pick-cell`, its header named for screen readers only), so that the names line up with
 or without a box (a user, 2026-10-07); when the folder under the name makes the row two lines
-high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
+high, the box stays on the name's line (`is-top`) rather than between the two. A click on the
+name ticks or unticks the box too (`pickByName`, a user, 2026-10-16); the name is not a label,
+which the page leaves to its text (`isTitleClick`), so a double-click ticks and unticks (the box
+stays, the name is selected to copy) and a drag selecting text ticks nothing; a tile a build holds
+has no box and a plain name. The bar under the
 search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
-affichées »), acting on the rows the search, the folder and *Show* leave, how many tiles are
+affichées », its box over the rows' boxes and its words over the names: the gap is the name
+cell's left padding), acting on the rows the search, the folder and *Show* leave, how many tiles are
 picked and their size on a line, then on the next the row's actions in three groups (eight
 buttons on one line were too many to read, a user, 2026-10-16): *X-Plane* with *Add* and *Remove*,
 *Tiles* with *Build again…* and *File elsewhere…*, and *Remove from the list…* and *Delete…* apart

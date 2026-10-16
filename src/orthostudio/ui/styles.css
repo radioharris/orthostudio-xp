@@ -1184,13 +1184,16 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .library-act-end { margin-left: auto; }
 .library-act-name { padding: 0 2px; font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }
 .library-act-n:not(:empty) { margin-left: 0.35em; opacity: 0.75; font-variant-numeric: tabular-nums; }
-/* its box over the rows' boxes: the table's border and its cells' left padding */
-.library-pick-all { display: inline-flex; align-items: center; gap: var(--label-gap); padding-left: 9px; font-size: var(--fs-2); color: var(--fg-2); }
+/* its box over the rows' boxes (the table's border and its cells' left padding), its words over
+   the tiles' names: the gap is the name cell's left padding (a user, 2026-10-16) */
+.library-pick-all { display: inline-flex; align-items: center; gap: 8px; padding-left: 9px; font-size: var(--fs-2); color: var(--fg-2); }
 .library-pick-all input { margin: 0; }
 .library-pick-count { font-size: var(--fs-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .library-filing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); margin: 0 0 var(--block-gap); font-variant-numeric: tabular-nums; }
 .library-errors:not(:empty) { margin-bottom: var(--block-gap); }
 .table .tile-pick { margin: 0; vertical-align: middle; }
+/* a click on the name ticks its box (a user, 2026-10-16) */
+.library-table .tile-name.is-pick { cursor: pointer; }
 /* the folder a tile is in, under its name */
 .table .tile-where { display: block; font-size: var(--fs-3); color: var(--fg-2); overflow-wrap: anywhere; }
 .settings-search-note, .works-search-note, .library-search-note { margin: var(--help-gap) 0 0; }

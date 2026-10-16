@@ -5684,9 +5684,15 @@ export function libraryRow(e, showFolder = false) {
   const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
   // the box in a narrow column of its own, so that the names line up with or without one (a user,
   // 2026-10-07); on the name's line when the folder under the name makes the row two lines high
+  // a click on the name ticks the box too (a user, 2026-10-16). Not a label, which the page leaves
+  // to its text (isTitleClick): a double-click ticks and unticks, so the box stays as it was and
+  // the name is selected to copy; a drag that selects part of the name ticks nothing. A tile a
+  // build holds has no box, and its name stays plain text.
+  const box = pickBox(e, key, inBuild);
+  const tileName = h("span", { class: box ? "tile-name is-pick" : "tile-name", onclick: box ? (ev) => pickByName(ev, box) : null }, e.tile);
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, pickBox(e, key, inBuild)),
-    h("td", { class: "library-tile", title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
+    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, box),
+    h("td", { class: "library-tile", title: e.path || null }, tileName, missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -6228,6 +6234,13 @@ export function bulkTargets(picked, building, jobs = 0) {
 function pickBox(e, key, inBuild) {
   if (inBuild) return null;
   return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing) || Boolean(state.bulk), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+}
+
+/** A click on a tile's name: its box's click, but for a third click or a drag selecting text. */
+function pickByName(ev, box) {
+  if (box.disabled || ev.detail > 2) return;
+  if (ev.detail === 1 && String(window.getSelection?.() || "")) return;
+  box.click();
 }
 
 /** The rows the search, the folder and the "Show" choice leave, as the table shows them. */

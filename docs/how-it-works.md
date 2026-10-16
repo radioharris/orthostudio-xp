@@ -197,7 +197,8 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
-**Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on. The
+**Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on;
+a click on a tile's name ticks it too. The
 bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
 (a tile ticked, then hidden by the search, the folder or *Show*, stays ticked and is left alone).
 Its buttons stand in three groups, each saying how many ticked tiles it takes: *X-Plane*, *Add* and
