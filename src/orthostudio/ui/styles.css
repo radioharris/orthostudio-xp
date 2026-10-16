@@ -1041,6 +1041,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .report-summary { grid-area: summary; }
 .report-steps { grid-area: steps; }
 .report-decisions { grid-area: decisions; }
+/* The line under the report (tiles not in X-Plane yet) stood against the table (a user, 2026-10-16). */
+.report-note { margin: var(--block-gap) 0 0; }
 /* The three columns ask for 740px and cannot go under it: 170 + 330 + 200 and two 20px gutters.
    Add the report's own 30, the 260px job list beside it with its 20px gap, and the page's 24, and
    they need 1074px of window. Folded at 920 they overflowed everything above them from 920 to
