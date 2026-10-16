@@ -37,6 +37,7 @@ from orthostudio.dem.sources import (
     round_latlon,
     view_url,
 )
+from orthostudio.meter import counting
 
 # -- naming (spec 2) ----------------------------------------------------------------------
 
@@ -216,14 +217,18 @@ def test_copernicus_cell_name_url_and_download(tmp_path: Path) -> None:
         return Download(asked, status=200, body=b"II*\x00 not really a tiff")
 
     opts = _opts(tmp_path, download, memo=NegativeMemo())
-    got = ensure_elevation("COP30", 46, 6, opts)
+    wrote: list[int] = []
+    with counting(wrote=wrote.append):  # what Works' report says the relief step wrote
+        got = ensure_elevation("COP30", 46, 6, opts)
+    assert wrote == [len(b"II*\x00 not really a tiff")]
     assert got.state is CellState.DOWNLOADED and got.path is not None
     assert got.path == elevation_path("COP30", tmp_path, 46, 6)
     assert got.path.name == "N46E006_COP30.tif" and got.path.read_bytes().startswith(b"II*")
     assert calls == [url]
-    # the file is there: the next build reads it without asking again
-    again = ensure_elevation("COP30", 46, 6, opts)
-    assert again.state is CellState.LOCAL and len(calls) == 1
+    # the file is there: the next build reads it without asking again, and writes nothing
+    with counting(wrote=wrote.append):
+        again = ensure_elevation("COP30", 46, 6, opts)
+    assert again.state is CellState.LOCAL and len(calls) == 1 and len(wrote) == 1
     assert not list(tmp_path.rglob("*.part"))
 
 

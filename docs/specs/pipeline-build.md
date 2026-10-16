@@ -352,7 +352,9 @@ Each row of the report (`NodeOutcome`, `BuildReport.to_dict` `tiles[].nodes[]`) 
 node really did on the disk and the network during the build, every pass and retry summed by the
 collector (`_Collector.bytes`): `written`, the bytes it committed to the store with links to what
 the store holds left out (`sched.node.own_bytes`), plus what it wrote beside it (the image pieces
-a container grew by, `ChunkStore.on_write`; the images its workers committed; relief files; the
+a container grew by, `ChunkStore.on_write`; the images its workers committed; relief files, a
+Copernicus cell's included (it is written by its own code, and was missed until the Shadow showed
+46 MB of a tile's 795, 2026-10-16); the
 copy of the OSM library's manifest; a copy into a tile's folder on another disk), and
 `downloaded`, the bytes received (the library's and Overpass' answers, relief files and ranges,
 `TexturesReport.network["bytes"]`). A hit counts 0 for both (`scheduler.md` 2.5). Measured on a

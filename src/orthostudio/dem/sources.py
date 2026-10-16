@@ -899,6 +899,9 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
         tmp = path.with_suffix(path.suffix + ".part")
         tmp.write_bytes(got.body)
         tmp.replace(path)
+        # the relief step's count of what it wrote (meter.py): a Copernicus cell was counted as
+        # downloaded and not as written, 46 MB of a tile's 795 (the Shadow, 2026-10-16)
+        written(len(got.body))
         return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
     if got.final:
         opts.memo.record(url)
