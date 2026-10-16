@@ -382,13 +382,13 @@ def test_the_steps_to_run_count_what_they_wrote_the_last_time(tmp_path: Path) ->
         assert _other_gb(env, nodes, entries) == 0.0
 
 
-def test_a_map_changed_by_an_update_keeps_the_images_made_without_a_mask(tmp_path: Path) -> None:
+def test_a_map_changed_by_an_update_goes_by_the_tiles_last_build(tmp_path: Path) -> None:
     """The map's rule 1.1.0 changed leaves the tile's terrain, masks and DSF to make again, so no
     earlier build matches their inputs, and the Plan of Build again counted every image of fifteen
     tiles as to prepare, 50 GB, refusing the build (2026-10-16). The tile's last build with the
     same settings then gives the texture list, and its images whose DDS the store holds are taken
-    as they are, but those made with a water mask, counted again as the masks are made again.
-    Other settings: no such build, nothing kept."""
+    as they are: what the store says, the most likely. Other settings: no such build, nothing
+    kept."""
     import json
     from types import SimpleNamespace
 
@@ -467,7 +467,7 @@ def test_a_map_changed_by_an_update_keeps_the_images_made_without_a_mask(tmp_pat
         put(TILE_TEXTURES.name, tex_key, tex_recipe, files)
 
         assert _tile_textures(env, nodes, entries) == ([land, wet], False, 1, 0, 0, "", True)
-        assert _textures_kept(env, nodes, entries) == {texture_name(land)}
+        assert _textures_kept(env, nodes, entries) == {texture_name(land), texture_name(wet)}
         # the DSF to write again counts what the last one wrote
         assert _other_gb(env, nodes, entries) == pytest.approx(0.01, abs=1e-3)
 

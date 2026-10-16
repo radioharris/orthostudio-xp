@@ -682,12 +682,6 @@ class Store:
                 return str(row["key"])
         return None
 
-    def made_of(self, key: str) -> dict[str, str | None]:
-        """The input digests ``key`` was made of, as its recipe names them; empty when absent."""
-        with self._lock:
-            row = self._db.execute("SELECT recipe FROM artifacts WHERE key = ?", (key,)).fetchone()
-        return {} if row is None else dict(json.loads(row["recipe"]).get("inputs", {}))
-
     def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
         with self._lock:
             if rule is None:

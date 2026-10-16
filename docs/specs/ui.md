@@ -436,12 +436,15 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
     measured throughput `mbps_measured` (or "not measured");
   - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (textures), already prepared, seconds;
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
-    and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "insufficient" in red
-    after a red line "Not enough free disk space: this build needs about X, and OrthoStudio XP asks
-    for twice that to be free (Y free now)" (7.0.4); `disk.ok` is the engine's rule, free > 2 ×
-    needed (`orthostudio.estimate.Estimate.disk_ok`), applied by the page itself only to an answer
-    without it (`dds_gb` standing for a missing `needed_gb`). The engine's `SYS_DISK_FULL` warning
-    gets no second card under the red line;
+    and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
+    amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
+    the build stops cleanly, and started again it carries on from where it stopped." (7.0.4);
+    `disk.ok` is the engine's rule, free > 2 × needed (`orthostudio.estimate.Estimate.disk_ok`),
+    applied by the page itself only to an answer without it (`dds_gb` standing for a missing
+    `needed_gb`). It is a warning, never a refusal: the figure is an estimate, and a disk that fills
+    up stops a build cleanly (`SYS_DISK_FULL`, nothing done is lost); it refused builds of tiles
+    whose images were all in the cache, and a user asked "we block a user on an uncertainty?"
+    (2026-10-16). The engine's `SYS_DISK_FULL` warning gets no second card under the line;
   - *Warnings* — one card per code with message and remedy (the page carries the message
     and remedy of every warning code it knows in `i18n.js`, `ZONE_INVALID`, `ZONE_TOO_MANY`
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
@@ -463,12 +466,13 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 **Build and install** (primary) and **Build only** → `POST /api/jobs` with the same body plus
 `install: true|false` and `queue: true`. Both are active as soon as tiles are chosen, with no
 estimate to ask for first. They are disabled, the reason under them, only when no tile is chosen
-("Choose tiles first (step 1)."), when the estimate was refused ("The estimate was refused: see
-step 3.") or when the disk cannot hold the build ("Not enough disk space: about 8.3 GB needed, and
-OrthoStudio XP asks for twice that to be free (6.1 GB free)."). Otherwise the line under them,
+("Choose tiles first (step 1).") or when the estimate was refused ("The estimate was refused: see
+step 3."). A disk that may run short leaves them active, the line under them in amber: "The disk
+may run short: about 8.3 GB to write, 6.1 GB free. You can build: if it fills up, the build stops
+cleanly." Otherwise the line under them,
 10 px below, sums the estimate up: "About 1.88 GB to download (5 – 9 min) and 8.31 GB on disk."
 A click while the estimate of a change is under way waits for it, and starts nothing the estimate
-refused or the disk cannot hold; both buttons stay disabled until the engine answered, so that a
+refused; both buttons stay disabled until the engine answered, so that a
 second click never asks twice. A success empties the selection (a later build would build these
 tiles again with its own): the map shows the tiles of the build in their own style meanwhile.
 
@@ -862,10 +866,12 @@ while the pick line shows the Plan's spinner and « Calcul du coût… » (`#lib
 `state.rebuildEstimating`): nothing moved and the app looked frozen (a user, 2026-10-16); a
 modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
 (its source and level) and what is today's, the download and the disk summed over the builds
-("up to", with "less if the tiles have not changed", when a stage of the estimate is `unknown`:
-after an update that changes a stage, what follows it is known only once built), and how many
-X-Plane shows, which stay in it, updated; when the disk cannot hold them (the Plan's rule, twice the room needed) it says
-so in the Plan's words and builds nothing. *Build again* sends them like the Plan
+("about", what the data folder holds counted as reused: after an update that changes a stage,
+the tile's last build with the same settings stands for what follows it; "up to" a figure no one
+could know did not go, 2026-10-16), and how many
+X-Plane shows, which stay in it, updated; when the disk may run short (the Plan's rule, twice the
+room needed) it says so in the Plan's words, and *Build again* stays: never a refusal on an
+estimate (it refused fifteen tiles whose images were all in the cache, 2026-10-16). *Build again* sends them like the Plan
 (`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
 (a toast says when all wait); a refusal is an error card under the Library's buttons. Its tooltip,
 like that of Works' *Build again*, says what is reused: what the data folder already holds. Both

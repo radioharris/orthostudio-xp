@@ -438,6 +438,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .actions-build { margin-top: var(--block-gap); }
 .actions-build + .help { margin-top: var(--help-gap); }
 #build-note.is-fail { color: var(--fail); }
+#build-note.is-warn { color: var(--warn); }
 #build-queue { margin-top: 0; }
 /* Step 3 follows the Plan by itself: while the cost is worked out again, the figures of before are
    dimmed, and beside the step's title a spinner says so. On a line of its own under the build
@@ -675,9 +676,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .btn-trash { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; }
 .btn-trash svg { width: 15px; height: 15px; }
 .btn-trash:hover:not(:disabled) { background: var(--fail-soft); }
+/* A disk that may run short is a warning, never a refusal: the figure is an estimate. */
 .disk-alert {
   margin: 0 0 var(--block-gap); padding: 6px 10px; border-radius: var(--radius); font-weight: 600;
-  background: var(--fail-soft); color: var(--fail); border: 1px solid var(--fail);
+  background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn);
 }
 
 .zone-list { list-style: none; margin: var(--gap) 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 440px; overflow-y: auto; }

@@ -3810,10 +3810,11 @@ async function build(install) {
   state.buildStarting = true;
   renderBuildActions();
   try {
-    // The cost of the last change first: a build refused by the estimate, or one the disk cannot
-    // hold, does not start (step 4 says why).
+    // The cost of the last change first: a build refused by the estimate does not start (step 4
+    // says why). A disk that may run short is said, not a reason to refuse: the figure is an
+    // estimate, and a disk that fills up stops a build cleanly (a user, 2026-10-16).
     if (state.planStale || estimateTimer) await (estimateTimer || !estimateRun ? estimate() : estimateRun);
-    if (!state.plan || diskVerdict(state.plan.disk).ok === false) return;
+    if (!state.plan) return;
     const req = await planRequest();
     if (!req) return;
     // Asked while another build runs, it waits for its turn (a user asked for a queue).
@@ -3866,7 +3867,7 @@ function renderBuildActions() {
   const disk = plan ? diskVerdict(plan.disk) : null;
   const refused = tiles && !state.planStale && !state.plan;
   const short = disk?.ok === false;
-  const blocked = !tiles || refused || short || Boolean(state.buildStarting);
+  const blocked = !tiles || refused || Boolean(state.buildStarting);
   $("build-install-btn").disabled = blocked;
   $("build-only-btn").disabled = blocked;
   let note = t("plan.estimating");
@@ -3875,7 +3876,8 @@ function renderBuildActions() {
   else if (short) note = t("step4.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) });
   else if (plan) note = t("step4.summary", { download: fmtMB(plan.network?.mb), time: fmtRange(plan.network?.seconds_low, plan.network?.seconds_high), disk: fmtGB(disk.needed) });
   setText($("build-note"), note);
-  $("build-note").classList.toggle("is-fail", short || refused);
+  $("build-note").classList.toggle("is-fail", refused);
+  $("build-note").classList.toggle("is-warn", short && !refused);
   // With a build under way or waiting, this one waits for its turn.
   const queue = $("build-queue");
   queue.hidden = !tiles || !activeJobs().length;
@@ -3971,7 +3973,7 @@ function renderPlanPanel() {
   const diskCls = disk.ok === null ? null : disk.ok ? "ok" : "fail";
   const diskFree = disk.ok === null ? fmtGB(disk.free) : `${fmtGB(disk.free)} · ${disk.ok ? t("plan.disk_ok") : t("plan.disk_full")}`;
   if (disk.ok === false) {
-    panel.append(h("p", { class: "disk-alert", role: "alert" }, t("plan.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) })));
+    panel.append(h("p", { class: "disk-alert", role: "status" }, t("plan.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) })));
   }
 
   panel.append(
@@ -6530,11 +6532,10 @@ export function rebuildRequests(rows) {
 
 /** What the question says before tiles are built again: how many, what each keeps and what is
  * today's, the download and the disk from the engine's estimates of the builds (`POST /api/plan`),
- * and how many X-Plane shows, which stay in it, updated (`inXplane`). `go` is false when the disk
- * cannot hold them, by the Plan's
- * own rule (twice the room the builds need). A stage the estimate cannot know before an earlier
- * one runs (`unknown`, after an update that changes it) may still find its work done: the figures
- * are then an upper bound, and the question says "up to". */
+ * what the data folder holds counted as reused, and how many X-Plane shows, which stay in it,
+ * updated (`inXplane`). A disk that may run short by the Plan's rule (twice the room the builds
+ * need) is said, never a reason to refuse: the figures are estimates, and a disk that fills up
+ * stops a build cleanly (a user, 2026-10-16: "we block a user on an uncertainty?"). */
 export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) {
   const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
   const mb = plans.reduce((sum, p) => sum + (Number(p?.network?.mb) || 0), 0);
@@ -6542,13 +6543,12 @@ export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) 
   const need = verdicts.reduce((sum, v) => sum + (v.needed || 0), 0);
   const free = verdicts.find((v) => v.free !== null)?.free ?? null;
   const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
-  const unsure = plans.some((p) => (p?.tiles || []).some((te) => (te.nodes || []).some((nd) => nd.status === "unknown")));
   const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
-  const body = [t("library.rebuild_kept"), unsure ? t("library.rebuild_costs_most", figures) : t("library.rebuild_costs", figures)];
+  const body = [t("library.rebuild_kept"), t("library.rebuild_costs", figures)];
   if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
   if (unsaved) body.push(t("settings.unsaved_build"));
-  return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: !short };
+  return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: true };
 }
 
 /** The question in the page's modal <dialog>, like the filing one; resolves true for "Build

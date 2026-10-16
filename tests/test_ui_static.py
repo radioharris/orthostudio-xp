@@ -2959,14 +2959,16 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
         _function_body(app_js, n) for n in ("addTiles", "removeTile", "clearTiles", "build")
     )
     actions = _function_body(app_js, "renderBuildActions")
-    assert "const blocked = !tiles || refused || short || Boolean(state.buildStarting);" in actions
+    # a disk that may run short is said, never a reason to refuse (a user, 2026-10-16)
+    assert "const blocked = !tiles || refused || Boolean(state.buildStarting);" in actions
+    assert '$("build-note").classList.toggle("is-warn", short && !refused);' in actions
     assert "state.buildStarting = true;" in _function_body(app_js, "build")  # never asked twice
     for key in ("step4.need_tiles", "step4.refused", "step4.disk_short", "step4.summary"):
         assert f't("{key}"' in actions, key
     build = _function_body(app_js, "build")
     waits = "await (estimateTimer || !estimateRun ? estimate() : estimateRun);"
-    assert build.index(waits) < build.index("diskVerdict(state.plan.disk).ok === false) return;")
-    assert build.index("diskVerdict(state.plan.disk)") < build.index('api("POST", "/api/jobs"')
+    assert build.index(waits) < build.index("if (!state.plan) return;")
+    assert "diskVerdict" not in build
     panel = _function_body(app_js, "renderPlanPanel")
     assert 'panel.classList.toggle("is-stale", Boolean(plan) && working);' in panel
 
@@ -7382,7 +7384,8 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     which X-Plane keeps showing; one build per "put back in X-Plane" made two builds of two tiles,
     2026-10-15), zones, colours and settings left to the engine (today's). The question says what
     each tile keeps, the download and the disk from the engine's estimates, how many X-Plane shows,
-    and builds nothing the disk cannot hold."""
+    and that the disk may run short, without refusing: "we block a user on an uncertainty?" (a
+    user, 2026-10-16)."""
     if NODE is None:
         pytest.skip("node is not installed")
     got = _run_node(
@@ -7419,18 +7422,15 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     assert got["q"]["body"] == [
         "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
         "today's, as in the Plan. What the data folder already holds is reused.",
-        "To download: 1.22 GB. On disk: 4.5 GB to write, 200 GB free.",
+        "To download: 1.22 GB. On disk: about 4.5 GB to write, 200 GB free.",
         "3 tile(s) in X-Plane stay in it, updated; the others do not go in.",
     ]
     assert got["q"]["go"] is True
-    assert got["short"]["go"] is False
-    assert got["short"]["body"][-1].startswith("Not enough free disk space")
-    # after an update that changes a stage, the estimate cannot know what follows it: "up to"
-    # (two tiles built a minute before were said to need 343 MB, 2026-10-15)
-    assert got["most"]["body"][1] == (
-        "To download: up to 1.22 GB. On disk: up to 4.5 GB to write, 200 GB free. Less if the "
-        "tiles have not changed: that is known only once built."
-    )
+    assert got["short"]["go"] is True
+    assert got["short"]["body"][-1].startswith("The disk may run short: about 4.5 GB to write")
+    # after an update that changes a stage, the same words: the figures are what the store says
+    # ("up to" did not go, 2026-10-16)
+    assert got["most"]["body"][1] == got["q"]["body"][1]
 
 
 def test_a_refusal_in_the_library_shows_where_it_is_seen() -> None:

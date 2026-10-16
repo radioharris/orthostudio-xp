@@ -486,9 +486,8 @@ def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry
     such build.
 
     When the steps before the DSF are still to make, the tile's last build with the same settings
-    (`_last_made`) stands in, the images made with a water mask left out: the masks are made
-    again and may change them; the others come from the photos alone (inland water too, unless
-    its masks are asked for)."""
+    (`_last_made`) stands in: what the store says, the most likely. A water mask made again may
+    still change a few images, which the build then prepares: a figure, not a promise."""
     dsf = _earlier_build(env, nodes.dsf, entries)
     last = dsf is None
     if last:
@@ -510,10 +509,7 @@ def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry
     return {
         str(t.get("name"))
         for t in manifest.get("textures", [])
-        if t.get("status") in ("built", "hit")
-        and t.get("key")
-        and env.store.has(str(t["key"]))
-        and not (last and env.store.made_of(str(t["key"])).get("mask"))
+        if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
     }
 
 
@@ -580,8 +576,8 @@ def estimate(
         notes: list[str] = []
         if last:
             notes.append(
-                "texture list of the tile's last build with the same settings: the steps before "
-                "the DSF are to make again, the images with water counted as to prepare again"
+                "texture list and images of the tile's last build with the same settings: the "
+                "steps before the DSF are to make again"
             )
         elif not exact:
             notes.append(
