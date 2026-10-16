@@ -8203,3 +8203,15 @@ def test_the_report_shows_what_each_step_wrote_and_downloaded() -> None:
     # the mock report carries them too, as the engine's does
     mock = _function_body(app_js, "mockOutcome")
     assert "written, downloaded };" in mock
+
+
+def test_the_line_under_the_report_speaks_only_of_tiles_x_plane_does_not_show() -> None:
+    """Built again, a tile X-Plane shows stays in it (its folder is the one X-Plane reads), and the
+    line under the report said "These tiles are not in X-Plane yet" of fifteen tiles it showed (a
+    user, 2026-10-16): it speaks only of the report's folders the Library does not show in X-Plane,
+    compared as the Library compares folders."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderReport")
+    assert "libraryTiles(state.library).filter((e) => e.installed)" in body
+    assert "!shown.has(folderKey(tile.pack_dir, platform))" in body
+    assert "const notInstalled = !job.install && rep.failed === 0 && outside.length" in body

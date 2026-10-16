@@ -5029,8 +5029,14 @@ function renderReport(job) {
     [t("step.install"), job.install ? `${fmtInt(totals.installed)} / ${fmtInt(totals.tiles)}` : t("works.no_install")],
   ]);
   // Built only: the tiles are on the disk, not in X-Plane. A user looked for a way to "import"
-  // them, and found the Ortho4XP import instead (2026-09-17).
-  const notInstalled = !job.install && rep.failed === 0
+  // them, and found the Ortho4XP import instead (2026-09-17). A tile X-Plane shows stays in it when
+  // it is built again (its folder is the one X-Plane reads), and the line said "not in X-Plane yet"
+  // of tiles it showed (a user, 2026-10-16): it speaks only of the folders the Library does not show
+  // in X-Plane.
+  const platform = state.status?.platform || "";
+  const shown = new Set(libraryTiles(state.library).filter((e) => e.installed).map((e) => folderKey(e.path || "", platform)));
+  const outside = (rep.tiles || []).filter((tile) => tile.pack_dir && !shown.has(folderKey(tile.pack_dir, platform)));
+  const notInstalled = !job.install && rep.failed === 0 && outside.length
     ? h("p", { class: "report-note" },
         t("works.not_installed_yet"),
         " ",

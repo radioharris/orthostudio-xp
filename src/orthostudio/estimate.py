@@ -600,18 +600,22 @@ def estimate(
             notes.append(
                 f"{apt_textures} texture(s) added for the airports made sharper, from {where}"
             )
-        requests = _requests_for(chunks, textures)
-        if requests and first_probe_texture is None:
-            for t in textures:
-                c = chunks.read(t) if chunks.has(t) else None
-                if c is None or c.indices(ChunkStatus.ERROR):
-                    first_probe_texture = (env.provider(t.provider), t)
-                    break
         tex_entry = entries.get(g.textures.id)
         textures_build = tex_entry is None or tex_entry.status != "hit"
         # the images already prepared the same way are taken as they are, not prepared again
         kept = _textures_kept(env, g, entries) if textures_build else set()
-        to_prepare = sum(1 for t in textures if texture_name(t) not in kept)
+        fresh = [t for t in textures if texture_name(t) not in kept] if textures_build else []
+        to_prepare = len(fresh) if textures_build else 0
+        # the pieces to download are those of the images to prepare: one taken as it is reads none.
+        # Every container of every image was read, all of them kept: Build again of eighteen tiles
+        # took 16 s to ask its question, from a hard disk, to download nothing (2026-10-16)
+        requests = _requests_for(chunks, fresh)
+        if requests and first_probe_texture is None:
+            for t in fresh:
+                c = chunks.read(t) if chunks.has(t) else None
+                if c is None or c.indices(ChunkStatus.ERROR):
+                    first_probe_texture = (env.provider(t.provider), t)
+                    break
         compute = sum(p.seconds for p in plans if p.status != "hit" and p.role != "textures")
         if textures_build:
             compute += to_prepare * per_texture
@@ -628,7 +632,7 @@ def estimate(
                 textures_total=len(textures),
                 textures_exact=exact,
                 textures_masked=masked,
-                requests=requests if textures_build else 0,
+                requests=requests,
                 download_mb=0.0,
                 dds_gb=dds_bytes / 1e9 if textures_build else 0.0,
                 compute_s=compute,

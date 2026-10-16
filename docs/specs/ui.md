@@ -651,6 +651,10 @@ The selected job (default: the running one, else the newest) shows, from top to 
   *Decisions* over its list (a user saw *Decisions* stand lower than *Final report*, 2026-09-21);
   one column under 1280px, each title above its own part (the steps take 480px with their bytes,
   472 in French, and the figures 220).
+  Under it, a build without install says "These tiles are not in X-Plane yet: add them from the
+  Library." with *Open the Library*, a block gap below the report, only when one of the report's
+  folders is not one the Library shows in X-Plane (`folderKey`): a tile X-Plane shows stays in it
+  when it is built again, and the line said it was not of fifteen such tiles (2026-10-16).
 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus

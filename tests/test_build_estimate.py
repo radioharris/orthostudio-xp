@@ -28,7 +28,7 @@ from orthostudio.estimate import (
 )
 from orthostudio.graph import Store
 from orthostudio.imagery.chunks import ChunkContainer, ChunkEntry, ChunkStatus, ChunkStore
-from orthostudio.imagery.grid import TextureId, textures_covering
+from orthostudio.imagery.grid import TextureId, texture_name, textures_covering
 from orthostudio.imagery.providers import Provider, cache_name, load_registry
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import BuildEnv, BuildSpec, declare, make_scheduler
@@ -102,6 +102,30 @@ def test_requests_count_only_what_the_chunk_store_lacks(tmp_path: Path, env: Bui
     est = estimate([_spec(tmp_path)], env=env)
     (t,) = est.tiles
     assert t.requests == 256 * (len(textures) - 2) + 10
+
+
+def test_an_image_taken_as_it_is_reads_no_piece_of_the_cache(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pieces to download are those of the images to prepare: Build again of eighteen tiles
+    read every container of every image, all of them kept, and took 16 s to ask its question from
+    a hard disk, to download nothing (2026-10-16). Only the images to prepare are read."""
+    import orthostudio.estimate as est_mod
+
+    textures = textures_covering(44, 5, 43, 6, 14, "BI")
+    read: list[TextureId] = []
+    real_read = ChunkStore.read
+
+    def counted(self: ChunkStore, t: TextureId) -> ChunkContainer | None:
+        read.append(t)
+        return real_read(self, t)
+
+    monkeypatch.setattr(ChunkStore, "read", counted)
+    keep = {texture_name(t) for t in textures[1:]}  # all but the first taken as they are
+    monkeypatch.setattr(est_mod, "_textures_kept", lambda env, nodes, entries: keep)
+    (t,) = estimate([_spec(tmp_path)], env=env).tiles
+    assert read == [textures[0]]
+    assert t.requests == 256  # the one image to prepare, none of its pieces in the cache
 
 
 def test_the_estimate_looks_where_a_build_would_for_a_source_of_the_users(
