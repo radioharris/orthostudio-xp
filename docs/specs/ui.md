@@ -986,8 +986,8 @@ screen's title; it is never taken from where the user moved it.
 `<dialog role="alertdialog">` placed outside the screens, on the page's tokens. Title "Delete tile
 +45+005?"; then "It is removed from X-Plane and its files are deleted from this computer (about
 1.2 GB)." (X-Plane is named only when the tile is installed, the size only when `size_bytes` is
-known) and "The imagery already downloaded stays in the cache, so building it again later is
-faster."; for a tile whose files are missing, one sentence: its files are already gone, and it is
+known) and "The imagery already downloaded stays in the cache, so a later build is faster." (one
+sentence for one tile or many: « la reconstruire » said one tile in the bar's question, 2026-10-16); for a tile whose files are missing, one sentence: its files are already gone, and it is
 removed from this list (and from X-Plane when installed). Buttons *Keep it*, which has the focus
 first, and *Delete* (solid danger style). Escape keeps the tile (the browser's own handling, and
 the page's in case the browser skips it); the rest of the page is inert while the dialog is open,
