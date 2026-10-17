@@ -36,6 +36,7 @@ from orthostudio.dem.sources import (
     no_download,
     round_latlon,
     view_url,
+    view_urls,
 )
 from orthostudio.meter import counting
 
@@ -80,8 +81,27 @@ def test_base_file_name_and_suffixes(tmp_path: Path) -> None:
 
 def test_view_url_dem1_cells() -> None:
     assert len(DEM1_CELLS) == 34
-    assert view_url(44, 5) == ("http://viewfinderpanoramas.org/dem1/n44e005.zip", 1)
-    assert view_url(47, 15) == ("http://viewfinderpanoramas.org/dem1/n47e015.zip", 1)
+    assert view_url(44, 5) == ("http://viewfinderpanoramas.org/dem1/N44E005.zip", 1)
+    assert view_url(47, 15) == ("http://viewfinderpanoramas.org/dem1/N47E015.zip", 1)
+
+
+def test_view_urls_ask_the_upper_case_name_first_then_the_lower_case_one() -> None:
+    """Since October 2026 the site serves ``dem1/N46E006.zip`` and answers 404 for
+    ``n46e006.zip`` (measured 2026-10-17); its names are case-sensitive, so both are tried."""
+    assert view_urls(46, 6) == (
+        [
+            "http://viewfinderpanoramas.org/dem1/N46E006.zip",
+            "http://viewfinderpanoramas.org/dem1/n46e006.zip",
+        ],
+        1,
+    )
+    assert view_urls(43, 5) == (
+        [
+            "http://viewfinderpanoramas.org/dem3/K31.zip",
+            "http://viewfinderpanoramas.org/dem3/k31.zip",
+        ],
+        3,
+    )
 
 
 def test_view_url_dem3_blocks_and_resolution() -> None:
@@ -274,11 +294,80 @@ def test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again(tmp_path: Path) -
     opts = _opts(tmp_path, download, memo=NegativeMemo())
     first = ensure_elevation("View", 44, 5, opts)
     assert first.state is CellState.MISSING
-    assert calls == ["http://viewfinderpanoramas.org/dem1/n44e005.zip"]
-    # the 404 is remembered: the second run does not ask again (the OrthoStudio XP fix)
+    assert calls == [
+        "http://viewfinderpanoramas.org/dem1/N44E005.zip",
+        "http://viewfinderpanoramas.org/dem1/n44e005.zip",
+    ]
+    # the 404s are remembered: the second run does not ask again (the OrthoStudio XP fix)
     second = ensure_elevation("View", 44, 5, opts)
     assert second.state is CellState.MISSING
-    assert len(calls) == 1
+    assert len(calls) == 2
+
+
+def _view_site(served: str, calls: list[str]):  # type: ignore[no-untyped-def]
+    """A viewfinderpanoramas that serves +46+006's archive under the name ``served`` only."""
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        if url.rpartition("/")[2] == served:
+            return Download(url, body=_zip({"N46E006.hgt": b"\x00" * FULL_HGT_SIZE}), status=200)
+        return Download(url, status=404)
+
+    return download
+
+
+def test_a_dem1_cell_comes_under_the_upper_case_name(tmp_path: Path) -> None:
+    calls: list[str] = []
+    opts = _opts(tmp_path, _view_site("N46E006.zip", calls), memo=NegativeMemo())
+    got = ensure_elevation("View", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == "http://viewfinderpanoramas.org/dem1/N46E006.zip"
+    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+
+
+def test_a_dem1_cell_still_comes_if_the_site_goes_back_to_lower_case(tmp_path: Path) -> None:
+    calls: list[str] = []
+    memo = NegativeMemo()
+    opts = _opts(tmp_path, _view_site("n46e006.zip", calls), memo=memo)
+    got = ensure_elevation("View", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == "http://viewfinderpanoramas.org/dem1/n46e006.zip"
+    assert memo.is_missing("http://viewfinderpanoramas.org/dem1/N46E006.zip")
+
+
+def test_the_lower_case_404_users_already_remember_does_not_stop_the_upper_case_name(
+    tmp_path: Path,
+) -> None:
+    """Data folders of 1.1.0 and earlier hold the lower-case URL as a 404 for 30 days."""
+    calls: list[str] = []
+    memo = NegativeMemo()
+    memo.record("http://viewfinderpanoramas.org/dem1/n46e006.zip")
+    opts = _opts(tmp_path, _view_site("N46E006.zip", calls), memo=memo)
+    assert ensure_elevation("View", 46, 6, opts).state is CellState.DOWNLOADED
+    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+
+
+def test_an_upper_case_404_remembered_does_not_stop_the_lower_case_name(tmp_path: Path) -> None:
+    calls: list[str] = []
+    memo = NegativeMemo()
+    memo.record("http://viewfinderpanoramas.org/dem1/N46E006.zip")
+    opts = _opts(tmp_path, _view_site("n46e006.zip", calls), memo=memo)
+    assert ensure_elevation("View", 46, 6, opts).state is CellState.DOWNLOADED
+    assert calls == ["http://viewfinderpanoramas.org/dem1/n46e006.zip"]
+
+
+def test_a_network_failure_does_not_try_the_other_case(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        return Download(url, error="NET_UNREACHABLE")
+
+    memo = NegativeMemo()
+    got = ensure_elevation("View", 46, 6, _opts(tmp_path, download, memo=memo))
+    assert got.state is CellState.MISSING
+    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+    assert not memo.is_missing(calls[0])
 
 
 def test_a_full_1sec_file_is_recycled(tmp_path: Path) -> None:

@@ -36,6 +36,7 @@ from orthostudio.dem.sources import (
     extract_view_zip,
     hem_latlon,
     view_url,
+    view_urls,
 )
 
 __all__ = [
@@ -70,5 +71,6 @@ __all__ = [
     "smoothen",
     "upsample_1201_to_3601",
     "view_url",
+    "view_urls",
     "world_tiles",
 ]

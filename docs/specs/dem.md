@@ -191,13 +191,22 @@ there at 1".
 
 `O4_DEM_Utils.py:595-735`. Two resolutions:
 
-* **1"** (`dem1/<n43e005>.zip`) for the 34 hard-coded `(lat, lon)` pairs of lines 599-635
+* **1"** (`dem1/<N43E005>.zip`) for the 34 hard-coded `(lat, lon)` pairs of lines 599-635
   (the Alps), one zip per cell;
 * otherwise **3"** (`dem3/<L><NN>.zip`), a 4-degree x 6-degree block named by de Ferranti's
   grid: number `31 + lon // 6` zero-padded to 2, letter `alphabet[lat // 4]` for the north
   (`"S" + alphabet[(-1 - lat) // 4]` for the south). 22 of those blocks are 1" despite
   living under `dem3/` (the list at lines 645-667 only selects `resol = 1`, which changes the
   recycling test below, not the URL).
+
+**Upper and lower case.** The site's file names are case-sensitive. Since October 2026 it
+serves the `dem1/` archives under upper-case names only: `dem1/N46E006.zip` answers 200 and
+`dem1/n46e006.zip`, the name Ortho4XP asks, answers 404 (measured 2026-10-17; the `dem3/`
+blocks were already upper case). `view_urls` gives the upper-case URL first and the lower-case
+one second, for `dem1/` and `dem3/` alike, so a cell does not depend on which case the site
+serves. Each URL has its own negative-memo entry (3.4): the lower-case 404 that data folders of
+1.1.0 and earlier remember never skips the upper-case name, nor the reverse. A 404 tries the next
+name; a network failure does not, since the other name would fail the same way.
 
 **Recycling test** (lines 669-676): the local file is reused when it exists **and**
 (`resol == 3` **or** its size is at least `25934402` bytes). 25934402 is the size of an
@@ -667,7 +676,7 @@ per tile, downloaded on demand).
 | A6 | `test_alt_strict_and_composite_match_ortho4xp` | A |
 | A7 | `test_dem_rule.py::test_the_rule_writes_the_three_files` (the three files, the fields of `meta.json`, `Dem.load` of the artefact) | - |
 | A8 | `test_negative_memo_*`, `test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again`, `test_the_memo_does_not_change_the_raster` | A (bytes) |
-| A9 | `test_dem_sources.py`: `test_view_url_dem1_cells` (the 34 dem1 cells), `test_view_url_dem3_blocks_and_resolution` (the 22 1"-blocks), `test_extract_view_zip_*` (zip extraction rules) | - |
+| A9 | `test_dem_sources.py`: `test_view_url_dem1_cells` (the 34 dem1 cells), `test_view_url_dem3_blocks_and_resolution` (the 22 1"-blocks), `test_view_urls_ask_the_upper_case_name_first_then_the_lower_case_one`, `test_a_dem1_cell_comes_under_the_upper_case_name`, `test_a_dem1_cell_still_comes_if_the_site_goes_back_to_lower_case`, `test_the_lower_case_404_users_already_remember_does_not_stop_the_upper_case_name`, `test_an_upper_case_404_remembered_does_not_stop_the_lower_case_name`, `test_a_network_failure_does_not_try_the_other_case` (the case of the names), `test_extract_view_zip_*` (zip extraction rules) | - |
 
 The tests marked A ran against Ortho4XP in a subprocess until decision 0010 removed them
 (2026-09-14, with `tests/test_dem_oracle.py`): A1, A2, A6 and

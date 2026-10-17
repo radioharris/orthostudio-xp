@@ -60,6 +60,7 @@ __all__ = [
     "hem_latlon",
     "round_latlon",
     "view_url",
+    "view_urls",
 ]
 
 Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
@@ -315,15 +316,30 @@ def view_url(lat: int, lon: int) -> tuple[str, int]:
     """``(url, resolution)`` of the viewfinderpanoramas archive holding this cell.
 
     ``O4_DEM_Utils.py:595-668``. The resolution is 1 or 3 and only drives the recycling test
-    of :func:`ensure_elevation`, never the URL.
+    of :func:`ensure_elevation`, never the URL. The archive name is upper case: since
+    October 2026 the site serves ``dem1/N46E006.zip`` and answers 404 for ``n46e006.zip``,
+    the name Ortho4XP asks. :func:`view_urls` adds the other case as a second try.
     """
     if (lat, lon) in DEM1_CELLS:
-        return f"{VIEW_BASE_URL}/dem1/{hem_latlon(lat, lon).lower()}.zip", 1
+        return f"{VIEW_BASE_URL}/dem1/{hem_latlon(lat, lon).upper()}.zip", 1
     number = 31 + lon // 6
     letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
     block = f"{letter}{number:02d}"
     resol = 1 if block in DEM1_BLOCKS else 3
     return f"{VIEW_BASE_URL}/dem3/{block}.zip", resol
+
+
+def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
+    """Every URL to try for this cell's archive, in order, and the resolution.
+
+    The site's file names are case-sensitive and changed case once: the upper-case name of
+    :func:`view_url` comes first, the lower-case one second, so a cell does not depend on
+    which case the site serves.
+    """
+    url, resol = view_url(lat, lon)
+    head, _, name = url.rpartition("/")
+    lower = f"{head}/{name.lower()}"
+    return ([url] if lower == url else [url, lower]), resol
 
 
 def ned_url(source: str, lat: int, lon: int) -> str:
@@ -850,21 +866,27 @@ def _local(source: str, lat: int, lon: int, opts: EnsureOptions) -> Path:
 
 def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     path = _local("View", lat, lon, opts)
-    url, resol = view_url(lat, lon)
+    urls, resol = view_urls(lat, lon)
     if path.is_file() and (resol == 3 or path.stat().st_size >= FULL_HGT_SIZE):
-        return EnsureResult(lat, lon, CellState.LOCAL, path, url)
-    if opts.memo.is_missing(url):
-        return _view_fallback(lat, lon, path, url, opts, "the archive is in the negative memo")
-    opts.check_cancelled()
-    got = opts.download(url)
-    if got.ok:
-        extract_view_zip(got.body, opts.elevation_dir)
-        if path.is_file():
-            return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
-        return _view_fallback(lat, lon, path, url, opts, "the archive did not hold this cell")
-    if got.final:
+        return EnsureResult(lat, lon, CellState.LOCAL, path, urls[0])
+    # each name has its own memo entry: a 404 remembered for one case never skips the other
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir)
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            return _view_fallback(lat, lon, path, url, opts, "the archive did not hold this cell")
+        if not got.final:
+            # the network, not the name: the other case would fail the same way
+            return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
         opts.memo.record(url)
-    return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
+        detail = got.error or f"HTTP {got.status}"
+    return _view_fallback(lat, lon, path, urls[0], opts, detail)
 
 
 def cop30_name(lat: int, lon: int) -> str:
